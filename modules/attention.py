@@ -243,6 +243,13 @@ ROW_KINDS = {
                                     "open the spend panel to review its trigger, caps and "
                                     "estimate against actual; turn it off, or turn it on again "
                                     "in Settings › AI with a new estimate"),
+    # Decision 5 of boards AI1 to AI5 (C1953): a background feature's 14-day approval, asked
+    # for again 3 days before it ends, and said once it has ended.
+    ("ai_spend", "approval"): ("a background AI feature's approval ends within 3 days, or has "
+                               "ended, so the gateway refuses its calls from then until an "
+                               "admin turns it on again",
+                               "turn it on again in Settings › AI, accepting its current "
+                               "estimate, or turn it off"),
     # C2084: the provider refused for the workspace's own usage limit, so every AI call is
     # refused until the moment it named.
     ("ai_spend", "workspace_limit"): ("the provider refused a call because its workspace "
@@ -422,6 +429,10 @@ CLEARS = {
                                     "its estimate, or an admin turns it on again with a new "
                                     "estimate, or it is turned off (by an admin, or by its "
                                     "approval's end)"),
+    ("ai_spend", "approval"): (("resolves",), "an admin turns the feature on again in "
+                               "Settings › AI (a new 14-day approval, its estimate accepted "
+                               "again), or turns it off; its end passing does not clear it: "
+                               "the row then says the approval ended"),
     ("ai_spend", "workspace_limit"): (("resolves", "time"), "the moment the provider named "
                                       "passes (when it named none, 10 minutes after its "
                                       "refusal, when the next call asks again), or a call is "
@@ -4214,8 +4225,8 @@ AI_SETTINGS_HREF = "/v2/settings/installation?tab=ai"
 #: panel"), in place on whatever page draws the row: ``"open": "ai_spend_panel"``, written as a
 #: literal at each row so tests/test_next_steps_act.py's scan finds it (`_attention.html`,
 #: nmas_v2.js `aiSpendOpen`).
-#: Where the day cap is changed: Settings › Installation › Connections, the AI (hosted) card.
-AI_DAY_CAP_WORDS = "Settings › Installation › Connections, the AI (hosted) card"
+#: Where the day cap is changed: Settings › Installation › AI, the AI (hosted) card.
+AI_DAY_CAP_WORDS = "Settings › Installation › AI, the AI (hosted) card"
 
 
 def _ai_period_end(which: str, today: str, zone: str) -> float:
@@ -4301,7 +4312,7 @@ def _ai_over_estimate_row(f: dict):
 
 
 #: Where the AI card's Test is, which asks the provider again after an admin raised its limit.
-AI_CARD_HREF = "/v2/settings/installation?tab=connections#card-ai"
+AI_CARD_HREF = "/v2/settings/installation?tab=ai#card-ai"
 
 
 def _ai_workspace_limit_row():
@@ -4330,9 +4341,51 @@ def _ai_workspace_limit_row():
         operands={"since": hold["since"], "until": hold.get("until"),
                   "recheck_at": hold["recheck_at"], "provider": said["provider"]},
         action={"label": ("An admin raises the workspace's usage limit in the provider's "
-                          "console, then presses Test on Settings › Installation › Connections, "
+                          "console, then presses Test on Settings › Installation › AI, "
                           f"the AI (hosted) card, which asks the provider again; or wait {when}"),
                 "open": "ai_spend_panel", "href": AI_CARD_HREF})
+
+
+def _ai_approval_rows(due, now=None) -> list:
+    """One ``approval`` row per background feature switched on whose 14-day approval ends within
+    3 days or has ended (`background.approvals_due`, decision 5 of boards AI1 to AI5; C1953):
+    warning while it is still in force, danger once it has ended (the gateway refuses its
+    calls). It clears when an admin turns it on again (a new approval) or off, never by time,
+    since an ended approval still needs that decision."""
+    from modules.ai import background
+
+    at = background.epoch_of(now)
+    rows = []
+    for net, feature, entry, ends in due:
+        name = background.FEATURES.get(feature, {}).get("words", feature)
+        ends_iso = _iso(ends)
+        ends_words = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(ends))
+        ended = at >= ends
+        left = ends - at
+        days = int(left // 86400)
+        when = ("" if ended else
+                f"in {days} day{'' if days == 1 else 's'}" if days >= 1 else "in under a day")
+        rows.append(row(
+            source="ai_spend", kind="approval", key=f"{net}:{feature}:approval",
+            level="danger" if ended else "warning", since=_ts(entry.get("at")),
+            what=(f"The approval of {name} on {net} ended {ends_words}" if ended else
+                  f"The approval of {name} on {net} ends {when}"),
+            cause=(f"{name} was turned on for {net} by {entry.get('by') or 'an admin'} at "
+                   f"{entry.get('at')}, approved for {background.APPROVAL_DAYS} days with the "
+                   f"estimate shown then; its approval "
+                   + (f"ended {ends_iso}, so the gateway refuses its calls until an admin "
+                      "turns it on again" if ended else
+                      f"ends {ends_iso}, and from then the gateway refuses its calls until an "
+                      "admin turns it on again")),
+            operands={"network": net, "feature": feature, "approved_at": entry.get("at"),
+                      "ends_at": ends_iso, "approval_days": background.APPROVAL_DAYS,
+                      "renew_days": background.RENEW_DAYS},
+            action={"label": (f"Turn {name} on again for {net} in Settings › AI, accepting "
+                              f"its current estimate (a new {background.APPROVAL_DAYS} days), "
+                              "or turn it off"
+                              + ("" if ended else f"; else it stops {ends_words}")),
+                    "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
+    return rows
 
 
 def ai_spend_source(now=None) -> dict:
@@ -4352,6 +4405,10 @@ def ai_spend_source(now=None) -> dict:
       `_ai_workspace_limit_row`): one WORKSPACE_LIMIT row (danger), the provider's words and
       the moment, clearing at it or when a call is answered.
 
+    - each background feature switched on whose approval ends within 3 days, or has ended
+      (`background.approvals_due`, `_ai_approval_rows`; C1953): one APPROVAL row, warning
+      before its end and danger after, read from the switches alone, whatever the spend.
+
     Every row opens the spend panel. The read is bounded (CLAUDE.md, enterprise scale): with a
     feature on, the month's window of the record of AI calls, today's spend summed from it;
     else, with AI on and a day cap, today's window alone (`calls.spent_usd`); else nothing."""
@@ -4361,11 +4418,17 @@ def ai_spend_source(now=None) -> dict:
     label = "AI spend: the day cap and background features"
     try:
         on = background.enabled()
+        due = background.approvals_due(now)
         cap = gateway.day_cap()
         hosted = spend.hosted_on()
     except Exception as exc:                                    # noqa: BLE001 (said, a row)
         return source_result("ai_spend", label, read_at=started, took_ms=0,
                              error=f"the AI settings could not be read: {exc}")
+    # An approval ending within 3 days, or ended (C1953, decision 5): read from the switches
+    # alone, whatever the spend, and whether or not AI is on now.
+    approval_rows = _ai_approval_rows(due, now)
+    approval_said = (f"{len(due)} background feature approval(s) ending within "
+                     f"{background.RENEW_DAYS} days or ended")
     why_no_day = ("" if hosted and cap is not None else
                   "AI is off (hosted AI is not allowed, or no provider key is set), so the day "
                   "cap was not judged" if not hosted else
@@ -4374,10 +4437,11 @@ def ai_spend_source(now=None) -> dict:
     # The provider's workspace usage limit (C2084), while AI is on: with AI off no call is made
     # whatever the provider would answer, and the chip says "AI off".
     limit = _ai_workspace_limit_row() if hosted else None
-    limit_rows = [limit] if limit else []
+    limit_rows = ([limit] if limit else []) + approval_rows
     limit_said = ("the provider's workspace usage limit is held" if limit else
                   "no provider workspace usage limit is held" if hosted else
                   "AI is off, so the provider's workspace usage limit was not read")
+    limit_said = f"{limit_said}; {approval_said}"
     if not on and why_no_day:
         return source_result("ai_spend", label, read_at=started,
                              took_ms=int((time.time() - started) * 1000), rows=limit_rows,
@@ -4438,7 +4502,7 @@ def ai_spend_source(now=None) -> dict:
                               f"change its {w} cap in Settings › AI"),
                     "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
     features = len([r for r in rows if not r["kind"].startswith("day_")
-                    and r["kind"] != "workspace_limit"])
+                    and r["kind"] not in ("workspace_limit", "approval")])
     return source_result("ai_spend", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=rows,
                          checked=(f"{len(on)} background feature switch(es) on, against their "

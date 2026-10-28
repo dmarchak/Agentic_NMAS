@@ -72,7 +72,7 @@ def rechecks(name: str) -> bool:
 
     return controls.CONTROLS[name]["task"] in provider_limit.RECHECKS
 
-SETTINGS_LINK = 'href="/v2/settings/installation?tab=connections#card-ai"'
+SETTINGS_LINK = 'href="/v2/settings/installation?tab=ai#card-ai"'
 
 
 def set_state(m, state: str) -> None:

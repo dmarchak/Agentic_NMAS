@@ -7,11 +7,14 @@ Installation, then the **AI** tab. It shows one network at a time; choose anothe
 
 ## Hosted AI {#hosted-ai}
 
-The first card says whether hosted AI is allowed for the installation, by whom, when and why,
-and the installation's day cap. While hosted AI is off, no AI call runs, background or
-pressed, whatever the switches below say. The master switch, the provider key, the day cap and
-each task's model and prices are set on **Settings › Installation › Connections**, on the **AI
-(hosted)** card, which the card links to.
+The first card, **AI (hosted)**, holds every installation-wide AI decision: the provider key
+(**Replace…**, and **Test**, one small recorded call), the installation's day cap and when its
+day begins (**Save**), whether hosted AI is allowed (**Allow** with a reason, or **Turn off**,
+by whom, when and why), today's spend against the day cap, and each task's model, prices and
+cap per call. While hosted AI is off, no AI call runs, background or pressed, whatever the
+switches below say. Every background feature's caps are within the day cap. The card moved
+here from the Connections tab, which keeps one line linking to it. What its actions do, step
+by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-settings#ai-cap).
 
 ## Background features {#background-features}
 
@@ -31,6 +34,12 @@ Each background feature Mercury knows is a row:
 - **Its controls:** **Turn on…** when it is off (the estimate opens in the row), **Change
   caps…** and **Turn off** when it is on. Each answer is drawn in the section, and a refusal
   names what it compared.
+- **Its approval's end.** From 3 days before an approval ends, the row says so and offers
+  **Turn on again…**: the current estimate opens in the row, and accepting it approves the
+  feature for another 14 days from then (its caps typed again, recorded as a turn-on). Needs
+  attention raises a row for it at the same time
+  ([Needs attention](needs-attention#sources)); it stays, saying the approval ended, until
+  the feature is turned on again or off.
 
 A feature on another network that its cap stopped is named under the list, so an admin sees it
 without choosing that network.
@@ -57,7 +66,7 @@ What each action does, step by step: [Was this right? and the review](ai-feedbac
 
 ## Not here yet {#not-here-yet}
 
-The board for this tab draws more than is built. Still to come: the master switch, key and day
-cap moved here from the Connections tab's card; one switch for each feature a person presses
-(Explain, Ask in words, Change intent in words); who sees amounts, per network; the first
-install's steps; and a Needs attention row three days before an approval ends.
+The board for this tab draws more than is built. Still to come: one switch for each feature a
+person presses
+(Explain, Ask in words, Change intent in words); who sees amounts, per network; and the first
+install's steps.

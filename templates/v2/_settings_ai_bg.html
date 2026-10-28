@@ -35,7 +35,7 @@
     <strong>{{ caps_set.feature }}'s caps on {{ ai.network }}</strong> are now ${{ '%.2f' % e.day_cap_usd }} a day and ${{ '%.2f' % e.month_cap_usd }} a month, by {{ e.caps_by }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if not ai.hosted_allowed %}
-  <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div><strong>Hosted AI is off for the installation</strong>, so no AI call runs, background or pressed, whatever is on here. It is allowed, with a recorded reason, on <a href="{{ ai.card_href }}">Settings › Installation › Connections, AI (hosted)</a>.</div></div>
+  <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div><strong>Hosted AI is off for the installation</strong>, so no AI call runs, background or pressed, whatever is on here. It is allowed, with a recorded reason, on <a href="{{ ai.card_href }}">the AI (hosted) card</a> above.</div></div>
   {%- endif %}
   {%- if ai.spend_state == 'unreadable' %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The record of AI calls could not be read</strong> ({{ ai.spend_error }}), so each feature's spend is unknown and the gateway refuses every background call until it can be read.</div></div>
@@ -53,7 +53,7 @@
       <div class="ai-f-state">
       {%- if f.state == 'off' %}{{ badge('off', 'neutral') }}
       {%- elif f.state == 'ended' %}{{ badge('approval ended', 'warn') }} <span class="set-origin">turned on by {{ f.entry.by }} {{ stamp(f.entry.at) }}; its approval ended {{ stamp(f.ends_iso) }}, so its calls are refused until an admin turns it on again</span>
-      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
+      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
       {%- endif %}</div>
     </div>
     <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capitalize }}; {{ f.calls_per_finding }} call per finding</span></div>
@@ -69,6 +69,11 @@
     <div class="ai-f-act">
       {%- if f.state in ('off', 'ended') %}
       <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-get="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" title="Opens the estimate in this row: nothing is turned on until you accept it">Turn on…</a>{{ how('ai-background', 'turn-on', compact=True, op='turning ' ~ f.name ~ ' on') }}</span>
+      {%- endif %}
+      {%- if f.state in ('on', 'stopped') and f.renew %}
+      {#- Its approval ends within RENEW_DAYS (decision 5, C1953): the estimate shown again and
+          accepted, a new approval from now. Not on board AI3 (STANDING_APPROVAL_LOG). -#}
+      <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-get="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" title="Opens the current estimate in this row: the approval is renewed only when you accept it">Turn on again…</a>{{ how('ai-background', 'turn-on', compact=True, op='turning ' ~ f.name ~ ' on again') }}</span>
       {%- endif %}
       {%- if f.state in ('on', 'stopped') %}
       <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.ai_caps_form', network=ai.network, feature=f.name) }}" hx-get="{{ url_for('settings_v2.ai_caps_form', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" title="Opens the caps in this row: nothing changes until you save">Change caps…</a>{{ how('ai-background', 'caps', compact=True, op="changing a feature's caps") }}</span>

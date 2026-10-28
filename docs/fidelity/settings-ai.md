@@ -11,8 +11,31 @@ on… pressed on `sdn_classify`, its frequency unknown; `settings-ai-on-refused`
 a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_v2.py's world.
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
-Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html
-Templates sha256: `c74afd89b38886c5c31c9ba9d2d926cf5731ecf7a38e3d06120a0c6ed751b59a`
+Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html
+Templates sha256: `24fb5260b3c1bde4518dcaa461de14377e3ba6eb9695776b0f944c8ef5f21e8e`
+
+**Compared again 2026-10-28 (C1953 part 1, decision 1: the AI (hosted) card moved here
+whole):** the read-only Hosted AI card is gone, and the AI (hosted) card is the tab's first
+card, drawn by `_install_card.html` as on Connections (now a compared template here, since this
+tab draws it); Connections keeps one line linking to it (`settings_installation.html`, on the
+UNCHECKED list). The hosted-off notice in Background features names "the AI (hosted) card
+above". Shots `settings-ai` at 1440, 1280 and 390 (`settings-ai-page-390-first.png`: the card
+stacks at phone width, nothing past the width). The Hosted AI row below is re-judged; the other
+regions are unchanged in the shots. Templates sha256 before:
+`c74afd89b38886c5c31c9ba9d2d926cf5731ecf7a38e3d06120a0c6ed751b59a`.
+
+**Compared again 2026-10-28 ~22:5x UTC (C1953 part 6, decision 5: an approval asked for again
+3 days before it ends):** the acceptance in Turn on… now says "this one ends <date>. Mercury
+asks for it again in Needs attention 3 days before; unless an admin turns it on again, it then
+stops." (shot `settings-ai-on-page-1440` and `-390`), which is the board's sense, so its row
+below is now **same**. An on or stopped feature's row, from 3 days before its approval ends,
+adds ", within 3 days: turn it on again to approve it for another 14, or it stops then" after
+"approval until" and **Turn on again…** before Change caps…, which board AI3 does not draw (a
+row added below). The shots' world has a fresh approval, so Turn on again… is not in a shot; it
+is compared by the template and tests/test_settings_ai_v2.py
+(`test_turn_on_again_is_on_the_row_only_within_three_days_and_renews`). The other shots taken
+again, nothing else moved. Templates sha256 before:
+`80932fba152fc46500163d11c9baedd1e0a0225b1bf400c95970caac7990c742`.
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_settings_ai.html`
 includes the card Answers said wrong (`_ai_feedback_review.html`) below Background features, as
@@ -27,7 +50,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Where it is | "Settings · AI", a tab beside Installation, Integrations and Networks | Settings › Installation's last tab, AI, under the scope bar | **deviation** (log: Settings › AI built: the AI tab is a tab of Settings › Installation) |
-| Hosted AI | the master switch with Turn off, the key with Test and Replace…, the day cap with Change…, the month figure, the prices | a card naming hosted AI's state, by whom, when and why, and the day cap, read-only, linking to the AI (hosted) card on Connections | **deviation** (log: Settings › AI built: the AI (hosted) card not moved yet) |
+| Hosted AI | the master switch with Turn off, the key with Test and Replace…, the day cap with Change…, the month figure, the prices | the AI (hosted) card, moved whole: its title and "every network"; the key with Replace…; the cap per day with No cap and the day's start, saved by Save; Hosted AI allowed with Turn off (or Allow with a reason); spent today; Save and Test; each task's model, prices and cap per call as a table, always drawn; no month figure | **deviation** (log: Settings › AI: the AI (hosted) card moved whole, its own layout) |
 | Features a person presses | a table with a switch per feature | not drawn | **deviation** (log: Settings › AI built: the features a person presses have no switches yet) |
 | Background features' head | "Background features", Network ▾, "How does this work?" | the same; the (i) opens the manual's section | **same** |
 | Their lead | the board's sentence | the same sentence, with the approval's 14 days added | **same** |
@@ -39,7 +62,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The estimate | ESTIMATE, calls a day, cost per call, dollars a day and a month, where each comes from, prices' date, the provider bills, the digest | the same, each basis Mercury's own words, the label "an estimate, not a measurement of this feature's spend" | **same** |
 | An unknown frequency (B) | "unknown", the cost's worst case, "the caps below are the bound", $0.50 and $5.00 filled in | the same words; the cap fields empty with "type a cap" | **deviation** (log: Settings › AI built: no caps offered with no measured estimate) |
 | The caps | day cap "within the installation's $5.00", month cap "within $155.00 this month" | day cap within the installation's day cap; the month cap "US dollars in a month, this feature on <network> only" | **deviation** (log: Settings › AI built: the month hint names only the feature's own month) |
-| The acceptance | "I have read the estimate. Approvals last 14 days; Mercury asks for this again before 10 Nov." | "I have read the estimate. An approval lasts 14 days: this one ends <date>, and the feature then stops until an admin turns it on again." | **deviation** (log: Settings › AI built: no Needs attention row before an approval ends) |
+| The acceptance | "I have read the estimate. Approvals last 14 days; Mercury asks for this again before 10 Nov." | "I have read the estimate. An approval lasts 14 days: this one ends <date>. Mercury asks for it again in Needs attention 3 days before; unless an admin turns it on again, it then stops." (the board's sense, with the date in full) | **same** |
+| An approval ending | not drawn on the row (the board's acceptance says Mercury asks again before it ends) | from 3 days before the end, "within 3 days: turn it on again…" after "approval until", and Turn on again… on the row, opening the current estimate in place | **deviation** (log: Settings › AI: Turn on again… on a feature whose approval ends within 3 days) |
 | Turn on and Cancel | "Turn on with this estimate" or "Turn on with no measured estimate", Cancel | the same | **same** |
 | The estimate moved (C) | the refusal naming both estimates with their figures, ESTIMATE, NOW, Turn on again | the refusal naming both digests, the estimate now drawn in full, ESTIMATE, NOW | **deviation** (log: Settings › AI built: a moved estimate's refusal names both digests, not the shown figures) |
 | A cap outside the installation's (D) | the field red with the reason, Turn on disabled | refused on press, in place, naming both amounts, what was typed drawn back | **deviation** (log: Settings › AI built: a cap out of range refused on press, not disabled before) |

@@ -5,7 +5,7 @@ own limit). Limits belong to the customer, not the program.
 - **The schema** takes a positive amount or null (no cap) for the day cap, with no maximum, and
   refuses 0 and negatives; the retiring per-call cap has no maximum either; a rotation
   policy's days and devices a run have none, their minimums kept.
-- **The card** (Settings › Installation › Connections, AI (hosted), through the real route as a
+- **The card** (Settings › Installation › AI, AI (hosted), through the real route as a
   verified person) saves $80 and $5,000; refuses $0 and a negative, saying so, writing nothing.
 - **History**: a card's Save records each field's old and new value, and History draws it:
   "AI (hosted): Cap per day $50 → $80", who and when.
@@ -43,7 +43,7 @@ def _text(html):
 
 
 def _page(n):
-    return n["client"].get("/v2/settings/installation?tab=connections").get_data(as_text=True)
+    return n["client"].get("/v2/settings/installation?tab=ai").get_data(as_text=True)
 
 
 def _loaded(n):

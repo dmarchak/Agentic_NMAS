@@ -534,9 +534,9 @@ def test_one_row_names_the_providers_words_the_moment_and_the_action(spend, cloc
         "features alike; the AI (hosted) card's Test still asks, and an answer clears it")
     assert row["action"]["label"] == (
         "An admin raises the workspace's usage limit in the provider's console, then presses "
-        "Test on Settings › Installation › Connections, the AI (hosted) card, which asks the "
+        "Test on Settings › Installation › AI, the AI (hosted) card, which asks the "
         "provider again; or wait until 1 November 2026 00:00 UTC")
-    assert row["action"]["href"] == "/v2/settings/installation?tab=connections#card-ai"
+    assert row["action"]["href"] == "/v2/settings/installation?tab=ai#card-ai"
     assert row["clears"] == {"ways": ["resolves", "time"],
                              "when": attention.CLEARS[("ai_spend", "workspace_limit")][1]}
     assert row["clears_at"] == "2026-11-01T00:00:00Z"

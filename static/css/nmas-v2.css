@@ -1767,6 +1767,7 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .topo-line.topo-ov { stroke-width: 1.5; }
 .topo-line.topo-ov-control { stroke: var(--sdn); stroke-dasharray: 2 5; }
 .topo-line.topo-ov-host { stroke: var(--ink-3); stroke-dasharray: 4 4; stroke-linecap: butt; }
+.topo-line.topo-ov-northbound { stroke: var(--sdn); stroke-dasharray: 6 4; }
 .topo-c-sdn use, .topo-c-sdn .topo-ico { color: var(--sdn); }
 .topo-c-sdn .topo-ic { stroke: var(--sdn); }
 .topo-c-host use { color: var(--ink-3); }

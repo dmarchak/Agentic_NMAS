@@ -63,6 +63,11 @@ COST_WINDOW_DAYS = 30
 MONTH_DAYS = 30
 #: How long an admin's approval of a background feature lasts (board AI3's decision 5).
 APPROVAL_DAYS = 14
+#: How many days before an approval ends Mercury asks for it again: a Needs attention row
+#: (`attention.ai_spend_source`, kind ``approval``) and Turn on again… on Settings › AI
+#: (decision 5, C1953). The row stays once the approval has ended, until an admin turns the
+#: feature on again or off.
+RENEW_DAYS = 3
 
 #: Each background feature: ``{name: {"task", "words", "trigger_words", "findings",
 #: "calls_per_finding", "frequency"}}``. *findings* are the finding kinds a trigger may name;
@@ -131,6 +136,34 @@ def entry_of(network: str, feature: str):
     ended, else None."""
     got = switches().get(network, {}).get(feature)
     return got if in_force(got) else None
+
+
+def renewal_due(entry, now=None) -> bool:
+    """Whether *entry* is switched on and its approval ends within `RENEW_DAYS` days of *now*
+    (an aware datetime, as the spend readers pass it, or an epoch; the clock when None), or has
+    ended: the window in which Mercury asks an admin to turn it on again (decision 5, C1953).
+    An entry whose ``at`` Mercury did not write has no approval to renew (it was never in
+    force) and is not due."""
+    if not isinstance(entry, dict) or entry.get("on") is not True:
+        return False
+    ends = approval_ends(entry)
+    return ends is not None and epoch_of(now) >= ends - RENEW_DAYS * 86400
+
+
+def epoch_of(now=None) -> float:
+    """*now* as an epoch: an aware datetime's, an epoch as given, or the clock's when None."""
+    if now is None:
+        return _now()
+    return now.timestamp() if hasattr(now, "timestamp") else float(now)
+
+
+def approvals_due(now=None) -> list:
+    """``[(network, feature, entry, ends)]`` for every switch on whose approval ends within
+    `RENEW_DAYS` days, or has ended (`renewal_due`), sorted; *ends* an epoch. Reads the
+    switches only, never the record of AI calls."""
+    return sorted(((n, f, e, approval_ends(e)) for n, fs in switches().items()
+                   for f, e in fs.items() if renewal_due(e, now)),
+                  key=lambda t: (t[0], t[1]))
 
 
 def enabled() -> list:

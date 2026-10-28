@@ -163,8 +163,9 @@ def qs(list_name: str, s: dict, over: dict = None) -> str:
 def label(name: str, nodes: dict = None) -> str:
     """How a node is named on the page: Mercury's own host by the product's name; an OpenFlow
     switch (S14) by the name it reports, else its DPID's short form (``of:…0001``); a
-    controller by its connection's name; a host a controller learned by its first address,
-    else its MAC."""
+    controller by its connection's name; a host a controller learned by its global IPv4
+    address, else its global IPv6, else "host on <switch> port <n>" (C1991,
+    `sdn.topology.host_label`), never a link-local address."""
     from modules import brand
     from modules.readers.topology_graph import MANAGER
     from modules.sdn import topology as SDN
@@ -176,8 +177,7 @@ def label(name: str, nodes: dict = None) -> str:
     if name.startswith(SDN.CONTROLLER_PREFIX):
         return name[len(SDN.CONTROLLER_PREFIX):]
     if name.startswith(SDN.HOST_PREFIX):
-        h = n.get("host") or {}
-        return ((h.get("ipv4") or []) + (h.get("ipv6") or []) or [name[len(SDN.HOST_PREFIX):]])[0]
+        return (n.get("host") or {}).get("label") or name[len(SDN.HOST_PREFIX):]
     return name
 
 
@@ -482,6 +482,29 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
             "manager": bool(l.get("manager")), "kind": l.get("kind", "")}
 
 
+def host_lines(h: dict) -> list:
+    """A controller's host in words (C1991): its MAC, then every address it holds, IPv4 beside
+    IPv6, a link-local one marked; where else the same MAC is listed, said, never merged."""
+    from modules.sdn import topology as SDN
+    lines = [f"MAC {h.get('mac', '')}"]
+    for family, word in (("ipv4", "IPv4"), ("ipv6", "IPv6")):
+        for a in h.get(family) or []:
+            lines.append(f"{word} {a}" + ("" if SDN.is_global(a) else " (link-local)"))
+    for w in h.get("elsewhere") or []:
+        lines.append(f"the same MAC is also listed on {w}")
+    return lines
+
+
+def controller_words(c: dict) -> str:
+    """A controller connection's state and switch count, the map's line under its node
+    (C2026): "connected, 2 switches"; "couldn't read: <why>; 2 switches as last read"."""
+    n = c.get("switches", 0)
+    count = f"{n} switch{'es' if n != 1 else ''}"
+    if c.get("state") == "read":
+        return f"connected, {count}"
+    return f"couldn't read: {c.get('why', '')}; {count} as last read"
+
+
 def _overlay_link(l: dict, nodes: dict) -> dict:
     """A controller's control link to a switch, or a host it learned on a switch port (S14):
     drawn dotted beside the fabric, its source on hover; never a link to review (no attention,
@@ -492,11 +515,17 @@ def _overlay_link(l: dict, nodes: dict) -> dict:
     src = ", ".join(l.get("sources") or [])
     if l.get("kind") == "host":
         h = (nodes.get(b) or {}).get("host") or {}
-        lines = [f"MAC {h.get('mac', '')}"] + [f"address {x}" for x in (h.get("ipv4") or [])
-                                                + (h.get("ipv6") or [])]
+        lines = host_lines(h)
         how = f"a host {src} learned on {la} {pa}" + (f" ({h['port_name']})"
                                                       if h.get("port_name") else "")
         dt = "Host"
+    elif l.get("kind") == "northbound":
+        c = (nodes.get(b) or {}).get("controller") or {}
+        where = f" at {l['northbound']}" if l.get("northbound") else ""
+        lines = [f"{la} reads {lb} over its northbound API{where}",
+                 controller_words(c)]
+        how = f"{la} reads {lb} (northbound)"
+        dt = "Northbound"
     else:
         lines = [f"{lb} is programmed by {la}; Mercury changes its flows only through it"]
         how = f"{la} manages {lb} (OpenFlow)"
@@ -504,7 +533,9 @@ def _overlay_link(l: dict, nodes: dict) -> dict:
     title = f"{la} {pa} ↔ {lb} {pb}".replace("  ", " ").strip()
     return {"id": link_id(l), "a": a, "b": b, "port_a": pa, "port_b": pb, "la": la, "lb": lb,
             "title": title, "source": "controller", "sources": list(l.get("sources") or []),
-            "cls": "ok", "chips": [], "state": l.get("state", "unknown"), "how": how,
+            "cls": "ok", "chips": ([{"text": "northbound REST", "cls": "src"}]
+                                   if l.get("kind") == "northbound" else []),
+            "state": l.get("state", "unknown"), "how": how,
             "since": "", "since_seen": False,
             "rows": [{"dt": dt, "cls": "", "chip": "controller", "lines": lines}],
             "none": [], "readers": [], "whats": [], "manager": False,
@@ -714,6 +745,8 @@ def view(list_name: str, values) -> dict:
     if net.get("sdn"):
         out["summary"]["switches"] = sum(1 for k, v in nodes.items()
                                          if v.get("sdn") and not v.get("outside"))
+        # C1991: hosts, one per MAC on its switch port, never addresses (drawn or not).
+        out["summary"]["hosts"] = (net.get("sdn") or {}).get("hosts", 0)
     out["attention"] = _attention(links, weak, s)
     out["weak"] = weak
     out["critical"] = an.get("critical") or []
@@ -749,6 +782,10 @@ def _coverage(list_name: str, net: dict, value_at: str, now: float = None) -> li
     for c in sdn.get("controllers") or []:
         chips.append({"text": SDN.words(c, now), "cls": "ctl" if c["state"] == "read"
                       else "warn"})
+        # C2026: the hosts a controller still lists on switches it no longer has, counted in
+        # words, never drawn.
+        if c.get("orphans"):
+            chips.append({"text": SDN.orphan_words(c["name"], c["orphans"]), "cls": "warn"})
     try:
         got = E.stored(list_name)
     except Exception as exc:                          # noqa: BLE001 (said on the chip)
@@ -841,10 +878,19 @@ def trace_view(list_name: str, trace_id: str, phys: list, nodes: dict) -> dict:
 
 def _list_groups(nodes: dict, phys: list) -> list:
     """The phone's Devices tab: devices grouped by their class (the legend's words, in its
-    order; no bands since C661), each with its links, ports and states."""
-    groups = {}
+    order; no bands since C661), each with its links, ports and states. A controller's hosts
+    are one group per switch (C1991, the large-fleet rule: a line per switch, closed, its hosts
+    on opening), the first naming them all (*head*)."""
+    groups, hosts = {}, {}
     for name in sorted(nodes):
         n = nodes.get(name) or {}
+        if n.get("host"):
+            h = n["host"]
+            hosts.setdefault(h.get("switch_label") or "?", []).append({
+                "name": name, "label": label(name, nodes), "port": h.get("port", ""),
+                "mac": h.get("mac", ""),
+                "addresses": len(h.get("ipv4") or []) + len(h.get("ipv6") or [])})
+            continue
         mine = [l for l in phys if name in (l["a"], l["b"])]
         groups.setdefault(node_class(name, n), []).append({
             "name": name, "label": label(name, nodes), "managed": n.get("managed", False),
@@ -854,7 +900,17 @@ def _list_groups(nodes: dict, phys: list) -> list:
                        "source": source_words(l),
                        "port": (l.get("port_a") if l["a"] == name else l.get("port_b")) or ""}
                       for l in mine]})
-    return [{"words": CLASSES[c], "devices": groups[c]} for c in CLASSES if c in groups]
+    out = [{"words": CLASSES[c], "devices": groups[c]} for c in CLASSES if c in groups]
+    total = sum(len(v) for v in hosts.values())
+    for i, sw in enumerate(sorted(hosts)):
+        head = ""
+        if i == 0:
+            head = (f"Hosts a controller learned ({total}) on "
+                    f"{len(hosts)} switch{'es' if len(hosts) != 1 else ''}")
+        out.append({"words": CLASSES["host"], "switch": sw, "head": head,
+                    "devices": sorted(hosts[sw], key=lambda d: (len(d["port"]), d["port"],
+                                                                d["mac"]))})
+    return out
 
 
 def _search(nodes: dict, phys: list, q: str) -> list:
@@ -1159,6 +1215,19 @@ def _sdn_words(name: str, n: dict) -> dict:
     c1, read <t> · 3 ports"}``; {} for any other node."""
     from modules.sdn import topology as SDN
     sdn = n.get("sdn")
+    if n.get("controller"):
+        # C2026: a controller connection draws its state and switch count under its name.
+        c = n["controller"]
+        title = f"controller connection {c.get('name', '')}"
+        if c.get("read_at"):
+            title += f", read {c['read_at']}"
+        if c.get("orphans"):
+            title += ". " + SDN.orphan_words(c.get("name", ""), c["orphans"])
+        return {"line": controller_words(c), "title": title}
+    if n.get("host"):
+        h = n["host"]
+        return {"line": "", "title": f"on {h.get('switch_label', '')} {h.get('port', '')}. "
+                                     + "; ".join(host_lines(h))}
     if not sdn:
         return {}
     via = f"controller {sdn['controller']}" if sdn.get("controller") else "LLDP only"

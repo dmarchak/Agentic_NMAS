@@ -53,7 +53,12 @@ nothing to measure).
 **An approval lasts 14 days.** On the fifteenth day the switch reads as off everywhere: the
 gateway refuses the feature's next call, naming when its approval ended, and the row says
 **approval ended**. Turning it on again is a new approval, after a new estimate. Changing the
-caps never extends one.
+caps never extends one. From 3 days before the end, Mercury asks for it: the row offers **Turn
+on again…** (the same steps as Turn on…, from the current estimate; accepting it starts a new
+14 days from then), and Needs attention raises a row naming the feature, the network and when
+the approval ends. That row reads only the switches, never the record of AI calls; it turns
+critical once the approval has ended, and clears only when an admin turns the feature on
+again or off.
 
 ## Turn off {#turn-off}
 

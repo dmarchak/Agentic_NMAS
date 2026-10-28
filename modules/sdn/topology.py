@@ -167,6 +167,7 @@ def stored(network: str, now: float = None, cached=None) -> dict:
             if sw.get("name") and sw.get("dpid") is not None:
                 names[int(sw["dpid"])] = str(sw["name"])
         entry = {"name": c.get("name", ""), "label": c.get("label", ""),
+                 "northbound": northbound(c.get("url", "")),
                  "read_at": topo.get("read_at") or "",
                  "switches": topo.get("switches") or [], "links": topo.get("links") or [],
                  "hosts": topo.get("hosts") or [], "hosts_note": topo.get("hosts_note", ""),
@@ -194,17 +195,92 @@ def _age_words(at: str, now: float) -> str:
     return f"as last read at {at} ({_ago(now - stamp)})"
 
 
+def northbound(url: str) -> str:
+    """Where Mercury reads a controller (its northbound API), as the map names it:
+    ``host:port`` from the connection's URL, never its scheme's credentials or path; an IPv6
+    host in brackets; ``""`` when the URL names no host."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(str(url or ""))
+        addr, port = parts.hostname, parts.port
+    except ValueError:
+        return ""
+    if not addr:
+        return ""
+    if ":" in addr:
+        addr = f"[{addr}]"
+    return f"{addr}:{port}" if port else addr
+
+
+# ───────────────────────────────────────────────────────────────────────────── hosts
+
+def is_global(address: str) -> bool:
+    """An address a host can be labelled by (C1991): neither link-local, unspecified,
+    loopback nor multicast, in either family. A link-local IPv6 address (fe80::/10) is every
+    IPv6 interface's own, so it never names a host that has a global one."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(str(address or "").strip())
+    except ValueError:
+        return False
+    return not (a.is_link_local or a.is_unspecified or a.is_loopback or a.is_multicast)
+
+
+def host_key(h: dict) -> str:
+    """A host's node key: ``host:<MAC>@<DPID hex>/<port>``, one per MAC on its switch port
+    (C1991), so the same MAC listed on two ports is two nodes, never one merged."""
+    return f"{HOST_PREFIX}{h['mac']}@{switch_key(h['dpid'])[len(SWITCH_PREFIX):]}/{h['port_no']}"
+
+
+def host_label(h: dict, switch_label: str = "") -> str:
+    """How a host is named (C1991): its first global IPv4 address, else its first global IPv6
+    address, else "host on <switch> port <n>"; a link-local address is never the label."""
+    for family in ("ipv4", "ipv6"):
+        for a in h.get(family) or []:
+            if is_global(a):
+                return a
+    return f"host on {switch_label or short(switch_key(h['dpid']))} {port_words(h['port_no'])}"
+
+
+def placed(c: dict) -> tuple:
+    """``(hosts, orphans)``: the controller's hosts whose switch is in the same read's switch
+    list, and the count of the rest (C2026: Ryu keeps a host until it restarts, so after a
+    teardown it lists hosts on switches it no longer has). A host on a switch that is gone is
+    never drawn, located or counted as a host; it is counted apart, in words."""
+    have = {int(sw["dpid"]) for sw in c.get("switches") or []}
+    kept, gone = [], 0
+    for h in c.get("hosts") or []:
+        if int(h["dpid"]) in have:
+            kept.append(h)
+        else:
+            gone += 1
+    return kept, gone
+
+
+def orphan_words(name: str, count: int) -> str:
+    """C2026's sentence for the hosts not drawn: "6 hosts reported by lab-ryu on switches no
+    longer connected, not drawn"; ``""`` for none."""
+    if not count:
+        return ""
+    return f"{_n(count, 'host')} reported by {name} on switches no longer connected, not drawn"
+
+
 def said(controllers: list) -> list:
     """What each controller contributes, for the coverage header: ``[{"name", "state",
-    "source", "read_at", "switches", "links", "hosts", "why"}]`` (counts; `words` says it)."""
+    "source", "read_at", "switches", "links", "hosts", "orphans", "why"}]`` (counts; `words`
+    says it). *hosts* counts one per MAC on a switch port of the read (C1991, C2026); *orphans*
+    the hosts listed on a switch the read no longer has."""
     out = []
     for c in controllers or []:
+        kept, gone = placed(c)
         out.append({"name": c["name"], "state": c["state"],
                     "source": f"controller ({c['name']})", "read_at": c.get("read_at", ""),
                     "switches": len(c.get("switches") or []),
                     "links": len({_pair(l) for l in c.get("links") or []}),
-                    "hosts": len(c.get("hosts") or []), "why": c.get("why", ""),
-                    "links_note": c.get("links_note", "")})
+                    "hosts": len({(h["mac"], int(h["dpid"]), h["port_no"]) for h in kept}),
+                    "orphans": gone, "why": c.get("why", ""),
+                    "links_note": c.get("links_note", ""),
+                    "northbound": c.get("northbound", "")})
     return out
 
 
@@ -249,8 +325,11 @@ def layer(controllers: list) -> dict:
     "state", "why"}}``; a link ``{"a", "port_a", "b", "port_b", "kind": "controller",
     "sources", "state", "directions", "ends_detail", "read_at"}`` with ``a < b``, the one
     cable both directions report; *state* up when its controller was read now, else unknown
-    (kept from the last read). A host is the controller's, with its switch's key."""
-    nodes, links, hosts = {}, {}, []
+    (kept from the last read). A host is the controller's, one per MAC on its switch port
+    (C1991), with its switch's key, its node *key* (`host_key`), its *label* (`host_label`) and
+    where else the same MAC is listed (*elsewhere*); only a host whose switch is in the same
+    read (C2026), the rest counted per controller in *orphans* (``{name: count}``)."""
+    nodes, links, hosts, orphans = {}, {}, [], {}
     for c in controllers or []:
         if c["state"] == "not_declared":
             continue
@@ -286,11 +365,24 @@ def layer(controllers: list) -> dict:
                     "ends_detail": {ends[0][0]: _port_detail(ends[0][2]),
                                     ends[1][0]: _port_detail(ends[1][2])}}
             got["directions"] += 1
-        for h in c.get("hosts") or []:
+        kept, gone = placed(c)
+        if gone:
+            orphans[c["name"]] = gone
+        for h in kept:
+            sw_label = (c.get("names") or {}).get(int(h["dpid"])) or short(switch_key(h["dpid"]))
             hosts.append(dict(h, switch=switch_key(h["dpid"]), controller=c["name"],
-                              read_at=c.get("read_at", ""), state=c["state"]))
+                              read_at=c.get("read_at", ""), state=c["state"],
+                              key=host_key(h), label=host_label(h, sw_label),
+                              switch_label=sw_label))
+    # The same MAC on two ports is two hosts, each saying where else it is (C1991).
+    where = {}
+    for h in hosts:
+        where.setdefault(h["mac"], []).append(f"{h['switch_label']} {port_words(h['port_no'])}")
+    for h in hosts:
+        here = f"{h['switch_label']} {port_words(h['port_no'])}"
+        h["elsewhere"] = [w for w in where[h["mac"]] if w != here]
     return {"nodes": nodes, "links": [links[k] for k in sorted(links, key=str)],
-            "hosts": hosts}
+            "hosts": hosts, "orphans": orphans}
 
 
 def _port_detail(port: dict) -> dict:
@@ -371,7 +463,8 @@ def endpoint_hosts(controllers: list) -> list:
     switch's key, *interface* its port as the map names it (``port 2``, its name beside),
     *last_seen* when the controller last listed it (its read's time). A host on a port that
     is a link between switches locates nothing (the controller learns only on edge ports, but
-    a port's role can change since)."""
+    a port's role can change since). A host on a switch the same read does not list locates
+    nothing either (C2026: the controller keeps hosts of a switch that is gone)."""
     out = []
     for c in controllers or []:
         if c["state"] == "not_declared":
@@ -380,7 +473,7 @@ def endpoint_hosts(controllers: list) -> list:
         for l in c.get("links") or []:
             inner.add((int(l["src"]["dpid"]), l["src"]["port_no"]))
             inner.add((int(l["dst"]["dpid"]), l["dst"]["port_no"]))
-        for h in c.get("hosts") or []:
+        for h in placed(c)[0]:
             if (int(h["dpid"]), h["port_no"]) in inner:
                 continue
             out.append({"mac": h["mac"], "addresses": list(h.get("ipv4") or [])

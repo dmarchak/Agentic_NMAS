@@ -5,7 +5,7 @@ NSOT_GUI_BRIEF section 6, "AI controls"; the operator, 2026-10-25).
 templates/v2/_ai.html), whose hover names the task, its pinned model and its per-call cap. When
 hosted AI cannot answer (it is off, no key is set, or today's cap is reached), the control is
 drawn disabled, its input not fillable, with the reason in place and, for a viewer who may
-configure, a link to Settings › Installation, the AI (hosted) card. The provider's workspace
+configure, a link to Settings › Installation › AI, the AI (hosted) card. The provider's workspace
 usage limit, once the provider has refused for it (C2084, `provider_limit`), is one more such
 state, in the words every AI screen shares; the card's Test stays pressable then, since it is
 how an admin tells Mercury the limit was raised. It is never hidden, and
@@ -62,7 +62,7 @@ CONTROLS = {
         "words": "Test (the AI card)",
         "endpoints": ("settings_v2.install_test",),
         "template": "v2/_install_card.html",
-        "screen": "Settings › Installation › Connections, AI (hosted)",
+        "screen": "Settings › Installation › AI, AI (hosted)",
         "beside": "the card's Save, Replace… and Allow",
     },
     "intent_in_words": {
@@ -219,7 +219,7 @@ def control(name: str) -> dict:
             return days[day]
     out = dict(entry, name=name, **readiness(entry["task"], spent=once))
     out["may_configure"] = _may_configure() if in_request else False
-    out["settings_url"] = (url_for("settings_v2.installation", tab="connections")
+    out["settings_url"] = (url_for("settings_v2.installation", tab="ai")
                            + "#" + CARD_ANCHOR) if in_request else ""
     if in_request:
         cache[name] = out

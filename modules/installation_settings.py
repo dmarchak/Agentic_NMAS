@@ -351,9 +351,10 @@ CARDS = {
     # Phase 8's gateway (modules/ai; PHASE8_PLAN 13.1, 15.8, 15.12): the key, the two caps,
     # the hosted allowance with its recorded reason, and a Test that is one real, paid call
     # through the whole gateway, run only when a person presses it (never the integrations
-    # reader's minute probe: `test` here, not `integration`).
+    # reader's minute probe: `test` here, not `integration`). On the AI tab, moved there whole
+    # from Connections (boards AI1 to AI5, decision 1; C1953), which keeps one line linking it.
     "ai": {
-        "group": "ai_gateway", "title": "AI (hosted)", "tab": "connections",
+        "group": "ai_gateway", "title": "AI (hosted)", "tab": "ai",
         "fields": (_f("ai_cap_usd_per_day", "Cap per day", "usd",
                       "today's spend plus a call's worst case, refused before it is sent; "
                       "each call's own cap is its task's, below. No program maximum: the "

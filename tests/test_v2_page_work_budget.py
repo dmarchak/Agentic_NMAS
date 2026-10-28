@@ -34,7 +34,7 @@ BASE = "http://192.0.2.10:8080"
 #: Pages that draw AI spend with hosted AI on and no background feature on (measured
 #: 2026-10-27). Needs attention's cap rows read the same window (`calls.rows_since`, the one
 #: read every spend figure goes through) only while a background feature is on.
-SPEND_PAGES = ("/v2/sdn/responses?list=Default", "/v2/settings/installation")
+SPEND_PAGES = ("/v2/sdn/responses?list=Default", "/v2/settings/installation?tab=ai")
 
 
 @pytest.fixture

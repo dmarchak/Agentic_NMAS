@@ -52,10 +52,10 @@ def _why_off() -> str:
 
     allowed = gateway.hosted_allowed()
     if not allowed["allowed"]:
-        return ("Hosted AI is off: an admin allows it on Settings › Installation › Connections, "
+        return ("Hosted AI is off: an admin allows it on Settings › Installation › AI, "
                 "the AI (hosted) card, with a recorded reason.")
     return ("Hosted AI is allowed, but no provider key is set: an admin enters one on Settings "
-            "› Installation › Connections, the AI (hosted) card.")
+            "› Installation › AI, the AI (hosted) card.")
 
 
 def _unavailable() -> str:

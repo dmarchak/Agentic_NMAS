@@ -206,13 +206,20 @@ which opens the top bar's spend panel in place on the page you are on (see
   $0.1200)"), its average over the complete days since it was turned on. It clears when that
   average falls under 150%, when an admin turns it on again with a new estimate, or when it is
   turned off.
+- **A background feature's approval ending**, per network: from 3 days before its 14-day
+  approval ends, "The approval of <feature> on <network> ends in 2 days", a warning naming who
+  turned it on, when, and the moment it ends; once it has ended, "The approval of <feature> on
+  <network> ended <time>", critical, since the gateway then refuses its calls. Its action: turn
+  it on again in Settings › AI (**Turn on again…** on its row, accepting its current estimate
+  for another 14 days), or turn it off. It clears only then, never by time, so an ended
+  approval is never silent.
 - **The provider's workspace usage limit**, while hosted AI is on: "AI is unavailable: the
   provider's workspace usage limit is reached, until 1 November 2026 00:00 UTC; an admin
   raises it in the provider's console", critical. Its cause quotes the provider's refusal
   (which call, when, and the provider's own words) and says every AI call is refused until
   then without asking the provider, people's presses and background features alike. Its
   action: an admin raises the workspace's usage limit in the provider's console, then presses
-  **Test** on Settings › Installation › Connections, the AI (hosted) card (its **Open…**),
+  **Test** on Settings › Installation › AI, the AI (hosted) card (its **Open…**),
   which asks the provider again; or wait until the moment. It clears at that moment, or when
   a call is answered (that Test, after the limit was raised), or when hosted AI is turned off.
   When the provider named no moment, it clears 10 minutes after the refusal, when the next

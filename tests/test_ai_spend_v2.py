@@ -171,6 +171,8 @@ def test_the_chip_says_ai_off_never_blank(spend, monkeypatch):
     assert write_settings({"ai_hosted": {}})["ok"]
     c = _chip(_get(spend, CHIP)[1])
     assert c["text"] == "AI off" and c["title"].startswith("Hosted AI is off:")
+    # Where an admin allows it: the card's one home, the AI tab (C1953, decision 1).
+    assert "Settings › Installation › AI, the AI (hosted) card" in c["title"]
 
 
 def test_with_no_day_cap_the_chip_is_neutral_and_says_no_cap(spend):

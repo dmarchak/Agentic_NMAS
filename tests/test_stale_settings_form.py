@@ -95,9 +95,14 @@ class TestTheInstallationCards:
 
     def test_the_card_sends_what_it_drew(self, networks):
         from modules import installation_settings as I
-        _r, html = _get(networks, "/v2/settings/installation")
+        pages = {}
         for name in I.CARDS:
-            drawn = _card(html, name)
+            # Each card on its own tab (C1953: the AI card is on Settings › AI).
+            tab = I.CARDS[name].get("tab") or ""
+            if tab not in pages:
+                pages[tab] = _get(networks, "/v2/settings/installation"
+                                  + (f"?tab={tab}" if tab else ""))[1]
+            drawn = _card(pages[tab], name)
             assert json.loads(loaded_of(drawn)) == I.card(name)["loaded"], name
 
 

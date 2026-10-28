@@ -94,7 +94,9 @@ back on.
 
 ## AI (hosted) {#ai}
 
-The **AI (hosted)** card holds what Mercury's AI features need to reach a hosted model: the
+The **AI (hosted)** card, first on Settings › Installation's **AI** tab (it moved there from
+Connections, which keeps one line linking to it), holds what Mercury's AI features need to
+reach a hosted model: the
 **API key** (a secret, typed by a person with **Replace…**, never drawn back), the **Cap per
 day** in US dollars for the installation, and whether **hosted AI** is allowed. Its table,
 read-only, names each task's pinned model (its exact id), the prices its cap uses (input and

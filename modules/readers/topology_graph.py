@@ -870,14 +870,28 @@ def _controller_layer(sdn, hosts, managed, results, nodes, phys):
     phys.extend(got["links"])
     phys.extend(hybrid)
     for c in controllers:
-        if c["state"] == "not_declared" or not c.get("switches"):
+        if c["state"] == "not_declared":
             continue
+        # Every controller connection is a node with its state and switch count, so one with
+        # no switches draws itself ("connected, 0 switches"), never a blank canvas (C2026);
+        # Mercury is drawn reading it over its northbound API (C2027's item 3).
         ctl = f"{SDN.CONTROLLER_PREFIX}{c['name']}"
         nodes[ctl] = {"managed": False, "role": "controller", "polled": False,
                       "answering": c["state"] == "read", "lldp_read": False, "overlay": True,
                       "controller": {"name": c["name"], "label": c.get("label", ""),
-                                     "state": c["state"]}}
-        for sw in c["switches"]:
+                                     "state": c["state"], "why": c.get("why", ""),
+                                     "read_at": c.get("read_at", ""),
+                                     "switches": len(c.get("switches") or []),
+                                     "orphans": got["orphans"].get(c["name"], 0),
+                                     "northbound": c.get("northbound", "")}}
+        nodes.setdefault(MANAGER, {"managed": False, "role": "", "polled": False,
+                                   "answering": True, "lldp_read": False, "manager": True})
+        phys.append({"a": MANAGER, "port_a": "", "b": ctl, "port_b": "", "kind": "northbound",
+                     "overlay": True, "state": "up" if c["state"] == "read" else "unknown",
+                     "northbound": c.get("northbound", ""),
+                     "sources": [f"controller ({c['name']})"], "reported_by": [],
+                     "down_at": []})
+        for sw in c.get("switches") or []:
             phys.append({"a": ctl, "port_a": "", "b": SDN.switch_key(sw["dpid"]),
                          "port_b": "", "kind": "control", "overlay": True,
                          "state": "up" if c["state"] == "read" else "unknown",
@@ -886,13 +900,16 @@ def _controller_layer(sdn, hosts, managed, results, nodes, phys):
     drawn = len(got["hosts"]) <= SDN.HOSTS_DRAWN_UP_TO
     if drawn:
         for h in got["hosts"]:
-            key = f"{SDN.HOST_PREFIX}{h['mac']}"
+            key = h["key"]
             nodes[key] = {"managed": False, "role": "host", "polled": False,
                           "answering": h["state"] == "read", "lldp_read": False,
                           "overlay": True,
                           "host": {"mac": h["mac"], "ipv4": h.get("ipv4") or [],
                                    "ipv6": h.get("ipv6") or [], "controller": h["controller"],
-                                   "port_name": h.get("port_name", "")}}
+                                   "port_name": h.get("port_name", ""), "label": h["label"],
+                                   "switch": h["switch"], "switch_label": h["switch_label"],
+                                   "port": SDN.port_words(h["port_no"]),
+                                   "elsewhere": h["elsewhere"]}}
             phys.append({"a": h["switch"], "port_a": SDN.port_words(h["port_no"]),
                          "b": key, "port_b": "", "kind": "host", "overlay": True,
                          "state": "up" if h["state"] == "read" else "unknown",
@@ -900,7 +917,7 @@ def _controller_layer(sdn, hosts, managed, results, nodes, phys):
                          "down_at": []})
     return {"state": sdn.get("state", ""), "why": sdn.get("why", ""),
             "controllers": SDN.said(controllers), "hosts": len(got["hosts"]),
-            "hosts_drawn": drawn}
+            "hosts_drawn": drawn, "orphans": dict(got["orphans"])}
 
 
 def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:

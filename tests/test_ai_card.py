@@ -42,7 +42,7 @@ def _card(html):
 
 
 def _page(n):
-    return _get(n, "/v2/settings/installation?tab=connections")[1]
+    return _get(n, "/v2/settings/installation?tab=ai")[1]
 
 
 def _loaded(n):

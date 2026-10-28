@@ -18,7 +18,11 @@ Each test holds one purpose:
 - a switch with no approval time Mercury wrote is never in force;
 - Turn off removes a switch whose approval ended;
 - a cap refusal draws the feature stopped, here and on another network's view;
-- changing caps is recorded with both values and never extends the approval.
+- changing caps is recorded with both values and never extends the approval;
+- the AI (hosted) card is on this tab whole, and Connections keeps one line linking to it;
+- an approval is asked for again in Needs attention from 3 days before its end;
+- an ended approval's row stays, critical, until the feature is turned on again or off;
+- Turn on again… is on the row only within those 3 days, and renews the approval.
 """
 import calendar
 import json
@@ -118,8 +122,33 @@ def test_the_tab_draws_every_feature_off_by_default_under_the_strict_policy(ai):
     for feature in ("fake_loop", "sdn_classify"):
         state, row = _row(html, feature)
         assert state == "off" and ">off<" in row and "Turn on…" in row and "Turn off" not in row
-    assert "Hosted AI" in html and "Allowed by admin@example.com" in html
+    assert 'id="card-ai"' in html and "allowed by admin@example.com" in html
     assert ai.sent == [] and B.switches() == {}
+
+
+def _section(html: str, sid: str) -> str:
+    m = re.search(rf'<section class="card set-card[^"]*" id="{sid}".*?</section>', html, re.S)
+    return m.group(0) if m else ""
+
+
+def test_the_hosted_ai_card_is_on_this_tab_whole_and_connections_points_here(ai):
+    """Decision 1 of boards AI1 to AI5 (C1953): the AI (hosted) card moves from Connections
+    into the AI tab whole (the master switch with Turn off, the key with Test and Replace…, the
+    day cap with its Save, each task's model and prices), first on the tab, and Connections
+    keeps one line linking to it; no read-only copy is left on either tab."""
+    _r, html = _get(ai, f"/v2/settings/installation?tab=ai&network={NET}")
+    card = _section(html, "card-ai")
+    assert card, "the AI (hosted) card is on the AI tab"
+    assert html.index('id="card-ai"') < html.index('id="ai-bg"'), "first, above the features"
+    for part in ("allowed by admin@example.com", ">Turn off<", ">Test<", "Replace…",
+                 'name="ai_cap_usd_per_day"', 'name="ai_cap_day_boundary"', "per million tokens"):
+        assert part in card, part
+    assert 'id="ai-hosted"' not in html, "no read-only copy of the card"
+    _r, conn = _get(ai, "/v2/settings/installation?tab=connections")
+    assert 'id="card-ai"' not in conn and 'name="ai_cap_usd_per_day"' not in conn
+    line = re.search(r'<p [^>]*id="card-ai-moved"[^>]*>.*?</p>', conn, re.S)
+    assert line and 'href="/v2/settings/installation?tab=ai#card-ai"' in line.group(0)
+    assert ai.sent == []
 
 
 def test_turn_on_draws_the_estimate_labelled_with_the_digest_the_form_sends(ai):
@@ -319,3 +348,88 @@ def test_changing_caps_is_recorded_with_both_values_and_never_extends_the_approv
     (rec,) = [x for x in _record(ai) if x["kind"] == "ai_background_caps"]
     assert rec["before"] == {"day_cap_usd": 0.5, "month_cap_usd": 10.0}
     assert (rec["day_cap_usd"], rec["month_cap_usd"]) == (1.0, 20.0)
+
+
+# Decision 5 of boards AI1 to AI5 (C1953 part 6): an approval asked for again 3 days before
+# it ends, in Needs attention and on the feature's row.
+
+def _approval_end():
+    """The fake loop's approval end on Branch, counted here from the switch as written (14 days
+    of 86400 s), by a path independent of `approval_ends` and `renewal_due`."""
+    at = B.switches()["branch"]["fake_loop"]["at"]
+    return calendar.timegm(time.strptime(at, "%Y-%m-%dT%H:%M:%SZ")) + 14 * 86400
+
+
+def _approval_rows(monkeypatch, at):
+    """The ai_spend source's approval rows with the clock at *at* (the switches' and the
+    source's alike)."""
+    import datetime
+
+    from modules import attention
+    monkeypatch.setattr(B, "_now", lambda: at)
+    got = attention.ai_spend_source(
+        now=datetime.datetime.fromtimestamp(at, tz=datetime.timezone.utc))
+    assert not got.get("error"), got.get("error")
+    return [r for r in got["rows"] if r["kind"] == "approval"]
+
+
+def test_an_approval_is_asked_for_again_from_three_days_before_its_end(ai, monkeypatch):
+    """No row until 3 days before the end; from then one warning row naming the feature, its
+    network, who turned it on and when it ends, its action Settings › AI (open the spend panel
+    beside it), clearing only by resolving."""
+    _turn_on(ai)
+    end = _approval_end()
+    assert _approval_rows(monkeypatch, end - 3 * 86400 - 1) == [], "not before 3 days"
+    (r,) = _approval_rows(monkeypatch, end - 3 * 86400)
+    ends = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end))
+    assert (r["level"], r["id"]) == ("warning", "ai_spend:branch:fake_loop:approval")
+    assert r["what"] == "The approval of The fake loop on branch ends in 3 days"
+    assert TEST_PERSON in r["cause"] and f"ends {ends}" in r["cause"]
+    assert r["operands"]["ends_at"] == ends and r["operands"]["approval_days"] == 14
+    assert r["action"]["href"] == "/v2/settings/installation?tab=ai"
+    assert r["action"]["open"] == "ai_spend_panel" and "Turn The fake loop on again" in \
+        r["action"]["label"]
+    (r,) = _approval_rows(monkeypatch, end - 1)
+    assert r["what"].endswith("ends in under a day") and r["level"] == "warning"
+
+
+def test_an_ended_approval_keeps_its_row_critical_until_turned_on_again_or_off(ai, monkeypatch):
+    """Past its end the row stays (never cleared by time), critical, saying it ended; turning
+    the feature on again (a new approval) clears it, and so does turning it off."""
+    _turn_on(ai)
+    end = _approval_end()
+    (r,) = _approval_rows(monkeypatch, end + 60)
+    assert r["level"] == "danger" and "ended" in r["what"] and "refuses its calls" in r["cause"]
+    assert "else it stops" not in r["action"]["label"]
+    _turn_on(ai)                                     # the clock still end + 60: a new approval
+    assert _approval_rows(monkeypatch, end + 60) == [], "turned on again: a new 14 days"
+    new_end = _approval_end()
+    assert new_end == end + 60 + 14 * 86400
+    assert len(_approval_rows(monkeypatch, new_end + 1)) == 1
+    r, _html = _post(ai, f"{BASE}/{NET}/fake_loop/off")
+    assert r.status_code == 200 and _approval_rows(monkeypatch, new_end + 1) == []
+
+
+def test_turn_on_again_is_on_the_row_only_within_three_days_and_renews(ai, monkeypatch):
+    """Turn on again… is drawn on an on feature's row only from 3 days before its approval
+    ends; it opens the current estimate (its acceptance saying Mercury asks again 3 days
+    before), and accepting it writes a new approval from now, recorded as a turn-on."""
+    _turn_on(ai)
+    end = _approval_end()
+    monkeypatch.setattr(B, "_now", lambda: end - 3 * 86400 - 1)
+    _r, html = _get(ai, f"/v2/settings/installation?tab=ai&network={NET}")
+    state, row = _row(html, "fake_loop")
+    assert state == "on" and "Turn on again…" not in row
+    monkeypatch.setattr(B, "_now", lambda: end - 3 * 86400)
+    _r, html = _get(ai, f"/v2/settings/installation?tab=ai&network={NET}")
+    state, row = _row(html, "fake_loop")
+    assert state == "on" and "Turn on again…" in row and "within 3 days" in row
+    assert f'hx-get="{BASE}/{NET}/fake_loop/on"' in row
+    _r, form = _get(ai, f"{BASE}/{NET}/fake_loop/on")
+    assert "Mercury asks for it again in Needs attention 3 days before" in form
+    _turn_on(ai)
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end - 3 * 86400))
+    assert B.switches()["branch"]["fake_loop"]["at"] == now_iso
+    assert [x["kind"] for x in _record(ai)] == ["ai_background_on", "ai_background_on"]
+    _r, html = _get(ai, f"/v2/settings/installation?tab=ai&network={NET}")
+    assert "Turn on again…" not in _row(html, "fake_loop")[1]

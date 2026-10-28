@@ -38,6 +38,11 @@
     NetBox, Proxmox, Commit author and Server, three across where they fit) and the record
     stores come last, the full width, free to grow downwards; Diagnostics' app log sits in line
     with the other cards. -#}
+{%- if tab == 'connections' %}
+{#- Decision 1 of boards AI1 to AI5 (C1953): the AI (hosted) card moved whole to the AI tab,
+    and Connections keeps one line pointing there. -#}
+<p class="small muted set-moved" id="card-ai-moved">Hosted AI (the master switch, the provider key with its Test, the day cap, and each task's model and prices) is on the <a href="{{ url_for('settings_v2.installation', tab='ai') }}#card-ai">AI tab</a>, with every other AI decision.</p>
+{%- endif %}
 <div class="set-cards{{ ' set-cards-conn' if tab == 'connections' }}">
 {%- if tab == 'connections' %}
 {% include "v2/_records_db_card.html" %}

@@ -134,7 +134,7 @@ def test_the_gateway_refuses_by_the_stated_day(record, monkeypatch, zone, refuse
 # ── the screens say it ─────────────────────────────────────────────────────────
 
 def _card(networks):
-    html = networks["client"].get("/v2/settings/installation?tab=connections").get_data(
+    html = networks["client"].get("/v2/settings/installation?tab=ai").get_data(
         as_text=True)
     m = re.search(r'<section class="card set-card[^"]*" id="card-ai".*?</section>', html, re.S)
     assert m, "no AI card"
@@ -203,7 +203,7 @@ def test_in_a_browser_in_denver_the_reset_is_its_local_time(networks, monkeypatc
     monkeypatch.setattr(calls, "_now", lambda: _at(now))
     with browser.Served(APP.app) as srv, browser.Browser() as b:
         try:
-            b.go(srv.url("/v2/settings/installation?tab=connections"))
+            b.go(srv.url("/v2/settings/installation?tab=ai"))
             b.wait_for("var t = document.querySelector('#card-ai time[data-clock]');"
                        " return t && /M[DS]T/.test(t.textContent)", 15)
             words = b.js("var t = document.querySelector('#card-ai time[data-clock]');"

@@ -1,20 +1,16 @@
 {%- from "v2/_macros.html" import icon, badge, info, stamp -%}
 {#- Settings › Installation › AI (board AI3, `SettingsAi`, signed off under the Phase 7 mode
-    2026-10-27; C1843). Built: the background features, per network (_settings_ai_bg.html).
-    The master switch, the key, the installation's day cap and the prices stay on the
-    Connections tab's AI (hosted) card for now, named here read-only with a link; the features
-    a person presses, who sees amounts and the first-install steps are later
-    (docs/STANDING_APPROVAL_LOG.md, "Settings › AI built"). From
+    2026-10-27; C1843). Built: the AI (hosted) card, moved here whole from the Connections tab
+    (decision 1, C1953: the master switch, the key with Test and Replace…, the day cap, each
+    task's model and prices; `installation_settings.CARDS["ai"]`, drawn by _install_card.html as
+    every installation card is), and the background features, per network
+    (_settings_ai_bg.html). The features a person presses, who sees amounts and the
+    first-install steps are later (docs/STANDING_APPROVAL_LOG.md, "Settings › AI built"). From
     routes/settings_v2.installation. -#}
 <div class="set-cards set-cards-one ai-tab">
-<section class="card set-card" id="ai-hosted" aria-labelledby="h-ai-hosted">
-  <div class="card-head"><h2 id="h-ai-hosted">Hosted AI</h2>{{ badge('allowed', 'ok') if hosted.allowed else badge('off', 'neutral') }}
-    <span class="card-head-how">{{ info('settings-ai', 'hosted-ai', 'How hosted AI is allowed') }}</span></div>
-  <p class="small ai-hosted-line">
-  {%- if hosted.allowed %}Allowed by {{ hosted.by }} {{ stamp(hosted.at) }}: <span class="muted">“{{ hosted.reason }}”</span>.
-  {%- else %}Off: {{ hosted.why }}.{% endif %}
-  The installation's day cap is {% if ai.day_cap is none %}<strong>no cap</strong>{% else %}<span class="mono">${{ '%.2f' % ai.day_cap }}</span> a day{% endif %}; every background feature's caps are within it. The master switch, the provider key, the day cap and each task's model and prices are on <a href="{{ ai.card_href }}">Settings › Installation › Connections, AI (hosted)</a>.</p>
-</section>
+{%- for k in cards %}
+{% include "v2/_install_card.html" %}
+{%- endfor %}
 {% include "v2/_settings_ai_bg.html" %}
 {#- Answers said wrong (PHASE8_PLAN 16.11 item 1, board FB): the review of the Nos. -#}
 {%- if fbr is defined and fbr %}{% include "v2/_ai_feedback_review.html" %}{% endif %}

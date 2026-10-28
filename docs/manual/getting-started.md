@@ -116,7 +116,7 @@ so what AI costs is seen where you work, not only in Settings. It is never blank
   each time, across all its processes. Hovering the chip shows the provider's own words. It
   lifts at the moment the provider named, when the next call asks the provider again. To lift
   it sooner, an admin raises the limit in the provider's console, then presses **Test** on
-  Settings › Installation › Connections, the AI (hosted) card. That one press still asks the
+  Settings › Installation › AI, the AI (hosted) card. That one press still asks the
   provider, and any answer clears the limit for every feature. When the provider names no
   moment, {{product}} asks again after 10 minutes.
 

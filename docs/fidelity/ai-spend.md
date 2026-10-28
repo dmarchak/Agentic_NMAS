@@ -58,9 +58,15 @@ match. The other shots taken again, nothing else moved. That the panel fits the 
 page scrolls closed is measured by tests/test_ai_spend_v2.py
 (`test_the_panel_stays_inside_the_screen_and_the_page_scrolls_in_a_real_browser`, 1440 x 900,
 1440 x 520 and 390 x 844).
+Compared again 2026-10-28 ~22:4x UTC for C1953 part 1 (the AI (hosted) card moved from
+Connections to Settings › Installation › AI): `spend_view._why_off`, AI off's hover, names
+"Settings › Installation › AI, the AI (hosted) card" where it named Connections, which is
+nearer board AI1's case 5 ("An admin turns it on in Settings › AI"). Every shot of
+`test_ai_spend` taken again: nothing drawn moved (the hover is not shot; its words are
+tests/test_ai_spend_v2.py's). No row below changes.
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `9c9433c65243b0cd539eb0a52323cb8a5e37bfe6fac7cac4c30827df21ace641`
-Templates sha256 before: `af8a4277d158a319a117a571e849cb4fa1cf745f9ef9b2baf22d634f87f43652`.
+Templates sha256: `4a67e6a59a47a0ddf5637a79603fea1bcfca3b7a254de43e988bea7f902e49c7`
+Templates sha256 before: `9c9433c65243b0cd539eb0a52323cb8a5e37bfe6fac7cac4c30827df21ace641`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

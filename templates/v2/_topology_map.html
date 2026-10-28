@@ -36,7 +36,7 @@
 {%- endif %}
 
 <div class="topo-head">
-  <h1>Topology {{ info('topology') }} <span class="topo-sub">· {{ t.list }}{% if t.state == 'ok' %} · {{ t.summary.devices }} devices, {{ t.summary.links }} links{% if t.summary.outside %}, {{ t.summary.outside }} external{% endif %} · read {{ stamp(t.value_at) }}{% endif %}</span></h1>
+  <h1>Topology {{ info('topology') }} <span class="topo-sub">· {{ t.list }}{% if t.state == 'ok' %} · {{ t.summary.devices }} devices, {{ t.summary.links }} links{% if t.summary.outside %}, {{ t.summary.outside }} external{% endif %}{% if t.summary.switches is defined %}, {{ t.summary.switches }} switch{{ "es" if t.summary.switches != 1 }}, {{ t.summary.hosts }} host{{ "s" if t.summary.hosts != 1 }}{% endif %} · read {{ stamp(t.value_at) }}{% endif %}</span></h1>
   {%- if t.state == 'ok' %}
   <form class="topo-find" method="get" action="{{ page }}" hx-get="{{ region }}" hx-target="#topo" hx-swap="outerHTML">
     {{- hidden_state(t, ('q', 'sel')) }}
@@ -211,7 +211,7 @@
     {%- if n.l3 %}<rect class="topo-l3" x="{{ n.x + 9 }}" y="{{ n.y - 22 }}" width="18" height="12" rx="3"></rect><text class="topo-l3-t" x="{{ n.x + 18 }}" y="{{ n.y - 13 }}">L3</text>{% endif %}
     {%- if not n.answering or n.gone %}<path class="topo-x" d="M{{ n.x - 15 }} {{ n.y - 15 }}l30 30M{{ n.x + 15 }} {{ n.y - 15 }}l-30 30"></path>{% endif %}
     <text class="topo-name" x="{{ n.x }}" y="{{ n.y + 32 }}">{{ n.label }}</text>
-    {%- if n.sdn %}<text class="topo-sdnline" x="{{ n.x }}" y="{{ n.y + 45 }}">{{ n.sdn.line }}</text>{% endif %}
+    {%- if n.sdn and n.sdn.line %}<text class="topo-sdnline" x="{{ n.x }}" y="{{ n.y + 45 }}">{{ n.sdn.line }}</text>{% endif %}
     {%- for tag in n.tags %}<g class="topo-tag topo-tag-{{ tag.cls }}"><title>{{ tag.words }}</title><rect x="{{ n.x - 52 - loop.index0 * 50 }}" y="{{ n.y - 30 }}" width="{{ tag.text | length * 7 + 12 }}" height="15" rx="7"></rect><text x="{{ n.x - 52 - loop.index0 * 50 + 6 }}" y="{{ n.y - 19 }}">{{ tag.text }}</text></g>{% endfor %}
     {%- if n.lost %}<text class="topo-losttag" x="{{ n.x }}" y="{{ n.y + 46 }}">cut off</text>{% endif %}
     {%- if n.managed %}</a>{% endif %}
@@ -383,9 +383,16 @@
   <details class="topo-devs" data-keep="topo-devs"{% if t.s.tab == 'dev' %} open{% endif %}>
   <summary><h2 id="topo-dev-h">Devices by band</h2></summary>
   {%- for grp in t.list_groups %}
+  {#- A controller's hosts come as one group per switch (C1991, the large-fleet rule): the
+      first carries the heading for them all, and each is closed until opened. -#}
+  {%- if grp.head %}<h3 class="topo-bandh">{{ grp.head }}</h3>{% endif %}
+  {%- if grp.switch %}<details class="topo-hostsw" data-keep="topo-hostsw-{{ grp.switch }}"><summary class="small">{{ grp.switch }} · {{ grp.devices | length }} host{{ 's' if grp.devices | length != 1 }}</summary>
+  {%- else %}
   <h3 class="topo-bandh">{{ grp.words }} ({{ grp.devices | length }})</h3>
-  <ul class="small topo-list">{% for d in grp.devices %}<li>{{ ic(t.icon_of.get(d.name, 'unknown')) }} {% if d.managed %}<a href="{{ url_for('device_v2.device', name=d.name, list=t.list) }}">{{ d.label }}</a>{% else %}{{ d.label }}{% if d.outside %} <span class="muted">(outside management)</span>{% endif %}{% endif %}:
-    {% for l in d.links %}<span class="topo-li-{{ l.state }}">{{ l.port or '?' }} to {{ l.to }} {{ l.state }}{% if l.kind in ('one_silent', 'far_not_polled') %} (one end){% endif %}{% if t.sdn %} · {{ l.source }}{% endif %}</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">no LLDP link</span>{% endfor %}</li>{% endfor %}</ul>
+  {%- endif %}
+  <ul class="small topo-list">{% for d in grp.devices %}<li>{{ ic(t.icon_of.get(d.name, 'unknown')) }} {% if grp.switch %}<span class="mono">{{ d.label }}</span> <span class="muted">{{ d.port }} · MAC {{ d.mac }} · {{ d.addresses }} address{{ 'es' if d.addresses != 1 }}</span>{% else %}{% if d.managed %}<a href="{{ url_for('device_v2.device', name=d.name, list=t.list) }}">{{ d.label }}</a>{% else %}{{ d.label }}{% if d.outside %} <span class="muted">(outside management)</span>{% endif %}{% endif %}:
+    {% for l in d.links %}<span class="topo-li-{{ l.state }}">{{ l.port or '?' }} to {{ l.to }} {{ l.state }}{% if l.kind in ('one_silent', 'far_not_polled') %} (one end){% endif %}{% if t.sdn %} · {{ l.source }}{% endif %}</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">no LLDP link</span>{% endfor %}{% endif %}</li>{% endfor %}</ul>
+  {%- if grp.switch %}</details>{% endif %}
   {%- endfor %}
   </details>
 </section>

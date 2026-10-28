@@ -305,7 +305,7 @@ def test_the_graph_holds_switches_hosts_and_the_controller_outside_every_analysi
     g = _graph({"state": "read", "controllers": [_controller()]})
     nodes = g["nodes"]
     assert nodes["of:0000000000000002"]["sdn"]["dpid"] == 2
-    assert nodes["ctl:c1"]["overlay"] and nodes["host:00:00:00:00:00:04"]["overlay"]
+    assert nodes["ctl:c1"]["overlay"] and nodes["host:00:00:00:00:00:04@0000000000000002/2"]["overlay"]
     an = g["analysis"]["physical"]
     named = {d for i in an["islands"] for d in i} | {s["device"] for s in an["spof"]} | \
         set(an["main"])

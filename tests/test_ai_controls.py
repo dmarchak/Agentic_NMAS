@@ -407,6 +407,6 @@ def test_the_spend_is_read_once_a_request_and_no_key_value_is_returned(chain, mo
         again = controls.control("explain")
     assert len(read) == 1 and again is got[1], read
     assert all(g["may_configure"] for g in got), "the test's viewer is a verified person"
-    assert got[0]["settings_url"] == "/v2/settings/installation?tab=connections#card-ai"
+    assert got[0]["settings_url"] == "/v2/settings/installation?tab=ai#card-ai"
     text = json.dumps(got, default=str)
     assert KEY not in text and "planted-sealed-value" not in text

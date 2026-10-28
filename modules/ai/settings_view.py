@@ -17,8 +17,9 @@ AI calls, never guessed:
 Its spend reads the month's window of the record once. An unreadable record is said, and the
 spend is drawn as unknown (the gateway refuses every background call then).
 
-The master switch, the key, the installation's day cap and the features a person presses stay on
-the Installation tab's AI card for now: this tab names their state and links there
+The master switch, the key and the installation's day cap are the AI (hosted) card's, which moved
+from the Connections tab to this tab whole (decision 1, C1953: `installation_settings.CARDS`,
+drawn above this section); the features a person presses have no switch yet
 (docs/STANDING_APPROVAL_LOG.md, "Settings › AI built").
 """
 import logging
@@ -26,8 +27,9 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Where the master switch, the key and the installation's day cap are set today.
-CARD_HREF = "/v2/settings/installation?tab=connections#card-ai"
+#: Where the master switch, the key and the installation's day cap are set: the AI (hosted)
+#: card, first on this tab (C1953).
+CARD_HREF = "/v2/settings/installation?tab=ai#card-ai"
 #: The steps turning a background feature on runs, in order (the manual's How it works page
 #: names each): the estimate shown with its digest, the person's acceptance and caps checked,
 #: the estimate measured again and compared, the switch written, the decision recorded.
@@ -127,6 +129,8 @@ def view(network: str = "", now=None) -> dict:
             "state": state, "entry": drawn_entry(entry) if on else None,
             "ends_iso": _iso(ends), "summary": _drawn_summary(s) if s else None,
             "caps": background.caps_of(entry) if on else None,
+            # Within RENEW_DAYS of its approval's end, or past it: Turn on again… (C1953).
+            "renew": bool(on and background.renewal_due(entry, now)),
         })
     every = networks()
     named = {}
@@ -144,7 +148,8 @@ def view(network: str = "", now=None) -> dict:
             "spend_state": "ok" if readable else "unreadable",
             "spend_error": "" if readable else got.get("error", ""),
             "features": features, "elsewhere": elsewhere,
-            "approval_days": background.APPROVAL_DAYS, "card_href": CARD_HREF}
+            "approval_days": background.APPROVAL_DAYS, "renew_days": background.RENEW_DAYS,
+            "card_href": CARD_HREF}
 
 
 def turn_on_form(network: str, feature: str, now=None) -> dict:
@@ -164,7 +169,7 @@ def turn_on_form(network: str, feature: str, now=None) -> dict:
             "day_cap": gateway.day_cap(), "prices_as_of": profiles.PRICES_AS_OF,
             "day_value": sug.get("day_cap_usd"), "month_value": sug.get("month_cap_usd"),
             "ends_iso": _iso(time.time() + background.APPROVAL_DAYS * 86400),
-            "approval_days": background.APPROVAL_DAYS}
+            "approval_days": background.APPROVAL_DAYS, "renew_days": background.RENEW_DAYS}
 
 
 def caps_value(text):

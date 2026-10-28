@@ -152,7 +152,7 @@ def _pages(world):
                     f"/v2/monitoring/alerts/pack/{pid}"],
         "ask_in_words": ["/v2/history/query/ask/metrics?list=Lab",
                          "/v2/history/query/ask/logs?list=Lab"],
-        "ai_card_test": ["/v2/settings/installation?tab=connections"],
+        "ai_card_test": ["/v2/settings/installation?tab=ai"],
     }
 
 

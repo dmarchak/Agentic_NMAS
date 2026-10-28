@@ -210,6 +210,24 @@ read.
   switch port (up to 64 hosts; above that the legend says how many, and each is in the
   endpoint layer). They are never part of an island, a weak point or a what-if: they forward
   nothing.
+- **Every controller connection is a node**, its state and switch count under its name
+  (`connected, 2 switches`; `couldn't read: <why>; 2 switches as last read`). A controller with
+  no switch, as after a Mininet teardown, still draws itself (`connected, 0 switches`), never a
+  blank map. Mercury is drawn reading it: a dashed line in the controller's colour labelled
+  `northbound REST`, its card naming the address and port of the connection.
+- **A host is one node per MAC on its switch port**, holding every address the controller
+  learned for it, IPv4 beside IPv6. It is labelled by its global IPv4 address, else its global
+  IPv6 address, else `host on <switch> port <n>`; a link-local address (`fe80::…`) is never the
+  label. Its card lists the MAC and every address, the link-local ones marked. The same MAC
+  listed on two ports is two nodes, each card saying where else it is listed. The header and
+  the strip count hosts, never addresses.
+- **A host is drawn only when its switch is in the same read.** The controller may still list
+  hosts on switches it no longer has (Ryu keeps them until it restarts); they are not drawn and
+  not located, and the strip counts them in words: `6 hosts reported by lab-ryu on switches no
+  longer connected, not drawn`.
+- **The Devices list** groups a controller's hosts under their switch, one closed group per
+  switch (`of:…0001 · 3 hosts`); opening one lists each host's address, port, MAC and how many
+  addresses it holds.
 - **Above the map**, a strip names each source: LLDP's read time; each controller's read time
   and its switches, links and hosts; or `controller (<name>): couldn't read: <why>; its switches
   as last read at <time> (<age>)`. A controller that reports no link between two or more
@@ -219,7 +237,9 @@ read.
 
 A host's place comes from the controller's host table: Ryu keeps a host until the controller
 restarts and records no time, so a host it lists is one it learned since then, not necessarily
-one there now. The hosts feed the endpoint layer, so "which port is 192.0.2.10 on?" answers with the
+one there now. Mercury does not age a host out yet: the controller gives it no time to age it
+by, so a host that left a port the switch still has stays drawn, named by its addresses or by
+its port. The hosts feed the endpoint layer, so "which port is 192.0.2.10 on?" answers with the
 switch and port (`of:…0001 port 2`), as its controller lists it.
 
 ## Mercury's own host {#mercury}

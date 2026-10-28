@@ -32,7 +32,7 @@
         <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else ('%.2f' % o.month_value if o.month_value is not none else '') }}"{% if o.month_value is none and not month_typed %} placeholder="type a cap"{% endif %}>
         <span class="set-origin">US dollars in a month, this feature on {{ o.network }} only</span></label>
     </div>
-    <label class="ai-accept"><input type="checkbox" name="accept" value="on"> I have read the estimate. An approval lasts {{ o.approval_days }} days: this one ends {{ o.ends_iso[:10] }}, and the feature then stops until an admin turns it on again.</label>
+    <label class="ai-accept"><input type="checkbox" name="accept" value="on"> I have read the estimate. An approval lasts {{ o.approval_days }} days: this one ends {{ o.ends_iso[:10] }}. Mercury asks for it again in Needs attention {{ o.renew_days }} days before; unless an admin turns it on again, it then stops.</label>
     <div class="ai-open-act">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="ai-background" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Turn on with this estimate' if known else 'Turn on with no measured estimate' }}</span><span class="op-busy">Turning on…</span></button>{{ how('ai-background', 'turn-on', op='turning ' ~ o.feature ~ ' on') }}</span>
       <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='ai', network=o.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=o.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Cancel</a>
