@@ -423,6 +423,13 @@ def test_ai_spend(settings_ai, monkeypatch):
             b.wait_for("return !!document.querySelector('#nmas-ai-panel .ai-head')", 10)
         _shoot("ai-attention", "", lambda w: "/v2/", served,
                widths=((1440, 1.0), (390, 2.0)), act=from_the_row)
+        # C2123 (the operator's report, 176 evaluation runs listed by name): with 176 runs
+        # today ($0.176 in all, the chip still amber) the panel draws one Evaluations line and
+        # fits the window, page shots only (revised AI2 draws the line).
+        for i in range(176):
+            spent(0.001, f"evaluation:ex-{i:04d}", {"kind": "evaluation", "run": f"ex-{i:04d}"})
+        _shoot("ai-spend-many-runs", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), act=opened)
         spent(0.45, "ops@example.com", {"kind": "person", "by": "ops@example.com"})
         _shoot("ai-chip-red", "", lambda w: page, served,
                widths=((1440, 1.0), (390, 2.0)), settled=chip)

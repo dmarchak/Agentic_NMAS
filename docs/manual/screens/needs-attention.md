@@ -66,7 +66,11 @@ credential); Grafana's rule groups that stopped evaluating, and rules that read 
 fleet's heartbeat stopping at once (one row, not one per device); the routing adjacencies
 Prometheus reads (a link down, adjacencies it cannot measure, or its read failing); and drift
 (a drifted, skipped or unreachable device, a check that is off, failed, never ran or is
-old). Each network's own Prometheus has its own row comparing what it scrapes with its
+old); and SDN (an SDN loop a restart stopped; one row per incident awaiting a person, red
+once it has gone unanswered past its network's escalation threshold, 15 minutes unless set,
+and saying no on-call integration exists to notify; a response's flows missing before their
+hard timeout; and a network whose SDN controller is not answering; see
+[SDN](sdn#controllers)). Each network's own Prometheus has its own row comparing what it scrapes with its
 networks' inventories ("…, for <network>'s Prometheus"; see [Settings](settings#network)),
 and each network's own Grafana its own alerts and token expiry.
 

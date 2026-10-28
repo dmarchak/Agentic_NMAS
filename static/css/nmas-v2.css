@@ -266,8 +266,11 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ai-nc { font-size: 11px; border-radius: 4px; padding: 0 4px; background: var(--warn-soft); color: var(--warn); }
 .ai-short { display: none; }
 .ai-spend[open] .ai-chip { box-shadow: 0 0 0 2px var(--accent-soft); }
+/* C2123: the panel is held inside the screen and scrolls within, its scroll its own. It hangs
+   from the sticky top bar, so scrolling the page never moves it, and a panel taller than the
+   screen could never be read to its end; closed, it is display: none and the page scrolls. */
 .ai-spend .ai-menu { left: auto; right: 0; width: 500px; max-width: calc(100vw - 32px); white-space: normal; padding: 0;
-  color: var(--ink); gap: 0; }
+  color: var(--ink); gap: 0; max-height: calc(100vh - 76px); overflow-y: auto; overscroll-behavior: contain; }
 .ai-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line-2); }
 .ai-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ai-sec { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--line-2); margin: 0; }

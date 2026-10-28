@@ -67,13 +67,40 @@ def _unavailable() -> str:
     return f"{provider_limit.said(hold)['words']}." if hold else ""
 
 
+def feature_words(name: str) -> str:
+    """A background feature in words (`background.FEATURES`' *words*), or its name."""
+    from modules.ai import background
+
+    return (background.FEATURES.get(name) or {}).get("words", name)
+
+
+def background_on_words(pairs) -> str:
+    """Which background features are on, by name and network (C2123): "The SDN loop
+    classifies each detection with AI, on Lab", each joined by "; ", or "" with none on (the
+    chip's own "0 background on" says that)."""
+    return "; ".join(f"{feature_words(f)}, on {network_name(n)}" for n, f in pairs or [])
+
+
 def chip(now=None) -> dict:
     """The chip, as drawn: ``{"state", "level", "text", "short", "label", "title", "no_cap"}``.
     *text* follows the chip's "AI" mark ("$0.42 today · 0 background on", "AI off",
     "unavailable until 1 Nov 00:00 UTC" (C2084), "AI spend unknown"); *short* is its
     phone-width form ("$0.42", "off", "unavailable", "unknown"), which moves the
     background count into the panel; *label* is `spend.chip`'s words whole; *title* the
-    figure's provenance, on hover. Never blank: a read that raises is drawn as unknown."""
+    figure's provenance, on hover. Never blank: a read that raises is drawn as unknown.
+    With a background feature on, *title* and *label* end naming each, with its network
+    (C2123); the bar has no room for the names (test_v2_layout_in_a_browser measures it at
+    its widest), so the text keeps the count."""
+    out = _chip(now)
+    pairs = out.pop("background", None) or []
+    named = background_on_words(pairs)
+    if named:
+        out["title"] = f"{out['title']} {len(pairs)} background on: {named}."
+        out["label"] = f"{out['label']}; background on: {named}"
+    return out
+
+
+def _chip(now=None) -> dict:
     from modules.ai import calls, profiles, spend
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -85,7 +112,8 @@ def chip(now=None) -> dict:
              "words": "AI spend unknown: the record of AI calls cannot be read",
              "no_cap": False}
     out = {"state": c["state"], "level": c["level"], "label": c["words"],
-           "no_cap": bool(c.get("no_cap")) and c["state"] == "on"}
+           "no_cap": bool(c.get("no_cap")) and c["state"] == "on",
+           "background": c.get("background") or []}
     if c["state"] == "off":
         return dict(out, text="AI off", short="off",
                     title=_why_off() + " Nothing is sent to a model.")
@@ -130,19 +158,19 @@ def _feature(f: dict) -> dict:
     caps, spent = f["caps"], f["spent"]
     est = (f.get("estimate") or {}).get("usd_per_day")
     stopped = "month" if f["stopped"]["month"] else "day" if f["stopped"]["day"] else ""
+    # At a glance (C2123): what it is, where, its trigger, today against its day cap and its
+    # estimate against actual. Its month, its caps' history and who turned it on are Settings
+    # › AI's, one link away.
     return {
         "network": f["network"], "network_name": network_name(f["network"]),
         "name": f["feature"], "words": f["words"], "trigger_words": f["trigger_words"],
         "per_finding": int(spec.get("calls_per_finding") or 1),
         "day_usd": spent["day_usd"], "day_cap": caps["day"],
         "day_pct": _pct(f["fractions"]["day"]),
-        "month_usd": spent["month_usd"], "month_cap": caps["month"],
-        "month_pct": _pct(f["fractions"]["month"]),
         "warning": f["warning"], "stopped": stopped,
         "stopped_at": f["stopped_at"][stopped] if stopped else None,
         "estimate_usd": est, "actual_usd": f["actual_usd_per_day"],
         "actual_days": f["actual_days"], "ratio_pct": _pct(f["ratio"]),
-        "on_by": f["on_by"], "on_at": f["on_at"],
     }
 
 
@@ -173,7 +201,7 @@ def panel(viewer: str = "", now=None) -> dict:
     usd = p["usd_today"]
     ratio = spend._ratio(usd, cap)
     kinds = p["by_kind_today"]
-    runs = sorted(p["runs_today"].items(), key=lambda kv: (-kv[1], kv[0]))
+    runs_n = len(p["runs_today"])
     background_n = len({(f["network"], f["feature"]) for f in p["features"]})
     day = datetime.date.fromisoformat(p["today"])
     last = datetime.date(day.year, day.month, month["days"])
@@ -184,11 +212,14 @@ def panel(viewer: str = "", now=None) -> dict:
         today={"usd": usd, "calls": p["calls_today"], "cap": cap, "pct": _pct(ratio),
                "level": spend._level(ratio), "bar": _bar(ratio), "mine": p["mine_today"],
                "resets": p["resets"]},
+        # One line each (C2123): an evaluation run is counted here and drawn in History, never
+        # listed (176 runs on 2026-10-28 ran the panel past the screen).
         kinds=[{"words": "People's presses", "usd": kinds.get("person", 0.0)},
-               {"words": f"Background ({background_n} feature{'' if background_n == 1 else 's'})",
-                "usd": kinds.get("background", 0.0)},
-               {"words": f"Evaluation runs ({len(runs)})", "usd": kinds.get("evaluation", 0.0)}],
-        runs=[{"run": r, "usd": v} for r, v in runs],
+               {"words": (f"Background, {background_n} feature{'' if background_n == 1 else 's'}"
+                          " on" if background_n else "Background, none on"),
+                "usd": kinds.get("background", 0.0)}],
+        evaluations={"words": f"Evaluations, {runs_n} run{'' if runs_n == 1 else 's'}",
+                     "usd": kinds.get("evaluation", 0.0)},
         average={"week": p["average"][7], "month": p["average"][spend.WINDOW_DAYS]},
         month={"name": MONTHS[day.month - 1], "elapsed": month["elapsed_days"],
                "days": month["days"], "usd": month["usd"], "cap": month["cap"],

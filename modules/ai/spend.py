@@ -161,11 +161,15 @@ def chip(now=None) -> dict:
     usage limit is held, C2084: "AI unavailable until 1 Nov 00:00 UTC", red, with
     *unavailable*, `provider_limit.said`'s), "unreadable" (the record cannot be read: the
     chip says so, never blank and never $0), or "on" ("AI $X today · N background on");
-    *level* neutral, amber at 50% and red at 80% of the day cap (neutral with no cap)."""
+    *level* neutral, amber at 50% and red at 80% of the day cap (neutral with no cap).
+    *background* is which features are on, ``[(network, feature)]`` (C2123: the chip's hover
+    names them)."""
     from modules.ai import background, gateway
 
-    on = len(background.enabled())
-    base = {"background_on": on, "day_cap": gateway.day_cap(), "usd_today": None, "error": ""}
+    enabled = [(n, f) for n, f, _e in background.enabled()]
+    on = len(enabled)
+    base = {"background_on": on, "background": enabled, "day_cap": gateway.day_cap(),
+            "usd_today": None, "error": ""}
     base["no_cap"] = base["day_cap"] is None
     if not hosted_on():
         return dict(base, state="off", words="AI off", level="neutral")
@@ -230,6 +234,8 @@ def panel(viewer: str = "", now=None) -> dict:
         t = trigger_of(r)
         kinds[t["kind"]] = kinds.get(t["kind"], 0.0) + float(r.get("cost_usd") or 0)
         if t["kind"] == "evaluation":
+            # Each run's total stays in the answer; the panel draws their count and sum, each
+            # run's detail in History (C2123).
             runs[t.get("run", "")] = runs.get(t.get("run", ""), 0.0) + float(
                 r.get("cost_usd") or 0)
     return {

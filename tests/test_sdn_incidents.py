@@ -139,7 +139,7 @@ def test_fifty_switches_seeing_one_scan_are_one_incident_row_response_and_call(
     assert line["words"].endswith("seen also on 49 switches (0000000000000032, "
                                   "0000000000000031, 0000000000000030, 000000000000002f, "
                                   "000000000000002e and 44 more)")
-    (r,) = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
+    (r,) = A.sdn_responses_source(found={NET: LP.awaiting(NET)}, now=T0)["rows"]
     assert r["operands"]["switches"] == 50 and r["operands"]["incident"] == row["id"]
     assert r["what"] == "SDN scan from 192.0.2.1 on Default, seen on 50 switches, awaits a person"
     # The same 50 firing again (each still detected) add nothing: no call, no row.
@@ -327,7 +327,7 @@ def test_the_table_is_by_severity_then_age_and_its_filter_says_it_shows_a_subset
     assert (one["incidents"]["shown"], one["incidents"]["total"]) == (1, 4)
     assert [r["id"] for r in P.responses_view(NET, sev="unclassified")["awaiting"]] == [
         old["id"], new["id"]]
-    rows = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
+    rows = A.sdn_responses_source(found={NET: LP.awaiting(NET)}, now=T0 + 120)["rows"]
     assert [r["operands"]["incident"] for r in rows] == [crit["id"], old["id"], new["id"],
                                                          low["id"]]
     assert [r["level"] for r in rows] == ["danger", "warning", "warning", "warning"]

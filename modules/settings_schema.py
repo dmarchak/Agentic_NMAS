@@ -618,6 +618,16 @@ DEFAULTS: dict = {
     # should hold is the operator's decision about the network, which no measurement makes.
     "sdn_response_hard_timeout_seconds": 600,
     "sdn_response_max_seconds": 3600,
+    # SDN escalation (C1999, the operator's order of 2026-10-28), per network: an SDN incident
+    # left awaiting a person this many minutes is escalated on Needs attention (its row raised
+    # to danger whatever its classification, saying how long it has gone unanswered;
+    # `attention.sdn_responses_source`). 15 minutes, the operator's figure. Neither a
+    # measurement nor an inherited default can answer it: how long a threat on a network may
+    # wait for a person is the operator's decision about that network's risk and staffing (a
+    # lab may wait an hour, a production fabric not five minutes), and no reading of the
+    # network says it. Every release before it drew no escalation; this default changes that
+    # deliberately, since an incident nobody answers was the gap C1999 names.
+    "sdn_escalate_after_minutes": 15,
     # The SDN response policy (the Lab 8 walk's objective 3.1, the operator's order of
     # 2026-10-27; `modules/sdn/closed_loop.py`, `policy`), per network: for each detection rule,
     # the catalogue actions a response to it may take, the FIRST the rule's default. A
@@ -1053,6 +1063,7 @@ SCHEMA: dict = {
         "sdn_response_hard_timeout_seconds": {"type": "integer", "minimum": 1,
                                               "maximum": 65535},
         "sdn_response_max_seconds": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "sdn_escalate_after_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
         "sdn_response_policy": {
             "type": "object", "additionalProperties": False,
             "required": ["scan", "flood", "unauthorised_flow"],

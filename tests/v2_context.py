@@ -1716,7 +1716,9 @@ def _ai_spend(client, _lab, _mp):
         chip = client.get("/v2/ai/chip", headers=hx).get_data(as_text=True)
         assert 'data-state="on"' in chip and "2 background on" in chip, chip
         panel = client.get("/v2/ai/spend", headers=hx).get_data(as_text=True)
-        assert "The planted loop" in panel and "walk-run" in panel
+        # C2123: an evaluation run is counted, never listed by name (each is in History).
+        assert "The planted loop" in panel and "Evaluations, 1 run" in panel
+        assert "walk-run" not in panel
         real = calls.rows_since
         mp.setattr(calls, "rows_since", lambda start: {"state": "unreadable", "rows": [],
                                                        "error": "planted by the walk"})

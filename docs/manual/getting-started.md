@@ -96,7 +96,9 @@ so what AI costs is seen where you work, not only in Settings. It is never blank
   the SDN loop's classify). Its colour is today's spend against the installation's **day cap**:
   neutral below half, **amber** from 50%, **red** from 80%. Hovering it says how many calls
   that was, since when (midnight in the day cap's time zone), its share of the cap, when it was
-  read, and the date of the price table it was priced from. At the cap the chip's words stay
+  read, and the date of the price table it was priced from; with a background feature on, it
+  then names each one and its network ("1 background on: The SDN loop classifies each
+  detection with AI, on Lab"). At the cap the chip's words stay
   the same and the next call that would pass it is refused, naming the cap and the spend.
 - **"no cap"** beside the figure: an admin chose no day cap, so the chip stays neutral; each
   background feature's own caps still apply.
@@ -122,21 +124,27 @@ At phone width the chip keeps today's figure and its colour; the number of backg
 on moves into the panel.
 
 **Pressing the chip opens the spend panel** in place, on whatever page you are on; pressing it
-again, the panel's ×, or Esc closes it. The panel shows:
+again, the panel's ×, or Esc closes it. The panel is the figures at a glance; each call's detail
+is in History. It stays inside the screen, and when it holds more than the screen, it scrolls
+within itself. The panel shows:
 
 - **Today:** the spend, against the day cap with its share and the number of calls, a bar
   marked at 50% and 80%, and when the day's count resets; **yours today** (the calls you made);
-  and today's spend by what started it: people's presses, the background features, and each
-  evaluation run by its name.
+  and today's spend by what started it, one line each: people's presses, the background
+  features (how many are on, or none on), and **evaluations**: how many evaluation runs made
+  calls today and what they cost together. **each in History** beside it opens History on AI
+  calls, where every run's calls are, one row per call.
 - **Daily average:** over the last 7 and the last 30 complete days (today is left out, since it
   is not over).
 - **This month:** month to date against the month's cap, which is the day cap times the month's
   days (the most the day cap lets a month spend), and what the month will come to by its last
   day at the rate so far.
-- **Background features on:** each one, with its network, its trigger (what makes it call the
-  model, and how many calls one finding makes), today's and this month's spend against its own
-  caps, the estimate it was turned on with beside its actual average day since, who turned it
-  on and when, and **Turn off**. A feature its cap stopped says so, and when it resumes.
+- **Background features on:** each one by name, with its network, its trigger (what makes it
+  call the model, and how many calls one finding makes), today's spend against its own day
+  cap, the estimate it was turned on with beside its actual average day since, and **Turn
+  off**; with none on, it says so. A feature its cap stopped says so, when it stopped and when
+  it resumes. Its month against its month cap, and who turned it on and when, are on
+  **Settings › AI**.
   **Turn off** is one press; it is the same action as on **Settings › AI**, recorded the same
   way, and its answer is drawn in the panel (see
   [Turn a background AI feature on or off](ai-background#turn-off)). Turning a feature **on** is

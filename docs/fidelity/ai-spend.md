@@ -41,9 +41,26 @@ and what lifts it) and the panel's note above what was spent (`hosted`, the shar
 the provider's refusal of 2026-10-28 at a clock before its moment, then cleared; the chip fits
 in the bar at 1440 beside the integrations strip as the 80% chip does. The other shots taken
 again, nothing moved. Three rows added below, each a deviation.
+Compared again 2026-10-28 ~19:5x UTC for C2123 (the operator's report: 176 evaluation runs
+listed by name ran the panel past the screen, and no screen said which background feature was
+on), against AI2 **revised** (the agent's copy of the project folder, logged "C2123:
+AiSpendPanel revised to the figures at a glance"): `spend_view.panel` draws evaluations as one
+line (`evaluations`, the count of runs and their total) with "each in History", the Background
+line "Background, N features on" or "none on", and a feature at a glance (its month, its caps'
+month figure and who turned it on dropped from the panel; Settings › AI draws them);
+`spend_view.chip` ends its hover and its reader's label naming each feature on with its
+network; `.ai-spend .ai-menu` holds the panel to the window (`max-height: calc(100vh - 76px)`,
+its own scroll). New page shots: `ai-spend-many-runs-page-1440` and `-390` (176 runs planted,
+$0.001 each, the panel opened: one Evaluations line, the panel inside the window). The board
+shot `ai-spend-board-1440` read beside `ai-spend-page-1440` and the many-runs shots, region by
+region: the Today lines, the feature card and the foot the same; the rows below changed to
+match. The other shots taken again, nothing else moved. That the panel fits the window and the
+page scrolls closed is measured by tests/test_ai_spend_v2.py
+(`test_the_panel_stays_inside_the_screen_and_the_page_scrolls_in_a_real_browser`, 1440 x 900,
+1440 x 520 and 390 x 844).
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `af8a4277d158a319a117a571e849cb4fa1cf745f9ef9b2baf22d634f87f43652`
-Templates sha256 before: `e7e4b2ca297a7d871ebdbfae9868e786dfa8d819838f864a841b4d75b5ec7476`.
+Templates sha256: `9c9433c65243b0cd539eb0a52323cb8a5e37bfe6fac7cac4c30827df21ace641`
+Templates sha256 before: `af8a4277d158a319a117a571e849cb4fa1cf745f9ef9b2baf22d634f87f43652`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -62,12 +79,14 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | How the chip stays current (AI1's lead) | read when a page loads and on each recorded call (`nmas:ai_calls`), never on a timer | read on load, on `ai_calls` (every route that calls the gateway declares it, and the SDN loop announces it after a classify) and on `settings` (Turn off, the master switch, the day cap) | **same** |
 | The panel opens (AI2's lead) | under the chip on whatever page, Esc or the chip closes it; read when it opens and on each recorded call while open | the same, and the panel's × closes it too; read only while open (nmas_v2.js `aiSpendPanel`) | **same** |
 | The panel's head (AI2) | "AI spend", How does this work?, × | the same; the link opens the manual's What AI is spending | **same** |
-| Today (AI2) | the figure; "of the day cap $5.00 · 52% · 31 calls"; a bar marked at 50% and 80%; Yours today; People's presses; Background (1 feature); Evaluation runs (2) with each run and its amount | the same | **same** |
+| Today (AI2, revised for C2123) | the figure; "of the day cap $5.00 · 52% · 31 calls"; a bar marked at 50% and 80%; Yours today; People's presses; "Background, 2 features on"; "Evaluations, 176 runs · each in History" with their total, no run by name | the same; "Background, none on" with none on; "each in History" opens History on AI calls (`kind=ai_calls`) | **same** |
+| The panel's height (AI2, revised for C2123) | held to the window, scrolling within; the page beneath scrolls once it is closed | `max-height: calc(100vh - 76px)` and its own scroll at every width (under 860 px as before, fixed beneath the bar); measured at 1440 x 900, 1440 x 520 and 390 x 844 with 176 runs | **same** |
+| The chip's hover names the features on (AI2, revised for C2123) | "… 1 background on: The SDN loop classifies each detection with AI, on Lab." | the same words at the end of the hover, and the reader's label "…; background on: <feature>, on <network>"; the chip's words keep the count | **same** |
 | The reset (AI2) | "resets at 00:00 UTC, in 18 h 23 m" | "resets <the viewer's time> (00:00 UTC)", the words every AI screen uses, no countdown | **deviation** (log: Spend panel built: the reset without a countdown) |
 | Daily average (AI2) | the last 7 and the last 30 complete days, a day | the same | **same** |
 | This month (AI2) | "(October, 26.2 of 31 days)"; the figure of $155.00, the cap's basis; a bar with the projection lighter; "At this rate, by 31 October" | the same | **same** |
-| A background feature (AI2) | its words, its network, Turn off; its trigger with calls per finding; Today and This month against its caps with their shares; the estimate when turned on beside the actual over N days and their ratio; who turned it on, when | the same; Turn off with its (i), busy on itself | **same** |
-| A stopped feature, a feature near a cap, none on, AI off (AI2) | a stopped feature with its chip, when it stopped and when it resumes, no This month row; the others not drawn | the stopped feature the same, its This month row kept; at 50% or 80% "at 50% of a cap"; with none on, where one is turned on; AI off said above what was spent | **deviation** (log: Spend panel built: states and answers the board does not draw) |
+| A background feature (AI2, revised for C2123) | its words, its network, Turn off; its trigger with calls per finding; "Today" against its day cap with its share; "Estimate" beside the actual over N days and their ratio; no month, no who turned it on | the same; Turn off with its (i), busy on itself | **same** |
+| A stopped feature, a feature near a cap, none on, AI off (AI2) | a stopped feature with its chip and a line "Stopped at 04:02 UTC. It resumes when …"; none on said; the others not drawn | the stopped feature the same (a month cap's stop says the month's end); at 50% or 80% "at 50% of a cap"; with none on, where one is turned on; AI off said above what was spent | **deviation** (log: Spend panel built: states and answers the board does not draw) |
 | Turn off (AI2) | one click | Settings › AI's own route and gate (`settings_v2.ai_off`, `?answer=panel`), its answer drawn in the panel: turned off, already off, or not changed with why | **deviation** (log: Spend panel built: states and answers the board does not draw) |
 | The foot (AI2) | prices' date; "The provider bills what is spent; its own limit is the backstop."; "Every AI call, with spend by feature, person and day" · Settings › AI | the same words; "Every AI call (History)" · Settings › AI | **deviation** (log: Spend panel built: the History link names every AI call) |
 | The record cannot be read (AI2) | the notice, never $0; the features on, each refused, with Turn off | the same, each feature on its own row with its Turn off | **same** |

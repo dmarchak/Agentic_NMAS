@@ -81,7 +81,10 @@ SCOPES: dict = {
         "nsot_device_tag_retention", "nsot_config_read_timeout", "netbox_excluded_vrfs",
         "settings_not_applicable", "reads_answer_cap_kib",
         "reads_max_workers", "reads_retention_days", "ai_topology_class",
-        "alert_history_retention_days")},
+        "alert_history_retention_days",
+        # C1999: how long an SDN incident awaits a person before Needs attention escalates it.
+        # A group of one on the generic card, so it is set in Mercury, never by a host edit.
+        "sdn_escalate_after_minutes")},
     # ── Host-wide ─────────────────────────────────────────────────────────────────────────
     **_group(HOST, "netbox_connection", "netbox_url", "netbox_token", "netbox_auth_scheme",
              "netbox_verify_tls", "netbox_allow_writes"),
@@ -185,6 +188,7 @@ GROUP_LABELS: dict = {
     "reads_retention_days": "Show commands: answers kept (days)",
     "ai_topology_class": "AI: the topology class",
     "alert_history_retention_days": "Alert history: transitions kept (days)",
+    "sdn_escalate_after_minutes": "SDN: escalate an unanswered incident after (minutes)",
     "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
     "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
     "sdn_response_policy": "SDN response policy", "network_stage": "Network stage",

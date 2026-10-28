@@ -177,10 +177,22 @@ ROW_KINDS = {
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
+    # Escalated (danger, "unanswered for N minutes") once it has waited the network's
+    # sdn_escalate_after_minutes; no on-call integration exists to notify (C1999).
     ("sdn_responses", "awaiting"): ("an SDN incident (one attack, seen on one switch or many) "
-                                    "awaits a person on a network", "open the incident on SDN "
-                                    "› Responses and preview its response at the ingress "
-                                    "switch, then confirm it, or dismiss the incident"),
+                                    "awaits a person on a network, escalated once unanswered "
+                                    "past the network's escalation threshold",
+                                    "open the incident on SDN › Responses and preview its "
+                                    "response at the ingress switch, then confirm it, or "
+                                    "dismiss the incident"),
+    # C1869's, carried into C1999: a controller that does not answer leaves the network's
+    # detections and responses blind, and nothing else said so outside SDN › Controllers.
+    ("sdn_controllers", "not_answering"): ("a network's SDN controller does not answer the SDN "
+                                           "reader, so its switches' flows and threats are not "
+                                           "read on that network",
+                                           "check the controller answers at its URL, then read "
+                                           "its error on SDN › Controllers and correct its "
+                                           "connection in the network's Settings if it moved"),
     ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
@@ -360,7 +372,12 @@ CLEARS = {
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
     ("sdn_responses", "awaiting"): (("resolves",), "the incident's response is applied, or the "
-                                    "incident is dismissed, on SDN › Responses"),
+                                    "incident is dismissed, on SDN › Responses (escalation "
+                                    "never clears it: it only raises it to danger)"),
+    ("sdn_controllers", "not_answering"): (("resolves",), "the SDN reader's next read (every "
+                                           "30 s) finds each controller named answering, or "
+                                           "the connection is removed from the network's "
+                                           "Settings"),
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
@@ -2921,7 +2938,31 @@ def sdn_loop_source(found=None, now: float = None) -> dict:
                                  "restart within 24 hours")
 
 
-def sdn_responses_source(found=None) -> dict:
+#: The setting an unanswered SDN incident escalates after (C1999), and its default.
+SDN_ESCALATE_SETTING, SDN_ESCALATE_DEFAULT = "sdn_escalate_after_minutes", 15
+#: What the escalation's second step would notify, said on every escalated row: Mercury has no
+#: on-call integration (no paging, chat or webhook notifier), so the row is the only notice.
+SDN_NO_ON_CALL = ("no on-call integration is configured for this network (Mercury has none to "
+                  "notify), so this row is the only notice")
+
+
+def _sdn_escalate_after(network: str) -> tuple:
+    """``(minutes, why)``: *network*'s `sdn_escalate_after_minutes`, or ``(None, why)`` when it
+    cannot be read or is not a whole number from 1 to 1440 (said on the row, never guessed)."""
+    from modules import list_settings
+
+    try:
+        got = list_settings.value(network, SDN_ESCALATE_SETTING, SDN_ESCALATE_DEFAULT)
+    except Exception as exc:                          # noqa: BLE001 (said on the row)
+        return None, f"{network}'s {SDN_ESCALATE_SETTING} could not be read " \
+                     f"({type(exc).__name__})"
+    if isinstance(got, bool) or not isinstance(got, int) or not 1 <= got <= 1440:
+        return None, (f"{network}'s {SDN_ESCALATE_SETTING} is {got!r}, not a whole number of "
+                      "minutes from 1 to 1440")
+    return got, ""
+
+
+def sdn_responses_source(found=None, now: float = None) -> dict:
     """The SDN incidents awaiting a person (`loop.awaiting`, one response per incident;
     C1999): one row per incident, never one per detection or per switch, naming its network,
     rule, source, how many switches saw it, its severity, its age and the ingress switch its
@@ -2929,12 +2970,25 @@ def sdn_responses_source(found=None) -> dict:
     one row per network this source drew before incidents (a count of responses): each
     incident is one attack a person decides on its own, and its row opens that incident.
     Standing until its response is applied or it is dismissed. One small file read per
-    network, never a controller. *found* is ``{network: awaiting rows}`` (tests)."""
+    network, never a controller. *found* is ``{network: awaiting rows}`` (tests); *now* the
+    clock the escalation is judged by (tests).
+
+    **Escalation** (C1999): an incident awaiting a person for the network's
+    `sdn_escalate_after_minutes` or longer (15 by default) is escalated: the same row, DANGER
+    whatever its classification, its words "unanswered for N minutes", N counted on Mercury's
+    clock from the time its response was proposed (the response store's ``at``, never a
+    device's). Its second step, the network's on-call integration, does not exist (Mercury has
+    no paging, chat or webhook notifier), so an escalated row says no on-call integration is
+    configured. A threshold that cannot be read is said on the row, and the row is drawn
+    escalated: a threshold not known is never read as not reached. Nothing announces the
+    moment an incident crosses it; the SDN reader announces `sdn` at each read (every 30 s),
+    and this source is re-read then."""
     from modules.nsot import listref
     from modules.sdn import incidents
     from modules.sdn import loop as LP
 
     started = time.time()
+    clock = started if now is None else now
     label = "SDN responses awaiting a person"
     try:
         waiting = found if found is not None else {
@@ -2942,12 +2996,14 @@ def sdn_responses_source(found=None) -> dict:
     except Exception as exc:                          # noqa: BLE001 (said as the source's error)
         return source_result("sdn_responses", label, read_at=started, took_ms=0,
                              error=f"the responses could not be read: {type(exc).__name__}")
-    rows, unread = [], []
+    rows, unread, escalated = [], [], 0
     for network, got in sorted(waiting.items()):
         if got.get("state") == "unreadable":
             unread.append(f"{network} ({got.get('error')})")
             continue
-        for r in incidents.order(got.get("rows") or []):
+        listed = incidents.order(got.get("rows") or [])
+        after, after_why = _sdn_escalate_after(network) if listed else (None, "")
+        for r in listed:
             d = r.get("detection") or {}
             inc = r.get("incident") or {}
             sev = incidents.severity(r)
@@ -2957,12 +3013,33 @@ def sdn_responses_source(found=None) -> dict:
             where = d.get("dpid_hex") or "?"
             ingress = inc.get("ingress_words") or ("kept before incidents were grouped: "
                                                    f"proposed at {where}, the switch that saw it")
+            since = _ts(r.get("at"))
+            waited = int(max(0.0, clock - since) // 60) if since is not None else None
+            # Escalated past the threshold, or when the threshold or the wait is not known.
+            up = after is None or waited is None or waited >= after
+            escalated += up
+            mins = f"{waited} minute{'' if waited == 1 else 's'}"
+            if not up:
+                escalation = ""
+            elif after is None:
+                escalation = (f"; escalated, since its escalation threshold is not known "
+                              f"({after_why}); {SDN_NO_ON_CALL}")
+            elif waited is None:
+                escalation = (f"; escalated, since the time it was proposed is not recorded "
+                              f"({r.get('at')!r}); {SDN_NO_ON_CALL}")
+            else:
+                escalation = (f"; escalated: unanswered for {mins}, at or past "
+                              f"{network}'s {SDN_ESCALATE_SETTING} ({after}), whatever its "
+                              f"classification; {SDN_NO_ON_CALL}")
+            waits = ("awaits a person" + (f", unanswered for {mins}"
+                                          if up and waited is not None else
+                                          ", escalated" if up else ""))
             rows.append(row(
                 source="sdn_responses", kind="awaiting", key=f"{network}:{r.get('id')}",
-                level="danger" if sev in ("high", "critical") else "warning",
-                since=_ts(r.get("at")),
+                level="danger" if up or sev in ("high", "critical") else "warning",
+                since=since,
                 what=(f"{title}{' from ' + src if src else ''} on {network}, seen on "
-                      f"{switches} switch{'es' if switches != 1 else ''}, awaits a person"),
+                      f"{switches} switch{'es' if switches != 1 else ''}, {waits}"),
                 cause=(f"Incident {r.get('id')}, since {r.get('at')} (last seen "
                        f"{r.get('last_seen') or r.get('at')}): "
                        + (f"severity {sev} by its AI classification" if sev != "unclassified"
@@ -2970,11 +3047,14 @@ def sdn_responses_source(found=None) -> dict:
                        + f"; proposed {r.get('action') or 'no action'} at {where} ({ingress})"
                        + (f"; no switch shows it since {r.get('inactive_since')}"
                           if r.get("inactive_since") else "")
+                       + escalation
                        + ". Nothing is sent to a switch until a person confirms"),
                 operands={"network": network, "incident": r.get("id") or "",
                           "rule": d.get("rule") or "", "source": src, "switches": switches,
                           "severity": sev, "since": r.get("at") or "",
-                          "inactive": bool(r.get("inactive_since"))},
+                          "inactive": bool(r.get("inactive_since")),
+                          "escalated": bool(up), "unanswered_minutes": waited,
+                          "escalate_after_minutes": after},
                 action={"label": (f"Open the incident on {network}'s SDN › Responses: preview "
                                   f"{r.get('action') or 'a response'} at {where} and confirm "
                                   "it, or dismiss the incident with a reason"),
@@ -2987,7 +3067,9 @@ def sdn_responses_source(found=None) -> dict:
                                               + "; ".join(unread))
     return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
                          checked=f"{len(waiting)} network(s): {len(rows)} incident(s) "
-                                 "awaiting a person")
+                                 f"awaiting a person, {escalated} escalated (unanswered past "
+                                 f"its network's {SDN_ESCALATE_SETTING}); no on-call "
+                                 "integration exists to notify")
 def sdn_mitigation_source(found=None, now: float = None) -> dict:
     """Each response whose flows or meter the SDN reader last read missing from their switch
     while their hard timeout has time left (`modules/sdn/reapply.py` `lost`, C2018): a WARNING
@@ -3085,6 +3167,103 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
                                      if answered else "")
                                   + ("; whether a newer response answers them could not be "
                                      f"read for {', '.join(unjudged)}" if unjudged else "")))
+
+
+def sdn_controllers_source(found=None, now: float = None) -> dict:
+    """Each network whose SDN controller does not answer the SDN reader (C1869's row, carried
+    into C1999): one DANGER row per network, naming each controller not answering (its name,
+    driver and URL), the failure, since when and how many reads in a row, and the last good
+    read its switches are drawn from; its action the controller, then SDN › Controllers and
+    the network's Settings. It clears when the reader's next read finds each one answering.
+
+    **Why a row of its own.** A controller that does not answer is not a failed read: the SDN
+    reader stores the network's read as good, with that connection ``not_answering``
+    (`readers/sdn_controllers.py` `_carried`, reader_job's rule 3 per connection), so job
+    health's reader row stays ok and said nothing; only SDN › Controllers showed it. A read
+    that fails whole (the network's connection list unreadable) IS job health's row (the
+    reader's ``failing`` state, `reader_job.health_rows`), so it is not drawn here again.
+
+    Only a network with an SDN controller set is in scope: a network with none has no store
+    (``not_configured``) and no row. A driver not built is a configuration, said on SDN ›
+    Controllers, never a row here. The reader's stored value only, never a controller.
+    *found* is ``{network: reader_job.read_cached_for's answer}`` (tests)."""
+    from modules import reader_job
+    from modules.nsot import listref
+    from modules.readers import sdn_controllers as R
+
+    started = time.time() if now is None else now
+    label = "SDN controllers"
+    try:
+        got = found if found is not None else {
+            n: reader_job.read_cached_for(R.READER_NAME, n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("sdn_controllers", label, read_at=started, took_ms=0,
+                             error=f"the SDN reader's stores could not be read: "
+                                   f"{type(exc).__name__}")
+    rows, unreadable, never, oldest, counted, down_n = [], [], [], None, 0, 0
+    for network, cached in sorted(got.items()):
+        state = (cached or {}).get("state")
+        if state in ("not_applicable", "not_configured"):
+            continue
+        if state == "unreadable":
+            unreadable.append(f"{network} ({cached.get('why') or 'no reason given'})")
+            continue
+        good = (((cached or {}).get("doc") or {}).get("last_good") or {})
+        if not good:
+            never.append(network)
+            continue
+        value_at = _ts(good.get("value_at"))
+        if value_at is not None:
+            oldest = value_at if oldest is None else min(oldest, value_at)
+        controllers = (good.get("value") or {}).get("controllers") or []
+        counted += len(controllers)
+        down = [c for c in controllers if c.get("state") == "not_answering"]
+        if not down:
+            continue
+        down_n += len(down)
+        since = min((t for t in (_ts(c.get("failing_since")) for c in down) if t is not None),
+                    default=None)
+        names = ", ".join(str(c.get("name")) for c in down)
+        each = "; ".join(
+            f"{c.get('name')} ({c.get('label') or c.get('kind') or 'driver not recorded'}, "
+            f"{c.get('url') or 'no URL recorded'}): {c.get('error') or 'no answer'}, not "
+            f"answering since {c.get('failing_since') or 'a time not recorded'} "
+            f"({c.get('failures') or 1} read{'' if (c.get('failures') or 1) == 1 else 's'} in "
+            f"a row), its switches as last read at {c.get('last_good_at') or 'no time: never'}"
+            for c in down)
+        first = down[0]
+        rows.append(row(
+            source="sdn_controllers", kind="not_answering", key=network, level="danger",
+            since=since, read_at=value_at,
+            what=(f"SDN controller {first.get('name')} on {network} is not answering "
+                  f"({first.get('url') or 'no URL recorded'})" if len(down) == 1 else
+                  f"{len(down)} SDN controllers on {network} are not answering ({names})"),
+            cause=(f"As the SDN reader read {network} at {good.get('value_at')}: {each}. "
+                   "While a controller does not answer, the switches behind it are not read: "
+                   "the closed loop finds no threat on them, no response reaches them, and SDN "
+                   "› Controllers and Flows draw them as last read"),
+            operands={"network": network, "controllers": [c.get("name") for c in down],
+                      "urls": [c.get("url") or "" for c in down],
+                      "errors": [c.get("error") or "" for c in down],
+                      "since": _iso(since) or "",
+                      "failures": max(int(c.get("failures") or 1) for c in down)},
+            action={"label": (f"Check {names} answer{'s' if len(down) == 1 else ''} at "
+                              f"{', '.join(c.get('url') or '?' for c in down)}, then read the "
+                              f"error on {network}'s SDN › Controllers; if the controller "
+                              f"moved, correct its connection in {network}'s Settings, "
+                              "Integrations tab"),
+                    "href": "/v2/sdn?" + urlencode({"list": network})}))
+    if unreadable:
+        return source_result("sdn_controllers", label, read_at=started, took_ms=0,
+                             error=("the SDN reader's store could not be read for "
+                                    + ", ".join(unreadable)))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    return source_result("sdn_controllers", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=oldest, reader=R.READER_NAME,
+                         checked=(f"{counted} SDN controller(s) in the last read of each "
+                                  f"network with one set: {down_n} not answering"
+                                  + (f"; not read yet on {', '.join(never)} (job health's "
+                                     "reader row says why)" if never else "")))
 
 
 # ---------------------------------------------------------------------------
@@ -4277,7 +4456,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
-           ai_spend_source, sdn_loop_source, sdn_responses_source, sdn_mitigation_source)
+           ai_spend_source, sdn_loop_source, sdn_responses_source, sdn_mitigation_source,
+           sdn_controllers_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -4329,9 +4509,13 @@ SOURCE_KEYS = {
     # A loop started or stopped (`sdn_v2.loop_set` invalidates sdn) moves its row (C2000).
     "sdn_loop_source": ("sdn",),
     # A response proposed (the loop announces sdn, C2003), confirmed or dismissed (routes).
-    "sdn_responses_source": ("sdn",),
+    # A network's escalation threshold changed in Settings is a settings write (C1999).
+    "sdn_responses_source": ("sdn", "settings"),
     # The SDN reader announces sdn at each read, and a re-apply's confirm invalidates it (C2018).
     "sdn_mitigation_source": ("sdn",),
+    # The SDN reader announces sdn at each read; a connection changed in Settings wakes it
+    # (reader_wakes), so its read, then its announcement, moves the row (C1999, C1869's row).
+    "sdn_controllers_source": ("sdn",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).

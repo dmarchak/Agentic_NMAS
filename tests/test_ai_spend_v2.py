@@ -211,19 +211,23 @@ def test_the_panel_draws_every_figure(spend):
     for words in ("AI spend", "How does this work?", "TODAY".title(),
                   "$0.65", "of the day cap $1.50 · 43% · 4 calls", "marks at 50% and 80%",
                   "resets", "Yours today $0.20", "People's presses $0.50",
-                  "Background (1 feature) $0.10", "Evaluation runs (1) · run-7 $0.05 $0.05",
+                  # C2123 (the operator's change): evaluations one line, a count and a total,
+                  # each run in History; a feature at a glance, its month and who turned it on
+                  # on Settings › AI.
+                  "Background, 1 feature on $0.10", "Evaluations, 1 run · each in History $0.05",
                   "Last 7 complete days", "Last 30 complete days", "a day",
                   "At this rate, by", "the day cap $1.50 times the month's",
                   "The fake loop", "network Branch",
                   "Trigger: a detection rule fires (1 call per finding)",
-                  "Today $0.10 of $0.50 (20%)", "This month $0.10 of $10.00 (1%)",
-                  "Estimate when turned on", "no complete day since it was turned on",
-                  f"Turned on by {TEST_PERSON}", "with that estimate",
+                  "Today $0.10 of its day cap $0.50 (20%)",
+                  "no complete day since it was turned on",
                   f"Prices from Mercury's table as of {profiles.PRICES_AS_OF}.",
                   "The provider bills what is spent; its own limit is the backstop.",
                   "Every AI call (History)", "Settings › AI"):
         assert words in text, words
     assert re.search(r"This month \([A-Z][a-z]+, [0-9.]+ of (28|29|30|31) days\)", text), text
+    assert re.search(r"Estimate (\$[0-9.]+ a day|no measured estimate) · no complete day since "
+                     r"it was turned on", text), text
     off = re.search(r'<button[^>]*hx-post="([^"]*)"[^>]*>', html).group(1)
     assert off == f"/v2/settings/installation/ai/background/branch/fake_loop/off?answer=panel"
     assert 'hx-target="#nmas-ai-panel"' in html and 'data-op="ai-background"' in html
@@ -243,6 +247,119 @@ def test_with_no_feature_on_the_panel_says_where_one_is_turned_on(spend):
     text = _text(_get(spend, PANEL)[1])
     assert "None. A background feature is turned on only in Settings › AI, after its estimate." \
         in text
+
+
+# ── at a glance (C2123: the operator's report of 2026-10-28, 176 evaluation runs listed) ──────
+
+def _runs(n, cost=0.01):
+    """*n* evaluation runs today, one call each, named ex-0000 onwards."""
+    for i in range(n):
+        _spent(cost, actor=f"evaluation:ex-{i:04d}",
+               trigger={"kind": "evaluation", "run": f"ex-{i:04d}"})
+
+
+def test_many_evaluation_runs_are_one_line_a_count_and_a_total(spend):
+    _runs(176)
+    r, html = _get(spend, PANEL)
+    assert r.status_code == 200
+    text = _text(html)
+    assert "Evaluations, 176 runs · each in History $1.76" in text, text
+    assert not re.search(r"ex-\d{4}", html), "a run is drawn by name"
+    row = re.search(r'<div class="ai-row ai-small" data-ai-evaluations>(.*?)</div>', html, re.S)
+    assert row and re.search(r'<a href="/v2/history\?kind=ai_calls(&list=[^"]*)?">each in '
+                             r'History</a>', row.group(1)), html
+    assert html.count('class="ai-row') <= 12, "the panel is a glance, not a list"
+
+
+def test_each_background_feature_on_is_named_with_its_network(spend):
+    _turn_on(spend)
+    _spent(0.10, actor="job:j1", trigger=_bg())
+    c = _chip(_get(spend, CHIP)[1])
+    assert c["text"] == "$0.10 today · 1 background on", "the bar keeps the count"
+    assert c["title"].endswith("the provider bills what is spent. "
+                               "1 background on: The fake loop, on Branch."), c["title"]
+    assert c["label"] == ("AI $0.10 today · 1 background on; background on: The fake loop, "
+                          "on Branch"), c["label"]
+    html = _get(spend, PANEL)[1]
+    head = re.search(r'<div class="ai-feat-head">(.*?)</div>', html, re.S).group(1)
+    assert _text(head).strip().startswith("The fake loop network Branch Turn off"), _text(head)
+    assert "Background, 1 feature on $0.10" in _text(html)
+
+
+def test_with_none_on_the_chip_names_none_and_the_panel_says_none_on(spend):
+    c = _chip(_get(spend, CHIP)[1])
+    assert c["text"] == "$0.00 today · 0 background on" and "background on:" not in c["title"]
+    text = _text(_get(spend, PANEL)[1])
+    assert "Background, none on $0.00" in text
+    assert "None. A background feature is turned on only in Settings › AI" in text
+
+
+def _panel_fits(b, width, height):
+    """Open the spend panel in a *width* x *height* frame of the page, made long (a planted
+    3000 px block in its main column); return its measure, then close it and scroll the
+    page."""
+    b.js("var o=document.getElementById('frame'); if (o) o.remove();"
+         f"var f=document.createElement('iframe'); f.id='frame'; f.width='{width}';"
+         f"f.height='{height}'; f.style.position='fixed'; f.style.left='0'; f.style.top='0';"
+         "f.style.maxWidth='none'; f.style.border='0'; f.style.zIndex='9999';"
+         "f.src=location.href; document.documentElement.appendChild(f); return 1")
+    frame = "var w=document.getElementById('frame').contentWindow, d=w&&w.document;"
+    b.wait_for(frame + "return !!(d && d.querySelector('#nmas-ai .ai-chip[data-state=\"on\"]')"
+               " && w.Alpine)", 15)
+    b.js(frame + "var t=d.createElement('div'); t.style.height='3000px';"
+         "(d.querySelector('main') || d.body).appendChild(t); return 1")
+    b.js(frame + "d.querySelector('#nmas-ai').click(); return 1")
+    b.wait_for(frame + "return !!d.querySelector('#nmas-ai-panel [data-ai-evaluations]')", 10)
+    opened = b.js(frame + "var p=d.getElementById('nmas-ai-panel'), r=p.getBoundingClientRect();"
+                  "return {inner: w.innerHeight, width: w.innerWidth, top: r.top,"
+                  " bottom: r.bottom, left: r.left, right: r.right,"
+                  " scrolls: w.getComputedStyle(p).overflowY,"
+                  " text: p.innerText};")
+    b.js(frame + "d.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));"
+         "return 1")
+    b.wait_for(frame + "return !d.getElementById('ai-spend').open", 5)
+    closed = b.js(frame + "w.scrollTo(0, 0); w.scrollTo(0, 600); return {y: w.scrollY,"
+                  " tall: d.scrollingElement.scrollHeight - w.innerHeight};")
+    return opened, closed
+
+
+def test_the_panel_stays_inside_the_screen_and_the_page_scrolls_in_a_real_browser(spend,
+                                                                                monkeypatch):
+    """The operator's report: 176 evaluation runs ran the panel past the screen, and the page
+    beneath could not be scrolled to it. With 176 runs and a feature on, at 1440 x 900 and at
+    phone width (390 x 844), and in a short laptop window (1440 x 520, where the panel is
+    taller than the screen), the open panel lies inside the screen with its own scroll; closed,
+    the page beneath scrolls. geckodriver will not make a window narrower than 500 CSS px, so
+    each size is a same-origin frame, the strict policy's `frame-ancestors 'none'` relaxed to
+    `'self'` for this test alone (as tests/test_v2_layout_in_a_browser.py does)."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    monkeypatch.setattr(csp, "STRICT_POLICY", csp.STRICT_POLICY.replace(
+        "frame-ancestors 'none'", "frame-ancestors 'self'"))
+    import app as A
+    _turn_on(spend)
+    _runs(176)
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1500, "height": 1000})
+            b.go(srv.url("/v2/"))
+            for width, height in ((1440, 900), (1440, 520), (390, 844)):
+                opened, closed = _panel_fits(b, width, height)
+                assert opened["width"] == width, opened
+                assert opened["top"] >= 0 and opened["bottom"] <= height, (
+                    f"the panel runs past the screen at {width}", opened)
+                assert opened["left"] >= 0 and opened["right"] <= width, opened
+                assert opened["scrolls"] == "auto", ("the panel has no scroll of its own",
+                                                     opened)
+                assert "Evaluations, 176 runs" in opened["text"]
+                assert "ex-0001" not in opened["text"]
+                assert closed["tall"] > 600 and closed["y"] == 600, (
+                    f"the page does not scroll at {width}", closed)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
 
 
 def test_ai_off_is_said_on_the_panel_and_what_was_spent_still_drawn(spend, monkeypatch):

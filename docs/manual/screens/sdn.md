@@ -72,7 +72,13 @@ seconds: a read every 30 seconds sees each flow at least once.
   - **Last read**: when, and what (flows, port statistics and meters of N switches, how many
     failed).
 - **Not answering** says since when, what failed and how many reads in a row, and that its
-  switches' flows are as last read.
+  switches' flows are as last read. **Needs attention has a red row for the network too**, so
+  you need not have this tab open: one per network, naming each controller not answering, its
+  URL, the failure, since when and how many reads in a row, and the read its switches are drawn
+  from; while it lasts the closed loop finds no threat on those switches. Its action is to
+  check the controller answers, read its error here, and correct its connection in Settings if
+  it moved. It clears at the first read that finds every controller named answering (the
+  reader reads every 30 seconds). A network with no controller set has no such row.
 - **Test connection** asks the controller now, with what is saved, and answers in place:
   "Answered: N switches connected" or "Couldn't connect: <the reason>" (see
   [Test connection](#test-connection)).
@@ -236,8 +242,15 @@ mode and whether the loop is running.
   this tab open: one row per incident, never one per switch or per detection, naming its
   network, rule, source, how many switches saw it, its severity, its age and the switch its
   response is proposed at; it is red when classified high or critical, and clears once its
-  response is applied or it is dismissed. **Open the incident** opens this tab with that
-  incident open. What the log says:
+  response is applied or it is dismissed. **An incident left unanswered is escalated**: once
+  it has awaited you for the network's **SDN: escalate an unanswered incident after (minutes)**
+  (15 unless set on the network's Settings, Network tab), its row turns red whatever its
+  classification and says "unanswered for N minutes", counted on Mercury's clock from when
+  its response was proposed. It stays the one row, and clears only as above. Mercury has no
+  on-call integration (no paging, chat or webhook notifier), so nothing is sent anywhere: the
+  row says so, and it is the only notice. A threshold that cannot be read is said on the row,
+  which is then drawn escalated. **Open the incident** opens this tab with that incident open.
+  What the log says:
   - a pass that finds nothing new says which of these it is: **network healthy: no threat
     detected** only when the collection read every switch whole and no detection is active;
     **no new threat; N still active**, naming each detection still firing; or that the
