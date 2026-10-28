@@ -87,6 +87,9 @@ NOT_AN_OPERATION = {
                                            "connection is changed: a page of its own",
     ("_sdn_view.html", "Show"): "narrows SDN › Flows to words and the controller's own flows, "
                                 "a read of the SDN reader's stored value",
+    ("_sdn_view.html", "Reload"): "loads the SDN tab again (a link to its own page, Flows' "
+                                  "filter kept), offered by the note that says the page is not "
+                                  "current (C2003): a read",
     ("_sdn_log.html", "Download log"): "saves one run of the loop's log as text, a read of the "
                                        "log the Responses tab draws (C1971)",
     ("_intent_words.html", "Discard draft"): "reopens the Intent tab without the draft, which "

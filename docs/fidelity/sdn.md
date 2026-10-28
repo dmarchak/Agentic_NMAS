@@ -17,7 +17,8 @@ boards S1 to S7"). Their grey notes are notes for the builder, not page text.
 Shots: `tests/test_board_shots.py::test_sdn` (`sdn-controllers` and `sdn-flows` at 1440, 1280
 and 390 beside their boards; `sdn-phone` at 390 beside SdnPhone; `sdn-responses` at 1440, 1280
 and 390 beside SdnResponses, `sdn-responses-suspended` at 1440 and 390 with no board, C2009; `sdn-responses-held` at 1440
-and 390 with no board, C2001). The data is tests/test_sdn_v2.py's
+and 390 with no board, C2001; `sdn-responses-stale` at 1440 and 390 and `sdn-responses-stale-held`
+at 1440 beside SdnResponses' states section, C2003). The data is tests/test_sdn_v2.py's
 lab: Default's `lab-controller` answered by Ryu 4.34's captured answers through the real Ryu
 driver (one switch, `s1`, its nine captured flows, one meter), its flow intent recorded as a
 response would record it (the meter flow, cookie ...0002, recorded; the drop flow in Mercury's
@@ -27,7 +28,20 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `72f40ab15645c96c292607028c76bc7468a2b1f2da8920315a4cf2b58de77cd9`
+Templates sha256: `56fc0e23a45b825b07dc80dc277ab906d292a0e55551a1e2565ba612a7e163fc`
+
+**Compared again 2026-10-28 ~09:3x UTC for C2003** (never a frozen page shown as current:
+`_sdn_view.html` draws a hidden note under the tabs on every tab, which static/js/nmas_v2.js
+`staleNote` shows past the region's promise, the SDN reader's page promise of 90 s, or while the
+live channel is down): `SdnResponses.dc.html` revised with a states section drawing the note's
+three states (signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md "SDN C2003"), and
+two new shots beside it, `sdn-responses-stale` (1440 and 390: past the promise, nothing open)
+and `sdn-responses-stale-held` (1440: a preview open, a redraw held, then past the promise).
+Each shot sets the note's stale moment in the past instead of waiting 90 s, so its "Last
+updated" reads "just now" where the board reads "2 min ago". The `sdn-responses` shots are
+otherwise unchanged (the note is hidden while the page is current); the board's states section
+sits below its rules card as a section of states, not a place on the page: the page draws the
+note where the section's note says, between the tabs and the summary.
 
 **Compared again 2026-10-28 ~04:0x UTC, the three changes below merged** (C2001's hold and
 C2018's re-apply each changed `_sdn_op.html`, compared apart in their own trees): the SDN shots
@@ -128,6 +142,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Mode: Turn AUTO on off lab (C2009) | "Turn AUTO on…", pressable | on a network not marked lab, drawn disabled with its reason on the control, "Turn AUTO on (Not available: this network is not marked lab)", the server refusing it anyway, naming the stage and the gate; at 390 the button's words and its reason wrap side by side inside the card (shot at 1440, 1280 and 390) | **deviation** (log: SDN C2009: Turn AUTO on drawn disabled on a network not marked lab) |
 | Mode: AUTO suspended (C2009) | not drawn | AUTO recorded on while the network is not marked lab: the AUTO chip and its words, the stage line, an amber notice "AUTO is suspended: it is recorded on, and nothing runs unattended while this network is not marked lab; each response awaits a person. Turn AUTO off, or mark the network lab.", and Turn AUTO off (shot `sdn-responses-suspended` at 1440 and 390) | **deviation** (log: SDN C2009: AUTO drawn suspended on a network marked otherwise) |
 | A refresh held while a card is open (C2001) | not drawn: the board does not say what a refresh does to an open preview | while a preview, its result or refusal, or the flow editor is open in place, an announcement's redraw of the region is held; the card says at its top "Paused while you review this: newer data is waiting." with **Show it now** (busy on itself, "Showing…"; it closes the card and redraws, sending nothing); a typed reason holds as every page's field does (C459). Shot `sdn-responses-held` at 1440 and 390 | **deviation** (log: SDN C2001: a refresh held while an operation card is open) |
+| Not current (C2003) | the states section: between the tabs and the summary, an amber notice "Last updated 2 min ago: no update has arrived in the 90 s it promises, so this page may be out of date." with Reload; "live updates stopped" in place of the cause while the channel is down; with a card open, no Reload and "a reload would close the card open below. Send or close it first.", or "newer data is waiting, held for the card open below" when a redraw was held; nothing while current | the same words and places on every SDN tab (shot on Responses: `sdn-responses-stale` at 1440 and 390, Reload wrapping under the words at 390; `sdn-responses-stale-held` at 1440, the note above the summary and the card's own "Paused while you review this" note kept); Reload a link to the tab's own page, Flows' filter kept | **same** |
 | The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start | **same** |
 | The loop's log | the latest lines, newest first, each line's time, step and words | one run whole (from its start line), newest first, in a box that scrolls; above it **Run** (each run by its job id, start time in UTC and line count) and **Download log** (the run as text); a line naming the lines drawn of the run's and its first and last times; past 2,000 lines the newest 2,000, said (C1971) | **deviation** (log: SDN C1971: the loop's log scrolls over the whole run, with Run and Download log) |
 | Detection rules | the table with each threshold editable, Save thresholds…, the timeout line | the same table read-only, and the timeout line with the ceiling; no Save thresholds… | **later** S8's thresholds edited on this tab (until then written by `list_settings.write`) |

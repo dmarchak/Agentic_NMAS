@@ -41,7 +41,8 @@ def _ctx(tab: str) -> dict:
     else:
         g = (sdn_page.flows_view(network, request.args) if tab == "flows"
              else sdn_page.controllers_view(network))
-    return {"g": g, "tabs": TABS}
+    # C2003: when this drawing stops being current with no redraw (the reader's page promise).
+    return {"g": g, "tabs": TABS, "fresh": sdn_page.redraw_promise()}
 
 
 @bp.route("", methods=["GET"])

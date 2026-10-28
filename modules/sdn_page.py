@@ -45,6 +45,25 @@ REMOVE_FLOW_WHY = ("a flow is removed by delete-strict through the flow-operatio
                    "previewed and confirmed (modules/sdn/flow_ops.py)")
 
 
+# ───────────────────────────────────────────────────────────────────────────── the region's promise
+
+def redraw_promise(now: float = None) -> dict:
+    """How long a drawn SDN region (`#sdn`, every tab) stays current with no redraw (C2003): the
+    SDN reader's own page promise, `reader_job.page_promise` (its 3 read intervals of 30 s, 90 s,
+    the promise the sidebar's count judges this reader's value by), counted from the moment the
+    region is drawn. The reader announces `sdn` at every read, changed or not, so a region that
+    is live is redrawn every 30 s; past ``stale_at`` with no redraw, the page says it may be out
+    of date (static/js/nmas_v2.js `staleNote`). ``drawn_at`` is the region's "last updated"."""
+    from modules import reader_job
+    from modules.readers import sdn_controllers
+
+    seconds = reader_job.page_promise(sdn_controllers.READER)
+    now = time.time() if now is None else now
+    iso = "%Y-%m-%dT%H:%M:%SZ"
+    return {"drawn_at": time.strftime(iso, time.gmtime(now)),
+            "stale_at": time.strftime(iso, time.gmtime(now + seconds)), "seconds": seconds}
+
+
 # ───────────────────────────────────────────────────────────────────────────── the stored read
 
 def stored(network: str) -> dict:

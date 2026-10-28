@@ -789,6 +789,12 @@ def test_the_timezone_is_filled_and_sent_in_a_browser(site):
         b.js("document.querySelector('[data-op=ask-in-words]').click(); return 1")
         b.wait_for("return location.search.indexOf('m=ifInErrors') >= 0", 15)
         note = b.js("return document.querySelector('.lq-build .notice').textContent")
+        # The redrawn form is filled once its swap settles, which can be after the address
+        # moved (read too early under the gate's load, 2026-10-28; C2053).
+        try:
+            b.wait_for("return document.querySelector('[name=tz]').value !== ''", 10)
+        except Exception:                               # noqa: BLE001 (asserted below)
+            pass
         refilled = b.js("return document.querySelector('[name=tz]').value")
         b.go("about:blank")
     assert got["name"] == got["intl"] and got["name"], got

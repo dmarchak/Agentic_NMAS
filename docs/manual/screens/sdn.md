@@ -18,7 +18,22 @@ read finishes. While a card you opened in place is on the page (a response's or 
 preview, its result or refusal, the flow editor), or you are typing (a dismissal's reason), the
 redraw waits: the card says **Paused while you review this: newer data is waiting.** with
 **Show it now**, which closes the card and redraws (nothing is sent); a typed field's redraw
-happens when you send or empty it. For each connection the reader asks its driver for the controller's switches;
+happens when you send or empty it.
+
+**When the page is not current.** A page that is live is redrawn at every read, so every 30
+seconds at least. If no redraw has reached the page within 90 seconds of when it was drawn (the
+reader's promise: three of its reads), or the page's live connection has stopped, gone silent
+or could not connect, an amber note under the tabs says so: **Last updated** with the drawing's
+age (its UTC time on hover), why ("no update has arrived in the 90 s it promises", or "live
+updates stopped"), "so this page may be out of date", and **Reload**, which loads the tab again
+as it is now (Flows keeps its filter). A frozen page is never shown as current; while the page
+is current the note is not there. While a card you opened in place holds the redraw, the note
+offers no Reload, because a reload would close that card: it says "a reload would close the
+card open below. Send or close it first.", or "newer data is waiting, held for the card open
+below" when a redraw already arrived; once the card is sent or closed, the page redraws or
+Reload is offered.
+
+For each connection the reader asks its driver for the controller's switches;
 for each switch, its flow table, its port counters twice a second apart, what the switch says
 it is (its own name, the one Mininet gives it), and its meters and meter features where the
 driver reads meters. It then decides whose each flow is, by its cookie (see

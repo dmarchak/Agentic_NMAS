@@ -619,6 +619,71 @@
     return '';
   }
 
+  /* NEVER A FROZEN PAGE SHOWN AS CURRENT (C2003, the operator's Lab 8 walk, 2026-10-28: SDN ›
+     Responses stopped updating and looked current). A live region's `.stale-note` carries the
+     moment its drawing passes its promise (data-stale-at) and the promise (data-promise, in
+     seconds), as the sidebar's count does; the page's one-second tick judges it, asking
+     nothing. Not live yet (the first connect) is not a doubt: a page just loaded is current. */
+  var NOT_LIVE = {disconnected: 1, silent: 1, failed: 1};
+  /* What holds a redraw (`holdReason`), and what the person does to let it through. */
+  var HELD_FOR = {review: ['the card open below', 'Send or close it'],
+                  editing: ['what you are typing', 'Send or clear it'],
+                  sending: ['the action in flight', 'Wait for its answer'],
+                  open: ['the entry open below', 'Close it']};
+
+  /* PURE: what a live region's note says after its "Last updated <age>", from the live
+     channel's state, the moment its drawing passes its promise, the promise in seconds, now,
+     why a redraw of it is held (`holdReason`, '' when nothing holds it), and whether a redraw
+     already arrived and was held (the region's data-held). null when it is current; otherwise
+     {words, reload}. Reload is offered only when nothing holds the region: a reload would
+     close what holds it, the step HITL exists for (C2001). */
+  function staleNote(liveState, staleAtMs, promiseS, nowMs, holdWhy, skipped) {
+    var down = !!NOT_LIVE[liveState];
+    var late = staleAtMs === staleAtMs && staleAtMs !== null && nowMs > staleAtMs;
+    if (!down && !late) return null;
+    var held = holdWhy ? HELD_FOR[holdWhy] || HELD_FOR.review : null;
+    if (held && skipped && !down) {
+      return {words: ': newer data is waiting, held for ' + held[0] + '. ' + held[1]
+                + ' to see it.', reload: false};
+    }
+    var cause = down ? liveWords(liveState).toLowerCase()
+      : 'no update has arrived in ' + (promiseS > 0 ? 'the ' + promiseS + ' s it promises'
+                                                    : 'the time it promises');
+    if (held) {
+      return {words: ': ' + cause + ', so this page may be out of date; a reload would close '
+                + held[0] + '. ' + held[1] + ' first.', reload: false};
+    }
+    return {words: ': ' + cause + ', so this page may be out of date.', reload: true};
+  }
+
+  /* Each live region's stale note, drawn from `staleNote`; the DOM is touched only when what
+     it says changes. Run on the frame's one-second tick. */
+  function drawStale() {
+    var notes = root.document.querySelectorAll('.stale-note[data-stale-at]');
+    if (!notes.length) return;
+    var now = Date.now();
+    var live = root.NMAS && root.NMAS.live ? (root.NMAS.live().state || '') : '';
+    for (var i = 0; i < notes.length; i++) {
+      var note = notes[i];
+      var region = note.parentNode && note.parentNode.closest
+        ? note.parentNode.closest('[hx-trigger]') : null;
+      var at = Date.parse(note.getAttribute('data-stale-at') || '');
+      var said = staleNote(live, at === at ? at : null,
+                           parseInt(note.getAttribute('data-promise') || '0', 10), now,
+                           region ? holdReason(region) : '',
+                           !!region && region.getAttribute('data-held') === '1');
+      var key = said ? said.words + (said.reload ? ' |reload' : '') : '';
+      if ((note.getAttribute('data-said') || '') === key) continue;
+      note.setAttribute('data-said', key);
+      note.hidden = !said;
+      if (!said) continue;
+      var why = note.querySelector('.stale-why');
+      if (why) why.textContent = said.words;
+      var reload = note.querySelector('.stale-reload');
+      if (reload) reload.hidden = !said.reload;
+    }
+  }
+
   /* The sidebar's count (on every v2 page): marked while it may be out of date, and read
      again at the moment a row clears by time (data-next-change-at), once per moment.
      Run on the frame's one-second tick; it asks nothing unless a row is due. */
@@ -1337,8 +1402,9 @@
       drawClock();
       drawLive();
       drawBadge();
+      drawStale();
       drawDeploys(root.document);
-      root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); }, 1000);
+      root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
     root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); });
@@ -1375,7 +1441,8 @@
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
-                  badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
+                  badgeDoubt: badgeDoubt, staleNote: staleNote, missedKeys: missedKeys,
+                  isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
                   reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey};

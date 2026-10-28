@@ -194,6 +194,18 @@ def test_sdn(tmp_path, monkeypatch):
                lambda w: "/v2/sdn/responses?list=Default", served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
 
+        # C2003: the page past its promise with no redraw (its stale moment set in the past,
+        # as 90 s with no announcement leaves it), nothing open: the note with Reload, beside
+        # SdnResponses' states section.
+        def stale(b):
+            b.wait_for("return !!window.htmx && !document.querySelector('.htmx-request')", 15)
+            b.js("document.querySelector('#sdn .stale-note').setAttribute('data-stale-at', "
+                 "'2020-01-01T00:00:00Z'); return 1")
+            b.wait_for("return !document.querySelector('#sdn .stale-note').hidden", 5)
+        _shoot("sdn-responses-stale", "SdnResponses.dc.html",
+               lambda w: "/v2/sdn/responses?list=Default", served,
+               widths=((1440, 1.0), (390, 2.0)), act=stale)
+
         # C2001: the response's preview opened in place, then the SDN announcement arriving:
         # the redraw held, said on the card with Show it now. No board draws the hold (the
         # card itself is SdnResponse's, compared when a shot of it is taken).
@@ -208,6 +220,15 @@ def test_sdn(tmp_path, monkeypatch):
                        ".held-note')", 15)
         _shoot("sdn-responses-held", "", lambda w: "/v2/sdn/responses?list=Default", served,
                widths=((1440, 1.0), (390, 2.0)), act=held)
+
+        # C2003 with C2001: held as above, then past its promise: the note says newer data is
+        # waiting, held for the card, and offers no Reload (it would close the card).
+        def stale_held(b):
+            held(b)
+            stale(b)
+        _shoot("sdn-responses-stale-held", "SdnResponses.dc.html",
+               lambda w: "/v2/sdn/responses?list=Default", served, widths=((1440, 1.0),),
+               act=stale_held)
         # C2009: the shot above is a network not marked (Turn AUTO on drawn disabled with its
         # reason); this one is AUTO turned on while marked lab, then the network marked
         # production: the Mode card says AUTO is suspended. No board draws a stage.
