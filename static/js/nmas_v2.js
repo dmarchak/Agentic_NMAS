@@ -228,6 +228,13 @@
      requests in flight, through htmx's swap, then racing the reopened entry's own load. */
   var PAUSED_WORDS = 'Paused while you work: newer data is waiting.';
   var SENDING_WORDS = 'Newer data is waiting; it shows when this answers.';
+  /* REVIEW (C2001, the operator's Lab 8 walk, 2026-10-27: on SDN › Responses each
+     announcement redrew the region and took away the open preview and its Send, the step HITL
+     exists for). A card in the region marked `data-holds-live` (an operation's preview, its
+     refusal or its result, drawn in place by the person's own request) holds a live redraw as
+     an open entry does: what it shows came by the person's request, which a redraw of the list
+     cannot draw again. It says so with Show it now, which closes the card and redraws. */
+  var REVIEW_WORDS = 'Paused while you review this: newer data is waiting.';
 
   /* PURE over the DOM: an element in *region* whose action is in flight, or null. */
   function sendingIn(region) {
@@ -239,11 +246,18 @@
     return region && region.querySelector ? region.querySelector('details[hx-get][open]') : null;
   }
 
-  /* PURE: why a live redraw of *region* is held now ("editing", "sending", "open"), or ''. */
+  /* PURE over the DOM: a card in *region* the person is reviewing (C2001), or null. */
+  function reviewedIn(region) {
+    return region && region.querySelector ? region.querySelector('[data-holds-live]') : null;
+  }
+
+  /* PURE: why a live redraw of *region* is held now ("editing", "sending", "open",
+     "review"), or ''. */
   function holdReason(region) {
     if (editingIn(region)) return 'editing';
     if (sendingIn(region)) return 'sending';
     if (openedIn(region)) return 'open';
+    if (reviewedIn(region)) return 'review';
     return '';
   }
 
@@ -367,19 +381,28 @@
     note.setAttribute('role', 'status');
     note.setAttribute('data-held-why', why);
     var words = root.document.createElement('span');
-    words.textContent = why === 'open' ? PAUSED_WORDS : SENDING_WORDS;
+    words.textContent = why === 'open' ? PAUSED_WORDS : (why === 'review' ? REVIEW_WORDS
+                                                                           : SENDING_WORDS);
     note.appendChild(words);
-    if (why === 'open') {
-      var entry = openedIn(region), button = root.document.createElement('button');
+    if (why === 'open' || why === 'review') {
+      var button = root.document.createElement('button');
       button.type = 'button';
       button.className = 'btn btn-small btn-outline held-resume';
       button.textContent = 'Show it now';
-      button.title = 'Redraws the list now; the entries open now stay open and load again';
+      button.title = why === 'open'
+        ? 'Redraws the list now; the entries open now stay open and load again'
+        : 'Redraws the page now: this card closes, and nothing is sent';
       note.appendChild(root.document.createTextNode(' '));
       note.appendChild(button);
+    }
+    if (why === 'open') {
+      var entry = openedIn(region);
       var summary = entry.querySelector('summary');
       if (summary && summary.nextSibling) entry.insertBefore(note, summary.nextSibling);
       else entry.appendChild(note);
+    } else if (why === 'review') {
+      var card = reviewedIn(region);
+      card.insertBefore(note, card.firstChild);
     } else {
       var at = sendingIn(region);
       (at.parentNode || region).insertBefore(note, at.nextSibling);
@@ -388,13 +411,30 @@
 
   /* Ask a held region again: the redraw it skipped. Its open entries are noted first, so the
      redraw opens them again. */
-  function redrawHeld(region) {
+  function redrawHeld(region, pressed) {
     region.removeAttribute('data-held');
     var notes = region.querySelectorAll('.held-note');
-    for (var j = 0; j < notes.length; j++) notes[j].parentNode.removeChild(notes[j]);
+    for (var j = 0; j < notes.length; j++) {
+      // The note whose Show it now was pressed stays, busy on itself, until the redraw lands.
+      if (pressed && notes[j].contains(pressed)) continue;
+      notes[j].parentNode.removeChild(notes[j]);
+    }
     var url = region.getAttribute('hx-get');
     if (url && root.htmx) {
-      root.htmx.ajax('GET', url, {target: region, swap: region.getAttribute('hx-swap') || 'outerHTML'});
+      var asked = root.htmx.ajax('GET', url, {target: region,
+                                              swap: region.getAttribute('hx-swap') || 'outerHTML'});
+      if (pressed && asked && asked.then) {
+        // A redraw that did not land (the region is still this one) leaves the hold as it
+        // was and the button pressable again; the failure is said by `neverSilent`.
+        var settle = function () {
+          if (!pressed.isConnected) return;
+          pressed.disabled = false;
+          pressed.removeAttribute('aria-busy');
+          pressed.textContent = 'Show it now';
+          if (holdReason(region)) region.setAttribute('data-held', '1');
+        };
+        asked.then(settle, settle);
+      }
     }
   }
 
@@ -418,7 +458,11 @@
     if (!b) return;
     var region = b.closest('[data-held="1"]');
     if (!region || sendingIn(region) || editingIn(region)) return;
-    redrawHeld(region);
+    // Busy on itself until the redraw answers (C2001).
+    b.disabled = true;
+    b.setAttribute('aria-busy', 'true');
+    b.textContent = 'Showing…';
+    redrawHeld(region, b);
   }
 
   function drawAges(scope) {

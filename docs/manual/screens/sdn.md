@@ -14,7 +14,11 @@ Integrations.", with the link, and draws nothing else.
 
 Mercury's SDN reader reads each network's controllers every 30 seconds, and the page is drawn
 from what it kept, never by asking a controller while you look; it redraws by itself when a
-read finishes. For each connection the reader asks its driver for the controller's switches;
+read finishes. While a card you opened in place is on the page (a response's or a flow's
+preview, its result or refusal, the flow editor), or you are typing (a dismissal's reason), the
+redraw waits: the card says **Paused while you review this: newer data is waiting.** with
+**Show it now**, which closes the card and redraws (nothing is sent); a typed field's redraw
+happens when you send or empty it. For each connection the reader asks its driver for the controller's switches;
 for each switch, its flow table, its port counters twice a second apart, what the switch says
 it is (its own name, the one Mininet gives it), and its meters and meter features where the
 driver reads meters. It then decides whose each flow is, by its cookie (see
@@ -147,6 +151,15 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   reason, how many hours (at most 24) and the allowed risk (low: rate-limit and drop; medium:
   also remove a flow). While AUTO is on the card names who turned it on, why and until when;
   **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
+  The card says the network's stage in one line: "This network is marked lab.", or that it is
+  not marked (or marked pilot or production) and that AUTO is turned on only on a network marked
+  lab until the AUTO production-readiness gate is complete, with a link to the stage on
+  [Settings › Integrations › SDN controllers](settings#sdn-controllers). On a network not marked
+  lab, **Turn AUTO on** is drawn disabled with that reason, and Mercury refuses it anyway,
+  naming the network's stage and the gate. When AUTO was on and the network has since been
+  marked otherwise (or its stage cannot be read), the card says **AUTO is suspended**: nothing
+  runs unattended and each response awaits you; it clears when you turn AUTO off or mark the
+  network lab again.
 - **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
   600), start to start: a pass that takes longer starts the next at once, and the log says so;
   classify is an AI call only where an admin turned its background feature on for this

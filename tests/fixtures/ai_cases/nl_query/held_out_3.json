@@ -1,0 +1,227 @@
+{
+ "network": "default",
+ "about": "Ask in words' held-out set 3 (metrics; C1724's overfitting guard). Written on 2026-10-26 by an author who had seen no prompt, no earlier held-out case and no recording, and never seen while tuning: no prompt may be changed to fit these questions. Ten questions a network engineer types into History › Query › Ask in words (Metrics) for the network Default (r1-r4, r6-r8 role router; s1-s5 role switch), across memory, interface errors and discards, BGP, switch CPU, restarts, traffic, IP SLA, one question back and one refusal, with a calendar span (yesterday; since Monday, the operator's 2026-10-26 ruling: custom from Monday's midnight) and a relative one (the past week = 7d, the same ruling). Each expectation was decided from the live catalogue BEFORE any model run: read-only probes on the NMAS host, 2026-10-26 20:27 to 20:31 UTC, through modules/history_promq (`catalogue` over 7 days: 854 names; `labels_of` for the devices, roles and jobs each expected metric carries; instant PromQL counts through `_json`). Not yet recorded. `expect` as metrics.json's (cases.misses); `evidence` names the read that backs the case; `flag` says what the evidence alone cannot settle. Three are healthy-nothing cases (s4's input errors, the routers' output discards, router restarts since Monday): the expected query is right and finds nothing.",
+ "model": "claude-sonnet-5-5",
+ "cases": [
+  {
+   "n": 1,
+   "question": "How much free memory does r3 have right now?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "ciscoMemoryPoolFree",
+     "cempMemPoolFree"
+    ],
+    "devices": [
+     "r3"
+    ],
+    "range": [
+     "1h"
+    ]
+   },
+   "evidence": "ciscoMemoryPoolFree and cempMemPoolFree are carried by r1-r4, r6-r8 (job cisco_8000v, role router); r3 holds 2 series of each (its pools) at 20:29 UTC. No switch carries either.",
+   "flag": "'Right now' is read as the last hour. One line per pool, or the pools summed (r3 is one device, so a group with no label is allowed), are both right; the operations are not judged.",
+   "recorded": null
+  },
+  {
+   "n": 2,
+   "question": "Have any of s4's ports been taking input errors over the last day?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "ifInErrors"
+    ],
+    "devices": [
+     "s4"
+    ],
+    "first_op": [
+     "increase",
+     "rate"
+    ],
+    "range": [
+     "24h"
+    ]
+   },
+   "evidence": "ifInErrors is carried by s4 (8 series, job cisco_vios_l2); increase(ifInErrors{device=\"s4\"}[1d]) > 0 answered 0 series at 20:29 UTC. The IOS-XE telemetry in_errors metric is carried by the routers only, never s4.",
+   "flag": "Healthy-nothing: the right query finds no errors. A filter or comparison (gt:0) after the rate or increase is allowed and not judged.",
+   "recorded": null
+  },
+  {
+   "n": 3,
+   "question": "Total output discards per router over the past week",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "ifOutDiscards"
+    ],
+    "role": "router",
+    "first_op": [
+     "increase",
+     "rate"
+    ],
+    "group_any": [
+     "sum:device"
+    ],
+    "range": [
+     "7d"
+    ]
+   },
+   "evidence": "ifOutDiscards carries role router on r1-r4, r6-r8 (45 series); increase(ifOutDiscards{role=\"router\"}[7d]) > 0 answered 0 series at 20:29 UTC. The IOS-XE telemetry out_discards (job telemetry_mdt) carries no role label, so a role-router query of it finds nothing.",
+   "flag": "Healthy-nothing. 'The past week' is 7d (the operator's 2026-10-26 ruling). Naming the seven routers as devices instead of the role is judged a miss though it draws the same lines.",
+   "recorded": null
+  },
+  {
+   "n": 4,
+   "question": "Are r4's BGP neighbours established?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "cbgpPeer2State"
+    ],
+    "devices": [
+     "r4"
+    ],
+    "range": [
+     "1h",
+     "24h"
+    ]
+   },
+   "evidence": "cbgpPeer2State is carried by r3 and r4 only (job bgp, role router); r4 holds 2 peers, both value 6 (established) at 20:29 UTC.",
+   "flag": "No time is said: the builder's default 24h or the last hour are both accepted. An eq:6 comparison is allowed and not judged.",
+   "recorded": null
+  },
+  {
+   "n": 5,
+   "question": "Show me the top 5 switches by CPU load over the last hour",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "cpuAvgBusy1",
+     "cpuAvgBusy5",
+     "cpuBusyPer"
+    ],
+    "role": "switch",
+    "top": [
+     "5"
+    ],
+    "range": [
+     "1h"
+    ]
+   },
+   "evidence": "cpuAvgBusy1, cpuAvgBusy5 and cpuBusyPer are carried by s1-s5 only (job cisco_vios_l2, role switch), 5 series each at 20:29 UTC; cpmCPUTotal1minRev and cpmCPUTotal5minRev are routers only.",
+   "flag": "The network has exactly five switches, so top 5 shows all of them. Naming s1-s5 as devices instead of the role is judged a miss.",
+   "recorded": null
+  },
+  {
+   "n": 6,
+   "question": "Has any router rebooted since Monday?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "sysUpTime"
+    ],
+    "role": "router",
+    "first_op": [
+     "resets"
+    ],
+    "range": [
+     "custom"
+    ],
+    "span": "this week"
+   },
+   "evidence": "sysUpTime carries role router on r1-r4, r6-r8 (7 series); resets(sysUpTime{role=\"router\"}[73798s]) > 0 (since 26 Oct 00:00 UTC) answered 0 series at 20:29 UTC.",
+   "flag": "Healthy-nothing. 'Since Monday' is From Monday's midnight to now (the operator's 2026-10-26 ruling); written on Monday 26 Oct, when this week and today begin at the same midnight. changes is not accepted: uptime changes at every scrape. resets is prompt v8's operation (schema v3); an earlier schema cannot answer it.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 7,
+   "question": "What was r1's inbound traffic in bits per second yesterday?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "ifHCInOctets",
+     "ifInOctets",
+     "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets"
+    ],
+    "devices": [
+     "r1"
+    ],
+    "first_op": [
+     "rate"
+    ],
+    "ops_include": [
+     "bits"
+    ],
+    "range": [
+     "custom"
+    ],
+    "yesterday": true
+   },
+   "evidence": "r1 carries ifHCInOctets on 6 interfaces at 26 Oct 00:00 UTC, 3 of them moving over 25 Oct (increase over 1d > 0); ifInOctets and the IOS-XE telemetry in_octets are carried by r1 too.",
+   "flag": "Per-interface lines or their sum for r1 are both right; a sum is not judged.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 8,
+   "question": "Plot the IP SLA round-trip time from r2 for the last 30 days",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "metric": [
+     "rttMonLatestRttOperCompletionTime"
+    ],
+    "devices": [
+     "r2"
+    ],
+    "range": [
+     "30d"
+    ]
+   },
+   "evidence": "rttMonLatestRttOperCompletionTime is carried by r1-r4, s2 and s3 (job cisco_ipsla); r2 holds 2 probes at 20:29 UTC, present 7 days back, absent 30 days back (retention 90d).",
+   "flag": "r2's probes began inside the 30 days, so the graph starts partway; the expectation is still the 30-day range asked.",
+   "recorded": null
+  },
+  {
+   "n": 9,
+   "question": "Is that interface still flapping?",
+   "expect": {
+    "outcome": [
+     "ask"
+    ]
+   },
+   "evidence": "ifOperStatus is carried by all twelve devices (89 interfaces carry ifHCInOctets at 20:3x UTC); the question names no device and no interface, and 'that' refers to nothing on a fresh ask.",
+   "flag": "Mercury's own guidance counts as a question back (cases.misses). An answer of changes(ifOperStatus) across the whole network is a guess at which interface is meant. (A first draft, 'Is the uplink maxed out?', was dropped before any run: three interfaces on r6, r7 and r8 carry 'uplink' in ifAlias, so an answer filtering on it is defensible.)",
+   "recorded": null
+  },
+  {
+   "n": 10,
+   "question": "What's the chassis temperature on s3?",
+   "expect": {
+    "outcome": [
+     "refuse",
+     "guide"
+    ]
+   },
+   "evidence": "No name among the catalogue's 854 matches temp, therm, sensor, fan, env or power; no series with such a name exists for s3 or any device at 20:29 UTC.",
+   "flag": "Mercury's guide (no metric matches) is accepted beside the model's refusal.",
+   "recorded": null
+  }
+ ]
+}

@@ -421,6 +421,8 @@ HISTORY = {
     # Test that reads a controller, no device's.
     "settings_v2.sdn_save": NOT_A_DEVICE,
     "settings_v2.sdn_remove": NOT_A_DEVICE,
+    # C2009: a network's stage, kept in its settings record with who, before, after and why.
+    "settings_v2.sdn_stage": NOT_A_DEVICE,
     "settings_v2.sdn_test": NOT_A_DEVICE,
     "settings_v2.sdn_saved_test": NOT_A_DEVICE,
     "sdn_v2.controller_test": NOT_A_DEVICE,

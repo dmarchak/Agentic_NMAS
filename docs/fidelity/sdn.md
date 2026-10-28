@@ -15,7 +15,9 @@ folder and signed off under the Phase 7 mode 2026-10-27 (docs/STANDING_APPROVAL_
 boards S1 to S7"). Their grey notes are notes for the builder, not page text.
 
 Shots: `tests/test_board_shots.py::test_sdn` (`sdn-controllers` and `sdn-flows` at 1440, 1280
-and 390 beside their boards; `sdn-phone` at 390 beside SdnPhone). The data is tests/test_sdn_v2.py's
+and 390 beside their boards; `sdn-phone` at 390 beside SdnPhone; `sdn-responses` at 1440, 1280
+and 390 beside SdnResponses, `sdn-responses-suspended` at 1440 and 390 with no board, C2009; `sdn-responses-held` at 1440
+and 390 with no board, C2001). The data is tests/test_sdn_v2.py's
 lab: Default's `lab-controller` answered by Ryu 4.34's captured answers through the real Ryu
 driver (one switch, `s1`, its nine captured flows, one meter), its flow intent recorded as a
 response would record it (the meter flow, cookie ...0002, recorded; the drop flow in Mercury's
@@ -25,7 +27,23 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `d84b5777d10eeb85043c4a1015a1d3ab12508562869163cd61e77c8defb76a2f`
+Templates sha256: `f3a464e38b154c98008dcd06e9349df66701414386f320f731892c56df529bf7`
+
+**Compared again 2026-10-28 ~03:1x UTC for C2001** (an announcement never takes an open card
+away: `_sdn_op.html` and `_sdn_flow_form.html` carry `data-holds-live`, which static/js/nmas_v2.js
+reads to hold the region's live redraw): a new shot, `sdn-responses-held` (1440 and 390, no
+board), the scan's preview opened in place and the SDN announcement dispatched, the redraw held.
+The markup otherwise draws nothing new (the attribute is not drawn), so the `sdn-responses` shots
+are unchanged; the hold's note is one region, below, a deviation. The operation card itself
+stays **later** against SdnResponse (this shot is the first click-driven one, and is not a
+region-by-region comparison with that board).
+
+**Compared again 2026-10-28 ~02:5x UTC for C2009** (AUTO only on a network marked lab,
+PHASE8_PLAN 17.7's guard; `_sdn_responses.html`'s Mode card): the `sdn-responses` shots again
+(1440, 1280 and 390, beside `SdnResponses.dc.html`), Default not marked, and a new shot,
+`sdn-responses-suspended` (1440 and 390, no board: AUTO turned on while Default was marked lab,
+then Default marked production). The three regions below are what changed; SdnResponses draws
+no stage, so each is a deviation. The rest of the Mode card is as its row says.
 
 **Hashed again 2026-10-27 for PHASE8_PLAN 17.1 S7** (the AI's classification and Classify on an
 awaiting response, `_sdn_responses.html`): the two regions below compared by reading the
@@ -87,6 +105,10 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A refused classification (C1968) | not drawn | the card's classification line says "AI classification refused: <why>; proposed by the catalogue default, <action> (AI call <id>)" and links "The refused answer in History" (the call) | **deviation** (log: SDN C1968: a refused classification said, its call linked) |
 | Classify | not drawn: the board's box is filled by the loop | **Classify** (AI-marked, its hover the task, model and cap; disabled with the reason while AI cannot answer), and "Classify again" once a classification is kept, before Preview, with its (i) | **deviation** (log: SDN S7: a person's Classify on an awaiting response) |
 | Mode | HITL and AUTO as radio rows, Reason, Until (a date), Allowed risk, Turn AUTO on… | the mode chip and its words; Reason, For (hours, at most 24), Allowed risk, Turn AUTO on; while on, who, why and until when, and Turn AUTO off | **deviation** (log: SDN S9: AUTO for N hours, not until a date) |
+| Mode: the network's stage (C2009) | not drawn: the board's Mode card has no stage | one line under the mode's words: "This network is marked lab.", or "This network is not marked" (or "is marked pilot", "is marked production", or why its stage cannot be read); "AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete" with a link to the stage on Settings › Integrations › SDN controllers (shot at 1440, 1280 and 390: not marked; at 1440 and 390: marked production) | **deviation** (log: SDN C2009: the Mode card says the network's stage) |
+| Mode: Turn AUTO on off lab (C2009) | "Turn AUTO on…", pressable | on a network not marked lab, drawn disabled with its reason on the control, "Turn AUTO on (Not available: this network is not marked lab)", the server refusing it anyway, naming the stage and the gate; at 390 the button's words and its reason wrap side by side inside the card (shot at 1440, 1280 and 390) | **deviation** (log: SDN C2009: Turn AUTO on drawn disabled on a network not marked lab) |
+| Mode: AUTO suspended (C2009) | not drawn | AUTO recorded on while the network is not marked lab: the AUTO chip and its words, the stage line, an amber notice "AUTO is suspended: it is recorded on, and nothing runs unattended while this network is not marked lab; each response awaits a person. Turn AUTO off, or mark the network lab.", and Turn AUTO off (shot `sdn-responses-suspended` at 1440 and 390) | **deviation** (log: SDN C2009: AUTO drawn suspended on a network marked otherwise) |
+| A refresh held while a card is open (C2001) | not drawn: the board does not say what a refresh does to an open preview | while a preview, its result or refusal, or the flow editor is open in place, an announcement's redraw of the region is held; the card says at its top "Paused while you review this: newer data is waiting." with **Show it now** (busy on itself, "Showing…"; it closes the card and redraws, sending nothing); a typed reason holds as every page's field does (C459). Shot `sdn-responses-held` at 1440 and 390 | **deviation** (log: SDN C2001: a refresh held while an operation card is open) |
 | The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start | **same** |
 | The loop's log | the latest lines, newest first, each line's time, step and words | one run whole (from its start line), newest first, in a box that scrolls; above it **Run** (each run by its job id, start time in UTC and line count) and **Download log** (the run as text); a line naming the lines drawn of the run's and its first and last times; past 2,000 lines the newest 2,000, said (C1971) | **deviation** (log: SDN C1971: the loop's log scrolls over the whole run, with Run and Download log) |
 | Detection rules | the table with each threshold editable, Save thresholds…, the timeout line | the same table read-only, and the timeout line with the ceiling; no Save thresholds… | **later** S8's thresholds edited on this tab (until then written by `list_settings.write`) |

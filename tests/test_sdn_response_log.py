@@ -25,6 +25,7 @@ from modules.sdn import loop as LP
 from modules.sdn import modes as MD
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 from tests.test_sdn_detect import V6_L4, save, scan_flows
+from tests.test_sdn_modes_loop import mark_lab
 from tests.test_sdn_ops_v2 import form_fields, lab  # noqa: F401 - the fixture
 from tests.test_sdn_respond import confirm, scan_detection, switch_with
 
@@ -39,6 +40,7 @@ def respond_lines(network=NET) -> list:
 def _auto_pass(d, fake, monkeypatch, action="drop_source"):
     """One pass in AUTO whose classification passed, proposing *action* for detection *d*,
     applied through the real flow-operation core on *fake*."""
+    mark_lab(NET)
     MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 8 run",
                until=time.time() + 600, allowed_risk="low")
     monkeypatch.setattr("modules.sdn.flow_ops.COUNTER_INTERVAL", 0)

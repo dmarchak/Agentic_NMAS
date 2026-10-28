@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- SDN › Responses (board SdnResponses, signed off 2026-10-27 under the Phase 7 mode): what to
     act on first (a response awaiting a person), then the mode, the loop and the rules.
@@ -75,6 +75,18 @@
 <section class="card sdn-mode" aria-labelledby="sdn-mode-h">
   <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
   <p class="small">{{ m.words }}.</p>
+  {#- C2009 (PHASE8_PLAN 17.7's guard): AUTO is turned on, and runs, only on a network marked lab
+      until the AUTO production-readiness gate is complete. -#}
+  {%- set st = g.stage %}
+  {%- set stage_url = url_for('settings_v2.network', list_name=g.network, tab='integrations') ~ '#sdn-stage' %}
+  {%- if st.stage == 'lab' %}
+  <p class="small sdn-stage-line" id="sdn-mode-stage">This network is marked lab.</p>
+  {%- else %}
+  <p class="small sdn-stage-line" id="sdn-mode-stage">{% if st.state == 'unreadable' %}{{ st.words }}, and a stage that cannot be read is never read as lab{% elif st.stage %}This network is marked {{ st.stage }}{% else %}This network is not marked{% endif %}; AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete (<a href="{{ stage_url }}">Settings › Integrations › SDN controllers</a>).</p>
+  {%- endif %}
+  {%- if m.mode == 'auto' and st.stage != 'lab' %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>AUTO is suspended:</strong> it is recorded on, and nothing runs unattended while this network is not marked lab; each response awaits a person. Turn AUTO off, or mark the network lab.</p></div>
+  {%- endif %}
   {%- if m.mode == 'auto' %}
   <form class="op-act" hx-post="{{ url_for('sdn_v2.mode_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="mode" value="hitl">
@@ -87,7 +99,7 @@
     <label>Reason <input type="text" name="reason" required></label>
     <label>For (hours) <input type="number" name="hours" min="0.1" max="{{ g.max_hours }}" step="0.1" value="1" required></label>
     <label>Allowed risk <select name="risk"><option value="low">low: rate-limit, drop</option><option value="medium">medium: also remove a flow</option></select></label>
-    <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Turn AUTO on</span><span class="op-busy">Turning on…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO on') }}
+    <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if st.stage == 'lab' %}{{ gate('configure') }}{% else %} disabled aria-disabled="true" data-refused="Not available: this network is not marked lab"{% endif %}><span class="op-idle">Turn AUTO on</span><span class="op-busy">Turning on…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO on') }}
   </form>
   {%- endif %}
 </section>

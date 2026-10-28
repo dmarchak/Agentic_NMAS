@@ -275,6 +275,9 @@ DECLARED = {
     # which draw the connection list beside the SDN reader's stored read.
     "settings_v2.sdn_save": ("settings", "sdn"),
     "settings_v2.sdn_remove": ("settings", "sdn"),
+    # C2009: the SDN controllers card draws the stage; SDN › Responses' Mode card says it and
+    # whether Turn AUTO on may be pressed.
+    "settings_v2.sdn_stage": ("settings", "sdn"),
     # The Test keeps its answer, which the card draws for every viewer (board F2).
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),

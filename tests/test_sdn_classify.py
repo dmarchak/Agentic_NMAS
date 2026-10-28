@@ -36,6 +36,7 @@ from modules.sdn import loop as LP
 from modules.sdn import modes as MD
 from tests.ai_person import PERSON, pressed_by
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
+from tests.test_sdn_modes_loop import mark_lab
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = os.path.join(ROOT, "tests", "fixtures", "ai_cases", "sdn_classify")
@@ -338,6 +339,7 @@ def test_with_the_feature_on_the_loop_proposes_the_ai_s_action(world):
 def test_an_answer_of_no_action_is_kept_for_a_person_even_in_auto(world, monkeypatch):
     keep_pack(SCAN)
     _feature_on()
+    mark_lab(NET)
     MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 8 run",
                until=__import__("time").time() + 600, allowed_risk="low")
     applied = []
@@ -355,6 +357,7 @@ def test_an_answer_of_no_action_is_kept_for_a_person_even_in_auto(world, monkeyp
 def test_auto_applies_the_ai_s_action_recorded_as_the_ai_s_choice(world, monkeypatch):
     keep_pack(SCAN)
     _feature_on()
+    mark_lab(NET)
     MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 8 run",
                until=__import__("time").time() + 600, allowed_risk="low")
     seen = []

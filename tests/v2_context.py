@@ -1810,6 +1810,13 @@ def _sdn(client, _lab, _mp):
         assert "Answered" in client.post(f"{card}/test", data=form).get_data(as_text=True)
         assert client.post(f"{card}/lab-controller/test").status_code == 200
         assert client.post(f"{card}/save", data=form).status_code == 409
+        # C2009: the network's stage, refused without a reason, then marked lab (which the
+        # Responses tab's Turn AUTO on below needs).
+        assert client.get("/v2/sdn/responses?list=Lab").status_code == 200
+        assert client.post(f"{card}/stage", data={"stage": "lab", "reason": "",
+                                                  "loaded": ""}).status_code == 409
+        assert "Marked Lab lab" in client.post(f"{card}/stage", data={
+            "stage": "lab", "reason": "the lab's own network", "loaded": ""}).get_data(as_text=True)
         session["now"] = Down()
         assert "Couldn't connect" in client.post(f"{card}/test", data=form)\
             .get_data(as_text=True)

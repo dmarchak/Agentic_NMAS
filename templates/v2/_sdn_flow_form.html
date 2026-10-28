@@ -3,8 +3,9 @@
     mode): Add a flow on a switch, Edit one of Mercury's (actions in place by modify-strict; a
     change of match, priority or timeouts is a remove and an add as one action), or Remove one by
     delete-strict. Each posts its preview (the exact requests and their hash), confirmed there.
-    modules/sdn/flow_form.py reads it. -#}
-<form class="card sdn-op sdn-flow-form" hx-post="{{ url_for('sdn_v2.flow_preview') }}" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    modules/sdn/flow_form.py reads it. While it is open a live redraw of the region is held
+    (`data-holds-live`, C2001). -#}
+<form class="card sdn-op sdn-flow-form" data-holds-live="review" hx-post="{{ url_for('sdn_v2.flow_preview') }}" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
   <input type="hidden" name="list" value="{{ f.list }}">
   <input type="hidden" name="do" value="{{ f.do }}">
   <input type="hidden" name="connection" value="{{ f.connection }}">

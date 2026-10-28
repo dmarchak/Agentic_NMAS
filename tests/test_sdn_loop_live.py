@@ -35,6 +35,7 @@ from tests.test_sdn_classify import (FLOOD, NET, PARAMS, REDIRECT, SCAN, _featur
                                      case, rows, world)  # noqa: F401 - the fixture
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 from tests.test_sdn_lab8 import collect, lab  # noqa: F401 - the fixture
+from tests.test_sdn_modes_loop import mark_lab
 
 T0 = 1_790_000_000.0
 NO_DRIVER = lambda n, c: {"ok": False, "error": "unused"}  # noqa: E731
@@ -142,6 +143,7 @@ def test_the_detection_s_list_names_only_the_evidence_sent_and_counts_the_rest()
 
 def _auto():
     import time
+    mark_lab(NET)
     MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 8 run",
                until=time.time() + 600, allowed_risk="low")
 

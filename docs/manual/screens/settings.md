@@ -99,6 +99,19 @@ Default's controllers, whatever its mode, and a network that sets none has none 
 decision, 2026-10-27). The card is how a controller is added, changed, tested and removed; what
 each controller is doing is on [SDN](sdn).
 
+- **Stage**, first: whether the network is marked **lab**, **pilot** or **production**, or **not
+  marked** (the default), each network's own and never inherited from Default. Until the AUTO
+  production-readiness gate is complete, SDN responses' AUTO is turned on only on a network
+  marked lab ([SDN › Responses](sdn#responses)): on any other network **Turn AUTO on** is drawn
+  disabled and refused, and AUTO that was turned on before the network was marked otherwise runs
+  nothing unattended (the Mode card says it is suspended). A stage that cannot be read is said,
+  and is never read as lab. To change it, choose the stage, give a **Reason** and press
+  **Save**: you must be a verified person; the answer is drawn in the card (**Marked <network>
+  <stage>** with what it was before, or **Not done:** with why). Save is refused without a
+  reason, for a value that is not a stage, and when another person changed the stage since the
+  card was drawn, naming both. Each change is recorded in the network's settings record with
+  who, when, the stage before and after, and the reason. It clears by marking the network lab,
+  or, for a network that carries real traffic, by the gate being complete.
 - **The saved connections**, one row each: its name, whether Mercury's last read found it
   **connected**, **partly read**, **not answering** or **not read yet**, its driver, its
   northbound URL, whether a credential is set (**a user and password set**, **a token set** or

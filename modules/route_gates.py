@@ -197,6 +197,7 @@ GATES = {
     # connections, each network's own (C1841).
     "settings_v2.sdn_save": _g(K, "saves a network's SDN controller connection (its credential encrypted in the credential store), refused until Test answered for the URL as typed, recorded"),
     "settings_v2.sdn_remove": _g(K, "removes a network's SDN controller connection and its stored credential, recorded"),
+    "settings_v2.sdn_stage": _g(K, "marks one network lab, pilot or production (C2009: SDN responses' AUTO is turned on, and runs, only on a network marked lab until the AUTO production-readiness gate is complete), as a verified person with a reason, refused when the stage moved since the card drew it, recorded in the network's settings record with the stage before and after"),
     "settings_v2.sdn_test": _g(K, "tests an SDN controller connection with the values as typed, its credential among them, for the person configuring it; saves nothing"),
     "settings_v2.sdn_saved_test": _g(K, "tests a saved SDN controller connection with its stored credential, for the person configuring it; changes nothing"),
     "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),

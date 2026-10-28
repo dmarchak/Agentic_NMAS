@@ -181,7 +181,7 @@ def test_sdn(tmp_path, monkeypatch):
         # awaiting a person (the detection's words as the lab's run wrote them, 2026-10-27)
         # and a loop log line.
         from modules.sdn import loop as LP
-        LP.propose("Default", {
+        shot_row = LP.propose("Default", {
             "key": "k-shot", "rule": "scan", "title": "SDN scan", "network": "Default",
             "connection": "lab-controller", "dpid": 1, "dpid_hex": "0000000000000001",
             "source": "192.0.2.1", "targets": ["192.0.2.3"], "confidence": "high",
@@ -193,6 +193,33 @@ def test_sdn(tmp_path, monkeypatch):
         _shoot("sdn-responses", "SdnResponses.dc.html",
                lambda w: "/v2/sdn/responses?list=Default", served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+
+        # C2001: the response's preview opened in place, then the SDN announcement arriving:
+        # the redraw held, said on the card with Show it now. No board draws the hold (the
+        # card itself is SdnResponse's, compared when a shot of it is taken).
+        def held(b):
+            b.wait_for("return !!window.htmx && !document.querySelector('.htmx-request')", 15)
+            b.js("document.querySelector('form[hx-post*=\"/response/" + shot_row["id"]
+                 + "/preview\"] button[type=submit]').click(); return 1")
+            b.wait_for(f"return !!document.querySelector('#sdn-rp-{shot_row['id']} "
+                       "input[name=hash]')", 15)
+            b.js("document.body.dispatchEvent(new CustomEvent('nmas:sdn')); return 1")
+            b.wait_for(f"return !!document.querySelector('#sdn-rp-{shot_row['id']} "
+                       ".held-note')", 15)
+        _shoot("sdn-responses-held", "", lambda w: "/v2/sdn/responses?list=Default", served,
+               widths=((1440, 1.0), (390, 2.0)), act=held)
+        # C2009: the shot above is a network not marked (Turn AUTO on drawn disabled with its
+        # reason); this one is AUTO turned on while marked lab, then the network marked
+        # production: the Mode card says AUTO is suspended. No board draws a stage.
+        from modules.sdn import modes as MD
+        MD.set_stage("Default", "lab", actor="op@example.com", actor_verified="access",
+                     reason="the lab's network")
+        MD.turn_on("Default", actor="op@example.com", actor_verified="access",
+                   reason="lab 8 run", until=time.time() + 3600)
+        MD.set_stage("Default", "production", actor="op@example.com", actor_verified="access",
+                     reason="now carries real traffic")
+        _shoot("sdn-responses-suspended", "", lambda w: "/v2/sdn/responses?list=Default",
+               served, widths=((1440, 1.0), (390, 2.0)))
     assert T0, "the lab's flow intent was recorded at T0"
 
 
@@ -338,7 +365,9 @@ def test_dhcp_reserve(tmp_path, monkeypatch):
 
 
 def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0)),
-           settled=""):
+           settled="", act=None):
+    """*act*: a function of the browser run once the page has loaded, before the shot (a
+    click-driven state: a card opened in place, an announcement held)."""
     from tests.browser import Browser
 
     os.makedirs(OUT, exist_ok=True)
@@ -359,6 +388,8 @@ def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.
                         if b.js(f"return !!({settled})"):
                             break
                         time.sleep(0.1)
+                if act:
+                    act(b)
                 if width < 480:
                     # Firefox's narrowest window is 488 CSS px wide; a phone is narrower. The
                     # media queries are the same below 700, so the page is held to the phone's

@@ -589,6 +589,15 @@ DEFAULTS: dict = {
     # (board SdnSettings). The schema refuses a field it does not name, so no credential can be stored
     # here: they are the credential store's, encrypted (`credentials.set_controller_credential`).
     "sdn_controllers": [],
+    # A network's stage (C2009; PHASE8_PLAN 17.7's guard): lab, pilot or production, empty
+    # meaning not marked; each network's own, never inherited from Default (`OWN_ONLY`).
+    # Until the AUTO production-readiness gate is complete, SDN responses' AUTO is turned on
+    # only on a network marked lab (`modules/sdn/modes.py`). **This default deliberately does
+    # NOT reproduce prior behaviour** (AUTO could be turned on for any network): not marked is
+    # read as not lab, so AUTO stays off until a person marks the network lab, which is the
+    # guard's purpose. No measurement can say whether a network is a lab: it is a person's
+    # declaration. Written only by `modes.set_stage`, from the network's SDN controllers card.
+    "network_stage": "",
     # SDN detection thresholds (PHASE8_PLAN 17.1 S6, `modules/sdn/detect.py`), per network, the
     # slice's defaults as S6 was asked for (2026-10-26): a scan is 20 distinct destination ports
     # from one source in 60 s (where flows are L4); a flood, a port receiving 5x its baseline
@@ -1035,6 +1044,7 @@ SCHEMA: dict = {
                 },
             },
         },
+        "network_stage": {"enum": ["", "lab", "pilot", "production"]},
         "sdn_scan_ports": {"type": "integer", "minimum": 2, "maximum": 65535},
         "sdn_scan_window_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
         "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},

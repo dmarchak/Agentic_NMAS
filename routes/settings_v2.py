@@ -1104,6 +1104,27 @@ def sdn_remove(list_name, name):
                                                          "recorded", "survives")})
 
 
+@bp.route("/network/<list_name>/sdn/stage", methods=["POST"])
+def sdn_stage(list_name):
+    """Mark the network lab, pilot or production (C2009; PHASE8_PLAN 17.7's guard: AUTO is
+    turned on only on a network marked lab until the AUTO production-readiness gate is
+    complete), as the verified person with their reason, recorded in the network's settings
+    record with the stage before and after; refused when it moved since the card drew it. The
+    card drawn again with the answer, a refusal in it."""
+    from modules import identity
+    from modules.sdn import modes
+
+    try:
+        out = modes.set_stage(list_name, request.form.get("stage") or "",
+                              actor=identity.request_actor(), actor_verified=_verified(),
+                              reason=request.form.get("reason") or "",
+                              loaded=request.form.get("loaded"))
+    except modes.ModeRefused as exc:
+        return _sdn(list_name, 409, refused=str(exc))
+    return _sdn(list_name, staged={k: out[k] for k in ("before", "after", "unchanged",
+                                                        "recorded")})
+
+
 @bp.route("/network/<list_name>/mode/banner", methods=["GET"])
 def mode_banner(list_name):
     """The mode's banner, drawn again (the preview's Cancel)."""

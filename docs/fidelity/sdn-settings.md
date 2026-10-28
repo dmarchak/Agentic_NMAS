@@ -10,7 +10,14 @@ pressed on `lab-controller`), on tests/test_sdn_v2.py's lab with its two connect
 answering Ryu's captured answers, one refusing). Test connection's answer, a refused Save and
 Remove… are compared by the template and tests/test_sdn_v2.py's `TestTheSettingsCard`, not shot.
 Templates compared: templates/v2/_sdn_settings.html, templates/v2/_sdn_answer.html
-Templates sha256: `b2dd1f6e797342763f5d1cf54aac5506ffdcd7b3ac9092bfa6c3d20c328db79c`
+Templates sha256: `c9cc80679de3e0fb7785a8e034beb67ff81981daafed814149add1c94c3b097c`
+
+**Compared again 2026-10-28 ~02:5x UTC for C2009** (a network's stage, PHASE8_PLAN 17.7's
+guard; `_sdn_settings.html`): the `sdn-settings` shots again (1440, 1280 and 390, beside
+`SdnSettings.dc.html`), Default not marked. SdnSettings draws no stage, so the Stage line is a
+deviation; its saved answer ("Marked <network> <stage> (was …)") and its refusals ("Not done:
+…") are compared by the template and tests/test_sdn_ops_v2.py, not shot. The other regions are
+unchanged (the connection rows sit below the Stage line, as drawn).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -19,6 +26,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Where it is | "Settings · Integrations", tabs Installation, Integrations, Networks, the card alone | the network's Settings page ("Settings · Default", the scope bar, its Integrations and Network tabs), the card at the foot of Integrations below the group cards, spanning the tab | **deviation** (log: SDN S11: the SDN card on a network's Integrations tab, as Settings is built) |
 | Card head | "SDN controllers · network Default", "How does this work?" | the same | **same** |
+| Stage (C2009) | not drawn: the board's card begins with the saved connections | first under the head: "Stage", a chip (not marked, lab, pilot, production, or unreadable), "<network> is not marked. SDN responses' AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete.", and a form: "Mark it" (lab, pilot, production), a required Reason, Save busy on itself with its (i); the answer drawn in the card. At 1440 and 1280 the form wraps under the words; at 390 its fields stack inside the card (shot at 1440, 1280 and 390) | **deviation** (log: SDN C2009: the network's stage on its SDN controllers card) |
 | A saved connection | name, state chip, "Ryu (ofctl_rest) · URL · no credential · TLS not used", Test connection, Edit, Remove… | the same, the state the SDN reader's last read (connected, not answering, not read yet); each control with its (i) | **same** |
 | Test connection on a row | answers in place | the answer under the row's words (Answered: N switches; Couldn't connect: why) | **same** |
 | Edit | opens the form with the connection's values | the form "Edit <name>", its values drawn, the name kept (read-only, said why), a credential never drawn ("set: type to replace"), Cancel | **same** |

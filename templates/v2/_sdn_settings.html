@@ -24,6 +24,28 @@
     <strong>Removed {{ removed.name }}</strong> from {{ k.network }}{% if removed.credential_cleared %}, and its stored credential erased{% endif %}. Kept: {{ removed.survives }}.
     {%- if not removed.recorded %} <strong>Removed, and its record could not be written.</strong>{% endif %}</p></div>
   {%- endif %}
+  {%- if staged is defined and staged %}
+  <div class="notice notice-{{ 'muted' if staged.recorded or staged.unchanged else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>
+    {%- if staged.unchanged %}<strong>{{ k.network }} is already marked {{ staged.after }}</strong>: nothing changed.
+    {%- else %}<strong>Marked {{ k.network }} {{ staged.after }}</strong> (was {{ staged.before or 'not marked' }}), with your reason.
+    {%- if not staged.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+  {%- endif %}
+
+  {#- The network's stage (C2009; PHASE8_PLAN 17.7's guard): AUTO is turned on only on a network
+      marked lab until the AUTO production-readiness gate is complete. Each network's own. -#}
+  {%- set st = k.stage %}
+  <div class="sdn-conn sdn-stage" id="sdn-stage">
+    <div class="sdn-conn-what"><strong>Stage</strong> {{ badge(st.stage or ('unreadable' if st.state == 'unreadable' else 'not marked'), 'danger' if st.state == 'unreadable' else ('ok' if st.stage == 'lab' else 'muted')) }}
+      <span class="muted">{{ st.words }}. SDN responses' AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete.</span></div>
+    <form class="sdn-acts sdn-stage-form" method="post" action="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-target="#sdn-card" hx-swap="outerHTML">
+      <input type="hidden" name="loaded" value="{{ st.stage }}">
+      <label class="small">Mark it <select name="stage" aria-label="The network's stage">
+        {%- for s in st.stages %}<option value="{{ s }}"{% if s == st.stage %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select></label>
+      <label class="small">Reason <input type="text" name="reason" required autocomplete="off"></label>
+      <span class="op-act"><button type="submit" class="btn" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'sdn-controllers', compact=True, op="setting the network's stage") }}</span>
+    </form>
+  </div>
 
   {%- if k.state == 'unreadable' %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ k.network }}'s controller connections could not be read: {{ k.error }}. Nothing is drawn as known, and Save is refused until it can be read.</p></div>

@@ -1,0 +1,295 @@
+{
+ "network": "default",
+ "about": "Ask in words, logs: held-out set 1 (C1724's overfitting guard for the logs half, C1762). Written on 2026-10-26 by an author who had seen no prompt, no case of logs.json beyond its shape, and no recording, and never seen while tuning: no prompt may be changed to fit these questions. Ten questions a network engineer types into History › Query › Ask in words (Logs) for the network Default (r1-r4, r6-r8 role router; s1-s5 role switch), each expectation decided from the lab's Loki BEFORE any model run: read-only probes on the NMAS host, 2026-10-26 20:30 to 20:32 UTC, through modules/history_logq (`discover`, `window`, `mnemonics` from the logs reader's store, and `_count` of the builder's own log query, `build`, with Mercury's heartbeat exclusion). Loki's jobs network_syslog and snmptrapd; the device and severity labels cover the last 7 days. Not yet recorded. `expect` as logs.json's (cases.logs_misses); `evidence` names the Loki count that backs the case (a range running to now moves with the clock); `flag` says what the evidence alone cannot settle. 'This week' and 'the past week' are 7d, 'since Monday' and 'today' run from Monday's or today's midnight (the operator's 2026-10-26 ruling); written on Monday 26 Oct, when both begin at the same midnight.",
+ "model": "claude-sonnet-5-5",
+ "kind": "logs",
+ "cases": [
+  {
+   "n": 1,
+   "question": "Did s3 log any CPUHOG messages this week?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     [
+      "%SYS-3-CPUHOG"
+     ]
+    ],
+    "devices": [
+     "s3"
+    ],
+    "contains_empty": true,
+    "severity": [
+     "any"
+    ],
+    "show": [
+     "lines"
+    ],
+    "range": [
+     "7d"
+    ]
+   },
+   "evidence": "%SYS-3-CPUHOG on s3: 1 line over the last 7 days (3 over 30 days; 3 across the network over 7 days, on s1, s3 and s4 by the reader's counts).",
+   "flag": "Rewritten before any run: the first draft, 'Did s3 log any CPU hogs this week?', is offered no mnemonic by v2 or v3 (the stale check, 20:33 UTC: 'CPU hogs' shares no word with CPUHOG), a gap in the offer, not the model's. Severity 3 beside the mnemonic would draw the same line but is judged a miss.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 2,
+   "question": "Show BGP neighbour up/down messages from r4 over the past month",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     [
+      "%BGP-5-ADJCHANGE"
+     ],
+     [
+      "%BGP_SESSION-5-ADJCHANGE"
+     ],
+     [
+      "%BGP-5-ADJCHANGE",
+      "%BGP_SESSION-5-ADJCHANGE"
+     ]
+    ],
+    "devices": [
+     "r4"
+    ],
+    "contains_empty": true,
+    "severity": [
+     "any"
+    ],
+    "show": [
+     "lines"
+    ],
+    "range": [
+     "30d"
+    ]
+   },
+   "evidence": "Over the last 30 days on r4: %BGP-5-ADJCHANGE 2 lines, %BGP_SESSION-5-ADJCHANGE 2, %BGP-5-NBR_RESET 2, %BGP-3-NOTIFICATION 2; over the last 7 days none of them (the reader's day counts at the 7-day edge show 2 each).",
+   "flag": "NBR_RESET and NOTIFICATION record why a session reset, not that it went up or down, and are not accepted. 'The past month' is read as the 30d chip.",
+   "recorded": null
+  },
+  {
+   "n": 3,
+   "question": "How many configuration changes did each switch have per day over the last 7 days?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     [
+      "%SYS-5-CONFIG_I"
+     ]
+    ],
+    "role": "switch",
+    "contains_empty": true,
+    "show": [
+     "counts"
+    ],
+    "by": [
+     "device"
+    ],
+    "every": [
+     "1d"
+    ],
+    "range": [
+     "7d"
+    ]
+   },
+   "evidence": "%SYS-5-CONFIG_I on role switch (s1-s5): 21 lines over the last 7 days (s1 10, s3 6, s5 3, s4 2, s2 1 by the reader's counts); %GRUB-5-CONFIG_WRITTEN on the switches: 83 lines.",
+   "flag": "GRUB-5-CONFIG_WRITTEN and CONFIG_WRITING are the vIOS-L2 boot loader writing on a save, not a configuration change, and are not accepted. Naming s1-s5 as devices instead of the role is judged a miss.",
+   "recorded": null
+  },
+  {
+   "n": 4,
+   "question": "Anything at error level or worse from r2 since Monday?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     []
+    ],
+    "devices": [
+     "r2"
+    ],
+    "contains_empty": true,
+    "severity": [
+     "3"
+    ],
+    "show": [
+     "lines"
+    ],
+    "range": [
+     "custom"
+    ],
+    "span": "this week"
+   },
+   "evidence": "Severity 3 or worse on r2 from 26 Oct 00:00 to 20:30 UTC: 1 line (r1, r3 and r7 1 each; r8 none).",
+   "flag": "'Since Monday' is From Monday's midnight to now; on the day written it is today's midnight too.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 5,
+   "question": "Show me the successful logins on r7 in the last hour",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     [
+      "%SEC_LOGIN-5-LOGIN_SUCCESS"
+     ]
+    ],
+    "devices": [
+     "r7"
+    ],
+    "contains_empty": true,
+    "severity": [
+     "any"
+    ],
+    "show": [
+     "lines"
+    ],
+    "range": [
+     "1h"
+    ]
+   },
+   "evidence": "%SEC_LOGIN-5-LOGIN_SUCCESS on r7: 22 lines over the last hour at 20:31 UTC; no LOGIN_FAILED mnemonic is counted anywhere in 7 days.",
+   "flag": "Rewritten before any run: the first draft, 'Who has been logging in to r7 in the last hour?', is offered no mnemonic by v2 or v3 (the stale check, 20:33 UTC: 'logging in' shares no word with SEC_LOGIN-5-LOGIN_SUCCESS), a gap in the offer. Most of the logins are Mercury's own polling; leaving them out (excludes) is not judged. A set naming a LOGIN_FAILED mnemonic beside SUCCESS is a miss: it is never seen.",
+   "recorded": null
+  },
+  {
+   "n": 6,
+   "question": "Count interface up/down events on the routers per device per day over the last 30 days",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     [
+      "%LINK-3-UPDOWN"
+     ],
+     [
+      "%LINEPROTO-5-UPDOWN"
+     ],
+     [
+      "%LINK-3-UPDOWN",
+      "%LINEPROTO-5-UPDOWN"
+     ]
+    ],
+    "role": "router",
+    "show": [
+     "counts"
+    ],
+    "by": [
+     "device"
+    ],
+    "every": [
+     "1d"
+    ],
+    "range": [
+     "30d"
+    ]
+   },
+   "evidence": "Over the last 30 days on role router (r1-r4, r6-r8): %LINK-3-UPDOWN 19 lines, %LINEPROTO-5-UPDOWN 33; over the last 7 days LINK-3-UPDOWN 5.",
+   "flag": "'Interface up/down' fits the link and the line protocol alike, so either or both are accepted. A contains of 'down' is not judged (the question asks for up and down). Before 13 Oct the device is read from the line, not the label; the builder does that itself.",
+   "recorded": null
+  },
+  {
+   "n": 7,
+   "question": "What went wrong on the switch this morning?",
+   "expect": {
+    "outcome": [
+     "ask"
+    ]
+   },
+   "evidence": "Five switches (s1-s5) log to Loki (all five in its device label over the last hour, 24 hours and 7 days; 13 switch lines on 25 Oct); the question names none.",
+   "flag": "An answer over all five switches at severity 3 or worse is a guess at which switch is meant; 'this morning' is left open too.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 8,
+   "question": "Which NetFlow conversations used the most bandwidth on r2 yesterday?",
+   "expect": {
+    "outcome": [
+     "refuse"
+    ]
+   },
+   "evidence": "Loki holds only the jobs network_syslog and snmptrapd over 7 days; no flow records are kept, and no mnemonic counted names a flow.",
+   "flag": "A question back is not accepted: nothing the person could add makes logs answer it.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  },
+  {
+   "n": 9,
+   "question": "Anything in r6's logs about GigabitEthernet2 over the past week?",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     []
+    ],
+    "devices": [
+     "r6"
+    ],
+    "contains": [
+     "GigabitEthernet2"
+    ],
+    "severity": [
+     "any"
+    ],
+    "show": [
+     "lines"
+    ],
+    "range": [
+     "7d"
+    ]
+   },
+   "evidence": "Lines on r6 containing GigabitEthernet2: 8 over the last 7 days (GigabitEthernet1 2, GigabitEthernet3 4, GigabitEthernet4 0; 14 containing GigabitEthernet).",
+   "flag": "Loki's |= is case-sensitive, so the interface's own spelling is expected; 'Gi2' would match nothing. A mnemonic set beside the text is a miss: the question asks for anything.",
+   "recorded": null
+  },
+  {
+   "n": 10,
+   "question": "Break down today's warnings and worse by message type, hour by hour",
+   "expect": {
+    "outcome": [
+     "answer"
+    ],
+    "mnemonics": [
+     []
+    ],
+    "devices": [],
+    "role": "",
+    "contains_empty": true,
+    "severity": [
+     "4"
+    ],
+    "show": [
+     "counts"
+    ],
+    "by": [
+     "mnemonic"
+    ],
+    "every": [
+     "1h"
+    ],
+    "range": [
+     "custom"
+    ],
+    "span": "today"
+   },
+   "evidence": "Severity 4 or worse across the network from 26 Oct 00:00 to 20:30 UTC: 28 lines (of 1,850 in all); the reader's day counts show %DBAL-4-DELAYED_BATCH 26 and %SMART_LIC-3-COMM_FAILED 6 in the last 24 hours.",
+   "flag": "No device or role is named, so the whole network is expected (no device, no role). 'Today' is From today's midnight to now. A count every 1h over about 20 hours is 21 windows, within the builder's bounds.",
+   "recorded": null,
+   "now": "2026-10-26T20:00:00Z"
+  }
+ ]
+}

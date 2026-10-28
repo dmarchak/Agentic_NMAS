@@ -86,7 +86,11 @@ The policy also limits which actions each rule may take on the network: a previe
 of any other is refused, naming the action, the rule and what is allowed. In **HITL** (the
 default) a response waits for you on SDN › Responses. In **AUTO**, which a person turns on for
 one network with a reason and an expiry, the loop applies only actions within the allowed risk,
-each recorded as autonomous with that reason and with who chose the action. Every response,
+each recorded as autonomous with that reason and with who chose the action. Until the AUTO
+production-readiness gate is complete, AUTO is turned on only on a network marked **lab** (its
+stage, on Settings › Integrations › SDN controllers), and on each pass the loop checks the stage
+again: a network not marked lab, or whose stage cannot be read, gets no unattended action, and
+every response waits for you. Every response,
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
 

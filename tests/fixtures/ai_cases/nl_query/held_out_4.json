@@ -1,0 +1,405 @@
+{
+  "network": "default",
+  "about": "Held-out set 4 for Ask in words (Metrics), written by a subagent (claude-opus-5-5) on 2026-10-26 between 22:23 and 22:30 UTC. Independence: the writer read only modules/history_promq.py, modules/ai/cases.py, and nl_query's non-prompt helpers (retrieve, terms, device_metrics, spans, values, the Range/Outcome/Top enums). It never opened prompts/, tests/fixtures/ai_cases/, earlier held-out sets or runs in askfix/, docs/OPEN_FINDINGS.md, docs/STANDING_APPROVAL_LOG.md, docs/PHASE8_PLAN.md, nl_query's prompt-building code, or any test that names nl_query or ai_cases. No model was asked. Network: Default, routers r1-r4 and r6-r8 (role router, C8000v, job cisco_8000v; model-driven telemetry job telemetry_mdt carries device but NO role label), switches s1-s5 (role switch, vIOS-L2, job cisco_vios_l2). The ten cover: five broad interface questions (cases 1, 2, 3, 4, 9: retrieve offered 20 metrics each), single-device questions (2, 5, 6, 10), role questions (1, 3, 9), one top-N (4), a calendar span yesterday (5) and today (6), relative spans of 7 days (1), 24 h (3, 4, 9) and right now (2), one question back (7), one refusal or guide (8), and three healthy-nothing cases where the right query finds nothing (1: no CRC or input errors on any router in 7 days; 3: no output errors on any switch in 24 h; 6: r6's OSPF and OSPFv3 neighbours did not change today). Probes: five read-only Python probes on the NMAS host via scripts/nmas-host (LAN path), run at 22:23:57, 22:24:40, 22:25:49, 22:26:29 and 22:26:44 UTC, using history_promq's _client('Default'), window, catalogue (843 names, 785 with metadata; 175 carry the device label, 73 the router role, 65 the switch role), labels_of, and _json instant queries; nl_query.retrieve with device_metrics for the offer. Each expectation was decided from those reads before any model was asked; what the words and the evidence cannot settle is in each case's flag. Date-relative cases carry now 2026-10-26T22:30:00Z (a Monday): yesterday is 2026-10-25 00:00 to 2026-10-26 00:00 UTC, today from 2026-10-26 00:00 UTC. EXTENDED on 2026-10-27 by a blind author (a subagent, claude-opus-5-5) with cases 11 to 30, cases 1 to 10 kept unchanged. The same independence: it read only the two sets it extended, modules/history_promq.py, modules/history_logq.py, modules/ai/cases.py and nl_query's non-prompt helpers (retrieve, terms, device_metrics, spans, values, canonical, the enums and schemas), and never opened prompts/, tests/fixtures/ai_cases/, any other file in askfix/, docs/OPEN_FINDINGS.md, docs/STANDING_APPROVAL_LOG.md, docs/PHASE8_PLAN.md, nl_query's prompt-building code or any test naming nl_query or ai_cases. No model was asked. Each expectation was decided from read-only probes on the NMAS host via scripts/nmas-host (LAN path) between 00:44:21 and 00:56:32 UTC: history_promq's _client('Default'), window, catalogue (854 names over 7 days, 677 with metadata), limits (retention 90d), labels_of and _json instant queries; nl_query.retrieve with device_metrics (186 names carry the device label) for the offer. The twenty add: memory (11, 25, 30), uptime and restarts (12, 13), interface state (14, 26), BGP (15), discards (16), CPU over 30 days (21), top-N (22: top 10; 30: top 5), OSPF neighbour counts (24), errors network-wide (23), long-range traffic (27), unicast packets (28) and IP SLA round-trip time (29); single-device cases 11, 12, 14, 25, 27, 28, role cases 13, 16, 21, 22, 24, 26, network-wide 15, 23, 29, 30; calendar spans since Monday (13, 22: this week), yesterday (16) and today (28), and relative 1h (23), 7d (25, 26), 30d (21), 90d (27) and right now (11, 15); broad questions (14, 15, 16, 21, 22, 23, 26, 27, 28: retrieve offered 20 each); healthy-nothing cases where the right query finds nothing (13: no switch rebooted since Monday; 14: every s3 interface up; 15: every BGP session established; 16: no router discards yesterday; 23: no interface errors anywhere in the last hour); two questions back (19: no firewall; 20: no core router); two refusals or guides (17: temperature; 18: power supplies and fans; no device carries an environment metric). Cases 11 to 30's date-relative ones carry now 2026-10-27T00:57:00Z (a Tuesday): yesterday is 2026-10-26 00:00 to 2026-10-27 00:00 UTC, today and this week begin at 2026-10-27 00:00 and 2026-10-26 00:00 UTC.",
+  "model": "claude-sonnet-5-5",
+  "cases": [
+    {
+      "n": 1,
+      "question": "Any CRC errors on the router interfaces in the last 7 days?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_crc_errors", "ifInErrors", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_errors", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_errors_64"],
+        "first_op": ["rate", "increase"],
+        "range": ["7d"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (in_crc_errors first, then ifInErrors, ifOutErrors, the telemetry in/out errors, discards, ifOperStatus and more). Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_crc_errors is carried by r1, r2, r3, r4, r6, r7, r8 only (job telemetry_mdt; labels device, name, host, path, source, subscription; NO role label), 34 series at 22:24:40 UTC and 45 at 22:25:49 UTC (4, 7, 10, 6, 8, 5, 5 per router; the telemetry series churn on their discontinuity_time label). ifInErrors (counter, IF-MIB, counts CRC among input errors) carries device and role; 45 series with role router. Healthy-nothing, 22:25:49 and 22:26:29 UTC: sum(increase(in_crc_errors[7d])) = 0; max_over_time(in_crc_errors[7d]) > 0 answers no series; sum(increase(ifInErrors{role=\"router\"}[7d])) = 0, and by device > 0 no series; sum(increase(telemetry in_errors[7d])) = 0 and in_errors_64 = 0. Every accepted metric's right answer is a flat zero.",
+      "flag": "The scope 'the router interfaces' is right as role router or as the seven routers r1-r4, r6-r8; the judge cannot accept either, so neither role nor devices is expected. The telemetry metrics carry no role label: a model choosing one with role router has its role dropped by the builder (all their devices are routers, so the answer is the same), while ifInErrors with no role or devices would also show the switches. IF-MIB has no CRC-only object; ifInErrors (or telemetry in_errors) is the input-error total that holds CRC, accepted as the SNMP answer. 'In the last 7 days' is the relative 7d, never this week.",
+      "recorded": null
+    },
+    {
+      "n": 2,
+      "question": "How much traffic is r2 sending out of its interfaces right now?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCOutOctets", "ifOutOctets", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_octets", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_octets_64", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_tx_kbps"],
+        "devices": ["r2"],
+        "range": ["1h", "24h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifOutOctets, ifHCOutOctets, telemetry out_octets and out_octets_64 first, then packets, discards, errors and in-direction octets). ifHCOutOctets (counter, bytes) has 7 series on r2 at 22:25:49 UTC; rate(ifHCOutOctets{device=\"r2\"}[5m]) * 8 > 0 answered 4: GigabitEthernet2 31.6 kb/s, Gi4 3.1 kb/s, Gi3 1.4 kb/s, Gi1 111 b/s. Telemetry tx_kbps on r2 at the same instant: Gi2 25 and 27 (two series), Gi3 2, Gi4 1, Gi1 0, Loopback0 0.",
+      "flag": "With an octet counter the first step must be a rate (the builder puts rate:5m first if none is given), and bits are a reasonable but unstated choice; tx_kbps is already a rate in kbit/s and takes no rate, so first_op is not expected. 'Right now' is a current reading: 1h is the closest chip, 24h still ends at now; per-interface or summed for r2 are both fair (one device, so a no-label sum is allowed).",
+      "recorded": null
+    },
+    {
+      "n": 3,
+      "question": "Output errors on the switch ports over the last 24 hours",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifOutErrors"],
+        "role": "switch",
+        "first_op": ["rate", "increase"],
+        "range": ["24h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifOutErrors, ifOutDiscards, ifInErrors, out-direction octets and packets, the telemetry out_errors, ifIndex, ifMtu and more). ifOutErrors (counter) is carried by r1-r4, r6-r8 and s1-s5, roles router and switch, jobs cisco_8000v and cisco_vios_l2; 47 series with role switch at 22:25:49 UTC. Healthy-nothing at 22:25:49 UTC: sum(increase(ifOutErrors{role=\"switch\"}[1d])) = 0; by device > 0 answers no series. The telemetry out_errors is carried by the routers only, so it cannot answer for switches.",
+      "flag": "Role switch and the five switches s1-s5 are the same scope; the judge accepts only role switch. Per port or summed per switch are both fair, so no group is expected; a no-label sum across the five switches would be a miss by the judge's one-line rule.",
+      "recorded": null
+    },
+    {
+      "n": 4,
+      "question": "Which 10 interfaces received the most multicast packets in the last 24 hours?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCInMulticastPkts", "ifInMulticastPkts"],
+        "devices": [],
+        "role": "",
+        "first_op": ["rate", "increase"],
+        "top": ["10"],
+        "range": ["24h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifInMulticastPkts, ifHCInMulticastPkts, unicast, telemetry in_multicast_pkts, discards, errors, broadcast, out-direction multicast and more). ifHCInMulticastPkts (counter): 47 router and 42 switch series; ifInMulticastPkts: 47 and 47. topk(10, increase(ifHCInMulticastPkts[1d])) at 22:25:49 UTC: s2 Gi0/3 395.8k, s1 Gi0/3 187.1k, s3 Gi0/3 86.2k, s4 Gi0/3 51.9k, r8 Gi3.10 39.8k, s4 Gi0/2 22.7k, s3 Gi0/2 22.7k, s4 Gi1/0 22.6k, s3 Gi1/0 22.6k, s1 Gi0/2 6.9k; topk by rate[5m] has the same leaders (s2 Gi0/3 4.5 pkt/s). Nine of the ten are switch ports.",
+      "flag": "The telemetry in_multicast_pkts covers routers only, and the switch ports hold nine of the top ten, so it is not accepted. A rate shows the top ten at each step; an increase over a window is closer to 'received the most' over the day, and either is accepted (topk keeps the highest at each step, so more than ten may appear over 24 h).",
+      "recorded": null
+    },
+    {
+      "n": 5,
+      "question": "How busy was the CPU on s2 yesterday?",
+      "now": "2026-10-26T22:30:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cpuAvgBusy5", "cpuAvgBusy1", "cpuBusyPer"],
+        "devices": ["s2"],
+        "range": ["custom"],
+        "yesterday": true
+      },
+      "evidence": "retrieve offered 20 metrics (cpuBusyPer, cpuAvgBusy1, cpuAvgBusy5 first, then the routers' cpmCPUTotal1minRev and 5minRev, the telemetry cpu_utilization, and the monitoring host's cpu_usage_* and node_cpu_*). cpuAvgBusy5, cpuAvgBusy1 and cpuBusyPer (gauges, OLD-CISCO-CPU-MIB) are carried by s1-s5 only, role switch, job cisco_vios_l2; the routers' cpmCPUTotal* are carried by the router role only. Over yesterday, read at 2026-10-26T00:00:00Z over [1d]: cpuAvgBusy5{device=\"s2\"} max 56, avg 49.7, 1440 samples; cpuAvgBusy1 max 65, avg 49.4, 1440 samples; cpuBusyPer max 94, avg 49.9, 1440 samples. The day is fully measured.",
+      "flag": "Which CPU average (5 s, 1 min or 5 min) is the engineer's choice; all three are accepted. Yesterday is From 2026-10-25 00:00 to 2026-10-26 00:00 UTC; 24h from now would be the wrong day. Plain series or a max/avg for the one device are both fair.",
+      "recorded": null
+    },
+    {
+      "n": 6,
+      "question": "Has r6 lost any OSPF neighbours today?",
+      "now": "2026-10-26T22:30:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ospfNbrState", "ospfv3NbrState"],
+        "devices": ["r6"],
+        "first_op": ["changes", "resets", "ne", "lt"],
+        "range": ["custom"],
+        "span": "today"
+      },
+      "evidence": "retrieve offered 2 metrics: ospfNbrState, ospfv3NbrState (gauges). ospfNbrState is carried by r1, r2, r3, r4, r6, r8, s3, s4 (job ospf; NOT r7, which holds no ospfNbrState or ospfv3NbrState series over 7 days); ospfv3NbrState by r1-r4, r6, r8 (job ospfv3). r6 has one neighbour in each: ospfNbrState (neighbour 10.255.4.1) = 8, full, and ospfv3NbrState (router id 184484110) = 8 at 22:25:49 and 22:26:44 UTC. Healthy-nothing over today (2026-10-26 00:00 to 22:26 UTC, a window of 80749 s and 80804 s): changes = 0 and resets = 0 for both, min_over_time = 8 for both, 1345 ospfNbrState samples in the window. No neighbour was lost.",
+      "flag": "OSPFv2 or OSPFv3 are both 'OSPF'; the builder takes one metric, so either is accepted, and neither alone covers both. 'Lost' is measured by changes or resets of the state (a fall from full), or by keeping the values not equal to (or below) 8, full; all are accepted as the first step. Today is From 2026-10-26 00:00 UTC to now; a 24h chip would reach into yesterday. The evidence cannot say whether the engineer counts a neighbour that never came up today as lost.",
+      "recorded": null
+    },
+    {
+      "n": 7,
+      "question": "Is the uplink to the new building saturated?",
+      "expect": {
+        "outcome": ["ask"]
+      },
+      "evidence": "No device, role, interface or site named 'new building' or 'uplink' exists: the device label holds r1-r4, r6-r8, s1-s5, the role label router and switch. retrieve offered 9 metrics, all by word accident and none a network metric for this question: prometheus_build_info, thanos_build_info, node_exporter_build_info, node_os_info, go_gc_stack_starting_size_bytes, go_memory_classes_os_stacks_bytes, two thanos compaction counters, a go_godebug counter ('building' matched 'build', 'new' matched 'non', 'saturated' and 'uplink' nothing). Interface utilisation is measurable (ifHCInOctets, ifHCOutOctets and ifHighSpeed on every device), so a named link could be answered.",
+      "flag": "Traffic against speed is measurable once the link is known, so the right reply asks which device and interface is the uplink; a refusal would wrongly say it cannot be measured, and an answer over every interface is a guess. Mercury's own guide counts as a question back (cases.misses).",
+      "recorded": null
+    },
+    {
+      "n": 8,
+      "question": "What's the optical receive power on r6's transceivers?",
+      "expect": {
+        "outcome": ["refuse", "guide"]
+      },
+      "evidence": "No metric over 7 days, at 22:26 UTC, holds optic, transceiver, dBm, SFP, laser, rx power or DOM in its name or help (a scan of all 843 names and their help: none). retrieve still offered 20 by the word 'receive' (node_network_receive_* of the monitoring host, process_network_receive_bytes_total, prometheus_sd_received_updates_total, ifInOctets, ifHCInOctets, ifMtu and more), none a light level. r6 is a C8000v whose carried metrics (IF-MIB, CISCO-PROCESS-MIB, memory, OSPF, LLDP, telemetry interface statistics) hold no transceiver reading.",
+      "flag": "Received octets are not optical power; an answer with ifInOctets or a node_network_receive_* metric is a miss. The lab's virtual routers have no optics, so nothing could ever be collected for this here.",
+      "recorded": null
+    },
+    {
+      "n": 9,
+      "question": "Total inbound traffic in bits per second for each switch over the past day",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCInOctets", "ifInOctets"],
+        "role": "switch",
+        "first_op": ["rate"],
+        "ops_include": ["bits"],
+        "group_any": ["sum:device"],
+        "range": ["24h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifInOctets, ifHCInOctets, telemetry in_octets, node_netstat In octets, ifOutOctets, ifHCOutOctets, then many *_seconds_total counters matched by 'second'). ifHCInOctets (counter, bytes): switch series s1 10, s2 10, s3 9, s4 7, s5 6; ifInOctets: 11, 11, 10, 8, 7 at 22:25:49 UTC. sum by (device) (rate(ifHCInOctets{role=\"switch\"}[5m])) * 8 then: s3 239.5 kb/s, s4 81.2 kb/s, s2 5.9 kb/s, s1 3.9 kb/s, s5 1.8 kb/s; the same over ifInOctets: s3 235.4k, s4 78.7k, s2 5.9k, s1 3.9k, s5 1.8k. One line per switch, five lines.",
+      "flag": "Role switch and the five switches s1-s5 are the same scope; the judge accepts only role switch. The telemetry in_octets covers routers only and is not accepted. 'Per second' asks a rate, never an increase; 'bits' asks the × 8; 'for each switch' asks sum by device, never one line.",
+      "recorded": null
+    },
+    {
+      "n": 10,
+      "question": "How many LLDP neighbours does s1 see?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["lldpRemEntry", "lldpRemPortId"],
+        "devices": ["s1"],
+        "group_any": ["count:", "count:device"]
+      },
+      "evidence": "retrieve offered 5 metrics: lldpRemEntry, lldpLocPortDesc, lldpRemPortId, ospfNbrState, ospfv3NbrState. lldpRemEntry (gauge, one series per remote system seen on a local port, job lldp) is carried by all twelve devices, 26 series at 22:24:40 UTC; lldpRemEntry{device=\"s1\"} answered one series (lldpLocPortDesc Gi0/3) = 1, count = 1 at 22:25:49 UTC. lldpRemPortId per device at 22:26:29 UTC matches lldpRemEntry's counts (s1 1, r4 4, r2 3 and so on). Neighbours per device: r1 2, r2 3, r3 3, r4 4, r6 2, r7 1, r8 2, s1 1, s2 1, s3 3, s4 3, s5 1.",
+      "flag": "'How many' asks a count; a count with no label is one line, allowed here because one device is named. lldpLocPortDesc is the local port's description, not a neighbour, so it is not accepted. No range is stated; any is fair, the answer is the latest point.",
+      "recorded": null
+    },
+    {
+      "n": 11,
+      "question": "How much memory is r3 using right now?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cempMemPoolUsed", "ciscoMemoryPoolUsed"],
+        "devices": ["r3"],
+        "range": ["1h", "24h"]
+      },
+      "evidence": "retrieve offered 20 metrics (cempMemPoolFree, cempMemPoolName, cempMemPoolType, cempMemPoolUsed, ciscoMemoryPoolFree, ciscoMemoryPoolUsed, then the monitoring host's Telegraf mem_* with no device label). cempMemPoolUsed and ciscoMemoryPoolUsed (gauges, bytes) are carried by r1-r4, r6-r8 only (role router, job cisco_8000v), two pools per router; no switch carries a memory metric over 7 days. r3 at 00:45:36 UTC: Processor 276,337,096 bytes (cempMemPoolUsed 276,337,256), reserve Processor 88 bytes; over the last hour (read 00:46:37 UTC) Processor between 276,336,832 and 276,483,672.",
+      "flag": "The two MIBs' used bytes are the same reading; both are accepted. Per pool or summed for r3 are both fair (one device, so a no-label sum is allowed). 'Using' asks used bytes; a percentage would need used and free together, which one metric cannot give. 'Right now' is a current reading: 1h is the closest chip, 24h still ends at now.",
+      "recorded": null
+    },
+    {
+      "n": 12,
+      "question": "How long has r4 been up?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["sysUpTime"],
+        "devices": ["r4"]
+      },
+      "evidence": "retrieve offered 11 metrics (node_network_up, sysUpTime, sysORUpTime, ifLinkUpDownTrapEnable, node_network_carrier_up_changes_total, up, ifLastChange, ifCounterDiscontinuityTime, sysORLastChange, cbgpPeer2FsmEstablishedTime, node_softnet_received_rps_total). sysUpTime (gauge, hundredths of a second) is carried by all twelve devices, one series each. r4 at 00:54:57 UTC: 41,331,398 hundredths, 413,314 s, 4 days 18 h 48 min, so its last restart was about 2026-10-22 06:06 UTC; resets(sysUpTime{device=\"r4\"}[7d]) = 2 at 00:46:37 UTC (one in each day-window ending 22 Oct and 23 Oct 00:00 UTC).",
+      "flag": "No range is stated; any is fair, the answer is the latest point. The builder has no division, so the value is read in hundredths of a second. sysORUpTime is the uptime when a MIB row was made, not the device's uptime, and up is the scrape's own health; neither is accepted. sysUpTime is the device's own counter.",
+      "recorded": null
+    },
+    {
+      "n": 13,
+      "question": "Did any of the switches reboot since Monday?",
+      "now": "2026-10-27T00:57:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["sysUpTime"],
+        "role": "switch",
+        "first_op": ["resets"],
+        "range": ["custom"],
+        "span": "this week"
+      },
+      "evidence": "retrieve offered 20 metrics (node_network_up, sysUpTime, ifCounterDiscontinuityTime, sysORUpTime, node_time_clocksource_*, cbgpPeer2FsmEstablishedTime, ifLinkUpDownTrapEnable, node_disk_*_time_seconds_total, up, the telemetry process run times, system_uptime). sysUpTime is carried by s1-s5 (role switch, job cisco_vios_l2). Healthy-nothing over Monday 2026-10-26 00:00 UTC to 00:45:36 UTC (89,136 s): resets(sysUpTime{role=\"switch\"}[89136s]) = 0 on each of s1-s5; min_over_time over the span 16.1M (s5) to 29.8M (s1) hundredths, every switch up 1.8 days or more before Monday; resets(sysUpTime[89197s]) > 0 over every device answered no series at 00:46:37 UTC. changes() of sysUpTime over the same span is 1,482 to 1,485 per switch: it moves at every scrape.",
+      "flag": "At this now (a Tuesday) 'since Monday' is this week's span, From 2026-10-26 00:00 UTC to now; 7d or 24h are the wrong span. resets (the uptime falling) is the restart count; changes counts every scrape and is a miss. Role switch and s1-s5 are the same scope; the judge accepts only role switch.",
+      "recorded": null
+    },
+    {
+      "n": 14,
+      "question": "Which interfaces are down on s3?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifOperStatus"],
+        "devices": ["s3"],
+        "first_op": ["ne", "eq", "gt"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifAdminStatus, ifOperStatus, ifLinkUpDownTrapEnable, then 17 of the routers' telemetry interface statistics). ifOperStatus (gauge, IF-MIB: 1 up, 2 down, 7 lowerLayerDown) is carried by all twelve devices; s3 holds 10 interfaces, all 1 at 00:45:36 and 00:54:57 UTC, and ifOperStatus{device=\"s3\"} != 1 answered no series, also at every minute of today to 00:54 UTC. Healthy-nothing for s3. Elsewhere one interface each on r6, r7 and s5 was not up at 00:54:57 UTC, so the wrong device finds something.",
+      "flag": "'Down' is any state but up: ne 1 is closest; eq 2 (down) and gt 1 keep the same or a subset and are accepted. ifAdminStatus is what was configured, not whether it is down; not accepted. No range is stated; any is fair.",
+      "recorded": null
+    },
+    {
+      "n": 15,
+      "question": "Are any BGP sessions down right now?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cbgpPeer2State"],
+        "first_op": ["ne", "lt"],
+        "range": ["1h", "24h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (cbgpPeer2State, cbgpPeer2AdminStatus, ifAdminStatus, ifOperStatus, ospfNbrState, ospfv3NbrState, rttMonLatestRttOperSense, then telemetry interface statistics). cbgpPeer2State (gauge, CISCO-BGP4-MIB, 6 established) is carried by r3 and r4 only (role router, job bgp), two peers each (one IPv4, one IPv6). All four = 6 at 00:45:36 UTC; the hourly changes, at their most over 7 days, = 0 for each. Healthy-nothing: cbgpPeer2State != 6 answers no series.",
+      "flag": "Neither devices nor role is expected: the question names none, and only r3 and r4 carry BGP, so role router, r3 and r4, or no scope give the same series. ne 6 is the builder's own BGP chip; lt 6 is the same set. A count with no label puts r3 and r4 into one line, a miss by the judge's one-line rule; a count by device is fair. cbgpPeer2AdminStatus is the configured state; not accepted.",
+      "recorded": null
+    },
+    {
+      "n": 16,
+      "question": "Show packet discards on the routers for yesterday",
+      "now": "2026-10-27T00:57:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifInDiscards", "ifOutDiscards", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_discards", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_discards_64", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_discards"],
+        "role": "router",
+        "first_op": ["rate", "increase"],
+        "range": ["custom"],
+        "yesterday": true
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifInDiscards, ifOutDiscards, ifInUnknownProtos, out-direction packet counters, snmp_scrape_packets_*, node_disk_discard*, node_network_*_packets_total, then the telemetry in_discards, out_discards, in_discards_64). ifInDiscards and ifOutDiscards (counters) are carried by all twelve devices, 45 router series. Healthy-nothing over yesterday, read at 2026-10-27 00:00 UTC over [1d]: sum by (device) (increase(ifInDiscards{role=\"router\"}[1d])) = 0 on each of r1-r4, r6-r8, the same for ifOutDiscards; the telemetry in_discards and out_discards summed = 0. The switches' ifInDiscards also rose on none.",
+      "flag": "In or out is unstated; either is accepted. The telemetry discards carry no role label (routers only): with role router the builder drops the role, and the series are the same. Yesterday is From 2026-10-26 00:00 to 2026-10-27 00:00 UTC; 24h from now would be the wrong day by 57 minutes. A no-label sum over the routers is one line, a miss.",
+      "recorded": null
+    },
+    {
+      "n": 17,
+      "question": "What's the temperature on s4?",
+      "expect": {
+        "outcome": ["refuse", "guide"]
+      },
+      "evidence": "No metric of a network device holds a temperature, power, fan, voltage, PSU or environment reading: count({device!=\"\", __name__=~\"(?i).*(temp|therm|power|fan|psu|volt|env).*\"}) = 0 at 00:45:36 UTC, and the catalogue scan (00:44:23 UTC, 854 names) found no power, fan, sensor or voltage name and only the monitoring host's own temperature metrics, which carry no device label. retrieve offered 2, both by word accident ('temperature' matched 'template'): prometheus_template_text_expansions_total and prometheus_template_text_expansion_failures_total.",
+      "flag": "s4 is a virtual vIOS-L2 switch with no sensors; nothing could be collected for this here. An answer with a prometheus_template_* metric is a miss.",
+      "recorded": null
+    },
+    {
+      "n": 18,
+      "question": "Show me the power supply and fan status for the switches",
+      "expect": {
+        "outcome": ["refuse", "guide"]
+      },
+      "evidence": "The same scan as case 17: no power supply, fan or environment metric on any device. retrieve offered 20 metrics, all by the word 'status' or 'supply' in a help text (sysORID, ifAdminStatus, ifOperStatus, ospfNbrState, cbgpPeer2State, ospfv3NbrState, cbgpPeer2AdminStatus, rttMonLatestRttOperSense, rttMonLatestRttOperCompletionTime, telemetry interface statistics); none is a power supply or a fan.",
+      "flag": "ifOperStatus or any other status metric is a miss: 'status' is the only word that matched.",
+      "recorded": null
+    },
+    {
+      "n": 19,
+      "question": "How is the firewall's CPU doing?",
+      "expect": {
+        "outcome": ["ask"]
+      },
+      "evidence": "No device, role or label value 'firewall': the device label holds r1-r4, r6-r8, s1-s5, the role label router and switch. CPU is measured (retrieve offered 20 CPU metrics: cpuBusyPer, cpuAvgBusy1, cpuAvgBusy5 on the switches, cpmCPUTotal1minRev, cpmCPUTotal5minRev on the routers, the telemetry cpu_utilization and the monitoring host's cpu_usage_*), so a named device could be answered.",
+      "flag": "The right reply asks which device is meant. A refusal saying the network has no firewall would also be honest, but is not expected; an answer over every device's CPU is a guess.",
+      "recorded": null
+    },
+    {
+      "n": 20,
+      "question": "Graph the traffic on the core router for the last day",
+      "expect": {
+        "outcome": ["ask"]
+      },
+      "evidence": "No device, role or label value 'core': seven routers r1-r4, r6-r8 share the role router. retrieve offered 12 metrics (ifInOctets, ifOutOctets, ifHCInOctets, ifHCOutOctets, the telemetry in_octets, out_octets and out_octets_64, node_netstat_* octets, ifMtu), so traffic on a named router could be drawn.",
+      "flag": "Which router is the core is not in the store; an answer over all seven routers, or one picked, is a guess. 'For the last day' is clear (24h) once the router is named.",
+      "recorded": null
+    },
+    {
+      "n": 21,
+      "question": "Compare CPU load across the routers over the last 30 days",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cpmCPUTotal5minRev", "cpmCPUTotal1minRev"],
+        "role": "router",
+        "range": ["30d"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics, the first eleven the monitoring host's go_cpu_classes_* (by 'cpu'), then cpuBusyPer, cpuAvgBusy1, cpuAvgBusy5, cpmCPUTotal1minRev, cpmCPUTotal5minRev, the telemetry one_minute and three telemetry per-process metrics. cpmCPUTotal5minRev (gauge, CISCO-PROCESS-MIB) is carried by r1-r4, r6-r8, one series each now. Over 30 days at 00:45:36 UTC, max by device: r1 91, r2 90, r4 90, r3 88, r6 88, r7 82, r8 68; average: r2 67.0, r4 66.9, r1 66.2, r3 66.0, r6 59.8, r7 51.7, r8 50.3. Role router over 30 days also holds two devices now gone, probe-zr4 (max 73) and probe-zr6 (max 53), last seen 2026-10-19 23:00 UTC; r8's series begin 2026-10-22 23:00 UTC. cpuAvgBusy5 carried role router on s1-s4 at some time in the 30 days (00:56:32 UTC).",
+      "flag": "Plain series per router, or max or avg by device, all compare; no group is expected. The telemetry cpu_utilization five_minutes and one_minute carry no role label and held only intermittent series over 30 days (none at 00:46 UTC); not accepted. The switches' cpuAvgBusy* and cpuBusyPer are not router CPU (and once carried role router). probe-zr4 and probe-zr6 are drawn under role router; naming r1-r4, r6-r8 leaves them out but is a miss by this expect, which accepts only the role.",
+      "recorded": null
+    },
+    {
+      "n": 22,
+      "question": "Top 10 switch ports by outbound traffic since Monday",
+      "now": "2026-10-27T00:57:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCOutOctets", "ifOutOctets"],
+        "role": "switch",
+        "first_op": ["rate", "increase"],
+        "top": ["10"],
+        "range": ["custom"],
+        "span": "this week"
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifOutOctets, ifHCOutOctets, ifInOctets, ifOutDiscards, ifOutErrors, ifHCInOctets, out-direction packet counters, the telemetry out_octets and out_octets_64, node_netstat_* out octets, ifMtu, ifIndex, ifNumber, ifSpeed). ifHCOutOctets: 42 switch series; ifOutOctets 47. topk(10, increase(ifHCOutOctets{role=\"switch\"}[since Monday 00:00])) at 00:45:36 UTC: s3 Gi1/1 1.15 GB, s4 Gi0/3 791 MB, s3 Gi0/3 176 MB, s4 Gi0/2 89.6 MB, s4 Gi1/0 86.7 MB, s2 Gi0/2 74.2 MB, s1 Gi0/2 72.8 MB, s5 Gi0/1 70.9 MB, s3 Vlan99 68.4 MB, s4 Vlan100 63.5 MB; topk by rate[5m] then has the same first five.",
+      "flag": "The telemetry octets cover the routers only and are not accepted. At this now 'since Monday' is this week's span, From 2026-10-26 00:00 UTC; 7d is a miss. 'Ports' may leave out the VLAN interfaces by a filter; fair, not judged. Bits are fair. Role switch and s1-s5 are the same scope; the judge accepts only role switch.",
+      "recorded": null
+    },
+    {
+      "n": 23,
+      "question": "Any interface errors anywhere in the network in the last hour?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifInErrors", "ifOutErrors"],
+        "devices": [],
+        "role": "",
+        "first_op": ["rate", "increase"],
+        "range": ["1h"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifInErrors, ifOutErrors, the telemetry in_errors, out_errors, in_crc_errors, in_errors_64, ifInDiscards, ifOutDiscards, node_textfile_scrape_error, ifIndex, ifMtu, ifNumber, ifSpeed, ifAdminStatus and more). ifInErrors and ifOutErrors (counters) are carried by all twelve devices. Healthy-nothing at 00:45:36 UTC: sum(increase(ifInErrors[1h])) = 0 and sum(increase(ifOutErrors[1h])) = 0; by device > 0 answered no series for either; the telemetry in_errors and out_errors summed = 0.",
+      "flag": "'Anywhere' is all twelve devices: the telemetry errors cover the routers only and are not accepted. In or out is unstated; either is accepted. A no-label sum answers 'any' in one line but over many devices, a miss by the judge's one-line rule; per interface or by device are fair.",
+      "recorded": null
+    },
+    {
+      "n": 24,
+      "question": "How many OSPF neighbours does each router have?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ospfNbrState", "ospfv3NbrState"],
+        "role": "router",
+        "group_any": ["count:device"]
+      },
+      "evidence": "retrieve offered 2 metrics: ospfNbrState, ospfv3NbrState. ospfNbrState is carried by r1-r4, r6, r8 and the switches s3 and s4; at 00:45:36 UTC per router: r1 5, r2 6, r3 6, r4 7, r6 1, r8 1 (r7 none); in state 8 (full): r1 2, r2 3, r3 6, r4 7, r6 1, r8 1 (r1's other three are 4, two-way). ospfv3NbrState per router: r1 3, r2 4, r3 4, r4 5, r6 1, r8 1. With no role, s3 and s4 (5 each) would be added.",
+      "flag": "Whether a neighbour in two-way (a DROther's normal state) counts is the engineer's: a count by device alone, or after eq 8, are both accepted. OSPFv2 or OSPFv3 are both 'OSPF'. r7 has no neighbour, so it has no line. Role router and r1-r4, r6-r8 are the same scope; the judge accepts only role router.",
+      "recorded": null
+    },
+    {
+      "n": 25,
+      "question": "Free memory on r7 over the past week",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cempMemPoolFree", "ciscoMemoryPoolFree"],
+        "devices": ["r7"],
+        "range": ["7d"]
+      },
+      "evidence": "retrieve offered 20 metrics (cempMemPoolFree, ciscoMemoryPoolFree, then the monitoring host's mem_free, mem_*_free, node_memory_*Free*, go_memory_classes_*, disk_free, disk_inodes_free, cempMemPoolName, cempMemPoolType). Both are gauges in bytes, carried by the routers only. r7 at 00:45:36 UTC: Processor 1,808,521,764 bytes free (cempMemPoolFree 1,808,521,604), reserve Processor 102,316; Processor free moved by 79.8 MB over the 7 days.",
+      "flag": "'The past week' is the 7d range. Per pool or summed for r7 are fair. The mem_* and node_memory_* metrics are the monitoring host's and a miss.",
+      "recorded": null
+    },
+    {
+      "n": 26,
+      "question": "Which routers had interface state changes in the last 7 days?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifOperStatus"],
+        "role": "router",
+        "first_op": ["changes"],
+        "range": ["7d"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifLastChange, ifAdminStatus, ifOperStatus, then 17 telemetry interface statistics including num_flaps). sum by (device) (changes(ifOperStatus{role=\"router\"}[7d])) > 0 at 00:45:36 UTC: r6 5, r7 4 (the switches: s5 1). The telemetry num_flaps counter's increase over 7 days is 0 on every router (00:50:13 UTC) although r6 and r7 changed, so it is not accepted.",
+      "flag": "changes counts every state move; resets would count only the returns to up (1 is the lowest state); not accepted. ifLastChange moves when a state changes but is a time, not a state; not accepted. Per interface or summed by device are both fair. Role router and the seven routers are the same scope; the judge accepts only role router.",
+      "recorded": null
+    },
+    {
+      "n": 27,
+      "question": "Average inbound traffic per interface on r8 over the past 90 days",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCInOctets", "ifInOctets", "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets"],
+        "devices": ["r8"],
+        "first_op": ["rate", "increase"],
+        "range": ["90d"]
+      },
+      "evidence": "Broad: retrieve offered 20 metrics (ifInOctets, ifHCInOctets, the telemetry in_octets, ifMtu, ifInDiscards, ifInErrors, ifOutOctets, ifHCOutOctets, in-direction packet counters and more). Prometheus keeps 90d (its storage.tsdb.retention.time, read 00:44:23 UTC), but r8's series begin 2026-10-22 23:00 UTC (the earliest timestamp of ifHCInOctets, ifInOctets and sysUpTime for r8; its telemetry in_octets from 2026-10-23 00:00 UTC); r1's begin 2026-10-01. ifHCInOctets{device=\"r8\"}: 6 series now, 9 over 90 days; telemetry in_octets: 8 series. sum(rate(ifHCInOctets{device=\"r8\"}[5m])) * 8 = 10.5 kb/s at 00:46:37 UTC.",
+      "flag": "The builder has no average over time: a per-interface rate over the 90 days, drawn as series, is the closest, with any window (1h smooths most). Per interface asks no group. The 90 days hold about 4 days of r8: the answer starts on 22 Oct, which the person should be told; a 7d or 30d range would be a different question.",
+      "recorded": null
+    },
+    {
+      "n": 28,
+      "question": "Unicast packets per second coming in on s5 today",
+      "now": "2026-10-27T00:57:00Z",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["ifHCInUcastPkts", "ifInUcastPkts"],
+        "devices": ["s5"],
+        "first_op": ["rate"],
+        "range": ["custom"],
+        "span": "today"
+      },
+      "evidence": "Broad: retrieve offered 20 metrics, and neither ifHCInUcastPkts nor ifInUcastPkts was among them ('unicast' is in neither name nor help; the names say Ucast and Pkts): snmp_scrape_duration_seconds, snmp_scrape_packets_*, node_network_*_packets_total, node_disk_*_time_seconds_total, the routers' telemetry in_unicast_pkts and out_unicast_pkts, scrape_duration_seconds, telemetry cpu five_seconds and more. ifHCInUcastPkts (counter) is carried by all twelve devices; s5 has 6 series (ifInUcastPkts 7). At 00:45:36 UTC rate[5m] > 0 on 4: Gi0/1 1.83 pkt/s, Vlan1 1.80, Gi0/2 0.017, Gi0/3 0.017; increase since 00:00 UTC summed 8,775 packets. The telemetry in_unicast_pkts has no s5 series (00:56:32 UTC).",
+      "flag": "The offer does not hold the right metrics, so a miss here may be the offer's, not the choice's. The telemetry in_unicast_pkts covers routers only (s5 is a switch): a miss. 'Per second' asks a rate. Today at this now is 57 minutes, From 2026-10-27 00:00 UTC; 1h or 24h are misses.",
+      "recorded": null
+    },
+    {
+      "n": 29,
+      "question": "What's the round-trip time on the IP SLA probes?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["rttMonLatestRttOperCompletionTime"]
+      },
+      "evidence": "retrieve offered 20 metrics, rttMonLatestRttOperCompletionTime first, then sysUpTime and other metrics holding 'time' (ifCounterDiscontinuityTime, sysORUpTime, node_time_*, cbgpPeer2FsmEstablishedTime, node_disk_*_time_seconds_total, diskio_*_time, kernel_boot_time). rttMonLatestRttOperCompletionTime (gauge, CISCO-RTTMON-MIB, milliseconds; job cisco_ipsla) is carried by r1 (3 operations), r2 (2), r3, r4, s2 and s3 (1 each): 9 series, roles router and switch. At 00:45:36 UTC: r1 60, 23 and 32 ms; r2 56 and 103; r3 56; r4 69; s2 46; s3 5. Highest over 24 h: 4,950 ms (r1 operation 2). rttMonLatestRttOperSense = 1 (ok) on all nine.",
+      "flag": "No device, role or range is expected: the probes run on six devices of both roles, and the question names none. rttMonLatestRttOperSense is the return code, not the time; a miss. No range is stated; any is fair.",
+      "recorded": null
+    },
+    {
+      "n": 30,
+      "question": "Which 5 routers are using the most memory over the last 24 hours?",
+      "expect": {
+        "outcome": ["answer"],
+        "metric": ["cempMemPoolUsed", "ciscoMemoryPoolUsed"],
+        "top": ["5"],
+        "range": ["24h"]
+      },
+      "evidence": "retrieve offered 20 metrics (as case 11). topk(5, cempMemPoolUsed) at 00:46:37 UTC: r4 276.8 MB, r3 276.3 MB, r2 270.6 MB, r1 270.3 MB, r6 270.1 MB (then r7 268.5 MB, r8 193.4 MB); topk(5, ciscoMemoryPoolUsed) the same five Processor pools; the highest over 24 h by device has the same order (r4 277.7 MB first). The reserve Processor pool is 88 bytes on each router.",
+      "flag": "Only the routers carry a memory metric, so role router, the seven routers or no scope give the same series; none is expected. topk over the raw pools, or over a max or sum by device, all give the same five routers. A no-label sum is one line, a miss.",
+      "recorded": null
+    }
+  ]
+}

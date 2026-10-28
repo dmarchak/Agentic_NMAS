@@ -34,6 +34,7 @@ from tests.ai_person import PERSON
 from tests.test_sdn_classify import (PARAMS, SCAN, SCAN6, _feature_on, _pass, answer,
                                      classify_as_person, keep_pack, rows, world)  # noqa: F401
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
+from tests.test_sdn_modes_loop import mark_lab
 from tests.test_sdn_ops_v2 import lab  # noqa: F401 - the fixture
 
 NET = "Default"
@@ -168,6 +169,7 @@ def test_in_the_loop_the_refused_drop_leaves_the_rate_limit_awaiting_a_person_an
     set_policy(SDN_LAB)
     keep_pack(SCAN)
     _feature_on()
+    mark_lab(NET)
     MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 8 run",
                until=time.time() + 600, allowed_risk="low")
     applied = []

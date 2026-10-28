@@ -56,6 +56,11 @@ SCOPES: dict = {
     # from Default (`OWN_ONLY`, C1841); drawn by its own Settings card, never a generic one
     # (`CARDLESS`).
     **_group(NETWORK, "sdn_controllers", "sdn_controllers"),
+    # C2009 (PHASE8_PLAN 17.7's guard): a network's stage, lab, pilot or production. Each
+    # network's own, never inherited from Default (`OWN_ONLY`): a network marked lab is a
+    # person's declaration about that network, and inheriting Default's would let AUTO run on a
+    # network nobody marked. Drawn and set on its SDN controllers card (`CARDLESS`).
+    **_group(NETWORK, "network_stage", "network_stage"),
     # PHASE8_PLAN 17.1 S6: the SDN detection rules' thresholds, one network's together (a
     # scan's ports and window, its fallback rate, a flood's factor and window). Drawn on SDN ›
     # Responses (17.5, board 3), not on a generic card (`CARDLESS`).
@@ -182,7 +187,7 @@ GROUP_LABELS: dict = {
     "alert_history_retention_days": "Alert history: transitions kept (days)",
     "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
     "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
-    "sdn_response_policy": "SDN response policy",
+    "sdn_response_policy": "SDN response policy", "network_stage": "Network stage",
 }
 
 #: Network groups no generic Settings card draws or saves, each with the one module that
@@ -194,16 +199,21 @@ GROUP_LABELS: dict = {
 #: `list_settings.write` writes them, and `modules/sdn/detect.py` reads them. `sdn_responses`:
 #: the same, read by `modules/sdn/flow_ops.py`. `sdn_response_policy`: written by
 #: `modules/sdn/closed_loop.py` (`save_policy`, which checks each action answers its rule) from
-#: SDN › Responses' rules, and read by its `policy`.
-CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_policy")
+#: SDN › Responses' rules, and read by its `policy`. `network_stage`: written by
+#: `modules/sdn/modes.py` (`set_stage`, a verified person and a reason) from the network's SDN
+#: controllers card, and read by its `stage` (C2009).
+CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_policy",
+            "network_stage")
 
 #: Network groups that are each network's own and never inherited from Default, whatever the
 #: network's mode or choice: a network that sets none has none (the operator's decision of
 #: 2026-10-27, C1841: a controller is one network's fabric, and inheriting Default's would
 #: read, and later change, another network's switches). `list_settings.group_choice` answers
 #: OWN for them unless the network declared them not applicable, so the resolver and
-#: `integration_groups.group_id` agree.
-OWN_ONLY = ("sdn_controllers",)
+#: `integration_groups.group_id` agree. `network_stage` (C2009): a network marked lab is a
+#: person's declaration about that one network; inherited, Default's lab would let AUTO be
+#: turned on for a network nobody marked.
+OWN_ONLY = ("sdn_controllers", "network_stage")
 
 #: The key whose value says a group's outside service is configured at all: with it empty
 #: nothing can be asked, so a reader skips the configuration and says "not configured"

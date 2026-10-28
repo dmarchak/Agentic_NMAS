@@ -383,7 +383,19 @@ def card(network: str, editing: str = "") -> dict:
         else:
             editing = ""
     return {"network": network, "state": listed["state"], "error": listed.get("error", ""),
-            "connections": rows, "drivers": drivers, "form": form, "editing": editing}
+            "connections": rows, "drivers": drivers, "form": form, "editing": editing,
+            "stage": stage_line(network)}
+
+
+def stage_line(network: str) -> dict:
+    """The network's stage as its SDN controllers card and the Responses Mode card draw it
+    (C2009): ``{"stage", "words", "state", "stages"}``, *words* naming an unreadable one's
+    reason; *stages* the values a person may mark it."""
+    from modules.sdn import modes
+
+    got = modes.stage(network)
+    return {"stage": got["stage"], "words": got["words"], "state": got["state"],
+            "stages": list(modes.STAGES)}
 
 
 def form_values(form, loaded: dict = None) -> dict:

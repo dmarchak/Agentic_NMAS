@@ -185,6 +185,7 @@ def policy_view(network: str) -> dict:
 def responses_view(network: str, run: str = "") -> dict:
     """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
     (C1971; the newest when empty)."""
+    from modules import sdn_page
     from modules.sdn import closed_loop, detect, flow_ops, loop, modes
 
     awaiting = loop.awaiting(network)
@@ -208,6 +209,9 @@ def responses_view(network: str, run: str = "") -> dict:
     return {"network": network, "tab": "responses", "listed": "ok", "awaiting": rows,
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
             "mode": modes.current(network), "loop": loop.status(network),
+            # C2009: the network's stage; Turn AUTO on is drawn only on a network marked lab,
+            # and AUTO recorded on elsewhere is drawn suspended (`modes.decide` runs nothing).
+            "stage": {k: v for k, v in sdn_page.stage_line(network).items() if k != "stages"},
             "log": log_view(network, run),
             "thresholds": th, "limits": limits, "risks": modes.RISKS,
             "max_hours": modes.MAX_AUTO_SECONDS // 3600,

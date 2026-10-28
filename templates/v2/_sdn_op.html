@@ -3,8 +3,11 @@
     off 2026-10-27 under the Phase 7 mode): the preview (what it does, exactly these requests,
     what will not happen, the checks, the confirm bound to the requests' hash), a refusal with
     its reason, or the result (the outcome first, Verify's checks, the counters, the rollback,
-    the record). modules/sdn_ops_page.py builds `d`. -#}
-<div class="card sdn-op sdn-op-{{ d.state }}">
+    the record). modules/sdn_ops_page.py builds `d`. `data-holds-live`: while the card is
+    open, a live redraw of the SDN region is held, said on the card with Show it now (C2001,
+    static/js/nmas_v2.js `holdReason`), so an announcement never takes a preview or its Send
+    away. -#}
+<div class="card sdn-op sdn-op-{{ d.state }}" data-holds-live="review">
 {%- if d.state == 'refused' %}
 <p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Nothing was sent:</strong> {{ d.error }}.</span></p>
 {%- elif d.state == 'preview' %}

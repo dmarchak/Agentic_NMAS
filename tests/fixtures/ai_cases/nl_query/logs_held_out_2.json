@@ -1,0 +1,255 @@
+{
+  "network": "default",
+  "about": "Ask in words, logs, held-out set 2 (blind): 10 questions a network engineer types into History › Query › Ask in words (Logs), written without reading any prompt or earlier case set, each expectation decided from the lab's Loki BEFORE any model run (read-only probes on the NMAS host, via LAN, 2026-10-26 21:16 to 21:25 UTC, through modules/history_logq: `discover`, `window`, `mnemonics` (the logs reader's 7-day counts) and `_count` over `view`'s built query, which carries Mercury's heartbeat exclusion; the network Default's devices r1-r4, r6-r8 (role router) and s1-s5 (role switch), Loki's jobs network_syslog and snmptrapd, the device label since 13 Oct 00:35 UTC, severity since 15 Oct 03:49 UTC). Calendar cases carry `now` 2026-10-26T20:00:00Z (a Monday, so `today` and `this week` begin at the same midnight) and were counted over the custom span ending then; `this week` and `the past week` are 7d (the operator's ruling, 2026-10-26). `expect` is judged as cases.logs_misses judges it; `evidence` names the Loki count behind the case. Every expected mnemonic is counted by the logs reader over 7 days (%SMART_LIC-3-COMM_FAILED 66, %SYS-5-CONFIG_I 57, %OSPF-5-ADJCHG 242, %LINEPROTO-5-UPDOWN 7, %LINK-3-UPDOWN 6), and the last four are also in modules/nsot/platform_events.json. Not yet recorded. EXTENDED on 2026-10-27 by a blind author (a subagent, claude-opus-5-5) with cases 11 to 30, cases 1 to 10 kept unchanged. The same independence: it read only the two sets it extended, modules/history_logq.py, modules/history_promq.py, modules/ai/cases.py, modules/nsot/platform_events.json and nl_query's non-prompt helpers (terms, offer_mnemonics, offer_events, spans, values_logs, the enums and schemas), and never opened prompts/, tests/fixtures/ai_cases/, any other file in askfix/, docs/OPEN_FINDINGS.md, docs/STANDING_APPROVAL_LOG.md, docs/PHASE8_PLAN.md, nl_query's prompt-building code or any test naming nl_query or ai_cases. No model was asked. Each expectation was decided from read-only probes on the NMAS host via scripts/nmas-host (LAN path), 2026-10-27 00:50:54 to 00:59:17 UTC (and Prometheus's interface descriptions for cases 20 and 21 at 01:00:07 and 01:00:21 UTC), through modules/history_logq: `discover` (labels device, filename, host, job, service_name, severity, trap_oid, unit; jobs network_syslog and snmptrapd; device since 13 Oct 00:35, severity since 15 Oct 03:49 UTC), `mnemonics` (the reader's 7-day counts, read at its 00:46:32 UTC value), `view` for the built query (never asked) and `_count` over it, with a count by device where the label covers the range. Every expected mnemonic is counted by the reader over 7 days or is in the platform pack (%SYS-5-RESTART and %BGP-5-ADJCHANGE only in the pack; %SYS-5-RELOAD 2, %LINEPROTO-5-UPDOWN 6, %LINK-3-UPDOWN 5, %LINK-5-CHANGED 1, %OSPF-5-ADJCHG 206, %SYS-5-CONFIG_I 56, %SYS-3-CPUHOG 3, %SEC_LOGIN-5-LOGIN_SUCCESS 11,609). The twenty add: reloads (11), line protocol (12), BGP (13), OSPF (14, 29), severities (15: critical, 25: notice, 28: error or warning), mnemonics by count (16), a text filter (17), configuration changes (18), everything one device sent (19), interface state changes (24, 30), CPU hogs (26) and logins (27); devices (12, 17, 19, 25, 27, 28, 29), roles (16, 24, 26), every device (11, 13, 14, 15, 18, 30); calendar spans yesterday (11), today (12, 27) and since Monday (18: this week), and relative 1h (19), 24h (14, 25), 7d (15, 16, 17, 24, 28, 29, 30) and 30d (13, 26); broad questions (16, 24, 28); healthy-nothing cases where the right query finds nothing (11: no reload yesterday; 12: no line protocol change on s3 today; 14: no OSPF change in 24 h; 15: no critical message in 7 days); two questions back (20: two switches on the CORE segment; 21: no WAN link named anywhere); two refusals (22: a temperature; 23: flash free space). Cases 11 to 30's calendar ones carry now 2026-10-27T01:00:00Z (a Tuesday): yesterday is 26 Oct, today from 27 Oct 00:00 UTC, since Monday from 26 Oct 00:00 UTC; the past week is 7d, as the ruling above.",
+  "model": "claude-sonnet-5-5",
+  "kind": "logs",
+  "cases": [
+    {
+      "n": 1,
+      "question": "How many Smart Licensing comm failures has each router logged in the past week?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SMART_LIC-3-COMM_FAILED"]], "role": "router", "contains_empty": true, "severity": ["any", "3"], "show": ["counts"], "by": ["device"], "range": ["7d"]},
+      "evidence": "Loki, last 7 days, |= %SMART_LIC-3-COMM_FAILED: 56 lines on the routers (r1 11, r2 11, r3 11, r4 11, r6 6, r7 6, r8 0), 0 on the switches; the logs reader counted it 66 times over its 7 days.",
+      "flag": "r8 logged none: a per-device count may draw six series, not seven; severity 3 is the mnemonic's own and changes nothing, so it is allowed.",
+      "recorded": null
+    },
+    {
+      "n": 2,
+      "question": "Show me r3's errors from yesterday",
+      "now": "2026-10-26T20:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["r3"], "contains_empty": true, "severity": ["3"], "show": ["lines"], "range": ["custom"], "span": "yesterday"},
+      "evidence": "Loki, 25 Oct 00:00 to 26 Oct 00:00 UTC, device r3, severity label 0-3: 1 line (it is %SMART_LIC-3-COMM_FAILED; the same count with that mnemonic is 1); 0 lines at severity 2 or worse.",
+      "flag": null,
+      "recorded": null
+    },
+    {
+      "n": 3,
+      "question": "Which switches have logged errors or worse this week?",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "role": "switch", "contains_empty": true, "severity": ["3"], "show": ["counts", "lines"], "by": ["device"], "range": ["7d"]},
+      "evidence": "Loki, last 7 days, role switch, severity label 0-3: 6 lines (s1 4, s3 1, s4 1, s2 0, s5 0); the reader's switch mnemonics at 3 or worse are %SYS-3-CPUHOG 3 and %SSH-3-IDLE_TIMEOUT 3.",
+      "flag": "\"Which\" reads as counts per device or as lines; both answer it. Naming s1-s5 as devices instead of the role is a miss under this expect.",
+      "recorded": null
+    },
+    {
+      "n": 4,
+      "question": "Who changed the configuration today?",
+      "now": "2026-10-26T20:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SYS-5-CONFIG_I"]], "devices": [], "role": "", "contains_empty": true, "severity": ["any"], "show": ["lines"], "range": ["custom"], "span": "today"},
+      "evidence": "Loki, 26 Oct 00:00 to 20:00 UTC, |= %SYS-5-CONFIG_I, every device: 2 lines, both s1; the reader counted %SYS-5-CONFIG_I 57 times over 7 days; it is in the platform pack.",
+      "flag": "The line names who (the user and source of the change); no device or role is asked for.",
+      "recorded": null
+    },
+    {
+      "n": 5,
+      "question": "Did r5 reboot in the last 24 hours?",
+      "expect": {"outcome": ["ask"]},
+      "evidence": "No device r5: Loki's device label over 7 days holds r1-r4, r6-r8, s1-s5; the inventory's roles are router 7 and switch 5; r5 matched 0 lines over 24 h (label) and 30 days (by the line).",
+      "flag": "A question back naming the devices the network has; a refusal saying r5 is not in the network would also be honest, but the expectation is ask.",
+      "recorded": null
+    },
+    {
+      "n": 6,
+      "question": "What's the round-trip latency between r1 and r6 right now?",
+      "expect": {"outcome": ["refuse"]},
+      "evidence": "Latency is a measurement, not a log line: no job in Loki (network_syslog, snmptrapd) records round-trip time, and no mnemonic the reader counted over 7 days names one.",
+      "flag": null,
+      "recorded": null
+    },
+    {
+      "n": 7,
+      "question": "Chart interface flaps on r6 per hour over the past week",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN"], ["%LINK-3-UPDOWN"], ["%LINEPROTO-5-UPDOWN"]], "devices": ["r6"], "contains_empty": true, "severity": ["any"], "show": ["counts"], "every": ["1h"], "range": ["7d"]},
+      "evidence": "Loki, last 7 days, device r6: %LINK-3-UPDOWN 2 lines, %LINEPROTO-5-UPDOWN 3 lines (the most of any device; the switches 0); both are in the platform pack and counted by the reader (7 and 6).",
+      "flag": "`by` is left open: per device and per mnemonic both chart one device's flaps.",
+      "recorded": null
+    },
+    {
+      "n": 8,
+      "question": "Break down r7's syslog by mnemonic over the last 30 days",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["r7"], "contains_empty": true, "severity": ["any"], "show": ["counts"], "by": ["mnemonic"], "range": ["30d"]},
+      "evidence": "Loki, last 30 days, device r7 (matched by the line: the range starts before the device label began): 2,222 lines; the reader counted 14 mnemonics for r7, %SEC_LOGIN-5-LOGIN_SUCCESS 2,156 the most.",
+      "flag": "`every` is left open: any window counts per mnemonic.",
+      "recorded": null
+    },
+    {
+      "n": 9,
+      "question": "Did any OSPF neighbours go down on r2 or r4 in the past week?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%OSPF-5-ADJCHG"]], "devices": ["r2", "r4"], "contains": ["", "DOWN", "to DOWN", "Down"], "severity": ["any"], "show": ["lines", "counts"], "by": ["device"], "range": ["7d"]},
+      "evidence": "Loki, last 7 days, devices r2 and r4, |= %OSPF-5-ADJCHG: 22 lines; with \"DOWN\", \"to DOWN\" or \"Down\" 3 lines each; with lower-case \"down\" 0 (Loki's |= is case-sensitive). %OSPF-5-ADJCHG is in the platform pack; the reader counted it 242 times.",
+      "flag": "Lower-case \"down\" matches nothing and is a miss; no text at all answers too, with the up changes alongside.",
+      "recorded": null
+    },
+    {
+      "n": 10,
+      "question": "List warnings or worse from the routers since Monday",
+      "now": "2026-10-26T20:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "role": "router", "contains_empty": true, "severity": ["4"], "show": ["lines"], "range": ["custom"], "span": "this week"},
+      "evidence": "Loki, 26 Oct 00:00 to 20:00 UTC, role router, severity label 0-4: 26 lines (over the last 24 h to 21:16 UTC: 34).",
+      "flag": "At this now (a Monday) this week's start is today's: a From at 26 Oct 00:00 passes either way. \"Since Monday\" is a calendar span, never the 7d range.",
+      "recorded": null
+    },
+    {
+      "n": 11,
+      "question": "Did any device reload yesterday?",
+      "now": "2026-10-27T01:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SYS-5-RELOAD"], ["%SYS-5-RESTART"], ["%SYS-5-RELOAD", "%SYS-5-RESTART"]], "devices": [], "role": "", "contains_empty": true, "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["custom"], "span": "yesterday"},
+      "evidence": "Healthy-nothing. Loki, 26 Oct 00:00 to 27 Oct 00:00 UTC, every device (read 00:51:50 UTC): |= %SYS-5-RELOAD 0 lines, |= %SYS-5-RESTART 0, the text \"reload\" 0 and \"Reload\" 0. Over the last 7 days %SYS-5-RELOAD 2 lines and over 30 days 4, with %SYS-5-RESTART 1 over 30 days, all r6 and all before yesterday. The logs reader counted %SYS-5-RELOAD 2 times over 7 days; both mnemonics are in the platform pack.",
+      "flag": "A reload logs %SYS-5-RELOAD when it is asked for and %SYS-5-RESTART when the device is back: either or both answer it. Severity 5 is both mnemonics' own. The text \"reload\" or \"reboot\" alone is a miss. Yesterday is From 26 Oct 00:00 to 27 Oct 00:00 UTC; 24h from now would reach into today.",
+      "recorded": null
+    },
+    {
+      "n": 12,
+      "question": "Show line protocol changes on s3 today",
+      "now": "2026-10-27T01:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%LINEPROTO-5-UPDOWN"]], "devices": ["s3"], "contains_empty": true, "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["custom"], "span": "today"},
+      "evidence": "Healthy-nothing. Loki, 27 Oct 00:00 to 00:51 UTC, device s3, |= %LINEPROTO-5-UPDOWN: 0 lines; over the last 7 days 0 on s3 and on every switch (the routers 6: r6 3, r2 1, r4 1, r7 1). In the platform pack; the reader counted it 6 times over 7 days.",
+      "flag": "Today at this now is the hour since 27 Oct 00:00 UTC; 24h is a miss. %LINK-3-UPDOWN is the interface itself, not its line protocol, so a set holding it is a miss.",
+      "recorded": null
+    },
+    {
+      "n": 13,
+      "question": "Any BGP neighbour changes in the last 30 days?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%BGP-5-ADJCHANGE"]], "devices": [], "role": "", "contains_empty": true, "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["30d"]},
+      "evidence": "Loki, the last 30 days to 00:51:50 UTC, |= %BGP-5-ADJCHANGE: 5 lines (r3 2, r4 2, and 1 from before the device label began on 13 Oct); 0 over the last 7 days and the last 24 h (00:54:43 UTC). The text \"BGP\" matches 16 lines over 30 days. The logs reader did not count %BGP-5-ADJCHANGE over its 7 days; it is in the platform pack. The metrics agree: cbgpPeer2State on r3 and r4 has not changed in 7 days.",
+      "flag": "The device label does not cover 30 days, so the builder matches a device by the line; any per-device count shows one line with no device. The text \"BGP\" alone is a miss (it matches other BGP lines too).",
+      "recorded": null
+    },
+    {
+      "n": 14,
+      "question": "Count OSPF adjacency changes per device over the last 24 hours",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%OSPF-5-ADJCHG"]], "devices": [], "role": "", "contains_empty": true, "severity": ["any", "5"], "show": ["counts"], "by": ["device"], "range": ["24h"]},
+      "evidence": "Healthy-nothing. Loki, the last 24 h to 00:51:50 UTC, |= %OSPF-5-ADJCHG: 0 lines. Over 7 days 204 lines (r1 166, r4 18, r3 5, r6 5, r2 4, s3 4, r8 1, s4 1); the reader counted it 206 times over 7 days and none in its last 24 h. In the platform pack.",
+      "flag": "`every` is left open. The answer is empty: Mercury's count says no lines against what the devices sent.",
+      "recorded": null
+    },
+    {
+      "n": 15,
+      "question": "Show me any critical or worse messages from the past week",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": [], "role": "", "contains_empty": true, "severity": ["2"], "show": ["lines"], "range": ["7d"]},
+      "evidence": "Healthy-nothing. Loki, the last 7 days to 00:51:50 UTC, severity label 0-2: 0 lines. Over 30 days, matched by the digit in the line's mnemonic (the severity label began 15 Oct 03:49 UTC): 29 lines (r6 3, 26 from before the device label began). Of the reader's 7-day mnemonics none is at severity 0 to 2.",
+      "flag": "The past week is the 7d range (the operator's ruling, 2026-10-26). Severity 3 (errors) is not critical and is a miss; counts would also answer, but \"show me the messages\" asks lines.",
+      "recorded": null
+    },
+    {
+      "n": 16,
+      "question": "Which mnemonics did the switches log most often in the past week?",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "role": "switch", "contains_empty": true, "severity": ["any"], "show": ["counts"], "by": ["mnemonic"], "range": ["7d"]},
+      "evidence": "Broad: every switch mnemonic is asked. Loki, the last 7 days to 00:51:50 UTC, role switch (s1-s5): 205 lines (s1 58, s3 55, s4 39, s2 33, s5 20). The reader's switch mnemonics over 7 days: %GRUB-5-CONFIG_WRITTEN 84 (Loki 80 at 00:54:43 UTC), %GRUB-5-CONFIG_WRITING 83, %SYS-5-CONFIG_I 23 (Loki 23), %SSH-4-SSH2_UNEXPECTED_MSG 9, %OSPF-5-ADJCHG 5, %SSH-3-IDLE_TIMEOUT 3, %SYS-3-CPUHOG 3, %IP_SNMP-4-NOTRAPIP 1, %PLATFORM-5-SIGNATURE_VERIFIED 1.",
+      "flag": "`every` is left open: any window counts per mnemonic. Naming s1-s5 instead of the role is a miss under this expect.",
+      "recorded": null
+    },
+    {
+      "n": 17,
+      "question": "Show r2's log lines that mention GigabitEthernet3 over the past week",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["r2"], "contains": ["GigabitEthernet3"], "severity": ["any"], "show": ["lines"], "range": ["7d"]},
+      "evidence": "Loki, the last 7 days to 00:51:50 UTC, device r2, |= \"GigabitEthernet3\": 1 line; over the last 24 h 0.",
+      "flag": "Loki's |= is case-sensitive and exact: \"Gi3\" or \"gigabitethernet3\" match nothing and are a miss. A mnemonic chosen with the text narrows to a guess about what the line is.",
+      "recorded": null
+    },
+    {
+      "n": 18,
+      "question": "Count configuration changes per device since Monday",
+      "now": "2026-10-27T01:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SYS-5-CONFIG_I"]], "devices": [], "role": "", "contains_empty": true, "severity": ["any", "5"], "show": ["counts"], "by": ["device"], "range": ["custom"], "span": "this week"},
+      "evidence": "Loki, 26 Oct 00:00 to 27 Oct 00:51 UTC, |= %SYS-5-CONFIG_I: 6 lines, all s1 (26 Oct 00:00 to 27 Oct 00:00: the same 6; since 27 Oct 00:00: 0, read 00:54:43 UTC). The reader counted it 56 times over 7 days; it is in the platform pack.",
+      "flag": "At this now (a Tuesday) \"since Monday\" is this week's span, From 26 Oct 00:00 UTC; 7d is a miss (it holds 56). %GRUB-5-CONFIG_WRITTEN is a switch writing its boot loader's configuration, not a configuration change; a set holding it is a miss. `every` is left open.",
+      "recorded": null
+    },
+    {
+      "n": 19,
+      "question": "What has r1 logged in the last hour?",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["r1"], "contains_empty": true, "severity": ["any"], "show": ["lines"], "range": ["1h"]},
+      "evidence": "Loki, the last hour to 00:51:50 UTC, device r1: 19 lines, 18 of them %SEC_LOGIN-5-LOGIN_SUCCESS (20 such lines in the hour to 00:54:43 UTC) and 1 other.",
+      "flag": "Everything r1 sent is asked: no severity, mnemonic or text. Counts would not say what was logged.",
+      "recorded": null
+    },
+    {
+      "n": 20,
+      "question": "Show me the logs from the core switch",
+      "expect": {"outcome": ["ask"]},
+      "evidence": "No device, role or label value \"core\": Loki's device label over 7 days holds r1-r4, r6-r8, s1-s5, the inventory's roles router 7 and switch 5; the text \"core\" or \"Core\" matched 0 lines over 30 days. In Prometheus's interface descriptions (ifAlias, read 01:00:21 UTC) \"CORE\" names the VLAN 100 OSPF segment, which two switches carry, s3 and s4 (and r1-r4).",
+      "flag": "Two switches, s3 and s4, sit on the CORE segment, so the words name neither one; a question back naming them is right. An answer for both, or for every switch, is a guess.",
+      "recorded": null
+    },
+    {
+      "n": 21,
+      "question": "Did the WAN circuit go down last night?",
+      "expect": {"outcome": ["ask"]},
+      "evidence": "Nothing named WAN, circuit or ISP: no device, role or label value; 0 lines over 30 days hold \"WAN\", \"wan\" or \"circuit\" (00:59:17 UTC); no interface description holds wan, isp or circuit (01:00:07 UTC). Interface down events are logged (%LINK-3-UPDOWN, %LINEPROTO-5-UPDOWN, in the platform pack), so a named link could be answered.",
+      "flag": "Which link, and which hours \"last night\" are in whose timezone, are both open; the question back asks for the device and interface. A refusal would wrongly say it cannot be found.",
+      "recorded": null
+    },
+    {
+      "n": 22,
+      "question": "What's the CPU temperature on r2 right now?",
+      "expect": {"outcome": ["refuse"]},
+      "evidence": "A temperature is a measurement, not a log line: Loki's jobs are network_syslog and snmptrapd; over 30 days 0 lines hold \"emperature\", \"TEMP\" or \"%ENV\" (00:59:17 UTC); no mnemonic the reader counted over 7 days is an environment message. The metrics store holds no temperature for any network device either.",
+      "flag": "r2 is a virtual C8000v with no sensors; nothing could be logged for this here.",
+      "recorded": null
+    },
+    {
+      "n": 23,
+      "question": "How much free space is left on s1's flash?",
+      "expect": {"outcome": ["refuse"]},
+      "evidence": "A free-space reading is a measurement, not a log line: over 30 days 0 lines hold \"bytes free\"; 6 lines mention \"flash\" (s3 2, r6 1, 3 before the device label), none of them s1's and none a free-space figure (00:59:17 UTC). The metrics store holds no flash or file-system metric for any device.",
+      "flag": "A search for the text \"flash\" on s1 answers nothing about free space and is a miss.",
+      "recorded": null
+    },
+    {
+      "n": 24,
+      "question": "How many interface state changes did each router log in the last 7 days?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN"], ["%LINK-3-UPDOWN"], ["%LINEPROTO-5-UPDOWN"], ["%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN", "%LINK-5-CHANGED"], ["%LINK-3-UPDOWN", "%LINK-5-CHANGED"]], "role": "router", "contains_empty": true, "severity": ["any", "5"], "show": ["counts"], "by": ["device"], "range": ["7d"]},
+      "evidence": "Broad: interface, state and changes match several mnemonics. Loki, the last 7 days to 00:51:50 UTC, role router: %LINK-3-UPDOWN 5 lines (r6 2, r2 1, r4 1, r7 1; with the text \"down\" 0), %LINEPROTO-5-UPDOWN 6 (r6 3, r2 1, r4 1, r7 1; with \"down\" 1, r6), %LINK-5-CHANGED 1 (r6, administratively down; 00:54:43 UTC). The reader counted %LINEPROTO-5-UPDOWN 6, %LINK-3-UPDOWN 5 and %LINK-5-CHANGED 1. The metrics side: changes(ifOperStatus) over 7 days r6 5, r7 4.",
+      "flag": "The interface, its line protocol, both, and with the administrative change are all \"interface state\"; each set is accepted. Severity 5 keeps all three (3, 5, 5); severity 3 would drop the line protocol and is a miss. %SYS-5-CONFIG_I matched by \"changes\" is not an interface state change. `every` is left open. Naming the seven routers instead of the role is a miss under this expect.",
+      "recorded": null
+    },
+    {
+      "n": 25,
+      "question": "Notices or worse from r8 in the last 24 hours",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["r8"], "contains_empty": true, "severity": ["5"], "show": ["lines"], "range": ["24h"]},
+      "evidence": "Loki, the last 24 h to 00:51:50 UTC, device r8, severity label 0-5: 141 lines, as many as all of r8's lines; 140 are %SEC_LOGIN-5-LOGIN_SUCCESS and 1 is at severity 4 or worse (00:54:43 UTC).",
+      "flag": "At this network every r8 line in the window is severity 5 or worse, so no severity finds the same lines, but it asks a different question and is a miss. Counts would also fit \"from r8\", but \"notices\" asks the messages.",
+      "recorded": null
+    },
+    {
+      "n": 26,
+      "question": "How many CPU hog messages has each switch logged in the last 30 days?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SYS-3-CPUHOG"]], "role": "switch", "contains_empty": true, "severity": ["any", "3"], "show": ["counts"], "by": ["device"], "range": ["30d"]},
+      "evidence": "Loki, the last 30 days to 00:51:50 UTC, the switches matched by their names in the line (the device label began 13 Oct): |= %SYS-3-CPUHOG 5 lines; over the last 7 days 3 (s1, s3, s4 one each). The reader counted it 3 times over 7 days.",
+      "flag": "Over 30 days the device label does not cover the range, so a count by device reads the device from the line (Mercury's pattern). `every` is left open. Naming s1-s5 instead of the role is a miss under this expect.",
+      "recorded": null
+    },
+    {
+      "n": 27,
+      "question": "Did anyone log in to r4 today?",
+      "now": "2026-10-27T01:00:00Z",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%SEC_LOGIN-5-LOGIN_SUCCESS"]], "devices": ["r4"], "contains_empty": true, "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["custom"], "span": "today"},
+      "evidence": "Loki, 27 Oct 00:00 to 00:51 UTC, device r4, |= %SEC_LOGIN-5-LOGIN_SUCCESS: 6 lines. The reader counted it 11,609 times over 7 days, all on the routers.",
+      "flag": "The logins are likely Mercury's and its collectors' own sessions; the lines name the user. Failed logins are never logged here (no LOGIN_FAILED counted, none in the pack); a set adding one is a miss. Today at this now is the hour since 27 Oct 00:00 UTC; 24h is a miss.",
+      "recorded": null
+    },
+    {
+      "n": 28,
+      "question": "Any problems on s4 in the last 7 days?",
+      "expect": {"outcome": ["answer"], "mnemonics": [[]], "devices": ["s4"], "contains_empty": true, "severity": ["3", "4"], "show": ["lines", "counts"], "range": ["7d"]},
+      "evidence": "Broad: \"problems\" names no mnemonic. Loki, the last 7 days to 00:51:50 UTC, device s4: 39 lines in all; severity label 0-4: 2 lines (%SYS-3-CPUHOG 1 and %SSH-4-SSH2_UNEXPECTED_MSG 1, 00:54:43 UTC); 0-3: 1.",
+      "flag": "\"Problems\" is the engineer's word: warnings or worse (4) or errors or worse (3) are accepted; no severity shows all 39 lines and is a miss. A question back asking what kind of problem would also be fair but is not expected.",
+      "recorded": null
+    },
+    {
+      "n": 29,
+      "question": "Show OSPF adjacency changes on s3 over the past week",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%OSPF-5-ADJCHG"]], "devices": ["s3"], "contains_empty": true, "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["7d"]},
+      "evidence": "Loki, the last 7 days to 00:54:43 UTC, device s3, |= %OSPF-5-ADJCHG: 4 lines (none holding \"DOWN\"); s4 1; on the switches since 26 Oct 00:00, 0. In the platform pack; the reader counted 5 on the switches over 7 days.",
+      "flag": "The past week is the 7d range. A text such as \"DOWN\" narrows to a guess (these four hold none) and is a miss.",
+      "recorded": null
+    },
+    {
+      "n": 30,
+      "question": "Were any interfaces administratively shut down in the last 7 days?",
+      "expect": {"outcome": ["answer"], "mnemonics": [["%LINK-5-CHANGED"]], "devices": [], "role": "", "contains": ["", "administratively down"], "severity": ["any", "5"], "show": ["lines", "counts"], "range": ["7d"]},
+      "evidence": "Loki, the last 7 days to 00:51:50 UTC: |= %LINK-5-CHANGED 1 line (r6); |= \"administratively down\" 3 lines, r6's syslog line and 2 lines of job snmptrapd (traps, no device label; 00:54:43 UTC); \"shut\" 0 lines (00:59:17 UTC). The reader counted %LINK-5-CHANGED once over 7 days.",
+      "flag": "The text \"administratively down\" with no mnemonic is also right (it finds the 2 traps as well), but the judge cannot accept it beside the mnemonic without also passing no filter at all, so this expect asks for the mnemonic. \"shutdown\" or \"shut down\" match nothing (IOS writes \"administratively down\") and are a miss.",
+      "recorded": null
+    }
+  ]
+}
