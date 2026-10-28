@@ -1,10 +1,31 @@
 # End of session: where Phase 7 stands
 
-**REMINDER: the AI day cap (`ai_cap_usd_per_day`) is $10.00 for the rest of the sprint (the
-operator, 2026-10-26; it was $3.00 for 2026-10-26's proof first). It expires Sat 31 Oct, when
-the operator sets it back to $1.50. If it is still above $1.50 after Sat 31 Oct, say so first
-thing: Mercury cannot raise that reminder itself (C1751). Report AI spend in every status
-update meanwhile.**
+**REMINDER: the AI day cap (`ai_cap_usd_per_day`) read $80.00 on the host (2026-10-28 02:1x
+UTC). It stays raised while the sprint rules are active and returns to $1.50 at Phase 8's close,
+never on a date (PHASE8_PLAN 15.12, the operator, 2026-10-27; this line said "$10.00 until Sat
+31 Oct" before, which 15.12 replaced). Mercury cannot raise that reminder itself (C1751). Report
+AI spend in every status update meanwhile.**
+
+## THE OVERNIGHT RUN, 2026-10-28 02:02 to ~05:3x UTC (the operator asleep)
+
+The operator's order: the handoff, the triage's leftovers, C1916's check, evaluations E1, E2, E5
+and E6, then Phase 1's guards, Phase 3's SDN HITL rows, Phase 2, Phase 4. The full report is
+`~/Documents/nmas-reports/overnight/2026-10-28-report.md`.
+
+- **Live: 071458cc** (four deploys, at 03:53, 04:19, 04:48 and 05:23 UTC, each smoke-checked:
+  pages, Needs attention, the SDN loop stopped; none rolled back).
+- **Built:** C2022, C2009, C2001, C1868, C2025 (metrics v10 served), C2018, C2041, C2004, C2040,
+  C2006 closed; parts of C2003, C2000, C2030 (1), C1999 (the notification's first step), C2002,
+  C2021 and C2023 (static). CI's per-test bound fixed forward (C2036, open until a docs-only run
+  passes on it: this note's commit is one).
+- **Evaluations:** E1 and E2 (sdn_classify below 95% on Haiku and Sonnet alike, severity on
+  remove-flow cases), E4 (the effect in the evidence), E5 (stopped at the $25 rule's estimate;
+  a 3-run round; C2038), E6 (Haiku not adopted for feature 7).
+- **Waiting on the operator:** C1939's confirmation; the 16.11 pick; the CLAUDE.md lines
+  (`overnight/2026-10-28-claude-md-lines.md`, checked); C2038, C1898, C2039, C1692, C1887's
+  decisions; marking sdn_lab lab before any AUTO; C1876 (not resumed); C1916's `finish`.
+- **sdn_lab reads "not marked"** since the C2009 deploy: Turn AUTO on is disabled until a person
+  marks it lab on Settings › Integrations › SDN controllers.
 
 ## DUE: Fri 2026-10-30 12:00 UTC: has nmas-heartbeat-check's INSEPARABLE s3 cleared?
 
