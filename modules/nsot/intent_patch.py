@@ -35,6 +35,15 @@ removal (Mode B, `removal.py`) takes it off only where its shape is measured: as
 `removal_measured.json` read on 2026-10-25, a description's is, on both dialects, and a VLAN's
 and a network statement's are not.
 
+**A VLAN is added only where a VLAN database is declared or measured** (C1692; the operator,
+2026-10-28): a router's intent holds ``vlans: []`` as a switch's does, so the document cannot
+tell. :func:`apply` stays pure and is handed the device's VLAN database by its caller
+(`vlan_capability.of`: Mercury's platform table by dialect and NetBox device type, else the
+device's recorded answer to `show vlan id 1`, else unknown); `preview`, `commit` and
+`commit_many` read it once for a patch that adds a VLAN. A declared or measured "no", and an
+unknown, are refused naming the device, its platform and device type and where the answer came
+from. Never from a name or a role.
+
 **IPv6:** an OSPF network statement is OSPFv2's, an IPv4 concept; OSPFv3 joins an interface to
 an area instead (``ipv6 ospf <process> area <area>``), which a patch does not offer yet. An
 IPv6 prefix in a network operation is refused saying so, by name. Descriptions, shutdown and
@@ -374,7 +383,32 @@ def _held_vlan(doc: dict, vlan: int):
     return next((v for v in _vlan_entries(doc) if str(v.get("id")) == str(vlan)), None)
 
 
-def _add_vlan(doc: dict, op, index: int, hostname: str) -> dict:
+def _vlan_database(op, index: int, hostname: str, capability) -> None:
+    """Refused unless *capability* (`vlan_capability.of`'s, handed in by the caller) says
+    *hostname* has a VLAN database, declared or measured (C1692): a declared or measured "no"
+    and an unknown are each refused, naming the device, its platform and device type, and
+    where the answer came from. Never judged from a name or a role."""
+    cap = capability if isinstance(capability, dict) else {}
+    if cap.get("has") is True:
+        return
+    what = (f"{hostname} ({cap.get('platform') or 'platform not known'}, device type "
+            f"{cap.get('device_type') or 'not named'})")
+    if cap.get("has") is False:
+        raise Refused(_refusal(409, "capability", (
+            f"operations[{index}] adds VLAN {op.vlan}, and {what} has no VLAN database: "
+            f"{cap.get('words') or 'said by its caller'}. Nothing is added"),
+            operation=index))
+    from modules.nsot.vlan_capability import CHECK
+    raise Refused(_refusal(409, "capability", (
+        f"operations[{index}] adds VLAN {op.vlan}, and whether {what} has a VLAN database is "
+        + (cap.get("words") or f"not declared and not measured: run `{CHECK}` on {hostname} "
+                                "to measure it")
+        + ". A VLAN is added only where a VLAN database is declared or measured"),
+        operation=index))
+
+
+def _add_vlan(doc: dict, op, index: int, hostname: str, capability=None) -> dict:
+    _vlan_database(op, index, hostname, capability)
     held = _held_vlan(doc, op.vlan)
     if held is not None:
         have = str(held.get("name") or "")
@@ -474,11 +508,21 @@ _APPLY = {SetDescription: _description, ClearDescription: _description, Shutdown
 OPERATIONS = tuple(get_args(model.model_fields["op"].annotation)[0] for model in _APPLY)
 
 
-def apply(doc: dict, patch) -> dict:
+def adds_vlan(patch) -> bool:
+    """Whether *patch* (anything `parse` takes) adds a VLAN, so its caller reads the device's
+    VLAN database (`vlan_capability.of`) for it; False for a patch `parse` refuses."""
+    got, refusal = parse(patch)
+    return not refusal and any(isinstance(op, AddVlan) for op in got.operations)
+
+
+def apply(doc: dict, patch, vlan_database: dict = None) -> dict:
     """*patch* applied to the intent document *doc*, which is never changed: ``{"ok": True,
     "doc": the new document, "changes": [{"operation", "op", "summary", "changed",
     "device_keeps"}], "changed"}``, or a refusal naming the operation, what it asked and what
-    the intent holds. Pure: reads and writes nothing."""
+    the intent holds. Pure: reads and writes nothing. *vlan_database* is the device's VLAN
+    database as its caller read it (`vlan_capability.of`); an added VLAN is refused unless it
+    says yes (none given: unknown, refused). Removing a VLAN needs none: it takes a line out of
+    intent, and nothing is sent for it (``device_keeps``)."""
     try:
         patch = _coerce(patch)
         if not isinstance(doc, dict):
@@ -501,8 +545,9 @@ def apply(doc: dict, patch) -> dict:
         out = copy.deepcopy(doc)
         changes = []
         for n, op in enumerate(patch.operations):
+            extra = (vlan_database,) if isinstance(op, AddVlan) else ()
             changes.append({"operation": n, "op": op.op,
-                            **_APPLY[type(op)](out, op, n, patch.hostname)})
+                            **_APPLY[type(op)](out, op, n, patch.hostname, *extra)})
     except Refused as exc:
         return exc.refusal
     return {"ok": True, "doc": out, "changes": changes,
@@ -511,11 +556,12 @@ def apply(doc: dict, patch) -> dict:
 
 # ── the document's text, and the editor's path ───────────────────────────────
 
-def patched_text(hostname: str, text: str, patch, list_name: str = "") -> dict:
+def patched_text(hostname: str, text: str, patch, list_name: str = "",
+                 vlan_database: dict = None) -> dict:
     """The committed document *text* with *patch* applied, serialised by `hostvars.to_yaml`
     and checked by the editor's own validator: ``{"ok": True, "text", "was", "changes",
     "changed"}``, or the refusal (the validator's own when it refuses the result, with
-    ``"refused_by": "validator"``)."""
+    ``"refused_by": "validator"``). *vlan_database* goes to :func:`apply`."""
     from modules.nsot import hostvars, intent_edit
 
     try:
@@ -540,7 +586,7 @@ def patched_text(hostname: str, text: str, patch, list_name: str = "") -> dict:
             "Mercury's serialiser, so writing the patch would silently drop its comments or "
             "layout. Normalise the formatting… on its Intent tab first: the editor proves the "
             "change is formatting only before it is committed"))
-    got = apply(doc, patch)
+    got = apply(doc, patch, vlan_database)
     if not got["ok"]:
         return got
     new_text = hostvars.to_yaml(got["doc"])
@@ -550,6 +596,17 @@ def patched_text(hostname: str, text: str, patch, list_name: str = "") -> dict:
             "The patched intent is refused by the editor's check: " + checked["error"])}
     return {"ok": True, "text": new_text, "was": text, "changes": got["changes"],
             "changed": got["changed"]}
+
+
+def _capability(list_name: str, hostname: str, patch):
+    """*hostname*'s VLAN database (`vlan_capability.of`: declared, else measured, else
+    unknown), read once for a patch that adds a VLAN, from stored data only; None for any
+    other patch, which never asks for it. Every path to a commit comes through here
+    (`preview`, `commit`, `commit_many`), so no caller can leave it out."""
+    if not adds_vlan(patch):
+        return None
+    from modules.nsot import vlan_capability
+    return vlan_capability.of(list_name, hostname)
 
 
 def _kept_words(changes: list) -> str:
@@ -571,7 +628,8 @@ def preview(list_name: str, hostname: str, patch) -> dict:
     opened = intent_edit.open_doc(list_name, hostname)
     if not opened["ok"]:
         return opened
-    got = patched_text(hostname, opened["yaml"], patch, list_name)
+    got = patched_text(hostname, opened["yaml"], patch, list_name,
+                       _capability(list_name, hostname, patch))
     if not got["ok"]:
         return {**got, "base": opened["base"]}
     patch = _coerce(patch)
@@ -604,7 +662,8 @@ def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor:
         return _refusal(409, "base", (
             f"Not saved: the version this patch was previewed on ({base[:12]}) is not in "
             f"{hostname}'s repository. Nothing was written. Preview the patch again"))
-    got = patched_text(hostname, text, patch, list_name)
+    got = patched_text(hostname, text, patch, list_name,
+                       _capability(list_name, hostname, patch))
     if not got["ok"]:
         return got
     out = intent_edit.commit(list_name, hostname, got["text"], summary, base, actor,
@@ -635,7 +694,8 @@ def commit_many(list_name: str, items: list, summary: str, actor: str, *, source
             return _refusal(409, "base", (
                 f"Not saved: the version this patch was previewed on ({base[:12]}) is not in "
                 f"{hostname}'s repository. Nothing was written. Preview the patch again"))
-        got = patched_text(hostname, text, patch, list_name)
+        got = patched_text(hostname, text, patch, list_name,
+                           _capability(list_name, hostname, patch))
         if not got["ok"]:
             return got
         edits.append((hostname, got["text"], base))

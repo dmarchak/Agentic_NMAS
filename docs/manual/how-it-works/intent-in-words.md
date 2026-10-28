@@ -140,11 +140,39 @@ Four kinds of change, the same four a typed patch can make:
 
 - an interface's description, set (the whole new text) or cleared;
 - an interface shut down, or brought up;
-- a VLAN added (with a name, or none) or removed;
+- a VLAN added (with a name, or none) or removed; added only on a device with a VLAN database
+  (see [A VLAN needs a VLAN database](#vlan-database));
 - an OSPF network statement added or removed, by its IPv4 prefix, process and area.
 
 Anything else (an address, a speed, a route, a hostname) is refused, saying why; make it with
 **Edit**. An OSPF network is OSPFv2's, IPv4 only: an IPv6 prefix is refused by name.
+
+## A VLAN needs a VLAN database {#vlan-database}
+
+A `vlan <N>` line creates a VLAN only on a device with a VLAN database, a switch. A router's
+intent holds an empty list of VLANs just as a switch's can, so the intent alone cannot tell
+them apart. {{product}} adds a VLAN only where a VLAN database is known, and otherwise refuses
+the draft at `preview`, with nothing previewed, saying where the answer came from:
+
+1. **Declared**, by the device's platform and device type: {{product}}'s platform table names
+   device types with and without a VLAN database (a Catalyst 8000V, a virtual router, has
+   none), keyed by the device type as NetBox names it (its model). A device type the table
+   does not name is not declared.
+2. **Else measured**: the device's own answer to `show vlan id 1`, run on it through
+   [Show commands](show-commands), or **Ask the device** on its page, and kept with its time.
+   A device that lists VLAN 1 has a VLAN database; one that refuses the command
+   (`% Invalid input detected`) has none; any other answer counts as no answer. The newest
+   readable answer counts, and an answer from before the device's name was last retired or
+   onboarded belongs to an earlier device, so it does not count.
+3. **Else unknown**, and the VLAN is refused: "whether *device* (*platform*, device type
+   *type*) has a VLAN database is not declared and not measured: run `show vlan id 1` on
+   *device* (Show commands, or Ask the device on its page) to measure it".
+
+It is never judged from a device's name or its role: a device named or classed as a switch
+gets no VLAN without a declaration or a measurement. The answer is read from what is stored
+when you draft and again when you commit; no device is asked by the draft. Removing a VLAN
+needs none of this: it takes the line out of intent, and a merge-only deploy sends nothing for
+it.
 
 ## The steps {#steps}
 
@@ -184,7 +212,9 @@ Anything else (an address, a speed, a route, a hostname) is refused, saying why;
    and the change's own rules hold, as for a typed change: a printable description of at most 240 characters, a VLAN
    the device may create, a network with its host bits clear.
 7. `preview`: the intent editor previews the draft against the committed intent: an interface,
-   VLAN or process the intent does not hold is refused, naming both; otherwise you see the
+   VLAN or process the intent does not hold is refused, naming both, and so is a VLAN added to
+   a device with no VLAN database, declared or measured (see
+   [A VLAN needs a VLAN database](#vlan-database)); otherwise you see the
    changes in words, what they change in the device's configuration, what a deploy would send,
    and the editor's checks. A removal a merge-only deploy would not carry is said, as for an
    edit. A draft that changes no line of the configuration (an interface already up) says

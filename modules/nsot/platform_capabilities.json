@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "what": "Mercury's platform table of capabilities (C1692; the operator's decision, 2026-10-28). `vlan_database`: per config dialect, then per device type (the model as NetBox's device type names it, compared whole, ignoring case), whether a device of that type has a VLAN database, so that a `vlan <N>` line creates a VLAN on it. A device has VLANs only by a DECLARED capability or a MEASURED one, never by a name or a role: a device type not listed here is not declared, and Mercury reads the device's own answer to the check (`check`), recorded by Show commands. Neither: an added VLAN is refused (`vlan_capability.of`).",
+  "how": "An entry joins with `has`, `basis` and `source`. `false` may join by the vendor's documentation, its measurement named as owed (`owed`): refusing a VLAN is the safe side. `true` joins only by measurement: the device type's answer to the check, its device, its time and its fixture under tests/fixtures/.",
+  "check": "show vlan id 1",
+  "vlan_database": {
+    "cisco_iosxe": {
+      "C8000V": {
+        "has": false,
+        "basis": "documented",
+        "source": "the Catalyst 8000V Edge is a virtual router: it routes and has no LAN switching, so no VLAN database",
+        "owed": "a C8000V's answer to `show vlan id 1`, and what it does with `vlan 40` in configuration mode (C1692's measurement)"
+      }
+    }
+  }
+}

@@ -413,6 +413,13 @@ def intent_words_doc(name):
 
 # ── the stale-expectation check (the operator, 2026-10-26; C1770's premises) ─────────────
 
+def _vlans_measured():
+    """s1's VLAN database measured, as Show commands records it (C1692: a VLAN is added only
+    where one is declared or measured; tests/test_vlan_capability.py)."""
+    from tests.test_vlan_capability import SWITCH_ANSWERS, measure
+    measure("Lab", "s1", SWITCH_ANSWERS[0])
+
+
 def _case(sentence, outcome, ops, said=None, device="s1"):
     expect = {"outcome": outcome, "ops": ops}
     if said:
@@ -438,6 +445,7 @@ def _case(sentence, outcome, ops, said=None, device="s1"):
      "no committed intent to judge it against"),
 ], ids=["already-up", "vlan-in-use", "now-taken", "outside-the-sentence", "no-intent"])
 def test_a_stale_expectation_is_found_by_the_real_path_with_no_call(world, case, words):
+    _vlans_measured()
     got = intent_words.stale("Lab", case)
     assert len(got) == 1 and words in got[0], got
     assert world.sent == [] and calls.read()["rows"] == [], "no call, nothing spent"
@@ -651,6 +659,7 @@ def test_mercury_s_question_is_drawn_with_controls_that_continue_the_draft(world
 
 def test_an_answer_continues_the_same_draft_and_shows_the_sentence_as_decided(world, host):  # noqa: F811
     world.answer = _answer(("s1", [_op("add_vlan", vlan=41, vlan_name="")]))
+    _vlans_measured()
     r, html = _post(host, {"words": "add VLAN 40 or 41, whichever is free",
                            "ask": "alternatives", "answer": "41"})
     assert "Drafted from your words" in html, html[-1500:]
@@ -709,6 +718,7 @@ def test_the_main_set_s_one_device_s1_cases_hold_on_the_real_s1(world, reads):
                                    "intent_patch", "recorded.json"))
     s1 = [c for c in data["cases"] if c["device"] == "s1" and "patches" not in c["expect"]]
     assert len(s1) >= 20 and {40, 41, 42, 46, 47, 48, 49, 50, 51} <= {c["n"] for c in s1}
+    _vlans_measured()
     assert [p for c in s1 for p in intent_words.stale("Lab", c)] == []
     assert world.sent == []
 

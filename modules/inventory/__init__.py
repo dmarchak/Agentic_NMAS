@@ -37,7 +37,7 @@ _CACHE_FILE = "netbox_inventory_cache.json"
 
 #: Presentation-only keys, stripped before a dict reaches netmiko.
 _METADATA_KEYS = ("_source", "_netbox_id", "_cred_source", "_platform", "_site", "_stale",
-                  "_role_slug")
+                  "_role_slug", "_model")
 
 # In-memory cache: list_name -> {devices, skipped, warnings, fetched_at, stale, error}
 _memory: dict = {}

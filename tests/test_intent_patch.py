@@ -51,9 +51,16 @@ def _iface(doc: dict, name: str) -> dict:
     return next(i for i in doc["interfaces"] if i["name"] == name)
 
 
-def _apply(name: str, *operations) -> dict:
+#: A VLAN database as the patch's caller hands it in once measured (`vlan_capability.of`,
+#: C1692): the patch is pure, so these tests of its document work give it the answer;
+#: where the answer comes from, and every refusal without one, is tests/test_vlan_capability.py.
+HAS_VLANS = {"has": True, "platform": "cisco_ios", "device_type": "", "source": "measured",
+             "words": "measured: a VLAN database"}
+
+
+def _apply(name: str, *operations, vlan_database=HAS_VLANS) -> dict:
     from modules.nsot import intent_patch
-    return intent_patch.apply(_doc(name), _patch(name, *operations))
+    return intent_patch.apply(_doc(name), _patch(name, *operations), vlan_database)
 
 
 def _refused(got: dict, status: int, stage: str) -> str:
@@ -194,7 +201,8 @@ class TestEachOperation:
         doc = _doc("s1")
         before = copy.deepcopy(doc)
         got = intent_patch.apply(doc, _patch("s1", {"op": "add_vlan", "vlan": 40},
-                                             {"op": "shutdown", "interface": "Gi0/1"}))
+                                             {"op": "shutdown", "interface": "Gi0/1"}),
+                                 HAS_VLANS)
         assert got["ok"] and doc == before and got["doc"] != before
 
     def test_set_description_changes_that_interface_alone(self):
@@ -246,8 +254,19 @@ class TestEachOperation:
         assert got["doc"] == expected
 
     def test_add_vlan_to_an_intent_with_none(self):
-        got = _apply("r2", {"op": "add_vlan", "vlan": 40})
+        """A switch's intent holding no VLAN takes one. It was r2's (C1692): the router's
+        intent holds `vlans: []` as well, and a VLAN added there would reach a deploy as
+        `vlan 40`; with no VLAN database given, it is refused."""
+        from modules.nsot import intent_patch
+        doc = _doc("s1")
+        doc["vlans"] = []
+        got = intent_patch.apply(doc, _patch("s1", {"op": "add_vlan", "vlan": 40}), HAS_VLANS)
         assert got["doc"]["vlans"] == [{"extra": [], "id": "40", "name": ""}]
+        assert _doc("r2")["vlans"] == []
+        refused = _apply("r2", {"op": "add_vlan", "vlan": 40}, vlan_database=None)
+        assert _refused(refused, 409, "capability").startswith(
+            "operations[0] adds VLAN 40, and whether r2 (platform not known, device type not "
+            "named) has a VLAN database is not declared and not measured")
 
     def test_add_vlan_already_held_changes_nothing(self):
         for op in ({"op": "add_vlan", "vlan": 20}, {"op": "add_vlan", "vlan": 20,
@@ -378,7 +397,8 @@ class TestRefusalsNameBothOperands:
         from modules.nsot import intent_patch
         doc = _doc("s1")
         got = intent_patch.apply(doc, _patch("s1", {"op": "add_vlan", "vlan": 40},
-                                             {"op": "shutdown", "interface": "Gi9/9"}))
+                                             {"op": "shutdown", "interface": "Gi9/9"}),
+                                 HAS_VLANS)
         assert got["ok"] is False and got["operation"] == 1 and doc == _doc("s1")
 
     def test_a_hand_formatted_document_is_refused(self):
@@ -414,7 +434,8 @@ class TestTheEditorsValidator:
             return real(hostname, text, list_name)
         monkeypatch.setattr(intent_edit, "validate", watch)
         got = intent_patch.patched_text("s1", _text("s1.yml"),
-                                        _patch("s1", {"op": "add_vlan", "vlan": 40}))
+                                        _patch("s1", {"op": "add_vlan", "vlan": 40}),
+                                        vlan_database=HAS_VLANS)
         assert got["ok"] and seen[-1] == got["text"]
 
     def test_a_committed_intent_the_validator_refuses_is_named_as_such(self):
@@ -429,7 +450,8 @@ class TestTheEditorsValidator:
     def test_the_patched_text_is_the_serialisers_and_parses_to_the_patched_document(self):
         from modules.nsot import intent_patch
         ops = ({"op": "add_vlan", "vlan": 40}, {"op": "shutdown", "interface": "Gi0/1"})
-        got = intent_patch.patched_text("s1", _text("s1.yml"), _patch("s1", *ops))
+        got = intent_patch.patched_text("s1", _text("s1.yml"), _patch("s1", *ops),
+                                        vlan_database=HAS_VLANS)
         expected = _doc("s1")
         expected["vlans"].append({"extra": [], "id": "40", "name": ""})
         _iface(expected, "GigabitEthernet0/1").update(shutdown=True, no_shutdown=False)
@@ -482,6 +504,8 @@ class TestThePreview:
     def test_a_patch_that_changes_nothing_says_so_and_previews_nothing(self, host,
                                                                        monkeypatch):
         from modules.nsot import intent_edit, intent_patch
+        from tests.test_vlan_capability import SWITCH_ANSWERS, measure
+        measure("Lab", "s1", SWITCH_ANSWERS[0])          # s1's VLAN database, measured
         monkeypatch.setattr(intent_edit, "preview",
                             lambda *a: pytest.fail("previewed a patch that changes nothing"))
         got = intent_patch.preview("Lab", "s1", _patch("s1", {"op": "add_vlan", "vlan": 20}))
