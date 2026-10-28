@@ -152,6 +152,10 @@ lost response and the one answering it. A newer response for another source, ano
 another switch, or one that is itself not in force, leaves the row up; so does a controller
 that has not answered since, because whether the newer response is in force is then not known.
 
+On [SDN › Flows](sdn#flows) a lost response answered this way is drawn **Answered**, naming
+the newer response and until when it is in force, with no Re-apply…, judged by the same test
+over the same SDN read the page draws.
+
 The row opens the switch on [SDN › Flows](sdn#flows). There the response is drawn **Not in
 force**, with **Re-apply…**:
 

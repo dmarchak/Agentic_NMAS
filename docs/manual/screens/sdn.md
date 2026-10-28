@@ -122,9 +122,19 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   exactly what is missing, for the time its hard timeout has left; nothing is sent until you
   confirm. The same response is a row on Needs attention until the reader finds it installed
   again, its hard timeout passes, or a newer response answers the same threat on that switch.
-  This line stays until the first two; once a newer response answers the threat, Re-apply… is
-  refused, naming that response, and nothing is sent. How it works:
-  [Re-apply a lost response](sdn-flows#reapply).
+  How it works: [Re-apply a lost response](sdn-flows#reapply).
+- **Answered**, in the same place: a lost response whose threat a newer response of Mercury's
+  already answers on that switch (its detection fired again and was answered as new). The line
+  names the lost response and what is missing, then the newer response (its id and, when it
+  differs, its operation; its action and source; and the time it is in force until), and says
+  there is nothing to re-apply: there is no Re-apply…. It is judged as Needs attention judges
+  it, from the same SDN read the page draws: the same rule, the same switch, the same source or
+  the same detection, and every flow and the meter of the newer response in place as last
+  read. A newer response for another source, rule or switch, one not in force itself, or a
+  controller that has not answered since (its read is then carried, so nothing on it is known
+  to be in force) leaves the line **Not in force** with Re-apply…. A page drawn before the newer
+  response was applied still shows Re-apply… until it redraws; pressed, it is refused, naming
+  that response, and nothing is sent.
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches
   meters are supported, from each switch's meter features.

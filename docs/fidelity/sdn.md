@@ -28,7 +28,26 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `56fc0e23a45b825b07dc80dc277ab906d292a0e55551a1e2565ba612a7e163fc`
+Templates sha256: `caf9ef729b8315eb6db10d2bc426247917344b87c44f4996740c1d862a9c572c`
+
+**Compared again 2026-10-28 ~14:1x UTC for C2077** (a lost response a newer response already
+answers: `_sdn_view.html` draws it **Answered**, naming the newer response, with no
+Re-apply…): `SdnFlows.dc.html` revised in the agent's copy of the project folder (s2 draws a
+Not in force line with Re-apply… and an Answered line, the newer response's flow installed and
+the lost ones missing in its table, and a builder's note; signed off under the Phase 7 mode,
+docs/STANDING_APPROVAL_LOG.md "SDN C2077"), and a new shot beside it, `sdn-flows-answered`
+(1440, 1280 and 390): the lab above with the `sdn-flows-lost` data, then the awaiting scan
+confirmed by a person as a newer drop of 192.0.2.1, recorded 30 s before the read for 600 s and
+in the capture's table, read again. The shot refuses to run unless the page draws the answered
+line and no Re-apply… form (its data once drew Not in force: the shot's lost record named no
+rule, so nothing could cover it; both records now carry the scan rule, as every response's
+does). At 1440 the Answered line sits under Add flow… where the board draws it, the newer
+response's id with its operation beside it in faint, its action and source, its clock time in
+UTC, "Nothing to re-apply." and the (i); at 390 it wraps above the table. The `sdn-flows-lost`
+shots were taken again: unchanged (Not in force with Re-apply…). The page's Needs attention count
+fell from 17 to 16 between the two (the lost response's row resolved, C2070; the confirmed scan
+no longer awaits). The board draws both lines on s2 of four switches; the capture has one switch
+and one lost response, so each state is shot on its own (`sdn-flows-lost`, `sdn-flows-answered`).
 
 **Compared again 2026-10-28 ~09:3x UTC for C2003** (never a frozen page shown as current:
 `_sdn_view.html` draws a hidden note under the tabs on every tab, which static/js/nmas_v2.js
@@ -125,7 +144,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A flow row | owner chip, priority, match, actions, packets, timeouts, cookie, Remove… (SdnFlowEdit: Edit… and Remove… on each flow row) | the same columns; the unauthorised row's why under its chip; Remove… on every flow and Edit… on Mercury's, each with its (i), each opening the editor in a row under the flow | **same** |
 | Add flow… | SdnFlowEdit: "Add flow… sits on each switch in the list" | Add flow… with its (i) at the top of each opened switch | **same** |
 | Mercury's flow | "Mercury's installed as expected", "Its response" link | the same chip and words; no response link (a flow's operation is read on History, not yet linked from its row) | **later** S11 (a flow's response linked from its row) |
-| A lost response (C2018) | not drawn: the board's missing flow says "nothing to do" | under Add flow…, one line per response the switch lost before its hard timeout: "Not in force", the response's action and source, what is missing (its flows' cookies, its meter), the time left and the expiry's clock time, then Re-apply… with its (i); the switch opens, as one with something wrong does; at 390 the line wraps above the table | **deviation** (log: SDN C2018: a lost response's Not in force line and Re-apply… on its switch) |
+| A lost response (C2018) | revised for C2077: s2's "Not in force" line, "Rate-limit the source (192.0.2.40): 1 flow (…0b) and meter 3 missing, 6 min 40 s of its hard timeout left (until 10:46 UTC)", Re-apply… and How does this work? | under Add flow…, one line per response the switch lost before its hard timeout: "Not in force", the response's action and source, what is missing (its flows' cookies, its meter), the time left and the expiry's clock time, then Re-apply… with its (i); the switch opens, as one with something wrong does; at 390 the line wraps above the table | **same** (drawn first as a deviation, log: SDN C2018; the revised board draws it) |
+| A lost response answered by a newer one (C2077) | s2's "Answered" line (neutral): the lost response's action and source and what is missing, "and a newer response answers the same threat on this switch: response resp-… (operation sdnop-…), <its action and source>, in force until 10:52 UTC. Nothing to re-apply.", How does this work?; no Re-apply… | the same words and place (shot `sdn-flows-answered` at 1440, 1280 and 390): the badge muted, the operation in faint only when it differs from the response's id, the clock time with its full UTC time on hover, the lost response's operation and expiry on hover of its name; the (i) opens the re-apply section; its flows stay "Mercury's, missing" in the table with the reader's words, as the board's do | **same** |
 | A record not installed | "Mercury's, missing" for one expired at its hard timeout, "nothing to do" | expired is "Mercury's, expired", neutral, not counted missing (S5's classify tells expired from missing); missing stays warn | **deviation** (log: SDN S11: an expired flow is "expired", never "missing") |
 | The board's departure note | the unauthorised flow a Needs attention row | not drawn: that row is a later S11 step | **later** S11's Needs attention rows (unauthorised flows) |
 | Meters | switch, meter, rate, packets in band, owner chip and "its response" | the same columns; the owner from the flows that use the meter; no response link | **same** |

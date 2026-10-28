@@ -71,21 +71,28 @@ def stored(network: str) -> dict:
     ``value``, ``value_at`` and ``failed``, the last attempt's error when it failed),
     ``never`` (no read stored yet), ``not_configured`` (no connection set, so nothing is
     read), ``not_applicable`` or ``unreadable`` (with ``why``)."""
+    return _stored(network)[0]
+
+
+def _stored(network: str) -> tuple:
+    """``(stored's answer, the reader's cached answer as read)``: the second for a caller that
+    judges the read further (Flows' answered lost responses, C2077), so it is read once."""
     from modules import reader_job
     from modules.readers.sdn_controllers import READER_NAME
 
     got = reader_job.read_cached_for(READER_NAME, network)
     state = got.get("state")
     if state in ("not_applicable", "not_configured", "unreadable"):
-        return {"state": state, "why": got.get("why") or "the reader's store could not be read"}
+        return {"state": state,
+                "why": got.get("why") or "the reader's store could not be read"}, got
     doc = got.get("doc") or {}
     last = doc.get("last_good") or {}
     attempt = doc.get("last_attempt") or {}
     failed = "" if attempt.get("ok", True) else (attempt.get("error") or "the last read failed")
     if not last:
-        return {"state": "never", "failed": failed}
+        return {"state": "never", "failed": failed}, got
     return {"state": "ok", "value": last.get("value") or {},
-            "value_at": last.get("value_at", ""), "failed": failed}
+            "value_at": last.get("value_at", ""), "failed": failed}, got
 
 
 def _listed(network: str) -> dict:
@@ -94,12 +101,15 @@ def _listed(network: str) -> dict:
     return connections.connections(network)
 
 
-def _merged(network: str) -> tuple:
+def _merged(network: str, keep: dict = None) -> tuple:
     """``(listed, stored, controllers)``: each connection as Settings holds it, with what the
     reader last read of it (``unread`` when nothing yet, or when it was read under another
-    URL or driver than it has now)."""
+    URL or driver than it has now). *keep*, when given, is handed the reader's cached answer
+    as read (``keep["cached"]``), so a caller judging it further reads nothing twice."""
     listed = _listed(network)
-    got = stored(network)
+    got, cached = _stored(network)
+    if keep is not None:
+        keep["cached"] = cached
     read = {c.get("name"): c for c in ((got.get("value") or {}).get("controllers") or [])}
     out = []
     for conn in listed.get("connections") or []:
@@ -278,13 +288,26 @@ def _meter_words(m: dict) -> str:
     return "; ".join(out)
 
 
-def _lost_row(x: dict) -> dict:
-    """A lost response on its switch, as Re-apply… draws it (C2018)."""
+def _iso(epoch) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _lost_row(x: dict, newer: dict = None) -> dict:
+    """A lost response on its switch (C2018): Not in force with Re-apply…, or, when *newer*
+    (`reapply.answered_by`'s hold: a newer response in force answering the same threat on that
+    switch, C2070) is given, answered by it, naming it, with no Re-apply… (C2077)."""
     from modules.sdn import reapply
 
+    answered = None
+    if newer is not None:
+        answered = {"id": newer.get("id") or newer.get("key"), "operation": newer.get("key"),
+                    "label": reapply.response_words({
+                        "action": newer.get("action"),
+                        "detection": {"source": ", ".join(newer.get("sources") or [])}}),
+                    "until": _iso(newer["until"])}
     return {"key": x["key"], "label": x["label"], "missing_words": x["missing_words"],
-            "left_words": reapply.left_words(x["left"]),
-            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(x["expires_at"])),
+            "left_words": reapply.left_words(x["left"]), "expires_at": _iso(x["expires_at"]),
+            "answered": answered,
             "slot": "sdn-ra-" + hashlib.sha256(
                 f"{x['connection']}|{x['dpid_hex']}|{x['key']}".encode()).hexdigest()[:12]}
 
@@ -294,12 +317,16 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
     switch with something wrong open), the filter and "hide the controller's own", each flow's
     owner (`flow_intent.classify`, done by the reader), the meters, the granularity note, and
     on each switch the responses lost from it with their Re-apply… (`reapply.lost_on_switch`,
-    judged at *now*, C2018)."""
-    from modules.sdn import reapply
+    judged at *now*, C2018), or, for one a newer response in force already answers, that
+    response named and no Re-apply… (C2077: `reapply.answered_by`, C2070's one judgement,
+    over the same stored read, once per view and only when something is lost)."""
+    from modules.sdn import loop, reapply
 
     now = time.time() if now is None else now
     s = ask(values or {})
-    listed, got, conns = _merged(network)
+    keep = {}
+    listed, got, conns = _merged(network, keep)
+    judged = None
     out = {"network": network, "tab": "flows", "s": s, "listed": listed["state"],
            "listed_error": listed.get("error", ""), "read": got, "switches": [],
            "meters": [], "granularity": [], "controllers": [c["name"] for c in conns],
@@ -329,7 +356,13 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
             if s["q"]:
                 shown = [f for f in shown if _hit(s["q"], sw, f)]
                 shown_records = [r for r in records if _hit(s["q"], sw, r)]
-            lost = [_lost_row(x) for x in reapply.lost_on_switch(c, sw, now)]
+            found = reapply.lost_on_switch(c, sw, now)
+            if found and judged is None:
+                # The loop's own test of what holds a threat off (C2070), against the stored
+                # read this page draws: the network's flow intent read once, no controller.
+                judged = loop.holds(network, reapply.as_collected(got.get("value") or {}), now,
+                                    cached=keep["cached"])
+            lost = [_lost_row(x, reapply.answered_by(x, judged)) for x in found]
             wrong = bool(n["unauthorised"] or n["mercury_differs"] or n["missing"] or lost
                          or sw.get("state") != "ok" or c.get("state") == "not_answering")
             named = f"{sw.get('dpid_hex')} {sw.get('name') or ''}".lower()

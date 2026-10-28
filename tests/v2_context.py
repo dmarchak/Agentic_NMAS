@@ -2010,6 +2010,19 @@ def _sdn_reapply(client, session, d, fields):
     assert "Re-apply: " in card, card
     assert "Done, verified" in client.post("/v2/sdn/reapply/confirm", data=fields(card))\
         .get_data(as_text=True)
+    # C2077: lost again in a second restart, then the scan answered again (a newer drop of the
+    # same source, confirmed by a person): Flows draws the lost one answered, naming it.
+    session["now"] = Switch(BASE, flows={1: captured_table()})
+    newer = LP.propose("Lab", dict(d, key="k-ctx-4", source="192.0.2.7"), "drop_source", "low",
+                       why="HITL")
+    card = client.post(f"/v2/sdn/response/{newer['id']}/preview",
+                       data={"list": "Lab", "hard_timeout": "600"}).get_data(as_text=True)
+    assert "Done, verified" in client.post("/v2/sdn/response/confirm", data=fields(card))\
+        .get_data(as_text=True)
+    store_read("Lab", clock=time.time)
+    page = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+    assert 'class="small sdn-answered"' in page and newer["id"] in page, \
+        "the lost drop drawn answered by the newer one"
 
 
 def _sdn_no_topology(client, _lab, _mp):

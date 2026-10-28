@@ -139,7 +139,7 @@ def test_sdn(tmp_path, monkeypatch):
     twice by the SDN reader. Its Edit card and a Test's answer are shot too."""
     from tests import browser
     from tests.test_sdn_connections import make_networks
-    from tests.test_sdn_v2 import BASE, Captured, Down, T0, make_lab, store_read
+    from tests.test_sdn_v2 import BASE, WITH_PEER, Captured, Down, T0, make_lab, store_read
 
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
@@ -251,11 +251,43 @@ def test_sdn(tmp_path, monkeypatch):
             "match": {"eth_type": 0x0800, "ipv4_src": "192.0.2.1"}}, actor="op@example.com",
             response={"kind": "response", "action": "drop_source", "risk": "low",
                       "operation": "sdnop-20261028T005000Z-shot",
-                      "detection": {"source": "192.0.2.1", "words": "192.0.2.1 reached 229 "
-                                    "distinct destination ports"}}, at=time.time() - 120)
+                      "detection": {"rule": "scan", "source": "192.0.2.1",
+                                    "words": "192.0.2.1 reached 229 distinct destination "
+                                             "ports"}}, at=time.time() - 120)
         store_read(clock=lambda: time.time() - 2)
         _shoot("sdn-flows-lost", "SdnFlows.dc.html", lambda w: "/v2/sdn/flows?list=Default",
                served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        # C2077: the scan answered again (the awaiting response above confirmed by a person,
+        # a newer drop of 192.0.2.1 recorded 30 s ago for 600 s and installed on s1, so the
+        # capture's table carries it), read again: Flows draws the lost drop Answered, naming
+        # the newer response, with no Re-apply…, beside SdnFlows' revised s2.
+        op2 = "sdnop-20261028T005930Z-shot2"
+        cookie2 = F.mercury_cookie(0x78)
+        F.record_installed("Default", connection="lab-controller", flow={
+            "dpid": 1, "table_id": 0, "priority": 300, "cookie": cookie2,
+            "idle_timeout": 0, "hard_timeout": 600, "actions": [],
+            "match": {"eth_type": 0x0800, "ipv4_src": "192.0.2.1"}}, actor="op@example.com",
+            response={"kind": "response", "action": "drop_source", "risk": "low",
+                      "operation": op2,
+                      "detection": {"rule": "scan", "source": "192.0.2.1",
+                                    "words": "192.0.2.1 reached 231 distinct destination "
+                                             "ports"}}, at=time.time() - 30)
+        LP.resolve("Default", shot_row["id"], "confirmed", actor="op@example.com",
+                   operation=op2)
+        table = json.loads(next(e for e in WITH_PEER if e["path"] == "/stats/flow/1")
+                           ["body"])["1"]
+        lab["sessions"]["session"].ok.flows = table + [{
+            "priority": 300, "cookie": cookie2, "idle_timeout": 0, "hard_timeout": 600,
+            "byte_count": 174720, "duration_sec": 30, "duration_nsec": 0,
+            "packet_count": 2912, "length": 80, "flags": 0, "actions": [],
+            "match": {"dl_type": 2048, "nw_src": "192.0.2.1"}, "table_id": 0}]
+        store_read(clock=lambda: time.time() - 1)
+        drawn = A.app.test_client().get("/v2/sdn/flows?list=Default").get_data(as_text=True)
+        assert 'class="small sdn-answered"' in drawn and 'class="sdn-lost"' not in drawn, \
+            "the shot's data draws the lost drop answered, or the shot would show another state"
+        _shoot("sdn-flows-answered", "SdnFlows.dc.html",
+               lambda w: "/v2/sdn/flows?list=Default", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     assert T0, "the lab's flow intent was recorded at T0"
 
 

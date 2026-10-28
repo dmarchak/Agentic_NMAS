@@ -115,11 +115,18 @@
   <p class="sdn-sw-acts"><button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='add', connection=sw.controller, dpid=sw.dpid_hex) }}" hx-target="#sdn-add-{{ sw.dpid_hex }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Add flow…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Add flow') }}</p>
   <div class="sdn-op-slot" id="sdn-add-{{ sw.dpid_hex }}" role="region" aria-live="polite"></div>
   {%- for x in sw.lost %}
+  {%- if x.answered %}
+  {%- set a = x.answered %}
+  {#- C2077: a newer response in force answers the same threat on this switch (C2070's
+      judgement, reapply.answered_by): named, and nothing to re-apply. -#}
+  <p class="small sdn-answered" data-key="{{ x.key }}">{{ badge('Answered', 'muted') }} <strong title="operation {{ x.key }}, until {{ x.expires_at }}">{{ x.label }}</strong>: {{ x.missing_words }} missing, and a newer response answers the same threat on this switch: response <span class="mono">{{ a.id }}</span>{% if a.operation != a.id %} <span class="faint">(operation {{ a.operation }})</span>{% endif %}, {{ a.label }}, in force until <time datetime="{{ a.until }}" title="{{ a.until }}">{{ a.until[11:16] }} UTC</time>. Nothing to re-apply. {{ info('sdn-flows', 'reapply', label='How a lost response is answered') }}</p>
+  {%- else %}
   <form class="sdn-lost" hx-post="{{ url_for('sdn_v2.reapply_preview') }}" hx-target="#{{ x.slot }}" hx-swap="innerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="connection" value="{{ sw.controller }}"><input type="hidden" name="dpid" value="{{ sw.dpid_hex }}"><input type="hidden" name="key" value="{{ x.key }}">
     <p class="small">{{ badge('Not in force', 'warn') }} <strong>{{ x.label }}</strong>: {{ x.missing_words }} missing, {{ x.left_words }} of its hard timeout left <span class="faint">(until <time datetime="{{ x.expires_at }}" title="{{ x.expires_at }} · operation {{ x.key }}">{{ x.expires_at[11:16] }} UTC</time>)</span> <button class="btn btn-small" type="submit" hx-disabled-elt="this" data-op="sdn-flows" title="Previews putting back exactly what is missing, for the time its hard timeout has left; nothing is sent until you confirm"{{ gate('confirm') }}><span class="op-idle">Re-apply…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', 'reapply', compact=True, op='Re-apply') }}</p>
   </form>
   <div class="sdn-op-slot" id="{{ x.slot }}" role="region" aria-live="polite"></div>
+  {%- endif %}
   {%- endfor %}
   {%- if sw.as_of %}<p class="muted small sdn-sw-note">Its controller is not answering: this table is as last read, {{ stamp(sw.as_of) }}.</p>{% endif %}
   {%- if sw.error %}<p class="muted small sdn-sw-note">Not read whole: {{ sw.error }}.</p>{% endif %}
