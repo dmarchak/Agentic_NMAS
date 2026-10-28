@@ -42,7 +42,9 @@ tell. :func:`apply` stays pure and is handed the device's VLAN database by its c
 device's recorded answer to `show vlan id 1`, else unknown); `preview`, `commit` and
 `commit_many` read it once for a patch that adds a VLAN. A declared or measured "no", and an
 unknown, are refused naming the device, its platform and device type and where the answer came
-from. Never from a name or a role.
+from. Never from a name or a role. The words are the one check's (`vlan_capability.refusal`),
+which the editor's commit and bulk intent ask too (C2043, C2044); the capability read here is
+handed to `intent_edit.commit` (``vlan_databases``), so a commit reads it once.
 
 **IPv6:** an OSPF network statement is OSPFv2's, an IPv4 concept; OSPFv3 joins an interface to
 an area instead (``ipv6 ospf <process> area <area>``), which a patch does not offer yet. An
@@ -387,24 +389,14 @@ def _vlan_database(op, index: int, hostname: str, capability) -> None:
     """Refused unless *capability* (`vlan_capability.of`'s, handed in by the caller) says
     *hostname* has a VLAN database, declared or measured (C1692): a declared or measured "no"
     and an unknown are each refused, naming the device, its platform and device type, and
-    where the answer came from. Never judged from a name or a role."""
-    cap = capability if isinstance(capability, dict) else {}
-    if cap.get("has") is True:
-        return
-    what = (f"{hostname} ({cap.get('platform') or 'platform not known'}, device type "
-            f"{cap.get('device_type') or 'not named'})")
-    if cap.get("has") is False:
-        raise Refused(_refusal(409, "capability", (
-            f"operations[{index}] adds VLAN {op.vlan}, and {what} has no VLAN database: "
-            f"{cap.get('words') or 'said by its caller'}. Nothing is added"),
-            operation=index))
-    from modules.nsot.vlan_capability import CHECK
-    raise Refused(_refusal(409, "capability", (
-        f"operations[{index}] adds VLAN {op.vlan}, and whether {what} has a VLAN database is "
-        + (cap.get("words") or f"not declared and not measured: run `{CHECK}` on {hostname} "
-                                "to measure it")
-        + ". A VLAN is added only where a VLAN database is declared or measured"),
-        operation=index))
+    where the answer came from. Never judged from a name or a role. The words are the one
+    check's (`vlan_capability.refusal`), which the editor's commit and bulk intent use too."""
+    from modules.nsot import vlan_capability
+
+    words = vlan_capability.refusal(hostname, capability,
+                                    f"operations[{index}] adds VLAN {op.vlan}")
+    if words:
+        raise Refused(_refusal(409, "capability", words, operation=index))
 
 
 def _add_vlan(doc: dict, op, index: int, hostname: str, capability=None) -> dict:
@@ -662,13 +654,14 @@ def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor:
         return _refusal(409, "base", (
             f"Not saved: the version this patch was previewed on ({base[:12]}) is not in "
             f"{hostname}'s repository. Nothing was written. Preview the patch again"))
-    got = patched_text(hostname, text, patch, list_name,
-                       _capability(list_name, hostname, patch))
+    cap = _capability(list_name, hostname, patch)
+    got = patched_text(hostname, text, patch, list_name, cap)
     if not got["ok"]:
         return got
     out = intent_edit.commit(list_name, hostname, got["text"], summary, base, actor,
                              source=source or intent_edit.SOURCE,
-                             extra_trailers=extra_trailers)
+                             extra_trailers=extra_trailers,
+                             vlan_databases=None if cap is None else {hostname: cap})
     return {**out, "changes": got["changes"], "device_keeps": _kept_words(got["changes"])}
 
 
@@ -681,7 +674,7 @@ def commit_many(list_name: str, items: list, summary: str, actor: str, *, source
     writes nothing on both."""
     from modules.nsot import hostvars, intent_edit
 
-    edits, changes = [], []
+    edits, changes, caps = [], [], {}
     for hostname, patch, base in items:
         base = (base or "").strip()
         if not base:
@@ -694,13 +687,15 @@ def commit_many(list_name: str, items: list, summary: str, actor: str, *, source
             return _refusal(409, "base", (
                 f"Not saved: the version this patch was previewed on ({base[:12]}) is not in "
                 f"{hostname}'s repository. Nothing was written. Preview the patch again"))
-        got = patched_text(hostname, text, patch, list_name,
-                           _capability(list_name, hostname, patch))
+        cap = _capability(list_name, hostname, patch)
+        got = patched_text(hostname, text, patch, list_name, cap)
         if not got["ok"]:
             return got
+        if cap is not None:
+            caps[hostname] = cap
         edits.append((hostname, got["text"], base))
         changes += [dict(c, hostname=hostname) for c in got["changes"]]
     out = intent_edit.commit_many(list_name, edits, summary, actor,
                                   source=source or intent_edit.SOURCE,
-                                  extra_trailers=extra_trailers)
+                                  extra_trailers=extra_trailers, vlan_databases=caps)
     return {**out, "changes": changes, "device_keeps": _kept_words(changes)}

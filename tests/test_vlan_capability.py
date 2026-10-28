@@ -169,7 +169,20 @@ class TestWhereTheAnswerComesFrom:
         assert (got["has"], got["source"]) == (None, "unknown")
         assert got["words"] == ("not declared and not measured: run `show vlan id 1` on "
                                 "core-switch-1 (Show commands, or Ask the device on its page) "
-                                "to measure it")
+                                "to measure it, or name its device type in NetBox, by which "
+                                "Mercury's platform table declares a VLAN database (none is "
+                                "named)")
+
+    def test_unknown_with_a_device_type_names_the_table_has_none_for_it(self, net):
+        """What would answer it (C2043): the measurement, or the NetBox device type the
+        platform table declares by; a type it does not list is named as not declared."""
+        from modules.nsot import vlan_capability
+        net.append(dict(PLAIN_SWITCH, _model="IOSv-L2"))
+        got = vlan_capability.of("Lab", "core-switch-1")
+        assert (got["has"], got["source"]) == (None, "unknown")
+        assert got["words"].endswith(
+            "to measure it; Mercury's platform table declares nothing for cisco_ios device "
+            "type IOSv-L2")
 
     @pytest.mark.parametrize("answer", SWITCH_ANSWERS, ids=["vtp-transparent", "vtp-server"])
     def test_measured_yes_from_a_recorded_answer(self, net, answer):
@@ -303,8 +316,9 @@ class TestThePatchRefuses:
         assert got["error"] == (
             "operations[0] adds VLAN 40, and whether s1 (cisco_ios, device type not named) "
             "has a VLAN database is not declared and not measured: run `show vlan id 1` on s1 "
-            "(Show commands, or Ask the device on its page) to measure it. A VLAN is added "
-            "only where a VLAN database is declared or measured")
+            "(Show commands, or Ask the device on its page) to measure it, or name its device "
+            "type in NetBox, by which Mercury's platform table declares a VLAN database (none "
+            "is named). A VLAN is added only where a VLAN database is declared or measured")
 
     def test_none_given_is_unknown_and_refused(self):
         from modules.nsot import intent_patch

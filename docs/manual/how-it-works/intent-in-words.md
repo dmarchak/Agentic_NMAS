@@ -186,13 +186,18 @@ the draft at `preview`, with nothing previewed, saying where the answer came fro
    onboarded belongs to an earlier device, so it does not count.
 3. **Else unknown**, and the VLAN is refused: "whether *device* (*platform*, device type
    *type*) has a VLAN database is not declared and not measured: run `show vlan id 1` on
-   *device* (Show commands, or Ask the device on its page) to measure it".
+   *device* (Show commands, or Ask the device on its page) to measure it", followed by what
+   the device type would answer: with none named, "or name its device type in NetBox, by
+   which Mercury's platform table declares a VLAN database (none is named)"; with one named,
+   that the table declares nothing for it.
 
 It is never judged from a device's name or its role: a device named or classed as a switch
 gets no VLAN without a declaration or a measurement. The answer is read from what is stored
-when you draft and again when you commit; no device is asked by the draft. Removing a VLAN
+when you draft and once when you commit; no device is asked by the draft. Removing a VLAN
 needs none of this: it takes the line out of intent, and a merge-only deploy sends nothing for
-it.
+it. The same check, in the same words, holds wherever intent is written: the
+[intent editor](edit-intent)'s commit and [Bulk intent](bulk-intent) refuse a VLAN they would
+add on such a device too.
 
 ## The steps {#steps}
 

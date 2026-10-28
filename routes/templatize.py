@@ -208,7 +208,7 @@ def bulk_plan_of(data: dict) -> tuple:
     render, eligible = _bulk_render_and_eligible(list_name, repo)
     report = bulk_intent.plan(repo, devices, steps, render=render,
                               eligible=eligible,
-                              summary=data.get("summary", ""))
+                              summary=data.get("summary", ""), list_name=list_name)
     return {**report, "list_name": list_name, "repo": repo}, (200 if report["ok"] else 400)
 
 

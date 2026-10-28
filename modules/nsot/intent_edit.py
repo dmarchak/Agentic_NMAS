@@ -562,18 +562,20 @@ def moved(repo: str, hostname: str, base: str, current: str, text: str) -> dict:
 
 
 def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
-           actor: str, *, source: str = SOURCE, extra_trailers: list = None) -> dict:
+           actor: str, *, source: str = SOURCE, extra_trailers: list = None,
+           vlan_databases: dict = None) -> dict:
     """Commit an edit to *hostname*'s intent as *actor*, bound to the version opened.
     *source* and *extra_trailers* name the workflow (feature 7's draft commits as
     ``ai-draft`` with its ``AI-Call:``); a typed edit is ``intent-edit``. One device's case of
     `commit_many`, its answer in the one-device shape."""
     got = commit_many(list_name, [(hostname, text, base)], summary, actor, source=source,
-                      extra_trailers=extra_trailers)
+                      extra_trailers=extra_trailers, vlan_databases=vlan_databases)
     return {k: v for k, v in got.items() if k not in ("hostnames", "bases", "each")}
 
 
 def commit_many(list_name: str, edits: list, summary: str, actor: str, *,
-                source: str = SOURCE, extra_trailers: list = None) -> dict:
+                source: str = SOURCE, extra_trailers: list = None,
+                vlan_databases: dict = None) -> dict:
     """Commit edits to several devices' intent (``[(hostname, text, base)]``) as ONE commit
     (one `repo.save_host_vars`, so one `repo.commit()`), as *actor*, each bound to the version
     it opened: refused, nothing written, when any document is missing or refused by the
@@ -585,8 +587,16 @@ def commit_many(list_name: str, edits: list, summary: str, actor: str, *,
     nothing; one whose change is formatting only must pass Normalise's proof under the lock
     (409, stage "proof", naming the device), its trailer added to the one commit; and the
     answer says, for the first device, ``formatting_only`` and ``reformatted`` (``each`` for
-    every device changed)."""
-    from modules.nsot import hostvars, repo as repo_service
+    every device changed).
+
+    A document that ADDS a VLAN to what is committed (C2044) is refused (409, stage
+    "capability", naming the device, its platform and device type and where the answer came
+    from) unless the device's VLAN database is declared or measured: the one check every
+    intent write path asks (`vlan_capability.judge`). *vlan_databases* is ``{hostname:
+    vlan_capability.of's answer}`` for a device its caller read already this request (the
+    intent patch), so it is read once; any other device adding a VLAN is read here. Removing a
+    VLAN, or leaving the list as it was, is never asked about."""
+    from modules.nsot import hostvars, repo as repo_service, vlan_capability
 
     repo = _repo_for(list_name)
     summary = (summary or "").strip()
@@ -632,6 +642,14 @@ def commit_many(list_name: str, edits: list, summary: str, actor: str, *,
                 return {"status": 400, "ok": False, "error": str(exc)}
             if written == committed_text:
                 continue
+            # A VLAN added where no VLAN database is declared or measured (C2044): refused
+            # before anything is written, the person's text kept by the editor.
+            vlans = vlan_capability.judge(
+                list_name, hostname, hostvars.from_yaml(committed_text),
+                hostvars.from_yaml(typed), subject="this edit",
+                capability=(vlan_databases or {}).get(hostname))
+            if not vlans["ok"]:
+                return {k: vlans[k] for k in ("status", "ok", "stage", "hostname", "error")}
             formatting = intent_normalise.formatting_only(committed_text, typed)
             if formatting:
                 # Normalise (board H-N): refused unless the five lines prove it formatting

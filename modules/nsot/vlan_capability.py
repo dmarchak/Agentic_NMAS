@@ -30,6 +30,12 @@ says "yes".
 
 Read once per request, from stored data only: the inventory (served from memory for a NetBox
 list), the table, and the network's recorded Show commands runs. Never a device read.
+
+**One check for every intent write path** (C2043, C2044): :func:`judge` refuses a change that
+ADDS a VLAN (an entry of ``vlans`` present after and not before) to a device whose answer is
+not yes, in :func:`refusal`'s words, which the intent patch (per operation), the intent
+editor's commit and bulk intent all use. Removing a VLAN, or leaving the list as it was, is
+never asked about, so a document committed before the check stays committable.
 """
 
 import json
@@ -173,6 +179,98 @@ def of(list_name: str, hostname: str) -> dict:
         return dict(out, has=seen["has"], source=MEASURED, at=seen["at"], words=(
             f"measured: {state} ({hostname}'s answer to `{CHECK}` at {seen['at']}, Show "
             f"commands run {seen['run']}: {seen['why']})"))
-    return dict(out, words=(
-        f"not declared and not measured: run `{CHECK}` on {hostname} (Show commands, or Ask "
-        f"the device on its page) to measure it"))
+    return dict(out, words=unknown_words(hostname, dialect, model))
+
+
+def unknown_words(hostname: str, dialect: str = "", model: str = "") -> str:
+    """What an unknown answer says, naming what would answer it: the check, run through Show
+    commands, or the device's NetBox device type, by which the platform table declares."""
+    measure = (f"not declared and not measured: run `{CHECK}` on {hostname} (Show commands, "
+               f"or Ask the device on its page) to measure it")
+    if not model:
+        return (f"{measure}, or name its device type in NetBox, by which Mercury's platform "
+                f"table declares a VLAN database (none is named)")
+    return (f"{measure}; Mercury's platform table declares nothing for "
+            f"{dialect or 'an unknown platform'} device type {model}")
+
+
+# ── the one check every intent write path asks (C1692, C2043, C2044) ──────────
+#
+# The intent patch (`intent_patch`, per operation, its apply pure), the intent editor's commit
+# (`intent_edit.commit_many`) and bulk intent (`bulk_intent.plan`) each refuse a VLAN added to
+# a device whose answer is not yes, in these words. A VLAN removed, or a list left as it was,
+# is never asked about, so a document committed before this check stays committable.
+
+def _vlan_keys(doc) -> list:
+    """``[(key, label)]`` for each entry of *doc*'s ``vlans``: a mapping by its ``id`` (as
+    text, so ``40`` and ``"40"`` are one VLAN), anything else by its whole value."""
+    vlans = doc.get("vlans") if isinstance(doc, dict) else None
+    if vlans in (None, "", [], {}):
+        return []
+    out = []
+    for entry in vlans if isinstance(vlans, list) else [vlans]:
+        if isinstance(entry, dict) and entry.get("id") not in (None, ""):
+            label = str(entry["id"]).strip()
+            out.append(("id:" + label, label))
+        else:
+            label = json.dumps(entry, sort_keys=True, default=str)
+            out.append(("entry:" + label, label))
+    return out
+
+
+def added(before, after) -> list:
+    """The VLANs the intent document *after* holds and *before* does not, by id, in *after*'s
+    order: what a change ADDS. A VLAN removed, renamed or left as it was is not added."""
+    had = {key for key, _label in _vlan_keys(before)}
+    out = []
+    for key, label in _vlan_keys(after):
+        if key not in had and label not in out:
+            out.append(label)
+    return out
+
+
+def refusal(hostname: str, capability, adds: str) -> str:
+    """The refusal of *adds* (what is added, as its caller names it: ``operations[0] adds VLAN
+    40``) on *hostname*, or ``""`` when *capability* (`of`'s answer) says it has a VLAN
+    database. A declared or measured "no", and an unknown (none given is unknown), each name
+    the device, its platform and device type, where the answer came from, and, unknown, what
+    would answer it. Never judged from a name or a role."""
+    cap = capability if isinstance(capability, dict) else {}
+    if cap.get("has") is True:
+        return ""
+    what = (f"{hostname} ({cap.get('platform') or 'platform not known'}, device type "
+            f"{cap.get('device_type') or 'not named'})")
+    if cap.get("has") is False:
+        return (f"{adds}, and {what} has no VLAN database: "
+                f"{cap.get('words') or 'said by its caller'}. Nothing is added")
+    return (f"{adds}, and whether {what} has a VLAN database is "
+            + (cap.get("words") or unknown_words(hostname, cap.get("platform") or "",
+                                                 cap.get("device_type") or ""))
+            + ". A VLAN is added only where a VLAN database is declared or measured")
+
+
+#: Given as *capability* to :func:`judge` when no network was named to read the answer from.
+NOT_READ = {"has": None, "words": "not read: no network was named to read it from"}
+
+
+def judge(list_name: str, hostname: str, before, after, *, subject: str,
+          capability=None) -> dict:
+    """Whether the change from intent document *before* to *after* may be committed for
+    *hostname*: ``{"ok": True, "added", "capability"}``, or the refusal ``{"ok": False,
+    "status": 409, "stage": "capability", "hostname", "added", "capability", "error"}``, its
+    words :func:`refusal`'s with *subject* (``this edit``, ``the change``) as what adds.
+
+    The device's answer is read (`of`) only when the change adds a VLAN, and only when its
+    caller did not hand in the *capability* it read for this request already."""
+    vlans = added(before, after)
+    if not vlans:
+        return {"ok": True, "added": [], "capability": None}
+    if capability is None:
+        capability = of(list_name, hostname) if list_name else dict(NOT_READ)
+    words = refusal(hostname, capability, (
+        f"{subject} adds VLAN {vlans[0]}" if len(vlans) == 1
+        else f"{subject} adds VLANs {', '.join(vlans)}"))
+    if not words:
+        return {"ok": True, "added": vlans, "capability": capability}
+    return {"ok": False, "status": 409, "stage": "capability", "hostname": hostname,
+            "added": vlans, "capability": capability, "error": words}

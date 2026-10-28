@@ -21,6 +21,11 @@ that name.
 * an after-state an authoring gate refuses (the syslog block whole-or-absent,
   unknown interface keys, printable, no secret values) or that will not
   RENDER against the device's template;
+* a result that ADDS a VLAN (an entry of ``vlans`` it did not hold) on a
+  device whose VLAN database is not declared or measured (C2043): the one
+  check every intent write path asks (`vlan_capability.judge`), naming the
+  device, its platform and device type, and where the answer came from. A
+  VLAN removed, or a list left as it was, is never asked about;
 * a file that would be reformatted: the write goes through ``to_yaml``, so a
   hand-edited file's comments or layout would be lost silently;
 * no committed intent, or a device that is pending or not in the inventory.
@@ -176,15 +181,18 @@ def _render_delta(before: str, after: str) -> dict:
 
 
 def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
-         summary: str = "") -> dict:
+         summary: str = "", list_name: str = "") -> dict:
     """The preview. Reads, computes and writes NOTHING.
 
     *render(hostname, host_vars) -> (rendered_masked, deployable, reasons)*
     is supplied by the caller (the route uses the same artifact the editor
     and the deploy path use). *eligible(hostname) -> reason or ""* refuses
-    pending or stale devices.
+    pending or stale devices. *list_name* names the network whose devices'
+    VLAN databases are read (`vlan_capability.judge`, C2043), once per device
+    whose result adds a VLAN; with none named, such a device is refused,
+    saying its answer was not read.
     """
-    from modules.nsot import hostvars
+    from modules.nsot import hostvars, vlan_capability
 
     report = {"ok": True, "summary": summary, "steps": steps,
               "accepted": [], "refused": [], "groups": [], "headline": ""}
@@ -260,6 +268,11 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
             hostvars.assert_no_secret_values(new_text, host)
         except ValueError as exc:
             gate.append(str(exc))
+        # A VLAN added where no VLAN database is declared or measured (C2043): the one check
+        # every intent write path asks, its words the intent patch's and the editor's.
+        vlans = vlan_capability.judge(list_name, host, doc, after, subject="the change")
+        if not vlans["ok"]:
+            gate.append(vlans["error"])
         if gate:
             refuse("the result would be refused: " + "; ".join(gate))
             continue
@@ -321,7 +334,7 @@ def _apply_locked(list_name: str, repo: str, devices: list, steps: list, confirm
     from modules.nsot.repo import save_host_vars
 
     report = plan(repo, devices, steps, render=render, eligible=eligible,
-                  summary=summary)
+                  summary=summary, list_name=list_name)
     if not report["ok"]:
         return report
     if report["hash"] != confirmed_hash:

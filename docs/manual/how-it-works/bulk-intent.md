@@ -64,6 +64,14 @@ name is never touched.
    `switchport` key), no description that is a run's notes (the
    tool's "NSoT-managed - " prefix, "smoke", "check", a course code: C428), printable
    characters only, no secret value.
+   A result that adds a VLAN (a `vlans` entry the device's intent does not hold) is
+   accepted only where the device's VLAN database is declared or measured, the same check
+   [Change it in words](intent-in-words#vlan-database) and the
+   [intent editor](edit-intent) make: read once for each such device from what is stored
+   ({{product}}'s platform table by the device's NetBox device type, else its recorded answer
+   to `show vlan id 1`), never by asking the device. A device with none, or with no answer,
+   is refused and named with where the answer came from, or what would answer it; the other
+   devices go ahead. Removing a VLAN, or leaving the list as it was, is never asked about.
    A device whose result would be refused is named with why.
 6. **Render before and after**. Read: the device's captured configuration and its template,
    with the monitoring profile merged in. Sent: nothing. Recorded: nothing. Both intents are

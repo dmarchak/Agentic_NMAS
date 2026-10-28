@@ -49,7 +49,8 @@ def _run(body: dict, confirmed_hash: str = "", actor: str = "") -> tuple:
                                 summary=body.get("summary", ""), actor=actor)
         return (200 if out.get("ok") else 409), out
     out = bulk_intent.plan(repo, devices, steps, render=render,
-                           eligible=eligible, summary=body.get("summary", ""))
+                           eligible=eligible, summary=body.get("summary", ""),
+                           list_name=list_name)
     return (200 if out.get("ok") else 400), out
 
 
