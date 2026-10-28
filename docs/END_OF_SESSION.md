@@ -6,7 +6,16 @@ never on a date (PHASE8_PLAN 15.12, the operator, 2026-10-27; this line said "$1
 31 Oct" before, which 15.12 replaced). Mercury cannot raise that reminder itself (C1751). Report
 AI spend in every status update meanwhile.**
 
-## THE OVERNIGHT RUN, 2026-10-28 02:02 to ~05:3x UTC (the operator asleep)
+## THE OVERNIGHT RUN, 2026-10-28 02:02 to ~07:3x UTC (the operator asleep, then briefly present)
+
+**Update ~07:3x UTC, after the operator's four answers (~05:5x UTC; the approval log):** live
+is **6efcdb67** (a fifth deploy, 06:57, smoke-checked): C2021's severity floor in code (lifts,
+shadows, diverts, drops at least high), after which **E4b read sdn_classify 12 of 12 reliable on
+both sets** (C1994: done is still read on C1939's ~30-case blind set and the walk); Explain v7
+(v4 plus the citation rule, C2038) a candidate, its 3-run reading cutting refusals from 12 to 3
+of 68 but not adoptable at 3 runs (the 10-run round, ~$18, is the operator's budget); 16.11's
+items 1 and 3 in Phase 8's done; the deploy bar's red-ancestor rule in TESTING. AI spend
+2026-10-28: $12.59.
 
 The operator's order: the handoff, the triage's leftovers, C1916's check, evaluations E1, E2, E5
 and E6, then Phase 1's guards, Phase 3's SDN HITL rows, Phase 2, Phase 4. The full report is
