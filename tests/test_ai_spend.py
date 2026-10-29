@@ -15,6 +15,9 @@ bounded by (`calls.rows_since`, `records_migrate.store_rows_since`).
   stopped by a cap refusal recorded since its caps were set, its estimate against the average
   daily spend since it was turned on; and the Needs attention rows they raise, each naming what
   is wrong, the action and how it clears; none read while no feature is on.
+- **AI spend uncapped** (the operator, 2026-10-29): while hosted AI is on and the day cap is
+  unset, one standing warning row naming who unset it, when and why from the settings record,
+  gone once a cap is set; none with AI off or on a fresh install's default cap.
 """
 import datetime
 import json
@@ -573,7 +576,9 @@ def test_no_day_cap_row_with_ai_off_or_no_cap_and_the_chip_says_which(chip_world
     assert [r["kind"] for r in _today_rows()] == ["day_reached"]
     assert write_settings({"ai_cap_usd_per_day": None})["ok"]
     got = attention.ai_spend_source()
-    assert got["rows"] == [] and spend.chip()["no_cap"] is True
+    # No day-cap row with no cap; the one row is the standing uncapped row (the operator,
+    # 2026-10-29), tests below.
+    assert [r["kind"] for r in got["rows"]] == ["uncapped"] and spend.chip()["no_cap"] is True
     assert "no day cap is set (an admin chose no cap)" in got["checked"]
     assert write_settings({"ai_cap_usd_per_day": 1.5})["ok"]
     monkeypatch.setattr(secrets_store, "is_set", lambda key: False)
@@ -669,3 +674,102 @@ def test_a_share_is_its_whole_percentage_and_warning_from_one_place(ratio, pct, 
     assert spend.warning_of(ratio) == warning
     if ratio is not None:
         assert spend.whole_pct(ratio) == pct
+
+
+# ── AI spend uncapped (the operator, 2026-10-29, item 5) ──────────────────────────────────────
+
+def _no_cap_by_the_card(reason="a capacity test with the provider's limit at $400"):
+    """No cap chosen on the AI (hosted) card's real Save, its words typed and its reason
+    given, as the verified admin: the settings record entry the row reads is the card's own."""
+    from modules import installation_settings as I
+    loaded = I.card("ai", ai_state=False)["loaded"]
+    got = I.save_card("ai", {"ai_cap_usd_per_day": "", "ai_cap_day_boundary": "UTC",
+                             "no_cap": "on", "no_cap_typed": "no cap",
+                             "no_cap_reason": reason}, ADMIN, "access", loaded=loaded)
+    assert got["ok"] and gateway.day_cap() is None, got
+    return got
+
+
+def _uncapped():
+    return [r for r in attention.ai_spend_source()["rows"] if r["kind"] == "uncapped"]
+
+
+def test_an_uncapped_row_stands_naming_who_when_and_why_from_the_record(chip_world):
+    saved = _no_cap_by_the_card()
+    (r,) = _uncapped()
+    assert r["level"] == "warning" and r["source"] == "ai_spend"
+    assert r["what"] == "AI spend uncapped: the installation's day cap is unset"
+    assert (f"{saved['actor_label']} unset it {saved['at_iso']}, giving the reason “a capacity "
+            "test with the provider's limit at $400”") in r["cause"]
+    assert "Cap per day, on " + attention.AI_DAY_CAP_WORDS in r["cause"]
+    assert "the provider's own limit is the only backstop" in r["cause"]
+    assert r["operands"]["by"] == saved["actor_label"] and r["operands"]["at"] == saved["at_iso"]
+    assert r["operands"]["reason"] == "a capacity test with the provider's limit at $400"
+    assert r["action"]["label"] == (f"An admin sets a day cap on {attention.AI_DAY_CAP_WORDS}: "
+                                    "untick No cap, give an amount and Save")
+    assert r["action"]["href"] == attention.AI_CARD_HREF
+    assert r["action"]["open"] == "ai_spend_panel"
+    assert r["clears"]["ways"] == ["resolves"] and not r.get("clears_at")
+    assert r["clears"]["when"].startswith("an admin sets a day cap on the AI (hosted) card")
+    assert "the installation's day cap is unset, so AI spend is uncapped" in \
+        attention.ai_spend_source()["checked"]
+
+
+def test_the_uncapped_row_goes_once_a_cap_is_set(chip_world):
+    from modules import installation_settings as I
+    _no_cap_by_the_card()
+    assert len(_uncapped()) == 1
+    loaded = I.card("ai", ai_state=False)["loaded"]
+    got = I.save_card("ai", {"ai_cap_usd_per_day": "2", "ai_cap_day_boundary": "UTC"}, ADMIN,
+                      "access", loaded=loaded)
+    assert got["ok"] and gateway.day_cap() == 2.0
+    assert attention.ai_spend_source()["rows"] == []
+
+
+def test_a_fresh_install_has_a_cap_by_default_and_no_uncapped_row(chip_world):
+    from modules.settings_schema import DEFAULTS
+    assert DEFAULTS["ai_cap_usd_per_day"] == 1.50
+    assert spend.hosted_on() and gateway.day_cap() == 1.5
+    assert _uncapped() == []
+
+
+def test_with_ai_off_no_uncapped_row_is_drawn_and_the_check_says_why(chip_world, monkeypatch):
+    """Decided from PHASE8_PLAN 18.3 rule 10c (rows only when someone should act): with hosted
+    AI off no call is made whatever the cap, so the row waits for AI to be on again."""
+    from modules import secrets_store
+    _no_cap_by_the_card()
+    monkeypatch.setattr(secrets_store, "is_set", lambda key: False)
+    got = attention.ai_spend_source()
+    assert got["rows"] == [] and "AI is off" in got["checked"]
+    monkeypatch.setattr(secrets_store, "is_set", lambda key: key == "anthropic_api_key")
+    assert len(_uncapped()) == 1
+
+
+def test_an_uncapped_row_says_when_the_record_cannot_say_who(chip_world):
+    """No cap stored outside the card (a hand-edited file): the row stands, saying who unset it
+    is not recorded; an unreadable settings record says so, never as nobody."""
+    from modules.settings_schema import write_settings
+    assert write_settings({"ai_cap_usd_per_day": None})["ok"]
+    (r,) = _uncapped()
+    assert ("who unset it, when and why are not recorded: no Save of the AI (hosted) card set "
+            "no cap") in r["cause"] and r["operands"]["record"] == "absent"
+    (chip_world.dir / "settings_record.jsonl").write_text("{torn\n")
+    (r,) = _uncapped()
+    assert ("who unset it, when and why are not known: the installation's settings record "
+            "could not be read (JSONDecodeError") in r["cause"]
+    assert r["operands"]["record"] == "unreadable"
+
+
+def test_a_no_cap_saved_before_reasons_were_asked_says_so(chip_world):
+    """A record entry from before reasons were asked (no cap with its words, no reason kept,
+    2026-10-27 to 10-29)."""
+    from modules import installation_settings as I
+    from modules.settings_schema import write_settings
+    assert write_settings({"ai_cap_usd_per_day": None})["ok"]
+    I._record({"kind": "card_save", "card": "ai", "actor": ADMIN, "actor_verified": "access",
+               "fields": ["ai_cap_usd_per_day"],
+               "changes": [{"key": "ai_cap_usd_per_day", "label": "Cap per day", "kind": "usd",
+                            "old": 1.5, "new": None}]})
+    (r,) = _uncapped()
+    assert "unset it" in r["cause"]
+    assert "before a reason was asked, so none is recorded" in r["cause"]

@@ -196,10 +196,20 @@ warning. It names:
 If Grafana could not be asked, the row is **Unknown**. The row leaves as soon as the setting
 changes, and the next read checks the new UID.
 
-**AI spend** (read on each recorded AI call and each settings change). There is no standing
-spend row; each of these names the amounts it compared, and each has **Open the spend panel**,
-which opens the top bar's spend panel in place on the page you are on (see
+**AI spend** (read on each recorded AI call and each settings change). One row stands while a
+condition lasts (no cap); the others name the amounts they compared. Each has **Open the spend
+panel**, which opens the top bar's spend panel in place on the page you are on (see
 [What AI is spending](getting-started#ai-spend)):
+
+- **AI spend uncapped**, while hosted AI is on and the installation's day cap is unset (an
+  admin chose **No cap** on the AI (hosted) card), a warning: "AI spend uncapped: the
+  installation's day cap is unset". Its cause names who unset it, when and the reason they
+  gave (or that the settings record cannot say), and that Mercury then refuses no AI call for
+  the day's spend, so the provider's own limit is the only backstop. Its action: an admin sets
+  a day cap on Settings › Installation › AI, the AI (hosted) card (its **Open…**). It clears
+  only when a cap is set. With hosted AI off it is not drawn, since no call is made; it
+  returns when AI is on again. The day cap is the only AI cap that can be unset: a background
+  feature's day and month caps are always amounts.
 
 - **The installation's day cap**, while hosted AI is on and a day cap is set: "AI spend is at
   53% of the day cap ($0.80 of $1.50)", a warning from 50% and critical from 80% (the chip's
@@ -207,7 +217,7 @@ which opens the top bar's spend panel in place on the page you are on (see
   AI call is then refused until the day ends. It clears when the day ends (the day cap's
   midnight), or when an admin changes the day cap past today's spend, sets no cap, or turns
   hosted AI off. With AI off or no day cap there is no such row: the chip says "AI off", or
-  "no cap".
+  "no cap" (and with no cap the row above stands).
 - **A background feature against its own caps**, per network: at 50% and 80% of its day or
   month cap, and stopped when it reached one. These clear when the day or month ends, or when
   its caps change or it is turned off.

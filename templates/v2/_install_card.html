@@ -26,7 +26,7 @@
   {%- if saved %}
   <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
-    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}, for every network. Recorded in the installation's settings record, old and new, and drawn on History.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}, for every network{% if saved.reason %}, with the reason “{{ saved.reason }}”{% endif %}. Recorded in the installation's settings record, old and new, and drawn on History.
     {%- if saved.restart %} <strong>Bind and port take effect at the next restart:</strong> Mercury still listens where it did until then.{% endif %}
     {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
   {%- endif %}
@@ -60,7 +60,7 @@
   {%- set cf = confirm %}
   <div class="notice notice-warn set-result set-confirm" role="alert">{{ icon('warn', 16) }}<div>
     {%- if cf.kind == 'no_cap' %}
-    <p><strong>No cap:</strong> {{ cf.label }} {{ cf.old_words }} → {{ cf.new_words }}. Mercury would not stop AI spend; the provider's own limit is the backstop, and the provider bills what is spent. Type <span class="mono">{{ cf.typed }}</span> to confirm.</p>
+    <p><strong>No cap:</strong> {{ cf.label }} {{ cf.old_words }} → {{ cf.new_words }}. Mercury would not stop AI spend; the provider's own limit is the backstop, and the provider bills what is spent. Type <span class="mono">{{ cf.typed }}</span> and give your reason to confirm: it is kept with who and when in the installation's settings record, drawn on History and in Needs attention for as long as no cap is set.</p>
     {%- if cf.refused %}<p><strong>Not saved:</strong> {{ cf.refused }}.</p>{% endif %}
     {%- else %}
     <p><strong>A large increase:</strong> {{ cf.label }} {{ cf.old_words }} → {{ cf.new_words }}. {{ cf.implication }}. The provider bills what is spent; nothing is saved until you press Save.</p>
@@ -75,6 +75,8 @@
       <input type="hidden" name="no_cap" value="on">
       <label class="sr-only" for="f-{{ k.name }}-no-cap-typed">Type {{ cf.typed }} to confirm</label>
       <input id="f-{{ k.name }}-no-cap-typed" name="no_cap_typed" type="text" autocomplete="off" placeholder="{{ cf.typed }}">
+      <label class="sr-only" for="f-{{ k.name }}-no-cap-reason">Reason for no cap (one line)</label>
+      <input id="f-{{ k.name }}-no-cap-reason" name="no_cap_reason" type="text" autocomplete="off" maxlength="{{ cf.reason_max }}" value="{{ cf.reason }}" placeholder="Reason, one line">
       {%- else %}
       <input type="hidden" name="confirm" value="{{ cf.confirm }}">
       {%- endif %}
@@ -83,7 +85,11 @@
     </form></div></div>
   {%- endif %}
   {%- if k.no_cap and k.no_cap.set %}
-  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>{{ k.no_cap.words }}.</strong> An admin chose it; untick No cap and give an amount to set one again.</div></div>
+  {%- set nb = k.no_cap.by %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>{{ k.no_cap.words }}.</strong>
+    {%- if nb.state == 'ok' %} Chosen by {{ nb.actor_label }} {{ stamp(nb.at_iso) }}{% if nb.reason %}, with the reason “{{ nb.reason }}”{% else %}, before a reason was asked{% endif %}.
+    {%- elif nb.state == 'unreadable' %} Who chose it is not known: the installation's settings record could not be read ({{ nb.error }}).
+    {%- else %} Who chose it is not recorded: no Save of this card set it.{% endif %} Untick No cap and give an amount to set one again.</div></div>
   {%- endif %}
   <form class="set-form" id="form-{{ k.name }}" method="post" action="{{ url_for('settings_v2.install_save', name=k.name) }}"
         hx-post="{{ url_for('settings_v2.install_save', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">

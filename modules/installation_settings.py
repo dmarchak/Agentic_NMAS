@@ -378,8 +378,14 @@ CARDS = {
 #:   second; $100 to $140 is neither). The confirmation says what it means: "Up to $X a day,
 #:   about $Y a month at full use", the month MONTH_DAYS days.
 #: - **No cap**: a control of its own (never an empty field), stored as null, confirmed only
-#:   by typing NO_CAP_TYPED. While it is set the card says NO_CAP_WORDS, the gateway refuses no
-#:   call for the day's spend, and `ai.controls.cap_state` answers no_cap for the toolbar.
+#:   by typing NO_CAP_TYPED and giving a reason (one line, 1 to AI_REASON_MAX characters once
+#:   its spaces are folded; the operator, 2026-10-29), kept in the card's record entry beside
+#:   who, when and the change, and drawn on History. While it is set the card says NO_CAP_WORDS
+#:   with who chose it, when and why (`no_cap_record`), the gateway refuses no call for the
+#:   day's spend, `ai.controls.cap_state` answers no_cap for the toolbar, and Needs attention
+#:   stands an "AI spend uncapped" row while hosted AI is on (`attention._ai_uncapped_row`).
+#:   The installation's day cap is the only AI cap that can be unset: a background feature's
+#:   day and month caps are positive amounts, refused otherwise (`ai.background._caps`).
 NO_CAP_KEY = "ai_cap_usd_per_day"
 LARGE_RATIO = 2.0
 LARGE_STEP_USD = 50.0
@@ -387,9 +393,10 @@ MONTH_DAYS = 30
 NO_CAP_TYPED = "no cap"
 NO_CAP_WORDS = ("No cap is set: Mercury does not stop AI spend; the provider's own limit is "
                 "the backstop")
-#: The form's own fields beside a card's settings: the No cap choice, its typed confirmation,
-#: and the large increase's confirm (the value confirmed, as drawn).
+#: The form's own fields beside a card's settings: the No cap choice, its typed confirmation
+#: and its reason, and the large increase's confirm (the value confirmed, as drawn).
 NO_CAP_FIELD, NO_CAP_TYPED_FIELD, CONFIRM_FIELD = "no_cap", "no_cap_typed", "confirm"
+NO_CAP_REASON_FIELD = "no_cap_reason"
 
 #: The hosted allowance's Allow (a person's recorded decision) and Turn off.
 AI_HOSTED_ON_STEPS = ("check", "write", "record")
@@ -481,18 +488,45 @@ def card(name: str, ai_state: bool = True) -> dict:
         out["reason_bounds"] = (AI_REASON_MIN, AI_REASON_MAX)
         # The No cap choice, beside the day cap's field: ticked while no cap is set, with the
         # card's words saying what that means.
-        out["no_cap"] = {"key": NO_CAP_KEY, "set": gateway.day_cap() is None,
-                         "words": NO_CAP_WORDS, "typed": NO_CAP_TYPED}
+        unset = gateway.day_cap() is None
+        out["no_cap"] = {"key": NO_CAP_KEY, "set": unset, "words": NO_CAP_WORDS,
+                         "typed": NO_CAP_TYPED, "by": no_cap_record() if unset else None}
     return out
 
 
 def form_keys(name: str) -> tuple:
     """What a card's Save reads from its form: each field, and on the AI card the No cap
-    choice, its typed confirmation and the large increase's confirm."""
+    choice, its typed confirmation and reason, and the large increase's confirm."""
     keys = tuple(f["key"] for f in CARDS[name]["fields"])
     if any(k == NO_CAP_KEY for k in keys):
-        keys += (NO_CAP_FIELD, NO_CAP_TYPED_FIELD, CONFIRM_FIELD)
+        keys += (NO_CAP_FIELD, NO_CAP_TYPED_FIELD, NO_CAP_REASON_FIELD, CONFIRM_FIELD)
     return keys
+
+
+def _one_line(text) -> str:
+    """A reason as it is kept: one line, its runs of spaces and line breaks folded to one
+    space, trimmed."""
+    return " ".join((text or "").split())
+
+
+def no_cap_record() -> dict:
+    """Who chose no cap for the installation's day cap, when and why: the newest AI card Save
+    that changed the day cap, when it changed it to none. ``state`` ``ok`` with
+    ``actor_label``, ``at_iso`` and ``reason`` (empty for a Save from before a reason was
+    asked); ``absent`` when no card Save set it (a hand-edited file, or the newest Save of the
+    cap set an amount); ``unreadable`` with ``error`` (never read as absent)."""
+    got = changes(kinds=("card_save",))
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "error": got.get("error", "")}
+    for r in got["rows"]:
+        c = next((c for c in r.get("changes") or [] if c.get("key") == NO_CAP_KEY), None)
+        if c is None:
+            continue
+        if c.get("new") is not None:
+            break
+        return {"state": "ok", "actor_label": r.get("actor_label") or "",
+                "at_iso": r.get("at_iso") or "", "reason": r.get("reason") or ""}
+    return {"state": "absent"}
 
 
 def money(value) -> str:
@@ -544,11 +578,15 @@ def is_large(old, new) -> bool:
 
 def _confirmation(f: dict, old, new, form: dict, values: dict, loaded: dict, by_key: dict):
     """The confirmation the day cap's change needs before it is written, or None. ``kind``
-    "large" (an increase `is_large` judges) or "no_cap" (from a cap to none); ``refused`` when
-    a No cap was sent with the wrong words typed."""
+    "large" (an increase `is_large` judges) or "no_cap" (from a cap to none, which needs the
+    words typed AND a reason); ``refused`` when a No cap's confirmation was sent without
+    either, naming each that is missing."""
     typed = form.get(NO_CAP_TYPED_FIELD)
+    given = form.get(NO_CAP_REASON_FIELD)
+    reason = _one_line(given)
+    words = typed is not None and " ".join(typed.lower().split()) == NO_CAP_TYPED
     if new is None and old is not None:
-        if typed is not None and " ".join(typed.lower().split()) == NO_CAP_TYPED:
+        if words and 0 < len(reason) <= AI_REASON_MAX:
             return None
         kind = "no_cap"
     elif is_large(old, new):
@@ -558,17 +596,26 @@ def _confirmation(f: dict, old, new, form: dict, values: dict, loaded: dict, by_
     else:
         return None
     refused = ""
-    if kind == "no_cap" and typed is not None:
-        refused = (f"no cap needs the words {NO_CAP_TYPED!r} typed to confirm "
-                   f"({'nothing was typed' if not typed.strip() else 'something else was'}); "
-                   f"the cap stays {money(old)}")
+    if kind == "no_cap" and (typed is not None or given is not None):
+        missing = []
+        if not words:
+            missing.append(f"the words {NO_CAP_TYPED!r} typed to confirm ("
+                           + ("nothing was typed" if not (typed or "").strip()
+                              else "something else was") + ")")
+        if not reason:
+            missing.append("a reason, one line (none was given)")
+        elif len(reason) > AI_REASON_MAX:
+            missing.append(f"a reason of at most {AI_REASON_MAX} characters (this one has "
+                           f"{len(reason)})")
+        refused = f"no cap needs {' and '.join(missing)}; the cap stays {money(old)}"
     return {"kind": kind, "label": f["label"], "old_words": money(old),
             "new_words": money(new), "confirm": _drawn(f, new),
             "implication": ("" if new is None else
                             f"Up to {money(new)} a day, about {money(new * MONTH_DAYS)} a month "
                             "at full use"),
             "sent": {k: _drawn(by_key[k], v) for k, v in values.items()},
-            "loaded": loaded, "refused": refused, "typed": NO_CAP_TYPED}
+            "loaded": loaded, "refused": refused, "typed": NO_CAP_TYPED,
+            "reason": reason if kind == "no_cap" else "", "reason_max": AI_REASON_MAX}
 
 
 def _drawn(f: dict, value) -> str:
@@ -696,9 +743,13 @@ def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> 
         raise Refused(out["error"])
     changes = [{"key": k, "label": by_key[k]["label"], "kind": by_key[k]["kind"],
                 "old": _kept(now[k]), "new": _kept(changed[k])} for k in sorted(changed)]
-    entry = _record({"kind": "card_save", "card": name, "actor": actor,             # record
-                     "actor_verified": verified, "fields": sorted(changed),
-                     "changes": changes})
+    # No cap's reason (confirmed above, never empty) is kept beside who, when and the change,
+    # masked at rest as every kept value is.
+    why = ({"reason": _kept(_one_line(form.get(NO_CAP_REASON_FIELD)))}
+           if NO_CAP_KEY in changed and changed[NO_CAP_KEY] is None else {})
+    entry = _record(dict({"kind": "card_save", "card": name, "actor": actor,        # record
+                          "actor_verified": verified, "fields": sorted(changed),
+                          "changes": changes}, **why))
     return dict(entry, ok=True, nothing=False, written=sorted(changed),
                 change_words=[change_words(c) for c in changes],
                 restart=any(k in changed for k in RESTART_KEYS))

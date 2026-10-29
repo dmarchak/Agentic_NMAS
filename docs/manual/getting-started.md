@@ -101,7 +101,8 @@ so what AI costs is seen where you work, not only in Settings. It is never blank
   detection with AI, on Lab"). At the cap the chip's words stay
   the same and the next call that would pass it is refused, naming the cap and the spend.
 - **"no cap"** beside the figure: an admin chose no day cap, so the chip stays neutral; each
-  background feature's own caps still apply.
+  background feature's own caps still apply, and Needs attention shows "AI spend uncapped",
+  naming who chose it, when and why, until a cap is set.
 - **"AI off"**: hosted AI is not allowed for the installation, or no provider key is set.
   Hovering it says which. Nothing is sent to a model.
 - **"AI spend unknown"** (red): the record of AI calls cannot be read. Today's spend is then

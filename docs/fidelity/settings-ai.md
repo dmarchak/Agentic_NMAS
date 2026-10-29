@@ -12,7 +12,17 @@ a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
 Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html
-Templates sha256: `24fb5260b3c1bde4518dcaa461de14377e3ba6eb9695776b0f944c8ef5f21e8e`
+Templates sha256: `b6d669208a84fb722a83bb86a8125f434f3356644530c91deb75381a86ab6568`
+
+**Compared again 2026-10-29 (the operator's order of that day, item 5: no cap asks for a
+reason):** `_install_card.html`'s no-cap confirmation adds a one-line Reason field beside the
+typed words and says the reason is kept; a refused press names each part missing; the Saved
+notice ends with the reason; the notice while no cap is set names who chose it, when and why.
+None of these states is in a shot (the shots' world has a $1.50 cap): they are compared by the
+template and tests/test_ai_day_cap.py, and a row is added below. Shots `settings-ai` at 1440,
+1280 and 390 and `settings-ai-on` taken again from this tree: the card with a cap set is
+unchanged. Templates sha256 before:
+`24fb5260b3c1bde4518dcaa461de14377e3ba6eb9695776b0f944c8ef5f21e8e`.
 
 **Compared again 2026-10-28 (C1953 part 1, decision 1: the AI (hosted) card moved here
 whole):** the read-only Hosted AI card is gone, and the AI (hosted) card is the tab's first
@@ -51,6 +61,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Where it is | "Settings · AI", a tab beside Installation, Integrations and Networks | Settings › Installation's last tab, AI, under the scope bar | **deviation** (log: Settings › AI built: the AI tab is a tab of Settings › Installation) |
 | Hosted AI | the master switch with Turn off, the key with Test and Replace…, the day cap with Change…, the month figure, the prices | the AI (hosted) card, moved whole: its title and "every network"; the key with Replace…; the cap per day with No cap and the day's start, saved by Save; Hosted AI allowed with Turn off (or Allow with a reason); spent today; Save and Test; each task's model, prices and cap per call as a table, always drawn; no month figure | **deviation** (log: Settings › AI: the AI (hosted) card moved whole, its own layout) |
+| No cap's confirmation and notice (2026-10-29) | not drawn (no cap was drawn without a board, 2026-10-27) | the confirmation asks for `no cap` typed and a one-line reason, kept with who and when and drawn on History; a press missing either refused in place naming each; the notice while no cap is set names who chose it, when and why | **deviation** (log: The AI card's no cap asks for a reason) |
 | Features a person presses | a table with a switch per feature | not drawn | **deviation** (log: Settings › AI built: the features a person presses have no switches yet) |
 | Background features' head | "Background features", Network ▾, "How does this work?" | the same; the (i) opens the manual's section | **same** |
 | Their lead | the board's sentence | the same sentence, with the approval's 14 days added | **same** |

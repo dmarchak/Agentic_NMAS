@@ -3745,8 +3745,13 @@ Tier 2:
       - a 50% or 80% warning;
       - a feature stopped by its cap;
       - a background feature running above 150% of the estimate it was approved at;
-      - an approval nearing its expiry.
-      There is no standing spend row.
+      - an approval nearing its expiry;
+      - **AI spend uncapped** (the operator, 2026-10-29, item 5): while hosted AI is on and an
+        AI cap is unset (the installation's day cap is the only one that can be: a background
+        feature's caps are positive amounts), a warning naming the cap, who unset it, when and
+        their reason, clearing only when a cap is set. Setting no cap needs the typed words
+        and a reason, kept in the settings record and drawn on History.
+      There is no other standing spend row.
     - (d) **Who sees amounts** is a per-network setting. By default, everyone who can make AI
       calls.
     - Boards first for the chip and the panel, then a fidelity record and a manual page.
@@ -4067,8 +4072,10 @@ docs/boards/ holds a drawing for it.
 | 2026-10-29 | Deploy preview (PHASE8_PLAN 16.11 item 3) | CR, `ChangeRecordDraft.dc.html`, deviation: the words are refused for naming an untouched interface, another device or a quoted line, and may name what the preview's own checks name | The draft's words, checked by code | 2026-10-29, "Board CR built: the words may name what the preview's own checks name"; docs/fidelity/change-record.md |
 | 2026-10-29 | Deploy preview (PHASE8_PLAN 16.11 item 3) | CR, `ChangeRecordDraft.dc.html`, deviation: a stale draft stays drawn, muted, under its notice; a typed reason marks it stale only at the card's next full re-plan | A draft after the preview it was made from changes | 2026-10-29, "Board CR built: a stale draft stays drawn, muted, under its notice; a typed reason marks it stale only at the next re-plan"; docs/fidelity/change-record.md; C2210 |
 | 2026-10-29 | Deploy preview (PHASE8_PLAN 16.11 item 3) | CR, `ChangeRecordDraft.dc.html`, deviation: every fact the draft carries is drawn (the removals count, the network on hover, the families, the expected effects, What left Mercury, the trigger and model) | The draft's facts | 2026-10-29, "Board CR built: every fact the draft carries is drawn"; docs/fidelity/change-record.md |
+| 2026-10-29 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: no cap's confirmation asks for a one-line reason beside the typed words, a refusal names each part missing, and the card's no-cap notice names who chose it, when and why | The AI (hosted) card's no cap | 2026-10-29, "The AI card's no cap asks for a reason"; docs/fidelity/settings-ai.md |
+| 2026-10-29 | C1843: AI cost safety | AI2, `AiSpendPanel.dc.html`, deviation: a standing warning row "AI spend uncapped" while hosted AI is on and the day cap is unset, naming who unset it, when and why, which the board does not draw (rule 10c amended) | Needs attention while no day cap is set | 2026-10-29, "Needs attention: AI spend uncapped, a standing row while no day cap is set"; docs/fidelity/ai-spend.md |
 
-**Count:** 188 rows: 54 drawn, 21 revised, 24 no drawing, 89 deviation. The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 190 rows: 54 drawn, 21 revised, 24 no drawing, 91 deviation. The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

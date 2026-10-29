@@ -267,6 +267,13 @@ ROW_KINDS = {
                                  "find why the record of AI calls refuses writes (its disk or "
                                  "records database); Mercury asks it to take the row again at "
                                  "every AI call"),
+    # The operator, 2026-10-29 (item 5, cost safety): the one standing spend row, while hosted
+    # AI is on and the installation's day cap is unset (an admin chose no cap).
+    ("ai_spend", "uncapped"): ("the installation's AI day cap is unset (an admin chose no "
+                               "cap), so Mercury stops no AI spend for the day: the "
+                               "provider's own limit is the only backstop",
+                               "an admin sets a day cap on the AI (hosted) card in Settings › "
+                               "Installation › AI"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -449,6 +456,10 @@ CLEARS = {
     ("ai_spend", "unrecorded"): (("resolves",), "the record of AI calls takes the call's row: "
                                  "Mercury asks it again at every AI call, and the call is then "
                                  "counted from the record, its reservation gone"),
+    ("ai_spend", "uncapped"): (("resolves",), "an admin sets a day cap on the AI (hosted) card "
+                               "(Settings › Installation › AI); never by time, so no cap is "
+                               "never silent while AI is on (with hosted AI off no call is "
+                               "made, and it is not drawn until AI is on again)"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -4362,6 +4373,44 @@ def _ai_workspace_limit_row():
                 "open": "ai_spend_panel", "href": AI_CARD_HREF})
 
 
+def _ai_uncapped_row():
+    """The installation's day cap unset, read while hosted AI is on (the operator, 2026-10-29,
+    item 5; the one standing spend row, PHASE8_PLAN 18.3 rule 10c): one UNCAPPED row (warning)
+    naming the cap, who unset it, when and their reason from the installation's settings
+    record (`installation_settings.no_cap_record`), the action (set a cap on the AI (hosted)
+    card) and that it clears only when one is set. The day cap is the only AI cap that can be
+    unset: a background feature's are positive amounts (`ai.background._caps`)."""
+    from modules import installation_settings as I
+
+    got = I.no_cap_record()
+    if got["state"] == "ok":
+        said = (f"{got['actor_label'] or 'an admin'} unset it "
+                f"{got['at_iso'] or '(the time was not recorded)'}, "
+                + (f"giving the reason “{got['reason']}”" if got["reason"] else
+                   "before a reason was asked, so none is recorded"))
+    elif got["state"] == "unreadable":
+        said = ("who unset it, when and why are not known: the installation's settings "
+                f"record could not be read ({got.get('error') or 'no reason given'})")
+    else:
+        said = ("who unset it, when and why are not recorded: no Save of the AI (hosted) "
+                "card set no cap")
+    return row(
+        source="ai_spend", kind="uncapped", key="uncapped:day", level="warning",
+        since=_ts(got.get("at_iso")),
+        what="AI spend uncapped: the installation's day cap is unset",
+        cause=(f"The installation's day cap (Cap per day, on {AI_DAY_CAP_WORDS}) is unset: "
+               f"{said}. Mercury refuses no AI call for the day's spend, people's presses and "
+               "background features alike (each background feature's own day and month caps "
+               "still apply); the provider's own limit is the only backstop, and the provider "
+               "bills what is spent"),
+        operands={"cap": "day (installation)", "cap_usd": None,
+                  "by": got.get("actor_label", ""), "at": got.get("at_iso", ""),
+                  "reason": got.get("reason", ""), "record": got["state"]},
+        action={"label": (f"An admin sets a day cap on {AI_DAY_CAP_WORDS}: untick No cap, give "
+                          "an amount and Save"),
+                "open": "ai_spend_panel", "href": AI_CARD_HREF})
+
+
 def _ai_unrecorded_rows() -> list:
     """One ``unrecorded`` row (danger) per call whose row the record of AI calls refused
     (C2047, `reservations.unrecorded`): its cost is held against the caps until the record takes
@@ -4435,8 +4484,12 @@ def _ai_approval_rows(due, now=None) -> list:
 
 
 def ai_spend_source(now=None) -> dict:
-    """AI spend where someone should act (PHASE8_PLAN 18.3 rules 4 and 10c; there is no
-    standing spend row):
+    """AI spend where someone should act (PHASE8_PLAN 18.3 rules 4 and 10c; one standing spend
+    row only, the day cap unset):
+
+    - while AI is on and the installation's day cap is unset (an admin chose no cap; the
+      operator, 2026-10-29): one UNCAPPED row (warning), who unset it, when and why
+      (`_ai_uncapped_row`), clearing when a cap is set;
 
     - while AI is on (`spend.hosted_on`, as the chip reads it) and a day cap is set, today's
       spend against the installation's day cap (`_ai_day_cap_rows`): a row at 50% and 80% of
@@ -4485,13 +4538,17 @@ def ai_spend_source(now=None) -> dict:
     limit = _ai_workspace_limit_row() if hosted else None
     # A call whose row the record refused (C2047), whatever AI's state now.
     unrecorded_rows = _ai_unrecorded_rows()
-    limit_rows = ([limit] if limit else []) + approval_rows + unrecorded_rows
+    # The day cap unset (the operator, 2026-10-29): standing while AI is on; with AI off no
+    # call is made, whatever the cap.
+    uncapped = [_ai_uncapped_row()] if hosted and cap is None else []
+    limit_rows = uncapped + ([limit] if limit else []) + approval_rows + unrecorded_rows
     limit_said = ("the provider's workspace usage limit is held" if limit else
                   "no provider workspace usage limit is held" if hosted else
                   "AI is off, so the provider's workspace usage limit was not read")
     limit_said = f"{limit_said}; {approval_said}" + (
         f"; {len(unrecorded_rows)} call(s) whose row the record of AI calls refused, their "
-        "cost held against the caps" if unrecorded_rows else "")
+        "cost held against the caps" if unrecorded_rows else "") + (
+        "; the installation's day cap is unset, so AI spend is uncapped" if uncapped else "")
     if not on and why_no_day:
         return source_result("ai_spend", label, read_at=started,
                              took_ms=int((time.time() - started) * 1000), rows=limit_rows,
@@ -4552,7 +4609,7 @@ def ai_spend_source(now=None) -> dict:
                               f"change its {w} cap in Settings › AI"),
                     "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
     features = len([r for r in rows if not r["kind"].startswith("day_")
-                    and r["kind"] not in ("workspace_limit", "approval")])
+                    and r["kind"] not in ("workspace_limit", "approval", "uncapped")])
     return source_result("ai_spend", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=rows,
                          checked=(f"{len(on)} background feature switch(es) on, against their "

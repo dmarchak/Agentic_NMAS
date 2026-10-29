@@ -13,9 +13,11 @@ own limit). Limits belong to the customer, not the program.
   more) draws its confirmation, "Up to $X a day, about $Y a month at full use", and writes
   nothing until its Save; the confirmation carries what the card drew (R17), so a change
   another person made meanwhile is still refused.
-- **No cap** is a control of its own, confirmed only by typing "no cap": without the words it
-  is drawn and refused, writing nothing; with them the key is stored as null, the card says so,
-  and `ai.controls.cap_state` answers no cap for the toolbar's chip.
+- **No cap** is a control of its own, confirmed only by typing "no cap" and giving a reason
+  (the operator, 2026-10-29): without either it is drawn and refused, naming what is missing,
+  writing nothing; with both the key is stored as null, the reason kept in the record entry
+  and drawn on History, the card says so with who chose it, when and why, and
+  `ai.controls.cap_state` answers no cap for the toolbar's chip.
 - **The gateway** with no cap sends a call whatever today's spend (no day-cap refusal) and
   says "no day cap is set" in a cap refusal; with a cap it refuses as before.
 """
@@ -249,7 +251,10 @@ def test_no_cap_needs_its_words_typed_and_is_refused_without_them(networks, no_s
         assert "no cap needs the words 'no cap' typed to confirm" in html
         assert "the cap stays $1.50" in html
     assert controls.cap_state() == {"day_cap": 1.5, "no_cap": False}
+    # The words alone no longer set it (the operator, 2026-10-29): a reason is asked too.
     r, html = _post(networks, dict(sent, no_cap_typed=" No  Cap "))
+    assert r.status_code == 409 and _cap() == 1.5 and _record(networks) == []
+    r, html = _post(networks, dict(sent, no_cap_typed=" No  Cap ", no_cap_reason=WHY))
     assert r.status_code == 200 and "Cap per day $1.50 → no cap" in html
     stored = json.loads((networks["dir"] / "user_settings.json").read_text())
     assert "ai_cap_usd_per_day" in stored and stored["ai_cap_usd_per_day"] is None
@@ -258,6 +263,105 @@ def test_no_cap_needs_its_words_typed_and_is_refused_without_them(networks, no_s
     assert ("No cap is set: Mercury does not stop AI spend; the provider's own limit is the "
             "backstop") in card
     assert re.search(r'name="no_cap" type="checkbox" value="on" checked', card)
+
+
+#: A reason as a person writes one, with the spaces and a line break a paste brings.
+WHY = "  quarter-end   load test,\n the provider's own limit set to $400  "
+WHY_KEPT = "quarter-end load test, the provider's own limit set to $400"
+
+
+def _no_cap_confirmation(n):
+    """No cap pressed on the card: its confirmation's form as the browser sends it."""
+    _r, html = _save(n, "", no_cap="on")
+    return _confirm_form(html)
+
+
+@pytest.mark.parametrize("reason", [None, "", "   ", "\n\t "])
+def test_no_cap_without_a_reason_is_refused_naming_it(networks, no_send, reason):
+    """The words typed right and no reason (absent, empty, or only spaces): refused in place,
+    naming the reason as what is missing and the cap that stays; nothing written."""
+    sent = dict(_no_cap_confirmation(networks), no_cap_typed="no cap")
+    if reason is not None:
+        sent["no_cap_reason"] = reason
+    r, html = _post(networks, sent)
+    assert r.status_code == 409, html
+    assert ("no cap needs a reason, one line (none was given); the cap stays $1.50"
+            in _text(html)), _text(html)
+    assert "typed to confirm" not in html
+    assert _cap() == 1.5 and _record(networks) == []
+
+
+def test_no_cap_with_neither_names_both_and_keeps_what_was_typed(networks, no_send):
+    sent = dict(_no_cap_confirmation(networks), no_cap_typed="yes")
+    r, html = _post(networks, sent)
+    assert r.status_code == 409 and _cap() == 1.5
+    assert ("no cap needs the words 'no cap' typed to confirm (something else was) and a "
+            "reason, one line (none was given); the cap stays $1.50") in _text(html)
+    # A reason given with the wrong words is drawn back, folded to one line, for the next press.
+    r, html = _post(networks, dict(sent, no_cap_reason=WHY))
+    assert r.status_code == 409 and _cap() == 1.5 and "and a reason" not in html
+    assert ('name="no_cap_reason" type="text" autocomplete="off" maxlength="300" '
+            f'value="{WHY_KEPT}"') in html
+
+
+def test_a_reason_over_300_characters_is_refused_naming_both_lengths(networks, no_send):
+    sent = dict(_no_cap_confirmation(networks), no_cap_typed="no cap",
+                no_cap_reason="x" * 301)
+    r, html = _post(networks, sent)
+    assert r.status_code == 409 and _cap() == 1.5
+    assert ("no cap needs a reason of at most 300 characters (this one has 301); the cap stays "
+            "$1.50") in _text(html)
+    r, html = _post(networks, dict(sent, no_cap_reason="x" * 300))
+    assert r.status_code == 200 and _cap() is None
+
+
+def test_no_cap_with_a_reason_keeps_it_in_the_record_and_history_draws_it(networks, no_send):
+    """Saved with the words and a reason: the record entry keeps who, when, the change and the
+    reason (one line); the result says it; History's row carries it and the page draws it; the
+    card names who chose no cap, when and why while it is set."""
+    from modules import history_sources as H
+    sent = _no_cap_confirmation(networks)
+    r, html = _post(networks, dict(sent, no_cap_typed="no cap", no_cap_reason=WHY))
+    assert r.status_code == 200 and _cap() is None
+    assert f"Cap per day $1.50 → no cap, for every network, with the reason “{WHY_KEPT}”" \
+        in _text(html)
+    (row,) = _record(networks)
+    assert row["kind"] == "card_save" and row["reason"] == WHY_KEPT
+    assert row["changes"] == [{"key": "ai_cap_usd_per_day", "label": "Cap per day",
+                               "kind": "usd", "old": 1.5, "new": None}]
+    assert row["actor"] and row["at_iso"]
+    (e,) = H.installation_settings({"device": "", "since": None})["events"]
+    assert e["what"] == "AI (hosted): Cap per day $1.50 → no cap"
+    assert ("Reason", WHY_KEPT) in e["record"] and e["at"] == row["at_iso"]
+    page = unescape(networks["client"].get("/v2/history?kind=settings").get_data(as_text=True))
+    assert f"<dt>Reason</dt><dd>{WHY_KEPT}</dd>" in page
+    card = re.sub(r"\s+", " ", unescape(_page(networks)))
+    assert re.search(r"No cap is set: Mercury does not stop AI spend; the provider's own limit "
+                     r"is the backstop\.</strong> Chosen by " + re.escape(row["actor_label"])
+                     + r" <[^>]+>[^<]*</[^>]+>, with the reason “" + re.escape(WHY_KEPT)
+                     + "”", card), card[card.find("No cap is set"):][:600]
+    assert I.no_cap_record() == {"state": "ok", "actor_label": row["actor_label"],
+                                 "at_iso": row["at_iso"], "reason": WHY_KEPT}
+
+
+def test_a_cap_saved_keeps_no_reason_and_ends_the_no_cap_record(networks, no_send):
+    sent = _no_cap_confirmation(networks)
+    _post(networks, dict(sent, no_cap_typed="no cap", no_cap_reason=WHY))
+    r, _html = _save(networks, "2")
+    assert r.status_code == 200 and _cap() == 2.0
+    last = _record(networks)[-1]
+    assert "reason" not in last and last["changes"][0]["new"] == 2.0
+    assert I.no_cap_record() == {"state": "absent"}
+
+
+def test_the_card_says_who_chose_no_cap_is_not_recorded_or_not_known(networks, no_send):
+    _set(networks, None)
+    card = re.sub(r"\s+", " ", unescape(_page(networks)))
+    assert "Who chose it is not recorded: no Save of this card set it." in card
+    (networks["dir"] / "settings_record.jsonl").write_text("{torn\n")
+    card = re.sub(r"\s+", " ", unescape(_page(networks)))
+    assert ("Who chose it is not known: the installation's settings record could not be read "
+            "(JSONDecodeError") in card
 
 
 def test_from_no_cap_a_cap_is_set_again_without_a_confirmation(networks, no_send):

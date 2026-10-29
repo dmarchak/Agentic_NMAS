@@ -166,10 +166,15 @@ naming both values. A smaller change, or a decrease, saves at once.
 
 **No cap** is a choice of its own beside the field, never an empty field. Ticking it and
 pressing Save shows a stronger confirmation: Mercury would not stop AI spend, and the
-provider's own limit is the backstop. Type `no cap` and press **Save with no cap** to set it;
-anything else typed is refused and nothing is written. While no cap is set the card says
-"No cap is set: Mercury does not stop AI spend; the provider's own limit is the backstop",
-the gateway refuses no call for the day's spend (a task's cap per call still applies, and
+provider's own limit is the backstop. Type `no cap`, give your reason (one line, up to 300
+characters), and press **Save with no cap** to set it. Without the words or without a reason
+the press is refused in place, naming what is missing, and nothing is written; a reason you
+gave is kept in the field for the next press. The reason is kept in the installation's
+settings record beside who, when and the change, and History draws it (the row's **Reason**).
+While no cap is set the card says "No cap is set: Mercury does not stop AI spend; the
+provider's own limit is the backstop", followed by who chose it, when and their reason;
+**Needs attention** shows a warning, "AI spend uncapped", for as long as hosted AI is on
+(see [Needs attention](needs-attention)); the gateway refuses no call for the day's spend (a task's cap per call still applies, and
 its refusal says no day cap is set), and the toolbar's spend chip, once built, shows "no
 cap" for as long as it is set. To set a cap again, untick No cap, give an amount and Save.
 
