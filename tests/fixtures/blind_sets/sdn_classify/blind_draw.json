@@ -1,0 +1,107 @@
+{
+ "key": "tests/fixtures/blind_sets/sdn_classify/blind_answer_key.md",
+ "sha256": "11a6ccee4457525106f3fd72fd209021c618faf5f06f9519f496bd0d1c5a851a",
+ "seed": 1271929268499599953,
+ "draw": {
+  "S": [
+   "S4",
+   "S3",
+   "S1"
+  ],
+  "BS": [
+   "BS1",
+   "BS3",
+   "BS4"
+  ],
+  "F": [
+   "F6",
+   "F5",
+   "F3"
+  ],
+  "BF": [
+   "BF2",
+   "BF3",
+   "BF1"
+  ],
+  "U": [
+   "U1",
+   "U6",
+   "U3"
+  ],
+  "BU": [
+   "BU1",
+   "BU3",
+   "BU2"
+  ],
+  "N": [
+   "N2",
+   "N1"
+  ]
+ },
+ "backups": {
+  "S": [
+   "S2"
+  ],
+  "BS": [],
+  "F": [
+   "F4",
+   "F2",
+   "F1"
+  ],
+  "BF": [
+   "BF5",
+   "BF4",
+   "BF7"
+  ],
+  "U": [
+   "U8",
+   "U4",
+   "U2",
+   "U7",
+   "U5"
+  ],
+  "BU": [],
+  "N": [
+   "N5",
+   "N3",
+   "N4"
+  ]
+ },
+ "gaps": [
+  "S5",
+  "S6",
+  "S7",
+  "S8",
+  "BS2",
+  "BS5",
+  "BS6",
+  "BS7",
+  "F7",
+  "BF6",
+  "BU4"
+ ],
+ "redrawn_never": {},
+ "how": "scripts/nmas-blind-draw tests/fixtures/blind_sets/sdn_classify/blind_answer_key.md tests/fixtures/blind_sets/explain/blind_answer_key.md: the locked key's sha256 seeds the draw; drawn 2026-10-29 on the operator's confirmation of that day",
+ "status": {
+  "S4": "drawn",
+  "S3": "drawn",
+  "S1": "drawn",
+  "BS1": "drawn",
+  "BS3": "drawn",
+  "BS4": "drawn",
+  "F6": "drawn",
+  "F5": "drawn",
+  "F3": "drawn",
+  "BF2": "drawn",
+  "BF3": "drawn",
+  "BF1": "drawn",
+  "U1": "drawn",
+  "U6": "drawn",
+  "U3": "drawn",
+  "BU1": "drawn",
+  "BU3": "drawn",
+  "BU2": "drawn",
+  "N2": "drawn",
+  "N1": "drawn"
+ }
+}

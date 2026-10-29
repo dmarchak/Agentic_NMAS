@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""The blind sets' draws (the operator's confirmation, 2026-10-29), reproducible from the locked
+keys alone: each key file's sha256 seeds `random.Random(int(sha256[:16], 16))`; each category's
+pool (its ids sorted) is sampled with `rng.sample(pool, k)`, categories in the file's order, then
+a backup order (the rest of the pool, shuffled by the same rng) for redraws within the category.
+
+SDN (its "Suggested draw"): k = 3 from S, BS, F, BF, U, BU and 2 from N; a scenario whose Rule
+cell begins "No" (or reads "No (normally)" / "No or borderline") goes to the detection-gap list,
+not the classifier's pool. Explain: 3 each from R, I, D, C, B and 4 from M; a Lab N scenario is
+redrawn within its category before the draw is reported (it can never be reproduced); a P one is
+drawn and redrawn only if it cannot be reproduced.
+Run: scripts/nmas-blind-draw <sdn key> <explain key>"""
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import random  # noqa: E402
+import re  # noqa: E402
+
+
+def tables(path):
+    """{category: [row dict]} from the key's markdown tables, keyed by each header row."""
+    out, cat, head = {}, None, None
+    for line in open(path, encoding="utf-8"):
+        m = re.match(r"^## ([A-Z]+):", line)
+        if m:
+            cat, head = m.group(1), None
+            continue
+        if not line.startswith("|") or cat is None:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if head is None:
+            head = cells
+            continue
+        if set(cells[0]) <= set("-: "):
+            continue
+        out.setdefault(cat, []).append(dict(zip(head, cells)))
+    return out
+
+
+def draw(path, quotas, gap_rule=None, never=None):
+    sha = hashlib.sha256(open(path, "rb").read()).hexdigest()
+    rng = random.Random(int(sha[:16], 16))
+    t = tables(path)
+    result = {"key": path, "sha256": sha, "seed": int(sha[:16], 16), "draw": {}, "backups": {},
+              "gaps": [], "redrawn_never": {}}
+    for cat, k in quotas:
+        rows = t.get(cat, [])
+        pool = []
+        for r in rows:
+            if gap_rule and gap_rule(r):
+                result["gaps"].append(r["ID"])
+            else:
+                pool.append(r["ID"])
+        pool = sorted(pool, key=lambda s: (len(s), s))
+        drawn = rng.sample(pool, min(k, len(pool)))
+        rest = [p for p in pool if p not in drawn]
+        rng.shuffle(rest)
+        # A scenario the key marks Lab N can never be reproduced: redrawn at once, in order.
+        if never:
+            for i, d in enumerate(list(drawn)):
+                row = next(r for r in rows if r["ID"] == d)
+                if never(row):
+                    nxt = next((x for x in rest
+                                if not never(next(r for r in rows if r["ID"] == x))), None)
+                    result["redrawn_never"][d] = nxt
+                    rest.remove(nxt)
+                    drawn[i] = nxt
+        result["draw"][cat] = drawn
+        result["backups"][cat] = rest
+    return result
+
+
+def sdn_gap(r):
+    return re.match(r"\**No\b", r.get("Rule", "").strip()) is not None
+
+
+def lab_n(r):
+    return r.get("Lab", "").strip().upper() == "N"
+
+
+def main(argv=None):
+    import argparse
+
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("sdn_key", help="the locked sdn_classify answer key (markdown)")
+    p.add_argument("explain_key", help="the locked Explain answer key (markdown)")
+    a = p.parse_args(argv)
+    sdn = draw(a.sdn_key, [("S", 3), ("BS", 3), ("F", 3), ("BF", 3), ("U", 3), ("BU", 3),
+                           ("N", 2)], gap_rule=sdn_gap)
+    exp = draw(a.explain_key, [("R", 3), ("I", 3), ("D", 3), ("C", 3), ("B", 3), ("M", 4)],
+               never=lab_n)
+    print(json.dumps({"sdn_classify": sdn, "explain": exp}, indent=1))
+
+
+if __name__ == "__main__":
+    main()

@@ -2095,6 +2095,18 @@ needing a person, set by Mercury and drawn as Mercury's; the round grades each r
 kept (`cases.explain_graded`) and reports confidently wrong both ways. The next round measures
 both.
 
+**Explain's ship ruling (the operator, 2026-10-29 ~03:4x UTC), on the stop rule reached by the
+10-run round of that night (v4 with the fact sheet and the guard: 81% of cases reliable; confidently
+wrong raw 4.8%, every run case 19's, guarded 0%):** criterion (3) counts **guarded**, what a person
+sees. v4 ships as **"Advisory (beta)"** on three conditions: (a) nothing ships until the operator's
+walk (criterion 8: about 5 real alerts, 4 of 5 judged useful); (b) the beta label shows the measured
+reliability (81%) and "a person should confirm", board first, self-signed with its deviations
+logged; (c) Explain leaves beta only when its blind held-out set (C2121) is measured, with the raw
+confidently-wrong rate reported beside the guarded one. The guard's needs_human on a firing alert's
+"no fault found" stays as built (C2161). Its cost: a label and a walk before shipping, and a held-out
+round before beta ends. The defect class it prevents: a model's reliability below the bar presented
+as an answer to rely on.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
