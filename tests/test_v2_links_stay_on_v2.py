@@ -299,7 +299,13 @@ def test_every_rendered_v2_page_in_a_real_browser(served):  # noqa: F811
     problems, gaps = [], set()
     for page in PAGES:
         b.go(srv.url(page))
-        b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+        try:
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+        except AssertionError as exc:            # C2226: which page, and what was in flight
+            busy = b.js("return [...document.querySelectorAll('.htmx-request')].map(e => "
+                        "e.getAttribute('hx-get') || e.getAttribute('hx-post') || e.id || "
+                        "e.tagName).slice(0, 5)")
+            raise AssertionError(f"{page}: {exc}; still in flight: {busy}") from exc
         for line in b.js(LINKS_JS):
             if line.startswith("GAP "):
                 gaps.add(line[4:])

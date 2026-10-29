@@ -125,6 +125,34 @@ def test_a_days_window_holds_its_first_minutes_across_daylight_saving(day, first
     assert got == {"state": "ok", "usd": 0.20, "calls": 1, "error": ""}
 
 
+def test_a_month_of_rows_read_again_parses_each_stamp_once_and_keeps_its_zone(monkeypatch):
+    """C2225: Needs attention's AI spend row sums a month of rows on every render, and parsing
+    each row's time again was 0.8 s of it on the host. A stamp's day in a zone is kept
+    (`calls._stamp_day`): the same rows read again parse nothing; the same stamp in another
+    zone is its own day; a stamp with no readable time is no day's."""
+    calls._stamp_day.cache_clear()
+    parsed = []
+    real = datetime.datetime
+
+    class Counting(real):
+        @classmethod
+        def strptime(cls, s, f):
+            parsed.append(s)
+            return real.strptime(s, f)
+
+    monkeypatch.setattr(calls.datetime, "datetime", Counting)
+    rows = [{"id": f"c{i}", "at": f"2026-10-29T{i:02d}:30:00Z", "cost_usd": 0.01} for i in range(24)]
+    assert spend.day_usd(rows, "2026-10-29", "UTC") == pytest.approx(0.24)
+    assert len(parsed) == 24
+    assert spend.day_usd(rows, "2026-10-29", "UTC") == pytest.approx(0.24)
+    assert len(parsed) == 24, "the same rows read again parsed nothing"
+    # 03:30Z is the 28th in Chicago (UTC-5 in October): the zone is part of what is kept.
+    assert calls._row_day({"at": "2026-10-29T03:30:00Z"}, "America/Chicago") == "2026-10-28"
+    assert calls._row_day({"at": "2026-10-29T03:30:00Z"}, "UTC") == "2026-10-29"
+    assert calls._row_day({"at": "not a time"}, "UTC") == ""
+    assert calls._row_day({"at": None}, "UTC") == ""
+
+
 def _stamps_its_own_time(call) -> bool:
     """Whether a `calls.record(...)` call hands in a time of its own (an `"at"` key in a dict
     literal, or `at=` in a `dict(...)`)."""

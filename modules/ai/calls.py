@@ -9,6 +9,7 @@ version, sha256), the model, the request as it left the host (masked), the respo
 Never the API key, and nothing unmasked. History draws each row; the caps sum its costs.
 """
 import datetime
+import functools
 import logging
 import os
 import threading
@@ -112,6 +113,14 @@ def _row_day(row: dict, zone: str) -> str:
     at = row.get("at")
     if not isinstance(at, str):
         return ""
+    return _stamp_day(at, zone or boundary())
+
+
+@functools.lru_cache(maxsize=1 << 17)
+def _stamp_day(at: str, zone: str) -> str:
+    """The cap's day of the stamp *at* in *zone*: a pure function of the two, kept, so a month
+    of rows read again on every Needs attention render is parsed once a process (C2225: its
+    `strptime` was 0.8 s of each render on the host, 2026-10-29). At most `maxsize` stamps."""
     try:
         instant = datetime.datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(
             tzinfo=datetime.timezone.utc)
