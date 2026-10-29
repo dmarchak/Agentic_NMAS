@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {%- import "v2/_ai.html" as ai -%}
+{%- import "v2/_explain_beta.html" as beta -%}
 {#- Monitoring › Alerts › History (modules/alert_history.tab; the operator's order of
     2026-10-26; board P1-H, AlertsHistory.dc.html, signed off under the Phase 7 mode): the
     alerts that fired and resolved, from Mercury's alert history, each transition timed by
@@ -69,6 +70,9 @@
           <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="alert-history" hx-disabled-elt="this"{{ gate('configure') }} title="Rebuilds this alert's evidence pack as of its time and keeps it; reaches no device"><span class="op-idle">Build evidence</span><span class="op-busy">Building the evidence…</span></button>{{ how('alert-history', 'build') }}</span>
           <span class="op-act">{{ ai.mark(aic) }} <button type="button" class="btn btn-small" disabled aria-disabled="true" title="Explain reads the alert's evidence pack">Explain</button></span>
           <span class="muted small">Explain reads the alert's evidence pack: build it first.</span>
+          {#- Explain's control carries its "Advisory (beta)" label wherever it is drawn (the
+              ship ruling of 2026-10-29; board AlertsExplain revised, part 8). -#}
+          {{- beta.label() }}
           {{- ai.reason(aic) }}
         </form>
         {%- endif %}

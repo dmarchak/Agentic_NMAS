@@ -176,7 +176,10 @@ opens its card here. An open pack's **Explain** carries the **AI** mark; when ho
 answer it is disabled with the reason under it, and the pack is drawn whole (see
 [The AI mark](installation-settings#ai-mark)). Its answer is kept with the pack: opening the
 card again draws it, and nothing is sent; **Explain again** is a new call, said with its cost
-(see [An answer is kept with its pack](alert-evidence#kept-answers)).
+(see [An answer is kept with its pack](alert-evidence#kept-answers)). Explain is advisory, in
+beta: every answer, and the control itself, carries **Advisory (beta)**, the reliability
+measured and "A person should confirm"; **How was this measured?** opens what was measured and
+why it is still in beta (see [Advisory (beta)](alert-evidence#beta)).
 
 The list redraws when the alert reader finishes a read, after any new pack is built, but never
 under you: while a card you opened is open, or while Explain is being answered, it waits, and

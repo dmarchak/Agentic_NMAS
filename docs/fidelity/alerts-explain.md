@@ -14,8 +14,8 @@ test_device_v2's lab with tests/v2_context.py's `_alert_evidence` set-up: r3's r
 instance and a silenced syslog instance firing, each pack built by the real trigger over the
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
-Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
-Templates sha256: `2a07a8c2be05812ce15017e868ed816db837e707f7f7cae5b2aa6b44053058f1`
+Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
+Templates sha256: `d566a67b55f833299f00cd8a4f28fd161db36e1b2edc376308743a21f0207a1c`
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_explain.html` includes
 Was this right? (`_ai_feedback.html`) under an answer drawn, after "This call in History", and
@@ -254,3 +254,41 @@ else in the template changed.
   person Mercury set, drawn as Mercury's"). No other region's verdict changed.
 
 Templates sha256 before: `a1813eccc97ade628667adc86e9d0d427d4590baa8e02678c6a591699bbccdfd`.
+
+**Compared again 2026-10-29 (Explain's ship ruling of 2026-10-29, condition (b): Advisory
+(beta)):** against the revised board, `AlertsExplain.dc.html` with a note "Revised 2026-10-29:
+Explain Advisory (beta)" (a copy of version 143 with parts 1 to 4 revised in place and parts 5
+to 9 added; signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md, "Explain Advisory
+(beta): board AlertsExplain revised"; not yet on the canvas). A new template,
+`_explain_beta.html`, draws the label from `explain.beta()`, its figure from the one dated
+record `explain.MEASURED`; it is added to the templates compared. `_explain.html` opens every
+answer it draws with the whole label; `_explain_block.html` draws the chip alone after Explain's
+(i) when an answer is drawn under it, else the whole label under the control.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-29 04:1x UTC,
+  at 1440, 1280 and 390 beside the revised board at 1440; the boards folder held the revised
+  board alone): `-open` draws the whole label under Explain, `-explained` and `-kept` the chip
+  after the (i) with "A new call, up to $…; this answer stays." beside it and the whole label
+  first in the answer, above its rationale. At 390 the label wraps under the control and at the
+  top of the answer, How was this measured? on its own line; no sideways scroll.
+- **Regions not shot,** compared by the template and tests/test_explain_beta.py (each through
+  the real route): no fault found and no fault found with Mercury's needs a person (the label
+  first, then the answer, then "needs a person" with "set by Mercury"), a refusal (no label on
+  it, the whole label under its control), Not measured (a pin the record is not of), and the
+  chip's hover naming every field of the record.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The label on an answer | parts 1, 2 and 6: the chip, "81% of recorded cases reliable in measurement (2026-10-29, 21 cases, 10 runs).", How was this measured?, "A person should confirm.", first in the answer | the same words and order, first in the answer, the link opening the manual's section in the side panel | **same** |
+| The control with an answer under it | parts 1 and 6: the chip after the (i), then "A new call, …" | the same | **same** |
+| The control with no answer under it | parts 4 and 5: the whole label on the line under the control | the same, before the AI-off reason when there is one | **same** |
+| A refusal | part 3: no label on the refusal; the control draws the whole label | the same | **same** |
+| A needs a person Mercury set | part 6: the label, the answer, then "needs a person", "set by Mercury" and the reason | the same order (the log's earlier deviation for this region, "P1 Alerts: a needs a person Mercury set, drawn as Mercury's", is drawn by the revised board) | **same** |
+| Not measured | part 7: the chip, "Not measured: Explain now asks … ; the measurement of 2026-10-29 was of …", the link, "A person should confirm." | the same words from `explain.beta()` | **same** |
+| The chip's hover | part 5: the whole record in words | every field of `explain.MEASURED` in words | **same** |
+| Phone | part 9: the label wraps, no sideways scroll | at 390 the same | **same** |
+
+No other region's verdict changed. The past alert's disabled Explain (part 8) is compared in
+docs/fidelity/alerts-history.md.
+
+Templates sha256 before: `2a07a8c2be05812ce15017e868ed816db837e707f7f7cae5b2aa6b44053058f1`
+(over the four templates compared before `_explain_beta.html` was added).

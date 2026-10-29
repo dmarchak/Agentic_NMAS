@@ -297,6 +297,52 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    what the pack holds was checked, and an alert can fire on a passing blip or a threshold set
    too low. Explain is told to say so rather than invent a cause.
 
+### Advisory (beta): how it was measured {#beta}
+
+Explain is **advisory, in beta**. Every answer it draws, and the Explain control wherever it is
+drawn, carries the chip **Advisory (beta)**, the reliability measured, a link to this section
+(**How was this measured?**) and "A person should confirm." Read an answer as a starting point
+for a person who checks it, never as a finding to act on alone. The chip's hover names the whole
+measurement. The figure comes from one dated record in {{product}}'s code, written when a
+measurement round decides a version, so the label always says what was measured and when.
+
+**What the round measured (2026-10-29).** The 21 recorded cases: alerts recorded with their
+evidence packs, healthy baselines among them, each with what a right answer must do written from
+the evidence before any model run. Explain was asked about each pack 10 times, with the prompt
+and model pinned then (prompt version 4 on Claude Sonnet 5.5), the fact sheet (below) and the
+needs a person {{product}} sets (below), through the provider's batch interface (the same
+requests, at the batch price; an evaluation only, never a press of Explain). A run passes when
+{{product}}'s check accepts the answer and it does what its case expects: its outcome (a cause,
+no fault found, or that the pack cannot say), asking for a person where the case says so, and
+citing or checking the evidence the case names. A case is **reliable** when it passes in every
+one of its 10 runs. The result: 17 of the 21 cases reliable (81%), 194 of the 210 runs passing.
+
+**The criteria it is held to.** Explain is done, and leaves beta, only when all of these hold:
+1. recorded reliability of 90% or more, on fresh 10-run rounds;
+2. a **blind held-out set** (about 20 alerts from scenarios the operator confirms, written
+   without seeing any prompt or result, never tuned on) at 85% or more;
+3. **confidently wrong** (a run whose leading cause is wrong while it did not ask for a person)
+   in 1% of runs or fewer, and none on the held-out set, counted as a person sees the answer;
+4. couldn't analyse in 5% of runs or fewer;
+5. an honest "the evidence is insufficient" that asks for a person counts as correct where the
+   cause is not in the pack;
+6. a cost per successful answer no higher than the current version's;
+7. no case the current version answers reliably fails under a new one, and reliability does not
+   drop;
+8. the operator's walk on the lab: 4 of 5 real alerts judged useful.
+
+**Why it is in beta.** The round met the confidently wrong bound as a person sees it (0 of 210
+runs, because {{product}} keeps a no fault found on a firing alert needing a person; 10 of 210
+as the model answered, every one the same recorded case) and the couldn't analyse bound, but not
+the 90% reliability, and the blind held-out set is not yet measured. Under the rule for that case
+Explain ships labelled advisory, with its measured figure shown, rather than not at all; it
+leaves beta only once the blind held-out set is measured, with the confidently wrong count as
+the model answered reported beside the one a person sees.
+
+When the pinned prompt or model is not the one the record measured (a version adopted after
+it), the label does not borrow the old figure: it says **Not measured**, naming what Explain asks
+now and what was measured, until a round measures the new version.
+
 ### The fact sheet {#fact-sheet}
 
 Some facts in a pack are arithmetic: one device's heartbeat gap against its neighbours', a

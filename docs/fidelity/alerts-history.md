@@ -14,8 +14,8 @@ group is opened on r2's past alert, and Build evidence is pressed: its rebuilt p
 the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept, frozen, so the
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
-Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html
-Templates sha256: `3ed477210b497088fef46b7446a101f1c453d6ab4d2dc487b59711db24f4b0e6`
+Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
+Templates sha256: `1b15c99544e66eb30ab02e734c315d42faa50fc4dcaec42da50b3dadcf56b6ec`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -120,3 +120,28 @@ same with C1867's product files put back to the last commit's (run through `scri
 so its shots are still owed, as before. **Verdict:** **same**; no region of P1-H changed.
 
 Templates sha256 before: `c8e11756f7bea09cf0613c7b4c3b07ca0a577525aa7e1a0b9ba58284ea7d06d3`.
+
+**Compared again 2026-10-29 (Explain's ship ruling of 2026-10-29, condition (b): Advisory
+(beta)):** a past alert with no pack draws, under its disabled Explain and "Explain reads the
+alert's evidence pack: build it first.", the whole label (`_explain_beta.html`, added to the
+templates compared): the chip "Advisory (beta)", "81% of recorded cases reliable in measurement
+(2026-10-29, 21 cases, 10 runs).", How was this measured? and "A person should confirm.", before
+the AI-off reason when there is one. A row's pack, opened, draws Explain's block, whose label is
+compared in docs/fidelity/alerts-explain.md. P1-H draws no label; the region is drawn by the
+revised `AlertsExplain.dc.html`, part 8 ("Revised 2026-10-29: Explain Advisory (beta)"), and
+compared against it.
+- **Compared:** by the template and tests/test_explain_beta.py's
+  `test_a_past_alert_with_no_pack_draws_the_whole_label_beside_its_explain` (History through the
+  real route, every past alert's row); **not shot**: `::test_monitoring_alerts_history` needs
+  `AlertsHistory.dc.html` in the boards folder, and this comparison's folder held only the
+  revised AlertsExplain (the canvas's project folder read for it held no AlertsHistory), so its
+  shots at 1440, 1280 and 390 are owed.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A past alert's disabled Explain, its label | AlertsExplain revised, part 8: the whole label under Build evidence and the disabled Explain | the same words and order, under the row's Build evidence form | **same** |
+
+No region of P1-H changed.
+
+Templates sha256 before: `3ed477210b497088fef46b7446a101f1c453d6ab4d2dc487b59711db24f4b0e6`
+(over the four templates compared before `_explain_beta.html` was added).

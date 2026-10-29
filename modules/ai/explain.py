@@ -197,6 +197,55 @@ CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
+#: Explain's measured reliability, the ONE dated record every "Advisory (beta)" label draws its
+#: figure from (PHASE8_PLAN 15.12, Explain's ship ruling of 2026-10-29, condition (b)): never a
+#: figure typed into a template. The 10-run adoption round of 2026-10-29 (C2117, C2141): the
+#: pinned prompt and model, with the fact sheet and Mercury's needs-a-person guard, over the 21
+#: recorded cases; a case reliable when it passed every run (15.12's reliability). Confidently
+#: wrong (criterion 3) as shown (guarded, the ruling's count) and as the model answered (raw).
+#: ``blind`` is the blind held-out set's measurement (C2121), None until it is made: Explain
+#: leaves beta only after it (condition (c)). A new adoption writes a new record here.
+MEASURED = {"at": "2026-10-29", "prompt": ("explain", 4), "model": "claude-sonnet-5-5",
+            "fact_sheet": True, "guard": True, "round": "msgbatch_01D8vrAjVh3NpSifBhdFcV26", "commit": "4a468990",
+            "cases": 21, "reliable": 17, "runs": 10, "passed_runs": 194,
+            "wrong_shown": 0, "wrong_raw": 10, "blind": None}
+
+
+def beta(measured: dict = None) -> dict:
+    """The "Advisory (beta)" label as every Explain answer and control draws it
+    (templates/v2/_explain_beta.html): ``words``, the measured figure from *measured*
+    (`MEASURED` by default) when it is of the prompt and model pinned now, else what was
+    measured and what is asked now (``state`` "measured" or "not_measured"); ``hover``, the
+    whole record in words. A pin the record is not of never borrows its figure."""
+    from modules.ai import profiles
+
+    m = MEASURED if measured is None else measured
+    pin_model = profiles.task(FEATURE)["model"]
+
+    def said(prompt, model):
+        return f"{prompt[0]} v{prompt[1]} on {profiles.profile(model)['words']}"
+
+    total = m["cases"] * m["runs"]
+    pct = round(100 * m["reliable"] / m["cases"]) if m["cases"] else 0
+    with_ = " and ".join(w for w, on in (("Mercury's fact sheet", m["fact_sheet"]),
+                                         ("its needs-a-person guard", m["guard"])) if on)
+    hover = (f"Explain is advisory while in beta. Measured {m['at']}: "
+             f"{said(m['prompt'], m['model'])} ({m['model']})"
+             f"{', with ' + with_ if with_ else ''}; {m['cases']} recorded alerts, {m['runs']} "
+             f"runs each (round {m['round']}, on {m['commit']}): {m['reliable']} of "
+             f"{m['cases']} cases reliable, {m['passed_runs']} of {total} runs passed; "
+             f"confidently wrong {m['wrong_shown']} of {total} runs as shown, "
+             f"{m['wrong_raw']} as the model answered. "
+             + ("The blind held-out set is not yet measured, so Explain stays in beta."
+                if m["blind"] is None else f"The blind held-out set: {m['blind']}."))
+    if tuple(m["prompt"]) == tuple(PROMPT) and m["model"] == pin_model:
+        return {"state": "measured", "percent": pct, "hover": hover,
+                "words": (f"{pct}% of recorded cases reliable in measurement ({m['at']}, "
+                          f"{m['cases']} cases, {m['runs']} runs)")}
+    return {"state": "not_measured", "percent": None, "hover": hover,
+            "words": (f"Not measured: Explain now asks {said(PROMPT, pin_model)}; the "
+                      f"measurement of {m['at']} was of {said(m['prompt'], m['model'])}")}
+
 
 def vocabulary(sections=None) -> str:
     """The pack's format and the reads a hypothesis may name, the same bytes on every call.

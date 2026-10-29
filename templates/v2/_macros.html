@@ -60,9 +60,10 @@
 {#- The info link (NSOT_GUI_BRIEF 10a): opens the manual's page *slug* (and its
     section *section*) in the frame's side help panel; with no script it opens
     the Help page itself. The manual check reads every call and requires the
-    page and section to exist. -#}
-{% macro info(slug, section='', label='How this works') -%}
-<a class="info-link" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" hx-select="unset" x-on:click="openHelp" title="{{ label }}" aria-label="{{ label }}" data-manual="{{ slug }}{{ '#' ~ section if section }}">{{ icon('info', 16) }}</a>
+    page and section to exist. With *words*, the link is those words, no icon
+    (Explain's "How was this measured?"). -#}
+{% macro info(slug, section='', label='How this works', words='') -%}
+<a class="info-link{{ ' info-words' if words }}" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" hx-select="unset" x-on:click="openHelp" title="{{ label }}"{% if not words %} aria-label="{{ label }}"{% endif %} data-manual="{{ slug }}{{ '#' ~ section if section }}">{% if words %}{{ words }}{% else %}{{ icon('info', 16) }}{% endif %}</a>
 {%- endmacro %}
 
 {#- "How does this work?" beside an ACTION (NSOT_GUI_BRIEF 10b, signed off 2026-10-02): the

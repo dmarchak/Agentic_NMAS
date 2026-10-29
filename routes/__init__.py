@@ -69,6 +69,14 @@ def register_blueprints(app) -> list:
         return feedback.control(call_id)
     app.jinja_env.globals["ai_feedback"] = ai_feedback
 
+    # Explain's "Advisory (beta)" label (PHASE8_PLAN 15.12, Explain's ship ruling of
+    # 2026-10-29): its measured figure read from the one dated record, `explain.MEASURED`,
+    # by templates/v2/_explain_beta.html, never typed into a template.
+    def explain_beta():
+        from modules.ai import explain
+        return explain.beta()
+    app.jinja_env.globals["explain_beta"] = explain_beta
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.

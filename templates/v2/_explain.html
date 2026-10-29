@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import badge, icon, stamp -%}
+{%- import "v2/_explain_beta.html" as beta -%}
 {#- Explain's answer, in its pack (modules/ai/explain.py; PHASE8_PLAN 15.9, P1): the rationale,
     then each hypothesis with what it cites (a pack piece a link to it, an id of the topology
     sent drawn as text, 15.15) and the read that would confirm it; or why there is none; and,
@@ -6,7 +7,9 @@
     nothing runs. Mercury's own citations (the operator's decision 7a, 2026-10-28) are drawn
     apart from the model's, under "cited by Mercury", never among a hypothesis's. Mercury's
     needs_human on a no fault found while the alert fires (the operator's order of 2026-10-29)
-    is drawn under "set by Mercury", with its reason. -#}
+    is drawn under "set by Mercury", with its reason. Every answer drawn opens with the
+    "Advisory (beta)" label (_explain_beta.html, Explain's ship ruling of 2026-10-29); a
+    refusal draws none, since no answer of the model's is shown. -#}
 {%- macro cited(c, pid) -%}
 {%- if c.in_pack %}<a class="pack-ref" href="#{{ pid }}-{{ c.ref }}" data-ref="{{ c.ref }}">{{ c.ref }}</a>{% else %}<code class="topo-ref" data-ref="{{ c.ref }}" title="in the network's topology sent with the pack{% if c.as_written %}; the answer wrote it {{ c.as_written }}{% endif %}">{{ c.ref }}</code>{% endif %}
 {%- endmacro %}
@@ -20,6 +23,8 @@
   {#- No fault found (C1742): what the evidence shows, and each healthy piece checked. -#}
   {%- set a = x.answer %}
   {%- set t = x.topology or {} %}
+  {#- Advisory (beta) on every answer (Explain's ship ruling of 2026-10-29), first. -#}
+  {{ beta.label() }}
   <p class="explain-why">{{ badge('no fault found', 'neutral') }} {{ a.rationale }}</p>
   <p class="muted small explain-checked">Checked {% for c in a.checked %}{{ cited(c, x.pack_id) }}{{ ', ' if not loop.last }}{% endfor %}.</p>
   {{- mercury_cites(a, x.pack_id) }}
@@ -33,6 +38,7 @@
   {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
 {%- elif x.ok %}
   {%- set a = x.answer %}
+  {{ beta.label() }}
   <p class="explain-why">{{ a.rationale }}</p>
   <ol class="explain-list">
     {%- for h in a.hypotheses %}
