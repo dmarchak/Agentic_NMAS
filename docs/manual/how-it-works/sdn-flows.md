@@ -37,7 +37,8 @@ the rest of the specification's table. An address of the wrong family is refused
    through the controller, checks the change, and renders **exactly these requests**: the method,
    the path and the body the controller is sent, each with its undo. A refusal says what it
    compared, and nothing is sent.
-2. `hash`: you confirm as yourself, bound to the requests' hash and to the flows they touch as
+2. `hash`: you confirm as yourself, with **Send N request(s) to <connection>** (a verified
+   person's), bound to the requests' hash and to the flows they touch as
    they were read. At the apply the plan is made again; if the switch's table or the requests
    moved, nothing is sent and both hashes are named.
 3. `hold`: the switch is held, so one change at a time reaches it; a second is refused, naming

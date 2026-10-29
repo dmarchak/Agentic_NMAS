@@ -60,9 +60,13 @@ Apply is a deploy scoped to the profile's lines (see [Deploy a change](deploy)):
    on the preview waits until the new plan is drawn. Once the batch is confirmed it runs in the
    order you confirmed, so these controls are disabled, saying so, and a note above the order
    says the batch is running; open the page again to plan another.
-3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm carries
-   each device's capture and program hashes in the order shown, and the removals with their
-   reasons. The server answers at once and starts the batch as a job, as you.
+3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet.
+   **Apply to N device(s) in this order** (**Deploy to N device(s) in this order** when the
+   preview deploys intent) is the confirm; it needs a verified person, and is drawn disabled
+   with the reason otherwise. It carries each device's capture and program hashes in the
+   order shown, and the removals with their reasons. The server answers at once and starts
+   the batch as a job, as you, and the button becomes **Started: its progress is below**,
+   disabled, so the same batch cannot be confirmed twice.
 4. **The batch.** Read, Sent and Recorded: as each device's pipeline below. One device after
    another, in your order, each program computed again at apply and refused alone, with
    nothing sent to it, if its hash moved. The page shows each device done, running or not
@@ -122,7 +126,10 @@ is removed. It is the deploy above with scope `templates`:
    lines are already on the device, and the cause is looked for on the device's page.
    **Earlier**, **Later** and **Leave out** plan the deploy again, busy on the button while it
    plans; once the deploy is confirmed they are disabled, since it runs in the order confirmed.
-3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm is bound
+3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet.
+   **Deploy to N device(s), in this order** is the confirm (it needs a verified person, and is
+   drawn disabled with the reason otherwise); **Back** returns to Coverage with nothing sent.
+   The confirm is bound
    to the programs on the screen: if a device or a template changed since, that device is
    refused, with nothing sent to it, naming what moved. The server answers at once and starts
    the deploy as a job, as you.
@@ -167,7 +174,8 @@ heartbeat stops; the tool reads Grafana's alerts every minute and the stopped he
 Needs attention row. An hourly check on the host (`nmas-heartbeat-check`, a systemd timer)
 re-measures each window; when a device's rate has moved, job health raises a row whose
 action opens the re-measure, which writes new rules as you and names the one host step that
-installs them in Grafana. Its Write column is ticked for each device whose check fails. Only
+installs them in Grafana. Its Write column is ticked for each device whose check fails.
+**Write the ticked windows** is the confirm, drawn only when a window needs writing. Only
 the ticked devices' windows are written; every other device keeps the rule Grafana runs now.
 At the confirm, each ticked device is measured again, and if its window moved since the
 preview, nothing is written and the refusal names both windows. A heartbeat arriving
@@ -233,16 +241,23 @@ closest:
    committed profile. Sent: nothing. Recorded: the profile's IP SLA section (its targeting,
    and its frequency, 10 to 3600 s) committed
    as you, `Source: profile`, refused if the profile moved since the page showed it. The
-   probes it suggests are a SECOND commit, into the chosen devices' intent
+   page's **Set the policy** (**Change the policy** once one is set) commits it; it adds no
+   probe by itself. The probes it suggests are a SECOND commit, into the chosen devices' intent
    (`Source: ip-sla`), and are sent by Coverage's [Deploy missing templates](#combined) or by
    the scoped apply (scope `ip_sla`, "Send the IP SLA probes") the IP SLA page opens once
    they are committed, never by the profile's Apply.
+   **Commit the ticked probes to intent, then preview sending them** makes that commit for
+   the probes left ticked, as you, and then opens the scoped apply's preview; nothing is sent
+   until that preview is confirmed. Coverage reaches the page for the devices that run no
+   probe with **Suggest IP SLA probes for them…**. Each of these commits needs a verified
+   person; a refusal is drawn beside the button, and nothing is committed.
 
    **A probe that already runs at another frequency than the policy's** is listed in its own
    section, "Probes off the policy's frequency". Each shows its frequency now and after, and
    its cost on the device. The frequency is the platform's when the policy names one, else the
    network's. Ticked probes are committed to their devices' intent the same way (`Source:
-   ip-sla`) and sent by the same scoped apply.
+   ip-sla`), by **Commit the ticked frequencies to intent, then preview sending them**, and
+   sent by the same scoped apply.
 
    A probe that runs cannot be edited in place, so the preview's program deletes it and creates
    it again from intent. That is refused, naming its removal probe, until the delete
@@ -251,10 +266,11 @@ closest:
    **A probe committed and not on its device** stays listed in "Committed, not yet on the
    device". The batch commits intent before it sends, so a device it failed to reach already
    matches the policy in intent while it still runs its old probe. Each row says what intent
-   holds and what the device runs, with the last failed send's reason, and **Retry
-   <device>** opens the same preview for that device alone: a new program and a new confirm,
-   never the old batch's. The row clears when the device's configuration carries its intent.
-   The batch's own card offers the same Retry for each device it did not deploy.
+   holds and what the device runs, with the last failed send's reason, and
+   **Retry <device>** opens the same preview for that device alone: a new program and a new
+   confirm, never the old batch's. The row clears when the device's configuration carries its
+   intent. The batch's own card offers the same **Retry <device>** for each device it did not
+   deploy.
 
    The targeting is one of four. **Upstream** probes what each device depends on: its static
    default gateway, else its routing peers, else the next hop of its widest static route, so

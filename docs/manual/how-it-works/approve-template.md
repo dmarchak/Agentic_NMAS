@@ -22,7 +22,7 @@ real device; it is recorded as you, with each bound device's result as evidence.
    one device reproduces exactly. A template no device is bound to cannot be approved: its
    **Approve…** is disabled, and says nothing can validate it. One whose bound devices have
    no capture yet is refused, because there is nothing to validate it against.
-2. `approve`: you confirm, as yourself. Read: the template's fingerprint and the check again.
+2. `approve`: you confirm, as yourself, with **Approve <template>** (a verified person's). Read: the template's fingerprint and the check again.
    Sent: nothing. Recorded: the approval (the fingerprint, you, when, and each device's result
    as evidence) in the network's approvals record. If the template or a file it imports
    changed since the card showed it, or the check's outcome changed since you read it (a
@@ -34,7 +34,7 @@ real device; it is recorded as you, with each bound device's result as evidence.
 
 ## Revoking an approval {#revoke}
 
-4. `revoke`: **Revoke…** on an approved template's row asks why. Read: the record. Sent:
+4. `revoke`: **Revoke…** on an approved template's row asks why, and **Revoke the approval** (a verified person's) confirms it. Read: the record. Sent:
    nothing. Recorded: the revocation, with your reason, who and when, and what it withdrew,
    committed. Every deploy through the template is refused until it is approved again; the
    reason is shown on its row. A revocation stays in the approvals record until the template

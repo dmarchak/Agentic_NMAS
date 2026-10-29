@@ -29,8 +29,10 @@ Mercury reaches it on is never offered.
 2. `read`: the preview reads the before-state through the reads engine (a recorded run) and
    draws it, with what the command affects, what it will not do, and why rollback does not
    apply. `undebug all` with nothing on says it changes nothing.
-3. `confirm`: you give a reason of three words or more and confirm. The confirm is bound to the
-   plan: if the device's address or the command moved, nothing is sent.
+3. `confirm`: you give a reason of three words or more and confirm, with
+   **Run <command> on <device>** (a verified person's); when the preview found `undebug all`
+   changes nothing, the confirm is **Run undebug all anyway (records it)**. The confirm is
+   bound to the plan: if the device's address or the command moved, nothing is sent.
 4. `send`: holding the device, the before-state is read again and kept in the record (the
    counters, the log buffer: these commands destroy evidence), masked and capped. The command
    is sent once. Only its measured prompt is answered, with Enter; any other question is not

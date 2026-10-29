@@ -53,8 +53,8 @@ recorded with the run, as you, and named above the groups; no device is asked ag
 the reference: nobody, until you choose a device, or "the most common answer" when at least two
 devices share one. **Show** chooses every answer grouped, only the differences (each group's
 lines against the reference you chose), or the failed and skipped. **Compare … with**, on a
-group, sets one of its devices beside a device you choose, each side's lines the other lacks
-marked. How grouping and comparing work: [How answers are grouped](show-commands#grouping).
+group, sets one of its devices beside a device you choose (**Side by side** draws them), each
+side's lines the other lacks marked. How grouping and comparing work: [How answers are grouped](show-commands#grouping).
 
 ## A logging-path test's result {#logging-path}
 

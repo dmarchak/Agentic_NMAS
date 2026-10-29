@@ -7,7 +7,9 @@ The fleet's monitoring, in four tabs: **Dashboards**, **Coverage**, **Profile** 
 The network's fleet dashboard from Grafana, drawn here: the panels the app can draw are drawn
 with the dashboard's own queries; those it cannot (alert lists, text, logs) keep their place
 and link to Grafana. Another dashboard can be chosen for the view without changing the
-setting.
+setting: the toolbar's Dashboard menu names the dashboard drawn (**none chosen** when there is
+none) and lists Grafana's dashboards as last read, the time of that read on hover. A device's
+Monitoring tab has the same menu.
 
 ## Which network {#network}
 
@@ -38,7 +40,7 @@ network's.
 ## The time range {#time-range}
 
 One click for the last hour, 6 hours, 24 hours or 7 days, or type a range ("last 90
-minutes", "3d"). The live store keeps 90 days unless the network's settings say otherwise
+minutes", "3d") and press **Apply**. The live store keeps 90 days unless the network's settings say otherwise
 (`metrics_live_retention_days`): a longer range
 is read from the history store when one is set (`grafana_history_datasource_uid`, Thanos for
 example), each panel's foot line saying so, and is otherwise refused at the control, naming
@@ -153,9 +155,13 @@ One row per committed section:
 as committed or not proposed with why, how many devices' committed intent it cross-checked and
 each device it did not read with why, how many devices' effective intent changes, and which
 of them would not receive a change yet because their template does not render it. Where the
-devices hold different versions of a section's shared fields, it offers **Use the version held
-by …** for each, and previews the one you choose with what every other device gains. Committing
-it records the profile, and any version you chose, as you; nothing is sent to a device. See
+devices hold different versions of a section's shared fields, it offers
+**Use the version held by <devices>** for each, and previews the one you choose with what
+every other device gains; until one is chosen that section is not proposed.
+**Commit the profile (N section(s) added)** (or "changed") records the profile, and any
+version you chose, as you, in one commit bound to the proposal's hash and the profile as
+committed; it needs a verified person, and is drawn disabled with the reason otherwise.
+Nothing is sent to a device: Coverage then shows what each device lacks, and Apply sends it. See
 [Apply a monitoring template](monitoring-templates#propose).
 
 ## Alerts {#alerts}

@@ -23,7 +23,7 @@ It is built from two operations that already exist, never a third copy of either
    The summary counts each group. For the devices to save, it says what the hourly startup check last read: whether each one's accounts (its `username` lines) were in startup. That check compares the accounts only, so whether the rest of startup differs from running is not measured; every device to save is saved whatever the check read.
 
    For every device of the network, the plan leads with a warning when a Save would likely repeat the last baseline: the newest earned [baseline](baselines) still holds every committed golden (no golden has changed since) and every device to save had a golden in it. It names when that baseline was taken, by whom, and its tag. The plan reads no device, so it says that whether a device has changed since is not known there; if none has, this Save records the same state again. The confirm is still offered.
-2. **Confirm** (`confirm`). You confirm the plan's hash, as yourself. The hash binds each device to save with its address, driver and account. A plan that moved before the run (an address, a driver, an account, a hold or reachability) is refused with nothing sent; open Save again.
+2. **Confirm** (`confirm`). You confirm the plan's hash, as yourself, with **Save N device(s)** (a verified person's); **Back** returns to Devices with nothing sent. The hash binds each device to save with its address, driver and account. A plan that moved before the run (an address, a driver, an account, a hold or reachability) is refused with nothing sent, and the card offers **Plan it again** for the same devices.
 
 ## The run, in order
 

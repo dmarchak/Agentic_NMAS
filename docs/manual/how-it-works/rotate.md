@@ -10,7 +10,7 @@ You start it from the device's page: Actions > Rotate credential, whose card rea
 
 1. **Preflight** (`preflight`). Read: the device's inventory row; its manifest identity; its committed golden; and the account's `username` line read live from the device (`show running-config | include ^username <account>`). Sent: nothing that changes the device (one read on a session that is closed again). Recorded: nothing. The program depends on whether the account holds a `secret` or a `password` on the device now, not in a stored capture, and each check is drawn by name as a gate; any one failing refuses the rotation before anything changes.
 2. **The program is shown**. Read: nothing more. Sent: nothing. Recorded: nothing. It is the exact program for this device, the new password masked: one line (`username <account> privilege <n> algorithm-type scrypt secret <generated>`) when the account holds a secret, or `no username <account>` first and then that line when it holds a password, because the device refuses a secret over a password entry. Beside it are who else signs in as this account and what happens to each.
-3. **The fingerprint**. Read: nothing more. Sent: nothing. Recorded: nothing. You confirm the plan's fingerprint, which binds the account's line and its entry kind; the apply computes it again and refuses a different one with nothing sent.
+3. **The fingerprint**. Read: nothing more. Sent: nothing. Recorded: nothing. You confirm the plan's fingerprint, which binds the account's line and its entry kind, with **Rotate <device>**; it needs a verified person. The apply computes the fingerprint again and refuses a different one with nothing sent. When a gate fails, the card names it in place of the confirm and offers **Preview it again**, which reads the account's line afresh; a refused confirm offers it too.
 
 ## The apply
 
@@ -47,8 +47,8 @@ what it waits on), or waiting. Each step groups the numbered steps above:
 
 The result names one state, with its one next step:
 
-- **rotated and persisted**: export the break-glass record again;
-- **rotated, persistence not attempted**: the most dangerous state. The device runs the new credential and its startup config still holds the old one, so a reload would boot the old credential. The result's one button is **Persist**, which opens the device's Persist card in place (it saves the running config to startup and reads it back); then export the break-glass record. Needs attention shows the same row, with the same Persist button, until a persist reads SAFE;
+- **rotated and persisted**: export the break-glass record again; the result's button is **Export <network>'s break-glass record…**, which opens the export on Credentials;
+- **rotated, persistence not attempted**: the most dangerous state. The device runs the new credential and its startup config still holds the old one, so a reload would boot the old credential. The result's one button is **Persist <device>…**, which opens the device's Persist card in place (it saves the running config to startup and reads it back); then export the break-glass record. Needs attention shows the same row, with the same Persist button, until a persist reads SAFE;
 - **rotated, persistence unverified**: the device's save or its read-back did not prove the new credential (the result names the stage). Do not reload the device. The remedy is the device's own save again: **Persist**, on the result and on Needs attention (or `nmas-persist-native` on the host);
 - **rotated, not recorded**: the device holds a password the tool did not record. The staged copy is kept and is the only copy, and Needs attention raises a row for it. The interface has no control that settles it yet: the row names the host command that does (`nmas-rotation-recover`), which asks the device which password it accepts and records or clears the staged copy accordingly;
 - **reverted**: the device is unchanged, and the result says why the verify failed;

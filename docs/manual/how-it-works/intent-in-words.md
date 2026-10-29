@@ -8,7 +8,9 @@ edit you type. Nothing is written, and nothing reaches the device.
 
 Nothing is written until you commit the draft: **Commit this draft** commits it to the
 device's intent as you, and **Commit and plan deploy** commits it and opens the deploy preview,
-where you still confirm the deploy by its hash. **Discard draft** drops it; a draft lives on
+where you still confirm the deploy by its hash. A draft committed to one device is answered
+in place with the commit and the AI call, says nothing was sent, and offers **Plan deploy…**,
+which opens the device's deploy card. **Discard draft** drops it; a draft lives on
 the page only.
 
 It makes one call to a hosted model (Anthropic's, the model named in the button's hover),

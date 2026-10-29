@@ -97,6 +97,12 @@ fetched again), to `/v2/monitoring/apply/confirm`. Either starts the apply as a 
 needs a verified person: the request's Cloudflare Access assertion, checked, from a trusted
 peer. That person is the actor recorded everywhere below.
 
+When the device card cannot be confirmed (a reason still owed, nothing to send, a failing
+gate, or the device held by another operation), it says why in place of the confirm and
+offers **Preview it again**, which plans afresh; a refused confirm offers it too. Every
+operation card on the device page (capture, persist, re-key, restore, rotate) uses the same
+words for the same thing: nothing is sent by it, and the new preview is read as it is now.
+
 1. **Recompute and compare.** Read: each device's committed golden, intent, profile and
    template again. Sent: nothing. Recorded: nothing. The program is rebuilt and its hash
    compared with the confirmed one, and the stored golden's hash with the confirmed capture

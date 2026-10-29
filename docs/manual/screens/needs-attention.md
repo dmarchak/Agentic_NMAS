@@ -94,6 +94,16 @@ unless changed). A drifted device's row carries both answers: **Capture** record
 holds as its golden (the change was wanted), and **Deploy intent** puts its committed intent back
 (it was not); each opens its card on the device's page, with its preview and confirm.
 
+**Persist <device>…** is the action of two rows: a deploy that was verified and not saved to
+startup, and job health's row for a device whose running configuration holds the only working
+credential. It opens the device's Persist card on its page, with its preview and confirm (see
+[Persist](persist)); the row clears once a save's read-back matches. A device's "not monitored"
+row offers **Preview the apply…** when the network's monitoring profile already covers what is
+missing, and **Propose on Profile…** when it does not (the network has no profile, or no
+section of it applies to the device): it opens the Profile tab of Monitoring with Propose's
+card open ([Profile](monitoring#profile)), and the profile, once proposed and committed, is
+applied from there.
+
 **An operation re-reads what it changed, at once.** Each reader runs on its own interval, and
 an operation that changes what a reader reports runs that reader again as soon as it is done:
 a Save All re-reads the baselines, a rotation or an onboarding re-reads job health (the

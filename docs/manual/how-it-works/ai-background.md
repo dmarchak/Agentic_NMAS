@@ -71,8 +71,9 @@ so. On a feature whose approval ended, Turn off removes the ended switch.
 ## Change caps {#caps}
 
 **Change caps…** opens the day and month caps of a feature that is on. Each is a positive
-amount in US dollars; the day cap is within the installation's day cap. Saving records the old
-and new caps. Raising a cap is how a feature stopped by its cap runs again before its day or
+amount in US dollars; the day cap is within the installation's day cap. **Save caps** (a
+verified person's) saves them and records the old and new caps; **Cancel** closes the form
+with nothing changed. Raising a cap is how a feature stopped by its cap runs again before its day or
 month ends; **Mercury never raises a cap by itself**. A feature that reaches a cap stops until
 the day or month ends, and Needs attention raises a row (at 50% and 80% too, and when the
 feature runs at 150% or more of the estimate it was approved at). Each of its

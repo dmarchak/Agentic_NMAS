@@ -14,8 +14,8 @@ loses its key. It belongs to the whole network, not to one device, so it lives h
 in opens it here, for the network it names:
 
 - the result of a rotation, a retirement or an adoption (each offers the export);
-- Needs attention's break-glass rows (**Export it on Credentials…**, **Record the drill on
-  Credentials…**);
+- Needs attention's break-glass rows (**Export it on Credentials…**,
+  **Record the drill on Credentials…**);
 - the Reload card's link to the device's break-glass record;
 - the sidebar's Credentials.
 
@@ -67,17 +67,19 @@ says when the password was last changed.
 
 **Add a profile…** asks what it covers (a role, a site, or every device), the username, the
 password and, if its devices need one, the enable secret; a new profile needs the username and
-the password. **Edit…** keeps any field you leave empty. **Delete…** says what the profile
-covered and that those devices then take their login from the next source; one no source
-covers is skipped by its next NetBox import, which says so. Each needs a verified person, and
+the password. **Edit…** keeps any field you leave empty; **Save the profile** saves the form.
+**Delete…** says what the profile covered and that those devices then take their login from
+the next source; one no source covers is skipped by its next NetBox import, which says so.
+**Delete <profile>** deletes it: the login is gone from the installation, kept nowhere the tool
+keeps. **Cancel** closes either card with nothing changed. Each needs a verified person, and
 each is recorded on History (Credential profiles): who, which profile, and the fields set,
 never a value.
 
 **Rotation policy…** on a profile's row sets how its devices' credentials are rotated on a
 schedule: off, or every N days inside a preferred window of UTC hours, at most K devices a run.
 It can name only some devices (a pilot), and says **why** the policy is as it is, one line
-kept with it. Only a verified person sets one, and History records who, when
-and the policy with its reason. The row's
+kept with it. **Set the policy** saves the form; only a verified person sets one, and History
+records who, when and the policy with its reason. The row's
 Rotation policy column says the policy, how many devices follow it, how many are due and the
 next due date. The **Scheduled rotation** card below the table leads with how many devices are
 due, says when the last run ran and what it did, and lists each device's credential age and
@@ -89,7 +91,10 @@ preferred window, the no-change windows, its limit a run, the five-minute look),
 hover; it is the time to plan a hold around ([how it is worked out](rotate#scheduled)). A no-change window is
 said in the summary ("No run starts inside <window>"). When the last run stopped on a failure,
 the card says **The timer is stopped**: no scheduled run starts until a later run finishes
-without one, and Needs attention names the device and the stage. **Rotate due devices
-now…** previews the devices it would take, and confirming runs them one at a time through the
-device page's rotation, each row on the run's stepper in place. See
+without one, and Needs attention names the device and the stage.
+**Rotate due devices now…** previews the devices it would take, and the devices left for a
+later run with why. **Rotate N device(s)** confirms that list by its hash (if the due devices
+change first, nothing is sent) and runs them one at a time through the device page's
+rotation, each row on the run's stepper in place; it needs a verified person, and is not
+offered inside a no-change window. See
 [Rotate a credential: on a schedule](rotate#scheduled).

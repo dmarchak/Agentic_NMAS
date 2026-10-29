@@ -9,10 +9,12 @@ You start it on the network's Settings page: **Make *network* standalone…** or
 ## The steps
 
 1. `preview`: the network's settings and Default's are read, and what the switch changes is drawn. Read: the network's own settings file and Default's settings. Sent: nothing. Recorded: nothing. For the network's mode, each group that still follows the mode is listed today and after: becoming standalone names exactly the groups inherited today that become not configured ("Grafana, Loki and Kea are inherited from Default today; after this they are not configured"); inheriting again names what the network picks up. A group with a choice, values or a declaration of its own stays as it is, and the preview says so. For one group, each of its settings is drawn today and after with where the value comes from; a secret is drawn only as set or unset, and a URL carrying a credential is masked.
-2. `confirm`: you confirm as a verified person. Read: nothing more. Sent: nothing. Recorded: nothing yet. The confirm carries the preview's fingerprint, which binds what the preview showed of today. *Its own* takes the group's values in the same card, starting from today's (a secret is never drawn back: an empty secret keeps the stored one, and an emptied field is not set here any more); *not applicable* takes a reason there.
+2. `confirm`: you confirm as a verified person: for the network's mode, **Make <network> standalone** (naming how many groups become not configured) or **Inherit from Default** (naming how many groups it picks up), and **Cancel** returns to the banner. Read: nothing more. Sent: nothing. Recorded: nothing yet. The confirm carries the preview's fingerprint, which binds what the preview showed of today. For a group, the confirm names the choice: **Inherit Default's <group> for <network>**, **Save <group> for <network>**, or **Declare <group> not applicable** (each adding what it removes, when the network had its own values). *Its own* takes the group's values in the same card, starting from today's (a secret is never drawn back: an empty secret keeps the stored one, and an emptied field is not set here any more); *not applicable* takes a reason there.
 3. `check_again`: the network's settings and Default's are read again and the plan is made again. Read: both, under the settings lock and the network's own lock. Sent: nothing. Recorded: nothing. If anything the preview showed has changed, nothing is saved and the refusal names each row as previewed and as it is now. Values you typed are checked against each setting's type here, and a Kea URL that another network already sets as its own is refused, naming that network: a Kea has one owning network ([Whose Kea](dhcp#whose-kea)).
 4. `write`: the network's own settings file is replaced whole. Read: nothing more. Sent: nothing. Recorded: the network's mode, the group's choice, its values (a secret encrypted) or its declaration of not applicable with who, when and why. The file is owner-only from creation. Default's settings are never written by a switch.
-5. `record`: the switch is appended to the network's settings record. Read: nothing. Sent: nothing. Recorded: who, how that was established, when, from what to what, and every value removed or replaced, as it was stored (a secret still encrypted), so going back can restore it. The result says so if the record could not be written; the switch is made either way.
+5. `record`: the switch is appended to the network's settings record. Read: nothing. Sent: nothing. Recorded: who, how that was established, when, from what to what, and every value removed or replaced, as it was stored (a secret still encrypted), so going back can restore it. The result says so if the record could not be written; the switch is made either way. The result offers **See its settings**, the network's page as it now stands.
+
+A switch or card that cannot be drawn or made is refused in place, "Not saved", with why (for a moved preview, both values), and **Read <network>'s settings again** (**Read the installation's settings again** for the installation's own) to start from what is stored now.
 
 Readers and pages use the new settings at their next read: a standalone network's unconfigured group is not read at all, and its pages say "not configured" for it.
 
@@ -45,11 +47,17 @@ a name, a preview, then **Create**.
 3. `record`: who, how that was established, when and the name, in the installation's settings
    record.
 
+The preview's button is **Create <network>** (a verified person's), bound to the preview;
+**Change the name** returns to the form. The result offers **Open <network>'s settings** and
+**Its devices**, the network's Devices page (empty until devices are added to it).
+
 ## Delete a network {#delete}
 
 **Delete this network…**, on a network's own Settings page (Network tab; never Default's, the
 base layer), opens a preview: the devices, committed goldens and commits it holds, its remote if
-it has one, and where its data goes. To delete it, type its name.
+it has one, and where its data goes. To delete it, type its name and press
+**Delete <network>** (a verified person's); **Cancel** closes the preview with nothing
+changed. Once it is deleted the card offers **Default's settings**.
 
 1. `check`: the preview is read again and compared. Read: the network's inventory, its
    repository and its remote record, whether any of its devices is held or its drift run is in

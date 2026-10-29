@@ -21,14 +21,14 @@ committed intent any more, or a person authorises a retry.
 If the record of blocks cannot be read, every plan on the list is blocked until it is
 repaired, because whether any device's program is one that was rolled back is then unknown.
 
-Both operations are under the device page's Actions: **Revert intent…** and **Retry
-rolled-back change…**. They are offered only while a block stands on the device; otherwise
+Both operations are under the device page's Actions: **Revert intent…** and
+**Retry rolled-back change…**. They are offered only while a block stands on the device; otherwise
 each row says why it is not offered (no block, or the record of blocks cannot be read). A
 deploy or restore whose verify failed and rolled back offers both in its result too, and so
 does the block's row on Needs attention, each button opening its card on the device's page. Each
 opens its card in place of the tab: the preview below, then the confirm, then the result in
-the same card. A revert whose block still stands says so, and offers another revert or a
-deploy plan.
+the same card. A revert whose block still stands says so, and offers
+**Revert another commit…** (a new revert card) or **Plan a deploy…**.
 
 ## Revert: the change was wrong {#revert}
 
@@ -64,8 +64,8 @@ throw away an unrelated edit made since.
 5. **Show the result**. Read: nothing more. Sent: nothing. Recorded: nothing. The preview
    draws the intent document after the revert against the document committed now, each
    setting with its value now and after, the later commits it keeps, and the block. The
-   confirm is bound to a hash of the commit, the intent committed now and the document that
-   would be committed.
+   confirm, **Revert <commit> on <device>**, is bound to a hash of the commit, the intent
+   committed now and the document that would be committed; it needs a verified person.
 
 ### The revert apply {#revert-apply}
 
@@ -100,7 +100,9 @@ way a block lifts while the failed change is still in intent.
 2. **Show it with its history**. Read: the retry log. Sent: nothing. Recorded: nothing. The
    preview draws the program that failed, whether the block applies now, and how often this
    device was retried before, with the last time, person and reason. An unreadable retry log
-   is said, never counted as none. The confirm is bound to a hash of the block as recorded.
+   is said, never counted as none. The confirm, **Authorise the retry on <device>**, is
+   bound to a hash of the block as recorded, and carries your reason; it needs a verified
+   person.
 
 ### The retry apply {#retry-apply}
 

@@ -32,7 +32,7 @@ templates that import it carry the approval that covers it.
    with the network's profile, and its stored secrets in memory. Sent: nothing. Recorded:
    nothing. The card says how many devices change, and what each one's render gains and loses,
    masked; a device that cannot be measured is named with why.
-3. `confirm`: you confirm, as yourself. If the network's copy or the shipped file changed since
+3. `confirm`: you confirm, as yourself, with **Commit the shipped <path>** (a verified person's). If the network's copy or the shipped file changed since
    the card showed them, or the copy is no longer behind, nothing is written and the card says
    what moved, naming both versions.
 4. `write`: the shipped file is written over the network's copy.

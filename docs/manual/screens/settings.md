@@ -1,6 +1,6 @@
 # Settings
 
-The tool's configuration, in three scopes of one page: **Installation** (what every network shares: sign-in, the central NetBox connection, this host), **Default** (the base layer the networks that inherit take their values from) and **a network** (its own settings). The scope bar at the top moves between them; its network picker leads with the networks that differ from Default, standalone ones first.
+The tool's configuration, in three scopes of one page: **Installation** (what every network shares: sign-in, the central NetBox connection, this host), **Default** (the base layer the networks that inherit take their values from) and **a network** (its own settings). The scope bar at the top moves between them; its network picker, **Choose a network**, leads with the networks that differ from Default, standalone ones first.
 
 ## A network's page {#network}
 

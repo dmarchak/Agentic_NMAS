@@ -53,7 +53,9 @@ MAC, a DUID or a client-id; for IPv6 a DUID or a MAC.
 
 ## The apply
 
-The confirm needs a verified person and a reason. It is bound to the preview's hash: what the
+The confirm, **Reserve <address> for <client>** (**Change <client>'s reservation** for an
+edit, **Remove <client>'s reservation** for a removal; **Cancel** leaves the card with nothing
+written), needs a verified person and a reason. It is bound to the preview's hash: what the
 reservation was, what it becomes, and the version of Mercury's file. The apply holds the
 subnet's file from its first read to its read-back, so a second person's change waits rather
 than interleaving:

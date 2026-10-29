@@ -288,8 +288,8 @@ a device another operation holds is not read (the card says who holds it; run it
 that ends), and while a read holds it, a deploy is refused naming the read.
 
 **Recent reads** lists the device's latest runs, yours and others' (and the agent's, for the
-person it acted for), each with its outcome; **Open** draws one again. **Compare with the last
-answer** shows the lines that changed since the device last answered the same command.
+person it acted for), each with its outcome; **Open** draws one again.
+**Compare with the last answer** shows the lines that changed since the device last answered the same command.
 
 Nothing here changes the device: there is no configuration mode and no free-form session. Every
 read is recorded. How it works: [Show commands](show-commands).

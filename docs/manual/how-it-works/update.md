@@ -79,8 +79,10 @@ renderer, say) are one row naming every commit: the newest step's words lead, an
 steps are superseded by it, since doing the newest does each. A step whose artifact is retired (the Oxidized helper and its pin, since 2026-10-08) reads
 done: nothing runs it, and its removal is a host step of its own.
 
-The confirm is bound to a hash of the running commit, the target, its CI state and the
-before-steps; if any moved, nothing is requested and the new preview is shown.
+The confirm, **Update to <commit>** (**Update to <commit> when CI passes** when the wait
+below is offered), needs a verified person. It is bound to a hash of the running commit, the
+target, its CI state and the before-steps; if any moved, nothing is requested and the new
+preview is shown.
 
 ## The steps, in order
 

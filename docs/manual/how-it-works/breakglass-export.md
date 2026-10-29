@@ -15,16 +15,16 @@ One operation, reached from these places:
 - **Credentials**: the break-glass record's **Export the record…**.
 - **Needs attention**: the break-glass row's **Export it on Credentials…**, when no export is
   logged for a list, a device's credential has changed since the last one, or the last
-  download did not arrive intact. An overdue drill is its own row, **Record the drill on
-  Credentials…**, which opens [the drill](#drill).
+  download did not arrive intact. An overdue drill is its own row,
+  **Record the drill on Credentials…**, which opens [the drill](#drill).
 - **The result of a rotation**, as its next step: the record still holds the old password.
 - **The result of an adoption**, as its next step: the record does not hold the new device.
 - **The result of a retirement**: **Export <list>'s break-glass record on Credentials…**.
 - **A failed check of a kept file**: **Export the record again…**.
 
 Each opens Credentials › The break-glass record, with the export ready and showing what the
-record would hold, for the list it names. A Reload's result also links to Credentials (**Its
-break-glass record**), for the credential to sign in at a device's console.
+record would hold, for the list it names. A Reload's result also links to Credentials
+(**Its break-glass record**), for the credential to sign in at a device's console.
 
 Exporting needs a signed-in person. A service is refused, because the file holds every
 device's credential.
@@ -45,8 +45,12 @@ credentials and the key, and the confirm is bound to it.
 
 ## The export {#export}
 
-You type a passphrase twice and confirm. The fields are cleared the moment the request
-leaves the page. Then, in order:
+You type a passphrase twice and confirm. Until the passphrase is long enough the confirm is
+disabled and reads **The passphrase needs 12 characters or more**, and while the two entries
+differ it reads **The two passphrases differ**; then it takes its own label. (When the preview
+could not be built, or the viewer may not export, the card says why in place of the confirm
+and offers **Preview it again**, which opens the export afresh.) The fields are cleared the
+moment the request leaves the page. Then, in order:
 
 1. **The passphrase is checked** (`passphrase`). Read: nothing. Sent: nothing. Recorded:
    nothing. The two entries must match and be at least 12 characters, because the file is an
@@ -97,7 +101,8 @@ every one of these, so keep the two apart.
 
 The copy you keep is the only one, and the host never sees it. **Check a break-glass file…**,
 on Credentials and on the export's result, opens the copy here and says whether it still
-recovers every device. You choose the file and type its passphrase. Then:
+recovers every device. You choose the file, type its passphrase and press **Check it**; it
+needs a verified person, and nothing on a device or in the stores changes. Then:
 
 1. **The file is opened in memory** (`open`). Read: the file you chose, and its passphrase.
    Sent: nothing. Recorded: nothing yet. No file, or one over 2 MiB, is refused before it is

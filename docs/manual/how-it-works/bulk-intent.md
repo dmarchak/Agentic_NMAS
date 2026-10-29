@@ -20,9 +20,11 @@ change. **Preview the change** runs
 with each reason (and, where the before-state differs, the value expected and the value held),
 then the accepted devices grouped by what changes in their configuration, each group collapsed,
 with what a deploy would send, what is no longer rendered, and each device's intent diff.
+**Change the settings** returns to the form with every setting as typed, committing nothing.
 **Commit the change to N devices' intent** needs a verified person and is bound to that
 preview; the result names the commit and offers **Plan a deploy for these <count>…**, for exactly
-the devices it changed.
+the devices it changed, and **Back to Devices**. A commit that was refused says nothing was
+committed and why, and offers **Preview it again** with the same settings.
 
 The same code runs on the host as `scripts/nmas-bulk-intent`.
 

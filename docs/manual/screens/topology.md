@@ -71,7 +71,8 @@ the card says what was read, never why a device might not send or hear LLDP.
 
 **Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, a
 row per protocol with its area or the peer's AS, the state against intent ("2WAY, intended FULL;
-since 20:58 UTC"), what passes over the link, and links to each end's Neighbours tab. **Click** a link
+since 20:58 UTC"), what passes over the link, and links to each end's Neighbours tab
+(**<device>'s Neighbours**). **Click** a link
 to select it (or click its entry in Needs attention): it glows, its card stays open, and its
 entry is marked. To close it, click the card's **×**, click anywhere on the map's empty space, or
 press **Escape**.
@@ -145,10 +146,10 @@ measured band.
 **Path…** traces the path packets take from a device to an address, read from each routed hop's
 own forwarding table, never worked out from the cabling. **From** offers the devices that take
 part in routing; **To** offers each outside peer's peering addresses (an ISP's router, by the
-address each of your edge routers peers with) and each routing device's loopback. **Trace the
-path** reads the first device, follows the next hop its answer names to the device holding
+address each of your edge routers peers with) and each routing device's loopback.
+**Trace the path** reads the first device, follows the next hop its answer names to the device holding
 that address, and reads that one, until the packet is delivered or the trace stops; the button
-says which devices it is reading until the answer arrives. It needs a verified person, and To
+says which devices it is reading (**Tracing… reading <devices>**) until the answer arrives. It needs a verified person, and To
 must be an IPv4 address: the trace reads IPv4 forwarding only. A refused trace says
 **Path: not traced** with why, and nothing is asked of any device. How it works:
 [A path trace](path-trace).
@@ -256,7 +257,7 @@ An island is a part of the fleet no link joins to the rest, each with why (not p
 neighbour, connected only among themselves), tagged on the map and listed under weak points.
 
 An island cabled apart **on purpose** (a device on its own management segment, say) can be
-marked: **Mark as expected…** asks why; it needs a verified person and is recorded on History
+marked: **Mark as expected…** asks why, and **Mark <device> as expected** records it; it needs a verified person and is recorded on History
 (Expected islands), with your name. It then moves to **Apart on purpose**, with the reason, and
 warns nothing. **Withdraw** puts the warning back. A device that **becomes** an island (one that
 was not an island at the last read) is told apart: "became an island", with when.
@@ -269,7 +270,8 @@ bridge.
 
 A single point of failure or an only link the design intends (a course topology with one link
 to an area border, say) can be **accepted**: **Accept…** asks why, as Mark as expected… does
-for an island, needs a verified person, and is recorded on History with your name. It stays in
+for an island, and **Accept <weak point>** records it; it needs a verified person, and is
+recorded on History with your name. It stays in
 the weak points, drawn **accepted** with its reason and **Withdraw**, counted apart from the
 ones to look at, and its SPOF tag leaves the map. What it cut off when accepted is kept with
 it: if that changes (a device added behind it, a link gone), it warns again and says it was

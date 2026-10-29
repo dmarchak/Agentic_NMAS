@@ -62,6 +62,12 @@ credential store. The preview opens no device session:
    Sent: nothing. Recorded: nothing. Each device says whether its intent is unchanged, will be
    set back to the moment's by a forward commit, or will be removed (un-onboarding).
 
+On the device's card the confirm is **Re-apply N line(s) to <device>**, bound to the program
+and the list shown; it needs a verified person. **Choose another moment** returns to the list
+of restore points with nothing sent. When a gate fails or a reason is still owed, the card
+says so in place of the confirm and offers **Preview it again**, which builds the plan
+afresh.
+
 **The program comes from the goldens; the device is compared before anything is sent.** The
 program is the difference between the moment's golden and today's golden, never the device as it
 runs now. At apply the device's running configuration is read and compared with today's golden

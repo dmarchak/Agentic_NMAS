@@ -34,8 +34,8 @@ Inside its window the device is **restarting as planned**, not broken: its page'
 
 ## When it goes wrong
 
-- **A gate fails:** nothing is offered but reading it again; the card names the gate and what it found.
-- **It moved since the preview:** nothing is sent; preview again.
+- **A gate fails:** nothing is offered but **Read it again**, which reads the device afresh; the card names the gate and what it found.
+- **It moved since the preview:** nothing is sent; the result says why and offers **Read it again**.
 - **It does not come back within the bound:** red, with the time it waited. The way in is the console, with the device's break-glass record; the planned window stays declared until its end, and from then Needs attention raises it.
 - **Grafana did not take the silence:** the `window` step says so and why; the reload goes ahead, and Grafana's own notifications for the device are not held. Mercury's Needs attention holds its alerts during the window all the same. The result is never green over it: the card leads with "Grafana's alerts were NOT silenced during this reload: …" naming why, and asks you to tell whoever the alerts page that this was the planned reload; the reload's record keeps the window's silence as failed, with the same words.
 - **It comes back running something else:** red, with how many lines went and came (a line the platform rejected at boot is dropped silently). Its golden is not changed by the reload.

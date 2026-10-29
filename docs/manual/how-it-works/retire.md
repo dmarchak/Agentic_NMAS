@@ -15,8 +15,10 @@ and NetBox's record of the device.
 
 On the device page, under Actions, **Retire…**: its card opens in place of the tab. You type
 a reason, and the card plans again with it; the reason is part of the plan's hash, so the
-confirm is bound to the reason you see. Confirming sends that hash back to be checked, and
-the result is drawn in the same card. On the host, `nmas-retire --list <list> --device <device>
+confirm is bound to the reason you see. Confirming (**Retire <device>**, which needs a
+verified person) sends that hash back to be checked, and the result is drawn in the same
+card; once the device is retired the card says it has no device page now and offers
+**Back to Devices**. On the host, `nmas-retire --list <list> --device <device>
 --reason "<why>"` prints the same plan and a hash; `nmas-retire ... --apply <hash> --actor
 <you> --breakglass <file>` carries it out, reading the break-glass passphrase from the
 terminal. Both run the same code.
@@ -269,8 +271,9 @@ drops at its next regeneration, and the card says when:
 
 **Its address afterwards.** The device has no device page once retired: its address shows
 its retired record instead, read from the retire commit (who retired it, the reason, the
-commit, when), with its history (the History page filtered to it) and a way to onboard it
-again.
+commit, when). **Its history (the same timeline, filtered to <device>)** opens History
+filtered to it, and **Onboard it again…** opens onboarding's form in place with the name
+filled in: managing it again is a new onboarding, not an undo.
 
 ## Two ways in, two kinds of evidence
 

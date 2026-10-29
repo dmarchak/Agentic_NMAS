@@ -279,8 +279,8 @@ included), asks a title (at most 80 characters) and saves the question as you as
 interface, its range, your own query) for everyone on this network, with your name and the
 time. The Query tab lists them under **Saved by your team**, pinned first, then the newest:
 each opens its question as saved. **Pin** brings a view to the front for everyone and
-**Unpin** returns it; **Remove…** asks first, and removes only the saved link: the history it
-asks is untouched. A network keeps at most 100. Each save, pin and removal is listed on the
+**Unpin** returns it; **Remove…** asks first (**Remove** removes it, **Keep** leaves it), and
+removes only the saved link: the history it asks is untouched. A network keeps at most 100. Each save, pin and removal is listed on the
 Timeline under **Saved views**. If the saved views' file cannot be read, the tab says so and
 nothing can be saved until it is repaired, so no one's views are written over. The sidebar's Logs is the live tail
 ([Logs](logs)); Syslog by device's "Open these lines on Logs" opens it filtered.
@@ -349,7 +349,7 @@ the leftover (the choice you made earlier, usually one a Start-from chip or Ask 
 set), the second the other one. It is a warning: Ask still runs.
 
 **Range** is 1 h, 24 h, 7 days, 30 days, or **From… to…**: the last so many minutes, hours or
-days, or two times in UTC, your local time shown beside each; Apply or Cancel. The **Bounds**
+days, or two times in UTC, your local time shown beside each; **Apply** or **Cancel**. The **Bounds**
 under it are Loki's own, read from its configuration (the longest span one ask can cover, how
 long an ask may take, the most lines and series an ask returns, how long lines are kept) and
 Mercury's (200 lines a page, at most 1,000 windows a series, the 20 series with the most lines
@@ -475,8 +475,11 @@ background whenever a commit or a tag moves.
 the counts first (will be restored, needs a stated reason, blocked, already as the baseline
 holds it, and the devices it predates, left as they are), each device's program and checks
 one level down. A device whose program needs a stated reason (a dangerous line, a secret
-added back) is not part of the batch: its link opens its own Restore at that baseline, where
-each line is given its reason. One confirm restores the rest, one device at a time, each
+added back) is not part of the batch: its link,
+**Restore <device> to <baseline> on its own page…**, opens that device's Restore at that
+baseline, where each line is given its reason.
+One confirm, **Re-apply to N device(s)** (it needs a verified person, and is drawn disabled
+with the reason otherwise), restores the rest, one device at a time, each
 verified and rolled back alone, its configuration and its intent from the baseline; the batch
 is drawn below as it runs. Like every restore it is merge-only: a line the device gained since
 the baseline is not removed. See [Restore and re-apply a baseline](restore).

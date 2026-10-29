@@ -108,6 +108,13 @@ below.
    released, and the result is drawn from the outcome of each device. The commit is the
    record: the History page and the device page's History tab read it back.
 
+On the device page's card, a recorded golden that departs from intent is drawn with what to
+do next, each opening its card on the device page: **Edit intent…** (make intent hold what
+the device holds), **Remove lines (Mode B)…** when the device holds lines intent does not, and
+**Deploy intent…** or **Restore from…** when intent holds lines the device lacks. Nothing is
+sent until that card's own confirm. A preview that could not be confirmed, or a result that
+recorded nothing, offers **Preview it again**, which reads the device afresh.
+
 ## What a capture does not do {#what-a-capture-does-not-do}
 
 - It sends nothing to a device: no configuration mode, no `write memory`. Saving the running

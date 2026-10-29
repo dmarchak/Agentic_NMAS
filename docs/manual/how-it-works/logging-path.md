@@ -49,3 +49,6 @@ the time. This test proves it now, for any device, when you ask.
   or did not answer). Nothing is said about its path.
 - **Unknown**: Mercury could not ask Loki, or Loki's answer was cut. The line was sent;
   whether it arrived is not known. This never reads as "not received".
+
+Each device that did not end received has **Open <device>'s Logs**, its Logs tab, and
+**Test <device> again**, a new test of that device alone.

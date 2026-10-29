@@ -31,7 +31,9 @@ is not declined.
    removes, to undo), with a decline's checks: you are a verified person, and your reason has
    three words or more. An undo carries the decline's own reason, so its preview shows neither check;
    confirming it still needs a verified person.
-   Typing the reason asks again; nothing is written.
+   Typing the reason asks again; nothing is written. The confirm is
+   **Record the decline in <device>'s intent** (**Remove the decline from <device>'s intent**
+   for an undo), offered once the preview is ready.
 2. `hold`: the device is held, so no other operation changes its intent meanwhile.
 3. `recompute`: the change is computed again and its hash compared with the preview's. If the
    device's intent moved, or another person confirms what you previewed, nothing is committed

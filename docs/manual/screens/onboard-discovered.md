@@ -35,7 +35,7 @@ discovery range, or only part of one, the page says so first.
 The counts lead. **Asking now** (a request in the last ten minutes) is open. **Picked, not
 taken** opens when it has rows; **Gone quiet** is collapsed. Above them, **not listed** counts the MACs Kea already
 reserves and the onboardings waiting with a MAC: those are never discovered devices. The vendor
-buttons and the search (MAC, client-id or hostname) narrow every group. The page says when it
+buttons and the search (MAC, client-id or hostname, then **Search**) narrow every group. The page says when it
 shows a subset, and **Show all** clears it.
 
 - **Asking now:** each device's MAC, vendor class, client-id (option 61), hostname if it sent

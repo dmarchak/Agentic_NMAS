@@ -124,7 +124,7 @@ At phone width the chip keeps today's figure and its colour; the number of backg
 on moves into the panel.
 
 **Pressing the chip opens the spend panel** in place, on whatever page you are on; pressing it
-again, the panel's ×, or Esc closes it. The panel is the figures at a glance; each call's detail
+again, the panel's × (**Close the spend panel**), or Esc closes it. The panel is the figures at a glance; each call's detail
 is in History. It stays inside the screen, and when it holds more than the screen, it scrolls
 within itself. The panel shows:
 
@@ -168,6 +168,22 @@ panel**, which opens this panel in place (see [Needs attention](needs-attention#
 Mercury never raises a cap.
 
 Who sees the amounts is not a choice yet: everyone who can make AI calls sees them.
+
+## The rest of the top bar {#top-bar}
+
+- **Go to a device by name**: the box (a button that opens it, at phone width) takes a device's
+  name, and Enter opens its page, in the network the page you are on names. Pressing `/`
+  anywhere outside a field puts the cursor in it.
+- **The theme menu**: **System** (follows this device's setting), **Light** or **Dark**. The
+  choice is kept in this browser only.
+- **The name chip**: who {{product}} established you are, with "Signed in through Cloudflare
+  Access as <name>" on hover. When you are not identified it reads **Not identified** and is a
+  button: its hover, **<reason>: <note>. Click to check again.**, says why and that you can
+  look but a gated action will refuse, and pressing it asks again, so a sign-in made since
+  shows without reloading the page.
+- **Open the menu**, at phone width, where the sidebar is a drawer: it opens the sidebar.
+- **The help panel**: an info link opens its manual page in a panel beside what you are doing;
+  **Close the help** closes it.
 
 ## Everything is read from what is committed
 

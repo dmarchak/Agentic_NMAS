@@ -92,7 +92,7 @@ self-signed certificate is named in the summary as not drift.
 
 ## Switching it off is recorded {#disable}
 
-Each network's row on the Drift checks card has Turn off or Turn on. Switching it off records
+Each network's row on the Drift checks card has **Turn off** or **Turn on**. Switching it off records
 when and by whom (the verified person, when there is one), in the drift state and in the
 installation's settings record, and the row shows who and when. While it is off, Needs
 attention carries a row saying so, naming who switched it off, with a link to the card.
