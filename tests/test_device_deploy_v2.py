@@ -737,6 +737,10 @@ def live_browser():
 
 
 CARD = "document.getElementById('device-op')"
+#: C2142: the scenario's own precondition, the operator's bar (C1434), and how many attempts it
+#: gets before the test says inconclusive (the operator, 2026-10-29).
+PRECONDITION_MS = 100
+PRECONDITION_TRIES = 3
 #: htmx binds a swapped-in control while it settles: click only once nothing settles.
 SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
 
@@ -794,31 +798,25 @@ class TestInARealBrowser:
         why = "left over from the old design"
         try:
             b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
-            b.go(srv.url("/v2/device/s1?op=deploy"))
-            b.wait_for("return !!window.Alpine && window.NMAS && "
-                       f"NMAS.live().state === 'connected' && {CARD} && " + SETTLED, 15)
-            b.js("window.__notReloaded = 1; return 1")
-            rid = _residue_box(b)
-            b.click(f"#rm-{rid}")
-            field = f'#device-op input[name="why::{rid}"]'
-            press = "#device-op button[data-needs]"
-            b.wait_for(f"return document.querySelector('{field}') && {SETTLED}", 15)
-            assert b.js(f"return document.querySelector('{press}').disabled") is True, \
-                "no Why yet: Deploy waits"
-            b.js(f"var w = document.querySelector('{field}'), t = window.__t = {{}};"
-                 "w.addEventListener('input', function () { t.typed = performance.now(); });"
-                 "document.addEventListener('click', function (e) {"
-                 f"  if (e.target.closest && e.target.closest('{press}') && !t.pressed)"
-                 "    t.pressed = performance.now(); }, true); return 1")
-            b.type(field, why[:-1])
-            # Deploy in view for the pointer, the field keeping the focus (and its caret).
-            assert b.js(f"document.querySelector('{press}').scrollIntoView({{block: 'center'}});"
-                        f"return document.activeElement === document.querySelector('{field}')"), \
-                "the field lost its focus while the Why was typed"
-            _type_and_press(b, why[-1], press)
-            b.wait_for(f"return {CARD} && /op-(ok|warn|danger)/.test({CARD}.className) "
-                       f"&& {SETTLED}", 30)
-            t = b.js("return window.__t")
+            # C2142 (the operator, 2026-10-29): the 100 ms bar is this scenario's precondition,
+            # not the product's result. A press that lands past it did not test the race, so
+            # the scenario runs again on a fresh page, at most PRECONDITION_TRIES times; every
+            # attempt missing it is inconclusive, never a pass. The product is judged only on an
+            # attempt that met it.
+            gaps = []
+            for _attempt in range(PRECONDITION_TRIES):
+                seen.clear()
+                authorised.clear()
+                t = self._type_why_and_press(b, srv, why)
+                if t.get("pressed") is None:
+                    break                       # the press was lost: judged below, a failure
+                gaps.append(round(t["pressed"] - t["typed"], 1))
+                if 0 <= gaps[-1] < PRECONDITION_MS:
+                    break
+            else:
+                pytest.skip(f"inconclusive (C2142): Deploy was never pressed within "
+                            f"{PRECONDITION_MS} ms of the last key in {PRECONDITION_TRIES} "
+                            f"tries (gaps {gaps} ms); the race was not tested")
             assert t.get("pressed") is not None and 0 <= t["pressed"] - t["typed"] < 100, t
             assert "op-ok" in b.js(f"return {CARD}.className"), b.js(f"return {CARD}.textContent")
             assert b.js("return window.__notReloaded") == 1
@@ -829,6 +827,36 @@ class TestInARealBrowser:
             b.go("about:blank")
             browser.close_socketio_sessions()
 
+
+    def _type_why_and_press(self, b, srv, why):
+        """One attempt of the scenario on a freshly loaded page: Gi1/1 ticked for removal, its
+        Why typed with real keys, the last key and Deploy's press in one actions call, and the
+        result waited for. Returns the page's timings (`typed`, `pressed`)."""
+        b.go(srv.url("/v2/device/s1?op=deploy"))
+        b.wait_for("return !!window.Alpine && window.NMAS && "
+                   f"NMAS.live().state === 'connected' && {CARD} && " + SETTLED, 15)
+        b.js("window.__notReloaded = 1; return 1")
+        rid = _residue_box(b)
+        b.click(f"#rm-{rid}")
+        field = f'#device-op input[name="why::{rid}"]'
+        press = "#device-op button[data-needs]"
+        b.wait_for(f"return document.querySelector('{field}') && {SETTLED}", 15)
+        assert b.js(f"return document.querySelector('{press}').disabled") is True, \
+            "no Why yet: Deploy waits"
+        b.js(f"var w = document.querySelector('{field}'), t = window.__t = {{}};"
+             "w.addEventListener('input', function () { t.typed = performance.now(); });"
+             "document.addEventListener('click', function (e) {"
+             f"  if (e.target.closest && e.target.closest('{press}') && !t.pressed)"
+             "    t.pressed = performance.now(); }, true); return 1")
+        b.type(field, why[:-1])
+        # Deploy in view for the pointer, the field keeping the focus (and its caret).
+        assert b.js(f"document.querySelector('{press}').scrollIntoView({{block: 'center'}});"
+                    f"return document.activeElement === document.querySelector('{field}')"), \
+            "the field lost its focus while the Why was typed"
+        _type_and_press(b, why[-1], press)
+        b.wait_for(f"return {CARD} && /op-(ok|warn|danger)/.test({CARD}.className) "
+                   f"&& {SETTLED}", 30)
+        return b.js("return window.__t")
 
     def test_the_checks_follow_the_why_and_deploy_follows_the_checks(self, walk_s1,
                                                                      live_browser,
