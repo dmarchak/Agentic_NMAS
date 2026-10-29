@@ -285,9 +285,10 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     whose answer the check refused, when one was; *incident* `incidents.record`'s answer (its
     key, window, ingress and the switches seen also), kept on the row, the detection carrying
     its compact copy (`incidents.stamp`). Without one the response is an incident of its
-    detection alone. *auto_failed* AUTO's own preview's failure, when AUTO decided to act and
-    could not preview (C2159): the response is a person's as if AUTO were off, and the
-    failure is kept on it, for its card and its Needs attention row."""
+    detection alone. *auto_failed* why AUTO, having decided to act, sent nothing: its own
+    preview's failure (C2159) or its confirm's refusal before any request (C2195): the
+    response is a person's as if AUTO were off, and the failure is kept on it, for its card
+    and its Needs attention row."""
     from modules.sdn import incidents
 
     now = time.time() if now is None else now
@@ -881,6 +882,23 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     def line(step, words, **extra):
         out["lines"].append(say(network, step, words, now(), **extra))
 
+    def to_person(d, inc, rec, verdict, failed):
+        """AUTO decided to act and sent nothing (*failed*, its preview's failure, C2159, or its
+        confirm's refusal before any request, C2195): the detection is a person's, as if AUTO
+        were off, through the HITL path's own response, the failure on it, so its card and
+        its Needs attention row say why AUTO did not act."""
+        row = propose(network, d, verdict["action"], verdict["risk"], now=now(), why=(
+            f"HITL for this one: {failed}; nothing was sent, and a person previews it again "
+            "and confirms or dismisses it"),
+            classification=verdict["classification"], params=verdict["params"],
+            classified=verdict["words"], refused_call=verdict["refused_call"],
+            incident=rec, auto_failed=failed)
+        out["proposed"].append(row["id"])
+        out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
+                                 "switches": 1 + len(rec["seen_also"])})
+        line("respond", f"{failed}: nothing was sent; awaiting a person ({row['id']})",
+             response=row["id"])
+
     try:
         if modes.record_expiry(network, now())["recorded"]:
             line("mode", "AUTO reached its expiry: the mode is HITL again")
@@ -1055,21 +1073,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
             if not preview["ok"]:
                 # AUTO's own preview failed (C2159): nothing is sent, and the detection is a
-                # person's, as if AUTO were off: the HITL path's own response, the failure on
-                # it, so its card and its Needs attention row say why AUTO did not act.
-                failed = (f"AUTO could not preview {action}: "
-                          f"{preview.get('error') or 'no reason given'}")
-                row = propose(network, d, action, risk, now=now(), why=(
-                    f"HITL for this one: {failed}; nothing was sent, and a person previews it "
-                    "again and confirms or dismisses it"),
-                    classification=verdict["classification"], params=params,
-                    classified=verdict["words"], refused_call=verdict["refused_call"],
-                    incident=rec, auto_failed=failed)
-                out["proposed"].append(row["id"])
-                out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
-                                         "switches": 1 + len(rec["seen_also"])})
-                line("respond", f"{failed}: nothing was sent; awaiting a person ({row['id']})",
-                     response=row["id"])
+                # person's, as if AUTO were off (`to_person`).
+                to_person(d, inc, rec, verdict, f"AUTO could not preview {action}: "
+                                                f"{preview.get('error') or 'no reason given'}")
                 continue
             done = closed_loop.respond_to_threat(
                 network, d, action, confirm={"ask": preview["ask"],
@@ -1078,6 +1084,18 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 autonomous=decision["autonomous"],
                 classified_by=closed_loop.classified_words(verdict["classification"], action),
                 driver=driver, sleep=sleep, now=now)
+            if done.get("outcome") == "refused":
+                # AUTO's confirm refused before any request reached the controller (C2195):
+                # what moved between its preview and its confirm (the policy or the connection
+                # saved, the switch or its table changed, the switch held by another
+                # operation), in the refusal's own words. ``refused`` is only ever before the
+                # send: `respond_to_threat`'s own refusals return before `flow_ops.apply`, and
+                # `apply` leaves ``refused`` at its first request, its outcome then verified,
+                # rolled back or rollback failed, which stay the response's logged line below.
+                # The detection is a person's, as if AUTO were off, as a failed preview is.
+                to_person(d, inc, rec, verdict, f"AUTO could not confirm {action}: " + (
+                    (done.get("error") or "no reason given").rstrip(".")))
+                continue
             out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
             out["incidents"].append({"key": inc["key"], "id": done.get("id"), "joined": False,
                                      "switches": 1 + len(rec["seen_also"])})

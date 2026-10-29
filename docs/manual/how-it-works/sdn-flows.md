@@ -101,7 +101,14 @@ of such a source too, sending nothing. **When AUTO cannot preview its response**
 is no longer on the controller, the connection is gone, the plan refused), nothing is sent and
 the response waits for you as in HITL, its card saying "AUTO could not preview <action>: <why>"
 and its Needs attention row naming that failure and that AUTO sent nothing; it clears when you
-confirm the response or dismiss it. Every response,
+confirm the response or dismiss it. **When AUTO's confirm is refused before anything is sent**
+(between its preview and its confirm the response policy or the connection was saved, the
+switch left the controller, the switch's table changed so the plan's hash moved, or another
+operation holds the switch), it is the same: nothing is sent, the response waits for you, its
+card saying "AUTO could not confirm <action>: <the refusal>" in the refusal's own words, and its
+Needs attention row naming it. A confirm whose requests reached the controller is not this: it
+stays AUTO's response (verified, rolled back, or its rollback failed), and its log line says
+which. Every response,
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
 

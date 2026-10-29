@@ -3067,7 +3067,8 @@ def sdn_responses_source(found=None, now: float = None) -> dict:
                        + (f"severity {sev} by its AI classification" if sev != "unclassified"
                           else "not classified")
                        + f"; proposed {r.get('action') or 'no action'} at {where} ({ingress})"
-                       # AUTO decided to act and its own preview failed (C2159): said, so the
+                       # AUTO decided to act and sent nothing: its own preview failed (C2159)
+                       # or its confirm was refused before any request (C2195); said, so the
                        # row names why AUTO left it to a person.
                        + (f"; {r.get('auto_failed')}, so AUTO sent nothing"
                           if r.get("auto_failed") else "")

@@ -243,8 +243,11 @@ mode and whether the loop is running.
   source was inferred from the topology: a person confirms it": AUTO acts only on a source the
   flows themselves name ([Where a port's source comes from](sdn-flows#port-source)). A
   response AUTO decided to apply and could not preview awaits you too, nothing sent, its card
-  saying "AUTO could not preview <action>: <why>"; preview it again and confirm it, or dismiss
-  it with a reason.
+  saying "AUTO could not preview <action>: <why>"; so does one whose preview passed and whose
+  confirm was then refused before anything was sent (the policy or the connection saved in
+  between, the switch gone or its table changed, the switch held by another operation), its
+  card saying "AUTO could not confirm <action>: <the refusal>". Preview it again and confirm
+  it, or dismiss it with a reason.
 - **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
   600), start to start: a pass that takes longer starts the next at once, and the log says so;
   classify is an AI call only where an admin turned its background feature on for this

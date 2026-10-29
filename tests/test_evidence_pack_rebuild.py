@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 from html import unescape
 
 import pytest
@@ -293,6 +294,14 @@ def test_build_again_in_a_real_browser(history):
     group = ("[...document.querySelectorAll('details.ah-group')].find(g => "
              "/NMAS heartbeat missing/.test(g.querySelector('summary').textContent))")
     row = f"[...{group}.querySelectorAll('details.ah-row')].find(r => /r2/.test(r.textContent))"
+    # C2127: what the page held when a step failed (it recurred in CI #1330 after the first
+    # wait was fixed, at a later step): the groups drawn and whether the list was held.
+    page_state = ("return {groups: [...document.querySelectorAll('details.ah-group > summary')]"
+                  ".map(s => s.textContent.trim().slice(0, 40)), held: (document.getElementById("
+                  "'alert-history') || document.body).getAttribute('data-held'), open_rows: "
+                  "document.querySelectorAll('details.ah-row[open]').length, list: (document"
+                  ".getElementById('alert-history') || {textContent: '(no #alert-history)'})"
+                  ".textContent.replace(/\\s+/g, ' ').trim().slice(0, 240), url: location.href}")
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             b.go(srv.url("/v2/monitoring/alerts/history?range=all&show=all"))
@@ -330,6 +339,8 @@ def test_build_again_in_a_real_browser(history):
             assert b.js(f"return {row}.querySelectorAll("
                         "'details.pack-section[data-ref=\"concurrent\"]').length") == 0
             assert len(EP.read()["rows"]) == 2
+        except urllib.error.HTTPError as exc:     # a WebDriver command refused: say the page
+            raise AssertionError(f"{exc}; the page then: {b.js(page_state)}") from exc
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
