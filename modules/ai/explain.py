@@ -187,10 +187,40 @@ class ExplanationV3(StrictModel):
     needs: list[Need]
 
 
+class Band(str, Enum):
+    """How likely a hypothesis is on its evidence (prompt v9, the operator's item 2 of
+    2026-10-29): the evidence points to it, is consistent with it, or it is kept to rule out."""
+    likely = "likely"
+    possible = "possible"
+    unlikely = "unlikely"
+
+
+class RankedHypothesis(StrictModel):
+    """A v9 hypothesis: v4's, with its band; `confirm_with` is the one confirming step."""
+    claim: str
+    evidence_refs: list[str]
+    confirm_with: str
+    band: Band
+
+
+@register("explain", 4)
+class ExplanationV4(StrictModel):
+    """Prompt v9's answer (the operator's item 2, "MOST LIKELY", 2026-10-29): v2's, each
+    hypothesis banded, and `why_first`, why the first ranks above the others."""
+    outcome: Assessment
+    rationale: str
+    hypotheses: list[RankedHypothesis]
+    why_first: str
+    checked: list[str]
+    needs_human: bool
+    why_not: str
+
+
 #: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
 SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
-             5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2, 8: ExplanationV2}
+             5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2, 8: ExplanationV2,
+             9: ExplanationV4}
 #: The versions built on the network context (the context budget rule, the needs round): v6.
 #: A set, never "6 and later": v7 is v4's request with one rule more (C2038).
 NETWORK_CONTEXT_VERSIONS = frozenset({6})
@@ -206,7 +236,11 @@ NETWORK_CONTEXT_VERSIONS = frozenset({6})
 #: v8 is v4 with one rule (the operator's decision 3, 2026-10-28): an unexplained reload or
 #: out-of-band action (a device restarted, a configuration changed, with no recorded operation
 #: explaining it) sets needs_human true, so a person confirms it was intended.
-CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8))
+#: v9 is v4 with the operator's item 2 (2026-10-29, "MOST LIKELY"): a band per hypothesis, why
+#: the first ranks first, one confirming step, who named in a change's claim (WHO's check
+#: reads the words, `who.mercury_who`), and the fact sheet's block described; asked for its
+#: own schema (`ExplanationV4`), adopted only by 15.12's rule.
+CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8), ("explain", 9))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 

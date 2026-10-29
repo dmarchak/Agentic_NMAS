@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "Assessment": {
+      "description": "Schema v2's outcome: a cause hypothesised, no fault found in the evidence checked\n(C1742), or the pack cannot say.",
+      "enum": [
+        "answer",
+        "no_fault_found",
+        "refuse"
+      ],
+      "title": "Assessment",
+      "type": "string"
+    },
+    "Band": {
+      "description": "How likely a hypothesis is on its evidence (prompt v9, the operator's item 2 of\n2026-10-29): the evidence points to it, is consistent with it, or it is kept to rule out.",
+      "enum": [
+        "likely",
+        "possible",
+        "unlikely"
+      ],
+      "title": "Band",
+      "type": "string"
+    },
+    "RankedHypothesis": {
+      "additionalProperties": false,
+      "description": "A v9 hypothesis: v4's, with its band; `confirm_with` is the one confirming step.",
+      "properties": {
+        "band": {
+          "$ref": "#/$defs/Band"
+        },
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with",
+        "band"
+      ],
+      "title": "RankedHypothesis",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Prompt v9's answer (the operator's item 2, \"MOST LIKELY\", 2026-10-29): v2's, each\nhypothesis banded, and `why_first`, why the first ranks above the others.",
+  "properties": {
+    "checked": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Checked",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/RankedHypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Assessment"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "why_first": {
+      "title": "Why First",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "why_first",
+    "checked",
+    "needs_human",
+    "why_not"
+  ],
+  "title": "ExplanationV4",
+  "type": "object"
+}

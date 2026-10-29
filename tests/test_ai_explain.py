@@ -340,7 +340,8 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     assert explain.PROMPT == ("explain", 4)
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
-        5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2), 8: ("explain", 2)}
+        5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2), 8: ("explain", 2),
+        9: ("explain", 4)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     with pressed_by("operator@example.com"):
         got = explain.explain_pack(world.pack, actor="operator@example.com",
@@ -422,6 +423,80 @@ def test_v8_is_v4_s_request_with_the_unexplained_reload_rule(world):
     assert v8_body["system"][0]["text"] == v8
     assert v8_body["messages"] == v4_body["messages"]
     assert v8_body["output_config"] == v4_body["output_config"]
+
+
+#: v9's additions to v4 (the operator's item 2, "MOST LIKELY", 2026-10-29), each its words.
+V9_ADDS = (
+    '- "fact_sheet": facts the tool computed from the pack by code, each line labelled "computed '
+    'by Mercury"',
+    "confirm_with is the one confirming next step:",
+    "band says how likely the hypothesis is on this evidence: likely",
+    "no hypothesis is banded above one listed before it.",
+    "names in its words who made it, exactly as the evidence records them",
+    '"no record of who"',
+    "- why_first: one sentence saying why the first hypothesis ranks above the others",
+    "For no_fault_found and refuse, why_first is empty.")
+
+
+def _ranked(pack, **over):
+    a = _answer(pack, why_first="", **over)
+    a["hypotheses"] = [dict(h, band="likely") for h in a["hypotheses"]]
+    return a
+
+
+def _explain_v9(world):
+    with pressed_by("operator@example.com"):
+        return explain.explain_pack(world.pack, actor="operator@example.com",
+                                    trigger=triggers.person("operator@example.com"),
+                                    send=world.send, today="2026-10-25", prompt=("explain", 9))
+
+
+def test_v9_bands_its_hypotheses_and_says_why_the_first_ranks_first(world):
+    """The operator's item 2 (2026-10-29): v9 is v4 with a band per hypothesis (likely,
+    possible, unlikely), why the first ranks first, one confirming step, who named in a
+    change's claim, and the fact sheet's block described; a candidate, never the pin (v4
+    served, its text unchanged), asked for its own schema (`ExplanationV4`), never v6's
+    network context."""
+    from modules.ai import prompts
+
+    v4, v9 = prompts.load("explain", 4), prompts.load("explain", 9)["text"]
+    assert v4["sha256"] == V4_SHA256, "the served prompt v4 changed"
+    flat, flat4 = " ".join(v9.split()), " ".join(v4["text"].split())
+    for words in V9_ADDS:
+        assert " ".join(words.split()) in flat, words
+        assert " ".join(words.split()) not in flat4, words
+    assert explain.PROMPT == ("explain", 4)
+    assert ("explain", 9) in explain.CANDIDATES and 9 not in explain.NETWORK_CONTEXT_VERSIONS
+    assert explain.SCHEMA_OF[9] is explain.ExplanationV4
+    world.answer = _answer(world.pack)
+    _explain(world)
+    v4_body = world.sent[-1]["body"]
+    world.answer = _ranked(world.pack)
+    got = _explain_v9(world)
+    assert got["ok"] is True, got
+    v9_body = world.sent[-1]["body"]
+    assert v9_body["system"][0]["text"] == v9
+    assert v9_body["messages"] == v4_body["messages"]
+    schema = v9_body["output_config"]["format"]["schema"]
+    assert "why_first" in schema["properties"] and "why_first" in schema["required"]
+    assert "band" in schema["$defs"]["RankedHypothesis"]["required"]
+    assert schema["$defs"]["Band"]["enum"] == ["likely", "possible", "unlikely"]
+
+
+@pytest.mark.parametrize("change", ["band not one of the three", "no band", "no why_first"])
+def test_a_v9_answer_without_its_band_or_why_first_is_refused(world, change):
+    """A v9 answer carrying a band not of the three, missing a band, or missing why_first
+    fails `ExplanationV4`'s validation and is refused, never drawn."""
+    a = _ranked(world.pack)
+    if change == "band not one of the three":
+        a["hypotheses"] = [dict(h, band="certain") for h in a["hypotheses"]]
+    elif change == "no band":
+        a["hypotheses"] = [{k: v for k, v in h.items() if k != "band"} for h in a["hypotheses"]]
+    else:
+        a.pop("why_first")
+    world.answer = a
+    got = _explain_v9(world)
+    assert got["ok"] is False, got
 
 
 # ------------------------------------- v6, the network-context version (2026-10-26)
