@@ -80,7 +80,8 @@ def test_auto_s_line_carries_the_entry_as_read_back(networks, monkeypatch, src, 
     assert line["operation"] == op["id"] and line["actor"] == "Mercury (AUTO)"
     (rb,) = line["read_back"]
     assert rb["flow"]["cookie"] == installed["cookie"] and rb["read"] is True
-    assert out["lines"][-1]["words"] == w
+    assert out["lines"][-2]["words"] == w and out["lines"][-1]["step"] == "timing", \
+        "the pass's lines end with the response's, then its timing line (C1970)"
 
 
 def _switch_keeps(fake, monkeypatch, **held):

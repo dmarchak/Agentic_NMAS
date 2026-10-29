@@ -575,7 +575,7 @@ def detection_pack(network: str, key: str) -> tuple:
 
 
 def classify_threat(network: str, detection: dict, *, actor: str, trigger: dict, send=None,
-                    today: str = None) -> dict:
+                    today: str = None, clock=time.monotonic) -> dict:
     """S7: classify *detection* (`detect`'s) on *network* with AI, through the gateway, as
     *actor* with *trigger* (`triggers.person` for a person's Classify, `triggers.background`
     for the loop's call; the gateway refuses the latter unless the feature is on for the
@@ -586,12 +586,12 @@ def classify_threat(network: str, detection: dict, *, actor: str, trigger: dict,
         return {"ok": False, "error": "no_pack", "detail": f"{why}; nothing was sent",
                 "call_id": "", "cost_usd": 0.0}
     return classify_pack(network, detection, pack, actor=actor, trigger=trigger, send=send,
-                         today=today)
+                         today=today, clock=clock)
 
 
 def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trigger: dict,
                   send=None, today: str = None, prompt: tuple = CLASSIFY_PROMPT,
-                  intact: bool = True) -> dict:
+                  intact: bool = True, clock=time.monotonic) -> dict:
     """`classify_threat` with its pack in hand (a stored one, or a recorded case's,
     scripts/nmas-sdn-cases). In order (`CLASSIFY_STEPS`): the pack's hash (*intact* False is a
     case's section, never hashed); the classification marking and the topology class; the
@@ -602,14 +602,23 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     "pack_id"}``: *classification* what is shown and kept (the answer's fields, the call's id,
     model and cost); *action* the catalogue action proposed, or ``none``; *params* its checked
     parameters. Refused: *error* names the kind (the gateway's own, ``changed``,
-    ``classified``, ``withheld``, ``limits``, ``policy`` or ``couldnt_classify``)."""
+    ``classified``, ``withheld``, ``limits``, ``policy`` or ``couldnt_classify``).
+
+    *took* is where the step's time went, in seconds by *clock* (C1970, the loop's timing
+    line): ``prepare`` (the hash, the marking, the limits, the policy and the request's
+    blocks), ``gateway`` (`gateway.ask` whole: its gates, the provider's token count, the caps'
+    reservation, the send and the record) and ``check`` (the answer checked in code and its use
+    recorded); a stage the step did not reach is absent."""
     from modules import evidence_pack as EP
     from modules.ai import calls, egress_classes, gateway, profiles
     from modules.sdn import flow_ops
 
+    began = clock()
+    took = {}
     pack_id = (pack or {}).get("id") or ""
     out = {"ok": False, "error": "", "detail": "", "call_id": "", "cost_usd": 0.0,
-           "classification": None, "action": "", "params": {}, "pack_id": pack_id}
+           "classification": None, "action": "", "params": {}, "pack_id": pack_id,
+           "took": took}
     if intact and not EP.intact(pack):
         return dict(out, error="changed", detail="the evidence pack's hash does not match: it "
                     "changed since it was kept, so it is not classified; nothing was sent")
@@ -641,9 +650,13 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
                                        separators=(",", ":"))}
     subject = {"kind": "sdn_detection", "id": (detection or {}).get("key") or "",
                "rule": (detection or {}).get("rule") or "", "devices": []}
+    asking = clock()
+    took["prepare"] = round(asking - began, 3)
     got = gateway.ask(CLASSIFY_FEATURE, tuple(prompt), schema, data, actor=actor,
                       trigger=trigger, context=context, send=send, today=today,
                       subject=subject, network=network)
+    checking = clock()
+    took["gateway"] = round(checking - asking, 3)
     out.update(call_id=got.get("call_id", ""), cost_usd=got.get("cost_usd", 0.0))
     if not got["ok"]:
         return dict(out, error=got["error"], detail=got.get("detail", ""))
@@ -653,11 +666,13 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
                          links=links)
+        took["check"] = round(clock() - checking, 3)
         return dict(out, error="couldnt_classify", why=why,
                     detail=f"couldn't classify: {why}; nothing of the answer is used")
     action = answer.action_id.value
     calls.record_use(got["call_id"], f"proposed: {action}" if action != NO_ACTION
                      else "shown: no catalogue action", actor=actor, links=links)
+    took["check"] = round(clock() - checking, 3)
     shown = apply_floor(answer.model_dump(mode="json"), sent["detection"])
     shown.update(call_id=got["call_id"], cost_usd=got.get("cost_usd", 0.0),
                  model=profiles.TASKS[CLASSIFY_FEATURE]["model"],

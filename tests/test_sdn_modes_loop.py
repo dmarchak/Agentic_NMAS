@@ -314,7 +314,7 @@ def test_a_pass_in_hitl_keeps_one_response_awaiting_a_person(networks, monkeypat
     (row,) = LP.awaiting(NET)["rows"]
     assert row["action"] == "drop_source" and row["risk"] == "low"
     steps = [line["step"] for line in out["lines"]]
-    assert steps == ["read", "detect", "classify", "respond"]
+    assert steps == ["read", "detect", "classify", "respond", "timing"]
     assert "no AI classification" in out["lines"][2]["words"]
     assert "chosen in code" in out["lines"][2]["words"]
     LP.run_pass(NET, collect=collected, observe=observed(fired=["k1"]), now=lambda: T0 + 10,

@@ -14,6 +14,8 @@ provider that answers only once every call has started (`threading.Barrier`), bo
   made to finish last.
 - **Isolated**: one call that raises, or that the provider fails, is that detection's
   fail-safe alone; a cap that fits two of three refuses one, recorded for that detection only.
+- **Never past the cap**: at once sends no more than the serial pass under the same cap, and
+  never a cost past it (it may refuse more: C2054).
 - **Bounded**: a pass of more detections than the bound runs at most `CLASSIFY_WORKERS` at
   once, and all of them; the bound is derived from the busiest pass measured.
 """
@@ -282,6 +284,47 @@ def test_a_cap_that_fits_two_of_three_refuses_one_recorded_for_that_detection_al
             assert c == {} and words.startswith("no AI classification (feature_cap: "), words
         else:
             assert c.get("threat_detected") is True and "feature_cap" not in words, words
+
+
+@pytest.mark.parametrize("workers", [1, None], ids=["one_after_the_other", "at_once"])
+def test_no_call_is_made_past_the_cap_at_once_or_one_after_the_other(three, monkeypatch,
+                                                                      workers):
+    """The same cap (two and a half calls' worst case, each call billed exactly its worst
+    case) on the serial pass (`CLASSIFY_WORKERS` 1) and on the pass at once, with no barrier,
+    so the calls reach the reservation as they come. One after the other: two calls sent, the
+    third, the last detection's, refused. At once: never more requests than the serial pass's
+    two and never a cost past the cap; it may refuse more, as a call whose row is recorded and
+    whose reservation is not yet settled is counted twice by a judge in between
+    (modules/ai/reservations.py, "Settled"; C2054). Every refusal is a recorded cap refusal
+    with nothing sent, and every request that reached the provider is a recorded call."""
+    import time
+
+    from modules.settings_schema import write_settings
+
+    world, packs = three
+    pin = profiles.TASKS[CL.CLASSIFY_FEATURE]
+    worst = gateway.worst_case_usd(pin["model"], {"max_tokens": pin["max_tokens"]}, TOKENS)
+    cap = 2.5 * worst
+    assert write_settings({"ai_background": {"default": {CL.CLASSIFY_FEATURE: {
+        "on": True, "by": "admin@example.com", "verified": "access",
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "day_cap_usd": cap, "month_cap_usd": 5.0}}}})["ok"]
+    if workers:
+        monkeypatch.setattr(LP, "CLASSIFY_WORKERS", workers)
+    send = Provider()
+    out = a_pass(packs, send)
+    assert out["ok"], out
+    got = rows()
+    said = [(r["verdict"], r.get("detail")) for r in got]
+    assert len(got) == 3 and {r["verdict"] for r in got} <= {"ok", "feature_cap"}, said
+    sent = [r for r in got if r["verdict"] == "ok"]
+    assert len(send.sent) == len(sent), "every request that reached the provider is recorded"
+    assert sum(float(r["cost_usd"]) for r in sent) <= cap, f"a call past the cap: {said}"
+    refused = [r["subject"]["id"] for r in got if r["verdict"] == "feature_cap"]
+    if workers == 1:
+        assert len(sent) == 2 and refused == [THREE[-1]["detection"]["key"]], said
+    else:
+        assert 1 <= len(sent) <= 2 and len(refused) == 3 - len(sent), said
 
 
 # ── bounded ───────────────────────────────────────────────────────────────────────────────────

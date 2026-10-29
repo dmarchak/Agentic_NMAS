@@ -890,7 +890,7 @@ def _stored_topology(network: str) -> dict:
 
 
 def observe(network: str, collected: dict, *, values: dict = None, intent: dict = None,
-            topo: dict = None) -> dict:
+            topo: dict = None, clock=time.monotonic) -> dict:
     """Run the three rules over *collected* (`collect_threat_data(network)`'s answer) and
     make each detection an alert: fired when first seen (a transition in the alert history and
     its evidence pack), resolved when a collection that judged its subject no longer shows it.
@@ -900,7 +900,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     naming what was judged, what fired, what resolved, what is pending, which ports have no
     baseline yet, and what was not judged; *kept* each fired detection's pack as kept, by its
     key, so the loop classifies the pack in hand rather than reading every kept pack to find
-    it again (C1970)."""
+    it again (C1970); *took* the seconds each fired detection's pack took to build and keep,
+    by its key, by *clock* (the loop's timing line, C1970)."""
     from modules import alert_history, evidence_pack
     from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
     from modules.sdn import flow_intent
@@ -908,7 +909,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     out = {"ok": False, "error": "", "network": network, "collected_at": "",
            "detections": [], "fired": [], "resolved": [], "firing": 0, "unjudged": [],
            "pending": [], "no_baseline": [], "notes": [], "packs": {"built": 0, "failed": []},
-           "kept": {},
+           "kept": {}, "took": {},
            "history": {}, "changed": False, "thresholds": {}}
     if (collected or {}).get("network") != network:
         out["error"] = (f"the collection is {(collected or {}).get('network')!r}'s, not "
@@ -965,6 +966,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                 sw = _switch_of(collected, d)
                 pack_id = ""
                 pack_error = ""
+                building = clock()
                 try:
                     pack = evidence_pack.build_detection(
                         inst, network=network, sdn=section(d, collected, sw), now=at,
@@ -980,6 +982,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                         pack_error = kept["error"]
                 except Exception as exc:              # noqa: BLE001 (said, never raised)
                     pack_error = f"{type(exc).__name__}: {exc}"
+                out["took"][key] = round(clock() - building, 3)
                 if pack_error:
                     out["packs"]["failed"].append({"key": key, "error": pack_error})
                     log.error("sdn detect: the pack for %s on %s could not be kept (%s)",

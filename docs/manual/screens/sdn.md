@@ -290,7 +290,15 @@ mode and whether the loop is running.
     actions, priority, idle and hard timeouts and cookie; a rate limit's meter, its band, rate,
     unit and burst; a removed flow gone, and Mercury's flow put back. An entry Verify did not
     read back is said so, never shown from the request; a response rolled back or refused says
-    that and why.
+    that and why;
+  - **where a detection's time went**: after each classified detection's response, a
+    **timing** line names each stage and its seconds, in the order the pass ran them: detect
+    (with its evidence pack's build), holds, incidents, queued (waiting for a free call when
+    more than 10 are classified at once), classify (prepare; the gateway, with the provider's
+    own count and send from the call's record and the rest, its checks, the caps and the
+    record; the answer's check), waited (for slower calls and earlier responses), respond, and
+    the total from detection to response, with the read before it. A pass's detections are
+    classified at once, each its own call, so a slow stage is named on its own line.
 - **The loop's log** shows one run whole, from its start, in a box that scrolls: every pass's
   steps, newest first. **Run** chooses an earlier run, each named by its job id (the network and
   the time it started) and its start time in UTC, with its line count. **Download log** saves

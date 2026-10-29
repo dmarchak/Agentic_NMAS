@@ -91,7 +91,19 @@ it (C1968).
 its time, what it read and decided; `log_lines` reads the newest. A pass with no new detection
 says which it is: "network healthy: no threat detected" only when the collection read every
 switch whole and no detection is active; "no new threat; N still active: …" naming them; or
-that the collection was partial, or read no switch, never called healthy. **A response's line**
+that the collection was partial, or read no switch, never called healthy. **A classified detection's timing line** (``timing``,
+C1970: the walk's classify landed about 60 s after its detection although its AI call took 4 to
+6 s), after its response's line: where its time went, stage names and seconds only, and the
+same as ``stages`` (`_timing_words`): the pass's ``detect`` (`detect.observe`, its own pack's
+build and keep inside it, ``pack``), ``holds`` (from the judging to the holds judged:
+the responses awaiting a person read, any marked no longer active, `_judge_holds`),
+``incidents`` (`_incidents`), then its own: ``queued`` (waiting for one of `CLASSIFY_WORKERS`),
+``classify`` (its call, start to answer; inside it `closed_loop.classify_pack`'s ``prepare``,
+``gateway`` and ``check``, and the provider's ``count`` and ``send`` from the call's row in the
+record of AI calls, so the gateway's rest, its gates, the caps' reservation and the record, is
+said), ``waited`` (its answer to its line: the slower calls and the earlier detections'
+responses), ``respond``, and ``total``, from the detection's judging to its response; and the
+``read`` before it. **A response's line**
 (`closed_loop.log_response`, AUTO's apply here and a person's confirm on the page alike): who
 applied which action on which switch, the operation's id, and the resulting entries as its
 Verify read them back (each flow's match, actions, priority, idle and hard timeouts and cookie,
@@ -793,13 +805,16 @@ BOUND_FACTOR = 2.5
 CLASSIFY_WORKERS = math.ceil(BOUND_FACTOR * BUSIEST_PASS_MEASURED)
 
 
-def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -> dict:
+def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None,
+             clock=time.monotonic) -> dict:
     """The pass's classify step for detection *d*: one background call through the gateway
     (`closed_loop.classify_pack` on *pack*, the pack `detect.observe` kept in this pass, else
     `closed_loop.classify_threat`, which finds it), and what it proposes (`verdict_of`). The
     pass runs one per detection at once (`run_pass`, `CLASSIFY_WORKERS`): nothing here is
     shared between two detections' calls but the gateway's own stores, each locked across
-    threads and processes (the record of AI calls, the caps' reservations, the presses)."""
+    threads and processes (the record of AI calls, the caps' reservations, the presses).
+    The verdict carries the step's *took* (`classify_pack`'s, by *clock*) and the call's id
+    (*call_id*, "" when none was recorded), for the pass's timing line (C1970)."""
     from modules.ai import triggers
     from modules.config import list_slug
     from modules.sdn import closed_loop
@@ -808,11 +823,85 @@ def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -
                                   "detection", d.get("key") or "")
     if pack is not None:
         got = closed_loop.classify_pack(network, d, pack, actor=triggers.actor_of(trigger),
-                                        trigger=trigger, send=send)
+                                        trigger=trigger, send=send, clock=clock)
     else:
         got = closed_loop.classify_threat(network, d, actor=triggers.actor_of(trigger),
-                                          trigger=trigger, send=send)
-    return verdict_of(network, d, got)
+                                          trigger=trigger, send=send, clock=clock)
+    return dict(verdict_of(network, d, got), took=dict(got.get("took") or {}),
+                call_id=got.get("call_id") or "")
+
+
+def _call_times(call_ids: list, since: float) -> dict:
+    """``{call id: {"count", "send"}}``: the provider's own seconds on each of *call_ids*, its
+    token count's (``prompt_count.latency_s``) and its send's (``latency_s``: every attempt and
+    the waits between them, `anthropic_adapter.send`), from its row in the record of AI calls,
+    read once within the window from *since* (epoch, the pass's calls' start; `calls.rows_since`,
+    which parses only what was appended since its last read). A figure its row does not hold
+    (no count asked, nothing sent) is absent, and so is a call whose row is not found; a record
+    that cannot be read answers none, never raised (the timing line is a measurement, never a
+    gate)."""
+    import datetime
+
+    wanted = {c for c in call_ids if c}
+    if not wanted:
+        return {}
+    try:
+        from modules.ai import calls
+        got = calls.rows_since(datetime.datetime.fromtimestamp(since, datetime.timezone.utc))
+    except Exception as exc:                          # noqa: BLE001 (a measurement, said)
+        log.warning("sdn loop: the calls' times could not be read (%s)", type(exc).__name__)
+        return {}
+    out = {}
+    for r in got.get("rows") or []:
+        if r.get("id") not in wanted:
+            continue
+        times = {}
+        count = (r.get("prompt_count") or {}).get("latency_s")
+        if isinstance(count, (int, float)) and not isinstance(count, bool):
+            times["count"] = float(count)
+        send = r.get("latency_s")
+        if isinstance(send, (int, float)) and not isinstance(send, bool):
+            times["send"] = float(send)
+        out[r["id"]] = times
+    return out
+
+
+def _classify_stages(verdict: dict, provider: dict) -> dict:
+    """The classify step's own stages for the timing line: `classify_pack`'s *took*
+    (``prepare``, ``gateway``, ``check``, those it reached) and, from the call's row
+    (`_call_times`'s *provider*), the provider's ``count`` and ``send``."""
+    took = verdict.get("took") or {}
+    out = {k: float(took[k]) for k in ("prepare", "gateway", "check") if k in took}
+    out.update((provider or {}).get(verdict.get("call_id") or "") or {})
+    return out
+
+
+def _timing_words(st: dict) -> str:
+    """A classified detection's timing line (C1970): each stage's name and its seconds, in the
+    order the pass ran them, then the total from its detection to its response and the read
+    before it. The gateway's rest is its time less the provider's count and send: its gates,
+    the caps' reservation and the record (never below 0: the row's times are within it)."""
+    def s(v):
+        return f"{v:.1f} s"
+
+    inner = []
+    if "prepare" in st:
+        inner.append(f"prepare {s(st['prepare'])}")
+    if "gateway" in st:
+        provider = [f"{k} {s(st[k])}" for k in ("count", "send") if k in st]
+        rest = max(0.0, st["gateway"] - st.get("count", 0.0) - st.get("send", 0.0))
+        inner.append(f"gateway {s(st['gateway'])}"
+                     + (": " + ", ".join(provider + [f"the rest {s(rest)}"]) if provider
+                        else ""))
+    if "check" in st:
+        inner.append(f"check {s(st['check'])}")
+    return (f"detect {s(st['detect'])}"
+            + (f" (its pack {s(st['pack'])})" if "pack" in st else "")
+            + f", holds {s(st['holds'])}, incidents {s(st['incidents'])}, queued "
+            f"{s(st['queued'])}, classify {s(st['classify'])}"
+            + (f" ({'; '.join(inner)})" if inner else "")
+            + f", waited {s(st['waited'])}, respond {s(st['respond'])}: {s(st['total'])} from "
+            f"detection to response (read before it {s(st['read'])})")
 
 
 def verdict_of(network: str, d: dict, got: dict) -> dict:
@@ -902,16 +991,73 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         line("respond", f"{failed}: nothing was sent; awaiting a person ({row['id']})",
              response=row["id"])
 
+    def respond(d, inc, rec, verdict):
+        """Detection *d*'s response in the network's mode (the module's docstring, step 4),
+        on its classification *verdict*, for its new incident *inc* (*rec* its record)."""
+        action, risk, params = verdict["action"], verdict["risk"], verdict["params"]
+        # AUTO never acts on an inferred source (C2147): the detection and its action are
+        # handed in, so a source the flows do not name goes to a person.
+        decision = modes.decide(network, risk, now(), detection=d, action=action)
+        if verdict["person"]:
+            decision = {"auto": False, "words": verdict["why"]}
+        if not decision["auto"]:
+            row = propose(network, d, action, risk, why=decision["words"], now=now(),
+                          classification=verdict["classification"], params=params,
+                          classified=verdict["words"],
+                          refused_call=verdict["refused_call"], incident=rec)
+            out["proposed"].append(row["id"])
+            out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
+                                     "switches": 1 + len(rec["seen_also"])})
+            line("respond", f"HITL, awaiting a person ({row['id']}): {decision['words']}")
+            return
+        preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
+        if not preview["ok"]:
+            # AUTO's own preview failed (C2159): nothing is sent, and the detection is a
+            # person's, as if AUTO were off (`to_person`).
+            to_person(d, inc, rec, verdict, f"AUTO could not preview {action}: "
+                                            f"{preview.get('error') or 'no reason given'}")
+            return
+        done = closed_loop.respond_to_threat(
+            network, d, action, confirm={"ask": preview["ask"],
+                                         "hash": preview["plan"]["hash"]},
+            actor=AUTO_ACTOR, actor_verified="system", mode="auto",
+            autonomous=decision["autonomous"],
+            classified_by=closed_loop.classified_words(verdict["classification"], action),
+            driver=driver, sleep=sleep, now=now)
+        if done.get("outcome") == "refused":
+            # AUTO's confirm refused before any request reached the controller (C2195):
+            # what moved between its preview and its confirm (the policy or the connection
+            # saved, the switch or its table changed, the switch held by another
+            # operation), in the refusal's own words. ``refused`` is only ever before the
+            # send: `respond_to_threat`'s own refusals return before `flow_ops.apply`, and
+            # `apply` leaves ``refused`` at its first request, its outcome then verified,
+            # rolled back or rollback failed, which stay the response's logged line below.
+            # The detection is a person's, as if AUTO were off, as a failed preview is.
+            to_person(d, inc, rec, verdict, f"AUTO could not confirm {action}: " + (
+                (done.get("error") or "no reason given").rstrip(".")))
+            return
+        out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
+        out["incidents"].append({"key": inc["key"], "id": done.get("id"), "joined": False,
+                                 "switches": 1 + len(rec["seen_also"])})
+        # The one writer of a response's line (`closed_loop.log_response`): the switch, the
+        # operation and the entries as Verify read them back, as a person's confirm logs.
+        out["lines"].append(closed_loop.log_response(
+            network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
+
     try:
         if modes.record_expiry(network, now())["recorded"]:
             line("mode", "AUTO reached its expiry: the mode is HITL again")
+        reading = clock()
         collected = collect() if collect else closed_loop.collect_threat_data(
             network, interval, sleep=sleep, driver=driver)
+        read_s = clock() - reading
         s = collected.get("summary") or {}
         line("read", f"read {s.get('switches', 0)} switch(es): {s.get('flows', 0)} flows, port "
                      f"rates over {interval:g} s ({collected.get('state')})")
         began = clock()
-        seen = (observe or detect.observe)(network, collected)
+        detected_at = began                       # the timing line's start (C1970)
+        seen = (observe(network, collected) if observe else
+                detect.observe(network, collected, clock=clock))
         judged_s = clock() - began
         if not seen.get("ok"):
             line("detect", f"nothing judged: {seen.get('error')}")
@@ -968,25 +1114,40 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # Incidents (C1999), before any AI call: the new detections grouped by rule and source
         # within the rule's window; one joining an incident already awaiting a person is seen
         # also there; a new incident's response is proposed at its ingress switch.
+        holds_s = clock() - began - judged_s
+        grouping = clock()
         incident_of, todo = _incidents(network, seen, [
             d for d in fired + releasing if d["key"] not in waiting and d["key"] not in holding],
             rows_waiting, now())
+        incidents_s = clock() - grouping
         # Classified at once, each its own call (C1970): one per incident, its ingress
         # detection's, in the detections' order whatever order the calls finish in
         # (`fanout.read_each`); one that raises is its own Failed.
-        took = {}
+        took, started, ended = {}, {}, {}
 
         def one(d):
-            began = clock()
+            began = started[d["key"]] = clock()
             try:
-                return classify(network, d, job, send=send, pack=kept.get(d["key"]))
+                return classify(network, d, job, send=send, pack=kept.get(d["key"]),
+                                clock=clock)
             finally:
-                took[d["key"]] = clock() - began
+                ended[d["key"]] = clock()
+                took[d["key"]] = ended[d["key"]] - began
 
         began = clock()
+        # The record's window for the calls' rows: from the second the calls began, as a
+        # row's time is stamped to the second (`calls.record`).
+        since_wall = float(int(time.time()))
         verdicts = dict(zip([d["key"] for d in todo], read_each(
             one, todo, name="sdn-classify", max_workers=CLASSIFY_WORKERS)))
         classify_s = clock() - began
+        provider = _call_times([v.get("call_id") or "" for v in verdicts.values()
+                                if isinstance(v, dict)], since_wall)
+        # Each classified detection's own stages, in its timing line after its response
+        # (`_timing_words`): the pass's shared ones, then its own.
+        shared = {"read": read_s, "detect": judged_s, "holds": holds_s,
+                  "incidents": incidents_s}
+        pool_began = began
         released = {d["key"] for d in releasing}          # never one that fired (`_judge_holds`)
         for d in fired + releasing:
             out["released" if d["key"] in released else "fired"].append(d["key"])
@@ -1051,61 +1212,25 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 # fail-safe alone, the others' outcomes untouched.
                 verdict = verdict_of(network, d, {"ok": False, "error": "exception",
                                                   "detail": str(verdict)})
-            action, risk, params = verdict["action"], verdict["risk"], verdict["params"]
+            risk = verdict["risk"]
             # The step's time beside its words (C1970): this detection's own call, from its
             # start to its answer; the AI call's own latency is its row in the record of AI
             # calls, so the rest of the step is this less that.
             mine = took[d["key"]]
+            waited_s = clock() - ended[d["key"]]
             line("classify", f"{verdict['words']} (risk {risk}; the step took {mine:.1f} s)",
                  took_s=round(mine, 2))
-            # AUTO never acts on an inferred source (C2147): the detection and its action are
-            # handed in, so a source the flows do not name goes to a person.
-            decision = modes.decide(network, risk, now(), detection=d, action=action)
-            if verdict["person"]:
-                decision = {"auto": False, "words": verdict["why"]}
-            if not decision["auto"]:
-                row = propose(network, d, action, risk, why=decision["words"], now=now(),
-                              classification=verdict["classification"], params=params,
-                              classified=verdict["words"],
-                              refused_call=verdict["refused_call"], incident=rec)
-                out["proposed"].append(row["id"])
-                out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
-                                         "switches": 1 + len(rec["seen_also"])})
-                line("respond", f"HITL, awaiting a person ({row['id']}): {decision['words']}")
-                continue
-            preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
-            if not preview["ok"]:
-                # AUTO's own preview failed (C2159): nothing is sent, and the detection is a
-                # person's, as if AUTO were off (`to_person`).
-                to_person(d, inc, rec, verdict, f"AUTO could not preview {action}: "
-                                                f"{preview.get('error') or 'no reason given'}")
-                continue
-            done = closed_loop.respond_to_threat(
-                network, d, action, confirm={"ask": preview["ask"],
-                                             "hash": preview["plan"]["hash"]},
-                actor=AUTO_ACTOR, actor_verified="system", mode="auto",
-                autonomous=decision["autonomous"],
-                classified_by=closed_loop.classified_words(verdict["classification"], action),
-                driver=driver, sleep=sleep, now=now)
-            if done.get("outcome") == "refused":
-                # AUTO's confirm refused before any request reached the controller (C2195):
-                # what moved between its preview and its confirm (the policy or the connection
-                # saved, the switch or its table changed, the switch held by another
-                # operation), in the refusal's own words. ``refused`` is only ever before the
-                # send: `respond_to_threat`'s own refusals return before `flow_ops.apply`, and
-                # `apply` leaves ``refused`` at its first request, its outcome then verified,
-                # rolled back or rollback failed, which stay the response's logged line below.
-                # The detection is a person's, as if AUTO were off, as a failed preview is.
-                to_person(d, inc, rec, verdict, f"AUTO could not confirm {action}: " + (
-                    (done.get("error") or "no reason given").rstrip(".")))
-                continue
-            out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
-            out["incidents"].append({"key": inc["key"], "id": done.get("id"), "joined": False,
-                                     "switches": 1 + len(rec["seen_also"])})
-            # The one writer of a response's line (`closed_loop.log_response`): the switch, the
-            # operation and the entries as Verify read them back, as a person's confirm logs.
-            out["lines"].append(closed_loop.log_response(
-                network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
+            responding = clock()
+            respond(d, inc, rec, verdict)
+            # Where this detection's time went (C1970), its stages' names and seconds only.
+            pack_s = (seen.get("took") or {}).get(d["key"])
+            stages = dict(shared, **({"pack": float(pack_s)} if pack_s is not None else {}),
+                          queued=started[d["key"]] - pool_began, classify=mine,
+                          **_classify_stages(verdict, provider), waited=waited_s,
+                          respond=clock() - responding)
+            stages["total"] = clock() - detected_at
+            line("timing", _timing_words(stages),
+                 stages={k: round(v, 3) for k, v in stages.items()})
         if len(todo) > 1:
             # The pass's total beside each call's own (one detection's line is its total).
             line("classify", f"classified {len(todo)} detections at once, each its own call "

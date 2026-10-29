@@ -237,7 +237,7 @@ def planted_classify(monkeypatch):
     classification that passed: so AUTO may act. Each call is kept."""
     asked = []
 
-    def classify(network, d, job, *, send=None, pack=None):
+    def classify(network, d, job, *, send=None, pack=None, clock=None):
         asked.append(d["key"])
         return {"action": "drop_source", "risk": "low", "params": {"source": d["source"]},
                 "classification": {"threat_type": "port_scan", "severity": "high"},
