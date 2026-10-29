@@ -213,10 +213,24 @@ class TestEveryHelpLinkRenders:
             b.click(f'[data-top="{i}"]')
             slug, _h, section = want.partition("#")
             href = f"/v2/help/{slug}" + (f"#{section}" if section else "")
-            b.wait_for("var p=document.querySelector('#help-panel-body');"
-                       "var o=p && p.querySelector('.help-panel-page a');"
-                       f"return o && o.getAttribute('href') === {href!r}"
-                       " && p.innerText.trim().length > 60", 6)
+            try:
+                b.wait_for("var p=document.querySelector('#help-panel-body');"
+                           "var o=p && p.querySelector('.help-panel-page a');"
+                           f"return o && o.getAttribute('href') === {href!r}"
+                           " && p.innerText.trim().length > 60", 6)
+            except AssertionError as exc:
+                # C2160 (flaked twice in CI, never on the laptop): what the panel then held, so
+                # the next failure says whether the fetch never went, was slow, or drew another.
+                state = b.js("var p=document.querySelector('#help-panel-body'), "
+                             "o=p && p.querySelector('.help-panel-page a'), "
+                             "h=document.querySelector('.help-panel');"
+                             "return {text: p ? p.innerText.trim().length : -1, "
+                             "href: o ? o.getAttribute('href') : null, "
+                             "open: !!(h && h.offsetParent), popover: !!document.querySelector("
+                             "'.topbar details[open]'), link: !!document.querySelector("
+                             f"'[data-top=\"{i}\"]'), busy: document.querySelectorAll("
+                             "'.htmx-request').length}")
+                raise AssertionError(f"{want}: {exc}; the panel then: {state}") from exc
             assert b.js("return location.pathname + location.search") == page
 
 

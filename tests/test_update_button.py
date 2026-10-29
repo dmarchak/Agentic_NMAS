@@ -1318,9 +1318,20 @@ class TestClickingTheShippedButton:
         calls["answer"] = {"ok": False, "reason": "a second reason, after the first"}
         b.wait_for("return window.Alpine && !document.querySelector('#update-confirm').disabled")
         b.click("#update-confirm")
-        said = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
-                          "return n && getComputedStyle(n).display !== 'none' && "
-                          "n.textContent.indexOf('a second reason') >= 0 && n.textContent")
+        try:
+            said = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
+                              "return n && getComputedStyle(n).display !== 'none' && "
+                              "n.textContent.indexOf('a second reason') >= 0 && n.textContent")
+        except AssertionError as exc:
+            # C1955 (flaked three times in CI, never on the laptop): did the second press reach
+            # the server (a drawn answer lost: the app's) or not (the press lost: a race)?
+            page = b.js("var n=document.querySelector('.confirm .notice-danger');"
+                        "return {notice: n ? n.textContent.trim().slice(0, 160) : null, "
+                        "hold: (document.querySelector('.confirm[data-update-hold]') || {})"
+                        ".getAttribute?.('data-update-hold'), busy: document.querySelectorAll("
+                        "'.htmx-request, .htmx-swapping, .htmx-settling').length}")
+            raise AssertionError(f"{exc}; requests the server answered: {len(calls['apply'])}"
+                                 f"; the page: {page}") from exc
         assert "Not requested: a second reason, after the first" in said
         assert len(calls["apply"]) == 2
 
