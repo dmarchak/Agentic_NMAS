@@ -296,7 +296,11 @@ def test_build_again_in_a_real_browser(history):
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             b.go(srv.url("/v2/monitoring/alerts/history?range=all&show=all"))
-            b.wait_for("return !!(window.htmx && document.querySelector('details.ah-group'))")
+            # C2127 (named by WebDriver's own error, CI #1327: "[].find(...) is undefined"): any
+            # group drawn is not the heartbeat group and r2's row; wait for those two themselves.
+            b.wait_for("return !!window.htmx && (function () { var g = " + group + "; return !!(g"
+                       " && [...g.querySelectorAll('details.ah-row')].find(r => /r2/.test("
+                       "r.textContent))); })()", 15)
             b.js(f"{group}.open = true; {row}.open = true;")
             b.wait_for(f"return !!{row}.querySelector('form.pack-rebuild button')", 15)
             assert b.js(f"return {row}.querySelector('.pack').getAttribute('data-pack')") \
