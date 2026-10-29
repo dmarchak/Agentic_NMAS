@@ -10,9 +10,10 @@ awaiting a person and 50 cards, and a person confirming one left 49 more for the
 (`loop.canon_source`, C2005's: IPv4 and IPv6 compressed, a MAC address lower-case). Only the
 rules whose subject is a source are grouped (`GROUPED_RULES`: scan, flood). An unauthorised
 flow is one flow on one switch, removed on its own, so each is its own incident; a detection
-naming no single source (a flood over flows that match MAC addresses only, or a scan's packet
-rate fallback) has nothing to tie it to another switch's, so it is its own incident too, keyed
-by its detection key.
+naming no single source (a flood or a scan's packet-rate fallback whose port's flows name no
+address and whose port the controller's topology cannot resolve to one host, `detect.
+port_source`, C2002) has nothing to tie it to another switch's, so it is its own incident too,
+keyed by its detection key. One whose source the topology names groups by that source.
 
 **The window** (`window`), derived, never a setting of its own: the rule's own window, the one
 it fires within (scan: `sdn_scan_window_seconds`, 60 by default; flood:

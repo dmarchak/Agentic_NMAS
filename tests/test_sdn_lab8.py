@@ -159,19 +159,28 @@ def test_a_flood_naming_no_source_takes_the_host_on_its_port_from_the_topology()
     body = json.loads(preview["plan"]["steps"][0]["request"]["body"])
     assert body["match"] == {"eth_type": 0x0800, "ipv4_src": "192.0.2.2"}
     assert preview["params"]["source"] == "192.0.2.2"
+    # The words of the one resolver the detection uses too (`detect.port_source`, C2002's
+    # second part): the response reads the topology itself only for a detection that did not.
     assert preview["params"]["source_from"] == (
-        "from the controller's topology: 192.0.2.2 (00:00:00:00:00:02) on port 2, the port "
-        "the flood entered by")
+        "from the controller's topology: the one host on port 2, 192.0.2.2 (00:00:00:00:00:02)")
+    assert preview["ask"]["detection"]["source_from"] == preview["params"]["source_from"]
     assert fake.writes == []
 
 
 @pytest.mark.usefixtures("lab")
 @pytest.mark.parametrize("port,topology,said", [
-    (1, "without h1", "the controller lists 12:da:aa:70:da:9f on port 1, with no IPv4 address"),
-    (7, "captured", "the controller lists no host on port 7"),
-    (2, None, "the controller's topology could not be read for the hosts on port 2"),
-], ids=["no-ipv4", "no-host", "no-topology"])
+    (1, "without h1", "the controller's topology lists 12:da:aa:70:da:9f on port 1, with no "
+                      "address to match"),
+    (7, "captured", "the controller's topology lists no host on port 7"),
+    (2, None, "the controller's topology could not be read (HTTP 404"),
+    (3, "captured", "port 3 is a link to switch 0000000000000002, so the source is not "
+                    "attached here"),
+], ids=["no-ipv4", "no-host", "no-topology", "link"])
 def test_a_flood_with_no_source_the_topology_cannot_name_says_why(port, topology, said):
+    """With no host to choose, the refusal says why and never offers a choice (the operator,
+    2026-10-27: "never 'choose one' with nothing to choose"). Port 1 without h1 holds only a
+    host whose one address is link-local (fe80::), which no response can match; port 3 is
+    s1's link to s2."""
     topo = captured_topology() if topology else None
     if topology == "without h1":
         # The capture with h1 (00:00:00:00:00:01, port 1's IPv4 host) left out.
@@ -181,8 +190,9 @@ def test_a_flood_with_no_source_the_topology_cannot_name_says_why(port, topology
     got = CL.respond_to_threat("Default", _mac_only_flood(port), "drop_source",
                                driver=fake.driver)
     assert not got["ok"] and said in got["error"], got["error"]
-    assert got["error"].startswith("the detection names no single source to act on (it names "
-                                   "none; ") and got["error"].endswith("): choose one")
+    assert got["error"].startswith("the detection names no source to act on, and there is no "
+                                   "host to choose: not named: ")
+    assert "choose one" not in got["error"]
     assert fake.writes == []
 
 

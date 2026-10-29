@@ -1023,7 +1023,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             mine = took[d["key"]]
             line("classify", f"{verdict['words']} (risk {risk}; the step took {mine:.1f} s)",
                  took_s=round(mine, 2))
-            decision = modes.decide(network, risk, now())
+            # AUTO never acts on an inferred source (C2147): the detection and its action are
+            # handed in, so a source the flows do not name goes to a person.
+            decision = modes.decide(network, risk, now(), detection=d, action=action)
             if verdict["person"]:
                 decision = {"auto": False, "words": verdict["why"]}
             if not decision["auto"]:

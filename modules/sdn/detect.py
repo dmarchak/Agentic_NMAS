@@ -25,6 +25,24 @@ alert in Mercury's alert stream with an evidence pack, so Explain works on it un
   ``unauthorised`` on a switch whose table was read whole. With the flow intent unreadable,
   nothing is judged, and the answer says so.
 
+**The source of a port's detection** (C2002; `port_source`). A flood, and the scan rule's
+packet-rate fallback, judge a port, not a source. Their source is the one address the flows
+entering that port name; where those flows name none (they match MAC addresses only, as a
+reactive application's L2 pairs do), it is the host the controller's topology lists on that
+port (the SDN reader's stored read, `topology.stored`), by its address (its first IPv4, else
+its first IPv6 that is not link-local), the detection's ``source_from`` saying how it was
+found ("from the controller's topology: the one host on port 2, ..."). A topology that cannot
+resolve the port to exactly one host leaves the source unnamed, and ``source_from`` says why
+and in which state (`SOURCE_STATES`): none listed there, a host with no address to match,
+port of a link to another switch (the source is not attached there), the topology not read
+now, or several hosts, each named with its address, which a person chooses among on the
+card (SDN › Responses' source picker; `closed_loop.build_response` refuses any other). A host
+listed with no address beside one with an address does not make the port ambiguous: it
+cannot be matched, and it is named. Where the flows name several sources, the detection's
+``sources`` lists them and the source stays unnamed, as before. A rule called with no
+topology (*topo* None: a recorded case's rebuild) names nothing from it and adds no
+``source_from``.
+
 **The baseline** (`baseline_of`, `update_baseline`): per port, the median of the received
 packet rate over the last `BASELINE_SAMPLES` (12) earlier collections. A port has one once
 `BASELINE_READY` (5) collections have sampled it, so it is ready five of the loop's intervals
@@ -198,6 +216,139 @@ def _in_port(match: dict):
         return value
 
 
+#: The states of a port detection's ``source_from`` (`port_source`): ``named`` the one host's
+#: address taken; ``several`` hosts a person chooses among; the rest leave it unnamed, with
+#: nothing to choose (``unread`` may resolve when the topology is read again).
+SOURCE_STATES = ("named", "several", "none", "no_address", "link", "unread")
+
+
+def host_address(host: dict) -> str:
+    """The address a response matches a topology host by: its first IPv4, else its first IPv6
+    that is not link-local (a link-local address is not a source a flow on another link can
+    match), canonical; "" for none."""
+    for value in list(host.get("ipv4") or []) + list(host.get("ipv6") or []):
+        try:
+            addr = ipaddress.ip_address(str(value).strip())
+        except ValueError:
+            continue
+        if addr.is_unspecified or (addr.version == 6 and addr.is_link_local):
+            continue
+        return addr.compressed
+    return ""
+
+
+def _host_words(h: dict) -> str:
+    return f"{h['address']} ({h['mac']})" if h.get("mac") else h["address"]
+
+
+def port_source(topo, connection: str, dpid, port) -> dict:
+    """Which host the controller's topology lists on switch *dpid*'s *port* (C2002), from *topo*
+    (`topology.stored`'s answer: ``{"state", "why", "controllers": [{"name", "state", "why",
+    "read_at", "hosts", "links"}]}``) for *connection*: ``{"how": "topology", "state", "port",
+    "source", "hosts", "read_at", "words"}``. *state* one of `SOURCE_STATES`; *source* the one
+    host's address when ``named``, else None; *hosts* every host on the port with an address
+    to match (``{"mac", "address"}``), the choices when ``several``; *words* how it was found,
+    or why it was not."""
+    from modules.sdn.drivers.base import parse_dpid
+
+    out = {"how": "topology", "state": "unread", "port": port, "source": None, "hosts": [],
+           "read_at": "", "words": ""}
+    try:
+        port = int(port)
+        dpid = parse_dpid(dpid)
+    except (TypeError, ValueError):            # parse_dpid's SpecError is a ValueError
+        out.update(state="none", words=f"port {port!r} is not a switch port number")
+        return out
+    out["port"] = port
+    topo = topo or {}
+    ctl = next((c for c in topo.get("controllers") or [] if c.get("name") == connection), None)
+    if topo.get("state") != "read":
+        why = topo.get("why") or topo.get("state") or "no answer"
+    elif ctl is None:
+        why = f"the SDN reader holds no topology for {connection}"
+    elif ctl.get("state") != "read":
+        why = ctl.get("why") or ctl.get("state") or "no answer"
+    else:
+        why = ""
+    if why:
+        out["words"] = f"not named: the controller's topology could not be read ({why})"
+        return out
+    out["read_at"] = ctl.get("read_at") or ""
+    for link in ctl.get("links") or []:
+        for end, other in (("src", "dst"), ("dst", "src")):
+            e, o = link.get(end) or {}, link.get(other) or {}
+            try:
+                here = (parse_dpid(e.get("dpid")), int(e.get("port_no")))
+            except (TypeError, ValueError):     # a malformed end is skipped
+                continue
+            if here == (dpid, port):
+                peer = o.get("dpid_hex") or o.get("dpid")
+                out.update(state="link", words=(
+                    f"not named: port {port} is a link to switch {peer}, so the source is not "
+                    "attached here; the switch it enters by names it"))
+                return out
+    on = []
+    for h in ctl.get("hosts") or []:
+        try:
+            if (parse_dpid(h.get("dpid")), int(h.get("port_no"))) != (dpid, port):
+                continue
+        except (TypeError, ValueError):        # a malformed host is skipped
+            continue
+        on.append(h)
+    if not on:
+        out.update(state="none",
+                   words=f"not named: the controller's topology lists no host on port {port}")
+        return out
+    hosts, bare = [], []
+    for h in on:
+        addr = host_address(h)
+        mac = str(h.get("mac") or "").lower()
+        if addr:
+            if addr not in [x["address"] for x in hosts]:
+                hosts.append({"mac": mac, "address": addr})
+        else:
+            bare.append(mac)
+    out["hosts"] = hosts
+    also = (f"; {', '.join(bare)} also listed there, with no address to match" if bare and hosts
+            else "")
+    if not hosts:
+        out.update(state="no_address", words=(
+            f"not named: the controller's topology lists {', '.join(bare)} on port {port}, "
+            "with no address to match"))
+    elif len(hosts) == 1:
+        out.update(state="named", source=hosts[0]["address"], words=(
+            f"from the controller's topology: the one host on port {port}, "
+            f"{_host_words(hosts[0])}{also}"))
+    else:
+        out.update(state="several", words=(
+            f"not named: the controller's topology lists {len(hosts)} hosts on port {port} ("
+            + ", ".join(_host_words(h) for h in hosts) + f"){also}"))
+    return out
+
+
+def _flow_sources(entering: list) -> list:
+    """Each source address the flows entering a port name, in the flows' order."""
+    out = []
+    for f in entering:
+        src = _address(f.get("match"), "src")
+        if src and src not in out:
+            out.append(src)
+    return out
+
+
+def _port_detection_source(entering: list, topo, connection: str, dpid, port) -> tuple:
+    """``(source, sources, extra)`` for a detection on *port*: the flows' one source; else,
+    with *topo* given, the topology's (`port_source`), carried as ``source_from`` in *extra*."""
+    sources = _flow_sources(entering)
+    if sources:
+        return (sources[0] if len(sources) == 1 else None), sources, {}
+    if topo is None:
+        return None, sources, {}
+    found = port_source(topo, connection, dpid, port)
+    return found["source"], sources, {"source_from": {
+        k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words")}}
+
+
 def flows_scope(connection: str, dpid_hex: str) -> str:
     """What a flow rule judges: one switch's flow table."""
     return f"flows:{connection}:{dpid_hex}"
@@ -226,11 +377,13 @@ def _detection(rule: str, collected: dict, ctl: dict, sw: dict, *, subject: tupl
 
 # ───────────────────────────────────────────────────────────────────────────── scan
 
-def scan(collected: dict, values: dict, seen: dict = None) -> dict:
+def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) -> dict:
     """The scan rule over one collection: ``{"detections", "judged", "seen", "notes"}``.
     *values* the thresholds (`thresholds`' ``values``); *seen* the sightings kept from earlier
     collections (``{key: {"connection", "dpid_hex", "source", "ports": {port: {"at", "id",
-    "dst"}}}}``), answered updated and pruned to the window."""
+    "dst"}}}}``), answered updated and pruned to the window; *topo* the controllers' stored
+    topology (`topology.stored`), where a fallback's port names its source when its flows name
+    none (`port_source`); None names none from it."""
     at = _epoch(collected.get("collected_at"))
     need, window = values["sdn_scan_ports"], values["sdn_scan_window_seconds"]
     pps = values["sdn_scan_fallback_pps"]
@@ -270,9 +423,12 @@ def scan(collected: dict, values: dict, seen: dict = None) -> dict:
             judged.add(p["id"])
             if p["rx_pps"] < pps:
                 continue
+            entering = _entering(sw, p["port_no"])
+            source, _sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
+                                                             p["port_no"])
             detections.append(_detection(
                 "scan", collected, ctl, sw, subject=("port", p["port_no"]), scope=p["id"],
-                port=p["port_no"],
+                port=p["port_no"], source=source,
                 words=(f"port {p['port_no']} of switch {dh} ({conn}) received {p['rx_pps']:g} "
                        f"packets a second over {sw['sample'].get('elapsed_s')} s, at or above "
                        f"the scan fallback's {pps:g} (sdn_scan_fallback_pps); lower "
@@ -284,8 +440,8 @@ def scan(collected: dict, values: dict, seen: dict = None) -> dict:
                 confidence="lower",
                 confidence_why=(why + "; a rate alone cannot tell a scan from other heavy "
                                 "traffic"),
-                evidence=[p["id"]] + [f["id"] for f in _entering(sw, p["port_no"])],
-                basis="rate"))
+                evidence=[p["id"]] + [f["id"] for f in entering],
+                basis="rate", **named))
     # Prune every sighting past the window, then count each source on the switches judged.
     for key in list(seen):
         entry = seen[key]
@@ -375,10 +531,13 @@ def update_baseline(baseline: dict, collected: dict, exclude=()) -> dict:
 
 # ───────────────────────────────────────────────────────────────────────────── flood
 
-def flood(collected: dict, baseline: dict, values: dict, over: dict = None) -> dict:
+def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
+          topo: dict = None) -> dict:
     """The flood rule over one collection: ``{"detections", "judged", "over", "pending",
     "no_baseline"}``. *baseline* the earlier collections' (`baseline_of`); *over* each port
-    over its threshold and since when (epoch), answered updated."""
+    over its threshold and since when (epoch), answered updated; *topo* the controllers' stored
+    topology (`topology.stored`), where the port names its source when its flows name none
+    (`port_source`); None names none from it."""
     at = _epoch(collected.get("collected_at"))
     factor, window = values["sdn_flood_factor"], values["sdn_flood_window_seconds"]
     over = dict(over or {})
@@ -417,14 +576,11 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None) -> d
                                 "words": f"over its threshold for {held:g} s of {window} s"})
                 continue
             entering = _entering(sw, p["port_no"])
-            sources = []
-            for f in entering:
-                src = _address(f.get("match"), "src")
-                if src and src not in sources:
-                    sources.append(src)
+            source, sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
+                                                            p["port_no"])
             detections.append(_detection(
                 "flood", collected, ctl, sw, subject=("port", p["port_no"]), scope=pid,
-                port=p["port_no"], source=sources[0] if len(sources) == 1 else None,
+                port=p["port_no"], source=source,
                 targets=sorted({a for f in entering for a in [_address(f.get("match"), "dst")]
                                 if a}),
                 words=(f"port {p['port_no']} of switch {dh} ({conn}) received {rate:g} packets "
@@ -435,7 +591,7 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None) -> d
                 confidence_why=("the port's own counters, read twice a stated interval apart, "
                                 "against its own earlier collections"),
                 evidence=[pid] + [f["id"] for f in entering], basis="rate", since=since,
-                sources=sources))
+                sources=sources, **named))
     return {"detections": detections, "judged": judged, "over": over, "pending": pending,
             "no_baseline": no_baseline}
 
@@ -628,6 +784,10 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
              "confidence_why": d["confidence_why"], "evidence": d["evidence"]}
     if effect:
         piece["effect"] = effect
+    if d.get("source_from"):
+        # How a port's source was found in the controller's topology, or why it was not (C2002):
+        # what the card draws and the classifier reads.
+        piece["source_from"] = d["source_from"]
     pieces = [piece]
     for p in sw.get("ports") or []:
         if p.get("id") in ids:
@@ -678,15 +838,32 @@ def _switch_of(collected: dict, d: dict):
     return {}
 
 
-def observe(network: str, collected: dict, *, values: dict = None, intent: dict = None) -> dict:
+def _stored_topology(network: str) -> dict:
+    """The SDN reader's stored topology for *network* (`topology.stored`), or why it could not
+    be read, in its shape: a port detection's source is looked up there (C2002)."""
+    try:
+        from modules.sdn import topology
+
+        return topology.stored(network)
+    except Exception as exc:                          # noqa: BLE001 (said as the reason)
+        log.error("sdn detect: %s's stored topology could not be read (%s)", network,
+                  type(exc).__name__)
+        return {"state": "could not read", "why": f"{type(exc).__name__}: {exc}",
+                "controllers": []}
+
+
+def observe(network: str, collected: dict, *, values: dict = None, intent: dict = None,
+            topo: dict = None) -> dict:
     """Run the three rules over *collected* (`collect_threat_data(network)`'s answer) and
     make each detection an alert: fired when first seen (a transition in the alert history and
     its evidence pack), resolved when a collection that judged its subject no longer shows it.
     *values* the thresholds (default: the network's); *intent* the flow intent (default: the
-    network's). Never raises: ``{"ok", "error", ...}``, naming what was judged, what fired,
-    what resolved, what is pending, which ports have no baseline yet, and what was not
-    judged; *kept* each fired detection's pack as kept, by its key, so the loop classifies
-    the pack in hand rather than reading every kept pack to find it again (C1970)."""
+    network's); *topo* the controllers' topology a port's source is looked up in (default: the
+    SDN reader's stored read, `topology.stored`). Never raises: ``{"ok", "error", ...}``,
+    naming what was judged, what fired, what resolved, what is pending, which ports have no
+    baseline yet, and what was not judged; *kept* each fired detection's pack as kept, by its
+    key, so the loop classifies the pack in hand rather than reading every kept pack to find
+    it again (C1970)."""
     from modules import alert_history, evidence_pack
     from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
     from modules.sdn import flow_intent
@@ -717,6 +894,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     out["thresholds"] = dict(values)
     if intent is None:
         intent = flow_intent.intent(network)
+    if topo is None:
+        topo = _stored_topology(network)
     try:
         with PathLock(_path):
             doc = read_json_for_write(_path(), empty={"schema": SCHEMA, "networks": {}})
@@ -728,8 +907,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
             if last is not None and at < last:
                 raise Refused(f"this collection ({collected['collected_at']}) is older than the "
                               f"one last judged ({net['collected_at']}): nothing was judged")
-            scanned = scan(collected, values, net.get("seen"))
-            flooded = flood(collected, net.get("baseline"), values, net.get("over"))
+            scanned = scan(collected, values, net.get("seen"), topo=topo)
+            flooded = flood(collected, net.get("baseline"), values, net.get("over"), topo=topo)
             unauth = unauthorised(collected, intent, now=at)
             detections = scanned["detections"] + flooded["detections"] + unauth["detections"]
             judged = scanned["judged"] | flooded["judged"] | unauth["judged"]

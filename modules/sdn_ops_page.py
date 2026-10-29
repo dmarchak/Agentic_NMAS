@@ -18,8 +18,8 @@ mode). Reads only: the stores the operations keep and the plan or result handed 
 import json
 
 #: A response's parameters as its card draws them.
-PARAMS_DRAWN = ("source", "targets", "hard_timeout", "priority", "rate", "unit", "burst",
-                "meter_id", "flow", "cookie")
+PARAMS_DRAWN = ("source", "source_from", "targets", "hard_timeout", "priority", "rate", "unit",
+                "burst", "meter_id", "flow", "cookie")
 OUTCOME = {"verified": ("Done, verified", "ok"),
            "rolled_back": ("Rolled back: Verify or a request failed", "warn"),
            "rollback_failed": ("Rollback did not complete: look at the switch now", "danger"),
@@ -254,8 +254,38 @@ def incident_rows(awaiting: dict) -> list:
                      "ingress_words": inc.get("ingress_words") or (
                          "kept before incidents were grouped (C1999): proposed at the switch "
                          "that saw it"),
-                     "window_words": inc.get("window_words") or ""})
+                     "window_words": inc.get("window_words") or "",
+                     "pick": _pick(d, r.get("action"))})
     return rows
+
+
+#: The catalogue actions that act on a source address, so the card says where it came from.
+SOURCE_ACTIONS = ("drop_source", "rate_limit_source")
+
+
+def _pick(d: dict, action: str) -> dict:
+    """The card's source line and picker (C2002; board SdnResponses revised for C2002): how the
+    detection's source was found (``named``), the hosts a person chooses among (``several``,
+    each ``{"address", "label"}``), why there is none to choose (``none``, ``no_address``,
+    ``link``: no Preview), or that the preview reads the topology again (``unread``, or a
+    detection kept before C2002 naming none: ``lookup``). Empty ``state`` for an action that
+    acts on no source, or a source the flows named (nothing more to say)."""
+    from modules.sdn import closed_loop
+
+    out = {"state": "", "words": "", "hosts": [], "port": d.get("port")}
+    if action not in SOURCE_ACTIONS:
+        return out
+    choice = closed_loop.source_choice(d)
+    state = choice["state"]
+    if state == "named" and not choice["words"]:
+        return out
+    if state == "" and d.get("port") is not None:
+        state = "lookup"
+    out.update(state=state, words=choice["words"], port=choice.get("port", d.get("port")),
+               hosts=[{"address": h["address"],
+                       "label": f"{h['address']} ({h['mac']})" if h.get("mac") else h["address"]}
+                      for h in choice["hosts"]] if state == "several" else [])
+    return out
 
 
 def _matches(row: dict, q: str) -> bool:

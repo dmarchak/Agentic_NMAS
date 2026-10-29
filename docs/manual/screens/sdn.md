@@ -198,7 +198,15 @@ mode and whether the loop is running.
   controller lists the source's host on; when the ingress cannot be told (no source named, the
   topology not read now, no host or several ports listing the source, or the source on a switch
   that has not fired) the line reads **Proposed at:**, says why, and the switch that saw it
-  first is proposed. **Seen also on N other switches** opens to each switch, its port, controller,
+  first is proposed. **Source:** for a drop or a rate limit of a flood (or the scan rule's
+  packet-rate fallback) whose port's flows named no address, where the source came from: the
+  one host the controller's topology lists on that port, named; with several hosts there, they
+  are named and a **source** picker beside Preview lists exactly them (any other is refused);
+  with none to act on (no host, no address to match, or the port a link to another switch),
+  **No source to act on:** says why and there is no Preview; when the topology could not be read
+  then, the preview looks the host up again
+  ([Where a port's source comes from](sdn-flows#port-source)). The table's Source column reads
+  **one of N** while you have a choice to make. **Seen also on N other switches** opens to each switch, its port, controller,
   time and detection; nothing is proposed there. **Classify** (an AI control, beside its mark) asks the model about this
   detection as you and redraws the card with its answer, its action proposed; it sends nothing
   to a switch, and is drawn disabled with the reason while AI cannot answer. How it works:
@@ -227,7 +235,10 @@ mode and whether the loop is running.
   naming the network's stage and the gate. When AUTO was on and the network has since been
   marked otherwise (or its stage cannot be read), the card says **AUTO is suspended**: nothing
   runs unattended and each response awaits you; it clears when you turn AUTO off or mark the
-  network lab again.
+  network lab again. Even with AUTO on, a response whose source was inferred (named from the
+  controller's topology, or to be chosen among a port's hosts) awaits you, its card saying "the
+  source was inferred from the topology: a person confirms it": AUTO acts only on a source the
+  flows themselves name ([Where a port's source comes from](sdn-flows#port-source)).
 - **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
   600), start to start: a pass that takes longer starts the next at once, and the log says so;
   classify is an AI call only where an admin turned its background feature on for this

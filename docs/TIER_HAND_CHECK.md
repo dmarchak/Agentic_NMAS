@@ -2651,3 +2651,86 @@ references show it): `test_a_key_wrap_key_is_taken_whole_before_a_later_rule_rea
 above; the canary killed. Not covered here: the `tacacs-server host … key` form (C2097's); a
 key-wrap key holding a space (IOS reads each as one token, so a second word is not part of it).**
 
+## 2026-10-29: a port's source from the topology in what the SDN classifier sends (C2002), by hand
+
+**What touches the tier.** C2002 (built and held 2026-10-28, applied with C2147 on 6b67bc59's
+tree) names a flood's, or a fallback scan's, source from the controller's topology when the
+flows entering its port name no address. For such a detection, what leaves the host for the AI
+provider grows in two places, and only there: the classifier's `detection` block (the pack's
+detection piece as sent, `closed_loop.as_sent`) gains `source_from` (how, state, port, the
+port's hosts each as its MAC and one address, the topology read's time, the words) and `source`
+when the port resolves to one host; its `names` block gains the port's hosts' addresses. Explain
+sends the same pack section, so its `sdn` section carries `source_from` too. A detection whose
+flows name its source, a recorded case rebuilt with no topology, and a normal-traffic collection
+(`collection_request`) send exactly what they sent before. The changed lines that decide it:
+- `modules/sdn/detect.py`: `section`, line 790 (the piece carries `source_from`);
+  `_port_detection_source`, lines 345 to 349 (no topology names nothing; the keys `source_from`
+  carries; the topology's source as the detection's); `port_source`, lines 308 and 318 (each
+  host as its MAC and one address; one host named, several not); `host_address`, line 234 (no
+  link-local address); `observe`, lines 897 and 898 (the SDN reader's stored topology read).
+- `modules/sdn/closed_loop.py`: `sent_evidence`, lines 471 and 472 (the port's hosts' addresses
+  in `names`).
+No line of the gate or of masking changed: `closed_loop.classify_pack`'s topology-class gate
+(line 618, `egress_classes.topology_allowed`, egress_classes.py line 33) and Explain's
+(`explain.sent_sections`, line 340) stand in front of every byte of both; the pack is masked
+before it is hashed or kept (`evidence_pack.build_detection`, after line 1163,
+`redact.redact_payload`), and the gateway masks the whole request (`redact.egress_payload`).
+The mutants below include the gates and the pack's mask, to show they cover the new field.
+
+**Within what the topology-class gate permits: yes.** The class is the network context model's
+slice, devices, links and "expected and observed adjacencies", no configuration line and no
+secret (egress_classes.py's docstring; PHASE8_PLAN 15.11's table), and the model's endpoint
+layer, MAC and IP by device and interface, is part of it (PHASE8_PLAN 15.15 item 2; Explain
+withholds its endpoints with the topology, explain.py line 346, "Endpoints (MAC, address,
+hostname) are the topology class (15.15, the operator's ruling)"). A host the controller lists
+on a switch port is that: an observed endpoint, by MAC and address, on a switch's interface.
+The `sdn` section, the flows and port rates, was already sent as that class, and the walk's MAC
+pairs were already in its flows' matches; what is new is the topology's read of the port (a
+host there whose MAC no flow names, and when it was read). Neither is a secret, so neither is
+masked anywhere (by design: `redact` masks credentials, by position and by value, and never a
+MAC or an address; measured on a host's words, `scratchpad/c2002_mask_probe.py`). A
+credential-shaped string a controller put in a host's entry is masked in the pack and the
+request (the test below, E11).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that applied the
+change: each mutant one exact text replacement, found exactly once, in its own
+`scripts/nmas-control` throwaway worktree of the change, then the aimed tests in CI's
+interpreter, confined (`scratchpad/c2002-egress-hm.sh <name>`, one mutant per invocation;
+tests/test_sdn_source_egress.py, test_sdn_source_from_topology.py, test_sdn_lab8.py,
+test_sdn_classify.py, test_sdn_classify_cases.py, test_sdn_classify_walk_cases.py,
+test_sdn_detect.py, test_sdn_evidence_v2.py, test_ai_explain.py and
+test_sdn_auto_inferred_source.py). Baseline: 231 passed, 1 skipped. tests/test_sdn_source_egress.py
+was written for this check before the mutants were run: the request as the gateway would send
+it, through the real gateway and a fake provider, its detection block's keys and `source_from`
+exact and its names exact (IPv4, and an IPv6 host beside one), the class off sending nothing
+(the classifier, and Explain withholding the section), and a credential shape in a host's entry
+masked in the pack and the request with its MAC and address sent as they are. Every run's
+worktree was removed with the working tree untouched (nmas-control's fingerprint).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the piece's `source_from` line raises | killed | 7: the four egress tests, the walk's flood, `observe`'s pack, the classifier test |
+| E1 the piece carries no `source_from` (narrower) | killed | 7, the same |
+| E2 `source_from` carries the whole lookup (its `source` too) | killed | 2: `test_the_request_carries_how_the_source_was_found_and_the_port_s_hosts_and_no_more` (both); C2002's own tests let it live |
+| E3 each host carried as the controller's whole entry (every address, link-local included, its switch and port) | killed | 5: the request test (both), the class-off test, the walk's flood, the IPv6-only host |
+| E4 a link-local IPv6 address taken as a host's address | killed | 7: test_sdn_lab8's no-ipv4, the IPv6-only host, no address, the host beside one with an address, and C2147's three IPv6 cases |
+| E5 several hosts read as one, the first sent as the source | killed | 14: the request test's several case, the several and picker tests, C2147's several |
+| E6 `names` gains the port's hosts' MACs | killed | 2: the request test (both); C2002's own tests let it live |
+| E7 `names` loses the port's hosts (narrower) | killed | 2: the request test's several case, the classifier test |
+| E8 the topology's source never the detection's (narrower) | killed | 15 |
+| E9 the classifier's topology gate ignored | killed | 2: `test_the_topology_class_off_sends_nothing_of_a_port_s_source`, test_sdn_classify's `test_the_topology_class_off_sends_nothing` |
+| E10 Explain's withheld section keeps the detection piece (`source_from` sent with the class off) | killed | 2: the class-off test, test_sdn_detect's `test_the_section_is_withheld_when_the_class_is_off` |
+| E11 the SDN pack not masked before it is kept | killed | 1: `test_a_credential_shape_in_a_host_s_entry_is_masked_and_its_mac_and_address_are_not`; C2002's own tests let it live |
+| E12 `observe` never reads the stored topology | killed | 1: `test_observe_reads_the_stored_topology` |
+| E13 a rule given no topology looks it up anyway (a recorded case's rebuild changed) | killed | 20: test_sdn_classify_walk_cases's every case |
+
+**Three would have lived on C2002's own tests (E2, E6, E11):** each widens what is sent (a
+field, the MACs in `names`, an unmasked string) without changing what a detection names, and no
+test of C2002's looked at the request as sent; each is killed by tests/test_sdn_source_egress.py,
+written for this check. **Not covered here:** the gateway's own mask (`redact.egress_payload` in
+`gateway.ask`), unchanged and checked by hand 2026-10-25 (`gateway.ask`, 485 mutants): the pack
+is masked when it is kept, so a request built from a kept pack cannot tell the gateway's mask
+from the pack's, and E11 shows the pack's covers the new field.
+
+**The result: 13 mutants, every one killed; the canary killed.**
+

@@ -23,6 +23,11 @@ apply. The actions:
   unauthorised one displaced it, if one should be there.
 Each action's parameters are checked against the evidence (the source is the detection's, the
 switch is the detection's, the timeout within the network's limit) before a request exists.
+A port's detection whose flows name no source acts on the host the controller's topology lists
+on that port, as the detection names it (`detect.port_source`, C2002); where several hosts are
+listed, on the one a person chose among them (`_response_source`; the choice is in the match
+the confirm's hash binds, and held to those hosts again at the confirm,
+`confirm_source_refusal`); a port with no host to choose is refused saying why.
 
 **`classify_threat(network, detection, ...)`** asks a model, through the AI gateway, what a
 detection the rules already found is: the lab's schema (`ThreatAssessment`: threat_detected,
@@ -386,7 +391,8 @@ CLASSIFY_STEPS = (
               "and nothing of it is used"),
     ("propose", "the classification kept with the response awaiting a person and its action "
                 "proposed; nothing is sent: the response still goes through HITL (a person's "
-                "confirm by hash) or AUTO (within its allowed risk)"),
+                "confirm by hash) or AUTO (within its allowed risk, and only on a source the "
+                "flows themselves name, never one inferred from the topology: C2147)"),
 )
 #: What a response proposed with no AI classification says (the feature off, or no answer).
 DEFAULT_WORDS = "the catalogue's default for the rule, chosen in code (no AI classification)"
@@ -460,7 +466,10 @@ def sent_evidence(section: dict) -> dict:
     pieces = [as_sent(p, ids) for p in stored]
     det = next((p for p in pieces if p.get("kind") == "detection"), {})
     names = {_canon(det.get("dpid"))} if det.get("dpid") else set()
-    for addr in [det.get("source")] + list(det.get("targets") or []):
+    # The hosts the topology lists on a port's detection are in the evidence (C2002), so an
+    # answer may name them as affected; only the one it names as the source may be acted on.
+    on_port = [h.get("address") for h in (det.get("source_from") or {}).get("hosts") or []]
+    for addr in [det.get("source")] + list(det.get("targets") or []) + on_port:
         if addr:
             names.add(_canon(addr))
     for p in pieces:
@@ -1135,29 +1144,54 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
-def _port_hosts(drv, dpid: int, port) -> dict:
-    """The hosts the controller's topology lists on switch *dpid*'s *port* (C2002): ``{"addresses":
-    [IPv4, ...], "words"}``, *words* saying where the addresses came from, or why none did
-    (the topology unreadable, no host on the port, a host with no IPv4 address)."""
-    got = drv.hosts()
-    if not got.get("ok"):
-        return {"addresses": [], "words": ("the controller's topology could not be read for the "
-                                           f"hosts on port {port}: {got.get('error')}")}
-    try:
-        port = int(port)
-    except (TypeError, ValueError):
-        return {"addresses": [], "words": ""}
-    on = [h for h in got.get("hosts") or [] if h.get("dpid") == dpid and h.get("port_no") == port]
-    if not on:
-        return {"addresses": [], "words": f"the controller lists no host on port {port}"}
-    addresses = list(dict.fromkeys(a for h in on for a in h.get("ipv4") or []))
-    macs = ", ".join(str(h.get("mac")) for h in on)
-    if not addresses:
-        return {"addresses": [], "words": (f"the controller lists {macs} on port {port}, with no "
-                                           "IPv4 address")}
-    return {"addresses": addresses,
-            "words": (f"from the controller's topology: {', '.join(addresses)} "
-                      f"({macs}) on port {port}, the port the flood entered by")}
+def _port_hosts(drv, connection: str, dpid: int, port) -> dict:
+    """The host the controller's topology lists on switch *dpid*'s *port*, read from the
+    controller now (C2002): `detect.port_source`'s answer over the driver's hosts and links,
+    the one resolver a detection uses on the stored read. For a detection kept before the
+    detection named its source, or one whose topology could not be read when it fired."""
+    from modules.sdn import detect
+
+    hosts, links = drv.hosts(), drv.links()
+    bad = next((g for g in (hosts, links) if not g.get("ok")), None)
+    if bad is not None:
+        topo = {"state": "could not read", "controllers": [],
+                "why": bad.get("error") or "no answer"}
+    else:
+        topo = {"state": "read", "why": "", "controllers": [{
+            "name": connection, "state": "read", "why": "", "read_at": _iso(time.time()),
+            "hosts": hosts.get("hosts") or [], "links": links.get("links") or []}]}
+    return detect.port_source(topo, connection, dpid, port)
+
+
+#: The states of a port's source in which there is no host to choose (`detect.SOURCE_STATES`).
+NOTHING_TO_CHOOSE = ("none", "no_address", "link")
+
+
+def source_choice(detection: dict) -> dict:
+    """The hosts a person may choose *detection*'s source among, as kept with it (C2002):
+    ``{"how", "state", "port", "hosts", "words"}``. *how* ``topology`` or ``flows`` (where the
+    hosts came from; "" for none); *state* ``named`` (it names one; nothing to choose),
+    ``several`` (the picker: *hosts* each ``{"address", "mac"}``, from the topology's hosts on
+    the port, or the addresses its flows name), one of `NOTHING_TO_CHOOSE` (no host: *words*
+    why), ``unread`` (the topology was not read when it fired; the preview reads it again) or
+    ``""`` (its rule does not act on a source, or it is from before C2002 and names none: the
+    preview reads the topology)."""
+    d = detection or {}
+    found = d.get("source_from") or {}
+    if d.get("source"):
+        return {"how": found.get("how") or "flows", "state": "named", "port": d.get("port"),
+                "hosts": [], "words": found.get("words") or ""}
+    flows = [s for s in d.get("sources") or [] if s]
+    if len(flows) > 1:
+        return {"how": "flows", "state": "several", "port": d.get("port"),
+                "hosts": [{"address": s, "mac": ""} for s in flows],
+                "words": (f"not named: the flows entering port {d.get('port')} name "
+                          f"{len(flows)} sources ({', '.join(flows)})")}
+    if found:
+        return {"how": found.get("how") or "topology", "state": found.get("state") or "",
+                "port": found.get("port"), "hosts": list(found.get("hosts") or []),
+                "words": found.get("words") or ""}
+    return {"how": "", "state": "", "port": d.get("port"), "hosts": [], "words": ""}
 
 
 def _topology_ports(drv, dpid: int, source: str) -> dict:
@@ -1273,6 +1307,103 @@ def _flow_by_ref(flows: list, connection: str, dpid: int, ref: str):
     return None
 
 
+def _response_source(drv, connection: str, dpid: int, detection: dict, params: dict) -> tuple:
+    """``(source, sources)``: the address a drop or rate limit of *detection* acts on, and
+    every one it could (C2002). The detection's own (its source, or the sources its flows
+    name); else, for a port's detection, the hosts on its port (`source_choice`: as kept with
+    the detection, or read from the controller now when it was not read then). *params*'s
+    ``source`` (a person's choice) must be one of them, refused naming both; with none, one
+    address is taken, several are refused as a choice to make, and a port with no host to
+    choose is refused saying why, never offering a choice. *params*'s ``source_from`` is set
+    to how the source was found, or chosen."""
+    chosen = str(params.get("source") or "").strip()
+    sources, found, live = _sources(detection), {}, False
+    named = detection.get("source_from") or {}
+    if sources and detection.get("source") and named:
+        # The detection named its source from the topology (C2002): how it was found rides in
+        # the ask, so an unattended confirm of it is refused (C2147, `auto_source_refusal`).
+        params["source_from"] = named.get("words") or "from the controller's topology"
+    if not sources and detection.get("port") is not None:
+        found = source_choice(detection)
+        if found["state"] not in NOTHING_TO_CHOOSE + ("several",):
+            # Not read when it fired, or kept before the detection named its source.
+            found, live = _port_hosts(drv, connection, dpid, detection.get("port")), True
+        sources = [h["address"] for h in found.get("hosts") or []]
+        if found.get("words"):
+            params["source_from"] = found["words"]
+        if found.get("state") not in ("named", "several"):
+            raise ResponseRefused("the detection names no source to act on, and there is no "
+                                  f"host to choose: {found.get('words') or 'none was found'}")
+    elif not sources:
+        raise ResponseRefused("the detection names no source to act on, and no port to find "
+                              "one on")
+    if chosen:
+        by_canon = {_canon(s): s for s in sources}
+        if _canon(chosen) not in by_canon:
+            where = (f"a host the controller's topology lists on port {found.get('port')}"
+                     if found.get("how") == "topology" else "one the evidence saw")
+            raise ResponseRefused(f"the source {chosen} is not {where} "
+                                  f"({', '.join(sources) or 'none'})")
+        source = by_canon[_canon(chosen)]
+        if found and len(sources) > 1:
+            params["source_from"] = (
+                f"chosen from the {len(sources)} hosts the controller's topology lists on port "
+                f"{found.get('port')}: " + ", ".join(
+                    f"{h['address']} ({h['mac']})" if h.get("mac") else h["address"]
+                    for h in found.get("hosts") or []))
+        return source, sources
+    if len(sources) == 1:
+        return sources[0], sources
+    if live:
+        # Its card drew no picker (nothing was known when it fired): never "choose one" there.
+        raise ResponseRefused("the detection names no single source to act on: "
+                              + found["words"].replace("not named: the controller's topology",
+                                                       "the controller's topology now")
+                              + ", and its card had no hosts to offer when it fired: dismiss "
+                              "it with a reason")
+    raise ResponseRefused("the detection names no single source to act on: "
+                          + (params.get("source_from") or f"it names {', '.join(sources)}")
+                          + f"; choose one of {', '.join(sources)}")
+
+
+def confirm_source_refusal(ask: dict, detection: dict) -> str:
+    """Why a confirm's ask acts on a source that is not one of the hosts its detection's port
+    offered (`source_choice`'s ``several``; C2002), naming both; "" otherwise. The preview
+    refuses another source (`_response_source`); this holds the carried ask to the same."""
+    choice = source_choice(detection)
+    if choice["state"] != "several":
+        return ""
+    allowed = [h["address"] for h in choice["hosts"]]
+    for change in (ask or {}).get("changes") or []:
+        match = (change.get("flow") or {}).get("match") or {}
+        src = match.get("ipv4_src") or match.get("ipv6_src")
+        if src and _canon(src) not in {_canon(a) for a in allowed}:
+            return (f"the confirm's source {src} is not one of the hosts on port "
+                    f"{choice['port']} ({', '.join(allowed)}): nothing was sent; preview again")
+    return ""
+
+
+def auto_source_refusal(ask: dict, detection, action_id: str) -> str:
+    """Why an unattended (AUTO) confirm of *ask* may not act on its source (C2147), naming the
+    comparison and both operands; "" otherwise. Refused when the ask's source was found in the
+    controller's topology or chosen (`_response_source` keeps how in the ask's detection's
+    ``source_from``), or when *detection* (when handed in) names no source the flows name
+    (`modes.source_refusal`)."""
+    from modules.sdn import modes
+
+    if action_id not in modes.SOURCE_ACTIONS:
+        return ""
+    how = ((ask or {}).get("detection") or {}).get("source_from")
+    if how:
+        return (f"AUTO refused: {modes.INFERRED_WORDS} ({modes.FLOWS_RULE}, and this one's "
+                f"source was not: {how})")
+    if isinstance(detection, dict):
+        why = modes.source_refusal(detection, action_id)
+        if why:
+            return f"AUTO refused: {why}"
+    return ""
+
+
 def build_response(network: str, detection: dict, action_id: str = None, params: dict = None,
                    *, driver=None) -> dict:
     """The ask for *detection*'s response (`flow_ops`' shape), its catalogue action and its
@@ -1323,24 +1454,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         recorded = [r.get("cookie") for r in intent["flows"]]
         changes = []
         if action_id in ("drop_source", "rate_limit_source"):
-            sources = _sources(detection)
-            if not sources and detection.get("port") is not None:
-                # A flood over flows that match MAC addresses only names no address (C2002):
-                # the hosts the controller lists on its ingress port, by their IPv4 address.
-                on_port = _port_hosts(drv, dpid, detection.get("port"))
-                sources = on_port["addresses"]
-                if on_port["words"]:
-                    out["params"]["source_from"] = on_port["words"]
-            source = out["params"].get("source") or (sources[0] if len(sources) == 1 else None)
-            if not source:
-                raise ResponseRefused("the detection names no single source to act on "
-                                      f"(it names {sources or 'none'}"
-                                      + (f"; {out['params']['source_from']}"
-                                         if out["params"].get("source_from") else "")
-                                      + "): choose one")
-            if source not in sources:
-                raise ResponseRefused(f"the source {source} is not one the evidence saw "
-                                      f"({', '.join(sources) or 'none'})")
+            source, _seen = _response_source(drv, conn, dpid, detection, out["params"])
             hard = _hard_timeout(network, out["params"])
             priority = flow_ops.response_priority(read["flows"], own, recorded,
                                                   match=_source_match(source))
@@ -1456,6 +1570,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                       "detection": {k: detection.get(k) for k in
                                     ("key", "rule", "title", "dpid_hex", "source", "words",
                                      "at")}}
+        if out["params"].get("source_from"):
+            # C2002: how the source acted on was found or chosen, kept with the response.
+            out["ask"]["detection"]["source_from"] = out["params"]["source_from"]
         if isinstance(detection.get("incident"), dict):
             # C1999: its incident's key, whether this switch is its known ingress, and how
             # many switches saw it, kept with the response in the flow intent: a response at
@@ -1480,7 +1597,9 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     Without *confirm*: the PREVIEW, writing nothing: ``{"ok", "error", "action", "risk",
     "params", "ask", "plan"}``, the plan carrying the exact requests and their hash.
     With *confirm* ``{"ask", "hash"}`` (the preview's ask, carried back unchanged, and the hash
-    the person confirmed): the APPLY (`flow_ops.apply`), as *actor*, in *mode* (``hitl``: a
+    the person confirmed; *detection*, when given, the one it answers, whose port's hosts a
+    chosen source is held to, `confirm_source_refusal`): the APPLY (`flow_ops.apply`), as
+    *actor*, in *mode* (``hitl``: a
     person's confirm; ``auto``: *autonomous* names the setting and its reason), recorded with
     the detection it answers and *classified_by*, who chose the action: the catalogue's
     default in code, or the AI call that proposed it (`classified_words`)."""
@@ -1515,6 +1634,18 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     refusal = policy_refusal(network, (ask.get("detection") or {}).get("rule") or "", action_id)
     if refusal:
         return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
+    # A source chosen among a port's hosts (C2002), held to those hosts again at the confirm,
+    # when the caller hands the detection it answers (the route does, from the response kept).
+    refusal = confirm_source_refusal(ask, detection) if isinstance(detection, dict) else ""
+    if refusal:
+        return {"ok": False, "outcome": "refused", "error": refusal}
+    # AUTO never acts on an inferred source (C2147): an unattended confirm whose ask's source
+    # was found in the topology or chosen (its ``source_from``), or whose detection's source
+    # the flows do not name, sends nothing; the loop's `modes.decide` hands it to a person first.
+    if mode == "auto":
+        refusal = auto_source_refusal(ask, detection, action_id)
+        if refusal:
+            return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     # The control-plane guard again at the confirm, on the ask carried back (C2022).
     from modules.sdn import control_plane
     made = flow_ops._driver(network, ask.get("connection") or "", driver)

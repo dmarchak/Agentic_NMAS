@@ -174,7 +174,8 @@ def flow_confirm():
 def response_preview(rid):
     """The preview of a response awaiting a person: its catalogue action built from the
     detection and checked against the evidence, the exact requests and their hash. Writes
-    nothing."""
+    nothing. *source* is the card's source picker (C2002), refused unless it is one of the
+    hosts its port offers (`closed_loop._response_source`)."""
     from modules import sdn_ops_page
     from modules.sdn import closed_loop, loop
 
@@ -233,8 +234,10 @@ def response_confirm():
     action = (request.form.get("action") or "").strip()
     row = next((r for r in loop.awaiting(network)["rows"] if r.get("id") == rid), {}) \
         if rid else {}
+    # The response kept's detection: a source chosen among its port's hosts is held to them
+    # again here (C2002, `closed_loop.confirm_source_refusal`).
     done = closed_loop.respond_to_threat(
-        network, None, action,
+        network, row.get("detection") or None, action,
         confirm={"ask": ask, "hash": (request.form.get("hash") or "").strip()}, actor=actor,
         actor_verified=identity.actor_verification(actor),
         classified_by=closed_loop.classified_words(row.get("classification"), action))

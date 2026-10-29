@@ -76,11 +76,8 @@ timeout has left, never its whole timeout again, and not at all once it has expi
 medium). Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
-once those flows have expired. A flood whose flows match MAC addresses only names no source
-address; its response then takes the host the controller's topology lists on the port the flood
-entered by, and the preview says so ("from the controller's topology: <address> (<MAC>) on port
-N"). When the topology lists no host there, only hosts with no IPv4 address, or several, or
-cannot be read, the preview is refused saying which.
+once those flows have expired. A drop or a rate limit acts on the detection's source; a
+flood's comes from its port ([Where a port's source comes from](#port-source), below).
 
 The action proposed is the rule's default in the network's **response policy** (SDN ›
 Responses, the rules), chosen in code, unless an AI classification proposed another (below).
@@ -92,9 +89,47 @@ each recorded as autonomous with that reason and with who chose the action. Unti
 production-readiness gate is complete, AUTO is turned on only on a network marked **lab** (its
 stage, on Settings › Integrations › SDN controllers), and on each pass the loop checks the stage
 again: a network not marked lab, or whose stage cannot be read, gets no unattended action, and
-every response waits for you. Every response,
+every response waits for you. **AUTO never acts on an inferred source:** a drop or a rate limit
+runs unattended only on a source the flows themselves name. A detection whose source came from
+the controller's topology ([below](#port-source)), or that names no single source (several hosts
+on its port, or a topology not read when it fired, so the source would be looked up or chosen),
+always waits for you, whatever the allowed risk, saying "the source was inferred from the
+topology: a person confirms it" with the comparison it made: AUTO applies only a source the flows
+themselves name, the flows entering that port name none, and where the source came from. It is a
+row of Needs attention like any response awaiting you, and Mercury refuses an unattended confirm
+of such a source too, sending nothing. Every response,
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
+
+### Where a port's source comes from {#port-source}
+
+A flood, and the scan rule's packet-rate fallback, judge a port, not a source. Their source is
+the one address the flows entering that port name. Where those flows name none (they match MAC
+addresses only, as the controller's application installs them after a ping), **the detection
+names the host the controller's topology lists on that port** (the SDN reader's stored read of
+the controller's hosts and links), by its address: its first IPv4 address, else its first IPv6
+address that is not link-local. The detection says how ("from the controller's topology: the one
+host on port 2, 192.0.2.2 (00:00:00:00:00:02)"), and both the card and the AI classification
+read it, so the AI may propose acting on that host. A host listed there with no address to
+match (only a link-local one, say) beside one with an address does not count against it, and is
+named. When the topology cannot resolve the port to exactly one host, the source stays unnamed
+and the detection says why:
+
+- **several hosts** on the port: each is named with its address and MAC, and the card offers a
+  **source** picker beside Preview, limited to those hosts. The preview is built for the host
+  you choose (its address is in the requests the confirm's hash binds, and the preview says
+  "chosen from the N hosts the controller's topology lists on port P: …"); a host that is not one
+  of them is refused, naming it and the hosts listed, at the preview and again at the confirm,
+  and the AI may name the hosts but never proposes one as the source;
+- **no host** on the port, **no address to match**, or the port is **a link to another switch**
+  (the source is not attached there; the switch it enters by names it): there is no host to
+  choose, so the card says why and offers no Preview; dismiss it with a reason;
+- **the topology could not be read** when it fired (not read yet, older than the SDN reader's
+  promise, or the controller offering no topology): the preview looks the host up in the
+  controller's topology again when you press it, and is refused saying why if it still cannot.
+
+The source is matched in one family: a host named by its IPv4 address is dropped or rate-limited
+by that address, so the same host's IPv6 traffic is not matched.
 
 ### A threat already answered {#already-mitigated}
 
@@ -136,8 +171,9 @@ source's flows on each switch it crosses, so each switch's rule fires. Mercury a
    grouped by their rule and their source, the source compared in one spelling (an IPv4 or IPv6
    address compressed, a MAC address in lower case with colons). Only the scan and flood rules
    are grouped: an unauthorised flow is one flow on one switch, and a detection that names no
-   single source (a flood over flows that match MAC addresses only, or the scan's packet-rate
-   fallback) has nothing to tie it to another switch, so each is its own incident.
+   single source (a flood or the scan's packet-rate fallback whose port neither its flows nor
+   the controller's topology resolve to one host: [Where a port's source comes
+   from](#port-source)) has nothing to tie it to another switch, so each is its own incident.
 2. **The window.** The window is the rule's own, the one it fires within: the scan's
    `sdn_scan_window_seconds` (60 by default) and the flood's `sdn_flood_window_seconds` (30), set
    in the rules on SDN › Responses; there is no second setting. A detection in a later pass

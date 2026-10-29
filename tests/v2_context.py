@@ -2061,6 +2061,7 @@ def _sdn_operations(client, mp, session):
     assert client.post(f"/v2/sdn/response/{other['id']}/dismiss",
                        data={"list": "Lab", "reason": "the lab's own test"}).status_code == 200
     _sdn_reapply(client, session, d, fields)
+    _sdn_picker(client, d)
     # The response policy (objective 3.1): one refused (an action that does not answer its
     # rule), one saved and the region drawn again with it.
     page = client.get("/v2/sdn/responses?list=Lab").get_data(as_text=True)
@@ -2078,6 +2079,30 @@ def _sdn_operations(client, mp, session):
                                              "interval": "10"}).status_code == 200
     assert client.post("/v2/sdn/loop", data={"list": "Lab", "run": "stop"}).status_code == 200
     LP._jobs["Lab"]["thread"].join(10)
+
+
+def _sdn_picker(client, d):
+    """C2002: a flood on a port whose flows named no source, two hosts the controller's topology
+    lists there (IPv4 and IPv6), as `detect.port_source` keeps them: the card's source picker
+    drawn, limited to them, and a preview with one chosen."""
+    from modules.sdn import loop as LP
+
+    hosts = [{"mac": "00:00:00:00:00:02", "address": "192.0.2.2"},
+             {"mac": "00:00:00:00:00:05", "address": "2001:db8:8::5"}]
+    flood = dict(d, key="k-ctx-pick", rule="flood", title="SDN flood", source=None, sources=[],
+                 port=2, subject={"kind": "port", "value": 2}, source_from={
+                     "how": "topology", "state": "several", "port": 2, "hosts": hosts,
+                     "read_at": "2026-10-27T09:35:49Z",
+                     "words": "not named: the controller's topology lists 2 hosts on port 2 "
+                              "(192.0.2.2 (00:00:00:00:00:02), 2001:db8:8::5 "
+                              "(00:00:00:00:00:05))"})
+    row = LP.propose("Lab", flood, "drop_source", "low", why="HITL")
+    page = client.get(f"/v2/sdn/responses?list=Lab&incident={row['id']}").get_data(as_text=True)
+    assert '<select name="source"' in page and ">2001:db8:8::5 (00:00:00:00:00:05)<" in page
+    card = client.post(f"/v2/sdn/response/{row['id']}/preview",
+                       data={"list": "Lab", "source": "2001:db8:8::5", "hard_timeout": "60"})\
+        .get_data(as_text=True)
+    assert "chosen from the 2 hosts" in card, card
 
 
 def _sdn_reapply(client, session, d, fields):

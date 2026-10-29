@@ -31,7 +31,28 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `799e75516fa9c3b91247ab3bbc658e2ee32bf2eb9d6ae83ccc6c7a65d8989310`
+Templates sha256: `5687d4f59d35ebe382829ad59398ad287c6dbe1fe7974d2d9db0f6ace13dc6e0`
+
+**Compared again 2026-10-28 ~22:1x UTC for C2002** (a port's detection names its source from
+the controller's topology, and a person chooses among the port's hosts when there are
+several): `SdnResponses.dc.html` revised in the agent's copy (scratchpad `boards-c2002/`,
+based on C1999's revision; not yet on the canvas) with a states section, "Revised 2026-10-28 for
+C2002", drawing the opened incident's **Source:** line in four states: one host on the port
+(named, no picker), several (the picker, a required select limited to them, beside Preview),
+none to act on (why, no Preview) and not read when it fired (the preview looks it up);
+signed off under the Phase 7 mode (docs/STANDING_APPROVAL_LOG.md, "SDN C2002: SdnResponses
+revised for a port's source and its picker"). Two templates changed: `_sdn_responses.html`
+(the Source column's "one of N" and hover, the Source line, the picker in the preview's form,
+the preview's form left out with none to act on) and `_sdn_op.html` (the preview's source
+followed by how it was found or chosen). Compared by reading each template against the board's
+four states, line for line (the words, the order under Ingress / Proposed at, the select's
+placeholder and options, no hours field and no Preview with none to act on); the rendered states
+are held by tests/test_sdn_source_from_topology.py (`test_the_card_draws_the_picker_one_host_
+named_and_none_with_no_preview`), not shot: no `test_sdn` shot plants a port's detection.
+Nothing else drawn moves: the incident shots' detections name their sources from their flows, so
+no Source line is drawn on them. Row added below: A port's source (C2002). Templates sha256
+before (with board FB's Was this right? below already in them):
+`799e75516fa9c3b91247ab3bbc658e2ee32bf2eb9d6ae83ccc6c7a65d8989310`.
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_sdn_responses.html`
 includes Was this right? (`_ai_feedback.html`) at the foot of the AI's classification box, a
@@ -210,6 +231,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Response policy (objective 3.1) | not drawn: the board's response takes the catalogue's action for its rule | a "Responses allowed" column in the rules table (each rule's allowed actions, its default marked), and under it **Response policy**: where it comes from, per rule a default select and a tick per other action that answers the rule, **Save the response policy** with its (i), refusals said beside it; a red notice when the policy cannot be read | **deviation** (log: SDN 3.1: each rule's allowed responses on the rules card) |
 | A response with no action proposed (objective 3.1) | not drawn | "No action is proposed: the network's response policy could not be read when this was detected", in place of the Proposed line | **deviation** (log: SDN 3.1: a response proposed with no action when the policy is unreadable) |
 | Needs attention | revised for C1999: the states section's row, one per incident: "SDN scan from 192.0.2.31 on Default, seen on 50 switches, awaits a person.", its incident, severity and ingress, and Open the incident | built (`attention.sdn_responses_source`) in the same words, DANGER when classified high or critical; compared by reading the row tests/test_sdn_responses_attention.py renders against the board's, not shot (no board-shot test renders Needs attention with SDN data) | **later** a landing shot with an SDN incident (tests/test_board_shots.py) |
+| A port's source (C2002) | revised for C2002: the states section's four: "Source: 192.0.2.2, from the controller's topology: the one host on port 2, …" with no picker; "Source: not named: the controller's topology lists 2 hosts on port 2 (…). Choose which one beside Preview below; the preview refuses any other." with a required select "one of the 2 hosts on port 2…" listing exactly them, the Source column "one of 2"; "No source to act on: …" (amber) with no Preview and no hours field; "Source: not named: the controller's topology could not be read (…); the preview looks up the host on port 2 in the controller's topology now." | the same words, places and controls, compared by reading `_sdn_responses.html` against the board (the rendered page held by tests/test_sdn_source_from_topology.py); the preview card's source followed by "(chosen from the 2 hosts …)" or "(from the controller's topology: …)", as the board's note on state 2 draws it | **later** a shot of an opened port's detection in each state (tests/test_board_shots.py plants none) |
 | Ingress not told, a filtered subset (C1999) | the states section: "Proposed at: the ingress switch cannot be told: …; proposed at <dpid>, the switch that saw it first."; "Showing 1 of 4 incidents, severity high. Show all" | the same words (`incidents.ingress`; the template's subset line); the shot's flood is an incident whose ingress was not told, drawn closed; neither state is shot opened or filtered | **later** shots of an opened ingress-not-told incident and a filtered table |
 | The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
 | The flow editor (SdnFlowEdit) | the form, the prerequisite refusal, the preview, Edit's and Remove's words, Explain this flow table (AI) | the form, the refusal naming the field, the preview card; Edit's and Remove's words; no Explain (S19, after cost safety) | **later** a click-driven shot; Explain is S19 |

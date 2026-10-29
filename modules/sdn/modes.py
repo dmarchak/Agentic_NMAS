@@ -24,6 +24,17 @@ nothing unattended while the network is not marked lab (`decide`, failing closed
 marked otherwise since, not marked, or whose stage cannot be read is never read as lab).
 `stage` is the one reader; `set_stage` the one writer (a verified person, a reason; recorded
 in the network's settings record with the stage before and after).
+
+**AUTO never acts on an inferred source (C2147; the operator's rule, 2026-10-29, PHASE8_PLAN
+17.7).** A drop or a rate limit (`SOURCE_ACTIONS`) runs unattended only on a source the flows
+themselves name. A detection whose source came from the controller's topology (C2002's
+``source_from``, `detect.port_source`), or that names no single source (so any source would be
+looked up in the topology or chosen by a person), always goes to a person, whatever the
+network's mode or the action's risk (`source_refusal`, asked by `decide`); the apply refuses
+an unattended confirm whose ask's source was found or chosen so (`closed_loop.
+respond_to_threat`). Cost: one more response awaiting a person when a flood's flows match MAC
+addresses only. Prevents: an unattended drop or rate limit of the wrong host, chosen by
+inference.
 """
 
 import json
@@ -46,6 +57,15 @@ STAGES = ("lab", "pilot", "production")
 AUTO_STAGE = "lab"
 GATE_WORDS = ("AUTO is turned on only on a network marked lab until the AUTO "
               "production-readiness gate (PHASE8_PLAN 17.7) is complete")
+#: The actions that act on a detection's source (C2147): AUTO runs one only on a source the
+#: flows themselves name.
+SOURCE_ACTIONS = ("drop_source", "rate_limit_source")
+#: What AUTO says when a source was not seen in the flows (C2147).
+INFERRED_WORDS = "the source was inferred from the topology: a person confirms it"
+NOT_NAMED_WORDS = ("the flows name no single source, and a source they do not name is "
+                   "inferred: a person confirms it")
+#: The comparison AUTO makes, said beside its refusal.
+FLOWS_RULE = "AUTO applies only a source the flows themselves name"
 
 
 class ModeRefused(ValueError):
@@ -269,12 +289,40 @@ def record_expiry(network: str, now: float = None) -> dict:
     return {"recorded": True}
 
 
-def decide(network: str, risk: str, now: float = None) -> dict:
+def source_refusal(detection: dict, action: str) -> str:
+    """Why *action* on *detection* may not run unattended because its source was not seen in
+    the flows (C2147), naming what AUTO requires and what this detection has; "" when the
+    action acts on no source (`SOURCE_ACTIONS`) or the flows name its source. Flow-named means
+    the detection names a source and carries no ``source_from`` (`detect` sets one only where
+    the flows name none and the topology was asked): anything else fails closed."""
+    if action not in SOURCE_ACTIONS:
+        return ""
+    d = detection or {}
+    found = d.get("source_from") or {}
+    source = d.get("source")
+    if source and not found:
+        return ""
+    port = found.get("port", d.get("port"))
+    entering = f"the flows entering port {port}" if port is not None else "the flows"
+    if source:
+        how = found.get("words") or "from the controller's topology"
+        return (f"{INFERRED_WORDS} ({FLOWS_RULE}; {entering} name none, and {source} came "
+                f"{how})")
+    named = [s for s in d.get("sources") or [] if s]
+    why = (found.get("words") or (f"{entering} name {len(named)} sources ({', '.join(named)})"
+                                  if len(named) > 1 else f"{entering} name none"))
+    return f"{NOT_NAMED_WORDS} ({FLOWS_RULE}; {why})"
+
+
+def decide(network: str, risk: str, now: float = None, *, detection: dict = None,
+           action: str = "") -> dict:
     """Whether a response of *risk* may run unattended on *network* now: ``{"auto": bool,
     "words", "autonomous"}``, *autonomous* the record an autonomous action carries (the
     setting, who turned it on, its reason and expiry). AUTO recorded on runs nothing
     unattended while the network is not marked lab (C2009): marked otherwise since it was
-    turned on, or a stage that cannot be read, answers HITL naming the stage and the gate."""
+    turned on, or a stage that cannot be read, answers HITL naming the stage and the gate.
+    *action* on *detection* whose source the flows do not name (`source_refusal`, C2147) is a
+    person's, whatever the action's risk."""
     mode = current(network, now)
     if mode["mode"] != "auto":
         return {"auto": False, "words": mode["words"], "autonomous": None}
@@ -282,6 +330,9 @@ def decide(network: str, risk: str, now: float = None) -> dict:
     if refused:
         return {"auto": False, "autonomous": None,
                 "words": f"HITL: AUTO is on and suspended, since {refused}"}
+    inferred = source_refusal(detection, action)
+    if inferred:
+        return {"auto": False, "autonomous": None, "words": f"HITL for this one: {inferred}"}
     allowed = RISKS[: RISKS.index(mode["allowed_risk"]) + 1] if mode["allowed_risk"] in RISKS \
         else ()
     if risk not in allowed:

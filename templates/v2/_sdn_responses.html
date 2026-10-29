@@ -38,11 +38,25 @@
   {%- endif %}
 {%- for r in g.awaiting %}
 <details class="sdn-inc" id="sdn-i-{{ r.id }}" data-keep="inc-{{ r.id }}"{% if ic.open == r.id %} open{% endif %}>
-  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}</span><span class="mono">{{ r.source or '—' }}</span><span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
+  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
   <p class="small sdn-ingress"><strong>{% if r.ingress_known %}Ingress:{% else %}Proposed at:{% endif %}</strong> {{ r.ingress_words }}.{% if r.window_words %} <span class="faint">Grouped {{ r.window_words }}.</span>{% endif %}</p>
+  {#- C2002 (board SdnResponses, revised 2026-10-28): where a port's source came from. One host
+      on the port: named, no picker; several: the picker in the preview's form below, limited
+      to them; none to act on: why, and no Preview; not read when detected: the preview reads
+      the controller's topology again. -#}
+  {%- set pk = r.pick %}
+  {%- if pk.state == 'named' %}
+  <p class="small sdn-source"><strong>Source:</strong> <span class="mono">{{ r.source }}</span>, {{ pk.words }}.</p>
+  {%- elif pk.state == 'several' %}
+  <p class="small sdn-source"><strong>Source:</strong> not named: {{ pk.words | replace('not named: ', '') }}. Choose which one beside Preview below; the preview refuses any other.</p>
+  {%- elif pk.state in ('none', 'no_address', 'link') %}
+  <p class="small notice notice-warn sdn-source" role="status"><strong>No source to act on:</strong> {{ pk.words | replace('not named: ', '') }}. There is no host to choose, so the {{ r.label | lower }} cannot be previewed: dismiss it with a reason.</p>
+  {%- elif pk.state in ('unread', 'lookup') %}
+  <p class="small sdn-source"><strong>Source:</strong> {% if pk.words %}{{ pk.words }}{% else %}not named when detected{% endif %}; the preview looks up the host on port {{ pk.port }} in the controller's topology now.</p>
+  {%- endif %}
   {%- if r.seen_also %}
   <details class="sdn-also" data-keep="inc-{{ r.id }}-also"><summary class="small">Seen also on {{ r.seen_also | length }} other switch{{ 'es' if r.seen_also | length != 1 }} <span class="faint">· nothing is proposed there; the response at <span class="mono">{{ r.dpid_hex }}</span> answers them</span></summary>
     <ul class="sdn-also-list small">{% for s in r.seen_also %}<li><span class="mono">{{ s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
@@ -74,10 +88,13 @@
       {{ ai.mark(aic) }} <button class="btn" type="submit" id="sdn-classify-{{ r.id }}" data-op="sdn-flows" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ aic.model_words }}), capped; it reads this detection's evidence pack, proposes a catalogue action and sends nothing to a switch">{% if r.ai %}<span class="op-idle">Classify again</span><span class="op-busy">Classifying again…</span>{% else %}<span class="op-idle">Classify</span><span class="op-busy">Classifying…</span>{% endif %}</button>{{ how('sdn-flows', 'classify', compact=True, op='Classify') }}
       {{ ai.reason(aic) }}
     </form>
+    {%- if pk.state not in ('none', 'no_address', 'link') %}
     <form class="op-act" hx-post="{{ url_for('sdn_v2.response_preview', rid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
       <input type="hidden" name="action" value="{{ r.action }}">
-      {%- if r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
+      {%- if pk.state == 'several' %}
+      <label class="small">source <select name="source" required aria-describedby="sdn-src-{{ r.id }}"><option value="" disabled{% if not r.params.source %} selected{% endif %}>one of the {{ pk.hosts | length }} hosts on port {{ pk.port }}…</option>{% for h in pk.hosts %}<option value="{{ h.address }}"{% if r.params.source == h.address %} selected{% endif %}>{{ h.label }}</option>{% endfor %}</select></label><span class="sr-only" id="sdn-src-{{ r.id }}">The hosts the controller's topology lists on port {{ pk.port }}; the preview refuses any other.</span>
+      {%- elif r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
       <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ r.params.hard_timeout or (g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600) }}"> s</label>
       {%- if r.action == 'rate_limit_source' %}
       <label class="small">above <input type="number" name="rate" min="1" value="{{ r.params.rate or 1000 }}"></label>
@@ -86,6 +103,7 @@
       {%- endif %}
       <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ r.label | lower }}…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
     </form>
+    {%- endif %}
     <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.response_dismiss', rid=r.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
       <label class="sr-only" for="sdn-why-{{ r.id }}">Reason</label>
