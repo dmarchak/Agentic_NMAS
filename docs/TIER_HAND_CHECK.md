@@ -3221,3 +3221,35 @@ exited 3); H1 ran in its snapshot, so its result stands.
 builder exists yet, so what is shown is the decision reading the prompt (a refusal planted at
 `prompts.load` for Metrics alone stops its count and its call, and Logs' goes on), not a
 setting; the batch path (`ask_batch`) counts through `_prepared`, so it is R4's.**
+
+## 2026-10-29: the classifier's request built in one place for a call and a replay (C2023), by hand
+**What touches the tier.** C2023's replay half: what `closed_loop.classify_pack` sends to the
+provider (its gates and its request) moved, unchanged, into `closed_loop.prepare_classify`,
+which `classify_pack` calls and an evaluation's replay calls with a response-policy
+permutation (`pol`, from `closed_loop.policy_of`, the shaping `policy` now shares), so a
+replayed request is the call's byte for byte under that policy. `classify_pack` never passes a
+permutation; every preview and confirm still checks the network's own (`policy_refusal`).
+**The method:** as C2157's, on the change over 4e1be7a7: each mutant one exact text
+replacement, in its own `scripts/nmas-control` throwaway worktree, required to match once,
+then tests/test_sdn_policy.py, test_sdn_classify.py, test_sdn_source_egress.py,
+test_sdn_classify_normal.py, test_sdn_classify_cases.py, test_sdn_policy_replay.py,
+test_sdn_flow_effect.py and test_sdn_pack_bounds.py run whole in CI's interpreter, confined
+(`scratchpad/item3m/mut.py`). Baseline: 160 passed. No provider request was made: every send
+is the tests' fake.
+| mutant | result | killed by |
+| C0 canary: `prepare_classify` raises before its first gate | killed | 59 |
+| M1 the catalogue every action answering the rule, not the policy's | killed | 8 |
+| M2 a replay's permutation ignored (the network's own asked) | killed | 5 |
+| M3 a policy that cannot be read not refused | killed | 2 |
+| M4 the classification marking not refused | killed | 1, `test_a_network_carrying_a_classification_marking_sends_nothing` |
+| M5 the topology class off not refused | killed | 2 |
+| M6 a pack changed since it was kept not refused | killed | 1, `test_a_pack_changed_since_it_was_kept_is_refused_and_nothing_is_sent` |
+| M7 the call sends no data blocks | killed | 12 |
+| M8 the call sends no catalogue | killed | 10 |
+| M9 the answer checked under the default policy, not the one asked | killed | 2 |
+| M10 `policy_of` reads a value that is not a policy as one | killed | 3 |
+| M11 `policy_of`'s default the last action, not the first | killed | 4 |
+| M12 the subject without the detection's id | killed | 2 |
+| M13 a section with no detection not refused | survived, then killed | 1, `test_a_pack_whose_section_holds_no_detection_is_refused_and_nothing_is_sent`, added for it (baseline then 161 passed) |
+**The result: 14 mutants with the canary; every one killed, M13 by the test written when it
+survived (the refusal predates the move; no test held it).**

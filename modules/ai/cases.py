@@ -890,6 +890,108 @@ def sdn_classify_misses(expect: dict, got: dict) -> list:
     return out
 
 
+# ── classify_threat replayed under response policies (C2023; C1988 is why) ───────────────────
+
+#: The response policies a classifier prompt is replayed under (C2023): each a policy as the
+#: setting ``sdn_response_policy`` holds it (each rule's actions, the first its default;
+#: `closed_loop.policy_problems` passes every one), its name (letters, digits and _) and why it
+#: is asked. A prompt that names a fixed rule-to-action mapping (v1's "a scan is answered by
+#: dropping its source", C1988) answers outside some of them; one that takes the catalogue as
+#: sent answers inside every one. An unauthorised flow has one action that answers it, so it
+#: is ``remove_flow`` in each (a policy names at least one action a rule).
+SDN_POLICY_PERMUTATIONS = (
+    {"name": "sdn_lab",
+     "policy": {"scan": ["rate_limit_source"], "flood": ["rate_limit_source", "drop_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "the SDN lab's policy as the operator ordered it (tests/test_sdn_policy.py's "
+               "SDN_LAB), a scan rate-limited only: v1 answered drop_source for a scan under it "
+               "in 4 of 6 replays (C1988)"},
+    {"name": "drop_allowed",
+     "policy": {"scan": ["drop_source", "rate_limit_source"],
+                "flood": ["rate_limit_source", "drop_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "drop allowed: the policy where none is set (closed_loop.DEFAULT_POLICY), every "
+               "action that answers a rule allowed, a scan's default a drop; the permitting "
+               "control, where only an action answering another rule is outside"},
+    {"name": "flood_rate_limit_only",
+     "policy": {"scan": ["drop_source", "rate_limit_source"], "flood": ["rate_limit_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "a flood rate-limited only: a prompt that answers a flood by dropping its "
+               "source answers outside it"},
+    {"name": "drop_only",
+     "policy": {"scan": ["drop_source"], "flood": ["drop_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "the lab's mirror, a scan and a flood dropped only: a prompt that answers either "
+               "by rate-limiting (v1's \"a flood by rate-limiting its source\") answers outside "
+               "it"},
+    {"name": "auto_eligible_only",
+     "policy": {"scan": ["rate_limit_source"], "flood": ["rate_limit_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "AUTO-eligible actions restricted, as far as a policy can say it: AUTO's allowed "
+               "risk is not sent to the classifier (modes.decide applies it after the check), "
+               "so each source rule is narrowed to the one low-risk action whose harm on a "
+               "wrong source is bounded, a rate limit (C2147's harm is an unattended drop of "
+               "the wrong host); remove_flow (medium, a person's under AUTO at low) stays the "
+               "unauthorised flow's one action"},
+    {"name": "defaults_reversed",
+     "policy": {"scan": ["rate_limit_source", "drop_source"],
+                "flood": ["drop_source", "rate_limit_source"],
+                "unauthorised_flow": ["remove_flow"]},
+     "reason": "both source actions allowed with each rule's usual default swapped: nothing a "
+               "source rule answers is outside it, so it fails no run; it shows whether the "
+               "answer follows the catalogue's default mark rather than a fixed preference "
+               "(reported as not the default, deciding nothing)"},
+)
+
+
+def sdn_answer_action(answer) -> str:
+    """The action *answer* proposes (the model's answer: `ThreatAssessment`, or its fields as
+    the call's record keeps them), or "" when it names none."""
+    if answer is None:
+        return ""
+    got = answer.get("action_id") if isinstance(answer, dict) else getattr(answer, "action_id",
+                                                                          None)
+    got = getattr(got, "value", got)
+    return got if isinstance(got, str) else ""
+
+
+def sdn_policy_misses(answer, rule: str, asked_under: dict) -> list:
+    """What the model's *answer* to a detection of *rule* proposes outside the response policy
+    *asked_under* (a policy as the setting holds it: each rule's actions) that its request
+    carried (C2023): ``[]`` when the action is ``none`` (always offered: a person decides) or
+    one the policy allows for the rule. Judged on the model's own answer, before Mercury's
+    check (`closed_loop.check_classification` refuses the same answer, the fail-safe): the
+    measurement is whether the prompt follows the policy it is sent, not whether Mercury
+    catches it. No answer is a miss (a run with no answer fails, TESTING.md); a policy that is
+    not one allows nothing, as `closed_loop.policy` reads one (fails closed). Pure."""
+    from modules.sdn import closed_loop as CL
+
+    problems = CL.policy_problems(asked_under)
+    if problems:
+        return [f"the policy it was asked under {'; '.join(problems)}: no action is within it"]
+    if rule not in CL.RULES:
+        return [f"the rule {rule!r} is not a detection rule ({', '.join(CL.RULES)})"]
+    if answer is None:
+        return ["no answer: nothing to judge against the policy"]
+    action = sdn_answer_action(answer)
+    if action == CL.NO_ACTION:
+        return []
+    allowed = list(asked_under[rule])
+    if action not in allowed:
+        return [f"action {action or 'none named'} is outside the policy it was asked under for "
+                f"{rule}, which allows {', '.join(allowed)} (and none)"]
+    return []
+
+
+def sdn_took_default(answer, rule: str, asked_under: dict) -> bool:
+    """Whether *answer* proposes the policy's default for *rule* (its first action), or none:
+    reported beside the policy misses, deciding nothing (prompt v3 tells the model to take the
+    catalogue's default)."""
+    action = sdn_answer_action(answer)
+    allowed = (asked_under or {}).get(rule) or []
+    return bool(action) and (action == "none" or bool(allowed) and action == allowed[0])
+
+
 # ── A change record drafted from the deploy preview (PHASE8_PLAN 16.11 item 3) ───────────────
 
 #: Where a change-record case's captured configurations are (real captures, the fleet's).

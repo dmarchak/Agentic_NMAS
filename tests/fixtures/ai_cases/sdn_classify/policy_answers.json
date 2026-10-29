@@ -1,0 +1,213 @@
+{
+ "task": "sdn_classify",
+ "model": "claude-haiku-5-5",
+ "prompt": "sdn_classify.v3",
+ "network": "sdn_lab",
+ "about": "Real answers of the classifier, for the policy grader's tests (C2023; cases.sdn_policy_misses). Each is one AI call of the Lab 8 walk of 2026-10-27 on the network SDN lab (the loop's background call, prompt sdn_classify.v3 on the pin), as the NMAS host's AI call record kept it (read 2026-10-28, when recorded_walk.json was built from the same calls): `answer` is the call's response exactly as recorded, `catalogue_sent` the action ids of the catalogue its request carried (the response policy the call was asked under, for its rule, as sent), `case` the walk case built from the same detection. No edit. The walk ran under the SDN lab's policy (a scan rate-limited only; a flood rate-limited or dropped; an unauthorised flow removed).",
+ "answers": [
+  {
+   "call": "ai-4be2849575ba47e7",
+   "at": "2026-10-27T22:17:22Z",
+   "model": "claude-haiku-5-5",
+   "prompt": "sdn_classify.v3",
+   "rule": "scan",
+   "case": {
+    "file": "recorded_walk.json",
+    "n": 1,
+    "key": "walk-scan-s1"
+   },
+   "catalogue_sent": [
+    "rate_limit_source",
+    "none"
+   ],
+   "answer": {
+    "reasoning": "The scan rule fired on source 192.0.2.1 reaching 255 distinct destination ports on 192.0.2.3 within 60 seconds, against a threshold of 20. The flows shown match transport ports (L4 granularity), each for a distinct tcp_dst from 1 to 50 in the subset, each with 0 packets and 0 bytes, which fits small probes that the switch has installed for each port. This is a port scan, and the catalogue's default response for scans is rate-limiting the source, which fits the evidence.",
+    "threat_detected": true,
+    "threat_type": "port_scan",
+    "severity": "medium",
+    "affected_devices": [
+     "0000000000000001",
+     "192.0.2.1",
+     "192.0.2.3"
+    ],
+    "recommended_action": "Rate-limit traffic from 192.0.2.1 so the scan is throttled while a person reviews the source.",
+    "action_id": "rate_limit_source",
+    "parameters": {
+     "source": "192.0.2.1",
+     "flow": "",
+     "hard_timeout": 0,
+     "rate": 0,
+     "unit": "kbps",
+     "burst": 0
+    },
+    "evidence_refs": [
+     "detection:scan:0000000000000001",
+     "coverage:0000000000000001",
+     "flow:lab-ryu:0000000000000001:t0:p2:66b451cb89",
+     "flow:lab-ryu:0000000000000001:t0:p2:1d2e9cef2d"
+    ]
+   }
+  },
+  {
+   "call": "ai-a123895c6afc4a1c",
+   "at": "2026-10-27T23:30:01Z",
+   "model": "claude-haiku-5-5",
+   "prompt": "sdn_classify.v3",
+   "rule": "flood",
+   "case": {
+    "file": "recorded_walk.json",
+    "n": 8,
+    "key": "walk-flood-2-s2"
+   },
+   "catalogue_sent": [
+    "rate_limit_source",
+    "drop_source",
+    "none"
+   ],
+   "answer": {
+    "reasoning": "Port 3 of switch 0000000000000002 received 1784 packets a second and about 2.7 MB a second, against a baseline near 1.2 pps, a rise of roughly 1500x. The flow with cookie 0 matches UDP from 192.0.2.2 to 192.0.2.4 port 5001 and outputs to port 2, with 60375 packets, so this is one source sending a sustained high-rate UDP stream to a single destination, not a scan. Bytes per packet are about 1500 (2695768/1784), a large transfer pattern consistent with a flood. The default action is rate-limiting the source, which fits the flood rule.",
+    "threat_detected": true,
+    "threat_type": "flood",
+    "severity": "high",
+    "affected_devices": [
+     "0000000000000002",
+     "192.0.2.2",
+     "192.0.2.4"
+    ],
+    "recommended_action": "Rate-limit traffic from 192.0.2.2 on switch 0000000000000002 to contain the UDP flood toward 192.0.2.4 using the network's default rate.",
+    "action_id": "rate_limit_source",
+    "parameters": {
+     "source": "192.0.2.2",
+     "flow": "",
+     "hard_timeout": 0,
+     "rate": 0,
+     "unit": "kbps",
+     "burst": 0
+    },
+    "evidence_refs": [
+     "port:lab-ryu:0000000000000002:3",
+     "flow:lab-ryu:0000000000000002:t0:p2:bcf21fd560"
+    ]
+   }
+  },
+  {
+   "call": "ai-96116b6be8d64cfa",
+   "at": "2026-10-27T23:08:58Z",
+   "model": "claude-haiku-5-5",
+   "prompt": "sdn_classify.v3",
+   "rule": "unauthorised_flow",
+   "case": {
+    "file": "recorded_walk.json",
+    "n": 3,
+    "key": "walk-unauthorised-s1"
+   },
+   "catalogue_sent": [
+    "remove_flow",
+    "none"
+   ],
+   "answer": {
+    "reasoning": "Switch 0000000000000001 carries a flow with cookie 0x000000000000bad1, which is neither Mercury's recorded cookies nor the controller's declared own cookie (0x0). The flow matches IPv4 from 192.0.2.1 to 192.0.2.3 and forwards to NORMAL, so it diverts traffic through the normal pipeline outside Mercury's control. It has 476 packets and 749908 bytes over 7 seconds, about 1575 bytes per packet, which indicates real bulk traffic rather than discovery chatter. The catalogue's default for this rule is remove_flow, which deletes exactly this flow and restores Mercury's displaced flow if any.",
+    "threat_detected": true,
+    "threat_type": "unauthorised_flow",
+    "severity": "medium",
+    "affected_devices": [
+     "0000000000000001",
+     "192.0.2.1",
+     "192.0.2.3"
+    ],
+    "recommended_action": "Remove the unauthorised flow with cookie 0x000000000000bad1 from switch 0000000000000001 and verify the traffic path between 192.0.2.1 and 192.0.2.3 is as intended.",
+    "action_id": "remove_flow",
+    "parameters": {
+     "source": "",
+     "flow": "flow:lab-ryu:0000000000000001:t0:p300:a95b0cc35f",
+     "hard_timeout": 0,
+     "rate": 0,
+     "unit": "kbps",
+     "burst": 0
+    },
+    "evidence_refs": [
+     "flow:lab-ryu:0000000000000001:t0:p300:a95b0cc35f",
+     "coverage:0000000000000001"
+    ]
+   }
+  },
+  {
+   "call": "ai-31d44805c50045a4",
+   "at": "2026-10-27T23:24:49Z",
+   "model": "claude-haiku-5-5",
+   "prompt": "sdn_classify.v3",
+   "rule": "scan",
+   "case": {
+    "file": "recorded_walk.json",
+    "n": 14,
+    "key": "walk-fp-6"
+   },
+   "catalogue_sent": [
+    "rate_limit_source",
+    "none"
+   ],
+   "answer": {
+    "reasoning": "Port 2 of switch 0000000000000001 received 1322.8 packets a second (about 2.0 MB/s, roughly 1512 bytes per packet), which is a large-transfer pattern rather than the small ~60-byte probes a port scan produces. The three flows from in_port 2 are heavy Ethernet-only flows (one with 197,497 packets and about 9 GB) to hosts 00:..:03 and 00:..:04, and the coverage shows the switch cannot show per-port destinations, so a scan cannot be established. The rule's fallback named this a scan, but the evidence shows a high-rate bulk flow, which the catalogue answers as a flood; the default rate-limit fits, but the source address is not named in the detection, so no source-based action can be built and none is proposed.",
+    "threat_detected": true,
+    "threat_type": "flood",
+    "severity": "high",
+    "affected_devices": [
+     "0000000000000001"
+    ],
+    "recommended_action": "A person should confirm whether the heavy traffic arriving on port 2 of switch 0000000000000001 is legitimate and identify its source before any rate-limit or drop is applied.",
+    "action_id": "none",
+    "parameters": {
+     "source": "",
+     "flow": "",
+     "hard_timeout": 0,
+     "rate": 0,
+     "unit": "kbps",
+     "burst": 0
+    },
+    "evidence_refs": [
+     "port:lab-ryu:0000000000000001:2",
+     "flow:lab-ryu:0000000000000001:t0:p1:919c9ff809",
+     "flow:lab-ryu:0000000000000001:t0:p1:ad71fe31c2",
+     "coverage:0000000000000001"
+    ]
+   }
+  },
+  {
+   "call": "ai-6969a72b9a144cd0",
+   "at": "2026-10-27T23:33:37Z",
+   "model": "claude-haiku-5-5",
+   "prompt": "sdn_classify.v3",
+   "rule": "scan",
+   "case": {
+    "file": "recorded_walk.json",
+    "n": 18,
+    "key": "walk-fp-10"
+   },
+   "catalogue_sent": [
+    "rate_limit_source",
+    "none"
+   ],
+   "answer": {
+    "reasoning": "Port 3 received 19720 packets a second, about 66 bytes per packet (1301527 bytes/s over 19720 pps), and transmitted 30690 pps. The detection rests only on a packet rate, and the coverage shows the flows match only IP addresses with no transport port, so a per-port scan cannot be confirmed. The flows show two ordinary forwarding entries from distinct hosts, and no single source address is named by the rule, so no source-based action can be built. The rate is large, but the evidence alone does not establish a scan or flood from one identifiable source.",
+    "threat_detected": false,
+    "threat_type": "none",
+    "severity": "low",
+    "affected_devices": [],
+    "recommended_action": "No automated action; a person should check port 3 traffic on the switch and the sources sending it before deciding anything.",
+    "action_id": "none",
+    "parameters": {
+     "source": "",
+     "flow": "",
+     "hard_timeout": 0,
+     "rate": 0,
+     "unit": "kbps",
+     "burst": 0
+    },
+    "evidence_refs": [
+     "port:lab-ryu:0000000000000001:3",
+     "coverage:0000000000000001"
+    ]
+   }
+  }
+ ]
+}

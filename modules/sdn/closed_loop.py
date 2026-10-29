@@ -605,56 +605,24 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     ``classified``, ``withheld``, ``limits``, ``policy`` or ``couldnt_classify``).
 
     *took* is where the step's time went, in seconds by *clock* (C1970, the loop's timing
-    line): ``prepare`` (the hash, the marking, the limits, the policy and the request's
-    blocks), ``gateway`` (`gateway.ask` whole: its gates, the provider's token count, the caps'
-    reservation, the send and the record) and ``check`` (the answer checked in code and its use
-    recorded); a stage the step did not reach is absent."""
-    from modules import evidence_pack as EP
-    from modules.ai import calls, egress_classes, gateway, profiles
-    from modules.sdn import flow_ops
+    line): ``prepare`` (`prepare_classify`: the hash, the marking, the limits, the policy and
+    the request's blocks), ``gateway`` (`gateway.ask` whole: its gates, the provider's token
+    count, the caps' reservation, the send and the record) and ``check`` (the answer checked in
+    code and its use recorded); a stage the step did not reach is absent."""
+    from modules.ai import calls, gateway, profiles
 
     began = clock()
     took = {}
-    pack_id = (pack or {}).get("id") or ""
-    out = {"ok": False, "error": "", "detail": "", "call_id": "", "cost_usd": 0.0,
-           "classification": None, "action": "", "params": {}, "pack_id": pack_id,
-           "took": took}
-    if intact and not EP.intact(pack):
-        return dict(out, error="changed", detail="the evidence pack's hash does not match: it "
-                    "changed since it was kept, so it is not classified; nothing was sent")
-    marked = egress_classes.classification_marking(network)
-    if marked:
-        return dict(out, error="classified", detail=f"{network} carries the classification "
-                    f"marking {marked!r}, which forces AI off; nothing was sent")
-    gate = egress_classes.topology_allowed(network)
-    if not gate["allowed"]:
-        return dict(out, error="withheld", detail="the detection's flows and port rates are the "
-                    f"topology class, and {gate['why']}; nothing was sent")
-    limits = flow_ops.settings_of(network)
-    if not limits["ok"]:
-        return dict(out, error="limits", detail=f"{limits['error']}; nothing was sent")
-    pol = policy(network)
-    if not pol["ok"]:
-        return dict(out, error="policy", detail=f"{pol['error']}; nothing was sent")
-    section = _sdn_section(pack)
-    sent = sent_evidence(section)
-    if not sent["detection"]:
-        return dict(out, error="no_pack", detail="the pack holds no SDN detection to classify; "
-                    "nothing was sent")
-    rule = (detection or {}).get("rule") or sent["detection"].get("rule")
-    allowed = (pol["rules"].get(rule) or {}).get("allowed") or []
-    schema = ThreatAssessment
-    v = limits["values"]
-    data = request_blocks(sent, section, v)
-    context = {"catalogue": json.dumps(catalogue_for_ai(allowed), sort_keys=True,
-                                       separators=(",", ":"))}
-    subject = {"kind": "sdn_detection", "id": (detection or {}).get("key") or "",
-               "rule": (detection or {}).get("rule") or "", "devices": []}
+    prep = prepare_classify(network, detection, pack, intact=intact)
+    if "refused" in prep:
+        return dict(prep["refused"], took=took)
+    out = dict(prep["out"], took=took)
+    sent, v, pol, subject = prep["sent"], prep["limits"], prep["pol"], prep["subject"]
     asking = clock()
     took["prepare"] = round(asking - began, 3)
-    got = gateway.ask(CLASSIFY_FEATURE, tuple(prompt), schema, data, actor=actor,
-                      trigger=trigger, context=context, send=send, today=today,
-                      subject=subject, network=network)
+    got = gateway.ask(CLASSIFY_FEATURE, tuple(prompt), prep["schema"], prep["parts"],
+                      actor=actor, trigger=trigger, context=prep["context"], send=send,
+                      today=today, subject=subject, network=network)
     checking = clock()
     took["gateway"] = round(checking - asking, 3)
     out.update(call_id=got.get("call_id", ""), cost_usd=got.get("cost_usd", 0.0))
@@ -678,6 +646,65 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
                  model=profiles.TASKS[CLASSIFY_FEATURE]["model"],
                  trigger=(trigger or {}).get("kind", ""), params=params)
     return dict(out, ok=True, classification=shown, action=action, params=params)
+
+
+def prepare_classify(network: str, detection: dict, pack: dict, *, intact: bool = True,
+                     pol: dict = None) -> dict:
+    """`classify_pack`'s steps before its call, the one code path a call and an evaluation's
+    batched request share (C2023: a prompt replayed under several response policies): the
+    pack's hash (*intact*), the classification marking, the topology class, the network's
+    response limits and its response policy, then the request's parts. ``{"refused":
+    <classify_pack's refusal, nothing sent>}``, or ``{"out", "schema", "parts", "context",
+    "subject", "sent", "limits", "pol", "rule", "allowed"}``: *parts* the data blocks
+    (`request_blocks`), *context* the catalogue the policy allows for the detection's rule
+    (`catalogue_for_ai`: **the policy is part of what the classifier is sent**), *limits* the
+    network's values. *pol* (`policy_of` of a policy value) replaces the network's policy for
+    an evaluation's replay; `classify_pack` never passes it, so a call is always asked under
+    the network's own, and every preview and confirm checks the network's own
+    (`policy_refusal`)."""
+    from modules import evidence_pack as EP
+    from modules.ai import egress_classes
+    from modules.sdn import flow_ops
+
+    pack_id = (pack or {}).get("id") or ""
+    out = {"ok": False, "error": "", "detail": "", "call_id": "", "cost_usd": 0.0,
+           "classification": None, "action": "", "params": {}, "pack_id": pack_id}
+
+    def refused(error, detail):
+        return {"refused": dict(out, error=error, detail=detail)}
+
+    if intact and not EP.intact(pack):
+        return refused("changed", "the evidence pack's hash does not match: it changed since "
+                       "it was kept, so it is not classified; nothing was sent")
+    marked = egress_classes.classification_marking(network)
+    if marked:
+        return refused("classified", f"{network} carries the classification marking "
+                       f"{marked!r}, which forces AI off; nothing was sent")
+    gate = egress_classes.topology_allowed(network)
+    if not gate["allowed"]:
+        return refused("withheld", "the detection's flows and port rates are the topology "
+                       f"class, and {gate['why']}; nothing was sent")
+    limits = flow_ops.settings_of(network)
+    if not limits["ok"]:
+        return refused("limits", f"{limits['error']}; nothing was sent")
+    pol = policy(network) if pol is None else pol
+    if not pol["ok"]:
+        return refused("policy", f"{pol['error']}; nothing was sent")
+    section = _sdn_section(pack)
+    sent = sent_evidence(section)
+    if not sent["detection"]:
+        return refused("no_pack", "the pack holds no SDN detection to classify; nothing was "
+                       "sent")
+    rule = (detection or {}).get("rule") or sent["detection"].get("rule")
+    allowed = (pol["rules"].get(rule) or {}).get("allowed") or []
+    v = limits["values"]
+    return {"out": out, "schema": ThreatAssessment, "sent": sent, "limits": v, "pol": pol,
+            "rule": rule, "allowed": list(allowed),
+            "parts": request_blocks(sent, section, v),
+            "context": {"catalogue": json.dumps(catalogue_for_ai(allowed), sort_keys=True,
+                                                separators=(",", ":"))},
+            "subject": {"kind": "sdn_detection", "id": (detection or {}).get("key") or "",
+                        "rule": (detection or {}).get("rule") or "", "devices": []}}
 
 
 #: The least severity an unauthorised flow's effect allows (C2021; the operator's ruling of
@@ -1016,13 +1043,22 @@ def policy(network: str) -> dict:
         return {"ok": False, "rules": {},
                 "error": (f"{network}'s {POLICY_KEY} could not be read ({type(exc).__name__}: "
                           f"{exc}), so no response action is allowed")}
-    problems = policy_problems(got)
+    return policy_of(got, network)
+
+
+def policy_of(value, network: str = "") -> dict:
+    """*value* (a policy as the setting holds it: each rule's actions, the default first) as
+    `policy` answers it, the one shaping of it (`policy` for a network's own; an evaluation's
+    replay under a permutation, C2023): ``{"ok", "error", "rules"}``. Not a policy
+    (`policy_problems`) fails closed: *ok* False, no action allowed for any rule."""
+    problems = policy_problems(value)
     if problems:
+        whose = f"{network}'s {POLICY_KEY}" if network else f"the {POLICY_KEY}"
         return {"ok": False, "rules": {},
-                "error": (f"{network}'s {POLICY_KEY} {'; '.join(problems)}, so no response "
+                "error": (f"{whose} {'; '.join(problems)}, so no response "
                           "action is allowed until it is set again (SDN › Responses, the rules)")}
     return {"ok": True, "error": "",
-            "rules": {r: {"allowed": list(got[r]), "default": got[r][0]} for r in RULES}}
+            "rules": {r: {"allowed": list(value[r]), "default": value[r][0]} for r in RULES}}
 
 
 def policy_refusal(network: str, rule: str, action: str, pol: dict = None) -> str:
