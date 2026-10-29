@@ -364,11 +364,14 @@ class Counter:
     (by digest). *count* replaces the adapter's count (tests)."""
 
     def __init__(self, model: str, key: str = "", *, allowed: bool = True, why_not: str = "",
-                 count=None, feature: str = ""):
+                 count=None, feature: str = "", prompt: str = ""):
         self.model, self._key, self.allowed, self.why_not = model, key, allowed, why_not
         self._count = count
         #: The task a usage-limit refusal of the count is recorded against (C2096).
         self.feature = feature
+        #: The prompt the counted requests are built from, ``<name>.v<N>`` as a call's row
+        #: names it (C2157): the builder, where two builders share one task (`nl_query`).
+        self.prompt = prompt
         self._seen = {}
         self.asked = 0
         #: The most tokens a character this counter's counts measured (None before one).
@@ -420,7 +423,7 @@ class Counter:
             # The count is the first request a call makes, so it is often the one that meets
             # the provider's usage limit (C2096): held here as a send's refusal is, and said
             # (`held`), so the call is refused for the limit, never by the fallback's size.
-            hold = provider_limit.record(exc, feature=self.feature)
+            hold = provider_limit.record(exc, feature=self.feature, prompt=self.prompt)
             out = estimated(f"the provider's count was refused for its usage limit "
                             f"({exc.kind}); the fallback over-estimate is used")
             out["held"] = provider_limit.said(hold)["words"]
@@ -438,13 +441,20 @@ class Counter:
         return dict(out)
 
 
-def counter(feature: str, *, actor: str, trigger: dict = None, count=None) -> Counter:
+def counter(feature: str, prompt: tuple, *, actor: str, trigger: dict = None,
+            count=None) -> Counter:
     """A press's `Counter` for a context-budget selector (`nl_query.select_context`,
     `explain.budgeted`), run before `ask`: it counts only where the call itself would get as
     far as being sent (its trigger, hosted AI allowed, a background feature on, a key, a
-    pinned task); otherwise it estimates, saying why, and sends nothing. `ask` asks its own
-    gates again whatever this said."""
+    pinned task, a registered *prompt*); otherwise it estimates, saying why, and sends
+    nothing. `ask` asks its own gates again whatever this said.
+
+    *prompt* is ``(name, version)``, the one the call will `ask` with (C2157): two builders
+    share one task (Ask in words' Metrics and Logs, `nl_query`), so the prompt is what names
+    the builder here, as it is on a call's row. The Counter carries it, and a usage-limit
+    refusal of its count records it."""
     pin = profiles.TASKS.get(feature) or {}
+    named_prompt = f"{prompt[0]}.v{prompt[1]}"
     named = triggers.check(trigger, actor, feature)
     why = "" if named["ok"] else named["why"]
     if not why and not hosted_allowed()["allowed"]:
@@ -461,8 +471,16 @@ def counter(feature: str, *, actor: str, trigger: dict = None, count=None) -> Co
             key = ""
     if not why and not pin:
         why = f"{feature!r} is not a task profiles.TASKS pins"
+    if not why:
+        # The prompt, as `ask` refuses it (`prompt`): a builder whose prompt cannot be sent
+        # is not counted either. A switch per builder (C1953 part 2) is judged here, by it.
+        try:
+            prompts.load(*prompt)
+        except prompts.PromptError as exc:
+            why = str(exc)
     return Counter(pin.get("model", ""), key, allowed=not why,
-                   why_not=f"not counted: {why}" if why else "", count=count, feature=feature)
+                   why_not=f"not counted: {why}" if why else "", count=count, feature=feature,
+                   prompt=named_prompt)
 
 
 def _limit_fields(hold: dict) -> dict:
@@ -637,7 +655,8 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
     # passed; the fallback over-estimate when the count is not had, said. Both on the row.
-    measured = Counter(model, key, count=count, feature=feature).measure(body, masked=True)
+    measured = Counter(model, key, count=count, feature=feature,
+                       prompt=row["prompt"]).measure(body, masked=True)
     if measured.get("held"):
         # The count met the provider's usage limit (C2096): refused for it, as a send's
         # refusal would be, never judged by the fallback's size.

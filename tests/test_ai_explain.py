@@ -541,6 +541,26 @@ def test_v6_fits_its_budget_by_the_providers_count(world, monkeypatch):
         got["context"]
 
 
+def test_v6_s_count_is_asked_with_the_presss_own_prompt(world, monkeypatch):
+    """C2157: the counter v6's context budget measures by carries the prompt the press asks
+    with (v6, a measurement's, never the served `PROMPT`), as the call's row names it."""
+    made = []
+    real = gateway.counter
+
+    def counter(feature, prompt, **kw):
+        c = real(feature, prompt, **kw)
+        made.append((feature, c.prompt))
+        return c
+    monkeypatch.setattr(gateway, "counter", counter)
+    world.answer = dict(_answer(world.pack), needs=[])
+    with pressed_by("operator@example.com"):
+        explain.explain_pack(world.pack, actor="operator@example.com",
+                             trigger=triggers.person("operator@example.com"),
+                             send=world.send, today="2026-10-25", prompt=V6_PROMPT)
+    assert V6_PROMPT != explain.PROMPT
+    assert made == [(explain.FEATURE, "explain.v6")], made
+
+
 def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, monkeypatch):
     """C1780: v6's first call says nothing was looked up; an answer naming a need is looked up
     once (`needs.run`) and asked once more, the follow-up's answer the one checked and shown,

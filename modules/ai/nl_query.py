@@ -1098,7 +1098,8 @@ def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=No
                              context_levels(list_name, "metrics"),
                              profiles.TASKS[FEATURE]["max_prompt_tokens"],
                              offered=offered if prompt[1] >= 10 else None,
-                             counter=gateway.counter(FEATURE, actor=actor, trigger=trigger))
+                             counter=gateway.counter(FEATURE, prompt, actor=actor,
+                                                     trigger=trigger))
         context_said = {k: sel[k] for k in ("level", "dropped", "estimate", "budget")}
         if "offered" in sel:
             # v10: the answer is held to the metrics sent, the offer's own count said.

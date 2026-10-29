@@ -26,8 +26,9 @@ limit now.
 
 **The store** (``ai_provider_limit.json``, owner-only from creation: `filestore.write_atomic`'s
 ``mkstemp`` is 0600, replaced atomically under `filestore.PathLock`) holds no request, answer
-or key: ``{"since", "until", "recheck_at", "said", "status", "call_id", "feature"}``, *said*
-the provider's own words, masked and cut by the adapter.
+or key: ``{"since", "until", "recheck_at", "said", "status", "call_id", "feature", "prompt"}``,
+*said* the provider's own words, masked and cut by the adapter (*prompt* a refused count's,
+C2157; empty for a send, whose row names it; a hold written before it has none, and reads).
 
 **An unreadable store is read as no hold**, logged, and replaced by the next refusal: the
 store only saves asking the provider, which stays the authority, and a refused request is not
@@ -136,10 +137,12 @@ def holding(now=None):
     return hold
 
 
-def record(exc, *, call_id: str = "", feature: str = "", now=None) -> dict:
+def record(exc, *, call_id: str = "", feature: str = "", prompt: str = "", now=None) -> dict:
     """Hold the refusal *exc* (an `anthropic_adapter.WorkspaceLimit`): until the moment it
     names, else for `RECHECK_S`. Returns the hold; a store that cannot be written is logged,
-    and the hold returned all the same (this call's words still say it)."""
+    and the hold returned all the same (this call's words still say it). *prompt* is a
+    refused count's (``<name>.v<N>``, C2157: a count has no call, so no row to name its
+    builder); a send's is its row's, through *call_id*."""
     from modules import filestore
 
     t = clock() if now is None else now
@@ -155,7 +158,7 @@ def record(exc, *, call_id: str = "", feature: str = "", now=None) -> dict:
             "recheck_at": until if until else _iso(t + RECHECK_S),
             "said": str(getattr(exc, "said", "") or exc)[:300],
             "status": int(getattr(exc, "status", 0) or 0), "call_id": call_id,
-            "feature": feature}
+            "feature": feature, "prompt": prompt}
     path = _path()
     try:
         with filestore.PathLock(path):

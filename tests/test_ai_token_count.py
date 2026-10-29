@@ -304,16 +304,17 @@ def test_a_candidate_far_over_by_the_measured_ratio_is_skipped_uncounted():
 def test_a_counter_whose_call_could_not_be_sent_counts_nothing_and_says_why(world):
     world.settings.pop("ai_hosted")
     with pressed_by(ACTOR):
-        c = gateway.counter("nl_query", actor=ACTOR, trigger=triggers.person(ACTOR),
+        c = gateway.counter("nl_query", nl_query.PROMPT, actor=ACTOR,
+                            trigger=triggers.person(ACTOR),
                             count=lambda body, key: pytest.fail("counted"))
     got = c.measure(BODY, 1)
     assert got["how"] == "estimated" and got["why"].startswith("not counted: hosted AI is off")
     world.settings["ai_hosted"] = {"by": ACTOR, "at": "2026-10-25T05:00:00Z", "reason": "r"}
     with pressed_by(ACTOR):
-        assert gateway.counter("nl_query", actor=ACTOR,
+        assert gateway.counter("nl_query", nl_query.PROMPT, actor=ACTOR,
                                trigger=triggers.person(ACTOR)).allowed is True
     with pressed_by(ACTOR):
-        c = gateway.counter("nl_query", actor="someone-else@example.com",
+        c = gateway.counter("nl_query", nl_query.PROMPT, actor="someone-else@example.com",
                             trigger=triggers.person(ACTOR),
                             count=lambda body, key: pytest.fail("counted"))
     assert c.allowed is False and c.why_not.startswith("not counted: the call's actor")
@@ -322,7 +323,8 @@ def test_a_counter_whose_call_could_not_be_sent_counts_nothing_and_says_why(worl
 def test_a_counter_without_a_key_or_with_its_feature_off_counts_nothing(world, monkeypatch):
     monkeypatch.setattr(gateway, "_api_key", lambda: "")
     with pressed_by(ACTOR):
-        c = gateway.counter("nl_query", actor=ACTOR, trigger=triggers.person(ACTOR),
+        c = gateway.counter("nl_query", nl_query.PROMPT, actor=ACTOR,
+                            trigger=triggers.person(ACTOR),
                             count=lambda body, key: pytest.fail("counted"))
     got = c.measure(BODY, 1)
     assert got["how"] == "estimated" and got["why"] == (
@@ -334,7 +336,7 @@ def test_a_counter_without_a_key_or_with_its_feature_off_counts_nothing(world, m
          "finding": {"kind": "detection", "id": "d"}}
     monkeypatch.setattr(triggers, "check", lambda trigger, actor, task: {
         "ok": True, "why": "", "trigger": t})
-    c = gateway.counter("sdn_classify", actor="job:j", trigger=t,
+    c = gateway.counter("sdn_classify", ("sdn_classify", 3), actor="job:j", trigger=t,
                         count=lambda body, key: pytest.fail("counted"))
     assert c.allowed is False and c.why_not == "not counted: the feature is off, planted"
 
@@ -400,3 +402,109 @@ def test_explains_budget_keeps_what_the_count_fits_where_the_fallback_trims(monk
                         count=lambda body, key: A.Count(tokens=budget))
     got = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6], counter=c)
     assert got["said"]["estimate"] == budget
+
+
+# ── The builder at the count (C2157) ───────────────────────────────────────────────────────
+#
+# Ask in words' Metrics and Logs share one task (`nl_query`), so a switch per feature a person
+# presses (C1953 part 2) needs the builder where the gateway decides. A call's builder is its
+# prompt (`ask`'s row names it); the count before the call now takes the same prompt.
+
+def _named(prompt):
+    return f"{prompt[0]}.v{prompt[1]}"
+
+
+def test_the_counter_names_the_builder_by_its_prompt_where_two_share_a_task(world):
+    """Metrics' and Logs' counters on the one task are told apart by the prompt each carries,
+    in the form a call's row names it."""
+    assert nl_query.PROMPT[0] != nl_query.PROMPT_LOGS[0]
+    with pressed_by(ACTOR):
+        metrics = gateway.counter("nl_query", nl_query.PROMPT, actor=ACTOR,
+                                  trigger=triggers.person(ACTOR))
+        logs = gateway.counter("nl_query", nl_query.PROMPT_LOGS, actor=ACTOR,
+                               trigger=triggers.person(ACTOR))
+    assert (metrics.feature, metrics.prompt) == ("nl_query", _named(nl_query.PROMPT))
+    assert (logs.feature, logs.prompt) == ("nl_query", _named(nl_query.PROMPT_LOGS))
+    assert metrics.allowed is True and logs.allowed is True
+
+
+def test_a_builder_refused_at_the_decision_is_not_counted_and_the_other_is(world, monkeypatch):
+    """The decision `counter` makes reads the prompt: a refusal planted for the Metrics
+    builder's prompt alone stops Metrics' count, no provider request made, while Logs' count
+    on the same task is asked; and `ask` refuses the same builder, nothing sent."""
+    from modules.ai import prompts
+    real = prompts.load
+
+    def load(name, version):
+        if name == nl_query.PROMPT[0]:
+            raise prompts.PromptError(f"{name} is switched off, planted")
+        return real(name, version)
+    monkeypatch.setattr(prompts, "load", load)
+    asked = []
+
+    def count(body, key):
+        asked.append(body)
+        return A.Count(tokens=5)
+    with pressed_by(ACTOR):
+        metrics = gateway.counter("nl_query", nl_query.PROMPT, actor=ACTOR,
+                                  trigger=triggers.person(ACTOR), count=count)
+        logs = gateway.counter("nl_query", nl_query.PROMPT_LOGS, actor=ACTOR,
+                               trigger=triggers.person(ACTOR), count=count)
+    assert metrics.allowed is False
+    assert metrics.why_not == f"not counted: {nl_query.PROMPT[0]} is switched off, planted"
+    got = metrics.measure(BODY, 1)
+    assert got["how"] == "estimated" and asked == [], "a refused count reached the provider"
+    assert logs.allowed is True and logs.measure(BODY, 1)["how"] == "counted"
+    assert len(asked) == 1
+    with pressed_by(ACTOR):
+        refused = gateway.ask("nl_query", nl_query.PROMPT, nl_query.SCHEMA_OF[
+            nl_query.PROMPT[1]], {"question": "q"}, actor=ACTOR,
+            trigger=triggers.person(ACTOR), send=world.send, today="2026-10-25")
+    assert refused["error"] == "prompt" and world.sent == [], refused
+
+
+def test_a_count_for_a_prompt_that_cannot_be_sent_asks_nothing(world):
+    """As `ask` refuses an unregistered prompt before anything is sent, the count for it is
+    not asked either."""
+    with pressed_by(ACTOR):
+        c = gateway.counter("nl_query", ("nl_metrics", 999), actor=ACTOR,
+                            trigger=triggers.person(ACTOR),
+                            count=lambda body, key: pytest.fail("counted"))
+    assert c.allowed is False and c.prompt == "nl_metrics.v999"
+    assert c.why_not == ("not counted: no prompt nl_metrics v999: prompts/nl_metrics.v999.md "
+                         "is absent")
+    assert c.measure(BODY, 1)["how"] == "estimated"
+
+
+def test_a_count_refused_for_the_usage_limit_records_the_builders_prompt(world):
+    """A count has no call, so no row names its builder: the usage limit's hold it records
+    names the prompt beside the task (a send's hold names its call, whose row has it)."""
+    from modules.ai import provider_limit
+
+    def limited(body, key):
+        raise A.WorkspaceLimit("HTTP 400: limit", until="2099-01-01T00:00:00Z", said="x",
+                               status=400)
+    with pressed_by(ACTOR):
+        c = gateway.counter("nl_query", nl_query.PROMPT_LOGS, actor=ACTOR,
+                            trigger=triggers.person(ACTOR), count=limited)
+    assert c.measure(BODY, 1)["held"]
+    hold = provider_limit.read()["hold"]
+    assert (hold["feature"], hold["prompt"]) == ("nl_query", _named(nl_query.PROMPT_LOGS))
+
+
+def test_the_calls_own_count_carries_its_prompt(world, monkeypatch):
+    """`ask`'s own count is a Counter too, and carries the call's prompt."""
+    seen = []
+    real = gateway.Counter.measure
+
+    def measure(self, body, budget=None, **kw):
+        seen.append((self.feature, self.prompt))
+        return real(self, body, budget, **kw)
+    monkeypatch.setattr(gateway.Counter, "measure", measure)
+    world.answer = PING
+    with pressed_by(ACTOR):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor=ACTOR, trigger=triggers.person(ACTOR), send=world.send,
+                          today="2026-10-25")
+    assert got["ok"] is True, got
+    assert seen == [("connection_check", "ping.v1")]

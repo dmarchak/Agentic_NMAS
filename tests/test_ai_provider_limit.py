@@ -382,14 +382,15 @@ def test_the_store_is_owner_only_and_holds_no_request_or_key(world, clock):
     with open(provider_limit._path(), encoding="utf-8") as fh:
         stored = json.load(fh)
     assert set(stored) == {"since", "until", "recheck_at", "said", "status", "call_id",
-                           "feature"}
+                           "feature", "prompt"}
     assert KEY not in json.dumps(stored)
 
 
 def test_a_selector_counts_nothing_while_the_limit_holds(world, clock):
     _explain(Provider(_limited()).send)
     with pressed_by(ACTOR):
-        c = gateway.counter("explain", actor=ACTOR, trigger=triggers.person(ACTOR))
+        c = gateway.counter("explain", explain.PROMPT, actor=ACTOR,
+                            trigger=triggers.person(ACTOR))
     assert c.allowed is False and c.why_not == f"not counted: {WORDS}"
 
 

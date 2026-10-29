@@ -1385,3 +1385,27 @@ def test_v10_fills_and_records_the_one_form_and_v9_is_as_it_was(world, monkeypat
     got = _ask(world, "input errors on r1", prompt=("nl_metrics", 9))
     assert got["ok"] is True and got["values"]["op"] == ["rate:5m", "sum:"], got
     assert "answered" not in got
+
+
+def test_the_metrics_count_is_asked_with_the_presss_own_prompt(world, monkeypatch):
+    """C2157: the counter a Metrics press's context budget measures by carries the prompt the
+    press asks with (a measurement's v9 as much as the served one), so the gateway's decision
+    on the count sees the builder, as `ask`'s row does."""
+    from modules.ai import prompts
+    made = []
+    real = gateway.counter
+
+    def counter(feature, prompt, **kw):
+        c = real(feature, prompt, **kw)
+        made.append((feature, c.prompt))
+        return c
+    monkeypatch.setattr(gateway, "counter", counter)
+    monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
+                        dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=12000))
+    world.answer = _v8_choices()
+    for prompt in (("nl_metrics", 9), nl_query.PROMPT):
+        made.clear()
+        _ask(world, prompt=prompt)
+        assert made == [(nl_query.FEATURE, f"{prompt[0]}.v{prompt[1]}")], (prompt, made)
+        # The request sent is that prompt's: the counter and the call name one builder.
+        assert world.sent[-1]["body"]["system"][0]["text"] == prompts.load(*prompt)["text"]

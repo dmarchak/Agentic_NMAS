@@ -1157,7 +1157,8 @@ def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> di
         # The context budget rule: what is sent fits the task's bound, what was dropped said
         # in the prompt ("omitted for size") and kept with the answer.
         sel = budgeted(pack, topo, tuple(prompt), schema,
-                       counter=gateway.counter(FEATURE, actor=actor, trigger=trigger))
+                       counter=gateway.counter(FEATURE, tuple(prompt), actor=actor,
+                                               trigger=trigger))
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
     return {"pack_id": pack_id, "read": read, "topo": topo, "said": said, "schema": schema,

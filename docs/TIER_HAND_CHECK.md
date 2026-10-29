@@ -3179,3 +3179,45 @@ failing test named.
 not by the bytes: with it removed, the planted values still did not reach the bytes, because a
 line's keywords stop at the first token that can hold a value; the two rules each hold the
 secret's value out alone.**
+## 2026-10-29: the builder at the count, `gateway.counter` takes the prompt (C2157), by hand
+**What touches the tier.** C2157: `gateway.counter(feature, ...)`, the press's token-count
+gate a context-budget selector measures by before `ask` (`nl_query.select_context` for
+Metrics, `explain.budgeted`), took no prompt, so its decision could not tell Ask in words'
+Metrics from Logs (one task, `nl_query`), and a switch per builder (C1953 part 2) could not
+stop Metrics' count request to the provider. Now `counter(feature, prompt, *, actor, trigger)`
+takes ``(name, version)`` as `ask` does (required, positional); its decision refuses a prompt
+`prompts.load` refuses, as `ask` does (`prompt`), so no count is asked for a builder whose call
+could not be sent, and the line beside it is where a per-builder switch reads it; the `Counter`
+carries ``prompt`` (``<name>.v<N>``, as a call's row names it), `_prepared`'s own Counter
+carries the call's; a count the provider's usage limit refuses records ``prompt`` on the hold
+(`provider_limit.record`, a new key, empty for a send, whose row names it). Both callers pass
+the press's own prompt (`nl_query.metrics`: `prompt`; `explain._prepare_pack`:
+`tuple(prompt)`). Not done: the switch itself (C1953 part 2).
+**The method:** as C2109's, on the change over b57f2646: each mutant one exact text
+replacement, in its own `scripts/nmas-control` throwaway worktree, required to
+match once, then tests/test_ai_token_count.py, test_ai_provider_limit.py, test_ai_explain.py,
+test_ai_nl_query.py, test_ai_gateway.py and test_ai_batch.py run whole in CI's interpreter,
+confined (`scratchpad/item3g/mut.py`, `results.txt`). Baseline: 333 passed, 5 skipped. No
+provider request was made: every count and send is the tests' fake. The working tree changed
+once during the run (docs/TESTING.md, edited by hand while H1 ran; nmas-control said so and
+exited 3); H1 ran in its snapshot, so its result stands.
+| mutant | result | killed by |
+| C0 canary: `counter` raises before it returns | killed | 53 |
+| P1 Metrics' counter given the served `PROMPT`, not the press's | killed | 1, `test_the_metrics_count_is_asked_with_the_presss_own_prompt` |
+| P2 Explain's counter given the served `PROMPT`, not the press's v6 | killed | 1, `test_v6_s_count_is_asked_with_the_presss_own_prompt` |
+| P3 Metrics' counter given no prompt | killed | 42 (a `TypeError`: the prompt is required) |
+| D1 the decision ignores the prompt (no `prompts.load`) | killed | 2, `test_a_builder_refused_at_the_decision_is_not_counted_and_the_other_is` among them |
+| D2 the prompt's refusal caught and dropped | killed | 2 |
+| D3 the prompt judged only when another gate already refused | killed | 2 |
+| R1 the Counter given no prompt | killed | 5 |
+| R2 the prompt named without its version | killed | 5 |
+| R3 the Counter drops the prompt it is given | killed | 6 |
+| R4 `ask`'s own Counter given no prompt | killed | 1, `test_the_calls_own_count_carries_its_prompt` |
+| H1 a limited count's hold not given the prompt | killed | 1, `test_a_count_refused_for_the_usage_limit_records_the_builders_prompt` |
+| H2 the hold drops the prompt key | killed | 2 |
+| H3 the hold's prompt always empty | killed | 1 |
+| S1 the count sent despite a refusal (the `allowed` check removed) | killed | 4 |
+**The result: 15 mutants with the canary; every one killed. Not covered here: no switch per
+builder exists yet, so what is shown is the decision reading the prompt (a refusal planted at
+`prompts.load` for Metrics alone stops its count and its call, and Logs' goes on), not a
+setting; the batch path (`ask_batch`) counts through `_prepared`, so it is R4's.**
