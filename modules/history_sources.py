@@ -1131,10 +1131,22 @@ def ai_calls(ctx):
         rows = [r for r in rows if r.get("id") == ctx["call"]]
     rows = [r for r in rows if _recent(ctx, r.get("at"))]
 
+    def batched(r):
+        # An evaluation round's request sent in a batch (PHASE8_PLAN 15.12, the operator's
+        # decision of 2026-10-29): its batch's id and the request's custom_id, at the batch
+        # rate (`gateway.ask_batch`).
+        b = r.get("batch") if isinstance(r.get("batch"), dict) else None
+        if b is None:
+            return ""
+        rate = b.get("multiplier")
+        return (f"{b.get('id') or 'not submitted'}, request {b.get('custom_id') or '?'}"
+                + (f", at {float(rate) * 100:.0f}% of the standard rates" if rate else ""))
+
     def what(r):
         verdict = r.get("verdict") or "?"
         last = (used.get(r.get("id")) or [{}])[-1].get("use", "")
-        head = f"AI call, {r.get('feature', '?')} on {subject_words(r.get('subject'))}: "
+        head = (f"AI call{' (batched)' if batched(r) else ''}, {r.get('feature', '?')} on "
+                f"{subject_words(r.get('subject'))}: ")
         if verdict == calls.JOINED:
             head += f"joined call {r.get('joined', '?')}, nothing sent"
         else:
@@ -1167,7 +1179,8 @@ def ai_calls(ctx):
                    record=[("Call", r.get("id")), ("Joined call", r.get("joined")),
                            ("About", subject_words(r.get("subject"))),
                            ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
-                           ("Model", r.get("model")), ("Tokens", tokens(r)),
+                           ("Model", r.get("model")), ("Batch", batched(r)),
+                           ("Tokens", tokens(r)),
                            ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
                            ("Verdict", r.get("verdict")),
                            ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"

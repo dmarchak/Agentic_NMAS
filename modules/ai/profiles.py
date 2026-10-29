@@ -147,6 +147,53 @@ def cost_usd(model: str, input_tokens: int, output_tokens: int, *,
             + output_tokens * rates["output"]) / 1_000_000
 
 
+# ── The batch rate (the operator's decision of 2026-10-29, PHASE8_PLAN 15.12: evaluation rounds,
+#    never a live feature, go through the provider's Message Batches API) ────────────────────
+
+#: Where the batch rate is stated, and when it was read: "every batched request is charged at
+#: 50% of standard prices" (e.g. Sonnet 5.5 at $1 in and $5 out a million tokens); prompt
+#: caching's multipliers stack with it.
+BATCH_SOURCE = "https://platform.claude.com/docs/en/build-with-claude/batch-processing"
+BATCH_AS_OF = "2026-10-29"
+#: Every rate a batched request is charged at, as a share of its standard rate.
+BATCH_MULTIPLIER = 0.5
+#: A 1-hour cache write as a multiple of the base input rate (the 5-minute write is 1.25x,
+#: `price["cache_write"]`): the claude-api reference's prompt caching, "Economics" ("cache
+#: writes cost 1.25x for 5-minute TTL, 2x for 1-hour TTL"), read 2026-10-29; its live page is
+#: `CACHE_SOURCE`, not fetched for this. A batched request is cached with the 1-hour TTL, as
+#: the batch page recommends.
+CACHE_WRITE_1H_MULTIPLIER = 2.0
+CACHE_SOURCE = "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
+
+
+def batch_prices_for(model: str, prompt_tokens: int) -> dict:
+    """The rates a batched request of *model* with *prompt_tokens* in all is charged at: the
+    standard rates for its prompt's length (`prices_for`, the long tier included), plus the
+    1-hour cache write (`CACHE_WRITE_1H_MULTIPLIER` times the input rate), each at the batch
+    rate (`BATCH_MULTIPLIER`); dated, its sources named."""
+    rates = prices_for(model, prompt_tokens)
+    out = {k: rates[k] * BATCH_MULTIPLIER for k in ("input", "cache_write", "cache_read",
+                                                    "output")}
+    out["cache_write_1h"] = rates["input"] * CACHE_WRITE_1H_MULTIPLIER * BATCH_MULTIPLIER
+    return dict(out, tier=rates["tier"], as_of=rates["as_of"], source=rates["source"],
+                batch={"multiplier": BATCH_MULTIPLIER, "as_of": BATCH_AS_OF,
+                       "source": BATCH_SOURCE, "cache_source": CACHE_SOURCE})
+
+
+def batch_cost_usd(model: str, input_tokens: int, output_tokens: int, *,
+                   cache_write_tokens: int = 0, cache_write_1h_tokens: int = 0,
+                   cache_read_tokens: int = 0) -> float:
+    """What a batched request costs at *model*'s batch rates for its prompt's length
+    (`batch_prices_for`): *cache_write_tokens* written with the 5-minute TTL,
+    *cache_write_1h_tokens* with the 1-hour."""
+    rates = batch_prices_for(model, input_tokens + cache_write_tokens + cache_write_1h_tokens
+                             + cache_read_tokens)
+    return (input_tokens * rates["input"] + cache_write_tokens * rates["cache_write"]
+            + cache_write_1h_tokens * rates["cache_write_1h"]
+            + cache_read_tokens * rates["cache_read"]
+            + output_tokens * rates["output"]) / 1_000_000
+
+
 def cap_per_call(name: str) -> float:
     """A task's per-call cap: its pinned model's worst case at its bounds (every prompt token
     a cache write, the dearest input, and all of max_tokens)."""

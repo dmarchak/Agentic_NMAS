@@ -980,6 +980,25 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     its hash checked, the class gates asked, one call through the gateway, the answer checked
     against what was sent. *prompt* ``("explain", 1)`` asks as v1 did (the pack's six
     sections, no topology, no health), for a replay's before-and-after."""
+    prep = _prepare_pack(pack, actor=actor, trigger=trigger, prompt=prompt)
+    if "done" in prep:
+        return prep["done"]
+    if prep["round"]:
+        got = _ask_round(tuple(prompt), prep["schema"], prep["data"], prep["ctx"],
+                         pack.get("network") or "", actor=actor, trigger=trigger, send=send,
+                         today=today, subject=prep["subject"])
+    else:
+        got = gateway.ask(FEATURE, tuple(prompt), prep["schema"], prep["data"], actor=actor,
+                          trigger=trigger, context=prep["ctx"], send=send, today=today,
+                          subject=prep["subject"], network=pack.get("network") or "")
+    return _checked(pack, prep, got, actor=actor)
+
+
+def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> dict:
+    """What `explain_pack` sends for *pack* with *prompt*, before any call: ``{"done": <its
+    refusal>}`` (a pack changed since it was built, or a network AI is forced off for), or
+    ``{"schema", "data", "ctx", "subject", "round", ...}``, the request's parts and what the
+    check reads (`_checked`). ``round``: v6's needs round follows the first call."""
     from modules import evidence_pack as EP
 
     pack_id = pack.get("id") or ""
@@ -988,15 +1007,15 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     read = {"id": pack_id, "schema": EP.schema_of(pack), "built_at": EP.built_when(pack),
             "as_of": pack.get("built_at") or ""}
     if not EP.intact(pack):
-        return {"ok": False, "error": "changed", "pack_id": pack_id,
-                "detail": "the pack's hash does not match: it changed since it was built, so "
-                          "it is not explained"}
+        return {"done": {"ok": False, "error": "changed", "pack_id": pack_id,
+                         "detail": "the pack's hash does not match: it changed since it was "
+                                   "built, so it is not explained"}}
     from modules.ai import egress_classes
     marked = egress_classes.classification_marking(pack.get("network") or "")
     if marked:
-        return {"ok": False, "error": "classified", "pack_id": pack_id,
-                "detail": f"{pack.get('network')} carries the classification marking "
-                          f"{marked!r}, which forces AI off: nothing was sent"}
+        return {"done": {"ok": False, "error": "classified", "pack_id": pack_id,
+                         "detail": f"{pack.get('network')} carries the classification marking "
+                                   f"{marked!r}, which forces AI off: nothing was sent"}}
     if tuple(prompt) == ("explain", 1):
         topo = {"sent": False, "why": "prompt v1 sends no topology", "ids": [], "reached": {},
                 "network": pack.get("network") or "", "subject": pack.get("device") or "",
@@ -1015,20 +1034,26 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
                "devices": [pack["device"]] if pack.get("device") else []}
     kept = {}
-    if int(prompt[1]) in NETWORK_CONTEXT_VERSIONS:
+    rounds = int(prompt[1]) in NETWORK_CONTEXT_VERSIONS
+    if rounds:
         # The context budget rule: what is sent fits the task's bound, what was dropped said
         # in the prompt ("omitted for size") and kept with the answer.
         sel = budgeted(pack, topo, tuple(prompt), schema,
                        counter=gateway.counter(FEATURE, actor=actor, trigger=trigger))
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
-        got = _ask_round(tuple(prompt), schema, data, ctx, pack.get("network") or "",
-                         actor=actor, trigger=trigger, send=send, today=today,
-                         subject=subject)
-    else:
-        got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, trigger=trigger,
-                          context=ctx, send=send, today=today, subject=subject,
-                          network=pack.get("network") or "")
+    return {"pack_id": pack_id, "read": read, "topo": topo, "said": said, "schema": schema,
+            "subject": subject, "data": data, "ctx": ctx, "sections": sections, "kept": kept,
+            "round": rounds}
+
+
+def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
+    """The answer *got* (the gateway's result for *prep*, `_prepare_pack`'s) checked against
+    what was sent, and what is drawn of it, as `explain_pack` returns it."""
+    from modules import evidence_pack as EP
+
+    pack_id, read, topo, said = prep["pack_id"], prep["read"], prep["topo"], prep["said"]
+    sections, kept = prep["sections"], prep["kept"]
     if not got["ok"]:
         return dict(got, pack_id=pack_id, pack_read=read, topology=said, **kept)
     answer, base = got["output"], {"pack_id": pack_id, "pack_read": read,
@@ -1097,3 +1122,139 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     if guard:
         shown["needs_human"] = True
     return dict(base, ok=True, error="", answer=shown)
+
+
+def batch_custom_id(pack_index: int, prompt: tuple, run: int) -> str:
+    """A batched request's custom_id: the pack's place in the round's list, the prompt's
+    version and the run (``p0-explain-v4-r2``), in the provider's shape (letters, digits, _
+    and -, at most 64)."""
+    return f"p{int(pack_index)}-{prompt[0]}-v{int(prompt[1])}-r{int(run)}"
+
+
+def explain_packs_batch(packs: list, prompts_: list, runs: int, *, actor: str, trigger: dict,
+                        today: str = None, stop_usd: float = None, provider=None,
+                        sleep=None, clock=None) -> dict:
+    """An evaluation round of Explain as one batch (the operator's decision of 2026-10-29,
+    PHASE8_PLAN 15.12; `gateway.ask_batch`, which refuses any trigger but an evaluation's):
+    each pack of *packs* (stored packs, as `explain_pack` takes them) asked with each prompt
+    of *prompts_* (``("explain", 4)``, or a version's number) *runs* times. Each request is
+    what `explain_pack` would send for the same pack and prompt (the same parts, the same
+    budget for v6), and each answer is checked as `explain_pack` checks it. v6's needs round
+    cannot ride in the first batch (its follow-up depends on the first answer): each v6
+    answer naming a need is looked up (`needs.run`, as `explain_pack`'s round) and its one
+    follow-up sent in a second batch (custom_id ``<first>-n``), at the batch rate, said as
+    ``needs_followed: "batched"``; the answer checked is the follow-up's, the cost the
+    round's.
+
+    ``{"ok", "error", "detail", "batch_id", "cost_usd", "worst_usd", "results": {custom_id:
+    explain_pack's result with "pack_id", "prompt", "run"}, "requests": {custom_id: {"pack_id",
+    "prompt", "run"}}}``; results are keyed by custom_id (`batch_custom_id`), whatever order
+    the provider returned them in. A pack refused before any call (changed since it was
+    built, or its network marked) is its result with nothing sent."""
+    asked = [tuple(p) if isinstance(p, (list, tuple)) else (FEATURE, int(p)) for p in prompts_]
+    batch_requests, meta, preps, results = [], {}, {}, {}
+    for i, pack in enumerate(packs):
+        for prompt in asked:
+            prep = _prepare_pack(pack, actor=actor, trigger=trigger, prompt=prompt)
+            for run in range(int(runs)):
+                cid = batch_custom_id(i, prompt, run)
+                meta[cid] = {"pack_id": pack.get("id") or "", "prompt": list(prompt),
+                             "run": run}
+                if "done" in prep:
+                    results[cid] = dict(prep["done"], **meta[cid])
+                    continue
+                preps[cid] = (pack, prompt, prep)
+                data = prep["data"]
+                if prep["round"]:
+                    from modules.ai import nl_query
+                    data = dict(data, looked_up=nl_query.looked_up([]))
+                batch_requests.append({"custom_id": cid, "feature": FEATURE,
+                                       "prompt": prompt, "schema": prep["schema"],
+                                       "parts": data, "context": prep["ctx"],
+                                       "subject": prep["subject"]})
+    if not batch_requests:
+        return {"ok": False, "error": "nothing_sent", "batch_id": "", "cost_usd": 0.0,
+                "worst_usd": 0.0, "results": results, "requests": meta,
+                "detail": "every pack was refused before a batch was built (each result "
+                          "names why); nothing was sent"}
+    kw = {"actor": actor, "trigger": trigger, "today": today, "provider": provider,
+          "sleep": sleep, "clock": clock}
+    got = gateway.ask_batch(batch_requests, stop_usd=stop_usd, **kw)
+    firsts = {cid: got["results"].get(cid) for cid in preps}
+    looked = _needs_rounds(preps, firsts, actor=actor)
+    rounds = {cid: r for cid, r in looked.items() if "request" in r}
+    second = None
+    if rounds:
+        # The follow-ups, one batch: the evaluation's stop is what the first batch left of it.
+        left = None if stop_usd is None else max(0.0, float(stop_usd) - got["worst_usd"])
+        second = gateway.ask_batch([r["request"] for r in rounds.values()], stop_usd=left,
+                                   **kw)
+    for cid, (pack, prompt, prep) in preps.items():
+        one = firsts[cid]
+        if one is None:
+            results[cid] = dict(ok=False, error=got["error"] or "no_result",
+                                detail=got["detail"] or "the batch returned no result for it",
+                                **meta[cid])
+            continue
+        extra = {}
+        if cid in rounds:
+            one, extra = _round_result(one, rounds[cid], second), {"needs_followed": "batched"}
+        elif cid in looked:
+            one = dict(one, needs_said=looked[cid]["needs_said"])
+        results[cid] = dict(_checked(pack, prep, one, actor=actor), **extra, **meta[cid])
+    cost = round(sum(float(r.get("cost_usd") or 0) for r in results.values()), 6)
+    batch_ids = [b["batch_id"] for b in (got, second) if b and b["batch_id"]]
+    return {"ok": got["ok"] and (second is None or second["ok"]),
+            "error": got["error"] or (second or {}).get("error", ""),
+            "detail": got["detail"] or (second or {}).get("detail", ""),
+            "batch_id": got["batch_id"], "batch_ids": batch_ids, "cost_usd": cost,
+            "worst_usd": got["worst_usd"] + ((second or {}).get("worst_usd") or 0.0),
+            "results": results, "requests": meta}
+
+
+def _needs_rounds(preps: dict, firsts: dict, *, actor: str) -> dict:
+    """``{custom_id: {"request", "first", "needs_said"}}``: each v6 first answer naming a need,
+    looked up and recorded as `explain_pack`'s round does (`needs.run`), and the follow-up's
+    batched request (custom_id ``<first>-n``, the subject naming its parent); a round refused
+    or with nothing looked up holds only its ``needs_said``, as `_ask_round` says it."""
+    from modules.ai import needs as N
+    from modules.ai import nl_query
+
+    out = {}
+    for cid, (pack, prompt, prep) in preps.items():
+        one = firsts.get(cid)
+        if not prep["round"] or not one or not one.get("ok"):
+            continue
+        wanted = list(getattr(one.get("output"), "needs", None) or [])
+        if not wanted:
+            continue
+        held = {}
+
+        def follow(results, link, held=held):
+            held["looked"], held["link"] = results, link
+            return None
+        rnd = N.run(one["call_id"], pack.get("network") or "",
+                    [n.model_dump(mode="json") for n in wanted], actor=actor, follow=follow)
+        if not rnd["ok"] or "looked" not in held:
+            out[cid] = {"needs_said": rnd["error"] or "nothing could be looked up"}
+            continue
+        out[cid] = {"first": one, "needs_said": "; ".join(
+            f"{r['kind']} {r['subject']}: {r['state']}" for r in rnd["results"]),
+            "request": {"custom_id": f"{cid}-n", "feature": FEATURE, "prompt": prompt,
+                        "schema": prep["schema"], "context": prep["ctx"],
+                        "parts": dict(prep["data"], looked_up=nl_query.looked_up(
+                            held["looked"])),
+                        "subject": dict(prep["subject"], **held["link"])}}
+    return out
+
+
+def _round_result(first: dict, rnd: dict, second: dict) -> dict:
+    """The follow-up's result in place of the first's, as `_ask_round` gives it: the round's
+    cost, ``parent_call_id`` the first call's; the second batch's refusal when it had none."""
+    got = (second or {}).get("results", {}).get(rnd["request"]["custom_id"]) or {
+        "ok": False, "error": (second or {}).get("error") or "no_result",
+        "detail": (second or {}).get("detail") or "the follow-up's batch returned no result",
+        "call_id": "", "cost_usd": 0.0}
+    total = round((first.get("cost_usd") or 0) + (got.get("cost_usd") or 0), 6)
+    return dict(got, cost_usd=total, parent_call_id=first["call_id"],
+                needs_said=rnd["needs_said"])

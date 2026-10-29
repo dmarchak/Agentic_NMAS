@@ -53,6 +53,10 @@ result (`from_row`) and sends nothing, the join its own row (verdict ``joined``,
 
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
+
+**An evaluation round's calls as one batch** (`ask_batch`; the operator's decision of
+2026-10-29, PHASE8_PLAN 15.12): an evaluation trigger only, each request through the same gates
+and builder (`_prepared`), at the batch rate; its section below says what it holds to.
 """
 import json
 import logging
@@ -276,7 +280,7 @@ def _delimited(tag: str, parts: dict) -> str:
 
 
 def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: dict = None,
-                  profile: dict = None) -> dict:
+                  profile: dict = None, cache_ttl: str = None) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
     prompt, then the *context* (what every call of a feature shares, as 8.1's builder
     vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
@@ -287,11 +291,14 @@ def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: d
     (its file, `profiles.load_pins`): its model and `max_tokens`; its `thinking` off sent in
     the model's own form (*profile*'s `thinking_off`), adaptive sending none; its
     `temperature` sent when it names one, null sending none. `ask` checks the pin's settings
-    against the model before this is built."""
+    against the model before this is built. *cache_ttl* (`BATCH_CACHE_TTL`, a batched
+    request's: `ask_batch`) is the one cache mark's TTL; none is the 5-minute default, the mark
+    sent as it always was."""
     system = [{"type": "text", "text": prompt["text"]}]
     if context:
         system.append({"type": "text", "text": _delimited("context", context)})
-    system[-1]["cache_control"] = {"type": "ephemeral"}
+    system[-1]["cache_control"] = ({"type": "ephemeral", "ttl": cache_ttl} if cache_ttl
+                                   else {"type": "ephemeral"})
     body = {
         "model": pin["model"],
         "max_tokens": int(pin["max_tokens"]),
@@ -482,121 +489,13 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     installation's own, the connection check): with the subject, the prompt, the model and
     the requester's access scope, what makes two presses one request (C1854). *count*
     replaces the adapter's token count (tests), as *send* its send."""
-    call_id = calls.new_id()
-    pin = profiles.TASKS.get(feature) or {}
-    model = pin.get("model", "")
-    # No verdict here: every path that records the row sets its own (a refusal's kind,
-    # `_answered`'s, or "ok").
-    row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
-           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,
-           "subject": dict(subject or {})}
-    # What was masked of the person's own words, once masked (C1845): on every result from
-    # there on, as on the row.
-    told = {}
-
-    def refuse(kind, detail, **extra):
-        out = calls.record(dict(row, verdict=kind, detail=detail, **extra))
-        log.info("ai: %s refused for %s: %s", feature, kind, detail)
-        return {"ok": False, "error": kind, "detail": detail, "call_id": call_id,
-                "recorded": out.get("recorded", False), **told}
-
-    named = triggers.check(trigger, actor, feature)
-    row["trigger"] = named["trigger"]
-    if not named["ok"]:
-        return refuse("trigger", named["why"])
-    hosted = hosted_allowed()
-    if not hosted["allowed"]:
-        return refuse("ai_off", hosted["why"])
-    if named["trigger"]["kind"] == triggers.BACKGROUND:
-        off = background.admit(named["trigger"])
-        if off:
-            return refuse("feature_off", off)
-    key = _api_key()
-    if not key:
-        return refuse("no_key", "no Anthropic API key is set (Settings: a person types it)")
-    # The provider's workspace usage limit, held from its refusal (C2084): refused here, in the
-    # same words, without asking the provider, but for the AI card's Test (the re-check).
-    if not provider_limit.rechecks(feature, named["trigger"]["kind"]):
-        hold = provider_limit.holding()
-        if hold:
-            return refuse(provider_limit.KIND, provider_limit.said(hold)["words"],
-                          **_limit_fields(hold))
-    if not pin:
-        return refuse("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; known: "
-                      f"{', '.join(sorted(profiles.TASKS))}")
-    if feature not in TYPED_PARTS:
-        return refuse("typed_undeclared", f"{feature!r} names no typed parts in "
-                      "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
-                      "it could not be masked and said; nothing was sent")
-    max_tokens = int(pin["max_tokens"])
-    try:
-        profile = profiles.profile(model)
-    except KeyError as exc:
-        return refuse("unknown_model", str(exc))
-    if profile["provider"] != profiles.ANTHROPIC:
-        return refuse("unknown_model", f"{model} is not served by the Anthropic adapter")
-    # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
-    asked = dict(pin, thinking=thinking) if thinking is not None else pin
-    mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)
-    row["thinking"] = mode
-    if mode not in profiles.THINKING:
-        return refuse("thinking", f"thinking {mode!r} is not one of "
-                      f"{', '.join(profiles.THINKING)}; nothing was sent")
-    if mode == "off" and not profile.get("thinking_off"):
-        return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "
-                      "nothing was sent")
-    temperature = asked["temperature"]
-    if temperature is not None and temperature not in profile.get("temperatures", ()):
-        return refuse("temperature", f"the pin's temperature {temperature!r} is not one "
-                      f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
-                      "was sent")
-    ident = getattr(schema_model, "__ai_schema__", None)
-    if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
-        return refuse("schema", f"{getattr(schema_model, '__name__', schema_model)} is not a "
-                      "registered AI schema")
-    row["schema"] = f"{ident[0]}.v{ident[1]}"
-    try:
-        prompt_file = prompts.load(*prompt)
-    except prompts.PromptError as exc:
-        return refuse("prompt", str(exc))
-    row["prompt_sha256"] = prompt_file["sha256"]
-
-    from modules import redact
-    values = redact.known_secret_values()
-    # What a person typed, masked here, once, for every entry point (C1845), and what was
-    # masked said to them; then the whole request masked as it leaves.
-    typed = mask_typed(parts, TYPED_PARTS[feature], values)
-    said = typed_said(typed["masked"])
-    if said:
-        row["typed_masked"] = said
-        told["typed_masked"] = said
-    body = redact.egress_payload(build_request(prompt_file, schema_model, typed["parts"], asked,
-                                               context=context, profile=profile), values)
-    leaked = redact.contains_known_secret(body)
-    if leaked:
-        return refuse("unmasked_secret", "a stored secret is still in the request after "
-                      f"masking ({', '.join(leaked)}); nothing was sent")
-    row["request"] = body
-
-    # The prompt's size (C1898): the provider's count of the masked request, every gate above
-    # passed; the fallback over-estimate when the count is not had, said. Both on the row.
-    measured = Counter(model, key, count=count, feature=feature).measure(body, masked=True)
-    if measured.get("held"):
-        # The count met the provider's usage limit (C2096): refused for it, as a send's
-        # refusal would be, never judged by the fallback's size.
-        return refuse(provider_limit.KIND, measured["held"], **_limit_fields(measured["hold"]))
-    est = measured["tokens"]
-    row["prompt_tokens"] = est
-    row["prompt_count"] = {k: v for k, v in measured.items() if k != "tokens"}
-    how = ("counted by the provider" if measured["how"] == "counted" else
-           f"by the fallback estimate, {CHARS_PER_TOKEN} characters a token "
-           f"({measured['why']})")
-    if est > pin["max_prompt_tokens"]:
-        long_at = profile.get("long_prompt_tokens")
-        return refuse("prompt_too_long", f"this prompt is {est} tokens ({how}), over the "
-                      f"task's bound of {pin['max_prompt_tokens']}"
-                      + (f" ({model} charges every rate at its long tier over {long_at})"
-                         if long_at else "") + "; nothing was sent")
+    prep = _prepared(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
+                     context=context, thinking=thinking, subject=subject, count=count)
+    if "refused" in prep:
+        return prep["refused"]
+    row, body, model, key, told = (prep["row"], prep["body"], prep["model"], prep["key"],
+                                   prep["told"])
+    max_tokens, est, refuse = prep["max_tokens"], prep["est"], prep["refuse"]
 
     # One press, one provider request (C1854): the caps, the send and the record run once per
     # press key and once per identical request in flight; a press that joins one gets that
@@ -616,6 +515,143 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                                                          about["scope"]),
                        wait_s=press_wait_s())
     return dict(got, **told) if told else got
+
+
+def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
+              trigger: dict = None, context: dict = None, thinking: str = None,
+              subject: dict = None, count=None, cache_ttl: str = None,
+              row_extra: dict = None) -> dict:
+    """`ask`'s gates and its request, items 0 to 5 of the module's docstring, the one code path
+    `ask` and `ask_batch` share, so a batched request is built, masked, counted and bounded
+    exactly as a call is: ``{"refused": <ask's refusal, recorded>}``, or ``{"row", "body",
+    "model", "max_tokens", "key", "told", "est", "refuse"}`` (the masked body, the prompt's
+    tokens, and the refusal that records the call's row). *cache_ttl* is the cached prefix's
+    TTL (`build_request`: none for a call, ``"1h"`` for a batched request); *row_extra* is
+    written on the row before anything is recorded (a batched request's ``batch``)."""
+    call_id = calls.new_id()
+    pin = profiles.TASKS.get(feature) or {}
+    model = pin.get("model", "")
+    # No verdict here: every path that records the row sets its own (a refusal's kind,
+    # `_answered`'s, or "ok").
+    row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
+           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,
+           "subject": dict(subject or {}), **dict(row_extra or {})}
+    # What was masked of the person's own words, once masked (C1845): on every result from
+    # there on, as on the row.
+    told = {}
+
+    def refuse(kind, detail, **extra):
+        out = calls.record(dict(row, verdict=kind, detail=detail, **extra))
+        log.info("ai: %s refused for %s: %s", feature, kind, detail)
+        return {"ok": False, "error": kind, "detail": detail, "call_id": call_id,
+                "recorded": out.get("recorded", False), **told}
+
+    def refused(kind, detail, **extra):
+        return {"refused": refuse(kind, detail, **extra)}
+
+    named = triggers.check(trigger, actor, feature)
+    row["trigger"] = named["trigger"]
+    if not named["ok"]:
+        return refused("trigger", named["why"])
+    hosted = hosted_allowed()
+    if not hosted["allowed"]:
+        return refused("ai_off", hosted["why"])
+    if named["trigger"]["kind"] == triggers.BACKGROUND:
+        off = background.admit(named["trigger"])
+        if off:
+            return refused("feature_off", off)
+    key = _api_key()
+    if not key:
+        return refused("no_key", "no Anthropic API key is set (Settings: a person types it)")
+    # The provider's workspace usage limit, held from its refusal (C2084): refused here, in the
+    # same words, without asking the provider, but for the AI card's Test (the re-check).
+    if not provider_limit.rechecks(feature, named["trigger"]["kind"]):
+        hold = provider_limit.holding()
+        if hold:
+            return refused(provider_limit.KIND, provider_limit.said(hold)["words"],
+                           **_limit_fields(hold))
+    if not pin:
+        return refused("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; "
+                       f"known: {', '.join(sorted(profiles.TASKS))}")
+    if feature not in TYPED_PARTS:
+        return refused("typed_undeclared", f"{feature!r} names no typed parts in "
+                       "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
+                       "it could not be masked and said; nothing was sent")
+    max_tokens = int(pin["max_tokens"])
+    try:
+        profile = profiles.profile(model)
+    except KeyError as exc:
+        return refused("unknown_model", str(exc))
+    if profile["provider"] != profiles.ANTHROPIC:
+        return refused("unknown_model", f"{model} is not served by the Anthropic adapter")
+    # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
+    asked = dict(pin, thinking=thinking) if thinking is not None else pin
+    mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)
+    row["thinking"] = mode
+    if mode not in profiles.THINKING:
+        return refused("thinking", f"thinking {mode!r} is not one of "
+                       f"{', '.join(profiles.THINKING)}; nothing was sent")
+    if mode == "off" and not profile.get("thinking_off"):
+        return refused("thinking", f"{model}'s profile names no way to turn thinking off; "
+                       "nothing was sent")
+    temperature = asked["temperature"]
+    if temperature is not None and temperature not in profile.get("temperatures", ()):
+        return refused("temperature", f"the pin's temperature {temperature!r} is not one "
+                       f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
+                       "was sent")
+    ident = getattr(schema_model, "__ai_schema__", None)
+    if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
+        return refused("schema", f"{getattr(schema_model, '__name__', schema_model)} is not "
+                       "a registered AI schema")
+    row["schema"] = f"{ident[0]}.v{ident[1]}"
+    try:
+        prompt_file = prompts.load(*prompt)
+    except prompts.PromptError as exc:
+        return refused("prompt", str(exc))
+    row["prompt_sha256"] = prompt_file["sha256"]
+
+    from modules import redact
+    values = redact.known_secret_values()
+    # What a person typed, masked here, once, for every entry point (C1845), and what was
+    # masked said to them; then the whole request masked as it leaves.
+    typed = mask_typed(parts, TYPED_PARTS[feature], values)
+    said = typed_said(typed["masked"])
+    if said:
+        row["typed_masked"] = said
+        told["typed_masked"] = said
+    # A call's request is built as it always was; only a batched one names its TTL.
+    ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
+    body = redact.egress_payload(build_request(prompt_file, schema_model, typed["parts"], asked,
+                                               context=context, profile=profile, **ttl),
+                                 values)
+    leaked = redact.contains_known_secret(body)
+    if leaked:
+        return refused("unmasked_secret", "a stored secret is still in the request after "
+                       f"masking ({', '.join(leaked)}); nothing was sent")
+    row["request"] = body
+
+    # The prompt's size (C1898): the provider's count of the masked request, every gate above
+    # passed; the fallback over-estimate when the count is not had, said. Both on the row.
+    measured = Counter(model, key, count=count, feature=feature).measure(body, masked=True)
+    if measured.get("held"):
+        # The count met the provider's usage limit (C2096): refused for it, as a send's
+        # refusal would be, never judged by the fallback's size.
+        return refused(provider_limit.KIND, measured["held"],
+                       **_limit_fields(measured["hold"]))
+    est = measured["tokens"]
+    row["prompt_tokens"] = est
+    row["prompt_count"] = {k: v for k, v in measured.items() if k != "tokens"}
+    how = ("counted by the provider" if measured["how"] == "counted" else
+           f"by the fallback estimate, {CHARS_PER_TOKEN} characters a token "
+           f"({measured['why']})")
+    if est > pin["max_prompt_tokens"]:
+        long_at = profile.get("long_prompt_tokens")
+        return refused("prompt_too_long", f"this prompt is {est} tokens ({how}), over the "
+                       f"task's bound of {pin['max_prompt_tokens']}"
+                       + (f" ({model} charges every rate at its long tier over {long_at})"
+                          if long_at else "") + "; nothing was sent")
+    return {"row": row, "body": body, "model": model, "max_tokens": max_tokens, "key": key,
+            "told": told, "est": est, "refuse": refuse}
 
 
 #: Added to the adapter's worst case for a press's wait: the caps' read and the record's write
@@ -766,22 +802,49 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
             reservations.settle(row["id"], ttl)
 
 
-def _received(row, reply, model, max_tokens, schema_model) -> dict:
-    """The provider's answer checked and recorded (`_capped_send`'s, once sent)."""
+def cache_writes(usage: dict) -> dict:
+    """``{"5m", "1h"}``: a batched answer's cache writes by TTL, from the provider's
+    ``usage.cache_creation`` (``ephemeral_5m_input_tokens``, ``ephemeral_1h_input_tokens``).
+    Without that breakdown every write is read as a 1-hour write, the dearer of the two (a
+    batched request carries only the 1-hour mark, `BATCH_CACHE_TTL`), so a cost is never
+    under what the provider bills."""
+    total = int(usage.get("cache_creation_input_tokens") or 0)
+    split = usage.get("cache_creation")
+    if not isinstance(split, dict):
+        return {"5m": 0, "1h": total}
+    five = int(split.get("ephemeral_5m_input_tokens") or 0)
+    hour = int(split.get("ephemeral_1h_input_tokens") or 0)
+    # A breakdown that does not add up to the total: the rest is a 1-hour write (the dearer).
+    return {"5m": five, "1h": hour + max(0, total - five - hour)}
+
+
+def _received(row, reply, model, max_tokens, schema_model, batch: bool = False) -> dict:
+    """The provider's answer checked and recorded (`_capped_send`'s, once sent; *batch*: a
+    batched request's result, priced at the batch rate, `profiles.batch_cost_usd`)."""
     from modules import redact
 
     usage = reply.body.get("usage") or {}
     tokens = {k: int(usage.get(k) or 0) for k in ("input_tokens", "output_tokens",
                                                    "cache_read_input_tokens",
                                                    "cache_creation_input_tokens")}
-    cost = profiles.cost_usd(model, tokens["input_tokens"], tokens["output_tokens"],
-                             cache_write_tokens=tokens["cache_creation_input_tokens"],
-                             cache_read_tokens=tokens["cache_read_input_tokens"])
-    charged = profiles.prices_for(model, tokens["input_tokens"]
-                                  + tokens["cache_creation_input_tokens"]
-                                  + tokens["cache_read_input_tokens"])
+    prompt_total = (tokens["input_tokens"] + tokens["cache_creation_input_tokens"]
+                    + tokens["cache_read_input_tokens"])
+    extra = {}
+    if batch:
+        writes = cache_writes(usage)
+        cost = profiles.batch_cost_usd(model, tokens["input_tokens"], tokens["output_tokens"],
+                                       cache_write_tokens=writes["5m"],
+                                       cache_write_1h_tokens=writes["1h"],
+                                       cache_read_tokens=tokens["cache_read_input_tokens"])
+        charged = profiles.batch_prices_for(model, prompt_total)
+        extra = {"cache_writes": writes}
+    else:
+        cost = profiles.cost_usd(model, tokens["input_tokens"], tokens["output_tokens"],
+                                 cache_write_tokens=tokens["cache_creation_input_tokens"],
+                                 cache_read_tokens=tokens["cache_read_input_tokens"])
+        charged = profiles.prices_for(model, prompt_total)
     text = _text_of(reply.body)
-    sent = dict(row, cost_usd=cost, price=charged, tokens=tokens,
+    sent = dict(row, cost_usd=cost, price=charged, tokens=tokens, **extra,
                 latency_s=round(reply.latency_s, 3),
                 attempts=reply.attempts, ratelimit=reply.headers,
                 stop_reason=reply.body.get("stop_reason", ""),
@@ -810,3 +873,404 @@ def _answered(row, kind, detail):
     out = calls.record(dict(row, verdict=kind, detail=detail))
     return {"ok": False, "error": kind, "detail": detail, "call_id": row["id"],
             "cost_usd": row["cost_usd"], "recorded": out.get("recorded", False)}
+
+
+# ── Evaluation rounds through the Message Batches API (the operator's decision of 2026-10-29,
+#    PHASE8_PLAN 15.12, "The measurement budget and screening") ──────────────────────────────
+#
+# An evaluation round, never a live feature, may send its calls as one batch, at half the
+# standard rates (`profiles.BATCH_MULTIPLIER`). `ask_batch` takes only the evaluation trigger:
+# a person's press and a background job are refused by name before anything is read or sent
+# (no route reaches it: tests/test_ai_batch.py scans the routes). Each request goes through
+# `_prepared`, `ask`'s own gates and builder, so it is masked, counted and bounded as a call
+# is, and its body is a call's byte for byte but for its one cache mark's TTL (the 1-hour,
+# `BATCH_CACHE_TTL`, on the last system block, where `build_request` always caches: the
+# provider's batch page recommends it, with identical marks in every request, as cache hits in
+# a batch are best-effort). The batch's worst case (each request's prompt as 1-hour cache
+# writes plus all its `max_tokens`, at the batch rate) is judged against the evaluation's own
+# stop and the day cap, and reserved (`reservations`) before the batch is submitted; a batch
+# that would pass either is refused whole, both figures named (the operator: a round that would
+# pass the day cap is asked for first). Every request is one row of the record, as a call is,
+# priced at the batch rate; a result the provider says it does not bill (errored, canceled,
+# expired) is recorded so, at no cost and never as a success; one whose bill is unknown (the
+# wait's bound passed and the batch not ended, a result missing or unreadable) counts its worst
+# case, said.
+
+#: The cache mark's TTL on a batched request (`build_request`'s *cache_ttl*).
+BATCH_CACHE_TTL = "1h"
+#: The provider's own limits on one batch (its batch page, read 2026-10-29).
+BATCH_MAX_REQUESTS = 100_000
+BATCH_MAX_BYTES = 256 * 1024 * 1024
+#: A request's custom_id, as the provider takes one.
+_CUSTOM_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+#: "Most batches finish within 1 hour" (the provider's batch page, read 2026-10-29): stated,
+#: not measured here. The wait's bound is 2.5 times it (CLAUDE.md: a bound is about 2.5x the
+#: time it covers), re-derived once rounds have been measured (each row keeps its latency).
+BATCH_EXPECTED_S = 3600.0
+BATCH_WAIT_S = 2.5 * BATCH_EXPECTED_S
+#: Between two reads of the batch's state.
+BATCH_POLL_S = 30.0
+#: How long a batch past its bound is waited on once asked to cancel (an allowance, not
+#: measured: a cancel ends what is not yet processed, and the batch then ends).
+BATCH_CANCEL_WAIT_S = 300.0
+#: The provider expires a batch's unprocessed requests 24 hours after it was created (expired
+#: requests are not billed); until then a batch can still bill. A batch's reservation lives
+#: that long and an hour more, so a process that died holds its batch's worst case for as long
+#: as the batch could bill. Its cost: a dead process's round held against the caps a day.
+BATCH_EXPIRY_S = 24 * 3600.0
+BATCH_RESERVATION_TTL_S = BATCH_EXPIRY_S + 3600.0
+#: The results the provider does not bill (its batch page's result types), each its verdict.
+BATCH_NOT_BILLED = {"errored": "batch_errored", "canceled": "batch_canceled",
+                    "expired": "batch_expired"}
+#: A failed read of the batch's state that the next poll asks again.
+_POLL_AGAIN = ("rate_limited", "overloaded", "provider_down")
+#: The keys a batched request names (`ask_batch`).
+BATCH_REQUEST_KEYS = ("custom_id", "feature", "prompt", "schema", "parts")
+
+
+def batch_worst_case_usd(model: str, body: dict, tokens: int = None) -> float:
+    """A batched request's cost if nothing is read from the cache: its whole prompt (*tokens*,
+    the provider's count or the fallback estimate) written with the 1-hour TTL (the dearest
+    input a batched request pays), plus all of `max_tokens`, at the batch rate."""
+    return profiles.batch_cost_usd(model, 0, int(body["max_tokens"]),
+                                   cache_write_1h_tokens=prompt_tokens(body) if tokens is None
+                                   else int(tokens))
+
+
+class _Batches:
+    """The adapter's batch calls, looked up when each is called."""
+
+    def create(self, batch_requests, key):
+        return anthropic_adapter.batch_create(batch_requests, key)
+
+    def get(self, batch_id, key):
+        return anthropic_adapter.batch_get(batch_id, key)
+
+    def cancel(self, batch_id, key):
+        return anthropic_adapter.batch_cancel(batch_id, key)
+
+    def results(self, batch_id, key):
+        return anthropic_adapter.batch_results(batch_id, key)
+
+
+def _batch_refused_whole(kind: str, why: str, requests, actor: str) -> dict:
+    """A batch refused before any request was read: one row for each request named (as a
+    refused call is one row), nothing sent."""
+    results = {}
+    for r in requests if isinstance(requests, list) else []:
+        r = r if isinstance(r, dict) else {}
+        cid = r.get("custom_id") if isinstance(r.get("custom_id"), str) else ""
+        prompt = r.get("prompt") if isinstance(r.get("prompt"), (list, tuple)) else ("", "")
+        call_id = calls.new_id()
+        out = calls.record({"id": call_id, "feature": str(r.get("feature") or ""),
+                            "actor": actor, "model": "",
+                            "prompt": f"{prompt[0]}.v{prompt[1]}" if len(prompt) == 2 else "",
+                            "schema": "", "cost_usd": 0.0, "trigger": None,
+                            "subject": dict(r.get("subject") or {}),
+                            "batch": {"custom_id": cid, "id": ""}, "verdict": kind,
+                            "detail": why})
+        if cid:
+            results[cid] = {"ok": False, "error": kind, "detail": why, "call_id": call_id,
+                            "cost_usd": 0.0, "recorded": out.get("recorded", False),
+                            "custom_id": cid}
+    log.info("ai: a batch refused for %s: %s", kind, why)
+    return {"ok": False, "error": kind, "detail": why, "batch_id": "", "results": results,
+            "cost_usd": 0.0, "worst_usd": 0.0}
+
+
+def _batch_shape(requests) -> str:
+    """Why *requests* is not a batch `ask_batch` takes, or ""."""
+    if not isinstance(requests, list) or not requests:
+        return "a batch holds at least one request, as a list"
+    if len(requests) > BATCH_MAX_REQUESTS:
+        return (f"a batch holds at most {BATCH_MAX_REQUESTS} requests (the provider's limit); "
+                f"this one holds {len(requests)}")
+    seen = set()
+    for n, r in enumerate(requests, 1):
+        if not isinstance(r, dict) or any(k not in r for k in BATCH_REQUEST_KEYS):
+            return f"request {n} does not name each of {', '.join(BATCH_REQUEST_KEYS)}"
+        cid = r["custom_id"]
+        if not isinstance(cid, str) or not _CUSTOM_ID.match(cid):
+            return (f"request {n}'s custom_id {cid!r} is not 1 to 64 letters, digits, _ or - "
+                    "(the provider's shape)")
+        if cid in seen:
+            return f"the custom_id {cid!r} is named twice: results are matched by it"
+        seen.add(cid)
+    return ""
+
+
+def _await_batch(provider, batch, key, *, bound_s: float, started: float, sleep, clock,
+                 words: str) -> dict:
+    """Read *batch*'s state every `BATCH_POLL_S` until it has ended or *bound_s* has passed
+    since *started*: ``{"batch", "ended", "why"}``, *why* naming what ran when it has not."""
+    polls = 0
+    while batch.status != "ended":
+        ran = clock() - started
+        if ran > bound_s:
+            counts = batch.counts or {}
+            return {"batch": batch, "ended": False, "why": (
+                f"the batch {batch.id} ran {ran:.0f} s and had not ended, past {words} "
+                f"({polls} reads of its state, the last {batch.status!r}, "
+                f"{int(counts.get('processing') or 0)} of its requests still processing)")}
+        sleep(BATCH_POLL_S)
+        polls += 1
+        try:
+            batch = provider.get(batch.id, key)
+        except anthropic_adapter.AdapterError as exc:
+            if exc.kind in _POLL_AGAIN:
+                log.info("ai: the batch %s's state could not be read (%s), asked again",
+                         batch.id, exc.kind)
+                continue
+            return {"batch": batch, "ended": False, "why": (
+                f"the batch {batch.id}'s state could not be read ({exc.kind}: {exc}) after "
+                f"{polls} reads")}
+    return {"batch": batch, "ended": True, "why": ""}
+
+
+def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
+              stop_usd: float = None, provider=None, count=None, sleep=None,
+              clock=None) -> dict:
+    """An evaluation round's calls as one batch through the provider's Message Batches API
+    (the section's comment above has what it holds to). *requests* are ``[{"custom_id",
+    "feature", "prompt", "schema", "parts", "context"?, "subject"?, "thinking"?}]``, each
+    what `ask` takes for one call; *trigger* an evaluation trigger (`triggers.evaluation`),
+    *actor* its run's; *stop_usd* the evaluation's own stop, the most this batch may cost.
+    *provider* replaces the adapter's batch calls (tests: ``create``, ``get``, ``cancel``,
+    ``results``), *count* its token count, *sleep* and *clock* the wait's.
+
+    ``{"ok", "error", "detail", "batch_id", "results": {custom_id: <ask's result for it>},
+    "cost_usd", "worst_usd"}``: ``ok`` when the batch ended and every request's result was
+    read, whatever each one's verdict; results are keyed by custom_id (the provider returns
+    them in any order)."""
+    import time as _time
+
+    from modules.ai import reservations
+
+    sleep = sleep or _time.sleep
+    clock = clock or _time.monotonic
+    provider = provider or _Batches()
+    kind = trigger.get("kind") if isinstance(trigger, dict) else None
+    if kind != triggers.EVALUATION:
+        named = f"a {kind} trigger" if kind in triggers.KINDS else "no trigger"
+        return _batch_refused_whole("batch_trigger", (
+            "a batch is for evaluation runs only (PHASE8_PLAN 15.12: never a live feature); "
+            f"this one names {named}: a person's press or a background job asks one call at a "
+            "time (gateway.ask); nothing was read or sent"), requests, actor)
+    bad = _batch_shape(requests)
+    if bad:
+        return _batch_refused_whole("batch_shape", f"{bad}; nothing was sent", requests, actor)
+
+    results, ready = {}, []
+    for r in requests:
+        cid = r["custom_id"]
+        prep = _prepared(r["feature"], tuple(r["prompt"]), r["schema"], r["parts"] or {},
+                         actor=actor, trigger=trigger, context=r.get("context"),
+                         thinking=r.get("thinking"), subject=r.get("subject"), count=count,
+                         cache_ttl=BATCH_CACHE_TTL,
+                         row_extra={"batch": {"custom_id": cid, "id": "",
+                                              "multiplier": profiles.BATCH_MULTIPLIER}})
+        if "refused" in prep:
+            results[cid] = dict(prep["refused"], custom_id=cid)
+            continue
+        worst = batch_worst_case_usd(prep["model"], prep["body"], prep["est"])
+        per_call = profiles.cap_per_call(r["feature"])
+        if worst > per_call:
+            results[cid] = dict(prep["refuse"]("over_cap", (
+                f"this batched request's worst case ${worst:.4f} is over the {r['feature']} "
+                f"task's per-call cap ${per_call:.4f}; nothing was sent"), worst_usd=worst),
+                custom_id=cid)
+            continue
+        ready.append(dict(prep, custom_id=cid, worst=worst, schema_model=r["schema"],
+                          feature=r["feature"]))
+    if not ready:
+        return {"ok": False, "error": "nothing_sent", "batch_id": "", "results": results,
+                "cost_usd": 0.0, "worst_usd": 0.0,
+                "detail": "every request was refused before a batch was submitted (each "
+                          "result names why); nothing was sent"}
+    total = sum(p["worst"] for p in ready)
+    n = len(ready)
+
+    def refuse_all(kind, why):
+        for p in ready:
+            results[p["custom_id"]] = dict(p["refuse"](kind, why, worst_usd=p["worst"],
+                                                       batch_worst_usd=total),
+                                           custom_id=p["custom_id"])
+        return {"ok": False, "error": kind, "detail": why, "batch_id": "", "results": results,
+                "cost_usd": 0.0, "worst_usd": total}
+
+    size = sum(len(json.dumps(p["body"], ensure_ascii=False).encode("utf-8")) for p in ready)
+    if size > BATCH_MAX_BYTES:
+        return refuse_all("batch_shape", f"the batch's requests are {size} bytes, over the "
+                          f"provider's {BATCH_MAX_BYTES} a batch; nothing was sent")
+    if stop_usd is not None and total > float(stop_usd):
+        return refuse_all("over_stop", (
+            f"this batch's worst case ${total:.4f} ({n} requests at the batch rate) is over "
+            f"the evaluation's stop ${float(stop_usd):.4f}; nothing was sent"))
+    cap = day_cap()
+    uncapped = "" if cap is not None else f"; {NO_DAY_CAP_WORDS}"
+    day = today or calls.today()
+
+    def judge(held):
+        spent = calls.spent_usd(day)
+        if spent["state"] == "unreadable":
+            return {"kind": "over_cap", "why": "the record of AI calls cannot be read, so "
+                    f"today's spend is unknown ({spent['error']}){uncapped}; nothing was sent"}
+        flying = reservations.in_flight(held)
+        if cap is not None and spent["usd"] + flying["usd"] + total > cap:
+            return {"kind": "over_cap", "why": (
+                f"today's spend ${spent['usd']:.4f} plus ${flying['usd']:.4f} reserved by "
+                f"{flying['calls']} call(s) in flight plus this batch's worst case "
+                f"${total:.4f} ({n} requests at the batch rate) is over the day cap "
+                f"${cap:.4f}: a round that would pass the day cap is asked for first; "
+                "nothing was sent")}
+        return None
+
+    features = sorted({p["feature"] for p in ready})
+    batch_key = "ai-batch-" + calls.new_id()[len("ai-"):]
+    held = reservations.reserve(batch_key, total, judge=judge, ttl_s=BATCH_RESERVATION_TTL_S,
+                                feature=features[0] if len(features) == 1 else "batch",
+                                day=day)
+    if not held["ok"]:
+        said = dict(held["refusal"])
+        return refuse_all(said.pop("kind"), said.pop("why"))
+
+    pending = {p["custom_id"]: p for p in ready}
+    unrecorded = []
+
+    def done(p, out):
+        results[p["custom_id"]] = dict(out, custom_id=p["custom_id"], **p["told"])
+        pending.pop(p["custom_id"], None)
+        if not out.get("recorded"):
+            unrecorded.append(p["custom_id"])
+
+    def counted_worst(p, kind, why):
+        # Whether the provider billed it is unknown: its worst case is what the record counts.
+        done(p, _answered(dict(p["row"], cost_usd=p["worst"], worst_usd=p["worst"]), kind,
+                          f"{why}; whether the provider billed it is unknown, so its worst "
+                          f"case ${p['worst']:.4f} is counted"))
+
+    def summary(ok, kind="", detail="", batch_id=""):
+        return {"ok": ok, "error": kind, "detail": detail, "batch_id": batch_id,
+                "results": results, "worst_usd": total,
+                "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in results.values()),
+                                  6)}
+
+    key = ready[0]["key"]
+    try:
+        sent_at = provider_limit.clock()
+        started = clock()
+        try:
+            batch = provider.create([{"custom_id": p["custom_id"], "params": p["body"]}
+                                     for p in ready], key)
+        except anthropic_adapter.WorkspaceLimit as exc:
+            hold = provider_limit.record(exc, call_id=batch_key, feature=features[0])
+            words = provider_limit.said(hold)["words"]
+            for p in list(pending.values()):
+                done(p, p["refuse"](exc.kind, words, ratelimit=exc.headers,
+                                    **_limit_fields(hold)))
+            return summary(False, exc.kind, words)
+        except anthropic_adapter.AdapterError as exc:
+            why = f"the batch was not submitted ({exc.kind}: {exc})"
+            for p in list(pending.values()):
+                done(p, p["refuse"](exc.kind, why, ratelimit=exc.headers))
+            return summary(False, exc.kind, why)
+        provider_limit.clear(sent_at, call_id=batch_key)
+        for p in ready:
+            p["row"]["batch"] = dict(p["row"]["batch"], id=batch.id)
+        waited = _await_batch(provider, batch, key, bound_s=BATCH_WAIT_S, started=started,
+                              sleep=sleep, clock=clock, words=(
+                                  f"its bound of {BATCH_WAIT_S:.0f} s (2.5 times the "
+                                  f"{BATCH_EXPECTED_S:.0f} s the provider says most batches "
+                                  "finish within)"))
+        batch = waited["batch"]
+        if not waited["ended"]:
+            why = waited["why"]
+            log.warning("ai: %s; it is asked to cancel", why)
+            try:
+                batch = provider.cancel(batch.id, key)
+            except anthropic_adapter.AdapterError as exc:
+                why += f"; asking it to cancel failed ({exc.kind}: {exc})"
+            else:
+                again = _await_batch(provider, batch, key, bound_s=BATCH_CANCEL_WAIT_S,
+                                     started=clock(), sleep=sleep, clock=clock, words=(
+                                         f"the {BATCH_CANCEL_WAIT_S:.0f} s a cancel is "
+                                         "waited on"))
+                batch = again["batch"]
+                if again["ended"]:
+                    waited = again
+                else:
+                    why += f"; it was asked to cancel, and {again['why']}"
+            if not waited["ended"]:
+                for p in list(pending.values()):
+                    counted_worst(p, "batch_unfinished", why)
+                return summary(False, "batch_unfinished", why, batch.id)
+        latency = round(clock() - started, 3)
+        try:
+            lines = provider.results(batch.id, key)
+        except anthropic_adapter.AdapterError as exc:
+            why = (f"the batch {batch.id} ended and its results could not be read "
+                   f"({exc.kind}: {exc})")
+            for p in list(pending.values()):
+                counted_worst(p, "batch_unread", why)
+            return summary(False, "batch_unread", why, batch.id)
+        got = {}
+        for line in lines:
+            cid = line.get("custom_id") if isinstance(line, dict) else None
+            if cid in pending and cid not in got:
+                got[cid] = line.get("result") if isinstance(line.get("result"), dict) else {}
+            else:
+                log.warning("ai: the batch %s's result for %r matches no request waiting on "
+                            "one: ignored", batch.id, cid)
+        for p in list(pending.values()):
+            res = got.get(p["custom_id"])
+            kind = res.get("type") if isinstance(res, dict) else None
+            row = dict(p["row"], latency_s=latency)
+            if kind == "succeeded" and isinstance(res.get("message"), dict):
+                reply = anthropic_adapter.Reply(status=200, body=res["message"],
+                                                headers=batch.headers, attempts=1,
+                                                latency_s=latency)
+                done(p, _received(row, reply, p["model"], p["max_tokens"], p["schema_model"],
+                                  batch=True))
+            elif kind in BATCH_NOT_BILLED:
+                done(p, _answered(dict(row, cost_usd=0.0, billed=False), BATCH_NOT_BILLED[kind],
+                                  _not_billed_words(kind, res, batch.id)))
+            elif res is None:
+                counted_worst(p, "batch_missing", f"the batch {batch.id} ended with no result "
+                              f"for {p['custom_id']}")
+            else:
+                counted_worst(p, "batch_unknown_result", f"the batch {batch.id}'s result for "
+                              f"{p['custom_id']} is {kind!r}, not one the provider names")
+        return summary(True, batch_id=batch.id)
+    except BaseException as exc:
+        for p in list(pending.values()):
+            got = calls.record(dict(p["row"], verdict="exception", cost_usd=p["worst"],
+                                    worst_usd=p["worst"], detail=(
+                                        f"the batch raised {type(exc).__name__} after it was "
+                                        "reserved; whether the provider billed it is unknown, "
+                                        f"so its worst case ${p['worst']:.4f} is counted")))
+            pending.pop(p["custom_id"], None)
+            if not got.get("recorded"):
+                unrecorded.append(p["custom_id"])
+        raise
+    finally:
+        # Settled once every request's row is in the record: until then the reservation is
+        # what counts the batch. A row that could not be recorded leaves it to its expiry.
+        if not pending and not unrecorded:
+            reservations.settle(batch_key, BATCH_RESERVATION_TTL_S)
+
+
+def _not_billed_words(kind: str, result: dict, batch_id: str) -> str:
+    """A result the provider does not bill, in words: an error's own type and message, masked
+    and cut, never the request."""
+    from modules import redact
+
+    if kind == "errored":
+        err = result.get("error") if isinstance(result.get("error"), dict) else {}
+        inner = err.get("error") if isinstance(err.get("error"), dict) else err
+        said = f"{inner.get('type', '')}: {inner.get('message', '')}".strip(": ")
+        said = redact.redact_egress(said, values={})[:300] or "no error given"
+        return f"the batch {batch_id} could not answer this request ({said}); not billed"
+    return {"canceled": f"the batch {batch_id} was canceled before this request was "
+                        "processed; not billed",
+            "expired": f"the batch {batch_id} expired before this request was processed (24 "
+                       "hours after it was created); not billed"}[kind]

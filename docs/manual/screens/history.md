@@ -68,7 +68,16 @@ Open a line for the full record underneath. It shows:
   Secrets show only as their masks: the prompt was masked before it left the host, and the
   unmasked form is never stored. A call refused before it was sent says so. **Open what it
   produced** opens what the answer made: Explain's answer in its alert's evidence pack, or the
-  builder as Ask in words filled it (every choice in its address);
+  builder as Ask in words filled it (every choice in its address).
+
+  **A batched evaluation call** says **AI call (batched)**. An evaluation round may send its
+  calls as one batch through the provider's Message Batches API, at half the standard rates;
+  a person's press and a background feature never do. Its record names the batch, the
+  request's own name in it and the rate, and its cost is priced at the batch rate. A request
+  the provider did not answer says why: **batch errored**, **batch canceled** or **batch
+  expired** costs nothing, because the provider does not bill it. **batch unfinished** or
+  **batch missing** counts the request's worst case, because whether it was billed is not
+  known;
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 

@@ -306,3 +306,143 @@ def count_tokens(body: dict, api_key: str, *, session=None, clock=time.monotonic
     cls = {429: RateLimited, 529: Overloaded, 401: KeyRefused, 403: KeyRefused,
            400: BadRequest, 404: BadRequest, 413: BadRequest}.get(status, ProviderDown)
     raise cls(f"HTTP {status}: {words}", status=status, headers=kept)
+
+
+# ── The Message Batches API (evaluation rounds only: the operator's decision of 2026-10-29,
+#    PHASE8_PLAN 15.12; `gateway.ask_batch`) ───────────────────────────────────────────────
+#
+# The wire shape is Anthropic's, read 2026-10-29 (platform.claude.com/docs/en/build-with-
+# claude/batch-processing; the claude-api reference's Message Batches): `POST
+# /v1/messages/batches` with ``{"requests": [{"custom_id", "params"}]}``, each ``params`` a
+# Messages request body; `GET /v1/messages/batches/<id>` its state (``processing_status``
+# ``in_progress``, ``canceling`` or ``ended``, and ``request_counts``); `POST
+# .../<id>/cancel`; `GET .../<id>/results`, one JSON line a request, ``{"custom_id",
+# "result": {"type": "succeeded", "message"} | {"type": "errored", "error"} | {"type":
+# "canceled"} | {"type": "expired"}}``, in any order. The same headers as a send. None is
+# retried here: the gateway's poll asks again on its own bound.
+
+BATCHES_URL = "https://api.anthropic.com/v1/messages/batches"
+#: A batch's create and state reads, connect and read bounds, seconds (a create uploads every
+#: request's body; not measured yet, re-derived from the first live rounds).
+BATCH_TIMEOUT = (5.0, 60.0)
+#: The results' read bound: every answer of the batch in one body.
+BATCH_RESULTS_TIMEOUT = (5.0, 120.0)
+#: A batch's id as the provider names one (``msgbatch_...``): checked before it is put in an
+#: address, so an answer can never steer where the key is sent.
+_BATCH_ID = re.compile(r"^msgbatch_[A-Za-z0-9]{1,100}$")
+
+
+@dataclass
+class Batch:
+    id: str
+    status: str
+    counts: dict = field(default_factory=dict)
+    headers: dict = field(default_factory=dict)
+    ended_at: str = ""
+
+
+def _batch_url(batch_id: str, tail: str = "") -> str:
+    """The provider's address for *batch_id* (and *tail*), always under `BATCHES_URL`: the
+    results are read from the address built here, never from the ``results_url`` an answer
+    names, so the key goes to the provider's own host only."""
+    if not isinstance(batch_id, str) or not _BATCH_ID.match(batch_id):
+        raise BadRequest(f"{batch_id!r} is not a batch id the provider names (msgbatch_...)")
+    return f"{BATCHES_URL}/{batch_id}{tail}"
+
+
+def _batch_http(method: str, url: str, api_key: str, *, body=None, session=None,
+                timeout=BATCH_TIMEOUT):
+    """One request to the batches API: ``(resp, kept headers)`` for a 200, else the
+    `AdapterError` its status is (a workspace's usage limit its own kind, as a send's)."""
+    if not api_key:
+        raise KeyRefused("no API key is set")
+    http = session or requests
+    headers = {"x-api-key": api_key, "anthropic-version": API_VERSION,
+               "content-type": "application/json"}
+    try:
+        if method == "POST":
+            resp = http.post(url, json=body if body is not None else {}, headers=headers,
+                             timeout=timeout)
+        else:
+            resp = http.get(url, headers=headers, timeout=timeout)
+    except requests.Timeout as exc:
+        raise ProviderDown(f"no answer from the batches API within {timeout[1]:.0f} s "
+                           f"({type(exc).__name__})")
+    except requests.RequestException as exc:
+        raise ProviderDown(f"could not reach {BATCHES_URL} ({type(exc).__name__})")
+    kept = ratelimit_headers(resp.headers)
+    status = resp.status_code
+    if status == 200:
+        return resp, kept
+    words = _error_words(resp)
+    limited = _limit_error(resp, status, words, 1, kept)
+    if limited is not None:
+        raise limited
+    cls = {429: RateLimited, 529: Overloaded, 401: KeyRefused, 403: KeyRefused,
+           400: BadRequest, 404: BadRequest, 413: BadRequest}.get(status, ProviderDown)
+    raise cls(f"HTTP {status}: {words}", status=status, headers=kept)
+
+
+def _batch_of(resp, kept) -> Batch:
+    try:
+        got = resp.json() or {}
+    except ValueError:
+        raise ProviderDown("HTTP 200 from the batches API with a body that is not JSON",
+                           status=200, headers=kept)
+    if not isinstance(got, dict) or not isinstance(got.get("id"), str) \
+            or not _BATCH_ID.match(got["id"]) or not isinstance(got.get("processing_status"),
+                                                                 str):
+        raise ProviderDown("HTTP 200 from the batches API with no batch id or state",
+                           status=200, headers=kept)
+    counts = got.get("request_counts")
+    return Batch(id=got["id"], status=got["processing_status"],
+                 counts=dict(counts) if isinstance(counts, dict) else {}, headers=kept,
+                 ended_at=str(got.get("ended_at") or ""))
+
+
+def batch_create(batch_requests: list, api_key: str, *, session=None,
+                 timeout=BATCH_TIMEOUT) -> Batch:
+    """Submit *batch_requests* (``[{"custom_id", "params"}]``) as one batch: its `Batch`."""
+    resp, kept = _batch_http("POST", BATCHES_URL, api_key, body={"requests": batch_requests},
+                             session=session, timeout=timeout)
+    return _batch_of(resp, kept)
+
+
+def batch_get(batch_id: str, api_key: str, *, session=None, timeout=BATCH_TIMEOUT) -> Batch:
+    """The batch's state now."""
+    resp, kept = _batch_http("GET", _batch_url(batch_id), api_key, session=session,
+                             timeout=timeout)
+    return _batch_of(resp, kept)
+
+
+def batch_cancel(batch_id: str, api_key: str, *, session=None,
+                 timeout=BATCH_TIMEOUT) -> Batch:
+    """Ask the provider to cancel the batch: requests not yet processed end ``canceled``."""
+    resp, kept = _batch_http("POST", _batch_url(batch_id, "/cancel"), api_key,
+                             session=session, timeout=timeout)
+    return _batch_of(resp, kept)
+
+
+def batch_results(batch_id: str, api_key: str, *, session=None,
+                  timeout=BATCH_RESULTS_TIMEOUT) -> list:
+    """An ended batch's results, one dict a request, in the provider's order (any order): read
+    from `_batch_url`'s results address. A line that is not JSON is `ProviderDown`, never
+    skipped: a result missing would be a request whose bill is unknown."""
+    import json as _json
+
+    resp, kept = _batch_http("GET", _batch_url(batch_id, "/results"), api_key,
+                             session=session, timeout=timeout)
+    out = []
+    for n, line in enumerate((resp.text or "").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            got = _json.loads(line)
+        except ValueError:
+            raise ProviderDown(f"the batch's results line {n} is not JSON", status=200,
+                               headers=kept)
+        if not isinstance(got, dict):
+            raise ProviderDown(f"the batch's results line {n} is not a result", status=200,
+                               headers=kept)
+        out.append(got)
+    return out

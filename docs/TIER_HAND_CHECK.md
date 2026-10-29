@@ -2754,3 +2754,96 @@ sheet's own test, which calls the sheet directly: no test plants a secret in a p
 and reads the bytes sent, so the gateway's egress mask over the sheet is its own tests', not
 shown here.**
 
+## 2026-10-29: evaluation rounds through the provider's Message Batches API, by hand
+**What touches the tier.** The operator's decision of 2026-10-29 (PHASE8_PLAN 15.12, "The
+measurement budget and screening"): evaluation rounds, never a live feature, go through the
+provider's Message Batches API, at half the standard rates. New: `gateway.ask_batch` (an
+evaluation trigger only, refused by name before anything is read; the batch's shape, the
+provider's limits; each request through `_prepared`, `ask`'s own gates and builder moved
+unchanged out of `ask`, with the 1-hour TTL on the one cache mark; the per-call cap; the
+evaluation's stop and the day cap judged on the batch's worst case and reserved for the
+provider's 24 hours and one more; the bounded wait, a cancel past it; each result recorded,
+errored, canceled and expired at no cost, a missing or unknown result at its worst case),
+`batch_worst_case_usd`, `cache_writes`, `_received`'s batch pricing, `build_request`'s
+`cache_ttl`; `anthropic_adapter.batch_create`, `batch_get`, `batch_cancel`, `batch_results`
+(the key sent only to an address built from a batch id of the provider's shape, never to an
+answer's `results_url`); `profiles.batch_prices_for`, `batch_cost_usd` (`BATCH_MULTIPLIER`
+0.5, `CACHE_WRITE_1H_MULTIPLIER` 2.0, dated); `explain.explain_packs_batch` (what it sends).
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it, on
+the change's tree. Each mutant is one exact text replacement in one `scripts/nmas-control`
+throwaway worktree. The aimed tests run through `scripts/nmas-test` (tests/test_ai_batch.py
+and test_ai_batch_explain.py; for the lines `ask` shares, also test_ai_gateway_ask.py,
+test_ai_gateway.py, test_ai_gateway_parts.py and test_ai_typed_text.py). The file is restored
+and compared byte for byte before the next. The baseline passed (61 tests). A must-die canary
+went first: `ask_batch` raising at its start, killed by 39. The first run had 6 survivors. Each
+was read, given a test, and run again in its own worktree (marked *then killed*). Separately,
+11 controls, each in its own `nmas-control` invocation, showed the new tests able to fail (the
+trigger refusal, the TTL, the day cap, the stop, the batch rate, an unbilled result, matching
+by custom_id, the wait's bound, the batch id's check, Explain's check, History's drawing): each
+was killed.
+| T1 a person or background trigger admitted (`not in KINDS`) | killed | the person and background cases of `test_a_person_a_background_job_or_no_trigger_is_refused_before_anything`, and the Explain round's |
+| T2 no trigger refusal | killed | its three cases, and the Explain round's |
+| T3 every trigger read as an evaluation | killed | the same |
+| T4 the refusal's words naming no trigger whatever was given | killed | its person and background cases |
+| S1 a batch out of shape not refused | killed | the four cases of `test_a_batch_out_of_shape_is_refused_and_nothing_sent`, and another |
+| S2 a custom_id named twice taken | killed | its named-twice case |
+| S3 a custom_id out of the provider's shape taken | killed | its shape case |
+| S4 the provider's request limit not asked | killed | `test_a_batch_over_the_providers_limits_is_refused[BATCH_MAX_REQUESTS]` |
+| S5 the provider's byte limit not asked | killed | its `BATCH_MAX_BYTES` case |
+| S6 an empty batch taken | killed | the empty case |
+| P1 a request `ask`'s gates refuse sent anyway | killed | `test_a_request_the_gateway_refuses_is_refused_alone_and_the_rest_sent`, `test_a_batch_while_a_workspace_limit_is_held_is_refused_and_nothing_sent` |
+| P2 the per-call cap 1,000 times | survived (the test's cap was 0, under any multiple), then killed | `test_a_per_call_cap_holds_each_batched_request` (the cap planted just under and just over the worst case) |
+| P3 the batched request built with no TTL | killed | the two body tests (the gateway's, Explain's) |
+| P4 the TTL "5m" | killed | the same |
+| P5 `build_request` dropping the TTL it is given | killed | the same |
+| P6 `_prepared` never passing the TTL | killed | the same |
+| P7 `_prepared` passing a TTL of None to every call | killed | `test_an_explain_pack_is_sent_as_the_request_s_one_mask_makes_it_and_nothing_said` (a call's builder takes no TTL) |
+| P8 a batched request built without its context | killed | `test_each_batched_request_is_explain_packs_but_its_cache_ttl` |
+| C1 the evaluation's stop doubled | killed | `test_a_batch_over_the_evaluations_stop_is_refused_naming_both` |
+| C2 the stop never asked | killed | the same |
+| C3 the day cap without the batch's worst case | killed | the day-cap refusal, and the spend-and-in-flight test |
+| C4 the day cap without what is in flight | killed | `test_the_day_cap_counts_todays_spend_and_whats_in_flight` |
+| C5 the day cap without today's spend | killed | the same |
+| C6 `>` to `>=` at the day cap | killed | `test_a_batch_reaching_the_day_cap_exactly_is_sent` |
+| C7 an unreadable record read as nothing spent | killed | `test_an_unreadable_record_refuses_the_batch` |
+| C8 the batch reserved at $0 | killed | `test_the_batchs_worst_case_is_reserved_while_in_flight_and_settled_after` |
+| C9 a reservation refused, the batch sent anyway | killed | 3, the day-cap refusal among them |
+| C10 the reservation living 24 hours, not 25 | killed | the in-flight test, `test_the_reservation_lives_as_long_as_the_batch_could_bill` |
+| C11 never settled | killed | 7 |
+| C12 settled though a row was not recorded | survived (no test had a row refused), then killed | `test_a_row_that_could_not_be_recorded_leaves_the_batchs_reservation_to_expire` (added) |
+| C13 a workspace limit held from before not cleared once the batch was taken | killed | `test_a_submitted_batch_clears_a_workspace_limit_held_from_before` |
+| R1 the batch rate 1.0 | killed | 4, the batch-rate record test among them |
+| R2 the 1-hour write at 1.25x input | killed | the record test, `test_the_batch_rate_is_half_of_every_standard_rate_and_dated` |
+| R3 a 1-hour write priced as a 5-minute one | killed | the record test |
+| R4 writes without a breakdown read as 5-minute | killed | `test_cache_writes_without_a_breakdown_are_the_dearer_1_hour[usage0]` |
+| R5 a breakdown short of the total dropping the rest | killed | its `usage2` case |
+| R6 a batched answer priced at the standard rate | killed | the record test |
+| R7 an unbilled result counted at its worst case | killed | `test_errored_canceled_and_expired_are_recorded_so_unbilled_never_a_success` |
+| R8 a result whose bill is unknown counted at $0 | killed | the missing-result test, the wait's bound test |
+| R9 an error's message unmasked | killed | the errored test (a planted community string) |
+| R10 every request given the first result | killed | 5, `test_results_are_matched_by_custom_id_in_any_order` among them |
+| R11 a result for no waiting request kept unsaid | survived (it is never read), then killed | `test_a_missing_or_unknown_result_counts_its_worst_case` (its log line asserted) |
+| R12 any result carrying a message read as an answer | survived, then killed | `test_an_errored_result_carrying_a_message_is_never_read_as_an_answer` (added) |
+| W1 the wait's bound 10 times | killed | `test_the_wait_is_bounded_and_fires_naming_what_ran`, the canceled-past-its-bound test |
+| W2 the bound 1x the stated hour | killed | the bound test (its words) |
+| W3 no cancel past the bound | killed | 3 |
+| W4 a transient state read ending the wait | survived (the cancel then ended the batch), then killed | `test_a_state_read_failing_transiently_is_asked_again` (now: never canceled, read twice) |
+| W5 a refused state read asked again | killed | `test_a_state_read_refused_ends_the_wait_and_counts_the_worst_case` |
+| A1 a batch id put in the address unchecked | killed | 4 cases of `test_a_batch_id_out_of_shape_is_refused_before_anything_is_sent` |
+| A2 the id's shape a prefix only | killed | its `msgbatch_01/../x` case |
+| A3 an answer's batch id not checked | killed | `test_an_answer_naming_a_batch_id_out_of_shape_is_provider_down` |
+| A4 the results read from the batch's own address | killed | `test_the_adapter_submits_reads_cancels_and_reads_results_on_the_providers_host` |
+| A5 a batch call with no key sent | killed | `test_no_key_sends_no_batch` |
+| A6 a results line not JSON skipped | killed | `test_a_results_line_that_is_not_json_is_never_skipped` |
+| A7 only the first request submitted | survived (the test submitted one), then killed | the adapter's wire test (now two requests) |
+| A8 a workspace limit read as a plain bad request | killed | its `WorkspaceLimit` case |
+| E1 v6's first request without its `looked_up` block | killed | `test_v6s_need_is_looked_up_once_and_its_follow_up_batched` |
+| E2 Explain's batched request without its context | killed | `test_each_batched_request_is_explain_packs_but_its_cache_ttl` |
+| E3 the follow-up without what was looked up | killed | the v6 test |
+| E4 Explain's batched answers not checked | killed | `test_each_answer_is_checked_as_explain_pack_checks_it`, the body test |
+**The result: 60 mutants; every one killed, six (P2, C12, R11, R12, W4, A7) after a test was
+added or strengthened, each named above; the canary killed. The harness names a failing
+parametrized test only up to the first space in its id. Not covered here: a live batch. No
+provider request was made, and the wire shape is the provider's documentation, read
+2026-10-29.**
+
