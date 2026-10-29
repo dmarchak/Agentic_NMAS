@@ -2072,6 +2072,19 @@ registered; if (3) fails, it does not ship. Its cost: one more round per iterati
 label. The defect class it prevents: a confidently wrong explanation shipped because the
 average looked good, or a useful one held back by a floor it nearly meets.
 
+**The measurement budget and screening (the operator's decisions, 2026-10-29 ~00:4x UTC).** A
+new $200 credit, expiring 2026-11-29 (every earlier credit expired), of which **$120 is Phase 8's
+measurement budget**; every report states spend against it. Mercury's day cap is back to $80,
+and a round that would pass it is asked for first. **Screen before adopting:** a candidate (a
+prompt version, a fact sheet, a model) gets a 3-run screen first, and only one that passes the
+screen gets a 10-run adoption round. Evaluation rounds (never a live feature) go through the
+provider's Message Batches API when its price, with prompt caching, is materially lower: an
+evaluation-path change with its own test. For Explain, confidently wrong is reported both raw
+(the model's answer) and guarded (after Mercury's guard), and the pin stays v4 until cases 11
+and 21 are back. Its cost: one short round before each adoption round. The defect class it
+prevents: a full round spent on a candidate a few runs would have ruled out, and spend found
+first on the provider's bill.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
@@ -3296,6 +3309,11 @@ after it (item 6, the toolbar assistant, stays card P7's own scope, 16.10). Each
 built with recorded cases, a blind held-out set and 15.12's bars, its effect on checks stated
 first.
 
+**Item 1's done bar (the operator's decision, 2026-10-29 ~00:4x UTC, C2135):** item 1 makes no
+model call, so its bar is not a round: it is done when the control is on every AI answer, the
+operator has used it in the lab, and 3 real No's are reviewed into case drafts. A No never adds
+to a held-out set by itself (a held-out case starts only from the operator's confirmation).
+
 ## 17. SDN controller support, its first slice for CSCI 5280 Lab 8 (the operator, 2026-10-26)
 
 **Why now.** The operator's order of 2026-10-26 ~23:2x UTC, under the rule that a course lab's
@@ -3524,6 +3542,13 @@ responses safe on a network that carries real traffic. This gate lists what must
 **The guard (C2009, B, blocks Phase 8 done).** Each network carries a stage: lab, pilot or
 production. Until the gate is complete, AUTO may be turned on only on a network marked lab. The
 Mode card says so, and a refusal names the network's stage and this gate.
+
+**AUTO never acts on an inferred source (the operator's rule, 2026-10-29 ~00:4x UTC, C2147).** A
+detection whose source Mercury inferred (from the topology, or a picker's choice) rather than
+saw in the flows always goes to a person, whatever the network's mode or the action's risk;
+only a source the flows themselves name can be applied unattended. Its cost: one more response
+awaiting a person when a flood's flows match MAC addresses only. The defect class it prevents:
+an unattended drop or rate limit of the wrong host, chosen by inference.
 
 **The gate's items (each a register row, B, blocking the gate):**
 
