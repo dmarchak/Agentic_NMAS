@@ -844,6 +844,121 @@ def _negation_pair(chain_key: tuple, canonical: str, negations: dict,
     return None
 
 
+#: Commands IOS and IOS-XE keep SEVERAL of, one line per instance, each line's own `no`
+#: form removing that instance alone (found 2026-10-29: a rollback of an ADDED `ntp server`
+#: beside one the device held re-sent the held server and left the added one, because
+#: `_command_keys` drops a line's last word as its "value" and two servers became one
+#: setting at two values). Consumed by `rollback_commands`: a pushed
+#: line whose setting key matched a held line is undone by its own `no` form when its
+#: command is declared here AND no held line is the same instance; otherwise the held line
+#: is re-sent, as before.
+#:
+#: Each row: (sections, leading words, identity words after them, exact word count or
+#: None, blankets). *sections* names the line's immediate parent by its leading words, ""
+#: for global configuration. The instance's IDENTITY is the leading words, any `vrf
+#: <name>` or `ipv6` qualifier, and the next *identity* words: `ntp server [vrf V] ADDR`,
+#: `ip route [vrf V] PREFIX MASK NEXTHOP`, `ipv6 route PREFIX NEXTHOP`. A held line of the
+#: same identity is the same instance with other options (`... name before`), restored and
+#: never negated, because `no` names the instance and would take the held one with it. A
+#: held *blanket* (`passive-interface default`) makes the pushed line's state invisible,
+#: so nothing is negated beside it. An exact word count declares a FLAG sharing its first
+#: word with others (`ipv6 cef` beside `ipv6 unicast-routing`).
+#:
+#: Measured where the captures show it (two lines of one key in one section of a real
+#: device: `tests/test_rollback_repeatable.py`, `TestTheDeclarationAgainstTheCaptures`);
+#: the rest declared from the IOS command reference. A command not here is restored as
+#: before, and the read-back names a pushed line still on the device beside it. Never a
+#: `no` form whose reach is unknown: refusing by resemblance is safe, allowing is not.
+_ROUTING = ("router", "ipv6 router", "address-family")
+REPEATABLE_COMMANDS = (
+    (("",), ("ntp", "server"), 1, None, ()),
+    (("",), ("ntp", "peer"), 1, None, ()),
+    (("",), ("logging", "host"), 1, None, ()),
+    (("",), ("ip", "name-server"), 1, None, ()),
+    (("",), ("ip", "route"), 3, None, ()),
+    (("",), ("ipv6", "route"), 2, None, ()),
+    (("",), ("snmp-server", "host"), 1, None, ()),
+    (("",), ("snmp-server", "enable", "traps"), 1, None, ()),
+    (("",), ("ip",), 1, 2, ()),
+    (("",), ("ipv6",), 1, 2, ()),
+    (("",), ("service",), 1, 2, ()),
+    (("interface",), ("ip", "helper-address"), 1, None, ()),
+    (("interface",), ("ipv6", "address"), 1, None, ()),
+    (("interface",), ("ipv6", "dhcp", "relay", "destination"), 1, None, ()),
+    (("interface",), ("ipv6", "nd"), 1, 3, ()),
+    (_ROUTING, ("passive-interface",), 1, None, ("default",)),
+    (_ROUTING, ("network",), 1, 2, ()),
+    (_ROUTING, ("redistribute",), 1, None, ()),
+)
+
+#: Words naming WHERE an instance lives rather than which it is, with the number of
+#: arguments each takes: part of the identity, skipped when counting its words.
+_QUALIFIERS = {"vrf": 1, "ipv6": 0}
+
+
+def _in_section(parent: str, sections: tuple) -> bool:
+    words = parent.split()
+    for section in sections:
+        lead = section.split()
+        if (not lead and not words) or (lead and words[:len(lead)] == lead):
+            return True
+    return False
+
+
+def _repeatable_row(chain, line):
+    """The `REPEATABLE_COMMANDS` row declaring *line*'s command in its section, or None.
+    The longest declared leading words win."""
+    words = (line or "").split()
+    if not words or words[0] == "no":
+        return None
+    parent = chain[-1].strip() if chain else ""
+    best = None
+    for row in REPEATABLE_COMMANDS:
+        sections, lead, _n, exact, _blankets = row
+        if tuple(words[:len(lead)]) != lead or not _in_section(parent, sections):
+            continue
+        if exact is not None and len(words) != exact:
+            continue
+        if best is None or len(lead) > len(best[1]):
+            best = row
+    return best
+
+
+def _repeatable_identity(chain, line):
+    """The instance *line* configures, as a tuple of words, when its command is declared
+    in `REPEATABLE_COMMANDS`; None when it is not, or when the line names no instance."""
+    row = _repeatable_row(chain, line)
+    if row is None:
+        return None
+    _sections, lead, count, _exact, _blankets = row
+    rest = line.split()[len(lead):]
+    at = 0
+    while at < len(rest) and rest[at] in _QUALIFIERS:
+        at += 1 + _QUALIFIERS[rest[at]]
+    ident = rest[at:at + count]
+    if at > len(rest) or len(ident) < count:
+        return None
+    return tuple(lead) + tuple(rest[:at]) + tuple(ident)
+
+
+def _negates_exactly(chain, line, held: list):
+    """Is `no <line>` the undo of *line*, a pushed line whose setting key matched the
+    *held* lines? Only for a declared repeatable command whose instance no held line is,
+    and never beside a held blanket. (True or False, and the identity it judged.)"""
+    identity = _repeatable_identity(chain, line)
+    if identity is None:
+        return False, None
+    _sections, lead, _n, _exact, blankets = _repeatable_row(chain, line)
+    for other in held:
+        words = other.split()
+        if tuple(words[:len(lead)]) == lead and len(words) == len(lead) + 1 \
+                and words[-1] in blankets:
+            return False, identity
+        if _repeatable_identity(chain, other) == identity:
+            return False, identity
+    return True, identity
+
+
 def landed_key(chain, line) -> tuple:
     """A configuration line as the device holds it: its header chain and its own text,
     canonicalised and unindented. THE identity `landed` compares by (C501)."""
@@ -1025,7 +1140,7 @@ def created_containers(pushed: list, pre_config: str) -> set:
     return created
 
 
-def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
+def rollback_commands(pushed: list, pre_config: str, landed=None, unsure: list = None) -> list:
     """The inverse of exactly what was pushed, and nothing else.
 
     A config-mode replay of the pre-change snapshot cannot undo a change. It is
@@ -1059,28 +1174,41 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     ``None`` means the capture could not read the device. Everything pushed is
     then treated as applied, which is the conservative answer when you do not
     know what happened.
+
+    **A key match is not a replacement for a repeatable command** (2026-10-29): two
+    `ntp server` lines share the key `ntp server`, and IOS keeps both, so re-sending the
+    held one left the added one on the device. A pushed line whose command is declared in
+    `REPEATABLE_COMMANDS`, and whose instance no held line is, is undone by its own `no`
+    form, which names that instance alone (`_negates_exactly`). Any other key match is
+    restored as before; when *unsure* is a list, each such pair whose command is not
+    declared is appended to it (``{"chain", "line", "held"}``), so a read-back that still
+    finds the pushed line can say why it is there.
     """
     from modules.nsot import ifnames
 
     precise_index, broad_index, negations, prefixes = {}, {}, {}, {}
+    precise_all = {}
     for line, chain in _section_chains(pre_config):
         precise, broad = _command_keys(Leaf(line, tuple(chain)))
         precise_index.setdefault((tuple(chain), precise), line)
+        precise_all.setdefault((tuple(chain), precise), []).append(line)
         broad_index.setdefault((tuple(chain), broad), []).append(line)
         _add_negation_keys(negations, prefixes, tuple(chain), line)
 
     def _previous(chain, line):
+        """``(the held line setting the same thing, the held lines its key matched)``;
+        the second is empty for a negation pair, which names its setting exactly."""
         precise, broad = _command_keys(Leaf(line, tuple(chain)))
         hit = precise_index.get((tuple(chain), precise))
         if hit is not None:
-            return hit
+            return hit, precise_all[(tuple(chain), precise)]
         hit = _negation_pair(tuple(chain), line, negations, prefixes)
         if hit is not None:
-            return hit
+            return hit, []
         if broad not in FREE_FORM_COMMANDS:
-            return None          # no prior value: the answer is to negate
+            return None, []      # no prior value: the answer is to negate
         candidates = broad_index.get((tuple(chain), broad), [])
-        return candidates[0] if len(candidates) == 1 else None
+        return (candidates[0], candidates) if len(candidates) == 1 else (None, [])
 
     # Recover each pushed line's chain from the pushed program itself: the
     # headers are in it, which is the point of merge_commands().
@@ -1167,8 +1295,21 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
         if (tuple(entry["chain"]), line) not in applied_ids:
             continue                      # rejected: never applied, not undone
 
-        previous = _previous(chain, canonical)
-        if previous is not None and previous != canonical:
+        previous, matched = _previous(chain, canonical)
+        if matched and previous != canonical:
+            # A line the device held verbatim is its own instance: never negated.
+            canon_chain = tuple(ifnames.canonicalise_line(c).strip() for c in chain)
+            exact, identity = _negates_exactly(
+                canon_chain, canonical.strip(), [m.strip() for m in matched])
+            if exact:
+                # One instance more, beside the held ones: removed by its own `no` form.
+                pending.append((chain, f"{' ' * indent}no {line.strip()}"))
+                continue
+            if identity is None and unsure is not None:
+                unsure.append({"chain": list(chain), "line": line.strip(),
+                               "held": previous.strip()})
+            pending.append((chain, previous))
+        elif previous is not None and previous != canonical:
             pending.append((chain, previous))
         elif previous is None and line.strip().startswith("no "):
             # C200: the undo of a pushed `no X` the device held nothing for is

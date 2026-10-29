@@ -2088,7 +2088,12 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
         return {"state": "sent_unverified",
                 "detail": f"the device could not be read back: {_why(exc)}", "remaining": []}
     from modules.nsot.deploy import landed_between
-    remaining = rollback_commands(pushed, pre_cfg, landed=landed_between(pre_cfg, post or ""))
+    # A pushed line still there beside a held line of its setting key, whose command is not
+    # declared repeatable (`deploy.REPEATABLE_COMMANDS`): its undo re-sends the held line,
+    # which is no undo at all if IOS keeps both, so the line itself is named.
+    unsure = []
+    remaining = rollback_commands(pushed, pre_cfg, landed=landed_between(pre_cfg, post or ""),
+                                  unsure=unsure)
     if units:
         # A removed line that is still missing is an undo still needed.
         from modules.nsot.removal import restore_program
@@ -2102,8 +2107,14 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
             remaining = remaining + undo_program(
                 [u for u in recreated if u["number"] in off], pre_cfg)
     if remaining:
-        return {"state": "incomplete", "remaining": remaining,
-                "detail": f"{len(remaining)} line(s) of undo still needed after the rollback"}
+        detail = f"{len(remaining)} line(s) of undo still needed after the rollback"
+        if unsure:
+            detail += "; " + "; ".join(
+                f"`{u['line']}` is still on the device beside `{u['held']}`, which the "
+                "rollback re-sent: its command is not declared repeatable "
+                "(deploy.REPEATABLE_COMMANDS), so it was not removed by its `no` form"
+                for u in unsure)
+        return {"state": "incomplete", "remaining": remaining, "detail": detail}
     return {"state": "restored", "remaining": [],
             "detail": "read back: nothing of the push remains"}
 

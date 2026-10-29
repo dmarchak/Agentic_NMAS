@@ -247,8 +247,14 @@ was attempted, including one whose push failed half-way:
    Recorded: nothing. An old line is sent back where the change replaced it, a new line is
    negated where there was none, a section the push created is removed by one negation, a
    removed line is put back verbatim, and a re-created IP SLA operation gets its old
-   definition back. Every undo line must answer something the push sent, and the undo is
-   exempt from the dangerous-line gate, since undoing `no shutdown` is `shutdown`.
+   definition back. A command the device keeps several of, one line each (`ntp server`,
+   `logging host`, `ip route`, `ipv6 route`, `ipv6 address`, `ip helper-address`,
+   `passive-interface`, a RIP `network`, and the flags sharing a first word such as `ipv6
+   cef`), replaces nothing: an added one is undone by its own `no` form, and the ones the
+   device held are left alone. A line naming an instance the device held, with other
+   options, sends the held line back instead, and nothing is negated beside a
+   `passive-interface default`. Every undo line must answer something the push sent, and the
+   undo is exempt from the dangerous-line gate, since undoing `no shutdown` is `shutdown`.
 3. **Send it.** Sent: the undo in configuration mode on the pooled session, NOT saved: a
    change is saved only once it passes, so startup still holds the device as it was before
    the push. Recorded: nothing yet.
@@ -256,7 +262,10 @@ was attempted, including one whose push failed half-way:
    against it, and "nothing to undo" is read back too before it is said. Sent: nothing.
    Recorded: the outcome, by name: restored, nothing to undo,
    incomplete (with what remains), sent but unverified, failed, or not attempted (no
-   pre-change snapshot).
+   pre-change snapshot). Where a pushed line is still there beside an old line of the same
+   setting the undo sent back, and its command is not one Mercury knows the device keeps
+   several of, incomplete names the pushed line and says so: re-sending the old line did not
+   remove it.
 5. **Block the change.** Recorded: the device's current intent commit and the failed additions,
    in `.nsot/rolled_back.json` in the list's repository (or, once the Rollback blocks store is
    moved to the records database, there). The next plan refuses while those
