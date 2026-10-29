@@ -2424,6 +2424,30 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   and drawn, and nothing the operation writes is removed until the record
   it protects is proven.
 
+### A device-write claim cites its handler
+
+*The rule (CLAUDE.md):* **A statement about whether an action writes to a device cites the exact
+handler its control calls, end to end, and is checked against that action's own preview text.**
+
+- **The incident (C2029, 2026-10-28 ~01:0x UTC).** Asked whether Devices › Save writes to
+  devices, the agent answered that it "only reads, writes to no device". The answer came from
+  `routes/golden.py`'s capture path (`start_capture_preview`, which sends `show running-config`
+  only) and from that module's docstring, which named Devices › Save among its callers. The Save
+  page posts somewhere else: `routes/v2.py` `save_confirm`, which runs `modules/nsot/save_op`
+  (hold the device, its own `write memory`, read startup back, record). The operator ran Save
+  All on the answer, and it wrote startup on all 12 devices, s3 included. Nothing was lost:
+  every device's last recorded running change had already been saved. That was luck. The
+  answer was not the reason.
+- **Why a docstring is not evidence.** The docstring was wrong (C2034, since corrected), and a
+  path with a similar name answered a different question. The page's own preview said the
+  truth ("each device saves its running config to startup, the startup is read back"), and
+  nobody read it against the claim. Only the code the control actually reaches decides what
+  it sends.
+- **What the rule asks.** Trace the control to its route, the route to the operation it starts,
+  and the operation to each command it sends to a device. Then read the action's preview and
+  check that it says the same. A wrong "read-only" claim is how an unattended change happens,
+  so it is sorted A.
+
 ### Route gates and verified identity
 
 *The rule (CLAUDE.md):* **Every mutating route and socket event is declared in `modules/route_gates.py`**

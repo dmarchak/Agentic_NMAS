@@ -85,6 +85,7 @@ EXCEPTIONS = {
     "modules/records_migrate.py": (SUPPORT, "the records database's migration"),
     "modules/records_docs.py": (SUPPORT, "the records database's document stores (K31)"),
     "modules/remote_setup.py": (SUPPORT, "the git remote's setup page"),
+    "modules/request_log.py": (SUPPORT, "every request's line for the record"),
     "modules/reveal_audit.py": (SUPPORT, "the audit of revealed values"),
     "modules/route_gates.py": (SUPPORT, "every mutating route's gate declaration"),
     "modules/run_stepper.py": (SUPPORT, "the one progress display's model"),

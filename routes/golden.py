@@ -1,8 +1,10 @@
 """Golden configs: THE capture (its preview job and its apply) and THE restore plan, with no
-routes of their own. Each device page's Capture… and Devices › Save (`routes/device_v2.py`,
-`modules/save_page.py`) start and apply a capture through `start_capture_preview` and
-`apply_captures`; a device's Restore from… and History › Baselines › Re-apply… plan through
-`restore_plan`.
+routes of their own. Each device page's Capture… (`routes/device_v2.py`) starts and applies a
+capture through `start_capture_preview` and `apply_captures`, which read the device and write no
+device; a device's Restore from… and History › Baselines › Re-apply… plan through `restore_plan`.
+
+Devices › Save is NOT a caller (C2034): it posts `routes/v2.py` `save_confirm`, which runs
+`modules/nsot/save_op` and WRITES each device's startup config (its own `write memory`).
 
 Today's routes here left at 7.8 (2026-10-17, P7-27; restore point tag `pre-remove/v1-pages`)
 with today's index, their one caller: the golden timeline's JSON (GET /golden/history/<host>,
@@ -319,8 +321,9 @@ def last_baseline_if_current(repo: str) -> dict:
 def start_capture_preview(list_name: str, inventory: list, devices: list, *, fleet: bool,
                           excluded: list = None) -> str:
     """Start the capture preview's reads as a job and return its id: THE start, for the v2
-    device page's Capture (7.3) and Devices › Save alike (today's /golden/capture/preview, its
-    third caller, left at 7.8 with today's index, P7-27).
+    device page's Capture (7.3), its one caller (today's /golden/capture/preview left at 7.8
+    with today's index, P7-27; Devices › Save never called it, C2034: it writes startup through
+    `save_op`).
 
     C188 step 2: the reads run as a JOB, and the request answers at once. It no longer
     waits on a device, so no edge limit can end it (107 s for nine devices read in series,

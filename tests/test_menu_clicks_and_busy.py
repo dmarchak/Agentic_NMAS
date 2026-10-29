@@ -105,6 +105,7 @@ class TestC399:
                     b.wait_for(f"return location.search.indexOf('cold={attempt}') !== -1 && "
                                f"!!document.querySelector('{BUTTON}')", 10)
                     assert b.js("return !window.Alpine"), "the click must land before Alpine"
+                    b.js(f"document.querySelector('{BUTTON}').__clicked = {attempt};")
                     b.click(BUTTON)
                     release.set()           # Alpine is served once the click has landed
                     # Alpine starts: its script is one request once released, bounded as every
@@ -116,9 +117,24 @@ class TestC399:
                     # Open BY THE CLICK, once Alpine runs: the button says it is expanded, and
                     # the menu shows, within the 10 s this wait always had, counted from
                     # Alpine's start (about 1.5 s measured alone, C993).
-                    b.wait_for("return !!window.Alpine && document.querySelector('"
-                               + BUTTON + "').getAttribute('aria-expanded') === 'true' && "
-                               "(function () { " + MENU + " })()", ALPINE_DELAY + 8)
+                    try:
+                        b.wait_for("return !!window.Alpine && document.querySelector('"
+                                   + BUTTON + "').getAttribute('aria-expanded') === 'true' && "
+                                   "(function () { " + MENU + " })()", ALPINE_DELAY + 8)
+                    except AssertionError as exc:
+                        # C2234 (C993's wait, recurred in CI #1342): what the page then held, so
+                        # the next failure says a kept click dropped (the button replaced before
+                        # its replay, or the replay never ran: still aria-busy) from a slow open.
+                        state = b.js(
+                            f"var el=document.querySelector('{BUTTON}'),"
+                            "m=document.querySelector('.page-actions [role=menu]');"
+                            "return {same_button: !!el && el.__clicked !== undefined, "
+                            "busy: el ? el.getAttribute('aria-busy') : null, "
+                            "expanded: el ? el.getAttribute('aria-expanded') : null, "
+                            "menu: m ? (m.offsetParent !== null ? 'shown' : 'hidden') : 'absent', "
+                            "ready: document.readyState, htmx: !!window.htmx, "
+                            "in_flight: document.querySelectorAll('.htmx-request').length}")
+                        raise AssertionError(f"{exc}; attempt {attempt}, the page held {state}")
             finally:
                 release.set()
                 b.go("about:blank")

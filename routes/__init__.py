@@ -26,7 +26,12 @@ def register_blueprints(app) -> list:
     from modules.nsot import reads
     app.url_map.converters["run_id"] = reads.url_converter()
 
-    # The gate table's hook goes on first, and is NOT inside the try below:
+    # Every request's line for the record (C1836): its start stamped ahead of the gate, so a
+    # refused request is timed too. It stamps a time and decides nothing.
+    from modules import request_log
+    request_log.install(app)
+
+    # The gate table's hook goes on next, and is NOT inside the try below:
     # an app that started without it would serve every route ungated, which
     # is the failure P.3 exists to end. A crash here is the right outcome.
     from modules import route_gates
