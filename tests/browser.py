@@ -18,6 +18,7 @@ geckodriver is launched from its own binary, never through /snap/bin: a
 snap-confined process cannot be stopped by the test that started it.
 """
 
+import io
 import json
 import os
 import shutil
@@ -28,6 +29,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 
 from tests import home_guard
@@ -353,8 +355,23 @@ class Browser:
             f"http://127.0.0.1:{self.port}{path}", method=method,
             data=json.dumps(body).encode() if body is not None else None,
             headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read())["value"]
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())["value"]
+        except urllib.error.HTTPError as exc:
+            # WebDriver answers every command error (a script's TypeError, a stale element, a
+            # script timeout) as an HTTP error whose JSON names it; urllib's own message drops
+            # that JSON, so a failure read only "HTTP Error 500" (C2127, wrongly taken as the
+            # app's 500). The same type is raised, its body still readable, with the error named.
+            body = exc.read()
+            try:
+                value = json.loads(body).get("value") or {}
+            except ValueError:
+                value = {}
+            said = (f"{method} {path}: WebDriver {value.get('error') or 'error'}: "
+                    f"{(value.get('message') or body[:300].decode(errors='replace')).strip()}")
+            raise urllib.error.HTTPError(exc.url, exc.code, said, exc.headers,
+                                         io.BytesIO(body)) from exc
 
     def __enter__(self):
         # C392: a session that cannot start (snap Firefox inside the confined suite, where
