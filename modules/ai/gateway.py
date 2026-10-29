@@ -143,6 +143,9 @@ MASK_WORDS = {
     "ntp_key": "an NTP authentication key",
     "line_password": "a line password",
     "http_client_password": "an HTTP client password",
+    "ftp_password": "an FTP client password",
+    "isis_password": "an IS-IS password",
+    "l2tp_tunnel_password": "an L2TP tunnel password",
     "ppp_password": "a PPP password",
     "url_userinfo": "a URL's user and password",
     "sealed": "an encrypted secret",
@@ -767,6 +770,9 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         said = dict(held["refusal"])
         return refuse(said.pop("kind"), said.pop("why"), **said)
     recorded = False
+    # The verdict and cost of the row the record was asked to take (C2047): a refused row's
+    # reservation is kept as unrecorded, holding that cost, never left to expire.
+    counted = ("exception", worst)
     try:
         sent_at = provider_limit.clock()
         try:
@@ -785,10 +791,15 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
             # call was sent) no longer holds (C2084).
             provider_limit.clear(sent_at, call_id=row["id"])
         recorded = bool(out.get("recorded"))
+        # A refusal's row (the adapter's kinds) costs what the row holds (nothing billed); an
+        # answer's, its actual cost.
+        counted = (out.get("error") or "ok",
+                   float(out["cost_usd"]) if "cost_usd" in out else float(row["cost_usd"]))
         return out
     except BaseException as exc:
         # Not one of the adapter's kinds, nor an answer the gateway reads: whether the provider
-        # billed it is unknown, so its worst case is what the record counts.
+        # billed it is unknown, so its worst case is what the record counts (`counted` as set
+        # before the send).
         got = calls.record(dict(row, verdict="exception", cost_usd=worst, worst_usd=worst,
                                 detail=f"the call raised {type(exc).__name__} after it was "
                                        "reserved; whether the provider billed it is unknown, "
@@ -797,9 +808,13 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         raise
     finally:
         # Settled once its row is in the record: until then the reservation is what counts
-        # it. A row that could not be recorded leaves the reservation to its expiry.
+        # it. A row the record refused keeps the reservation, unexpiring, holding its cost,
+        # until the record takes the row again (C2047, `reservations.hold_unrecorded`).
         if recorded:
             reservations.settle(row["id"], ttl)
+        else:
+            reservations.hold_unrecorded(row["id"], [reservations.late_row(
+                row, verdict=counted[0], cost_usd=counted[1])], ttl)
 
 
 def cache_writes(usage: dict) -> dict:
@@ -1141,7 +1156,9 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
         results[p["custom_id"]] = dict(out, custom_id=p["custom_id"], **p["told"])
         pending.pop(p["custom_id"], None)
         if not out.get("recorded"):
-            unrecorded.append(p["custom_id"])
+            unrecorded.append(reservations.late_row(
+                p["row"], verdict=out.get("error") or "ok",
+                cost_usd=out.get("cost_usd", p["worst"])))
 
     def counted_worst(p, kind, why):
         # Whether the provider billed it is unknown: its worst case is what the record counts.
@@ -1250,13 +1267,17 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
                                         f"so its worst case ${p['worst']:.4f} is counted")))
             pending.pop(p["custom_id"], None)
             if not got.get("recorded"):
-                unrecorded.append(p["custom_id"])
+                unrecorded.append(reservations.late_row(p["row"], verdict="exception",
+                                                        cost_usd=p["worst"]))
         raise
     finally:
         # Settled once every request's row is in the record: until then the reservation is
-        # what counts the batch. A row that could not be recorded leaves it to its expiry.
+        # what counts the batch. Rows the record refused keep it, unexpiring, holding their
+        # cost alone, until the record takes them again (C2047, `hold_unrecorded`).
         if not pending and not unrecorded:
             reservations.settle(batch_key, BATCH_RESERVATION_TTL_S)
+        elif not pending:
+            reservations.hold_unrecorded(batch_key, unrecorded, BATCH_RESERVATION_TTL_S)
 
 
 def _not_billed_words(kind: str, result: dict, batch_id: str) -> str:

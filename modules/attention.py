@@ -259,6 +259,14 @@ ROW_KINDS = {
                                       "an admin raises the workspace's usage limit in the "
                                       "provider's console, then presses Test on the AI "
                                       "(hosted) card; or wait until that moment"),
+    # C2047: a call whose row the record of AI calls refused, its cost held against the caps
+    # (`reservations.hold_unrecorded`) until the record takes it.
+    ("ai_spend", "unrecorded"): ("the record of AI calls refused a sent call's row, so the "
+                                 "call is missing from History and its cost is held against "
+                                 "the AI caps as a call in flight until the record takes it",
+                                 "find why the record of AI calls refuses writes (its disk or "
+                                 "records database); Mercury asks it to take the row again at "
+                                 "every AI call"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -438,6 +446,9 @@ CLEARS = {
                                       "refusal, when the next call asks again), or a call is "
                                       "answered (the AI card's Test, after an admin raised the "
                                       "limit), or an admin turns hosted AI off"),
+    ("ai_spend", "unrecorded"): (("resolves",), "the record of AI calls takes the call's row: "
+                                 "Mercury asks it again at every AI call, and the call is then "
+                                 "counted from the record, its reservation gone"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -4350,6 +4361,36 @@ def _ai_workspace_limit_row():
                 "open": "ai_spend_panel", "href": AI_CARD_HREF})
 
 
+def _ai_unrecorded_rows() -> list:
+    """One ``unrecorded`` row (danger) per call whose row the record of AI calls refused
+    (C2047, `reservations.unrecorded`): its cost is held against the caps until the record takes
+    the row, which Mercury asks again at every AI call; it clears then (resolves). Read whatever
+    AI's state: such a call was sent while AI was on. An unreadable reservations store makes no
+    row here (it refuses every call itself, said on the refusal)."""
+    from modules.ai import reservations
+
+    got = reservations.unrecorded()
+    rows = []
+    for c in got["calls"]:
+        many = f" ({c['rows']} requests of a batch)" if c["rows"] > 1 else ""
+        rows.append(row(
+            source="ai_spend", kind="unrecorded", key=f"unrecorded:{c['id']}", level="danger",
+            since=_ts(c["at"]),
+            what=f"AI call {c['id']}'s cost could not be recorded",
+            cause=(f"The record of AI calls refused the row of {c['id']}{many}"
+                   + (f" ({c['feature']})" if c["feature"] else "")
+                   + f", sent at {c['at']}: the call is missing from History, and its cost "
+                   f"${c['usd']:.4f} is held against the AI caps as a call in flight, today "
+                   "and every day until the record takes the row"),
+            operands={"call_id": c["id"], "usd": round(c["usd"], 6), "at": c["at"],
+                      "rows": c["rows"]},
+            action={"label": ("Find why the record of AI calls refuses writes (its disk or "
+                              "records database); Mercury asks it to take the row again at "
+                              "every AI call, and this row clears when it does"),
+                    "open": "ai_spend_panel"}))
+    return rows
+
+
 def _ai_approval_rows(due, now=None) -> list:
     """One ``approval`` row per background feature switched on whose 14-day approval ends within
     3 days or has ended (`background.approvals_due`, decision 5 of boards AI1 to AI5; C1953):
@@ -4441,11 +4482,15 @@ def ai_spend_source(now=None) -> dict:
     # The provider's workspace usage limit (C2084), while AI is on: with AI off no call is made
     # whatever the provider would answer, and the chip says "AI off".
     limit = _ai_workspace_limit_row() if hosted else None
-    limit_rows = ([limit] if limit else []) + approval_rows
+    # A call whose row the record refused (C2047), whatever AI's state now.
+    unrecorded_rows = _ai_unrecorded_rows()
+    limit_rows = ([limit] if limit else []) + approval_rows + unrecorded_rows
     limit_said = ("the provider's workspace usage limit is held" if limit else
                   "no provider workspace usage limit is held" if hosted else
                   "AI is off, so the provider's workspace usage limit was not read")
-    limit_said = f"{limit_said}; {approval_said}"
+    limit_said = f"{limit_said}; {approval_said}" + (
+        f"; {len(unrecorded_rows)} call(s) whose row the record of AI calls refused, their "
+        "cost held against the caps" if unrecorded_rows else "")
     if not on and why_no_day:
         return source_result("ai_spend", label, read_at=started,
                              took_ms=int((time.time() - started) * 1000), rows=limit_rows,

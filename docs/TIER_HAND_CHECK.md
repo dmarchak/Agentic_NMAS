@@ -2897,3 +2897,257 @@ canary killed. Not covered here: a real `intent_match` hydrating a stored secret
 line (its own mask, C1688, is its tests'); the lines are planted in the comparison's shape. No
 provider request was made.**
 
+## 2026-10-29: an unmodelled secret's reference named without its value (C2109), by hand
+
+**What touches the tier.** C2109: `parsers/base.py` `_ref_unmodeled_secrets` named a reference
+`unmodeled_<label>_<sha256(context + prefix)[:10]>`, and for a header line the context is the
+raw line, value included, so committed intent (pushed to its remote) held a 40-bit digest of the
+line carrying the key, and a rotation renamed the reference. Now the context is masked by
+`redact_positional` and the prefix by the values the line holds (each a whole token), so the
+name is where the value stands, never what it is. A prefix holds a value only where a later
+rule's value stands before this one (C2098's key-wrap keys before a host line's server key).
+For a block's child or an interface's line nothing in the hashed text changes, so their names,
+in intent committed before, are made again unchanged. **The expand** (CLAUDE.md, "Stored data
+changes expand, then contract"): a reference named before resolves as it did (the credential
+store holds it by its name; `hydrate_secrets` reads `secret_refs`); an acknowledgement naming one
+still matches, because `render_artifact.ack_form` reads every `__secret__:unmodeled_<label>_<10
+hex>` by its label alone at the gate (`acknowledgement_is_complete`, `acknowledgement_gap`) and
+in the Intent tab's list (`intent_edit.unmodelled`), the line around it compared exactly. The
+contract, later: none; a digest-free comparison is the rule now (a key rotated must not unset
+an acknowledgement either).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it, on the
+change over 0573860d: each mutant one exact text replacement found exactly once, applied in a
+`scripts/nmas-control` throwaway worktree of the change, tests/test_unmodeled_secrets.py run in
+CI's interpreter, confined, the file restored after (`scratchpad/mut/run_mutants.py`,
+`c2109.json`). Baseline: the aimed set (test_unmodeled_secrets, test_redact_ios_shapes,
+test_render_artifact, test_template_approval, test_intent_editor, test_intent_editor_v2,
+test_seed_intent, test_unmodeled_path, test_roundtrip, test_url_userinfo_masked, test_differs,
+test_config_check, test_fleet_coverage) 1313 passed, 1 skipped; the first stage 40 passed.
+Counts are the first stage's failures. Every worktree was removed with the working tree
+untouched (nmas-control's fingerprint).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the digest of the raw context and prefix (the code before C2109) | killed | 26, the two-values, rotation, old-digest, old-reference and acknowledgement tests |
+| P1 the context hashed raw | killed | 26 |
+| P2 the prefix hashed raw (its values not masked) | killed | 4, the key-wrap host line's two values and `auth` in `auth-port` |
+| P3 the prefix masked by plain replacement, no token bounds | killed | 2, `test_a_value_like_a_word_of_its_prefix_never_renames_the_reference` |
+| P4 no left token bound | survived, then killed | 2, by the same test given `port` (in `auth-port`) after the run, rerun in its own worktree |
+| P5 no right token bound | killed | 2, the same test (`auth`) |
+| P6 the digest without the prefix | killed | 4, the old names kept and two key-strings in one interface |
+| P7 the context read as the line itself | killed | 2, `test_a_line_with_no_value_in_its_context_keeps_the_name_it_had` |
+| P8 the line's values never collected | killed | 4, as P2 |
+| A1 `ack_form` compares exactly (the code before C2109) | killed | 2, `test_an_acknowledgement_naming_an_old_reference_still_matches` |
+| A2 `ack_form` reads 8 of the digest's 10 characters | killed | 2, the same |
+| A3 the gate's completeness exact on the acknowledgement's side | killed | 2, the same |
+| A4 the gate's completeness exact on the unmodelled side | killed | 2, the same |
+| A5 the gap's unacknowledged lines compared exactly | killed | 2, the same |
+| A6 the gap's stale lines compared exactly | killed | 2, the same |
+| A7 the Intent tab's list compared exactly | killed | 2, the same (its list's assertion) |
+
+Not run as mutants, each equivalent by construction and so removed from the code before the
+run: the line's values replaced longest first (a value read to its line's end is never inside a
+prefix, and a token-bounded one cannot be read inside another), the placeholder naming the
+value's label, and a token bound after the digest in `ack_form` (a reference ends at its digest).
+
+**The result: 16 mutants with the canary; every one killed, P4 after a test was given a second
+value; the canary killed. The stated limit: a key spelled as a whole word of its own prefix
+(`1812` beside `auth-port 1812`) masks that word too, so its name differs from another key's;
+no value is in it either way. Not covered here: two values of one kind under one context and
+one prefix (a key chain's two `key-string 7` children) share one name, the first value lost,
+before C2109 as after (registered, not worked).**
+
+## 2026-10-29: a commit message masked before git sees it (C2059), by hand
+
+**What touches the tier.** C2059: a person's typed line became a list repository's commit
+subject verbatim ("Why, in one line" on the Intent tab and every intent editor summary through
+`intent_edit.commit_many`; a template's message; a decline's and a retirement's typed `Reason:`),
+and that repository is pushed to its remote, whose history is never rewritten: data off the
+host. Now `repo.commit`, the one function every commit in a list's repository passes
+(tests/test_every_commit_publishes.py), commits `repo.masked_message(message)`: the egress mask
+(`redact.redact_egress`, C1845's mask for typed text, by position, by every stored value, and by
+the egress shapes), a line at a time, the masking logged without the value. Why the egress mask
+and not `redact_text` alone: a typed summary follows `host_vars: <device> `, so a rule anchored
+at a line's start (`enable secret`, a line's `password`, a server block's `key`) never reads it
+(found by this change's own test: `empty: enable secret 0 <v>` committed in clear under
+`redact_text`). Why a line at a time: over the whole message, a subject ending in `secret` (the
+credential rotation's own, "… a device-generated type-9 secret") took the next line's first
+word, the `Source:` trailer's key (found by tests/test_config_check.py's
+`test_a_scheduled_rotation_commits_through_the_real_commit_path`). Annotated tag messages
+(`_make_tag`, the retirement's archive, the migration's baseline) and CI notes were read: each is
+made by the program from claims and counts, no typed text, and not masked here.
+
+**The method:** as C2109's, on the change over C2109's state: each mutant one exact text
+replacement found once, in a `scripts/nmas-control` throwaway worktree, the first stage
+tests/test_commit_message_masked.py (`scratchpad/mut/c2059.json`). Baseline: that file 17 passed;
+the commit-message readers (57 files: every test reading `%s`, `%B`, a trailer or the commit
+object, the intent editor's, the retirement's, the templates') 789 and 871 passed, the first
+run's one failure the trailer case above, fixed before the mutants ran.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `repo.commit` masks nothing (the code before C2059) | killed | 13, every planted secret, the stored value, the template's and the direct commit's |
+| M1 masked by `redact_text`, not the egress shapes | killed | 5, `enable secret` mid-line, the `$9$` hash, the `key 1 md5` key, the direct commit, the `Reason:` trailer |
+| M2 the whole message masked at once, not a line at a time | killed | 1, `test_a_subject_ending_in_a_secret_word_keeps_the_next_line` (and the rotation's test in test_config_check) |
+| M3 no stored values (position and shape only) | killed | 1, `test_a_stored_value_typed_in_prose_never_reaches_the_commit` |
+| M4 the subject line alone masked | killed | 1, `test_a_typed_reason_in_the_body_is_masked_and_the_other_trailers_kept` |
+| M5 the masking never logged | killed | 1, `test_the_masking_is_logged_without_the_value` |
+| M6 the masking logged on every commit | killed | 1, `test_a_line_with_nothing_to_mask_is_committed_as_typed` |
+
+**The result: 7 mutants with the canary; every one killed; the canary killed. Not covered here:
+the person is not told on the Intent tab that the line was committed masked (the commit's
+subject shows it; registered, not worked); what the repositories' history already holds (the
+row's measurement, a host step counting subjects whose masked form differs, counts only, is the
+operator's); an over-masked word after `secret`, `password` or `key N` in a system subject costs
+the word and leaks nothing.**
+
+## 2026-10-29: the passwords masked only on egress, and a TACACS+ host line's spaced key (C2086, C2097), by hand
+
+**What touches the tier.** C2086: `ip ftp password [type] <pw>`, IS-IS's `isis password <pw>
+[level-1 | level-2]`, `area-password <pw> [authenticate snp …]` and `domain-password <pw>
+[authenticate snp …]`, and `l2tp tunnel password [0 | 7] <pw>` passed `redact_text` in clear
+(measured 2026-10-28), the egress mask catching them only by resemblance (`egress_password`), so
+goldens' reads, logs, the archive and the parsers' intent carried them. Three rules added to
+`redact._POSITIONAL` (`ftp_password`, `isis_password`, `l2tp_tunnel_password`), each naming its
+carriers, bound by C745's three rules; words for each in `gateway.MASK_WORDS`. **Shape against
+enumeration, surveyed:** one rule for "a command line whose keyword ends in `password`" would
+read IOS's own `aaa password restriction` (no value) as a password and mask its keyword, and
+lower-case prose ("your password is …"); the fleet's captures hold none of the five (searched
+for `assw` through `scripts/nmas-config-read`: user lines and `no service password-encryption`
+only). So each carrier is named, as C745's third rule requires, and the egress mask stays the
+one over-reading superset (it runs `redact_text` first, so these now keep their own labels
+there: one table, read by both). C2097: `tacacs-server host … key <k>` with a spaced key kept
+every word after the first. The command reference lists `[nat] [port [integer]]
+[single-connection] [timeout [integer]]` after `[key string]`, and whether IOS reads a spaced
+key to the line's end there is the register's unmeasured question (a device's). The decision:
+read the clear key to the line's end from the first bare `key` (`_TACACS_HOST_KEY`, at the
+table's head with the other keys read so, `_KEY_CLEAR` and `_KEY_HIDDEN` as C2085's): every word
+of the key is masked whichever way IOS reads it; the stated cost is an option typed after a
+clear key masked with it (and kept inside the key's reference by the parsers, rendered back byte
+for byte). Reading only up to a trailing option would print a key's last words whenever IOS
+reads them as key (refusing by resemblance is safe, allowing is not). A hidden key (`7`) is one
+token, its options kept.
+
+**The method:** as C2109's, on the change over C2059's state: each mutant one exact text
+replacement (two or three where it moves or replaces several rules, each found once), in a
+`scripts/nmas-control` throwaway worktree, the first stage tests/test_redact_ios_shapes.py and
+test_ai_typed_text.py (`scratchpad/mut/c2086.json`, `c2086_rerun.json`). Baseline: that stage
+1001 passed; the aimed set (C2074's twelve files, test_commit_message_masked.py) 1393 passed, 1
+skipped. The first run's three survivors (F2, I6, I11) were each given a test and rerun in their
+own worktree with four mutants of the same kind (L4, F6, L5, T9), whose first rerun left F6, L5
+and T9 alive; each given a test and run again: all killed. Counts are the first stage's
+failures, in the run that killed them.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the three rules out and the TACACS+ host key one token from the LAST `key` (the table before) | killed | 115 |
+| T1 the TACACS+ carrier the LAST `key` (no exclusion) | killed | 3, a key holding `key` |
+| T2 the TACACS+ clear rule out | killed | 43 |
+| T3 the TACACS+ hidden rule out | killed | 18 |
+| T4 the TACACS+ clear key one token (the limit C2085 stated) | killed | 28 |
+| T5 the TACACS+ hidden key to the line's end | killed | 6, the options after a hidden key |
+| T6 the TACACS+ rules at the table's end | killed | 2, a clear key holding `key-string` |
+| T7 `\s` between the TACACS+ tokens | killed | 2, a `key` ending its line |
+| T8 the TACACS+ carrier case-sensitive | killed | 3 |
+| T9 the TACACS+ carrier with no word start | survived, then killed | 1, `pytacacs-server host …` (added) |
+| F1 the FTP rule out | killed | 30 |
+| F2 the FTP type any number of digits | survived, then killed | 3, `ip ftp password 12345678 extra` (added) |
+| F3 the FTP rule with no type | killed | 10 |
+| F4 `\s` after the FTP type | killed | 1, `ip ftp password 7` ending its line |
+| F5 the FTP rule case-sensitive | killed | 4 |
+| F6 the FTP carrier with no word start | survived, then killed | 1, `unzip ftp password prompts` (added) |
+| I1 the IS-IS rule out | killed | 58 |
+| I2 the IS-IS type refuses no keyword | killed | 9 |
+| I3 the type refuses `level-1` and `level-2` only | killed | 3, `area-password 5 authenticate …` |
+| I4 the type refuses `level-2` and `authenticate` only | killed | 3, `isis password 5 level-1` |
+| I5 the type refuses `level-1` and `authenticate` only | killed | 3, `isis password 7 level-2` |
+| I6 the refusal a prefix (no token end) | survived, then killed | 3, `area-password 0 authenticateMe` (added) |
+| I7 `area-password` not a carrier | killed | 15 |
+| I8 `domain-password` not a carrier | killed | 15 |
+| I9 `isis password` not a carrier | killed | 27 |
+| I10 the IS-IS rule with no type | killed | 3 |
+| I11 the IS-IS carrier with no word start | survived, then killed | 1, `the crisis password reset was logged` (added) |
+| L1 the L2TP rule out | killed | 21 |
+| L2 the L2TP rule with no type | killed | 9 |
+| L3 `\s` after the L2TP type | killed | 1 |
+| L4 the L2TP type any number of digits | killed | 3, `l2tp tunnel password 12345678 extra` (added with F2's) |
+| L5 the L2TP carrier with no word start | survived, then killed | 1, `xl2tp tunnel password option` (added) |
+| O1 the C2086 rules at the table's head | killed | 3, a clear key holding `area-password`, `ip ftp password`, `l2tp tunnel password` |
+| B1 the three labels one | killed | 49 |
+| W1 the IS-IS words removed from `gateway.MASK_WORDS` | killed | 1, `test_every_mask_redact_makes_has_its_words` |
+
+A `(?=\S)` after each type was removed before the run, equivalent by construction (`_VALUE`
+needs a non-space where it stands).
+
+**The result: 35 mutants with the canary; every one killed, seven after a test added for each
+(said above); the canary killed. The test that pinned C2085's limit,
+`test_a_tacacs_host_lines_key_stays_one_token`, is replaced by
+`test_a_tacacs_host_lines_clear_key_is_masked_to_the_line_end` (its premise moved; the commit
+names it). Not covered here: how IOS reads a spaced key with options after it on a
+`tacacs-server host` line (the register's measurement, a device's); `vtp password` and other
+`password` carriers not in C2086's row (registered, not worked).**
+
+## 2026-10-29: a call whose row the record refused keeps counting against the caps (C2047), by hand
+
+**What touches the tier.** C2047: a sent (and possibly billed) AI call whose row the record of
+AI calls refused stopped counting against the day cap once its reservation (C2039) expired,
+587.5 s later: the spend the caps read held nothing for it, so the cap read low. Now the
+gateway keeps such a call's reservation as **unrecorded** (`reservations.hold_unrecorded`):
+it never expires, it holds the cost the row would have counted (an answer's actual cost, a
+refusal's row its own, an exception its worst case), and it keeps a late row of the call's
+names and numbers (`late_row`, `LATE_ROW_KEYS`: no request, answer, output or tokens), at the
+call's own time. Every reserve asks the record to take each late row again, under the lock and
+before the caps are judged; a row taken is the record's to count, and the reservation goes
+once all of its rows have. A refused call still writes what was taken. Needs attention names
+each such call (`ai_spend` `unrecorded`, danger), whatever AI's state, until the record takes
+it. The batch path (`ask_batch`) had the same shape and is held the same way, by the rows the
+record refused alone. If the reservations store cannot be written either, it is said at
+CRITICAL; the reservation as it was counts the call to its expiry and every later reserve,
+which must write the store, refuses. Not done: the register's shape of refusing every call
+while an unrecorded one is held (the cap counting it is what the cap needs; a record that
+refuses every write refuses every call already, as `spent_usd` reads it unreadable or the
+reserve's own write fails).
+
+**The method:** as C2109's, on the change over C2086's state: each mutant one exact text
+replacement (two for the canary), in a `scripts/nmas-control` throwaway worktree, the first
+stage tests/test_ai_reservations.py and test_ai_batch.py (`scratchpad/mut/c2047.json`,
+`c2047_rerun.json`). Baseline: that stage 92 passed (93 after the test R8 called for); the AI
+and Needs attention set (test_ai_gateway, test_ai_spend, test_ai_spend_v2,
+test_ai_provider_limit, test_ai_background, test_needs_attention, test_attention_rows_act,
+test_acknowledge, test_manual, test_manual_references, test_history_v2 with the two) 547
+passed, 4 skipped. No provider request was made: every send is the tests' fake.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: a refused row's reservation left to expire (the gateway before C2047, both paths) | killed | 10 |
+| R1 an unrecorded reservation expires like any other | killed | 9, `test_an_unrecorded_call_still_counts_against_the_day_cap_after_its_reservation_expires` among them |
+| R2 the late rows never asked of the record again | killed | 5 |
+| R3 a late row taken but its reservation kept | killed | 4 |
+| R4 the reservation keeps the worst case, not the rows' cost | killed | 6 |
+| R5 a late row's time when it is kept, not the call's | killed | 1, `test_a_late_row_keeps_the_calls_own_time_whenever_it_is_kept` |
+| R6 a partly taken entry keeps its old cost | killed | 1 |
+| R7 a partly taken entry dropped whole | killed | 1 |
+| R8 a refused call writes the late rows taken only when an entry went | survived, then killed | 1, the same test's `one-left` case (added) |
+| R9 the reader leaves an expired unrecorded one out | killed | 7 |
+| R10 a store that cannot be kept said at ERROR, not CRITICAL | killed | 1 |
+| R11 a late row keeps the request | killed | 1 |
+| R12 a late row's cost nothing | killed | 8 |
+| G1 an answer counted at its worst case | killed | 5 |
+| G2 a refusal's row counted at the worst case | killed | 1 |
+| G3 an exception counted at nothing | killed | 1 |
+| G4 an answer's late row always `ok` | killed | 1 |
+| B1 the batch's refused rows left to expire | killed | 1 |
+| B2 the batch's late rows counted at their worst case | killed | 1 |
+| A1 no Needs attention row | killed | 2 |
+| A2 the row only while AI is on | killed | 2, `test_the_row_stands_while_ai_is_off` |
+
+Removed before the run, equivalent by construction: the exception path setting the counted
+cost again (it is set to the worst case before the send, and nothing after the answer's own
+setting can raise).
+
+**The result: 21 mutants with the canary; every one killed, R8 after a test case was added;
+the canary killed. Not covered here: a record that takes a late row twice (a write the record
+reported refused that had in fact landed) counts the call twice, high, never low; while
+unrecorded, a call counts against every day's cap, not only its own.**
+

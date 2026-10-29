@@ -422,17 +422,34 @@ def test_a_per_call_cap_holds_each_batched_request(world, monkeypatch):
     assert _batch(reqs, FakeBatches())["ok"] is True
 
 
-def test_a_row_that_could_not_be_recorded_leaves_the_batchs_reservation_to_expire(
+def test_a_row_that_could_not_be_recorded_keeps_the_batchs_reservation_unexpiring(
         world, monkeypatch):
+    """C2047: the rows the record refused keep the batch's reservation, unexpiring, holding
+    their cost alone (each request's actual cost), each a late row; once the record takes them
+    (the next reserve asks it), the reservation is gone."""
+    import time
     real = calls.record
 
     def refused(entry):
         out = real(entry)
-        return dict(out, recorded=False) if entry.get("verdict") == "ok" else out
+        return (dict(out, recorded=False)
+                if entry.get("verdict") == "ok" and not entry.get("recorded_late") else out)
     monkeypatch.setattr(calls, "record", refused)
-    assert _batch(_requests("a"), FakeBatches())["ok"] is True
-    held = reservations.open_reservations()["held"]
+    got = _batch(_requests("a"), FakeBatches())
+    assert got["ok"] is True
+    held = reservations.open_reservations(now=time.time() + 10 ** 8)["held"]
     assert len(held) == 1 and next(iter(held)).startswith("ai-batch-")
+    (entry,) = held.values()
+    ok = [r for r in got["results"].values() if r.get("ok")]
+    assert entry["unrecorded"] is True and len(entry["rows"]) == len(ok) >= 1
+    assert entry["usd"] == pytest.approx(sum(r["cost_usd"] for r in ok))
+    assert entry["usd"] < got["worst_usd"], "their cost alone, not the batch's worst case"
+    first = next(iter(held))
+    monkeypatch.setattr(calls, "record", real)
+    assert _batch(_requests("b"), FakeBatches())["ok"] is True
+    assert reservations.open_reservations(now=time.time() + 10 ** 8)["held"] == {}, first
+    late = [r for r in calls.read()["rows"] if r.get("recorded_late")]
+    assert len(late) == len(ok) and all(r["batch"]["custom_id"] for r in late)
 
 
 # ── the record ────────────────────────────────────────────────────────────────────────────

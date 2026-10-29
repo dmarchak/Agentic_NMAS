@@ -209,10 +209,10 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
 def unmodelled(parsed: dict) -> list:
     """``[{"line", "acknowledged"}]``: every line the parser did not model in *parsed*, and
     whether its ``unmodeled_ack`` names it (the deploy gate's own reading)."""
-    from modules.nsot.render_artifact import acknowledged_lines, unmodeled_lines
+    from modules.nsot.render_artifact import ack_form, acknowledged_lines, unmodeled_lines
 
-    acked = set(acknowledged_lines(parsed))
-    return [{"line": l, "acknowledged": l in acked} for l in unmodeled_lines(parsed)]
+    acked = {ack_form(l) for l in acknowledged_lines(parsed)}
+    return [{"line": l, "acknowledged": ack_form(l) in acked} for l in unmodeled_lines(parsed)]
 
 
 def render_context(list_name: str, hostname: str) -> dict:

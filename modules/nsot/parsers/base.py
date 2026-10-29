@@ -274,17 +274,42 @@ class BaseParser:
         URL's password, an EEM environment URL's or `ip http client password` reached intent,
         and so the repository, in plain text. The positions are `redact`'s own, the ones every
         mask uses. The reference's name is the position's label and a hash of the line's
-        context without the value, so a re-extraction of the same line keeps its name; the
-        value goes to `secrets`, which the extraction moves into the credential store."""
+        context and the value's prefix, each with every secret value in it masked first, so a
+        re-extraction of the same line keeps its name and a new value (a key rotated) keeps it
+        too; the value goes to `secrets`, which the extraction moves into the credential store.
+
+        C2109 (2026-10-29): a header line is its own context, and it and the prefix were hashed
+        raw, value included, so intent held a 40-bit digest of the line carrying the key and a
+        rotation renamed the reference. The context is masked by `redact_positional` (a whole
+        line, so a value is read where it stands), and the prefix by the values this line holds
+        (a prefix alone ends at a value's slot, where `redact_positional` would read a type
+        digit as the value): a prefix holds one only where a later rule's value stands before
+        this one (`radius-server host … key-wrap encryption-key <k> … key <k>`). For a line with
+        no value in its context or prefix (a block's child, an interface's line) both read as
+        before, so its name is unchanged; a reference named before this, which the credential
+        store holds by its name, resolves as it did, and an acknowledgement naming it still
+        matches (`render_artifact.ack_form`)."""
         import hashlib
 
-        from modules.redact import replace_positional_values
+        from modules.redact import redact_positional, replace_positional_values
 
         secrets = out.setdefault("secrets", {})
 
         def _refs(text: str, context: str) -> str:
+            # Every value this line holds, so its prefix can be masked by them: each a whole
+            # token or tokens (`(?<!\S)`, `(?!\S)`), so no value is read inside another word.
+            held = []
+            replace_positional_values(text, lambda label, value, prefix:
+                                      held.append(value) or value)
+            masked_context = redact_positional(context)
+
             def _one(label, value, prefix):
-                digest = hashlib.sha256(f"{context}\n{prefix}".encode()).hexdigest()[:10]
+                masked_prefix = prefix
+                for held_value in held:
+                    masked_prefix = re.sub(r"(?<!\S)" + re.escape(held_value) + r"(?!\S)",
+                                           "<value>", masked_prefix)
+                digest = hashlib.sha256(
+                    f"{masked_context}\n{masked_prefix}".encode()).hexdigest()[:10]
                 ref = f"unmodeled_{label}_{digest}"
                 secrets[ref] = value
                 return f"{self.SECRET_MARKER}{ref}"

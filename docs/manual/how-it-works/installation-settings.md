@@ -140,6 +140,15 @@ released after about ten minutes (2.5 times the longest one call can take). If t
 reservations cannot be read, every call is refused, saying so, until they can or until no
 call they could hold is still in flight.
 
+**A call the record could not take still counts.** If the record of AI calls refuses a sent
+call's row (its disk or database refusing writes), the call's reservation is kept, never
+released by time, holding what the call cost (its worst case when that is unknown), and
+**Needs attention** names the call: it is missing from History until the record takes it.
+Mercury asks the record to take the row again before every AI call; when it does, the row
+appears in History at the call's own time, the reservation goes and the Needs attention row
+clears. Until then the call is counted against the cap as a call in flight, on every day,
+never left out.
+
 The provider bills what is spent, to the account the API key belongs to; the cap is
 Mercury's own limit, set below the provider's.
 

@@ -241,15 +241,222 @@ def test_an_exception_counts_its_worst_case_and_settles(world):
     assert calls.spent_usd(calls.today())["usd"] == pytest.approx(worst)
 
 
-def test_a_row_that_could_not_be_recorded_leaves_its_reservation_to_expire(world, monkeypatch):
-    """Settled only once the row is in the record: a row the record refused leaves the
-    reservation, which then counts the call until it expires."""
+def test_a_row_that_could_not_be_recorded_keeps_its_reservation_unexpiring(world, monkeypatch):
+    """Settled only once the row is in the record: a row the record refused keeps the
+    reservation (C2047), unexpiring, holding the call's actual cost, with a late row of its
+    names and numbers to be asked of the record again."""
     worst = _worst(world)
     monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
     got = _ask(world, send=lambda b, k: A.Reply(200, PING))
     assert got["ok"] is True and got["recorded"] is False
+    (entry,) = reservations.open_reservations(now=time.time() + 10 ** 7)["held"].values()
+    assert entry["unrecorded"] is True
+    assert entry["usd"] == pytest.approx(got["cost_usd"]) and got["cost_usd"] < worst
+    (late,) = entry["rows"]
+    assert late["id"] == got["call_id"] and late["verdict"] == "ok"
+    assert late["cost_usd"] == pytest.approx(got["cost_usd"]) and late["recorded_late"] is True
+    assert late["at"] == entry["at"], "the call's own time, so the record counts its own day"
+    assert not {"request", "response", "output", "tokens"} & set(late), sorted(late)
+
+
+# ── C2047: a sent call whose row the record refused keeps counting ─────────────────────────
+
+def _expire_every_reservation():
+    """Every reservation's expiry put in the past, as time passing would."""
+    with open(_store()) as fh:
+        got = json.load(fh)
+    for v in got["held"].values():
+        v["expires_at"] = time.time() - 1
+    with open(_store(), "w") as fh:
+        json.dump(got, fh)
+
+
+def test_an_unrecorded_call_still_counts_against_the_day_cap_after_its_reservation_expires(
+        world, monkeypatch):
+    """The defect: a sent and billed call whose row the record refused stopped counting when
+    its reservation expired (587.5 s), so the cap read low. Now its reservation never expires:
+    the next call is judged with its cost in flight, refused, nothing sent."""
+    worst = _worst(world)
+    real = calls.record
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    first = _ask(world, "a", send=lambda b, k: A.Reply(200, PING))
+    assert first["ok"] is True and first["recorded"] is False
+    _expire_every_reservation()
+    cost = first["cost_usd"]
+    world.settings["ai_cap_usd_per_day"] = cost + worst * 0.99
+    second = _ask(world, "b", send=world.send)
+    assert second["error"] == "over_cap" and world.sent == []
+    assert (f"today's spend $0.0000 plus ${cost:.4f} reserved by 1 call(s) in flight plus "
+            f"this call's worst case ${worst:.4f}") in second["detail"], second["detail"]
+    # The control: the cap with room for both, the second is sent (it, too, unrecorded).
+    world.settings["ai_cap_usd_per_day"] = cost + worst * 1.01
+    monkeypatch.setattr(calls, "record", real)
+    assert _ask(world, "c", send=world.send)["ok"] is True
+
+
+def test_the_record_taking_the_late_row_settles_it_on_the_calls_own_day(world, monkeypatch):
+    real = calls.record
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    first = _ask(world, "a", send=lambda b, k: A.Reply(200, PING))
     (entry,) = reservations.open_reservations()["held"].values()
-    assert entry["usd"] == pytest.approx(worst)
+    monkeypatch.setattr(calls, "record", real)
+    assert _ask(world, "b", send=world.send)["ok"] is True
+    assert reservations.open_reservations(now=time.time() + 10 ** 7)["held"] == {}
+    late = [r for r in calls.read()["rows"] if r["id"] == first["call_id"]]
+    assert len(late) == 1 and late[0]["recorded_late"] is True
+    assert late[0]["at"] == entry["at"] and late[0]["cost_usd"] == pytest.approx(
+        first["cost_usd"])
+    assert "recorded late (C2047)" in late[0]["detail"]
+
+
+def test_a_late_row_still_refused_keeps_the_reservation(world, monkeypatch):
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    first = _ask(world, "a", send=lambda b, k: A.Reply(200, PING))
+    assert _ask(world, "b", send=lambda b, k: A.Reply(200, PING))["ok"] is True
+    held = reservations.open_reservations(now=time.time() + 10 ** 7)["held"]
+    assert first["call_id"] in held and len(held) == 2
+    assert all(v["unrecorded"] for v in held.values())
+
+
+def test_an_exception_whose_row_is_refused_holds_its_worst_case(world, monkeypatch):
+    worst = _worst(world)
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+
+    def send(body, key):
+        raise RuntimeError("a bug after the request left")
+    with pytest.raises(RuntimeError):
+        _ask(world, send=send)
+    (entry,) = reservations.open_reservations(now=time.time() + 10 ** 7)["held"].values()
+    assert entry["usd"] == pytest.approx(worst) and entry["rows"][0]["verdict"] == "exception"
+
+
+def test_a_refusal_whose_row_is_refused_holds_what_its_row_counts(world, monkeypatch):
+    """The provider's refusal (the adapter's kinds) is recorded at no cost; its late row holds
+    the same, never more and never a guess."""
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+
+    def send(body, key):
+        raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3)
+    got = _ask(world, send=send)
+    assert got["error"] == "overloaded"
+    (entry,) = reservations.open_reservations(now=time.time() + 10 ** 7)["held"].values()
+    assert entry["usd"] == 0.0 and entry["rows"][0]["verdict"] == "overloaded"
+
+
+def test_needs_attention_names_an_unrecorded_call_until_the_record_takes_it(world, monkeypatch):
+    from modules import attention
+    real = calls.record
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    first = _ask(world, "a", send=lambda b, k: A.Reply(200, PING))
+    monkeypatch.setattr(calls, "record", real)
+    rows = [r for r in attention.ai_spend_source()["rows"] if r["kind"] == "unrecorded"]
+    assert len(rows) == 1
+    (r,) = rows
+    assert r["level"] == "danger" and r["id"] == f"ai_spend:unrecorded:{first['call_id']}"
+    assert r["what"] == f"AI call {first['call_id']}'s cost could not be recorded"
+    assert f"its cost ${first['cost_usd']:.4f} is held against the AI caps" in r["cause"]
+    assert "refuses writes" in r["action"]["label"]
+    assert _ask(world, "b", send=world.send)["ok"] is True
+    assert [r for r in attention.ai_spend_source()["rows"] if r["kind"] == "unrecorded"] == []
+
+
+def _plant_unrecorded(rows, call_id="ai-unrecorded00001", at="2026-10-25T00:00:00Z"):
+    with open(_store(), "w") as fh:
+        json.dump({"held": {call_id: {
+            "usd": sum(r["cost_usd"] for r in rows), "feature": "connection_check",
+            "network": "", "background": False, "day": "2026-10-25", "month": "2026-10",
+            "at": at, "expires_at": time.time() - 1, "pid": 1, "unrecorded": True,
+            "rows": [dict(r, at=at) for r in rows]}}}, fh)
+
+
+def _late(call_id, usd):
+    return reservations.late_row({"id": call_id, "feature": "connection_check"},
+                                 verdict="ok", cost_usd=usd)
+
+
+def test_a_late_row_keeps_the_calls_own_time_whenever_it_is_kept(world):
+    """`hold_unrecorded` long after the call (a day later): each late row carries the
+    reservation's time, the call's, so the record counts it on its own day."""
+    _plant(0.25, 60, call_id="ai-heldlater00001")
+    assert reservations.hold_unrecorded("ai-heldlater00001", [_late("ai-heldlater00001", 0.2)],
+                                        gateway.reservation_ttl_s(), now=time.time() + 86400)
+    (entry,) = reservations.open_reservations(now=time.time() + 10 ** 7)["held"].values()
+    assert entry["at"] == "2026-10-25T00:00:00Z"
+    assert [r["at"] for r in entry["rows"]] == ["2026-10-25T00:00:00Z"]
+    assert entry["usd"] == pytest.approx(0.2)
+
+
+def test_a_late_row_the_record_takes_leaves_the_others_and_their_cost(world, monkeypatch):
+    real = calls.record
+    _plant_unrecorded([_late("ai-takenfirst00001", 0.30), _late("ai-refusedstill001", 0.45)])
+    monkeypatch.setattr(calls, "record", lambda row: real(row) if row["id"] == "ai-takenfirst00001"
+                        else dict(row, recorded=False))
+    world.settings["ai_cap_usd_per_day"] = 100.0
+    assert _ask(world, send=lambda b, k: A.Reply(200, PING))["ok"] is True
+    held = reservations.open_reservations(now=time.time() + 10 ** 7)["held"]
+    entry = held["ai-unrecorded00001"]
+    assert [r["id"] for r in entry["rows"]] == ["ai-refusedstill001"]
+    assert entry["usd"] == pytest.approx(0.45)
+
+
+@pytest.mark.parametrize("still_refused", [False, True], ids=["all-taken", "one-left"])
+def test_a_refused_call_still_writes_the_late_rows_the_record_took(world, monkeypatch,
+                                                                   still_refused):
+    """The record takes a late row and then the call is refused on the cap: the store is
+    written all the same, so the row is never asked again (it would count twice), whether
+    the entry goes (every row taken) or stays with the rows still refused."""
+    real = calls.record
+    rows = [_late("ai-takenonce00001", 0.30)] + (
+        [_late("ai-refusedstill001", 0.45)] if still_refused else [])
+    _plant_unrecorded(rows)
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False)
+                        if row["id"] == "ai-refusedstill001" else real(row))
+    world.settings["ai_cap_usd_per_day"] = 0.30
+    for _ in range(2):
+        got = _ask(world)
+        assert got["error"] == "over_cap" and world.sent == []
+        held = reservations.open_reservations(now=time.time() + 10 ** 7)["held"]
+        assert ([r["id"] for r in held["ai-unrecorded00001"]["rows"]] == ["ai-refusedstill001"]
+                if still_refused else held == {}), held
+        late = [r for r in calls.read()["rows"] if r["id"] == "ai-takenonce00001"]
+        assert len(late) == 1 and late[0]["at"] == "2026-10-25T00:00:00Z"
+
+
+def test_the_row_stands_while_ai_is_off(world, monkeypatch):
+    """An unrecorded call was sent while AI was on; its row is read whatever AI's state now."""
+    from modules import attention
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    first = _ask(world, "a", send=lambda b, k: A.Reply(200, PING))
+    world.settings.pop("ai_hosted")
+    rows = [r for r in attention.ai_spend_source()["rows"] if r["kind"] == "unrecorded"]
+    assert [r["operands"]["call_id"] for r in rows] == [first["call_id"]]
+
+
+def test_a_reservation_that_cannot_be_kept_is_said_at_critical(world, monkeypatch, caplog):
+    """The record refused the row AND the reservations store cannot be written: said at
+    CRITICAL; the reservation as it was counts the call until it expires, and the next call,
+    which must write the store, is refused."""
+    import logging
+    from modules import filestore
+    caplog.set_level(logging.CRITICAL, logger=reservations.__name__)
+    monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
+    real = filestore.write_atomic
+    state = {"writes": 0}
+
+    def write(path, data, *a, **kw):
+        if path == _store():
+            state["writes"] += 1
+            if state["writes"] > 1:                      # the reservation itself is written
+                raise OSError("No space left on device")
+        return real(path, data, *a, **kw)
+    monkeypatch.setattr(filestore, "write_atomic", write)
+    assert _ask(world, "a", send=lambda b, k: A.Reply(200, PING))["ok"] is True
+    assert any("could not be kept" in r.getMessage() and r.levelno == logging.CRITICAL
+               for r in caplog.records), caplog.records
+    (entry,) = reservations.open_reservations()["held"].values()
+    assert "unrecorded" not in entry and entry["expires_at"] > time.time()
+    got = _ask(world, "b", send=world.send)
+    assert got["error"] == "over_cap" and world.sent == []
 
 
 # ── a crashed reservation ─────────────────────────────────────────────────────────────────

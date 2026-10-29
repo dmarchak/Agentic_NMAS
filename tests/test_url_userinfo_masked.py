@@ -91,6 +91,9 @@ ENTRY_POINTS = {
         m for m, _digests, _n in __import__("modules.secret_compare", fromlist=["_masked_lines"])
         ._masked_lines(PLANTED, None, None)),
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
+    # A commit message in a list's repository, masked before git sees it (C2059).
+    "modules/nsot/repo.py:masked_message": lambda: (
+        __import__("modules.nsot.repo", fromlist=["masked_message"]).masked_message(PLANTED)),
     # The config check's every printed line (C725): positional without the store, both with.
     "modules/nsot/config_check.py:mask": lambda: (
         __import__("modules.nsot.config_check", fromlist=["_Run"])._Run(".", False).mask(PLANTED)),

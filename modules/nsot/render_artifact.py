@@ -132,26 +132,45 @@ def acknowledged_lines(host_vars: dict) -> list:
     return sorted(l.rstrip() for l in (ack.get("lines") or []))
 
 
+#: An unmodelled secret's reference in a line, its name's digest apart (C2109): the parsers
+#: name it `unmodeled_<label>_<10 hex>`, a hash of where it stands, never of its value.
+_UNMODELED_REF = re.compile(r"(__secret__:unmodeled_[a-z0-9_]+?)_[0-9a-f]{10}")
+
+
+def ack_form(line: str) -> str:
+    """*line* as an acknowledgement compares it: each unmodelled secret's reference read by its
+    label alone (C2109's expand, 2026-10-29). A reference named before C2109 hashed the value
+    with a header line, so an acknowledgement committed then names a digest a re-extraction no
+    longer makes, and a key rotated renamed it; the line around the reference is compared
+    exactly, so a new or changed line is still unacknowledged."""
+    return _UNMODELED_REF.sub(r"\1", (line or "").rstrip())
+
+
 def acknowledgement_is_complete(host_vars: dict) -> bool:
     """True when the acknowledged set matches the unmodelled set **exactly**.
 
     Exact equality, not a superset: a newly appearing unmodelled line makes the
     sets differ and the block returns. Acknowledgement is content-bound and
     committed to git, so it is reviewable rather than click-through dismissible.
+    A secret reference's digest is not part of the content (`ack_form`, C2109).
     """
     unmodeled = unmodeled_lines(host_vars)
     if not unmodeled:
         return True
-    return acknowledged_lines(host_vars) == unmodeled
+    return (sorted(ack_form(l) for l in acknowledged_lines(host_vars))
+            == sorted(ack_form(l) for l in unmodeled))
 
 
 def acknowledgement_gap(host_vars: dict) -> dict:
-    """What is missing from, or stale in, an acknowledgement."""
+    """What is missing from, or stale in, an acknowledgement (each line compared by
+    `ack_form`)."""
     unmodeled = set(unmodeled_lines(host_vars))
     acked = set(acknowledged_lines(host_vars))
+    unmodeled_forms = {ack_form(l) for l in unmodeled}
+    acked_forms = {ack_form(l) for l in acked}
     return {
-        "unacknowledged": sorted(unmodeled - acked),
-        "stale": sorted(acked - unmodeled),
+        "unacknowledged": sorted(l for l in unmodeled if ack_form(l) not in acked_forms),
+        "stale": sorted(l for l in acked if ack_form(l) not in unmodeled_forms),
         "complete": acknowledgement_is_complete(host_vars),
     }
 

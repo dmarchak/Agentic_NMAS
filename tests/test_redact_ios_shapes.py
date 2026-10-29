@@ -939,10 +939,11 @@ def _without_labels(text, labels):
 # hidden (`7`) or AES (`6`) value has no spaces in its form and stays one token. The carriers
 # whose key ends their command: `tacacs-server key`, `radius-server key`, `radius-server host
 # … key`, `server-private … key` (RADIUS's and TACACS+'s), a `radius server` or `tacacs server`
-# block's `key`, an ISAKMP client group's `key`, a RADIUS block's `pac key`. NOT
-# `tacacs-server host … key`: its syntax lists `[nat] [port] [single-connection] [timeout]`
-# after `[key string]`, so the key is read as one token there, a stated limit
-# (`test_a_tacacs_host_lines_key_stays_one_token`). No capture holds any of these lines (the
+# block's `key`, an ISAKMP client group's `key`, a RADIUS block's `pac key`. Since C2097
+# (2026-10-29), `tacacs-server host … key` too, though its syntax lists `[nat] [port]
+# [single-connection] [timeout]` after `[key string]`: read to the line's end, so every word of
+# a spaced key is masked whichever way IOS reads it (`C2097_FORMS`, below; C2085 had left it
+# one token, a stated limit). No capture holds any of these lines (the
 # fleet's captures: no TACACS+ or RADIUS line at all, counted 2026-10-28), so each line is the
 # command reference's documented form with an invented key; addresses 192.0.2.x and 2001:db8::.
 
@@ -1111,15 +1112,16 @@ def test_a_c2085_key_quoted_mid_sentence(line, planted):
     assert redact.redact_egress(line, values={}) == want
 
 
-def test_a_tacacs_host_lines_key_stays_one_token():
-    """The stated limit: `tacacs-server host {hostname | host-ip-address} [key string] [nat]
-    [port [integer]] [single-connection] [timeout [integer]]` lists options AFTER the key, so
-    the key is not read to the line's end there: its first word is masked, the rest kept (the
-    register's)."""
+def test_a_tacacs_host_lines_clear_key_is_masked_to_the_line_end():
+    """C2097 (2026-10-29), the limit C2085 stated removed: `tacacs-server host {hostname |
+    host-ip-address} [key string] [nat] [port [integer]] [single-connection] [timeout
+    [integer]]` lists options after the key, and whether IOS reads a spaced key to the line's
+    end there is unmeasured, so the clear key is read to the line's end: every word of it is
+    masked either way (C2097_FORMS holds every form)."""
     for line in ("tacacs-server host 192.0.2.6 key Planted Tac Host",
                  "tacacs-server host 2001:db8::6 key 0 Planted Tac Host"):
         out = redact.redact_positional(line)
-        assert out == line.replace("Planted", _p("server_host_key")), out
+        assert out == line.replace("Planted Tac Host", _p("server_host_key")), out
 
 
 # ── the ordering hazards ────────────────────────────────────────────────────────────────────
@@ -1131,6 +1133,12 @@ def test_a_tacacs_host_lines_key_stays_one_token():
      "Planted snmp-server community Word RO"),
     (" key Planted neighbor 192.0.2.7 password Word", "Planted neighbor 192.0.2.7 password Word"),
     (" pac key Planted secret 5 Word", "Planted secret 5 Word"),
+    # C2097 and C2086: a TACACS+ host line's clear key, and one holding C2086's carriers.
+    ("tacacs-server host 192.0.2.6 key Planted key-string Word", "Planted key-string Word"),
+    ("tacacs-server host 2001:db8::6 key Planted area-password Word",
+     "Planted area-password Word"),
+    ("tacacs-server key Planted ip ftp password Word", "Planted ip ftp password Word"),
+    ("radius-server key Planted l2tp tunnel password Word", "Planted l2tp tunnel password Word"),
 ])
 def test_a_key_read_to_its_line_end_is_taken_before_any_rule_reads_inside_it(line, value):
     """A key read to its line's end may hold another carrier's keyword. Its rules lead the
@@ -1716,3 +1724,291 @@ class TestC2098AndTheFleetsCaptures:
         assert changed == [at]
         out = redact.redact_positional(lines[at])
         assert _KEK not in out and _MACK not in out, out
+
+
+# ── C2086: the passwords masked only on egress, by position now ────────────────────────────
+# ── C2097: a TACACS+ host line's clear key read to the line's end ───────────────────────────
+#
+# C2086 (measured 2026-10-28): `ip ftp password [7]`, IS-IS's `isis password`, `area-password`
+# and `domain-password`, and `l2tp tunnel password 7` passed `redact_text` in clear, the egress
+# mask catching them only by resemblance (`egress_password`). Each line is its command
+# reference's form with an invented value (no capture holds any: the fleet's captures were
+# searched for `assw` through scripts/nmas-config-read on 2026-10-29, and every match is a
+# user line or `no service password-encryption`): `ip ftp password [type] password` (IOS
+# Configuration Fundamentals Command Reference), `isis password password [level-1 | level-2]`,
+# `area-password password [authenticate snp {validate | send-only}]`, `domain-password
+# password [authenticate snp {validate | send-only}]` (IP Routing: ISIS Command Reference),
+# `l2tp tunnel password [0 | 7] password` (VPDN Command Reference). C2097: `tacacs-server host
+# {hostname | host-ip-address} [key string] [nat] [port [integer]] [single-connection]
+# [timeout [integer]]` (Security Command Reference); the clear key read to the line's end
+# masks every word of a spaced key whichever way IOS reads one, at the cost of an option typed
+# after it (masked with it); a hidden key (`7`) is one token, its options kept.
+
+C2086_LABELS = ("ftp_password", "isis_password", "l2tp_tunnel_password")
+
+#: (line, [(label, planted value)]): each value occurs once in its line.
+C2086_C2097_FORMS = [
+    ("ip ftp password PlantedFtpPw", [("ftp_password", "PlantedFtpPw")]),
+    ("ip ftp password 0 PlantedFtpPw", [("ftp_password", "PlantedFtpPw")]),
+    ("ip ftp password 7 0822455D0A16", [("ftp_password", "0822455D0A16")]),
+    # A one-character password that looks like a type: the value.
+    ("ip ftp password 7", [("ftp_password", "7")]),
+    ("IP FTP PASSWORD PlantedUpperFtp", [("ftp_password", "PlantedUpperFtp")]),
+    # A type is one digit: a clear password of digits with a word after it is the value.
+    ("ip ftp password 12345678 extra", [("ftp_password", "12345678")]),
+    (" isis password PlantedIsisPw", [("isis_password", "PlantedIsisPw")]),
+    (" isis password PlantedIsisPw level-1", [("isis_password", "PlantedIsisPw")]),
+    (" isis password PlantedIsisPw level-2", [("isis_password", "PlantedIsisPw")]),
+    (" isis password 7 0822455D0A1617 level-2", [("isis_password", "0822455D0A1617")]),
+    # A one-digit password before its level: the value, never a type hiding `level-1`.
+    (" isis password 5 level-1", [("isis_password", "5")]),
+    (" isis password 7 level-2", [("isis_password", "7")]),
+    (" area-password PlantedAreaPw", [("isis_password", "PlantedAreaPw")]),
+    (" area-password PlantedAreaPw authenticate snp validate",
+     [("isis_password", "PlantedAreaPw")]),
+    (" area-password 5 authenticate snp send-only", [("isis_password", "5")]),
+    # The refusal is of the whole keyword: a password beginning with one is the value.
+    (" area-password 0 authenticateMe", [("isis_password", "authenticateMe")]),
+    (" domain-password PlantedDomainPw", [("isis_password", "PlantedDomainPw")]),
+    (" domain-password PlantedDomainPw authenticate snp send-only",
+     [("isis_password", "PlantedDomainPw")]),
+    (" domain-password\tPlantedTabPw", [("isis_password", "PlantedTabPw")]),
+    (" l2tp tunnel password PlantedL2tpPw", [("l2tp_tunnel_password", "PlantedL2tpPw")]),
+    (" l2tp tunnel password 0 PlantedL2tpPw", [("l2tp_tunnel_password", "PlantedL2tpPw")]),
+    (" l2tp tunnel password 7 0822455D0A1618", [("l2tp_tunnel_password", "0822455D0A1618")]),
+    (" l2tp tunnel password 12345678 extra", [("l2tp_tunnel_password", "12345678")]),
+    # C2097: a clear key, spaced or not, to the line's end; IPv4 and IPv6 hosts.
+    ("tacacs-server host 192.0.2.6 key Planted Tac Host", [("server_host_key", "Planted Tac Host")]),
+    ("tacacs-server host 2001:db8::6 key 0 Planted Tac Host",
+     [("server_host_key", "Planted Tac Host")]),
+    ("tacacs-server host 192.0.2.6 port 49 timeout 5 single-connection key Planted Tac Host",
+     [("server_host_key", "Planted Tac Host")]),
+    ("tacacs-server host 2001:db8::6 nat port 49 key 0 Planted\tTab Key",
+     [("server_host_key", "Planted\tTab Key")]),
+    # A key holding the word `key`: the FIRST bare `key` is the carrier, the key masked whole.
+    ("tacacs-server host 192.0.2.6 key Planted key Word", [("server_host_key", "Planted key Word")]),
+    # The stated cost: options typed after a clear key are masked with it.
+    ("tacacs-server host 192.0.2.6 key PlantedTacKey port 49 timeout 5 single-connection",
+     [("server_host_key", "PlantedTacKey port 49 timeout 5 single-connection")]),
+    # A hidden key is one token: the options after it are kept.
+    ("tacacs-server host 192.0.2.6 key 7 0475071A0B12 port 49 timeout 5",
+     [("server_host_key", "0475071A0B12")]),
+    ("tacacs-server host 2001:db8::6 single-connection key 7 0475071A0B13",
+     [("server_host_key", "0475071A0B13")]),
+    ("TACACS-SERVER HOST 192.0.2.6 KEY Planted Upper Key", [("server_host_key", "Planted Upper Key")]),
+]
+
+
+@pytest.mark.parametrize("line,planted", C2086_C2097_FORMS,
+                         ids=[f[0].strip()[:50] for f in C2086_C2097_FORMS])
+class TestEachC2086AndC2097Form:
+    def test_the_value_is_masked_and_every_other_byte_kept(self, line, planted):
+        assert redact.redact_positional(line) == _expected(line, planted)
+
+    def test_redact_text_and_the_egress_mask_give_the_same_line(self, line, planted):
+        """The egress mask keeps the position's label (it masked these as `egress_password`
+        before: `redact_text` runs first now)."""
+        want = _expected(line, planted)
+        assert redact.redact_text(line, values={}) == want
+        assert redact.redact_egress(line, values={}) == want
+
+    def test_masking_twice_changes_nothing(self, line, planted):
+        once = redact.redact_positional(line)
+        assert redact.redact_positional(once) == once
+        assert redact.redact_egress(once, values={}) == once
+
+    def test_the_parsers_and_the_config_check_get_each_value(self, line, planted):
+        found = []
+        redact.replace_positional_values(
+            line, lambda label, value, _prefix: (found.append((label, value)), value)[1])
+        assert sorted(found) == sorted(planted)
+
+
+def test_each_c2086_label_has_forms_here():
+    labels = {label for _line, planted in C2086_C2097_FORMS for label, _v in planted}
+    assert set(C2086_LABELS) <= labels
+    assert set(C2086_LABELS) <= {label for label, _p in redact._POSITIONAL}
+
+
+#: Lines of these carriers' neighbourhood holding no secret: each left whole.
+C2086_C2097_NO_SECRET = [
+    "no ip ftp password",
+    "ip ftp username nmasprobe",
+    " isis authentication mode md5 level-1",
+    " isis authentication key-chain ISIS-KEYS",
+    " isis password",
+    " area-password",
+    " authentication mode md5",
+    " l2tp tunnel hello 30",
+    " l2tp tunnel password",
+    "tacacs-server host 192.0.2.6 single-connection",
+    "tacacs-server host 2001:db8::6 port 49 timeout 5",
+    "tacacs-server host 192.0.2.6 key",
+    "tacacs-server timeout 5",
+    "tacacs-server host 192.0.2.6 key {{ secret('tacacs_key') }}",
+    "show running-config | include ip ftp password [in app.py:12]",
+    "ip ftp password <redacted:ftp_password>",
+    " isis password <redacted:isis_password> level-1",
+    "no service password-encryption",
+    # A carrier is a whole word: prose holding one inside another word keeps its words
+    # (`isis` in `crisis`, `ip` in `unzip`, `l2tp` in `xl2tp`, a longer program's name).
+    "the crisis password reset was logged",
+    "unzip ftp password prompts",
+    "xl2tp tunnel password option",
+    "pytacacs-server host 192.0.2.6 key words",
+]
+
+
+@pytest.mark.parametrize("line", C2086_C2097_NO_SECRET)
+def test_a_c2086_or_c2097_neighbour_holding_no_secret_is_left_whole(line):
+    assert redact.redact_positional(line) == line
+    assert redact.redact_text(line, values={}) == line
+
+
+@pytest.mark.parametrize("text", [
+    " isis password\n level-1",
+    " area-password\n authenticate snp validate",
+    "ip ftp password 7\nip ftp username u",
+    " l2tp tunnel password 0\n l2tp tunnel hello 30",
+    "tacacs-server host 2001:db8::6 key\ntacacs-server timeout 5",
+    "tacacs-server host 192.0.2.6 key 0\ntacacs-server timeout 5",
+])
+def test_a_c2086_or_c2097_keyword_ending_its_line_takes_nothing_from_the_next(text):
+    """A one-digit value ending its line is that line's (`ip ftp password 7` holds `7`); the
+    next line's words are never read."""
+    out = redact.redact_positional(text)
+    assert out.split("\n")[1] == text.split("\n")[1], out
+
+
+@pytest.mark.parametrize("line,planted", [
+    ("the router had ip ftp password PlantedQuotedFtp in it",
+     [("ftp_password", "PlantedQuotedFtp")]),
+    ("set isis password PlantedQuotedIsis level-2 on Gi0/1",
+     [("isis_password", "PlantedQuotedIsis")]),
+    ("it read tacacs-server host 2001:db8::6 key 7 0475071A0B14 and then stopped",
+     [("server_host_key", "0475071A0B14")]),
+])
+def test_a_c2086_or_c2097_shape_quoted_mid_sentence(line, planted):
+    want = _expected(line, planted)
+    assert redact.redact_text(line, values={}) == want
+    assert redact.redact_egress(line, values={}) == want
+
+
+def test_each_c2086_carrier_keeps_its_own_label_beside_its_neighbours():
+    """One golden's neighbourhood: an FTP client's password beside `ip http client password`,
+    an interface's IS-IS password beside its OSPF key, a VPDN group's L2TP password beside a
+    user line, and the TACACS+ host line beside the global key, CRLF ends kept."""
+    lines = [
+        ("ip http client password 0 PlantedHttpPw", [("http_client_password", "PlantedHttpPw")]),
+        ("ip ftp password 7 0822455D0A1619", [("ftp_password", "0822455D0A1619")]),
+        ("ip ftp username nmasprobe", []),
+        ("interface GigabitEthernet0/1", []),
+        (" ip router isis", []),
+        (" isis password PlantedIsisPw2 level-1", [("isis_password", "PlantedIsisPw2")]),
+        (" ip ospf authentication-key PlantedOspfAk2", [("ospf_key", "PlantedOspfAk2")]),
+        ("router isis", []),
+        (" net 49.0001.1920.0000.2001.00", []),
+        (" area-password PlantedAreaPw2 authenticate snp validate",
+         [("isis_password", "PlantedAreaPw2")]),
+        (" domain-password PlantedDomainPw2", [("isis_password", "PlantedDomainPw2")]),
+        ("vpdn-group L2TP", []),
+        (" l2tp tunnel password 0 PlantedL2tpPw2", [("l2tp_tunnel_password", "PlantedL2tpPw2")]),
+        ("username admin privilege 15 secret 9 PlantedUserHash",
+         [("user_password", "PlantedUserHash")]),
+        ("tacacs-server host 192.0.2.6 key Planted Tac Host2",
+         [("server_host_key", "Planted Tac Host2")]),
+        ("tacacs-server key 7 0822455D0A1620", [("shared_key", "0822455D0A1620")]),
+        ("end", []),
+    ]
+    text = "\r\n".join(line for line, _p in lines) + "\r\n"
+    want = "\r\n".join(_expected(line, planted) for line, planted in lines) + "\r\n"
+    assert redact.redact_positional(text) == want
+    assert redact.redact_text(text, values={}) == want
+    assert redact.redact_egress(text, values={}) == want
+    found = []
+    redact.replace_positional_values(
+        text, lambda label, v, _prefix: (found.append((label, v)), v)[1])
+    assert sorted(found) == sorted(pair for _line, planted in lines for pair in planted)
+
+
+@pytest.mark.parametrize("name,platform", [("r2", "cisco_iosxe"), ("s1", "cisco_ios")])
+def test_the_parsers_keep_each_c2086_and_c2097_value_and_the_configuration_round_trips(
+        name, platform):
+    from modules.nsot import hostvars, roundtrip
+    from modules.nsot.parsers import get_parser
+
+    planted = ("ip ftp password 0 PlantedFtpPw3\n"
+               "tacacs-server host 192.0.2.6 key Planted Tac Host3\n"
+               "tacacs-server host 2001:db8::6 key 7 0475071A0B15 port 49\n"
+               "vpdn-group L2TP\n"
+               " l2tp tunnel password 0 PlantedL2tpPw3\n"
+               "router isis\n"
+               " net 49.0001.1920.0000.2001.00\n"
+               " area-password PlantedAreaPw3\n"
+               " domain-password PlantedDomainPw3 authenticate snp validate\n")
+    values = ("PlantedFtpPw3", "Planted Tac Host3", "0475071A0B15", "PlantedL2tpPw3",
+              "PlantedAreaPw3", "PlantedDomainPw3")
+    with open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", f"{name}.cfg"),
+              encoding="utf-8") as fh:
+        head, _sep, _tail = fh.read().rpartition("\nend")
+    config = head + "\n" + planted + "end\n"
+    parsed = get_parser(platform).parse(config)
+    refs = sorted(v for k, v in parsed["secrets"].items() if k.startswith("unmodeled_"))
+    assert refs == sorted(values), refs
+    text = hostvars.to_yaml(parsed)
+    for value in values:
+        assert value not in text, f"{value} reached {name}'s intent"
+    rendered = roundtrip.render(parsed, platform)
+    for line in planted.splitlines():
+        assert line in rendered.splitlines(), line
+    assert "__secret__:" not in rendered
+
+
+#: The TACACS+ host rule as it stood before C2097, by its own text (one token, the LAST `key`).
+_TACACS_BEFORE_C2097 = re.compile(
+    r"(?i)\b(tacacs-server[ \t]+host[ \t]+\S+"
+    r"(?:[ \t]+\S+)*[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + redact._VALUE + r"()")
+
+
+def _without_c2086_c2097(text):
+    """*text* through the positional table as it stood before C2086 and C2097: their three rules
+    out, the two TACACS+ host rules at the head replaced by the one-token rule."""
+    table = [(label, pattern) for label, pattern in redact._POSITIONAL
+             if label not in C2086_LABELS
+             and not pattern.pattern.startswith(redact._TACACS_HOST_KEY)]
+    assert len(table) == len(redact._POSITIONAL) - 5
+    table.append(("server_host_key", _TACACS_BEFORE_C2097))
+    for label, pattern in table:
+        text = pattern.sub(
+            lambda m, lb=label: m.group(0) if redact._ALREADY.match(m.group(2))
+            else m.group(1) + _p(lb) + m.group(3), text)
+    return text
+
+
+class TestC2086AndC2097AndTheFleetsCaptures:
+    def test_the_rules_change_no_captured_line_nor_file(self):
+        assert len(CAPTURES) >= 17
+        assert sum(len(_lines(p)) for p in CAPTURES) >= 3000
+        changed = [(os.path.relpath(p, ROOT), n) for p in CAPTURES
+                   for n, line in enumerate(_lines(p), 1)
+                   if redact.redact_positional(line) != _without_c2086_c2097(line)]
+        assert changed == []
+        whole = [os.path.relpath(p, ROOT) for p in CAPTURES
+                 if redact.redact_positional("\n".join(_lines(p)))
+                 != _without_c2086_c2097("\n".join(_lines(p)))]
+        assert whole == []
+
+    @pytest.mark.parametrize("planted,secret", [
+        (" isis password PlantedIsisPw4 level-2", "PlantedIsisPw4"),
+        ("ip ftp password 0 PlantedFtpPw4", "PlantedFtpPw4"),
+        ("tacacs-server host 2001:db8::6 key Planted Tac Host4", "Tac Host4"),
+    ])
+    def test_a_line_planted_in_a_capture_is_found_at_its_line_only(self, planted, secret):
+        path = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r1.cfg")
+        lines = _lines(path)
+        at = next(i for i, line in enumerate(lines) if line.startswith("interface "))
+        lines.insert(at, planted)
+        changed = [n for n, line in enumerate(lines)
+                   if redact.redact_positional(line) != _without_c2086_c2097(line)]
+        assert changed == [at]
+        assert secret not in redact.redact_positional(lines[at])

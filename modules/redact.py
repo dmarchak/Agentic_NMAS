@@ -124,6 +124,12 @@ _RADIUS_HOST_KEY = (r"(?i)\b((?:radius-server[ \t]+host|server-private)[ \t]+\S+
                     r"|(?!(?:key|username|encryption-key|message-auth-code-key)(?!\S))\S+))*"
                     r"[ \t]+key[ \t]+")
 
+#: `tacacs-server host <host> … key …` (C2097, 2026-10-29): the options between the host and the
+#: key (`port N`, `timeout N`, `single-connection`, `nat`) are any tokens but `key`, and the
+#: FIRST bare `key` is the carrier, so a key holding the word `key` is masked whole.
+_TACACS_HOST_KEY = (r"(?i)\b(tacacs-server[ \t]+host[ \t]+\S+"
+                    r"(?:[ \t]+(?!key(?!\S))\S+)*[ \t]+key[ \t]+")
+
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
 _POSITIONAL = (
     # C2085 (2026-10-28): the TACACS+ and RADIUS keys whose command ends with the key, read to
@@ -140,10 +146,16 @@ _POSITIONAL = (
     # both; a `radius server` block's `key {0|6|7} <k>` (`key (config-radius-server)`, the
     # spaces sentence), a `tacacs server` block's `key [0|6|7] <k>` and an ISAKMP client
     # group's `key <name>`, each its line's last item; a RADIUS block's `pac key [0|6|7] <k>`
-    # ("a line specifying the unencrypted (clear-text) server key", last). NOT here:
-    # `tacacs-server host`, whose syntax puts `[nat] [port] [single-connection] [timeout]`
-    # after `[key string]`, so its key is one token (below, `server_host_key`); a
-    # dynamic-author `server-key [0|7] <word>`, one word, and `client … server-key <k> [vrf X]`.
+    # ("a line specifying the unencrypted (clear-text) server key", last). And `tacacs-server
+    # host … key [0|7] <k>` (C2097, 2026-10-29), whose syntax puts `[nat] [port [integer]]
+    # [single-connection] [timeout [integer]]` after `[key string]`: whether IOS reads a key
+    # holding spaces to the line's end there or stops at an option is unmeasured (the register's
+    # one measurement is a device's), so its clear form is read to the line's end, which masks
+    # every word of the key either way: refusing by resemblance is safe, allowing is not. The
+    # cost: an option typed after a clear key (`key <k> port 49`) is masked with it, and the
+    # parsers keep it inside the key's reference, rendered back byte for byte; a hidden key is
+    # one token, its options kept. NOT here: a dynamic-author `server-key [0|7] <word>`, one
+    # word, and `client … server-key <k> [vrf X]`.
     ("shared_key", re.compile(
         r"(?i)\b((?:tacacs-server|radius-server)[ \t]+key[ \t]+" + _KEY_CLEAR + r")"
         + _VALUE_TO_EOL + r"()")),
@@ -152,6 +164,8 @@ _POSITIONAL = (
         + _VALUE + r"()")),
     ("server_host_key", re.compile(_RADIUS_HOST_KEY + _KEY_CLEAR + r")" + _VALUE_TO_EOL + r"()")),
     ("server_host_key", re.compile(_RADIUS_HOST_KEY + _KEY_HIDDEN + r")" + _VALUE + r"()")),
+    ("server_host_key", re.compile(_TACACS_HOST_KEY + _KEY_CLEAR + r")" + _VALUE_TO_EOL + r"()")),
+    ("server_host_key", re.compile(_TACACS_HOST_KEY + _KEY_HIDDEN + r")" + _VALUE + r"()")),
     # A RADIUS server block's `pac key [0|6|7] <k>`, a line of its own. Leading its line, so a
     # host line's `… pac key <k>` is `server_host_key`'s alone (two rules reading one value
     # would name it twice to the parsers and the config check).
@@ -245,15 +259,8 @@ _POSITIONAL = (
     # C2074 (2026-10-28): the IOS credential shapes still in clear after C745, each found so by a
     # planted line (tests/test_redact_ios_shapes.py holds every form), bound by C745's three
     # rules below (`[ \t]` between tokens, a one-digit type, every shape named by its carrier).
-    # A TACACS+ server's key on its host line: `tacacs-server host <host> [port N] [timeout N]
-    # [single-connection] key [0|7] <k>` (`radius-server host` and `server-private` are at the
-    # table's head, read to the line's end, C2085). The syntax lists options AFTER `[key
-    # string]`, so this key is one token, the rest of a key with spaces in clear (the
-    # register's). The options between the host and `key` are not spelled out: any tokens, and
-    # the LAST `key` on the line with a value after it is the carrier.
-    ("server_host_key", re.compile(
-        r"(?i)\b(tacacs-server[ \t]+host[ \t]+\S+"
-        r"(?:[ \t]+\S+)*[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # (A TACACS+ server's key on its host line, `tacacs-server host <host> … key [0|7] <k>`, is
+    # at the table's head with `radius-server host`'s and `server-private`'s, C2097.)
     # A RADIUS dynamic-authorization client's key (`aaa server radius dynamic-author`):
     # `client <host> [vrf X] server-key [0|7] <k> [vrf X]`, or a `server-key [0|7] <k>` line.
     # Named by its carrier (a client, or the line's start), so a word such as
@@ -368,6 +375,25 @@ _POSITIONAL = (
     # names only at a line's start, so this one passed every mask and reached intent verbatim.
     ("http_client_password", re.compile(
         r"(?i)\b(ip\s+http\s+client\s+password\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # C2086 (2026-10-29): the passwords the egress mask caught only by resemblance
+    # (`egress_password`), in clear through `redact_text`, so goldens' reads, logs, the archive
+    # and the parsers' intent carried them. Each named by its carrier and bound by C745's three
+    # rules (`[ \t]` between tokens, a one-digit type, the carrier named), from Cisco's command
+    # references: `ip ftp password [type] <password>` (IOS Configuration Fundamentals);
+    # IS-IS's `isis password <password> [level-1 | level-2]` (an interface's), `area-password
+    # <password> [authenticate snp {validate | send-only}]` and `domain-password <password>
+    # [authenticate snp …]` (`router isis`'s; IP Routing: ISIS Command Reference); `l2tp tunnel
+    # password [0 | 7] <password>` (a VPDN group's or an L2TP class's; VPDN Command Reference).
+    # The value is one token, options after it kept. A type is one digit, taken only when a
+    # value that is not the option after it follows (key-wrap's rule, C2098), so a one-digit
+    # password before `level-1` or `authenticate` is the value, never a type hiding a keyword.
+    ("ftp_password", re.compile(
+        r"(?i)\b(ip[ \t]+ftp[ \t]+password[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    ("isis_password", re.compile(
+        r"(?i)\b((?:isis[ \t]+password|area-password|domain-password)[ \t]+"
+        r"(?:[0-9][ \t]+(?!(?:level-1|level-2|authenticate)(?!\S)))?)" + _VALUE + r"()")),
+    ("l2tp_tunnel_password", re.compile(
+        r"(?i)\b(l2tp[ \t]+tunnel[ \t]+password[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
     ("ppp_password", re.compile(
         r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     # A URL's user part (C476, 2026-10-05: `https://<user>:<secret>@<host>` in an error left
@@ -645,7 +671,9 @@ def redact_egress(text: str, values: dict = None) -> str:
     auth and priv values, and every hash-shaped token. Idempotent: a placeholder is left
     alone. Never applied to what Mercury stores (goldens stay verbatim), but for the evidence
     pack's intent difference lines (`evidence_pack.intent_lines`, the operator's order of
-    2026-10-29), kept only to be read and sent, never restored from."""
+    2026-10-29), kept only to be read and sent, never restored from, and a commit message in a
+    list's repository (`repo.masked_message`, C2059), which is pushed to its remote and never
+    rewritten."""
     if not text:
         return text
     text = redact_text(text, values)

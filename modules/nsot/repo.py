@@ -1566,6 +1566,33 @@ def publish(repo: str, sha: str, *, list_name: str = "", source: str = "",
     run_post_commit(context)
 
 
+def masked_message(message: str) -> str:
+    """*message* as a commit in a list's repository carries it (C2059, 2026-10-29): masked as
+    typed text leaving the host is (C1845's mask, `redact.redact_egress`): by position, by
+    every stored value, and by the egress shapes, which read a secret wherever it stands on a
+    line (a typed summary follows `host_vars: <device> `, where no rule anchored at a line's
+    start, `enable secret`'s among them, can read it). A commit's subject is often typed by a
+    person ("Why, in one line" on the Intent tab, an intent editor's summary, a decline's or a
+    retirement's reason) and the repository is pushed to its remote, so a secret typed or
+    pasted there would leave the host in the history, which is never rewritten. Applied in
+    :func:`commit`, the one place every commit message passes, so no path can skip it.
+    Addresses, names and the trailers' values are not secret shapes and are kept; a masking
+    is said in the log, never the value.
+
+    Masked a line at a time: the egress shapes read `\\s+` after `secret` or `password`, so
+    over the whole message a subject ending in either word ("… a device-generated type-9
+    secret") took the next line's first word, the `Source:` trailer's key, for its value."""
+    from modules import redact
+
+    values = redact.known_secret_values()
+    masked = "\n".join(redact.redact_egress(line, values)
+                       for line in (message or "").split("\n"))
+    if masked != (message or ""):
+        log.warning("repo: a commit message held a secret (by its position or a stored value); "
+                    "it is committed masked")
+    return masked
+
+
 def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empty=False,
            git_config=(), publish_now: bool = True, source: str = "", actor: str = "",
            tags=None, devices=None) -> tuple:
@@ -1600,6 +1627,7 @@ def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empt
     if refused:
         log.warning("repo: commit refused in %s: %s", repo, refused)
         return 1, "", refused
+    message = masked_message(message)
     config_args = [a for kv in git_config for a in ("-c", kv)]
     flags = ["--allow-empty"] if allow_empty else []
     tail = ["--", *paths] if paths else []

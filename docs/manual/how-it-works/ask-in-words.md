@@ -139,7 +139,9 @@ masked:
   ipsec spi …`, on an interface, an area or a virtual link), an NHRP authentication string
   (`ip nhrp authentication …` or `ipv6 nhrp authentication …`), a neighbor's password
   (`neighbor <address> password …`, IPv4 or IPv6), an SNMPv3 user's authentication and
-  privacy passwords (`snmp-server user …`), an HSRP, VRRP or GLBP authentication string, an
+  privacy passwords (`snmp-server user …`), an FTP client's password (`ip ftp password …`),
+  an IS-IS password (`isis password …`, `area-password …`, `domain-password …`), an L2TP
+  tunnel password (`l2tp tunnel password …`), an HSRP, VRRP or GLBP authentication string, an
   NTP key (`ntp authentication-key N md5 …`), a password after `password` or `secret`
   anywhere in the line, an authentication key (`key 1 md5 …`), a password hash (`$1$`, `$9$`
   and the like), a URL's user and password, and an encrypted secret. Each keeps its line's
@@ -158,13 +160,14 @@ back on the page. The call's record holds the masked words only, with the note's
 them; **History** draws the request as it was sent, masked.
 
 A TACACS or RADIUS key typed in clear is masked to the end of its line, because such a key
-may hold spaces: any words after it on the same line are masked with it.
+may hold spaces: any words after it on the same line are masked with it. On a
+`tacacs-server host` line that includes the options that command allows after its key
+(`port …`, `timeout …`, `single-connection`, `nat`): they are masked with a clear key, so no
+word of a key holding spaces is left.
 
-Some secret lines are not yet recognised in every form: a key containing spaces on a
-`tacacs-server host` line keeps every word after its first (that command's options may follow
-its key, so the key cannot be read to the line's end), and a server block's key of digits
-alone is masked only when its `radius server`, `tacacs server` or client group line is pasted
-above it (alone, ` key 12345678` reads as a key chain's key number). Leave secrets out of your
+Some secret lines are not yet recognised in every form: a server block's key of digits alone
+is masked only when its `radius server`, `tacacs server` or client group line is pasted above
+it (alone, ` key 12345678` reads as a key chain's key number). Leave secrets out of your
 words.
 
 ## What it costs, and what is recorded {#cost}
