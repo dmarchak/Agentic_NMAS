@@ -31,7 +31,18 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `5687d4f59d35ebe382829ad59398ad287c6dbe1fe7974d2d9db0f6ace13dc6e0`
+Templates sha256: `d1cf77a86b143123c759e1298950c63f7062e87099f461ef066ee25da924ea30`
+
+**Compared again 2026-10-29 ~10:5x UTC for C2021** (an unauthorised flow's severity floor):
+`_sdn_responses.html`'s AI box, after "severity <s>", says "(raised in code from the model's
+<m>: the flow's effect sets the floor)" when the effect's floor raised the model's rating
+(`closed_loop.apply_floor`), the floor's words on its hover; a severity the model gave is drawn
+as before. The board draws the severity as the model's alone; the addition is a deviation
+(docs/STANDING_APPROVAL_LOG.md, "SDN C2021: a severity the effect's floor raised is said on the
+AI box"). Compared by reading the template against the board's AI box, no new shot (the
+region stays **later**: no shot plants a classification); the rendered states are held by
+tests/test_sdn_classify.py (`test_the_card_says_a_severity_the_floor_raised_and_the_model_s_own`).
+Templates sha256 before: `5687d4f59d35ebe382829ad59398ad287c6dbe1fe7974d2d9db0f6ace13dc6e0`.
 
 **Compared again 2026-10-28 ~22:1x UTC for C2002** (a port's detection names its source from
 the controller's topology, and a person chooses among the port's hosts when there are
@@ -215,6 +226,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | An incident, opened (C1999) | the detail under its row: "SDN scan from <source>, seen on 50 switches", the detection line "Detected … on <dpid>: …", "Ingress: the ingress switch is <dpid>: the controller's topology (read …) lists <source>'s host on its port 1. Grouped within 60 s, …", "▸ Seen also on 49 other switches · nothing is proposed there; …", the AI box, "Proposed: … on <dpid> …", the actions | the same lines in the same order, opened by `?incident=<id>` (Needs attention's link) in the shot; the seen-also list opens to one line per switch (its DPID, port, controller, time and words) in a box that scrolls; the AI box as the row above | **same** |
 | An awaiting response's head | revised for C1999: the incident's title with "seen on N switches" and a red severity chip "high" | the title as the board's; the chip beside it is the detection rule's confidence, labelled "confidence high" (its hover says it is not the threat's severity), since the severity is the row's first column and an unclassified incident has none | **deviation** (log: SDN C1999: the opened incident's chip names the rule's confidence) |
 | The AI's classification | an AI-marked box: threat, severity, model and cost, evidence ids, the recommendation | when a classification is kept (S7, 2026-10-27): a box marked AI with the threat or "No threat", its kind and severity, by whom (the loop or a person) and when, the model and cost (the call's id on hover), the reasoning, the recommendation with its catalogue action, the devices named and the evidence ids cited; with none, one line naming who chose the action (the catalogue's default, chosen in code, and why no AI classification was made). Compared by reading the template against the board's list, not yet shot: the harness's `sdn-responses` shot plants no classification | **later** a shot with a kept classification (tests/test_board_shots.py) |
+| A severity the effect's floor raised (C2021) | not drawn: the box's severity is the model's | after "severity high", "(raised in code from the model's medium: the flow's effect sets the floor)", the floor's words ("at least high: the flow diverts (its effect, decided in code from the switch's table)") on its hover; nothing added when the model's rating stands. Read from the template and tests/test_sdn_classify.py's rendered card, not shot | **deviation** (log: SDN C2021: a severity the effect's floor raised is said on the AI box) |
 | Its actions | revised for C1999: Classify again, "for 600 s", Preview the drop traffic from the source…, a reason field and "Dismiss the incident (50 switches) with this reason", How does this work? | Classify (AI-marked) on its own line, then "for N s", Preview the <action>…, a reason field and "Dismiss the incident (3 switches) with this reason" ("Dismiss with this reason" on an incident of one switch), each with its (i); no control acts on more than its incident | **same** |
 | A response whose threat stopped (C1968) | not drawn: the board's response awaits while its threat runs | "Inactive" and "Threat no longer active since <time>: the detection resolved, and this response still awaits your approval or dismissal", under the detection's line; the card otherwise unchanged, its classification kept | **deviation** (log: SDN C1968: a response stays awaiting when its threat stops) |
 | A refused classification (C1968) | not drawn | the card's classification line says "AI classification refused: <why>; proposed by the catalogue default, <action> (AI call <id>)" and links "The refused answer in History" (the call) | **deviation** (log: SDN C1968: a refused classification said, its call linked) |

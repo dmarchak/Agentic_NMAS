@@ -120,7 +120,9 @@ def _classification(row: dict):
     None: its threat, severity, type, the devices it names, its recommendation and reasoning,
     the catalogue action it proposed (``none``: a person decides) and its parameters, the
     evidence ids it cites, and the call (its id, model, cost, and whose: the loop's or a
-    person's, who and when)."""
+    person's, who and when). A severity an unauthorised flow's effect raised in code
+    (`closed_loop.apply_floor`, C2021) carries the model's own rating and the floor's words, so
+    the card never shows the code's severity as the model's."""
     c = row.get("classification")
     if not isinstance(c, dict):
         return None
@@ -129,7 +131,10 @@ def _classification(row: dict):
     words = profiles.MODELS.get(model, {}).get("words", model)
     return {"threat_detected": bool(c.get("threat_detected")),
             "threat_type": (c.get("threat_type") or "").replace("_", " "),
-            "severity": c.get("severity") or "", "devices": list(c.get("affected_devices") or []),
+            "severity": c.get("severity") or "",
+            "severity_from_model": c.get("severity_from_model") or "",
+            "severity_floor": c.get("severity_floor") or "",
+            "devices": list(c.get("affected_devices") or []),
             "recommended": c.get("recommended_action") or "", "reasoning": c.get("reasoning") or "",
             "action": c.get("action_id") or "", "params": dict(c.get("params") or {}),
             "refs": list(c.get("evidence_refs") or []), "call_id": c.get("call_id") or "",

@@ -64,8 +64,9 @@ and the evidence ids it rests on (`closed_loop.flow_ref`, `port_ref`): what the 
 displaced (``displaced``, `flow_intent.displaced`: recorded, not installed, at its table,
 priority and match), each a citable piece with its own id (`displaced_piece`) among the
 evidence; and its ``effect`` (`flow_intent.effect`: forwards, diverts, drops, shadows, lifts or
-unknown, in words, with the flows it rests on), said in its words too. Its severity stays the
-classifier's.
+unknown, in words, with the flows it rests on), said in its words too. Its severity is the
+classifier's above the floor its effect sets in code (`closed_loop.SEVERITY_FLOOR`, the
+operator's ruling of 2026-10-28): a lower rating is raised, the model's own kept beside it.
 
 **The state** (`STATE_FILE`, ``sdn_detect.json`` in the data folder): one document, per
 network the baselines, the ports over their flood threshold and since when, the scan

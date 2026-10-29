@@ -858,7 +858,10 @@ def verdict_of(network: str, d: dict, got: dict) -> dict:
     return dict(out, action=action, risk=closed_loop.CATALOGUE[action]["risk"],
                 params=got["params"], classification=c,
                 words=(f"AI call {got['call_id']}: a {c['threat_type']} threat, severity "
-                       f"{c['severity']}; proposed {action}, checked in code"))
+                       f"{c['severity']}"
+                       + (f" (raised in code from the model's {c['severity_from_model']}: "
+                          f"{c['severity_floor']})" if c.get("severity_floor") else "")
+                       + f"; proposed {action}, checked in code"))
 
 
 def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, now=time.time,

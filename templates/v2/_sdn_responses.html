@@ -67,7 +67,7 @@
   {%- endif %}
   {%- if r.ai %}{% set a = r.ai %}
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
-    <p class="small">{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · <span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span></span></p>
+    <p class="small">{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · <span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span></span></p>
     <p class="small">{{ a.reasoning }}</p>
     <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
     {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}

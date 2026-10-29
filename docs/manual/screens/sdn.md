@@ -194,8 +194,10 @@ mode and whether the loop is running.
   does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the
   controller would, or has an effect the table cannot tell, naming why:
   [What an unauthorised flow does](sdn-flows#classify)), the AI's classification when there is one
-  (marked AI: threat or not, its kind and severity, its reasoning, what it recommends, the
-  devices it names, the evidence ids it cites, and the model, cost and call), else who chose the
+  (marked AI: threat or not, its kind and severity, a severity the flow's effect raised in code
+  saying so with the model's own rating and the floor's words on hover; its reasoning, what it
+  recommends, the devices it names, the evidence ids it cites, and the model, cost and call),
+  else who chose the
   action (the catalogue's default, chosen in code), and the action proposed from the catalogue
   with its risk and the switch it acts on. **Ingress:** names that switch and the port the
   controller lists the source's host on; when the ingress cannot be told (no source named, the

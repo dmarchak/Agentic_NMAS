@@ -302,6 +302,33 @@ def test_each_effect_s_floor(cls, floor):
         "no threat found: left as the model said"
 
 
+FLOOR_WORDS = ("at least high: the flow diverts (its effect, decided in code from the switch's "
+               "table)")
+
+
+def _redirect_answer(severity: str) -> dict:
+    """A passing answer to the redirect on s2 (recorded case 7, diverts) rated *severity*."""
+    flow = REDIRECT["detection"]["subject"]["value"]
+    return answer(threat_type="unauthorised_flow", action_id="remove_flow", severity=severity,
+                  affected_devices=["192.0.2.3"], parameters=dict(PARAMS, source="", flow=flow),
+                  evidence_refs=[flow])
+
+
+@pytest.mark.parametrize("model,raised", [("medium", True), ("high", False)])
+def test_the_loop_s_log_says_a_severity_the_floor_raised_and_the_model_s_own(world, model,
+                                                                            raised):
+    """C2021: the loop's classify line (the run's log, readable later) says a severity the
+    effect's floor raised and the model's own rating; one the model gave is said as it was."""
+    keep_pack(REDIRECT)
+    _feature_on()
+    world.answer = _redirect_answer(model)
+    out = _pass(world, REDIRECT)
+    line = next(x for x in out["lines"] if x["step"] == "classify")["words"]
+    assert "a unauthorised_flow threat, severity high" in line
+    said = f"(raised in code from the model's medium: {FLOOR_WORDS})"
+    assert (said in line) is raised and ("raised in code" in line) is raised
+
+
 def test_a_rate_limit_s_rate_and_unit_are_kept(world):
     keep_pack(FLOOD)
     port = FLOOD["expect"]["cites_any"][0]
@@ -529,6 +556,32 @@ def test_classify_draws_the_ai_s_classification_and_proposes_its_action(screen, 
     (row,) = rows()
     assert row["trigger"]["kind"] == "person" and row["actor"] == TEST_PERSON
     assert len(screen.world.sent) == 1
+
+
+@pytest.mark.parametrize("model,raised", [("medium", True), ("low", True), ("high", False)])
+def test_the_card_says_a_severity_the_floor_raised_and_the_model_s_own(world, monkeypatch,
+                                                                     model, raised):
+    """C2021 (never let a wrong thing look right): a severity the redirect's effect (diverts)
+    raised in code is not drawn as the model's under the AI mark: the card says it was raised
+    in code and from what, the floor's words on hover; a severity the model gave is drawn as
+    it was, with no such words."""
+    import app as APP
+
+    monkeypatch.setattr(gateway, "anthropic_adapter",
+                        types.SimpleNamespace(**{**vars(gateway.anthropic_adapter),
+                                                 "send": world.send}))
+    keep_pack(REDIRECT)
+    row = LP.propose(NET, detection_of(REDIRECT), "remove_flow", "medium", why="HITL",
+                     classified="no AI classification (planted)")
+    world.answer = _redirect_answer(model)
+    r = APP.app.test_client().post(f"/v2/sdn/response/{row['id']}/classify",
+                                   data={"list": NET}, headers={"HX-Request": "true"})
+    html = _html(r)
+    assert r.status_code == 200, html
+    assert "A threat: unauthorised flow</strong>, severity high" in html
+    said = f"(raised in code from the model's {model}: the flow's effect sets the floor)"
+    assert (said in html) is raised and ("raised in code" in html) is raised
+    assert (f'<span title="{FLOOR_WORDS}">{said}</span>' in html) is raised
 
 
 def test_a_refused_classification_is_said_on_its_card_and_the_proposal_stays(screen,
