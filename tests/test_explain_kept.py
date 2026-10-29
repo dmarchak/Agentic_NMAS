@@ -14,6 +14,9 @@ captures, hosted AI allowed, a planted answer, the provider's send counted):
   kept and the newest is drawn, the earlier one counted;
 - what is not the model's answer (hosted AI off) is not kept; "couldn't analyse" is;
 - a kept answer under another prompt version or model is not this question's answer;
+- nor one asked without today's fact sheet or needs-a-person guard (C2162: kept before them,
+  naming neither, or under an older version of either): the card does not draw it, offers
+  Explain, and Explain asks anew; prompt v1 is asked without the sheet;
 - an answers store that cannot be read refuses a plain Explain, sending nothing, and says so;
 - **one press, one call:** two presses of one pack in flight together (a double click), and a
   retry of a press with its key, each reach the provider once;
@@ -32,7 +35,7 @@ from modules import alert_history as H
 from modules import evidence_pack as EP
 from modules import records_migrate
 from modules.ai import anthropic_adapter as A
-from modules.ai import explain, explain_answers, presses, profiles
+from modules.ai import explain, explain_answers, fact_sheet, presses, profiles
 from tests.test_ai_explain import _answer, world  # noqa: F401 (the fixture)
 from tests.test_alert_history import _backfill, load
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
@@ -129,6 +132,59 @@ class TestKeptWithThePack:
         rows[0][field] = value
         assert explain_answers.kept(world.pack, rows=rows)["answer"] is None
         assert explain_answers.kept(world.pack, rows=_kept_rows())["answer"] is not None
+
+    @pytest.mark.parametrize("change", ["none named", "an older fact sheet",
+                                        "an older guard", "the guard alone"])
+    def test_an_answer_asked_without_today_s_sheet_or_guard_is_not_this_packs(self, world,
+                                                                              change):
+        """C2162: an answer kept before the fact sheet and the needs-a-person guard names
+        neither (rows kept before `asked_with` existed), or was asked under an older version
+        of either: not today's answer, however alike the pack, prompt and model."""
+        world.answer = _answer(world.pack)
+        _post(world)
+        rows = _kept_rows()
+        now = dict(rows[0]["asked_with"])
+        assert now == explain.asked_with() == {
+            "fact_sheet": fact_sheet.VERSION, "needs_human_guard":
+            explain.NEEDS_HUMAN_GUARD_VERSION}
+        if change == "none named":
+            rows[0].pop("asked_with")
+        elif change == "the guard alone":
+            rows[0]["asked_with"] = {"needs_human_guard": now["needs_human_guard"]}
+        else:
+            part = "fact_sheet" if change == "an older fact sheet" else "needs_human_guard"
+            rows[0]["asked_with"] = dict(now, **{part: now[part] - 1})
+        assert explain_answers.kept(world.pack, rows=rows)["answer"] is None
+        assert explain_answers.kept(world.pack, rows=_kept_rows())["answer"] is not None
+
+    def test_prompt_v1_is_asked_without_the_fact_sheet(self):
+        assert explain.asked_with(("explain", 1))["fact_sheet"] == 0
+        assert explain.asked_with(("explain", 4))["fact_sheet"] == fact_sheet.VERSION
+
+    def test_a_kept_answer_from_before_the_sheet_and_guard_is_not_drawn_and_explain_asks(
+            self, world):
+        """Through the routes: the store holds an answer kept as rows were before C2162 (no
+        ``asked_with``). The card does not draw it as current and offers Explain, not Explain
+        again; Explain asks anew (one call) and draws the new answer; the older answer stays
+        in the store."""
+        import json
+        world.answer = _answer(world.pack, rationale="Kept before the guard and the sheet.")
+        _post(world)
+        (old,) = _kept_rows()
+        old.pop("asked_with")
+        with open(explain_answers._path(), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(old) + "\n")
+        card = _card(world)
+        assert "Kept before the guard and the sheet." not in card
+        assert "kept with the pack" not in card and "Explain again" not in card
+        world.answer = _answer(world.pack, rationale="Asked with the sheet and the guard.")
+        html = _post(world)
+        assert len(world.sent) == 2, "the older answer is not today's: Explain asked anew"
+        assert "Asked with the sheet and the guard." in html
+        assert "Kept before the guard and the sheet." not in html
+        first, second = _kept_rows()
+        assert "asked_with" not in first and second["asked_with"] == explain.asked_with()
+        assert "Asked with the sheet and the guard." in _card(world)
 
     def test_an_unreadable_answers_store_sends_nothing_and_says_why(self, world, monkeypatch):
         real = records_migrate.store_rows

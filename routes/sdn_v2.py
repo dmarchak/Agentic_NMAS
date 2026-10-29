@@ -119,6 +119,21 @@ def _op_card(d: dict, status: int = 200):
     return _strict(render_template("v2/_sdn_op.html", d=d)), status
 
 
+def _refused_beside(words: str, status: int = 409):
+    """A refusal of a control whose success redraws the whole region (`hx-target` ``#sdn``,
+    outerHTML), drawn after the form that asked (``HX-Retarget: this``, ``HX-Reswap:
+    afterend``), never over the region (C2003). An error answer that is a fragment is swapped
+    (static/js/nmas_v2.js `neverSilent`), so a one-line refusal swapped as ``#sdn`` replaced the
+    page's whole region, its live listener (``nmas:sdn from:body``) and its stale note with it:
+    SDN › Responses then never redrew again, and said nothing, until it was loaded again.
+    Beside the form, the region and its listener stay, and its next redraw draws the state
+    that refused it."""
+    resp = _strict(render_template("v2/_sdn_answer.html", refused=words), status)
+    resp.headers["HX-Retarget"] = "this"
+    resp.headers["HX-Reswap"] = "afterend"
+    return resp
+
+
 def _network_of_form() -> str:
     from routes.list_param import submitted_list
 
@@ -205,8 +220,7 @@ def response_classify(rid):
     network = _network_of_form()
     row = next((r for r in loop.awaiting(network)["rows"] if r.get("id") == rid), None)
     if row is None:
-        return _strict(render_template("v2/_sdn_answer.html",
-                                       refused=f"no response {rid} is awaiting a person")), 404
+        return _refused_beside(f"no response {rid} is awaiting a person", 404)
     actor = identity.request_actor()
     got = closed_loop.classify_threat(network, row["detection"], actor=actor,
                                       trigger=triggers.person(actor))
@@ -311,7 +325,7 @@ def response_dismiss(rid):
         loop.resolve(network, rid, "dismissed", actor=identity.request_actor(),
                      why=request.form.get("reason", ""))
     except ValueError as exc:
-        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+        return _refused_beside(str(exc))
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 
 
@@ -339,7 +353,7 @@ def mode_set():
                            actor_verified=identity.actor_verification(actor),
                            why=request.form.get("reason", ""))
     except (ValueError, modes.ModeRefused) as exc:
-        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+        return _refused_beside(str(exc))
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 
 
@@ -401,7 +415,7 @@ def loop_set():
         else:
             loop.stop(network, actor=identity.request_actor())
     except ValueError as exc:
-        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+        return _refused_beside(str(exc))
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 
 

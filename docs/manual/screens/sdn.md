@@ -18,7 +18,10 @@ read finishes. While a card you opened in place is on the page (a response's or 
 preview, its result or refusal, the flow editor), or you are typing (a dismissal's reason), the
 redraw waits: the card says **Paused while you review this: newer data is waiting.** with
 **Show it now**, which closes the card and redraws (nothing is sent); a typed field's redraw
-happens when you send or empty it.
+happens when you send or empty it. When Mercury refuses one of the page's controls (Classify,
+a dismissal, Turn AUTO on or off, the loop's Start or Stop), the refusal is drawn under that
+control ("Not saved: " and why), and the page keeps redrawing by itself; its next redraw shows
+the state that refused it.
 
 **When the page is not current.** A page that is live is redrawn at every read, so every 30
 seconds at least. If no redraw has reached the page within 90 seconds of when it was drawn (the

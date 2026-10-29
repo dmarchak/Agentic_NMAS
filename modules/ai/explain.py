@@ -866,6 +866,25 @@ def fault_shown(pack: dict) -> str:
             f"{pack.get('built_at') or '(not recorded)'}")
 
 
+#: Mercury's needs-a-person guard (`needs_human_guard`), as a version: raised whenever what it
+#: sets, or when, changes. An answer is kept under it (`asked_with`, C2162).
+NEEDS_HUMAN_GUARD_VERSION = 1
+
+
+def asked_with(prompt: tuple = PROMPT) -> dict:
+    """What Mercury itself adds to a question and its answer beyond the prompt and the model,
+    each by its version (C2162): the fact sheet sent as input (``0``: not sent, prompt v1) and
+    the needs-a-person guard applied to the answer. An answer is kept under these
+    (`explain_answers.key_of`): one kept before either existed (it names neither), or under an
+    older version of either, was asked a different question or checked differently, so it is
+    never drawn as today's answer; Explain asks anew. A new step Mercury adds to the question
+    or the answer is added here, with its own version."""
+    from modules.ai import fact_sheet
+
+    return {"fact_sheet": 0 if int(prompt[1]) == 1 else fact_sheet.VERSION,
+            "needs_human_guard": NEEDS_HUMAN_GUARD_VERSION}
+
+
 def needs_human_guard(outcome: str, needs_human: bool, pack: dict) -> dict:
     """Mercury's own needs_human (the operator's order of 2026-10-29, C2141): ``{"reason"}``
     when the answer is no fault found with needs_human false while the alert's own

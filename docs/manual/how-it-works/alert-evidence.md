@@ -471,12 +471,17 @@ received in History, and the use's record there says what {{product}} added.
 
 ### An answer is kept with its pack {#kept-answers}
 
-A pack is frozen, so the same pack, prompt version and model ask the same question. Each answer
-is kept with its pack, keyed by those three (the records store **Explain answers**, moved on
+A pack is frozen, so the same pack, prompt version and model, with the same versions of what
+{{product}} adds (the fact sheet sent with the pack, and the needs-a-person guard applied to the
+answer), ask the same question and check the answer the same way. Each answer is kept with its
+pack, keyed by those four (the records store **Explain answers**, moved on
 **Settings › Installation › Connections**, Record stores, as every records store is): opening the alert again, reloading the page, or following
 History's link to the call draws it, marked **kept with the pack** with when it was explained
 (who pressed it, on hover), and nothing is sent. Pressing **Explain** on a page drawn before the
-answer was kept draws the kept answer too.
+answer was kept draws the kept answer too. An answer kept before the fact sheet and the guard,
+or under an older version of either, was asked a different question, so it is not drawn as the
+pack's answer: the card offers **Explain**, which asks again with them, and the older answer's
+call stays in History.
 
 With an answer kept, the button is **Explain again**: a new recorded call, said beside it with
 its cost ("A new call, up to $…; this answer stays"). Its answer is kept beside the first; the

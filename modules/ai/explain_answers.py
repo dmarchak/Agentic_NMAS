@@ -5,9 +5,14 @@ again paid for it again).
 **What is kept.** Each answer the model gave for a pack: the answer as drawn (the rationale and
 hypotheses or no fault found, each citation resolved; or "the pack cannot say"; or "couldn't
 analyse" naming why), the call's id and cost, who pressed and when, keyed by **the pack's hash,
-the prompt version and the model** (`key_of`): a pack is frozen, so the same three ask the same
-question of the same model. A refusal before anything was answered (hosted AI off, a cap, the
-provider down, the pack changed) is not an answer and is not kept: pressing again is right.
+the prompt version, the model and what Mercury added** (`key_of`; the fact sheet's and the
+needs-a-person guard's versions, `explain.asked_with`, C2162): a pack is frozen, so the same
+four ask the same question of the same model and check its answer the same way. An answer kept
+before the fact sheet and the guard (it names neither), or under an older version of either,
+is not drawn as today's: the card offers Explain, which asks anew; the older answer stays in
+the store and its call in History. A refusal before anything was answered (hosted AI off, a
+cap, the provider down, the pack changed) is not an answer and is not kept: pressing again is
+right.
 
 **Where.** The records store `explain_answers` (`records_db.STORES`, the setting
 `records_store_explain_answers`, `file` by default: ``explain_answers.jsonl`` in the data
@@ -45,8 +50,11 @@ def _steps() -> tuple:
 
     own = dict(explain.STEPS)
     return (("pack", own["pack"]),
-            ("kept", "an answer kept with this pack (by its hash, the prompt version and the "
-                     "model) is drawn, and nothing is sent; only Explain again asks anew"),
+            ("kept", "an answer kept with this pack (by its hash, the prompt version, the "
+                     "model and the versions of Mercury's fact sheet and needs-a-person guard) "
+                     "is drawn, and nothing is sent; only Explain again asks anew, and an "
+                     "answer kept before the fact sheet and the guard is not drawn, so Explain "
+                     "asks with them"),
             ("topology", own["topology"]), ("ask", own["ask"]), ("check", own["check"]),
             ("keep", "the model's answer kept with the pack, beside any earlier one, so "
                      "reopening the alert draws it with no new call"),
@@ -67,12 +75,16 @@ def _path() -> str:
 
 
 def key_of(pack: dict, prompt: tuple = None) -> dict:
-    """``{"pack_hash", "prompt", "model"}``: what an answer is kept under."""
+    """``{"pack_hash", "prompt", "model", "asked_with"}``: what an answer is kept under.
+    ``asked_with`` (C2162) is what Mercury itself added to the question and the answer, each
+    by its version (`explain.asked_with`: the fact sheet, the needs-a-person guard): an answer
+    kept before them names none, and is not today's answer, however alike the other three."""
     from modules.ai import explain, profiles
 
     name, version = prompt or explain.PROMPT
     return {"pack_hash": pack.get("hash") or "", "prompt": f"{name}.v{version}",
-            "model": profiles.TASKS[explain.FEATURE]["model"]}
+            "model": profiles.TASKS[explain.FEATURE]["model"],
+            "asked_with": explain.asked_with((name, version))}
 
 
 def read() -> dict:

@@ -2537,7 +2537,7 @@ def test_monitoring_alerts_history_rebuild(tmp_path, monkeypatch):
                          "window.__list.getAttribute('data-held') === '1' && "
                          f"({row}.querySelector('.pack') || {{}}).getAttribute && "
                          f"{row}.querySelector('.pack').getAttribute('data-pack') === "
-                         f"'{old['id']}-s5'"),
+                         f"'{old['id']}-s{EP.SCHEMA}'"),
                         ("kept", f"{row}.querySelector('.pack-lineage button').click()",
                          f"{row}.querySelector('.pack').getAttribute('data-pack') === "
                          f"'{old['id']}'")],

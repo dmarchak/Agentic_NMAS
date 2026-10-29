@@ -62,6 +62,10 @@ log = logging.getLogger(__name__)
 
 #: The data block's name: it sorts before every other data block (`gateway._delimited`).
 PART = "fact_sheet"
+#: What the sheet says, as a version: raised whenever a line is added, removed or computed
+#: differently. An Explain answer is kept under it (`explain.asked_with`, C2162), so an answer
+#: asked with an older sheet, or before the sheet existed, is never drawn as today's.
+VERSION = 1
 #: Every line's label, and the sheet's own first line.
 LABEL = "computed by Mercury"
 HEAD = ("Facts computed by Mercury from the pack below, by code, not by a model. Each line is "
