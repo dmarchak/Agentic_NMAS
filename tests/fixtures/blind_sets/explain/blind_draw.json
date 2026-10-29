@@ -68,24 +68,33 @@
  },
  "how": "scripts/nmas-blind-draw tests/fixtures/blind_sets/sdn_classify/blind_answer_key.md tests/fixtures/blind_sets/explain/blind_answer_key.md: the locked key's sha256 seeds the draw; drawn 2026-10-29 on the operator's confirmation of that day",
  "status": {
-  "R8": "drawn",
-  "R7": "drawn",
-  "R6": "drawn",
+  "R8": "drawn; its must-cite evidence is outside the pack (C2179 to C2182): kept, the expectation unchanged, criterion 5 applying (the operator, 2026-10-29)",
+  "R7": "not runnable: r5 is not in Mercury, so its CPU can never be in a pack; replaced by R3, the category's first backup",
+  "R6": "not runnable: no BGP alert rule (C2175); replaced by R5, the category's first backup",
   "I1": "drawn",
   "I2": "drawn",
   "I5": "drawn",
-  "D3": "drawn",
-  "D2": "drawn",
-  "D5": "drawn",
+  "D3": "not runnable: no CPU alert rule (C2175); replaced by D1, the category's first backup",
+  "D2": "not runnable: the planned-restart window the rule requires lands in the pack the case says is absent; no backup left",
+  "D5": "not runnable: stopping a node is a docker restart, which C1372 forbids; no backup left",
   "C3": "drawn",
-  "C4": "drawn",
-  "C2": "drawn",
+  "C4": "drawn; its must-cite evidence is outside the pack (C2179 to C2182): kept, the expectation unchanged, criterion 5 applying (the operator, 2026-10-29)",
+  "C2": "not runnable: every alternate path in the lab crosses s3; replaced by C1, the category's first backup",
   "B3": "drawn",
   "B2": "drawn",
-  "B4": "drawn",
+  "B4": "not runnable: no interface has a normal non-zero figure to tighten against; replaced by B1, the category's first backup",
   "M6": "drawn",
   "M4": "drawn",
   "M5": "drawn",
-  "M7": "drawn"
+  "M7": "drawn",
+  "R3": "drawn as R7's backup; its must-cite evidence is outside the pack (C2179 to C2182): kept, the expectation unchanged, criterion 5 applying (the operator, 2026-10-29)",
+  "R5": "drawn as R6's backup",
+  "D1": "drawn as D3's backup",
+  "C1": "drawn as C2's backup; its must-cite evidence is outside the pack (C2179 to C2182): kept, the expectation unchanged, criterion 5 applying (the operator, 2026-10-29)",
+  "B1": "drawn as B4's backup"
+ },
+ "short": {
+  "D": 2,
+  "accepted": "the operator, 2026-10-29: D is 2 short, accepted; no new scenarios after the draw"
  }
 }
