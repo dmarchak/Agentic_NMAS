@@ -5,6 +5,10 @@
 # this adds one marked block to /etc/alloy/config.alloy, between `// c1836: begin` and
 # `// c1836: end`, using the config's own `loki.relabel.journal` rules and `loki.write.local`.
 # On its first start the source reads back Alloy's default 7 hours of the journal.
+# The job is set by a `loki.relabel "flask_app_job"` between the source and the writer: the
+# journal source sets every entry's job label to `loki.source.journal.<name>` over its own
+# `labels` (measured 2026-10-29: 4,934 lines read and sent, none with the job mercury; snmptrapd's
+# job is set later, in its loki.process stage).
 # Mercury's request lines are the app's part of C1836, not this step's: this ships whatever the
 # journal holds (756 lines from 2026-10-21 to 2026-10-28, none in a device's syslog form).
 # Two of Mercury's reads take every job whose lines are in a device's syslog form (device_logs'
@@ -59,7 +63,7 @@ apply)
     JOBS_BEFORE=$(bash -o pipefail -c "$SYSLOG_JOBS" 2>&1)
     echo "   syslog jobs before: $JOBS_BEFORE"
     step "write the new config in $DIR (the block appended)" \
-        'sudo cat "$CONFIG" > "$DIR/without.alloy" && grep -qxF "$BEGIN" "$DIR/without.alloy" && { echo "the block is already installed"; exit 1; } || true; test -z "$(tail -c1 "$DIR/without.alloy")" || { echo "the config does not end in a newline"; exit 1; }; { cat "$DIR/without.alloy"; printf "%s\n" "$BEGIN"; printf "%s\n" "loki.source.journal \"flask_app\" {" "  forward_to    = [loki.write.local.receiver]" "  matches       = \"_SYSTEMD_UNIT=flask-app.service\"" "  labels        = { job = \"mercury\", host = \"$HOSTLABEL\" }" "  relabel_rules = loki.relabel.journal.rules" "}"; printf "%s\n" "$END"; } > "$DIR/config.alloy"'
+        'sudo cat "$CONFIG" > "$DIR/without.alloy" && grep -qxF "$BEGIN" "$DIR/without.alloy" && { echo "the block is already installed"; exit 1; } || true; test -z "$(tail -c1 "$DIR/without.alloy")" || { echo "the config does not end in a newline"; exit 1; }; { cat "$DIR/without.alloy"; printf "%s\n" "$BEGIN"; printf "%s\n" "loki.source.journal \"flask_app\" {" "  forward_to    = [loki.relabel.flask_app_job.receiver]" "  matches       = \"_SYSTEMD_UNIT=flask-app.service\"" "  labels        = { job = \"mercury\", host = \"$HOSTLABEL\" }" "  relabel_rules = loki.relabel.journal.rules" "}" "loki.relabel \"flask_app_job\" {" "  forward_to = [loki.write.local.receiver]" "  rule {" "    target_label = \"job\"" "    replacement  = \"mercury\"" "  }" "}"; printf "%s\n" "$END"; } > "$DIR/config.alloy"'
     # `alloy validate`, not only `alloy fmt` (ibn7: validate also refuses an unknown stage).
     check "the new config is valid Alloy" rc0 "" 'alloy validate "$DIR/config.alloy" >/dev/null'
     step "keep the config as it was (once: a second run keeps the first copy)" \
