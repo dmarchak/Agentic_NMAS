@@ -3634,6 +3634,14 @@ whose match overlaps the control channel (C2022); AUTO re-applies a lost mitigat
 AUTO-eligible rule (C2018); and only an unauthorised flow that diverts traffic may be removed
 autonomously (C2021).
 
+**Added by the operator (2026-10-29), from the blind SDN runs, two A rows that block the gate:**
+- no response is proposed against a host that the flood rule or the scan fallback names only by
+  its replies or TCP ACKs, the victim or a receiver (C2237: F3, BF1, BF2, BF3);
+- no flood is reported as a scan from a packet rate alone before the flood rule's hold completes
+  (C2238: F3, F6).
+
+Until both are fixed, sdn_lab is not marked lab, so AUTO stays refused on it (C2009's guard).
+
 **Order, by dependency:** the guard (C2009) first; then the stage (9) with protected hosts (1),
 limits and the breaker (2) and the kill switch (8), which make any autonomy safe to try; then the
 shadow mode (3), the per-rule policy (4) and the notification (6); then the reliability gate (5),
