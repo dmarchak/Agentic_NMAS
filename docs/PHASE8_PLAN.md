@@ -2107,6 +2107,23 @@ confidently-wrong rate reported beside the guarded one. The guard's needs_human 
 round before beta ends. The defect class it prevents: a model's reliability below the bar presented
 as an answer to rely on.
 
+**Criterion 8 passed: the operator's walk (2026-10-29, on the live release, v4 with the fact sheet
+and guard):** five real alerts (interface output discards; device unreachable on r7; IP SLA probe
+failing on s2; an SDN scan; interface down on r7), the content judged useful on all five (5 of 5,
+the bar 4 of 5). Condition (a) is met. **Before the beta ships (the operator, the same day), three
+items are built and deployed and the label's board signed off:** (1) who, guaranteed in code: a
+fact-sheet line "Changes and actions in the window" (each Mercury receipt with its verified actor,
+each %SYS-5-CONFIG_I with the user and source it names, an intent difference with its last commit's
+verified author), each hypothesis naming who (or "no record of who"), Mercury inserting a cited
+record's actor where a sentence omits it, drawn as Mercury's, and the intent difference's lines in
+the pack, masked; (2) most likely: the first hypothesis labelled "Most likely cause" on screen where
+the hypotheses are already ordered, and a new prompt version adding a band per hypothesis (likely,
+possible, unlikely), why it ranks first and one confirming step, screened against v4 in a 3-run
+batch and adopted only on this section's rule; (3) the answer card first (Most likely cause, Other
+possibilities, Needs a person, Was this right?, Explain again as a secondary button, the beta label
+in its header), the evidence pack collapsed by section with counts, concurrent alerts grouped by
+kind with counts, and citations as chips that jump to and highlight their evidence, board first.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
