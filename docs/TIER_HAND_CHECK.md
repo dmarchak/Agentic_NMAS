@@ -2734,3 +2734,23 @@ from the pack's, and E11 shows the pack's covers the new field.
 
 **The result: 13 mutants, every one killed; the canary killed.**
 
+## 2026-10-29: Explain's fact sheet, new data off the host (C2117), by hand
+**What touches the tier:** data off the host. Every Explain request but v1's carries a new data
+block, `fact_sheet` (`modules/ai/fact_sheet.py`, `explain.facts`, `parts`, `budgeted`), computed
+from the pack. What it may hold is bounded by what it is built from: the pack AS SENT
+(`explain.sent_sections`, so a class gate's withholding holds in it) and the roles of the
+topology sent; and it passes `redact.redact_text` before the gateway's own `egress_payload` over
+the whole request. No masking code changed: the gateway's egress mask is as it was.
+**The method:** each mutant its exact line in its own `scripts/nmas-control` throwaway worktree,
+then tests/test_explain_fact_sheet.py and, where it reaches, tests/test_ai_explain_topology.py
+(`scratchpad/ctl/ctl_16` to `ctl_18` and `ctl_21`; `ctl_common.py` replaces the line, which must
+be there once, and names each failing test).
+| the sheet not masked (`sheet` returns its lines unmasked) | killed | 1, `test_every_line_is_labelled_and_the_sheet_is_masked` |
+| the sheet built from the stored pack, not the pack as sent | killed | 1, test_ai_explain_topology's `test_the_topology_class_off_sends_none_and_says_so` (a device id beyond the alert's own in the bytes sent) |
+| the sheet's block not first (`PART` sorting last) | killed | 5 |
+| canary: the sheet's builder raising | killed | 18 |
+**The result: every mutant killed; the canary killed. The unmasked sheet is killed only by the
+sheet's own test, which calls the sheet directly: no test plants a secret in a pack's log line
+and reads the bytes sent, so the gateway's egress mask over the sheet is its own tests', not
+shown here.**
+

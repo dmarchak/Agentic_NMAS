@@ -97,7 +97,7 @@ def test_stable_context_first_and_the_alert_last(topo):
     assert explain.PROMPT == ("explain", 4)
     assert _blocks(ctx, "context") == ["network", "pack_format", "topology_format"]
     assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
-    assert _blocks(user, "data") == ["network_topology", "pack", "the_alert"]
+    assert _blocks(user, "data") == ["fact_sheet", "network_topology", "pack", "the_alert"]
     assert got["topology"]["sent"] is True and got["topology"]["subject"] == "r1"
     # r1's four, and s1, LLDP's neighbour on its Gi3, which this inventory does not manage.
     assert set(got["topology"]["devices"]) == {topo.ids[h] for h in HOSTS} | {"ext:s1"}
@@ -227,7 +227,7 @@ def test_planted_secrets_never_reach_the_bytes_sent(topo, monkeypatch):
     sent = topo.sent[-1]["bytes"]
     for planted in (STORED, "Pl4ntedModelSecret", "gAAAAplanted"):
         assert planted not in sent, planted
-    assert _blocks(_sent(topo)[1], "data")[0] == "network_topology"
+    assert _blocks(_sent(topo)[1], "data")[:2] == ["fact_sheet", "network_topology"]
 
 
 # ------------------------------------------------------------------------- the check
@@ -284,7 +284,7 @@ def test_the_topology_class_off_sends_none_and_says_so(topo, monkeypatch):
     got = _explain(topo)
     assert got["ok"] is True
     body, user, ctx = _sent(topo)
-    assert _blocks(user, "data") == ["pack", "the_alert"]
+    assert _blocks(user, "data") == ["fact_sheet", "pack", "the_alert"]
     assert _blocks(ctx, "context") == ["pack_format"]
     # Nothing of the network around it: the only device id sent is the alert's own device's,
     # in its own health figures' references (C1714; who is near it is topology).
@@ -308,7 +308,7 @@ def test_an_unreadable_setting_is_off(topo, monkeypatch):
     topo.answer = _answer(topo.pack)
     got = _explain(topo)
     assert got["topology"]["sent"] is False and "could not be read" in got["topology"]["why"]
-    assert _blocks(_sent(topo)[1], "data") == ["pack", "the_alert"]
+    assert _blocks(_sent(topo)[1], "data") == ["fact_sheet", "pack", "the_alert"]
 
 
 def test_a_classification_marking_sends_nothing(topo, monkeypatch):

@@ -107,8 +107,9 @@ def test_the_request_is_the_pack_as_data_with_no_tool(world):
     assert "evidence pack has sections" in body["system"][1]["text"]
     data = re.findall(r'<data name="([^"]+)">', body["messages"][0]["content"])
     # Prompt v2 (15.15): the network around the device beside the pack, the alert last
-    # (tests/test_ai_explain_topology.py holds what the topology carries).
-    assert data == ["network_topology", "pack", "the_alert"]
+    # (tests/test_ai_explain_topology.py holds what the topology carries); the fact sheet first
+    # (the operator's order of 2026-10-29; tests/test_explain_fact_sheet.py).
+    assert data == ["fact_sheet", "network_topology", "pack", "the_alert"]
     assert gateway.prompt_tokens(body) <= profiles.TASKS["explain"]["max_prompt_tokens"]
 
 

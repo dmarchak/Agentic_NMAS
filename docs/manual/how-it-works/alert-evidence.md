@@ -259,6 +259,8 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    it, and to offer a cause the evidence does not show only as a hypothesis, with the read that
    would confirm it. With the topology class off, only the alert's device's own figures go
    (which devices are near it is topology), and the pack says the rest were withheld.
+   First of the data goes a **fact sheet** (below), each line labelled "computed by
+   {{product}}".
 5. `check`: every hypothesis must cite pieces of the pack as it was sent, by their references,
    or items of the topology that was sent, by their ids, and name one read-only command a
    person could run to confirm it (a `show`, `ping` or `traceroute`, as Show commands allows).
@@ -279,7 +281,9 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    by Mercury**. A device the pack holds nothing of (one only the topology knows) still makes
    the answer "couldn't analyse", naming it. An adjacency cited with its two ends in the other
    order, or a topology id written with `topology:` before it, is read as the id the topology
-   sent, and what the answer wrote is on that reference's hover.
+   sent, and what the answer wrote is on that reference's hover. A **no fault found** that does
+   not ask for a person while the alert's own source shows it firing is kept needing a person,
+   set by {{product}} (below).
 6. `keep`: the model's answer (hypotheses, no fault found, "the pack cannot say", or "couldn't
    analyse") is kept with the pack, beside any earlier one. A refusal before the model answered
    (hosted AI off, a cap, the provider down) is not an answer and is not kept.
@@ -292,6 +296,51 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    each piece it checked, linked. That is an assessment of the pack, not of the network: only
    what the pack holds was checked, and an alert can fire on a passing blip or a threshold set
    too low. Explain is told to say so rather than invent a cause.
+
+### The fact sheet {#fact-sheet}
+
+Some facts in a pack are arithmetic: one device's heartbeat gap against its neighbours', a
+reload against the Reloads that ran. {{product}} works them out itself, by code from the pack as
+it is sent (never a new read, and never what a class gate withheld), and sends them first, as
+the fact sheet. Each line says it was computed by {{product}} and names the pack's pieces it
+was computed from; an answer cites those pieces, never the sheet. A line that needs something
+the pack does not hold says so.
+
+1. **Heartbeat cadence:** the alert's device's heartbeats in the window (how many, the longest
+   gap and when it ended, the last one received and how long before the alert's time), beside
+   the same figure for each device around it, those of its own role first when the topology
+   sent names roles, and its longest gap against their median (how many seconds over, and how
+   many times). The pack keeps each device's count, longest gap and last beat, not every
+   receive time, and the line says so. With the topology class off, no other device's figures
+   are sent, and the line says that instead.
+2. **Reloads in the window:** each reload or restart the device logged (`%SYS-5-RELOAD`,
+   `%SYS-5-RESTART`), quoted whole, and each restart {{product}}'s restart record holds (the
+   device's uptime counter falling), with what accounts for it: a {{product}} Reload recorded
+   within 15 minutes ("requested by Mercury's Reload", and who), a restart judged planned, which
+   a planned-restart window covered (and who declared it), a window declared before it whose
+   span the pack does not hold (said, not guessed), or "no receipt or window: unexplained".
+   History not read is said, never read as nothing there.
+3. **Observer health at the alert's time:** each scrape job of the pack's monitoring side, the
+   alert's own job first: whether it was failing in the window's last minute (or when it last
+   was), the most of its targets failing at once, how many of its targets failed at all, which
+   of the pack's devices failed in it, and every job's targets counted together. A pack built
+   before the monitoring side was gathered says so.
+4. **What the pack lacks:** each section not read, empty, withheld or not in the pack at all
+   (an older pack), and each figure not measured, by device.
+
+The sheet is masked on its way out, as every string {{product}} shows, and the gateway masks the
+whole request again. It is part of the call's own data, so the cached instructions are the same
+bytes with it as without it.
+
+### A needs a person set by Mercury {#needs-a-person}
+
+An alert that is firing has a cause, even when the evidence does not show it. So when the model
+answers **no fault found** and does not ask for a person, while the alert's own source shows the
+alert firing (its section read, its condition holding, not no data, an error, pending or
+normal, and not resolved by the pack's time), {{product}} keeps the answer needing a person.
+That is {{product}}'s change, not the model's: the answer is drawn with **needs a person** and
+**set by Mercury**, with the reason in words, and the model's answer stays as it was received
+in History. A no fault found on an alert that had resolved by then is kept as the model gave it.
 
 ### An answer is kept with its pack {#kept-answers}
 

@@ -464,8 +464,8 @@ def _across(h: dict, figured: set, by_alert: dict, pack: dict) -> int:
     jobs = [p for p in _section(pack, "observer").get("pieces") or []
             if p.get("ref") in refs and (p.get("ref") or "").startswith("observer:job:")
             and p.get("state", "ok") == "ok"]
-    at_once = [p.get("most_failing", p.get("targets_failed")) or 0 for p in jobs]
-    return max([named] + at_once)
+    from modules import evidence_observer as O
+    return max([named] + [O.at_once(p) for p in jobs])
 
 
 def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
@@ -579,6 +579,44 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
         out.append(f"says {said[0]!r}, which the case rules out ("
                    f"{expect.get('no_text_why') or 'not the evidence'})")
     return out + _says(expect, hyps)
+
+
+def guarded(answer, pack: dict):
+    """The answer as Mercury keeps it (the operator's order of 2026-10-29, C2141): *answer* (the
+    model's, as JSON) with Mercury's needs_human set where `explain.needs_human_guard` sets it
+    on a shown answer, and ``mercury_needs_human`` its reason; the answer itself when the guard
+    does not apply; None stays None (Mercury refused it)."""
+    from modules.ai import explain
+
+    if answer is None:
+        return None
+    guard = explain.needs_human_guard(answer.get("outcome"), bool(answer.get("needs_human")),
+                                      pack)
+    return dict(answer, needs_human=True, mercury_needs_human=guard) if guard else answer
+
+
+def confidently_wrong_candidate(misses: list, answer) -> bool:
+    """A run 15.12's criterion 3 counts if its leading cause is wrong: it failed (*misses*) on an
+    answer that does not ask for a person. Whether its lead is wrong is a person's to judge on
+    the run named; an answer Mercury refused (None) is not one."""
+    return bool(misses) and answer is not None and not answer.get("needs_human")
+
+
+def explain_graded(expect: dict, answer, pack: dict, error: str = "") -> dict:
+    """An Explain round's grading of one run both ways (the operator's order of 2026-10-29):
+    ``{"raw": {...}, "guarded": {...}}``, each ``{"misses", "pass", "confidently_wrong_candidate"}``,
+    the raw the model's answer as received (`explain_misses`), the guarded the answer Mercury
+    keeps (`guarded`), with ``set_by_mercury``, the guard's reason or "". The round reports
+    confidently wrong both ways."""
+    kept = guarded(answer, pack)
+    out = {}
+    for name, a in (("raw", answer), ("guarded", kept)):
+        misses = explain_misses(expect, a, pack, error)
+        out[name] = {"misses": misses, "pass": not misses,
+                     "confidently_wrong_candidate": confidently_wrong_candidate(misses, a)}
+    out["guarded"]["set_by_mercury"] = ((kept or {}).get("mercury_needs_human") or {}).get(
+        "reason", "")
+    return out
 
 
 def _person(expect: dict, answer: dict) -> list:

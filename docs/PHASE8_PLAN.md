@@ -2085,6 +2085,16 @@ and 21 are back. Its cost: one short round before each adoption round. The defec
 prevents: a full round spent on a candidate a few runs would have ruled out, and spend found
 first on the provider's bill.
 
+**The fact-sheet iteration and Mercury's needs_human (the operator's order of 2026-10-29, C2117
+and C2141; built, not yet measured):** every Explain request but v1's opens its data with a fact
+sheet computed by Mercury from the pack as sent (`modules/ai/fact_sheet.py`): heartbeat cadence
+against the neighbours, reloads in the window and what accounts for them, the scrape jobs at the
+alert's time, and what the pack lacks (the order's lines 1, 2, 4 and 5). And a no fault found with
+needs_human false while the alert's own source shows it firing (`explain.fault_shown`) is kept
+needing a person, set by Mercury and drawn as Mercury's; the round grades each run raw and as
+kept (`cases.explain_graded`) and reports confidently wrong both ways. The next round measures
+both.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
@@ -3990,8 +4000,9 @@ docs/boards/ holds a drawing for it.
 | 2026-10-28 | C1953: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: the AI (hosted) card moved whole in its own layout (one Save, the price table always drawn, no month row), not the board's five rows | The master switch, key, day cap and prices (supersedes the row "the AI (hosted) card stays on Connections") | 2026-10-28, "Settings › AI: the AI (hosted) card moved whole, its own layout (C1953)"; docs/fidelity/settings-ai.md |
 | 2026-10-28 | C1953: AI cost safety | AI3, `SettingsAi.dc.html`, no drawing: Turn on again… and "within 3 days" on a feature's row from 3 days before its approval ends; the Needs attention row as AI2 draws it, staying critical once the approval ended (supersedes the row "the acceptance says the approval's end date; no row 3 days before") | An approval's renewal | 2026-10-28, "Settings › AI: Turn on again… on a feature whose approval ends within 3 days (C1953)"; docs/fidelity/settings-ai.md |
 | 2026-10-28 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, revised (not yet on the canvas: the agent's copy, based on C1999's revision): a states section "Revised 2026-10-28 for C2002" drawing an opened incident's Source line in four states: one host on the port, named, no picker; several, "one of N" and a source picker beside Preview limited to those hosts; none to act on, why and no Preview; not read when it fired, the preview looking it up | A port's detection's source and its picker on SDN › Responses (C2002) | 2026-10-28, "SDN C2002: SdnResponses revised for a port's source and its picker"; docs/fidelity/sdn.md |
+| 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (version 143), deviation: on a no fault found whose model did not ask for a person while the alert fires, "needs a person" with a "set by Mercury" chip and Mercury's reason, in the place of the model's sentence; the board draws only the model's needs a person | Explain's answer (the operator's order of 2026-10-29, C2141) | 2026-10-29, "P1 Alerts: a needs a person Mercury set, drawn as Mercury's"; docs/fidelity/alerts-explain.md |
 
-**Count:** 175 rows: 54 drawn, 19 revised, 24 no drawing, 78 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 176 rows: 54 drawn, 19 revised, 24 no drawing, 79 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

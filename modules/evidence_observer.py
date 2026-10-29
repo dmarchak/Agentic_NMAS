@@ -497,3 +497,10 @@ def line(p: dict) -> str:
 
 def lines(pieces: list) -> list:
     return [line(p) for p in pieces]
+
+
+def at_once(p: dict) -> int:
+    """How many of a job piece's targets failed together: its most failing at once (the minute
+    figures), else, when those were not read, how many of its targets failed at all. One count
+    for the grader (`cases._across`, C2111) and Explain's fact sheet (`fact_sheet.observer_line`)."""
+    return int(p.get("most_failing", p.get("targets_failed")) or 0)

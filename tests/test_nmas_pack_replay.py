@@ -177,7 +177,7 @@ def test_explain_twice_prints_tokens_cost_and_the_answer(replay):
                                                                                "pack"]
     assert '"name":"health"' not in v1["messages"][0]["content"]
     assert re.findall(r'<data name="([^"]+)">', now["messages"][0]["content"]) == [
-        "network_topology", "pack", "the_alert"]
+        "fact_sheet", "network_topology", "pack", "the_alert"]
     assert '"name":"health"' in now["messages"][0]["content"]
     rows = calls.read()["rows"][:2]
     assert {r["prompt"] for r in rows} == {"explain.v1", "explain.v4"}

@@ -50,6 +50,16 @@ The model only reasons over the pack. Everything else is Mercury's, deterministi
 - **The monitoring side** (C1896): the pack's `observer` section, the scrape jobs polling the
   devices across all their targets, the SNMP exporter and the collector's host, one line per
   piece, each cited ``observer:<what>``.
+- **The fact sheet** (the operator's order of 2026-10-29, C2117; `fact_sheet`, `facts`): four
+  lines computed by Mercury from the pack as sent, each labelled so, the first data block
+  (uncached, so the cached prefix is unchanged): heartbeat cadence against the neighbours,
+  reloads in the window and what accounts for them, the scrape jobs at the alert's time, and
+  what the pack lacks. Every prompt but v1 receives it: it is input, not prompt text.
+- **Mercury's needs_human** (the operator's order of 2026-10-29, C2141; `needs_human_guard`):
+  no fault found with needs_human false while the alert's own source shows it firing
+  (`fault_shown`) is kept needing a person, recorded apart (``mercury_needs_human``, its
+  reason, on the kept answer and the use's record) and drawn under "set by Mercury"; the
+  model's answer stays as received in the call's record.
 
 **The request's order** (the operator, 2026-10-25): the stable context first, cached (the
 prompt, then the network summary, the pack's format and the topology's format: the same bytes
@@ -88,8 +98,11 @@ STEPS = (
                  "captured when the alert fired (never read again later); no configuration "
                  "line; sent unless the network turns the topology class off"),
     ("ask", "one recorded, capped call through the AI gateway, as the person who pressed "
-            "Explain: the pack, its health figures for the devices within two hops, and the "
-            "topology as data, no tool offered"),
+            "Explain: a fact sheet computed by Mercury from the pack (heartbeat cadence "
+            "against the neighbours, reloads in the window and what accounts for them, the "
+            "scrape jobs at the alert's time, what the pack lacks), the pack, its health "
+            "figures for the devices within two hops, and the topology as data, no tool "
+            "offered"),
     ("check", "every reference resolves to the pack or to the topology as sent (an adjacency "
               "written with its ends in the other order, or a topology id written with "
               "topology: before it, is read as the id sent), and every confirming read is on "
@@ -98,7 +111,9 @@ STEPS = (
               "holds is cited somewhere in it: one the pack holds and the answer cited "
               "nothing of is cited by Mercury, by its alert or its figure, and drawn as "
               "Mercury's; one the pack does not hold, or anything else that does not hold, "
-              "is couldn't analyse, and nothing is shown"),
+              "is couldn't analyse, and nothing is shown; no fault found that does not ask "
+              "for a person while the alert's own source shows it firing is kept needing a "
+              "person, set by Mercury and drawn as Mercury's"),
     ("show", "the hypotheses drawn beside the pack, or no fault found with what it checked, "
              "each reference linked to its piece; nothing runs"),
 )
@@ -417,12 +432,40 @@ def as_sent(section: dict) -> dict:
     return out
 
 
+def roles_of(topo: dict = None) -> dict:
+    """``{device name: role}`` of the devices the topology SENT holds (its yaml, already built
+    for the call: no read), for the fact sheet's heartbeat line; ``{}`` when none was sent."""
+    import yaml
+
+    if not (topo or {}).get("sent") or not topo.get("yaml"):
+        return {}
+    try:
+        devices = (yaml.safe_load(topo["yaml"]) or {}).get("devices") or {}
+    except yaml.YAMLError:
+        return {}
+    return {d["name"]: str(d["role"]) for d in devices.values()
+            if isinstance(d, dict) and d.get("name") and d.get("role")}
+
+
+def facts(pack: dict, sections: list, topo: dict = None) -> str:
+    """The fact sheet sent with the pack (`fact_sheet.sheet`, the operator's order of
+    2026-10-29): computed by Mercury from the pack AS SENT (*sections*, `sent_sections`), so a
+    class gate's withholding holds in it too, and masked on the way out."""
+    from modules.ai import fact_sheet
+    return fact_sheet.sheet(pack, sections, roles_of(topo))
+
+
 def parts(pack: dict, topo: dict = None) -> dict:
-    """The call's own data: the topology around the device (when sent, or why it could not be
-    read), the pack's sections as sent, and the alert's own words, which sort last."""
-    out = {"pack": json.dumps([as_sent(s) for s in sent_sections(pack, topo)], sort_keys=True,
+    """The call's own data: the fact sheet first (`facts`: its block's name sorts first), the
+    topology around the device (when sent, or why it could not be read), the pack's sections
+    as sent, and the alert's own words, which sort last."""
+    from modules.ai import fact_sheet
+
+    sections = sent_sections(pack, topo)
+    out = {"pack": json.dumps([as_sent(s) for s in sections], sort_keys=True,
                               ensure_ascii=False, separators=(",", ":")),
-           "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}"}
+           "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}",
+           fact_sheet.PART: facts(pack, sections, topo)}
     if topo and topo.get("yaml"):
         out["network_topology"] = topo["yaml"]
     return out
@@ -696,6 +739,50 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
     return _uncited_words(uncited) if uncited else ""
 
 
+#: The alert piece's kind while its condition holds (`grafana_alerts._kind`: Grafana's
+#: Alerting or firing; an SDN detection's own, `sdn.detect`): never no data, error, pending or
+#: normal, each its own kind.
+FIRING_KIND = "condition"
+#: An alert state that is not firing, however its kind reads (a state Mercury did not write).
+NOT_FIRING = ("normal", "resolved", "inactive", "pending")
+
+
+def fault_shown(pack: dict) -> str:
+    """Why the alert's own source shows the fault, in words, or "" (the operator's order of
+    2026-10-29, C2141): the pack's alert section was read (state ok) and its piece's kind is
+    `FIRING_KIND`, its condition holding (a state no word of `NOT_FIRING` begins), as of the
+    pack's time (its ``built_at``, the alert's time); and the pack records no resolve at or
+    before that time (``resolved_at``, a pack built from the alert history). A resolved alert,
+    one with no data or an error, and a pack whose alert section was not read show no fault."""
+    sec = next((s for s in pack.get("sections") or [] if s.get("name") == "alert"), {})
+    piece = (sec.get("pieces") or [{}])[0] if sec.get("state") == "ok" else {}
+    state = str(piece.get("state") or "")
+    if piece.get("kind") != FIRING_KIND or state.lower().startswith(NOT_FIRING):
+        return ""
+    at, resolved = _epoch(pack.get("built_at")), _epoch(pack.get("resolved_at"))
+    if resolved and (not at or resolved <= at):
+        return ""
+    return (f"the alert's own source ({sec.get('source') or 'the alert section'}) holds it "
+            f"firing ({state or 'its condition holding'}) at the alert's time "
+            f"{pack.get('built_at') or '(not recorded)'}")
+
+
+def needs_human_guard(outcome: str, needs_human: bool, pack: dict) -> dict:
+    """Mercury's own needs_human (the operator's order of 2026-10-29, C2141): ``{"reason"}``
+    when the answer is no fault found with needs_human false while the alert's own
+    source shows the fault (`fault_shown`), else ``{}``. Mercury then sets needs_human true on
+    the answer it keeps and draws, recorded apart as its own change (``mercury_needs_human``,
+    as `mercury_cites` is), the model's answer kept as received in the call's record."""
+    if outcome != "no_fault_found" or needs_human:
+        return {}
+    why = fault_shown(pack)
+    if not why:
+        return {}
+    return {"reason": (f"The model found no fault and did not ask for a person, but {why}: a "
+                       "firing alert whose evidence shows nothing wrong needs a person to look "
+                       "(the cause may be outside the pack, or the rule may be wrong)")}
+
+
 def explain(pack_id: str, *, actor: str, trigger: dict, send=None, today: str = None) -> dict:
     """``{"ok", "error", "detail", "answer", "pack_id", "call_id", "cost_usd"}``: the pack's
     hypotheses, checked; or a refusal naming why, with nothing shown."""
@@ -798,11 +885,14 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dic
     tokens are *counter*'s (`gateway.counter`: the provider's count where the call could be
     sent, C1898), else the gateway's fallback over-estimate."""
     from modules import network_model as NM
-    from modules.ai import nl_query, prompts, profiles
+    from modules.ai import fact_sheet, nl_query, prompts, profiles
 
     loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
     budget = pin["max_prompt_tokens"]
     base_sections = sent_sections(pack, topo)
+    # The fact sheet is computed from the pack as sent before anything is dropped for size, so
+    # it is the same at every level.
+    sheet = facts(pack, base_sections, topo)
     model = NM.model_for(topo["network"])[0] if topo.get("sent") else None
     order = _pack_drop_order(pack, base_sections)
 
@@ -817,7 +907,8 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dic
         ctx = context(topo)
         data = {"pack": json.dumps([as_sent(s) for s in sections], sort_keys=True,
                                    ensure_ascii=False, separators=(",", ":")),
-                "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}"}
+                "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}",
+                fact_sheet.PART: sheet}
         if topo.get("sent") and model is not None and (net_level or n_pieces or not source):
             if net_level == 1:
                 ctx["network"] = nl_query._summary_text(model, False, True)
@@ -967,13 +1058,18 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
                          detail=answer.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the pack cannot say: {answer.why_not[:200]}")
+    # The operator's order of 2026-10-29 (C2141): no fault found with needs_human false while
+    # the alert's own source shows the fault is not kept as it came: Mercury sets needs_human,
+    # recorded and drawn as its own change.
+    guard = needs_human_guard(answer.outcome.value, answer.needs_human, pack)
     # What Mercury added or read differently is recorded with the use: the call's record keeps
     # the model's answer as received, so both stand.
     note = "; ".join(
         [f"cited by Mercury: {a['device']} by the pack's {a['ref']}" for a in added]
-        + [f"read {w} as the topology's {c}" for c, w in sorted(written.items())])
+        + [f"read {w} as the topology's {c}" for c, w in sorted(written.items())]
+        + ([f"needs a person, set by Mercury: {guard['reason']}"] if guard else []))
     calls.record_use(got["call_id"], "shown: " + answer.outcome.value.replace("_", " "),
-                     actor=actor, links=links, **({"detail": note[:500]} if note else {}))
+                     actor=actor, links=links, **({"detail": note[:800]} if note else {}))
     # What is drawn (an answer or no fault found by now, its why_not empty); the whole answer
     # is in the call's record. Each citation says where it resolves: a pack piece is a link to
     # it on the card, a topology id is drawn as text.
@@ -995,4 +1091,9 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     # Mercury's citations, never among the model's: each the device named, where, and the piece.
     shown["mercury_cites"] = [dict(cite(a["ref"]), device=a["device"], named_in=a["named_in"])
                               for a in added]
+    # Mercury's needs_human, never the model's: set on what is kept and drawn, with its reason
+    # drawn under its own chip; what the model said stays in the call's record.
+    shown["mercury_needs_human"] = dict(guard)
+    if guard:
+        shown["needs_human"] = True
     return dict(base, ok=True, error="", answer=shown)

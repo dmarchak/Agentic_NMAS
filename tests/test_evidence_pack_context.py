@@ -438,8 +438,9 @@ class TestExplainWithTheContext:
         assert _explain(ctx)["ok"] is True
         body = ctx.sent[-1]["body"]
         user, system = body["messages"][0]["content"], json.dumps(body["system"])
-        assert re.findall(r'<data name="([^"]+)">', user) == ["network_topology", "pack",
-                                                               "the_alert"]
+        # The fact sheet (C2117) opens the data, before the topology.
+        assert re.findall(r'<data name="([^"]+)">', user) == ["fact_sheet", "network_topology",
+                                                               "pack", "the_alert"]
         assert re.findall(r'<context name="([^"]+)">', body["system"][1]["text"]) == [
             "network", "pack_format", "topology_format"]
         names = [s["name"] for s in _pack_sent(ctx)]

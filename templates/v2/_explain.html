@@ -4,7 +4,9 @@
     sent drawn as text, 15.15) and the read that would confirm it; or why there is none; and,
     when no topology went with the pack, why. Drawn as text: nothing in it is followed, and
     nothing runs. Mercury's own citations (the operator's decision 7a, 2026-10-28) are drawn
-    apart from the model's, under "cited by Mercury", never among a hypothesis's. -#}
+    apart from the model's, under "cited by Mercury", never among a hypothesis's. Mercury's
+    needs_human on a no fault found while the alert fires (the operator's order of 2026-10-29)
+    is drawn under "set by Mercury", with its reason. -#}
 {%- macro cited(c, pid) -%}
 {%- if c.in_pack %}<a class="pack-ref" href="#{{ pid }}-{{ c.ref }}" data-ref="{{ c.ref }}">{{ c.ref }}</a>{% else %}<code class="topo-ref" data-ref="{{ c.ref }}" title="in the network's topology sent with the pack{% if c.as_written %}; the answer wrote it {{ c.as_written }}{% endif %}">{{ c.ref }}</code>{% endif %}
 {%- endmacro %}
@@ -21,7 +23,11 @@
   <p class="explain-why">{{ badge('no fault found', 'neutral') }} {{ a.rationale }}</p>
   <p class="muted small explain-checked">Checked {% for c in a.checked %}{{ cited(c, x.pack_id) }}{{ ', ' if not loop.last }}{% endfor %}.</p>
   {{- mercury_cites(a, x.pack_id) }}
-  {%- if a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} Something in the pack could not be read.</p>{% endif %}
+  {%- if a.mercury_needs_human %}
+  {#- Mercury's needs_human (the operator's order of 2026-10-29, C2141): the model found no
+      fault and did not ask for a person while the alert's own source shows it firing. -#}
+  <p class="small explain-mercury-needs-human" title="The model answered no fault found and did not ask for a person; Mercury set this. The model's answer is kept as received in History.">{{ badge('needs a person', 'warn') }} {{ badge('set by Mercury', 'neutral') }} {{ a.mercury_needs_human.reason }}.</p>
+  {%- elif a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} Something in the pack could not be read.</p>{% endif %}
   <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
   {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
   {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}

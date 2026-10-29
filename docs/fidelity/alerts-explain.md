@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
-Templates sha256: `a1813eccc97ade628667adc86e9d0d427d4590baa8e02678c6a591699bbccdfd`
+Templates sha256: `2a07a8c2be05812ce15017e868ed816db837e707f7f7cae5b2aa6b44053058f1`
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_explain.html` includes
 Was this right? (`_ai_feedback.html`) under an answer drawn, after "This call in History", and
@@ -231,3 +231,26 @@ as before.
 - **Verdict:** **same**; no deviation.
 
 Templates sha256 before: `ce98ad506371af173a0693a2fd0f01985b178f8f3a36b1576565104a0b404b29`.
+
+**Compared again 2026-10-29 (the operator's order of 2026-10-29, C2141: Mercury's
+needs_human):** `_explain.html` draws, on a **no fault found** whose model answered needs_human
+false while the alert's own source shows it firing, a line with the chip **needs a person**
+followed by the chip **set by Mercury** and Mercury's reason in words ("The model found no fault
+and did not ask for a person, but the alert's own source (…) holds it firing (…) at the alert's
+time …: a firing alert whose evidence shows nothing wrong needs a person to look …"), "The
+model answered no fault found and did not ask for a person; Mercury set this. The model's answer
+is kept as received in History." on hover. It takes the place of "Something in the pack could
+not be read.", which stays for a no fault found whose model itself asked for a person. Nothing
+else in the template changed.
+- **Shots:** not shot again: `tests/test_board_shots.py::test_monitoring_alerts_explain`'s
+  planted answer is a hypothesis needing a person (outcome answer), which the guard never
+  touches, so every region shot is as before. The new line is compared by the template and
+  tests/test_explain_needs_human_guard.py's `test_the_card_draws_set_by_mercury_with_its_reason`
+  (the card through the real route: the line, its two chips, its reason, its hover, and the
+  other sentence absent), and reached by tests/v2_context.py's `_alert_evidence` (its no fault
+  found answer is on a firing alert, so the line is drawn there too).
+- **Verdict:** a **deviation**, the one new region: the board (version 143) draws no needs a
+  person that Mercury set. Its line is in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: a needs a
+  person Mercury set, drawn as Mercury's"). No other region's verdict changed.
+
+Templates sha256 before: `a1813eccc97ade628667adc86e9d0d427d4590baa8e02678c6a591699bbccdfd`.
