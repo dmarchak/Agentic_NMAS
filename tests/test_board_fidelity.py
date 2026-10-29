@@ -83,7 +83,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               # Was this right? under every AI answer, and Answers said wrong on Settings ›
               # Installation › AI (board FB, signed off under the Phase 7 mode 2026-10-28;
               # PHASE8_PLAN 16.11 item 1).
-              "_ai_feedback.html": "ai-feedback.md"}
+              "_ai_feedback.html": "ai-feedback.md",
+              # A change record drafted in the deploy preview (board CR, signed off under the
+              # Phase 7 mode 2026-10-28; PHASE8_PLAN 16.11 item 3).
+              "_change_record.html": "change-record.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

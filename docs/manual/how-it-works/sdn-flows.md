@@ -185,6 +185,16 @@ source's flows on each switch it crosses, so each switch's rule fires. Mercury a
    single source (a flood or the scan's packet-rate fallback whose port neither its flows nor
    the controller's topology resolve to one host: [Where a port's source comes
    from](#port-source)) has nothing to tie it to another switch, so each is its own incident.
+   **One exception, a link port.** A flood over flows that match MAC addresses only is named
+   from the topology only on the switch where its host is attached; every switch behind it
+   sees the same flood arrive on an inter-switch link port, which names no source. Its flows
+   still carry the sending hosts' MAC addresses, so such a detection joins the one incident of
+   the same rule (in the same pass, or one awaiting you within the window) whose source is one
+   of those hosts, by its MAC or any address the controller's topology lists for it. It is
+   listed under **Seen also**, its words saying which MAC its flows carry and whose host that
+   is. With no such incident it stays its own; with several (more than one attack behind one
+   link) it stays its own too, because the link cannot tell them apart. A response is never
+   proposed at such a link port while the incident has a switch that names the source.
 2. **The window.** The window is the rule's own, the one it fires within: the scan's
    `sdn_scan_window_seconds` (60 by default) and the flood's `sdn_flood_window_seconds` (30), set
    in the rules on SDN › Responses; there is no second setting. A detection in a later pass
@@ -250,7 +260,11 @@ force**, with **Re-apply…**:
 1. `plan`: Mercury reads the switch's flow table and meters now. The preview puts back exactly
    the response's flows that are missing, and its meter if that is gone too (the meter first,
    so the flows can point at it). Each comes back as recorded: the same cookie, match, priority
-   and actions. Flows still installed are left alone.
+   and actions. Flows still installed are left alone. A drop or rate limit put back still
+   matches its one source address, so its preview says again, under What will not happen, that
+   the same host's other family is not matched, naming the host's other addresses as the
+   controller's topology lists them now (the sentence its own preview said; see
+   [Where a port's source comes from](#port-source)).
 2. `hash`: you confirm as yourself, bound to the requests' hash.
 3. The hard timeout is **never extended**. Each flow goes back for the time its record has
    left, less 60 seconds, the time a confirm may take. A confirm more than 60 seconds after the

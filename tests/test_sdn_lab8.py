@@ -371,3 +371,125 @@ def test_a_drop_whose_host_s_other_addresses_are_unknown_says_which(topology, sa
     assert said in gap, gap
     assert "2001:db8:8::1" not in gap
     assert fake.writes == []
+
+
+def _applied_then_lost(fake, detection, action, at):
+    """*detection* answered by *action* through the real preview and confirm on *fake* at *at*,
+    then one of the response's flows lost (the switch restarted: the flow Mercury installed
+    gone from its table): ``(preview, operation id)``."""
+    preview = CL.respond_to_threat("Default", detection, action, driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    done = CL.respond_to_threat("Default", None, confirm={"ask": preview["ask"],
+                                                          "hash": preview["plan"]["hash"]},
+                                actor="op@example.com", actor_verified="access",
+                                driver=fake.driver, sleep=lambda s: None, now=lambda: at,
+                                counter_interval=0)
+    assert done["outcome"] == "verified", done["error"]
+    ours = {s["cookie"] for s in (json.loads(st["request"]["body"])
+                                  for st in preview["plan"]["steps"]) if "cookie" in s}
+    lost = sorted(ours)[0]
+    fake.table[1] = [f for f in fake.table[1] if f.get("cookie") != lost]
+    return preview, done["id"]
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("family", ["ipv4", "ipv6"])
+def test_a_lost_drop_s_re_apply_says_what_the_host_s_other_family_leaves_unmatched(family):
+    """C2205: putting a lost drop back (C2018) puts back a flow matching the one address, so
+    its preview's What will not happen says again what the drop's own preview said (C2148),
+    through the one sentence (`closed_loop.response_family_gap`), the host's other addresses
+    read from the controller's topology at the re-apply (the real capture: h1 with 192.0.2.1,
+    2001:db8:8::1 and fe80::200:ff:fe00:1). The IPv6 case is the scan detection edited as in
+    the drop's own test above."""
+    import time
+
+    from modules.sdn import reapply as RA
+
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    if family == "ipv6":
+        d = dict(d, source="2001:db8:8::1", sources=["2001:db8:8::1"],
+                 targets=["2001:db8:8::3"])
+    fake = _scan_switch(captured_topology())
+    at = float(int(time.time()))
+    drop, key = _applied_then_lost(fake, d, "drop_source", at)
+    writes = list(fake.writes)
+    got = RA.preview("Default", "lab", 1, key, driver=fake.driver, now=at + 100)
+    assert got["ok"], got["error"]
+    (step,) = got["plan"]["steps"]
+    assert step["reinstall"] and json.loads(step["request"]["body"])["match"] == json.loads(
+        drop["plan"]["steps"][0]["request"]["body"])["match"]
+    gap = _family_gap(got)
+    assert gap == _family_gap(drop), "the drop's own sentence, said again"
+    if family == "ipv4":
+        assert gap.startswith("Only 192.0.2.1's IPv4 traffic is dropped: the same host's IPv6 "
+                              "traffic is not.")
+        assert "with the addresses 2001:db8:8::1, fe80::200:ff:fe00:1 (link-local)" in gap
+    else:
+        assert gap.startswith("Only 2001:db8:8::1's IPv6 traffic is dropped: the same host's "
+                              "IPv4 traffic is not, nor what it sends from any other IPv6 "
+                              "address.")
+        assert "with the addresses 192.0.2.1, fe80::200:ff:fe00:1 (link-local)" in gap
+    assert fake.writes == writes, "a preview writes nothing"
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_lost_drop_of_a_source_found_on_its_port_names_the_address_its_flow_matches():
+    """C2205: the walk's MAC-only flood (C2002) names no source; its drop matches the host the
+    topology lists on its port (h2, 192.0.2.2). Its re-apply's sentence names that address, the
+    one its flow matches, and h2's other addresses (2001:db8:8::2, fe80::200:ff:fe00:2)."""
+    import time
+
+    from modules.sdn import reapply as RA
+
+    fake, _table = l2_only_switch(captured_topology())
+    at = float(int(time.time()))
+    _drop, key = _applied_then_lost(fake, _mac_only_flood(2), "drop_source", at)
+    got = RA.preview("Default", "lab", 1, key, driver=fake.driver, now=at + 100)
+    assert got["ok"], got["error"]
+    gap = _family_gap(got)
+    assert gap.startswith("Only 192.0.2.2's IPv4 traffic is dropped: the same host's IPv6 "
+                          "traffic is not.")
+    assert ("lists this host (00:00:00:00:00:02) with the addresses 2001:db8:8::2, "
+            "fe80::200:ff:fe00:2 (link-local): traffic from them is not dropped") in gap
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_lost_rate_limit_s_re_apply_says_its_source_s_other_family_is_not_metered():
+    """C2205, the same class: a rate limit's flows match its source's one address too, so
+    putting one back says the host's other family is not metered (the scan's rate limit on the
+    walk's L2-only s1, its ports from the captured topology, as in the first test here)."""
+    import time
+
+    from modules.sdn import reapply as RA
+
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    fake, _table = l2_only_switch(captured_topology())
+    at = float(int(time.time()))
+    _limit, key = _applied_then_lost(fake, d, "rate_limit_source", at)
+    got = RA.preview("Default", "lab", 1, key, driver=fake.driver, now=at + 100)
+    assert got["ok"], got["error"]
+    gap = _family_gap(got)
+    assert gap.startswith("Only 192.0.2.1's IPv4 traffic is metered: the same host's IPv6 "
+                          "traffic is not.")
+    assert ("with the addresses 2001:db8:8::1, fe80::200:ff:fe00:1 (link-local): traffic "
+            "from them is not metered by this response.") in gap
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_re_apply_whose_host_s_topology_is_unread_says_so_and_is_still_built():
+    """C2205: the topology unread at the re-apply (Ryu without its topology application: the
+    404) is said as itself, and the flow is still put back."""
+    import time
+
+    from modules.sdn import reapply as RA
+
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    fake = _scan_switch(captured_topology())
+    at = float(int(time.time()))
+    _drop, key = _applied_then_lost(fake, d, "drop_source", at)
+    fake.topology = None
+    got = RA.preview("Default", "lab", 1, key, driver=fake.driver, now=at + 100)
+    assert got["ok"], got["error"]
+    gap = _family_gap(got)
+    assert "The controller's topology could not be read (HTTP 404" in gap
+    assert "2001:db8:8::1" not in gap

@@ -331,3 +331,152 @@ def test_the_table_is_by_severity_then_age_and_its_filter_says_it_shows_a_subset
     assert [r["operands"]["incident"] for r in rows] == [crit["id"], old["id"], new["id"],
                                                          low["id"]]
     assert [r["level"] for r in rows] == ["danger", "warning", "warning", "warning"]
+
+
+# ── a flood seen on a link port (C2106) ──────────────────────────────────────────────────────
+#
+# The Lab 8 walk's own floods (2026-10-27 23:25:13 UTC, h2 flooding over MAC-only flows): s1's
+# port 2 (h2's) and s2's port 3 (the link from s1), each judged again by the flood rule over
+# its kept evidence with Ryu 4.34's captured topology (tests/test_sdn_source_from_topology.py's
+# `walk_flood` and `stored`, the walk's connection lab-ryu). s2's port 3 carries h2's flows
+# (213,796 and 197,485 packets) and one of h1's (398 packets), as the walk kept them.
+
+H1_MAC, H2_MAC = "00:00:00:00:00:01", "00:00:00:00:00:02"
+LINK_WORDS = ("port 3 is an inter-switch link, and its flows carry 00:00:00:00:00:02, {src}'s "
+              "host (and 00:00:00:00:00:01, with no incident of this rule): the same attack, "
+              "seen on its way")
+
+
+def _walk_floods(edit=None):
+    """The walk's two floods (s1 port 2, s2 port 3) on Default, and the stored topology they
+    were judged with (*edit* a minimal edit of its hosts, as tests/test_sdn_source_from_topology
+    makes them)."""
+    from tests.test_sdn_source_from_topology import stored, walk_flood
+
+    topo = stored(edit=edit)
+    s1, _c, _s = walk_flood("walk-flood-1-s1", topo)
+    s2, _c, _s = walk_flood("walk-flood-1-s2", topo)
+    return dict(s1, network=NET), dict(s2, network=NET), topo
+
+
+def _stored_is(monkeypatch, topo):
+    from modules.sdn import topology as SDN
+    monkeypatch.setattr(SDN, "stored", lambda network, now=None, cached=None: topo)
+
+
+def test_the_link_port_s_detection_carries_whose_traffic_its_flows_carry():
+    """C2106's naming: s2's port 3 names no source (a link), and keeps the source MACs its
+    entering flows match, most packets first, each with the addresses the topology lists for
+    its host (the unspecified :: left out); never in the evidence piece the classifier is
+    sent."""
+    s1, s2, _t = _walk_floods()
+    assert s1["source"] == "192.0.2.2" and "link_sources" not in s1
+    assert s2["source"] is None and s2["source_from"]["state"] == "link"
+    assert s2["link_sources"] == [
+        {"mac": H2_MAC, "addresses": ["192.0.2.2", "2001:db8:8::2", "fe80::200:ff:fe00:2"]},
+        {"mac": H1_MAC, "addresses": ["192.0.2.1", "2001:db8:8::1", "fe80::200:ff:fe00:1"]}]
+    assert incidents.link_keys(s2) >= {"flood|192.0.2.2", "flood|00:00:00:00:00:02",
+                                       "flood|2001:db8:8::2"}
+    from tests.test_sdn_classify_walk_cases import collection_of, load
+    case = next(c for c in load()["cases"] if c["key"] == "walk-flood-1-s2")
+    collected, sw = collection_of(case)
+    (piece,) = [p for p in detect.section(s2, collected, sw)["pieces"]
+                if p["kind"] == "detection"]
+    assert "link_sources" not in piece
+
+
+@pytest.mark.parametrize("order", ["ingress first", "link first"])
+def test_the_walks_flood_on_s1_and_s2_is_one_incident_at_h2_s_port(order):
+    """C2106: the two floods are one attack: one incident, keyed by h2's address, its ingress
+    s1 port 2 (where the topology lists h2), s2's link port seen also saying why."""
+    s1, s2, topo = _walk_floods()
+    dets = [s1, s2] if order == "ingress first" else [s2, s1]
+    (inc,) = incidents.group(dets, WINDOWS)
+    assert inc["key"] == "flood|192.0.2.2"
+    assert sorted(m["dpid"] for m in inc["members"]) == [1, 2]
+    chosen = incidents.ingress(NET, inc, topo)
+    assert chosen["known"] is True and chosen["port"] == 2
+    assert chosen["detection"]["key"] == s1["key"]
+    (also,) = incidents.record(inc, chosen)["seen_also"]
+    assert (also["key"], also["dpid_hex"], also["port"]) == (s2["key"], "0000000000000002", 3)
+    assert also["words"] == s2["words"] + "; " + LINK_WORDS.format(src="192.0.2.2")
+
+
+def test_the_walks_flood_by_h2_s_ipv6_address_is_one_incident_too():
+    """IPv6: h2 listed with no IPv4 address (the topology's minimal edit, h2_v6_only), so s1's
+    flood names 2001:db8:8::2, and s2's link port joins it by that address."""
+    from tests.test_sdn_source_from_topology import h2_v6_only
+
+    s1, s2, topo = _walk_floods(edit=h2_v6_only)
+    assert s1["source"] == "2001:db8:8::2"
+    (inc,) = incidents.group([s2, s1], WINDOWS)
+    assert inc["key"] == "flood|2001:db8:8::2"
+    chosen = incidents.ingress(NET, inc, topo)
+    assert chosen["known"] is True and chosen["detection"]["key"] == s1["key"]
+    (also,) = incidents.record(inc, chosen)["seen_also"]
+    assert also["words"].endswith("its flows carry 00:00:00:00:00:02, 2001:db8:8::2's host "
+                                  "(and 00:00:00:00:00:01, with no incident of this rule): "
+                                  "the same attack, seen on its way")
+
+
+def test_an_ingress_not_told_is_never_proposed_at_the_link_port():
+    """C2106: with the ingress not told (the topology not read now), the response is proposed
+    at the switch that saw it first among those naming the source, never at the link port's,
+    which names none, though s2 saw it a second earlier."""
+    s1, s2, _t = _walk_floods()
+    s2 = dict(s2, at=LP._iso(detect._epoch(s1["at"]) - 1))
+    (inc,) = incidents.group([s2, s1], WINDOWS)
+    chosen = incidents.ingress(NET, inc, {"state": "could not read", "why": "planted"})
+    assert chosen["known"] is False and chosen["detection"]["key"] == s1["key"]
+    assert chosen["words"].endswith("proposed at 0000000000000001, the switch that saw it first")
+
+
+def test_a_link_port_carrying_two_incidents_sources_stays_its_own():
+    """Two floods behind one link (h1's as well, a detection in the rule's shape on s1 port 1):
+    the link cannot tell them apart, so s2's port 3 stays its own incident; and with no
+    incident of its sources in the pass it stays its own too (as before)."""
+    s1, s2, _t = _walk_floods()
+    h1 = dict(det(1, "192.0.2.1", rule="flood", at=detect._epoch(s1["at"])), port=1)
+    got = incidents.group([s1, h1, s2], WINDOWS)
+    assert sorted(i["key"] for i in got) == sorted(
+        ["flood|192.0.2.2", "flood|192.0.2.1", f"detection|{s2['key']}"])
+    assert [i["key"] for i in incidents.group([s2], WINDOWS)] == [f"detection|{s2['key']}"]
+
+
+def test_through_the_loop_one_classification_one_row_and_s2_seen_also(calls, monkeypatch):
+    """The row's test: the loop's pass over the walk's two floods makes one incident, one
+    classification call (on s1's detection, the ingress), one response awaiting a person and
+    one Needs attention row; a pass later still within the window, s2's link port alone joins
+    it as seen also, with no call."""
+    s1, s2, topo = _walk_floods()
+    _stored_is(monkeypatch, topo)
+    monkeypatch.setattr(CL, "respond_to_threat", lambda *a, **k: {})
+    at = detect._epoch(s1["at"])
+    out = a_pass([s2, s1], at=at)
+    assert out["ok"], out
+    assert [d["key"] for d in calls] == [s1["key"]], "one classification, at the ingress"
+    (row,) = _rows()
+    assert row["incident"]["key"] == "flood|192.0.2.2" and row["incident"]["ingress_port"] == 2
+    assert [s["dpid_hex"] for s in row["seen_also"]] == ["0000000000000002"]
+    assert row["seen_also"][0]["words"].endswith(LINK_WORDS.format(src="192.0.2.2"))
+    rows = A.sdn_responses_source(found={NET: LP.awaiting(NET)}, now=at)["rows"]
+    assert len(rows) == 1
+
+
+def test_a_link_port_firing_a_pass_later_joins_the_incident_awaiting(calls, monkeypatch):
+    """`joinable`: s1's flood proposed in one pass; s2's link port firing 10 s later (within the
+    flood's 30 s window) joins that incident as seen also: no call, nothing proposed."""
+    s1, s2, topo = _walk_floods()
+    _stored_is(monkeypatch, topo)
+    monkeypatch.setattr(CL, "respond_to_threat", lambda *a, **k: {})
+    at = detect._epoch(s1["at"])
+    assert a_pass([s1], at=at)["ok"]
+    later = dict(s2, at=LP._iso(at + 10))
+    out = a_pass([later], at=at + 10)
+    assert out["ok"], out
+    assert len(calls) == 1 and out["proposed"] == []
+    (row,) = _rows()
+    assert [s["dpid_hex"] for s in row["seen_also"]] == ["0000000000000002"]
+    assert row["seen_also"][0]["words"].endswith(LINK_WORDS.format(src="192.0.2.2"))
+    (line,) = [x for x in out["lines"] if x["step"] == "incident"]
+    assert line["words"].startswith("SDN flood from 192.0.2.2 seen also on ")

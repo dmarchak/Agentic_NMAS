@@ -3789,7 +3789,7 @@ A2 are in it.
 | **A1 the toolbar assistant** (P7) | 16.10, 18.1 | **in scope**; not built | 66: manual-truth test 6, egress mask 8, stage 1 16, stage 2 16, stage 3 12, cases 8 |
 | **A2.1 "Was this right?"** | 16.11 | **in scope**; not built | 8 |
 | **A2.2 AI-proposed expected effects** | 16.11 | **in scope**; not built (deterministic effects exist, C506) | 12 |
-| **A2.3 change record and rollback plan draft** | 16.11, section 6 rank 3 | **in scope**; not built | 10 |
+| **A2.3 change record and rollback plan draft** | 16.11, section 6 rank 3 | **in scope**; built 2026-10-29 on the device's deploy preview (board CR; `modules/ai/change_record.py`), its 10 recorded cases written and not yet run, no held-out set yet, not deployed or walked | 10 |
 | **A2.4 incident correlation and AI timeline** | 16.11, section 6 ranks 2 and 5 | **in scope**; not built (background: 18.3) | 20 |
 | **A2.5 daily digest** | 16.11 | **in scope**; not built (background: 18.3) | 10 |
 | **A2 tier 2** (six items) | 16.11 | **in scope**; not built | about 90 |

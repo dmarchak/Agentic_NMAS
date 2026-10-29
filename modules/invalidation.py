@@ -434,6 +434,8 @@ DECLARED = {
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
     "intent_v2.words": ("ai_calls",),
+    # PHASE8_PLAN 16.11 item 3: a change record drafted is one recorded AI call, nothing else.
+    "device_v2.deploy_change_record": ("ai_calls",),
     # PHASE8_PLAN 16.11 item 1: Was this right? and its review keep a verdict or a review.
     "ai_feedback_v2.say": ("ai_feedback",),
     "ai_feedback_v2.review": ("ai_feedback",),

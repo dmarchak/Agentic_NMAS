@@ -108,6 +108,8 @@ TYPED_PARTS = {
                                       # already held back as placeholders (intent_words)
     "explain": (),                    # an evidence pack: Mercury's own data
     "sdn_classify": (),               # a detection's pack: Mercury's own data
+    "change_record": (),              # a deploy preview's shape: Mercury's own data (the
+                                      # stated reasons a person typed are never sent)
     "connection_check": (),           # a word Mercury chose
 }
 

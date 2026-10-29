@@ -187,7 +187,8 @@ def test_the_control_is_under_an_answer_drawn_never_under_a_refused_one(fb):
 #: Every template drawing an AI answer (modules/ai/controls.CONTROLS, the answers' templates),
 #: and the variable its answer's call id is read from.
 ANSWER_TEMPLATES = {"_explain.html": "x.call_id", "_history_ask_words.html": "w.call_id",
-                    "_intent_words.html": "w.call_id", "_sdn_responses.html": "a.call_id"}
+                    "_intent_words.html": "w.call_id", "_sdn_responses.html": "a.call_id",
+                    "_change_record.html": "v.call_id"}
 
 
 @pytest.mark.parametrize("name, var", sorted(ANSWER_TEMPLATES.items()))

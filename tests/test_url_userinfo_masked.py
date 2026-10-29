@@ -153,6 +153,9 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/ai/change_record.py:_masked": "asks whether `redact.redact_egress` would change a "
+        "program line, to leave that line out of the shape sent whole; it returns a bool and "
+        "masks nothing itself (16.11 item 3)",
     "modules/ai/gateway.py:_new_masks": "compares a typed part before and after `mask_typed` "
         "to list the placeholders the mask added, so the person is told; it masks nothing "
         "(C1845)",

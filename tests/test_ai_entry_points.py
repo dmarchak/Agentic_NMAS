@@ -158,6 +158,8 @@ def _pages(world):
 
 #: Drawn only for a device with committed intent: `test_the_intent_tab_calls_no_model`'s.
 INTENT_PAGES = {"intent_in_words": ["/v2/device/s1?tab=intent&list=Lab"]}
+#: Drawn only in a deploy preview with a program: `test_the_deploy_preview_calls_no_model`'s.
+DEPLOY_PAGES = {"change_record": ["/v2/device/r2/deploy?back=overview&list=Lab"]}
 #: Drawn only on a response awaiting a person: `test_sdn_responses_call_no_model`'s.
 SDN_PAGES = {"sdn_classify": ["/v2/sdn/responses?list=Default",
                               "/v2/sdn/view?tab=responses&list=Default"]}
@@ -210,8 +212,8 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     assert len(world.sent) == 1
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
-    assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) == set(controls.CONTROLS), \
-        "every registered control names its pages"
+    assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) == set(
+        controls.CONTROLS), "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
     assert seen == {"asked": [], "sends": []}
@@ -232,6 +234,18 @@ def test_the_intent_tab_calls_no_model(host, monkeypatch, tmp_path):  # noqa: F8
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     seen = _count_ai(monkeypatch)
     assert _load_each(host["client"], INTENT_PAGES) == set(INTENT_PAGES)
+    assert seen == {"asked": [], "sends": []}
+
+
+def test_the_deploy_preview_calls_no_model(monkeypatch, tmp_path):
+    """A device's Deploy preview with a program to send (tests/test_device_deploy_v2's lab:
+    r2's real capture, `lldp run` and a dangerous `shutdown` to send), hosted AI allowed and a
+    key set: drawing Draft a change record asks no model (PHASE8_PLAN 16.11 item 3)."""
+    from tests.test_ai_change_record import deploy_world
+
+    lab = deploy_world(monkeypatch, tmp_path)
+    seen = _count_ai(monkeypatch)
+    assert _load_each(lab["client"], DEPLOY_PAGES) == set(DEPLOY_PAGES)
     assert seen == {"asked": [], "sends": []}
 
 

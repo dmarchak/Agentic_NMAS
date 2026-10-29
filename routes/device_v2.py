@@ -1331,11 +1331,14 @@ def _declare_form(fields):
     return raw, pending
 
 
-def _deploy_card(ref, dev, back, fields, focus=""):
+def _deploy_card(ref, dev, back, fields, focus="", keep: dict = None):
     """The deploy card for *dev*: THE plan (`routes.deploy.plan_devices`, captured configs
     only, no device contacted) planned again with what the form carries, each stated reason
     in the hash, and the confirm built HERE from the unmasked plan's hashes, so it sends
-    exactly the program on the screen."""
+    exactly the program on the screen. *keep*, when given, receives the unmasked plan entry
+    (``keep["entry"]``): the change record's facts are computed from it (PHASE8_PLAN 16.11
+    item 3), never from the page. A change record the form carries (``cr``, its call's id) is
+    drawn again from its call, stale when the program moved (board CR, state 3)."""
     from modules import device_actions, identity
     from modules.nsot.authorisation import key
     from modules.nsot.expected_effects import raw_of
@@ -1383,6 +1386,14 @@ def _deploy_card(ref, dev, back, fields, focus=""):
                                                           entry.get("declared") or []),
                       "sent": list(c.get("sent") or []), "remove": list(rm.get("ids") or []),
                       "declare": declared}
+    if keep is not None:
+        keep["entry"] = entry
+    carried_cr = (fields.get("cr") or "").strip() if hasattr(fields, "get") else ""
+    if carried_cr and c.get("sent"):
+        from modules.ai import change_record
+        c["change_record"] = change_record.carried(carried_cr, {
+            "network": ref.name, "host": dev.get("hostname", ""),
+            "program_hash": c.get("command_hash") or ""})
     c.update(back=back, ip=dev.get("ip", ""))
     if focus == "removal":
         c["focus"] = "removal"
@@ -1459,6 +1470,99 @@ def deploy(name):
     resp.headers["HX-Retarget"] = "#tab-body"
     resp.headers["HX-Reswap"] = "innerHTML show:#removal:top"
     resp.headers["HX-Trigger"] = "nmas-close-menu"
+    return resp
+
+
+def _record_facts(ref, dev, c, entry) -> dict:
+    """The change record's facts for the deploy card *c*, from the unmasked plan *entry* it was
+    drawn from (PHASE8_PLAN 16.11 item 3; `change_record.facts`, which masks what it returns):
+    the program as drawn and its hash, the stated reasons, the derived effects and verify
+    checks as the card words them, the rollback over the device's captured configuration, the
+    intent commit and the golden now. A read: captured configuration only, no device."""
+    from modules import redact
+    from modules.ai import change_record
+    from modules.device_actions import _golden_now
+    from routes.deploy import _captured_record, _repo_for
+
+    host = dev.get("hostname", "")
+    repo = _repo_for(ref.name)
+    captured = (_captured_record(repo, host) or {}).get("text") or ""
+    ops = {o.get("name"): o.get("value") for o in c.get("operands") or []}
+    expected = c.get("expected") or {}
+    commit = ops.get("intent commit") or ""
+    return change_record.facts(
+        host=host, network=ref.name, platform=ops.get("platform") or entry.get("platform", ""),
+        program_hash=c.get("command_hash") or "", lines=c.get("sent") or [],
+        commands=entry.get("commands") or [], captured=captured,
+        effects=entry.get("expected_effects") or {}, derived=expected.get("derived") or [],
+        checks=expected.get("checks") or [], authorised=entry.get("authorised") or [],
+        removals=len((entry.get("removals") or {}).get("ids") or []),
+        intent_commit="" if commit == "none" else commit,
+        golden=(_golden_now(repo, host) or {}).get("commit", ""),
+        values=redact.known_secret_values())
+
+
+def _network_names(ref) -> list:
+    """Every device name of *ref*'s network (what a change record's words may not name but for
+    the device deployed); none when its inventory cannot be read."""
+    from modules.device import load_saved_devices
+
+    try:
+        return [d.get("hostname", "") for d in load_saved_devices(ref.csv_path)]
+    except Exception as exc:                            # noqa: BLE001 (said, never raised)
+        log.warning("change record: %s's inventory could not be read (%s)", ref.name, exc)
+        return []
+
+
+@bp.route("/device/<name>/deploy/change-record", methods=["POST"])
+def deploy_change_record(name):
+    """Draft a change record (PHASE8_PLAN 16.11 item 3; board CR): the deploy card planned again
+    with its own form, its program bound to the hash the card drew, one recorded AI call as the
+    person who pressed, the draft drawn in the card's Change record part. Advisory: it writes
+    nothing but the call's record, sends nothing to the device, and Deploy is unchanged."""
+    from modules import identity
+    from modules.ai import change_record, triggers
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    kept = {}
+    c = _deploy_card(ref, dev, _back(request.form), request.form, keep=kept)
+    host = dev.get("hostname", "")
+    if c.get("state") != "preview" or not kept.get("entry") or not c.get("sent"):
+        got = {"ok": False, "state": "refused", "error": "nothing",
+               "detail": "the preview has no program to record (nothing to send, or the plan "
+                         "was refused); nothing was sent"}
+    else:
+        actor = identity.identify(request).actor or ""
+        got = change_record.draft(_record_facts(ref, dev, c, kept["entry"]), actor=actor,
+                                  trigger=triggers.person(actor),
+                                  shown_hash=request.form.get("program_hash", ""),
+                                  known=_network_names(ref))
+    return _strict(render_template("v2/_change_record.html", host=host, list_name=ref.name,
+                                   cr=got, program_hash=c.get("command_hash") or ""))
+
+
+@bp.route("/device/<name>/deploy/change-record/<call_id>.md", methods=["GET"])
+def deploy_change_record_md(name, call_id):
+    """A drafted change record as text (Download (.md)), read from its call: the draft as it was
+    drawn, for the program it names. A read; no model call."""
+    from flask import Response
+
+    from modules.ai import change_record
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    got = change_record.from_call(call_id, ref.name, dev.get("hostname", ""))
+    if not got["ok"]:
+        return Response(f"Not available: {got['error']}.\n", status=404,
+                        mimetype="text/plain")
+    resp = Response(change_record.markdown(got["view"]), mimetype="text/markdown")
+    resp.headers["Content-Disposition"] = (
+        f'attachment; filename="change-record-{dev.get("hostname", "")}-{call_id}.md"')
     return resp
 
 

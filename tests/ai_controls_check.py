@@ -37,6 +37,7 @@ MARKUP = {
     "intent_in_words": {"button": r'<button\b[^>]*\bdata-op="intent-in-words"[^>]*>',
                         "input": r'<input\b[^>]*\bid="iw-words"[^>]*>'},
     "sdn_classify": {"button": r'<button\b[^>]*\bid="sdn-classify-[^"]*"[^>]*>', "input": None},
+    "change_record": {"button": r'<button\b[^>]*\bdata-op="change-record"[^>]*>', "input": None},
 }
 
 #: Each state that cannot answer, and words its reason must hold.

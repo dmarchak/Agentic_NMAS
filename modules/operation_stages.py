@@ -470,6 +470,8 @@ HISTORY = {
                                     "never one device's record",
     "v2.history_ask_logs_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                  "never one device's record",
+    # PHASE8_PLAN 16.11 item 3: the call's subject is the device, so its History draws it.
+    "device_v2.deploy_change_record": ("ai_calls",),
     "intent_v2.words": "n/a: one AI call, kept in the fleet's ai_calls record (its subject the "
                        "device); its draft writes nothing, and its commit is intent_v2.commit's",
     "settings_v2.install_replace": ("installation_settings",),

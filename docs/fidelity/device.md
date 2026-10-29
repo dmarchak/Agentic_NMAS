@@ -71,7 +71,10 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `d33226f1c5dcfd1480130867aeb6b874a88b21b8498264c6c72db31eee13b94d`
+Templates sha256: `46f57eb3cb54da3c7f2c90636527e71f2d925b2fecd91b903c20215fb29f3ac2`
+(2026-10-29: `_deploy.html` gained the Change record part, compared with board CR in
+docs/fidelity/change-record.md; its form an id, and the foot's note one sentence. Before:
+`d33226f1c5dcfd1480130867aeb6b874a88b21b8498264c6c72db31eee13b94d`.)
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
@@ -173,6 +176,14 @@ typed, and marked the reason's check. Shots: `device-deploy` and `device-deploy-
   "Couldn't load" on it and Deploy waits. The board draws checks only as pass or fail; this is
   the check's own region, so it is **same** in kind.
 No other region's verdict changed.
+
+Compared again 2026-10-29 (PHASE8_PLAN 16.11 item 3, board CR) after `_deploy.html` gained the
+part "Change record" between Checks and the foot (`_change_record.html`, compared region by
+region in docs/fidelity/change-record.md), its form the id `deploy-form` (a drawn draft's call
+is carried by it), and the ready foot's note the sentence "The change record is not part of what
+you confirm.", board CR's words. Shots: `change-record-offered`, `change-record` and
+`change-record-stale` (tests/test_board_shots.py `test_change_record`) at 1440, 1280 and 390:
+every other part of the card as before. No other region's verdict changed.
 
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.
 Reload… (`_reload.html`; the walk's section I, capture 30) and Run a privileged command…

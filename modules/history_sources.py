@@ -1077,6 +1077,7 @@ def updates(ctx):
 SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
                  "intent": "an intent change on", "sdn_detection": "the SDN detection",
                  "sdn_collection": "an SDN collection no rule fired on",
+                 "deploy_preview": "a change record for the deploy to",
                  "": "the installation"}
 
 
@@ -1092,6 +1093,10 @@ def subject_words(subject: dict) -> str:
         return f"{head} {s.get('id') or 'the network'}"
     if kind == "intent":
         return f"{head} {', '.join(s.get('devices') or []) or 'no device'}"
+    if kind == "deploy_preview":
+        # PHASE8_PLAN 16.11 item 3: the device and the program the draft was for.
+        return (f"{head} {', '.join(s.get('devices') or []) or 'no device'}, program "
+                f"{str(s.get('id') or '')[:12] or 'unknown'}")
     if kind == "sdn_detection":
         # PHASE8_PLAN 17.1 S7: the rule that fired and the detection's key.
         return f"{head} {s.get('rule') or ''} {s.get('id') or ''}".replace("  ", " ").strip()

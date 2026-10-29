@@ -41,7 +41,10 @@ listed with no address beside one with an address does not make the port ambiguo
 cannot be matched, and it is named. Where the flows name several sources, the detection's
 ``sources`` lists them and the source stays unnamed, as before. A rule called with no
 topology (*topo* None: a recorded case's rebuild) names nothing from it and adds no
-``source_from``.
+``source_from``. On a link port (state ``link``) the detection also keeps ``link_sources``
+(`link_sources`): each source MAC address its entering flows match, with the addresses the
+topology lists for that MAC's host; candidates, never the source, by which `incidents` joins
+it to the attack's incident (C2106). It is not in the evidence piece the classifier is sent.
 
 **The baseline** (`baseline_of`, `update_baseline`): per port, the median of the received
 packet rate over the last `BASELINE_SAMPLES` (12) earlier collections. A port has one once
@@ -345,8 +348,41 @@ def _port_detection_source(entering: list, topo, connection: str, dpid, port) ->
     if topo is None:
         return None, sources, {}
     found = port_source(topo, connection, dpid, port)
-    return found["source"], sources, {"source_from": {
+    extra = {"source_from": {
         k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words")}}
+    if found["state"] == "link":
+        # C2106: a link port names no source, but its flows say whose traffic arrives on it;
+        # what `incidents` joins the incident of that host's own port by (never sent: the
+        # evidence piece keeps `source_from` only).
+        extra["link_sources"] = link_sources(entering, topo, connection)
+    return found["source"], sources, extra
+
+
+def link_sources(entering: list, topo, connection: str) -> list:
+    """Whose traffic the flows *entering* a link port carry (C2106): each source MAC address
+    they match (``eth_src``, lower-case, in the flows' order: most packets first), with every
+    address the controller's topology (*topo*, `topology.stored`'s) lists for the host of that
+    MAC on *connection*: ``[{"mac", "addresses"}]``, *addresses* [] when no host is listed
+    with it. A link port carries every host behind it, so this names candidates, never the
+    source: `incidents.group` joins the one incident among them, or none."""
+    hosts = {}
+    ctl = next((c for c in (topo or {}).get("controllers") or []
+                if c.get("name") == connection), None) or {}
+    for h in ctl.get("hosts") or []:
+        mac = str(h.get("mac") or "").lower()
+        for value in list(h.get("ipv4") or []) + list(h.get("ipv6") or []):
+            try:
+                addr = ipaddress.ip_address(str(value).strip())
+            except ValueError:
+                continue
+            if not addr.is_unspecified and addr.compressed not in hosts.setdefault(mac, []):
+                hosts[mac].append(addr.compressed)
+    out = []
+    for f in entering:
+        mac = str((f.get("match") or {}).get("eth_src") or "").strip().lower()
+        if mac and "/" not in mac and mac not in [x["mac"] for x in out]:
+            out.append({"mac": mac, "addresses": list(hosts.get(mac) or [])})
+    return out
 
 
 def flows_scope(connection: str, dpid_hex: str) -> str:

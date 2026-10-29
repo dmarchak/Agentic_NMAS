@@ -1556,6 +1556,35 @@ def ai_feedback():
     ])
 
 
+def change_record():
+    return svg(470, (
+        "A change record drafted from the deploy preview. You press Draft a change record; "
+        "Mercury plans the preview again from the card's own form and refuses if its program "
+        "is not the one the card drew; it fills every fact code knows (the program and its "
+        "hash, the stated reasons, Verify's scope and checks, the rollback's lines as the "
+        "pipeline computes them, the risk's level by its rule); it sends one recorded, capped "
+        "call through the AI gateway carrying the program's shape in keywords and Mercury's "
+        "own words, never a configuration value; it refuses words naming an interface or device "
+        "the change does not hold; and it draws the draft in the preview, each section marked "
+        "Mercury or AI. Nothing is sent to the device, and Deploy is unchanged."), [
+        lanes(20, 464, right="THE SERVICES"),
+        person(14, 40, 186, 30, "You press Draft…"), num(14, 40, 1),
+        doc("box", 14, 84, 186, 36, "The preview, planned again", "moved: refused, both hashes"),
+        doc("box", 14, 134, 186, 40, "Mercury's facts", "program, checks, rollback"),
+        num(14, 134, 2),
+        doc("box", 14, 188, 186, 36, "The shape, in keywords", "no line, no value"),
+        num(14, 188, 3),
+        svc(250, 188, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 206, 248, 206), num(14, 238, 4),
+        doc("box", 14, 252, 186, 36, "Checked", "names only what it holds"),
+        num(14, 300, 5),
+        doc("box", 14, 314, 186, 40, "The draft, drawn", "Mercury and AI marked"),
+        num(14, 366, 6),
+        t(14, 392, "Deploy is unchanged by it.", "sm"),
+        nosend(310, 420, ("nothing is sent", "to the device")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1716,6 +1745,7 @@ DIAGRAMS = {
     "installation-settings": installation_settings,
     "ai-background": ai_background,
     "ai-feedback": ai_feedback,
+    "change-record": change_record,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

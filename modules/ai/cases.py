@@ -888,3 +888,182 @@ def sdn_classify_misses(expect: dict, got: dict) -> list:
         out.append(f"cites {c['evidence_refs'][:3]}, none of the evidence the detection rests "
                    "on")
     return out
+
+
+# ── A change record drafted from the deploy preview (PHASE8_PLAN 16.11 item 3) ───────────────
+
+#: Where a change-record case's captured configurations are (real captures, the fleet's).
+CHANGE_RECORD_CONFIGS = ("tests", "fixtures", "configs", "fleet")
+
+
+#: A captured configuration's own banner, the platform it names (the parsers' keying): read
+#: from the capture, never guessed from a device's name. The longer banner first.
+CAPTURE_BANNERS = (("! Cisco IOS XE Software", "cisco_iosxe"), ("! Cisco IOS Software", "cisco_ios"))
+
+
+def _platform_of(captured: str, where: str = "") -> str:
+    """The platform a captured configuration names in its own banner (`CAPTURE_BANNERS`);
+    raises naming the capture when it names none."""
+    for line in captured.split("\n")[:20]:
+        for banner, platform in CAPTURE_BANNERS:
+            if line.startswith(banner):
+                return platform
+    raise ValueError(f"{where or 'the capture'} names no platform in its banner "
+                     f"(looked for {', '.join(b for b, _p in CAPTURE_BANNERS)})")
+
+
+def change_record_intended(captured: str, edits) -> str:
+    """*captured* with a case's *edits* applied, as committed intent would render it: each
+    ``{"under": header, "add": [lines]}`` puts its lines directly under that header (a
+    header the configuration lacks is added at the end, with its lines); each
+    ``{"top": [lines]}`` adds them at the end; each ``{"replace": old, "with": new}`` replaces
+    one whole line. A line the case replaces that is not there raises, naming it."""
+    lines = captured.split("\n")
+    for e in edits or ():
+        if "under" in e:
+            head = e["under"]
+            if head in lines:
+                at = lines.index(head) + 1
+                lines[at:at] = list(e["add"])
+            else:
+                lines += [head] + list(e["add"]) + ["!"]
+        elif "top" in e:
+            lines += list(e["top"])
+        elif "replace" in e:
+            if e["replace"] not in lines:
+                raise ValueError(f"the case replaces {e['replace']!r}, which the capture lacks")
+            lines[lines.index(e["replace"])] = e["with"]
+        else:
+            raise ValueError(f"an edit of no known kind: {sorted(e)}")
+    return "\n".join(lines)
+
+
+def change_record_facts(case: dict, root: str, network: str = "") -> dict:
+    """The facts a recorded change-record case is drafted from, by the product's own code over
+    a real captured configuration (`CHANGE_RECORD_CONFIGS`) and the case's minimal edits: the
+    program as THE plan computes it (`routes.deploy._program`), its derived effects against
+    the fleet's intent parsed from the same captures (`expected_effects.for_device`), what
+    verify checks, the dangerous lines with the case's stated reasons, the hash, and
+    `change_record.facts` over them (the rollback the pipeline would run, masked). Reads
+    fixtures only; no device, no store."""
+    import os
+
+    from modules import redact
+    from modules.ai import change_record
+    from modules.nsot import expected_effects
+    from modules.nsot.authorisation import key
+    from modules.nsot.deploy import command_fingerprint, dangerous_in
+    from modules.nsot.parsers import get_parser
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import expected_part
+    from routes.deploy import _program
+
+    folder = os.path.join(root, *CHANGE_RECORD_CONFIGS)
+    host = case["device"]
+    with open(os.path.join(folder, f"{host}.cfg"), encoding="utf-8") as fh:
+        captured = fh.read()
+    platform = _platform_of(captured, f"{host}.cfg")
+    intended = change_record_intended(captured, case.get("edits"))
+    prog = _program(intended, captured, [], {"ip": ""}, platform)
+    commands = list(prog["commands"])
+    intents = {}
+    for name in sorted(f[:-4] for f in os.listdir(folder) if f.endswith(".cfg")):
+        if name == host:
+            intents[name] = get_parser(platform).parse(intended)
+            continue
+        with open(os.path.join(folder, f"{name}.cfg"), encoding="utf-8") as fh:
+            text = fh.read()
+        intents[name] = get_parser(_platform_of(text, f"{name}.cfg")).parse(text)
+    fx = expected_effects.for_device(intents, host, commands)
+    fx["checks"] = expected_effects.verify_checks(fx, commands=commands,
+                                                  list_name=network or "default",
+                                                  captured=captured)
+    shown = expected_part(fx)
+    reasons = case.get("reasons") or {}
+    authorised = [{"line": key(line), "reason": reasons.get(key(line), "")}
+                  for line in dangerous_in(commands)]
+    program_hash = command_fingerprint(commands, authorised, prog["ids"], [])
+    return change_record.facts(
+        host=host, network=network or "default", platform=platform, program_hash=program_hash,
+        lines=mask_payload({"l": commands})["l"], commands=commands, captured=captured,
+        effects=fx, derived=shown["derived"], checks=shown["checks"], authorised=authorised,
+        removals=0, values=redact.known_secret_values())
+
+
+def change_record_names(root: str) -> list:
+    """Every device name of the fleet the cases are drafted on (what a draft's words may name
+    only for the device deployed)."""
+    import os
+
+    folder = os.path.join(root, *CHANGE_RECORD_CONFIGS)
+    return sorted(f[:-4] for f in os.listdir(folder) if f.endswith(".cfg"))
+
+
+def change_record_unready(case: dict, f: dict) -> list:
+    """Whether the facts *f* hold what the case is judged on (``[]``: ready): its ``facts``
+    expectations, each against what the product's code computed, so a case whose premise the
+    code does not meet fails here, never the model."""
+    from modules.ai import change_record
+
+    want = case.get("facts") or {}
+    out = []
+    if "risk" in want and f["risk"]["level"] != want["risk"]:
+        out.append(f"risk {f['risk']['level']}, the case expects {want['risk']}")
+    if "verify" in want and f["verify_scope"]["scope"] != want["verify"]:
+        out.append(f"verify {f['verify_scope']['scope']}, the case expects {want['verify']}")
+    if "interfaces" in want and sorted(f["interfaces"]) != sorted(want["interfaces"]):
+        out.append(f"interfaces {f['interfaces']}, the case expects {want['interfaces']}")
+    for line in want.get("program_has", ()):
+        if not any(line == l.strip() for l in f["lines"]):
+            out.append(f"the program lacks {line!r}")
+    for line in want.get("rollback_has", ()):
+        if not any(line == l.strip() for l in f["rollback"]):
+            out.append(f"the rollback lacks {line!r}")
+    if "left_out" in want and f["shape"]["left_out"] != want["left_out"]:
+        out.append(f"{f['shape']['left_out']} line(s) left out, the case expects "
+                   f"{want['left_out']}")
+    sent = json.dumps(change_record.sent(f))
+    for text in want.get("never_sent", ()):
+        if text in sent:
+            out.append(f"what is sent holds {text!r}")
+    return out
+
+
+def change_record_misses(expect: dict, answer, f: dict, known=(), error: str = "") -> list:
+    """What a drafted change record's words (*answer*, the model's `ChangeRecordWords` as JSON;
+    None with *error* when Mercury refused it) do that *expect* does not allow: ``[]`` is a
+    pass. Mercury's own check first (`change_record.check`: no interface the program does not
+    touch, no other device, no quoted line); then each group of ``says`` must have one of its
+    words in the Summary or the Risk (case aside), each of ``summary_says`` in the Summary
+    alone, and no word of ``never`` anywhere (a value, another device, a claim of approval).
+    What only a person can judge in the prose is the case's ``flag``."""
+    from modules.ai import change_record
+
+    if answer is None:
+        return [f"no answer: {error or 'nothing recorded'}"]
+    try:
+        words = change_record.ChangeRecordWords.model_validate(answer)
+    except Exception as exc:                            # noqa: BLE001 (a miss, said)
+        return [f"not the schema: {type(exc).__name__}"]
+    why = change_record.check(words, f, known)
+    if why:
+        return [f"Mercury refuses it: {why}"]
+    text = f"{words.summary}\n{words.risk}".lower()
+    out = []
+    for group in expect.get("says", ()):
+        if not any(w.lower() in text for w in group):
+            out.append(f"says none of {group}")
+    for group in expect.get("summary_says", ()):
+        if not any(w.lower() in words.summary.lower() for w in group):
+            out.append(f"the summary says none of {group}")
+    said = [w for w in expect.get("never", ()) if w.lower() in text]
+    if said:
+        out.append(f"says {said[0]!r}, which the case rules out")
+    return out
+
+
+def change_record_graded(expect: dict, answer, f: dict, known=(), error: str = "") -> dict:
+    """A change-record round's grading of one run: ``{"misses", "pass"}``, one way only (Mercury
+    keeps the words as the model gave them, or refuses them whole)."""
+    misses = change_record_misses(expect, answer, f, known, error)
+    return {"misses": misses, "pass": not misses}

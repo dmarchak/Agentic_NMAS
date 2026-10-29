@@ -101,6 +101,8 @@ PAGES = (
      "how-it-works/ai-background.md"),
     ("ai-feedback", "Was this right? on an AI answer, and the review of answers said wrong", H,
      "how-it-works/ai-feedback.md"),
+    ("change-record", "A change record drafted from the deploy preview", H,
+     "how-it-works/change-record.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -230,6 +232,8 @@ OPERATIONS = {
     "ai-background": ("modules.ai.settings_view", "TURN_ON_STEPS"),
     # PHASE8_PLAN 16.11 item 1 (board FB): Was this right? under every AI answer, and its review.
     "ai-feedback": ("modules.ai.feedback", "STEPS"),
+    # PHASE8_PLAN 16.11 item 3 (board CR): a change record drafted in the deploy preview.
+    "change-record": ("modules.ai.change_record", "STEPS"),
     # C1909: both ends of a link deployed as one change, on the deploy page.
     "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
 }

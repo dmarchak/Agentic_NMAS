@@ -316,6 +316,11 @@ NOT_AN_OPERATION = {
     ("_ai_feedback_review.html", "Older…"): "draws the review's next page of rows, a read",
     ("_ai_feedback_detail.html", "Copy the draft"): ("copies the accepted case draft to the "
                                                      "clipboard, writing nothing"),
+    # PHASE8_PLAN 16.11 item 3 (board CR): a drafted change record, as text.
+    ("_change_record.html", "Copy as text"): ("copies the drafted change record to the "
+                                              "clipboard, writing nothing"),
+    ("_change_record.html", "Download (.md)"): ("saves the drafted change record as text, read "
+                                                "from its call, a read"),
 }
 
 

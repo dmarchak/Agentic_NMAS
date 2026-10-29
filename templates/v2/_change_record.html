@@ -1,0 +1,59 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- The deploy preview's Change record (PHASE8_PLAN 16.11 item 3, Decision 5; board CR,
+    `ChangeRecordDraft.dc.html`): the inside of the card's #change-record, drawn by the card
+    (_deploy.html, between Checks and the confirm) and by Draft a change record's answer
+    (`device_v2.deploy_change_record`). An AI control (15.13): the mark, disabled with its reason
+    when hosted AI cannot answer; the preview and Deploy are as ever. A draft is a document:
+    nothing here is part of what Deploy confirms.
+
+    Set before the include: *host*, *list_name*, *program_hash* (the program the card draws,
+    which a press binds), and *cr*: absent (offered), `change_record.draft`'s answer (drafted,
+    moved or refused) or `change_record.carried`'s (a draft the card carries, drawn again from
+    its call: drafted, stale or unreadable). A drawn draft carries its call (``cr``) in the
+    card's form, so a re-plan draws it again, stale when the program moved (board CR, state 3).
+    Each section names its source: Mercury (code's facts) or AI (the model's words). -#}
+{%- set aic = ai_control('change_record') %}
+{%- macro ask(words) -%}
+<span class="op-act cr-ask">{{ ai.mark(aic) }}<button type="button" class="btn btn-small" data-op="change-record" hx-post="{{ url_for('device_v2.deploy_change_record', name=host) }}" hx-target="#change-record" hx-swap="innerHTML" hx-include="#deploy-form" hx-vals='{{ {"program_hash": program_hash} | tojson }}' hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call as you; sends nothing to {{ host }}, and Deploy is unchanged by it"><span class="op-idle">{{ words }}</span><span class="op-busy">Drafting…</span></button>{{ how('change-record', compact=True, op='Draft a change record') }}</span>
+{%- endmacro %}
+{%- macro src(kind) -%}<span class="cr-src cr-src-{{ kind }}">{{ 'Mercury' if kind == 'mercury' else 'AI' }}</span>{%- endmacro %}
+{%- set state = cr.state if cr else 'offered' %}
+{%- if state in ('drafted', 'stale') %}
+{%- set v = cr.view %}{%- set f = v.facts %}
+{%- if state == 'stale' %}
+<div class="notice notice-warn cr-stale" role="status">{{ icon('warn', 16) }}<p><strong>This draft is for program {{ cr.was[:12] }};</strong> the preview now is <span class="mono">{{ cr.now[:12] }}</span>. Its Implementation and Rollback plan no longer match. {{ ask('Draft again') }}</p></div>
+{%- endif %}
+<article class="cr-doc{{ ' cr-doc-stale' if state == 'stale' }}" aria-label="Change record draft" id="cr-{{ v.call_id }}">
+  <div class="cr-dh"><span><span class="cr-chip">DRAFT by AI</span> {{ badge('Advisory (beta)', 'info', title='Not yet measured: its recorded cases have not been run on the pinned model (PHASE8_PLAN 15.12). A person should confirm every word.') }} <strong>Change record: {{ f.host }}, deploy committed intent</strong></span>
+    <span class="faint small">trigger {{ v.trigger }} ({{ v.by }}) · <span title="{{ v.model_words }}">{{ v.model }}</span>, ${{ '%.4f' | format(v.cost_usd) }} · <a href="{{ url_for('v2.history_page', call=v.call_id) }}">this call in History</a></span></div>
+  <div class="cr-sec"><h4>Summary {{ src('ai') }}</h4><div><p>{{ v.summary }}</p></div></div>
+  <div class="cr-sec"><h4>Scope {{ src('mercury') }}</h4><div><p>1 device: <span class="mono" title="in the network {{ f.network }}">{{ f.host }}</span> ({{ f.platform }}).{% if f.interfaces %} Interfaces {{ f.interfaces | join(', ') }}.{% endif %}{% if f.intent_commit %} Intent at <span class="mono">{{ f.intent_commit }}</span>.{% endif %} Lines removed (Mode B): {{ f.removals }}.</p></div></div>
+  <div class="cr-sec"><h4>Risk {{ src('mercury') }} {{ src('ai') }}</h4><div><p>{{ badge(f.risk.level, 'danger' if f.risk.level == 'high' else 'warn' if f.risk.level == 'medium' else 'ok') }} <span class="faint small">{{ f.risk.rule }}{% if f.risk.reasons %} ({{ f.risk.reasons | join('; ') }}){% endif %}</span></p><p>{{ v.risk_words }}</p></div></div>
+  <div class="cr-sec"><h4>Implementation {{ src('mercury') }}</h4><div><p>Program <span class="mono">{{ f.program_hash[:12] }}</span>, {{ f.lines | length }} line(s), sent merge-only holding {{ f.host }}, exactly as the preview above (the lines copied from the program, never from the model).</p>
+    <pre class="op-diff">{{ f.lines | join('\n') }}</pre>
+    {%- for r in f.reasons %}<p class="small">The stated reason for <code>{{ r.line }}</code>: “{{ r.reason }}”.</p>{% endfor %}</div></div>
+  <div class="cr-sec"><h4>Verification {{ src('mercury') }}</h4><div><p>{{ f.verify_scope.scope | upper }}{% if f.verify_scope.families %} ({{ f.verify_scope.families | join(', ') }}){% endif %}: {{ f.verify_scope.why }}.</p>
+    {%- for e in f.derived %}<p class="small">Expected: {{ e }}</p>{% endfor %}
+    {%- if f.checks %}<ul class="cr-checks">{% for k in f.checks %}<li>{{ k.check }}: {{ k.expects }} <span class="faint">({{ k.read }})</span></li>{% endfor %}</ul>{% endif %}</div></div>
+  <div class="cr-sec"><h4>Rollback plan {{ src('mercury') }}</h4><div><p>On a failed Verify, Mercury undoes what landed, per device, and says what it achieved:</p>
+    {%- if f.rollback %}<pre class="op-diff">{{ f.rollback | join('\n') }}</pre>
+    {%- else %}<p class="small">{{ 'Not computed: ' ~ f.rollback_error if f.rollback_error else 'Nothing to undo: the program adds no line a rollback would take back.' }}</p>{% endif %}
+    <p class="faint small">Computed from the program as Mercury's rollback computes it; at apply, only lines that landed are undone.{% if f.golden %} A manual back-out: Restore {{ f.host }}'s golden <span class="mono">{{ f.golden }}</span> from its History tab.{% endif %}</p></div></div>
+  <div class="cr-sec"><h4>Window and approver</h4><div><p class="faint">[your change window] · [your approver]: Mercury does not know these; fill them in the copy.</p></div></div>
+  <div class="cr-sec"><h4>Status</h4><div><p class="small">A draft for program <span class="mono">{{ f.program_hash[:12] }}</span>, not reviewed by anyone. It is not the change: the program above is.</p>
+    <p class="faint small">What left Mercury: <span class="cr-sent" title="{% for s in f.shape.sections %}{{ s.name or s.kind }}: {{ s.settings | join(', ') or 'no keywords' }}{{ '; ' if not loop.last }}{% endfor %}{% if f.shape.protocols %} · protocols touched: {{ f.shape.protocols | join(', ') }}{% endif %}">the program's shape in keywords</span>, {{ f.shape.sections | length }} section(s){% if f.shape.left_out %}, {{ f.shape.left_out }} line(s) carrying a secret left out{% endif %}; no value.</p>
+    <span class="cr-acts"><button type="button" class="btn btn-small" x-data="copy" data-label="Copy as text" data-copy="{{ v.text }}" x-on:click="copy" x-text="label">Copy as text</button><a class="btn btn-small" href="{{ url_for('device_v2.deploy_change_record_md', name=host, call_id=v.call_id) }}" download>Download (.md)</a>{% if state == 'drafted' %}{{ ask('Draft again') }}{% endif %}</span></div></div>
+  {%- if v.call_id %}{% with fb=ai_feedback(v.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
+</article>
+<input type="hidden" name="cr" value="{{ v.call_id }}" form="deploy-form">
+{%- else %}
+{{ ask('Draft a change record') }}<span class="faint small cr-what">One recorded AI call as you, from this preview's shape and checks: no configuration value leaves Mercury. It sends nothing to {{ host }}, and Deploy below is unchanged by it.</span>
+{{- ai.reason(aic) }}
+{%- if cr and not cr.ok %}
+<div class="notice notice-warn cr-refused" role="status" data-cr-state="{{ cr.state }}">{{ icon('warn', 16) }}<p>
+  {%- if cr.state == 'unreadable' %}The draft this preview carried cannot be drawn: {{ cr.detail }}.
+  {%- elif cr.detail.startswith("Couldn't draft") %}{{ cr.detail }}
+  {%- else %}Couldn't draft: {{ cr.detail }}.{% if cr.call_id %} The call is in History.{% endif %}{% endif %}</p></div>
+{%- endif %}
+{%- endif %}

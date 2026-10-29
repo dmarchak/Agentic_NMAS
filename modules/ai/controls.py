@@ -76,6 +76,16 @@ CONTROLS = {
         "screen": "a device's Intent tab, Change it in words (board F7)",
         "beside": "the intent editor: Edit",
     },
+    "change_record": {
+        "task": "change_record",
+        "words": "Draft a change record",
+        "endpoints": ("device_v2.deploy_change_record",),
+        # Drawn in the deploy preview's Change record part (board CR), and again as the
+        # draft's own Draft again (and the stale notice's).
+        "template": "v2/_change_record.html",
+        "screen": "a device's Deploy preview, Change record (board CR)",
+        "beside": "the deploy preview and its Deploy, unchanged by it",
+    },
     "sdn_classify": {
         "task": "sdn_classify",
         "words": "Classify (an SDN detection)",

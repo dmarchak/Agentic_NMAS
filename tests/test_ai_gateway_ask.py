@@ -545,8 +545,8 @@ def test_a_file_that_is_not_a_pin_is_passed_over_and_the_rest_still_load(tmp_pat
 def test_every_pin_file_is_exactly_its_keys_and_every_task_has_one(tmp_path):
     """The operator, 2026-10-25: a task's request settings are its pin file's, so tuning is an
     edit to the file. A file with a key missing or added is refused at load, naming it."""
-    assert sorted(profiles.TASKS) == ["connection_check", "explain", "intent_patch",
-                                      "nl_query", "sdn_classify"]
+    assert sorted(profiles.TASKS) == ["change_record", "connection_check", "explain",
+                                      "intent_patch", "nl_query", "sdn_classify"]
     for name, pin in profiles.TASKS.items():
         assert sorted(pin) == sorted(profiles.PIN_KEYS), name
         assert pin["temperature"] is None or pin["temperature"] in \

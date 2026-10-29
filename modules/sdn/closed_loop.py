@@ -1275,14 +1275,29 @@ def rate_limit_gap(source: str, params: dict, same_host: dict = None) -> str:
              "flow here forwards with NORMAL.")
     if params.get("not_metered"):
         words += f" Not metered now: {'; '.join(params['not_metered'])}."
-    return words + family_gap(source, "metered", same_host)
+    return words + family_gap(source, FAMILY_GAP_VERB["rate_limit_source"], same_host)
+
+
+#: What a response matching one source address does to that address's traffic, as its
+#: preview's family sentence says it (`family_gap`): a drop's and a rate limit's, and so a
+#: re-apply of either (C2205).
+FAMILY_GAP_VERB = {"drop_source": "dropped", "rate_limit_source": "metered"}
 
 
 def drop_gap(source: str, same_host: dict = None) -> str:
     """What a drop leaves passing, in words, for its preview's will-not list (C2148): its flow
     matches the one address, so the same host's other family (and its other addresses) is not
     dropped; the addresses the controller's topology lists for the host named (`_same_host`)."""
-    return family_gap(source, "dropped", same_host).strip()
+    return response_family_gap("drop_source", source, same_host)
+
+
+def response_family_gap(action: str, source: str, same_host: dict = None) -> str:
+    """The family sentence for a response of *action* on *source* (`family_gap`, its verb from
+    `FAMILY_GAP_VERB`), stripped: what a drop's preview says (C2148), and what a re-apply of a
+    drop or a rate limit says again (`reapply.preview`, C2205). "" for an action that matches
+    no source address, or a *source* that is not an address."""
+    verb = FAMILY_GAP_VERB.get(action or "")
+    return family_gap(source, verb, same_host).strip() if verb else ""
 
 
 def family_gap(source: str, verb: str, same_host: dict = None) -> str:

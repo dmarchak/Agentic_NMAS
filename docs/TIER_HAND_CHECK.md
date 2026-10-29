@@ -3151,3 +3151,31 @@ the canary killed. Not covered here: a record that takes a late row twice (a wri
 reported refused that had in fact landed) counts the call twice, high, never low; while
 unrecorded, a call counts against every day's cap, not only its own.**
 
+
+## 2026-10-29: a change record's shape off the host (PHASE8_PLAN 16.11 item 3), by hand
+**What touches the tier:** data off the host. A new feature, `change_record` (a person's press
+in the deploy preview, `modules/ai/change_record.py`), sends one data block, `change`: the
+program's shape in keywords (`shape`, `keywords`), never the program; a line that would be
+masked on its way out left out whole and counted; the device, its platform, Verify's scope, the
+preview's derived effects and verify checks in its own words, counts and Mercury's risk level
+(`sent`, its keys `SENT_KEYS`). The stated reasons a person typed are never sent. The call is
+refused where the network's topology class is off (`egress_classes.topology_allowed`). No masking
+code changed: the gateway's egress mask covers the request as for every call.
+**The method:** each mutant its exact text in its own `scripts/nmas-control` throwaway worktree
+(`scratchpad/item4/mutant.py` with `mutants.json`: the text must be there once), then
+tests/test_ai_change_record.py and, where named, tests/test_ai_change_record_cases.py, each
+failing test named.
+
+| Mutant | Verdict | Tests failing |
+|---|---|---|
+| a line carrying a secret kept in the shape (the left-out rule removed) | killed | 1, `test_a_planted_secret_s_line_is_left_out_whole_and_never_in_the_bytes` (its count of 3 left out) |
+| a line's keywords not bounded (every word, values included) | killed | 7, `TestKeywords` |
+| the program's lines added to what is sent | killed | 7, `test_the_request_is_the_prompt_and_the_change_s_shape_only` and six cases' `never_sent` |
+| the stated reasons added to what is sent | killed | 3, the reason's own test among them |
+| the topology class gate removed | killed | 1, `test_a_network_whose_topology_class_is_off_sends_nothing` |
+| canary: the shape's builder raising | killed | 16 and 22 errors |
+
+**The result: every mutant killed; the canary killed. The left-out rule is held by its count,
+not by the bytes: with it removed, the planted values still did not reach the bytes, because a
+line's keywords stop at the first token that can hold a value; the two rules each hold the
+secret's value out alone.**

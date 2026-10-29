@@ -896,6 +896,64 @@ def _deploy(client, lab, mp):
     return {"GET /v2/device/<name>/deploy": seen}
 
 
+def _change_record(client, _lab, _mp):
+    """A change record drafted in the deploy card `_deploy` leaves on r3 (PHASE8_PLAN 16.11 item
+    3, board CR): Draft a change record pressed with the dangerous line's reason typed, hosted AI
+    allowed and the provider's planted answer; then the card planned again carrying the draft's
+    call (drawn again from it), and once with another reason (stale)."""
+    import json
+    import re
+    import shutil
+    import tempfile
+    from html import unescape
+
+    import pytest
+
+    from modules import settings_schema
+    from modules.ai import anthropic_adapter, calls, gateway
+
+    answer = {"summary": "Enables LLDP on r3 and shuts GigabitEthernet3.",
+              "risk": "Shutting GigabitEthernet3 takes its link down; verify reads it down.",
+              "mentions": ["r3", "GigabitEthernet3"]}
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-record-")
+    try:
+        allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
+                                 "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
+        real_get = settings_schema.get_setting
+        mp.setattr(settings_schema, "get_setting",
+                   lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
+        mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
+        mp.setattr("modules.ai.controls._key_set", lambda: True)
+        mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+            status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
+                              "stop_reason": "end_turn",
+                              "usage": {"input_tokens": 1500, "output_tokens": 120}},
+            attempts=1, latency_s=0.4))
+        reason = "the link is being retired"
+        card = client.get(f"/v2/device/r3/deploy?back=overview&dz::0={reason}").get_data(
+            as_text=True)
+        vals = re.search(r"data-op=\"change-record\"[^>]*?hx-vals='([^']*)'", card)
+        assert vals, "the deploy card offers Draft a change record"
+        r = client.post("/v2/device/r3/deploy/change-record",
+                        data={"back": "overview", "plan": "card", "dz::0": reason,
+                              "program_hash": json.loads(unescape(vals.group(1)))[
+                                  "program_hash"]},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "DRAFT by AI" in html, html[:600]
+        call = re.search(r'name="cr" value="([^"]+)"', html).group(1)
+        for why in (reason, "another reason"):
+            r = client.get(f"/v2/device/r3/deploy?back=overview&dz::0={why}&cr={call}")
+            assert r.status_code == 200, r.status_code
+        r = client.get(f"/v2/device/r3/deploy/change-record/{call}.md")
+        assert r.status_code == 200, r.status_code
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def _rekey(client, _lab, mp):
     """The re-key card (C906) for r3, whose address answers with a key other than the one
     Mercury holds, and its confirm's result. The device's key read is replaced (its own test
@@ -2287,6 +2345,8 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _ai_spend, _oob_onboard, _sdn,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,
+                   # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
+                   _change_record,
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a
                    # syslog heartbeat, so a draft on it is refused before the patch.

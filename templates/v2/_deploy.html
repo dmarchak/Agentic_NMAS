@@ -25,7 +25,7 @@
          {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='deploy', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML" hx-include="find .op-form"{% endif %}>
   <div class="op-hd"><h2 id="op-title">Deploy committed intent to {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Cancel') }}</div></div>
-  <form class="op-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"
+  <form class="op-form" id="deploy-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"
         hx-target="#device-op" hx-swap="outerHTML" hx-sync="closest .op-card:drop">
   <input type="hidden" name="back" value="{{ c.back }}">
   <input type="hidden" name="plan" value="card">
@@ -157,9 +157,18 @@
       {%- endfor %}
     </ul></div></div>
   </form>
+  {%- if c.sent %}
+  {#- PHASE8_PLAN 16.11 item 3 (board CR): a change record and rollback plan, drafted on a press
+      and drawn between Checks and the confirm, outside the card's form (the draft carries its
+      own Was this right? forms) but its call carried by it (`form="deploy-form"`) on each
+      re-plan. It is a document: Deploy below binds the same program with or without one. -#}
+  <div class="op-part" id="change-record-part"><h3>Change record</h3><div class="cr-body" id="change-record">
+    {%- with host=c.host, list_name=c.list, cr=c.change_record, program_hash=c.command_hash %}{% include "v2/_change_record.html" %}{% endwith %}
+  </div></div>
+  {%- endif %}
   <div class="op-ft">
     {%- if c.may %}
-    <p class="op-note" data-concept="confirm-by-hash">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
+    <p class="op-note" data-concept="confirm-by-hash">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent. The change record is not part of what you confirm.</p>
     <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="deploy"
             hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
             hx-disabled-elt="this" hx-include="closest .op-card" hx-sync="closest .op-card:replace" data-needs="{{ c.needs | join(' ') }}"

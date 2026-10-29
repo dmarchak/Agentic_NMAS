@@ -72,6 +72,9 @@ KEYING = {
     "modules/nsot/console_ztp.py":          "dialect",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
+    # The change-record cases' CAPTURE_BANNERS: a capture's banner to its parser's platform,
+    # read from the capture, never from the device's name (2026-10-29).
+    "modules/ai/cases.py":                  "dialect",
 }
 
 

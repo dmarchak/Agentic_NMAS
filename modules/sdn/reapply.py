@@ -86,6 +86,17 @@ def response_words(response: dict) -> str:
     return f"{label}" + (f" ({source})" if source else "")
 
 
+def matched_source(flows: list) -> str:
+    """The one source address a response's recorded *flows* match (``ipv4_src`` or
+    ``ipv6_src``: a drop's flow, or a rate limit's pairs), or "" when they match none or more
+    than one. What the flows match, not what the detection named: a source chosen among a
+    port's hosts (C2002) is the flow's."""
+    found = {str(m.get("ipv4_src") or m.get("ipv6_src")) for m in
+             ((r.get("match") or {}) for r in flows or [])
+             if m.get("ipv4_src") or m.get("ipv6_src")}
+    return found.pop() if len(found) == 1 else ""
+
+
 def lost_on_switch(controller: dict, switch: dict, now: float) -> list:
     """The responses lost on one switch of the stored read: each ``{"key", "response",
     "cookies", "flows", "meter", "expires_at", "left", ...}``, those whose flows and meter are
@@ -223,7 +234,7 @@ def build(network: str, connection: str, dpid, key: str, *, driver=None,
     when nothing of it is missing, when a newer response in force already answers its threat
     on the switch as read now (`answered_by`, C2070), or when its hard timeout passes inside
     `CONFIRM_WINDOW_S`."""
-    from modules.sdn import flow_ops
+    from modules.sdn import closed_loop, flow_ops
     from modules.sdn.drivers.base import SpecError, parse_dpid
     from modules.sdn.flow_intent import cookie_hex
 
@@ -261,6 +272,13 @@ def build(network: str, connection: str, dpid, key: str, *, driver=None,
                                     now)
         if newer:
             raise Refused(f"{newer}; nothing to re-apply")
+        # C2205: a drop or rate limit matches one source address, so putting it back leaves
+        # the same host's other family unmatched, as its own preview said (C2148); the host's
+        # other addresses read from the controller's topology now, as that preview reads them.
+        source = matched_source(flows) or (response.get("detection") or {}).get("source") or ""
+        if source and response.get("action") in closed_loop.FAMILY_GAP_VERB:
+            out["source"] = source
+            out["same_host"] = closed_loop._same_host(made["driver"], source)
         changes = []
         for m in gone_meters:
             exp = m.get("expires_at")
@@ -315,8 +333,11 @@ def build(network: str, connection: str, dpid, key: str, *, driver=None,
 def preview(network: str, connection: str, dpid, key: str, *, driver=None,
             now: float = None) -> dict:
     """The PREVIEW of re-applying response *key*, writing nothing: `build`'s answer with
-    ``plan``, `flow_ops.plan`'s exact requests and their hash."""
-    from modules.sdn import flow_ops
+    ``plan``, `flow_ops.plan`'s exact requests and their hash. A drop's or rate limit's
+    What will not happen says the source's other family is not matched, naming the host's
+    other addresses the controller's topology lists (`closed_loop.response_family_gap`, the
+    sentence the response's own preview said; C2205)."""
+    from modules.sdn import closed_loop, flow_ops
 
     built = build(network, connection, dpid, key, driver=driver, now=now)
     if not built["ok"]:
@@ -330,6 +351,10 @@ def preview(network: str, connection: str, dpid, key: str, *, driver=None,
             f"confirm more than {CONFIRM_WINDOW_S} s after this preview is refused.")
         p["will_not"].append("Its records are not changed: the response keeps the expiry it "
                              "was applied with.")
+        gap = closed_loop.response_family_gap((built.get("response") or {}).get("action"),
+                                              built.get("source") or "", built.get("same_host"))
+        if gap:
+            p["will_not"].append(gap)
     return dict(built, plan=p, ok=p["ok"], error=p["error"])
 
 

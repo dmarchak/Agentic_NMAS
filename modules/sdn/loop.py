@@ -738,6 +738,12 @@ def _incidents(network: str, seen: dict, fresh: list, rows_waiting: list, now: f
         joined = next((r for r in (incidents.joinable(rows_waiting, m, now)
                                    for m in inc["members"]) if r is not None), None)
         inc["joined"] = joined
+        if joined is not None and inc["key"].startswith(incidents.SINGLE + "|"):
+            # A link port's detection joining by the host its flows carry (C2106): seen also,
+            # saying why, under the incident's own source.
+            inc["source"] = incidents.key_of(joined).partition("|")[2]
+            inc["members"] = [incidents.via_link(m, incidents.key_of(joined))
+                              for m in inc["members"]]
         if joined is None:
             chosen = incidents.ingress(network, inc, stored() if inc["source"] else {})
             inc.update(chosen=chosen, record=incidents.record(inc, chosen))

@@ -15,6 +15,19 @@ address and whose port the controller's topology cannot resolve to one host, `de
 port_source`, C2002) has nothing to tie it to another switch's, so it is its own incident too,
 keyed by its detection key. One whose source the topology names groups by that source.
 
+**A link port's detection** (C2106). A flood over MAC-only flows names its source only on the
+switch where the source's host is attached (`detect.port_source` reads the host on the port);
+every switch behind it sees the same flood arrive on an inter-switch link port, which names no
+source (``source_from`` state ``link``). Its flows still say whose traffic arrives there: their
+source MAC addresses, each with the addresses the controller's topology lists for that MAC's
+host (`detect.link_sources`, kept on the detection and never sent to the classifier). Such a
+detection joins the one incident of the same rule, in the same pass (`group`) or awaiting a
+person within the window (`joinable`), whose source is one of those hosts (`link_keys`), and
+is drawn among its seen also saying so (`via_link`). With no such incident it stays its own;
+with several (more than one attack behind one link) it stays its own too, since the link
+cannot tell them apart. It is never where a response is proposed while a member naming the
+source is in the incident.
+
 **The window** (`window`), derived, never a setting of its own: the rule's own window, the one
 it fires within (scan: `sdn_scan_window_seconds`, 60 by default; flood:
 `sdn_flood_window_seconds`, 30). Two switches whose rule fired for the same source within that
@@ -100,9 +113,54 @@ def group_key(d: dict) -> str:
     return f"{SINGLE}|{d.get('key')}"
 
 
+def link_keys(d: dict) -> set:
+    """The incidents a detection on an inter-switch link port could belong to (C2106): for a
+    grouped rule's detection naming no source whose port the topology says is a link
+    (``source_from`` state ``link``), ``<rule>|<x>`` for each MAC address its entering flows
+    carry and each address the topology lists for that MAC's host (`detect.link_sources`);
+    empty otherwise."""
+    if d.get("rule") not in GROUPED_RULES or _canon(d.get("source")) \
+            or (d.get("source_from") or {}).get("state") != "link":
+        return set()
+    out = set()
+    for s in d.get("link_sources") or []:
+        for x in [s.get("mac")] + list(s.get("addresses") or []):
+            if _canon(x):
+                out.add(f"{d['rule']}|{_canon(x)}")
+    return out
+
+
+def via_link(d: dict, inc_key: str) -> dict:
+    """Link-port detection *d* as a member of incident *inc_key* (C2106): its words saying why
+    it is the same attack, as its incident's seen also draws them."""
+    source = inc_key.partition("|")[2]
+    macs = [s["mac"] for s in d.get("link_sources") or []]
+    mine = next((s["mac"] for s in d.get("link_sources") or []
+                 if source in {_canon(x) for x in [s["mac"]] + list(s.get("addresses") or [])}),
+                source)
+    others = [m for m in macs if m != mine]
+    return dict(d, words=(
+        f"{d.get('words')}; port {d.get('port')} is an inter-switch link, and its flows carry "
+        f"{mine}, {source}'s host" + (f" (and {', '.join(others)}, with no incident of this "
+                                      "rule)" if others else "")
+        + ": the same attack, seen on its way"))
+
+
+def link_incident(d: dict, candidates: list, key_of_c):
+    """The one of *candidates* (each keyed by *key_of_c*) link-port detection *d* joins: the
+    one whose key is among `link_keys`; None when none is, or more than one (several attacks
+    behind one link cannot be told apart by it, so it stays its own)."""
+    keys = link_keys(d)
+    hits = [c for c in candidates if key_of_c(c) in keys] if keys else []
+    return hits[0] if len(hits) == 1 else None
+
+
 def group(detections: list, values: dict) -> list:
     """*detections* (one pass's, in the rules' order) as incidents, in the order of each one's
-    first detection: ``[{"key", "rule", "source", "window", "members": [detection]}]``."""
+    first detection: ``[{"key", "rule", "source", "window", "members": [detection]}]``. A
+    detection on an inter-switch link port that names no source joins the one incident of the
+    pass whose source's host its flows carry (`link_keys`, C2106), as `via_link` says; with
+    none or several it stays its own."""
     out = {}
     for d in detections:
         k = group_key(d)
@@ -113,6 +171,15 @@ def group(detections: list, values: dict) -> list:
                             "window": window(d.get("rule"), values), "members": []}
         if all(m.get("key") != d.get("key") for m in inc["members"]):
             inc["members"].append(d)
+    grouped = [inc for k, inc in out.items() if not k.startswith(SINGLE + "|")]
+    for k, inc in list(out.items()):
+        if not k.startswith(SINGLE + "|"):
+            continue
+        (d,) = inc["members"]
+        joins = link_incident(d, grouped, lambda c: c["key"])
+        if joins is not None:
+            joins["members"].append(via_link(d, joins["key"]))
+            del out[k]
     return list(out.values())
 
 
@@ -166,7 +233,9 @@ def ingress(network: str, inc: dict, stored: dict = None) -> dict:
     from modules.sdn.drivers.base import SpecError, parse_dpid
 
     members = inc["members"]
-    first = first_seen(members)
+    # A link port's member names no source (C2106): never where a response is proposed while
+    # a member naming the incident's source is there.
+    first = first_seen([m for m in members if _canon(m.get("source"))] or members)
     source = inc.get("source") or ""
 
     def unknown(why: str) -> dict:
@@ -245,18 +314,21 @@ def key_of(row: dict) -> str:
 def joinable(rows: list, d: dict, now: float) -> dict:
     """The incident awaiting a person (among `loop.awaiting`'s *rows*) detection *d* joins, or
     None: the same grouped rule and source, *d*'s time (else *now*) at most the incident's
-    window after its last sighting."""
+    window after its last sighting. A link port's detection naming no source joins the one
+    such incident whose source's host its flows carry (`link_incident`, C2106)."""
     k = group_key(d)
-    if k.startswith(SINGLE + "|"):
-        return None
     at = _epoch(d.get("at"))
     at = now if at is None else at
-    for r in rows:
-        if key_of(r) != k:
-            continue
+
+    def within(r):
         inc = r.get("incident") or {}
         last = _epoch(r.get("last_seen") or r.get("at"))
-        if last is not None and at - last <= int(inc.get("window_s") or 0):
+        return last is not None and at - last <= int(inc.get("window_s") or 0)
+
+    if k.startswith(SINGLE + "|"):
+        return link_incident(d, [r for r in rows if within(r)], key_of)
+    for r in rows:
+        if key_of(r) == k and within(r):
             return r
     return None
 

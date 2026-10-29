@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "description": "The model's part of a change record: the Summary, the Risk's reading, and every\ninterface and device its words name (which Mercury checks against the change).",
+  "properties": {
+    "mentions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Mentions",
+      "type": "array"
+    },
+    "risk": {
+      "title": "Risk",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "summary",
+    "risk",
+    "mentions"
+  ],
+  "title": "ChangeRecordWords",
+  "type": "object"
+}

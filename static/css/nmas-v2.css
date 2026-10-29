@@ -2664,3 +2664,36 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 @media (max-width: 900px) {
   .ai-fb-row > summary, .ai-fb-kv { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* A change record drafted in the deploy preview (PHASE8_PLAN 16.11 item 3, board CR): the
+   control one wrapping row; the draft a document in the AI colour, its sections label and
+   text, each label naming its source (Mercury or AI); stale, muted under its notice; at phone
+   width the sections stack and the buttons wrap. */
+.cr-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cr-ask { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cr-what { display: block; }
+.cr-doc { border: 1px solid var(--ai); border-radius: var(--r); background: var(--surface);
+  display: flex; flex-direction: column; min-width: 0; }
+.cr-doc-stale { opacity: .7; }
+.cr-dh { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line-2); background: var(--ai-soft);
+  border-radius: var(--r) var(--r) 0 0; }
+.cr-chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; white-space: nowrap;
+  background: var(--surface); color: var(--ai); border: 1px solid var(--ai); }
+.cr-sec { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 10px 14px;
+  border-top: 1px solid var(--line-2); font-size: 13px; min-width: 0; }
+.cr-dh + .cr-sec { border-top: 0; }
+.cr-sec h4 { margin: 0; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2);
+  font-weight: 600; }
+.cr-sec p { margin: 0 0 4px; }
+.cr-sec pre { max-width: 100%; overflow-x: auto; }
+.cr-src { font-size: 11px; padding: 0 6px; border-radius: 4px; white-space: nowrap; text-transform: none;
+  letter-spacing: 0; font-weight: 500; }
+.cr-src-mercury { background: var(--muted-soft); color: var(--ink-2); }
+.cr-src-ai { background: var(--ai-soft); color: var(--ai); }
+.cr-checks { margin: 4px 0 0; padding-left: 18px; }
+.cr-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cr-doc .ai-fb { margin: 0 14px 10px; }
+@media (max-width: 900px) {
+  .cr-sec { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+}

@@ -797,7 +797,11 @@ class TestInARealBrowser:
         seen, authorised = _spy_pipeline(monkeypatch)
         why = "left over from the old design"
         try:
-            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            # Tall enough for the Why field and Deploy on one screen: typing scrolls the focused
+            # field back into view, and since the change record's block sits between them
+            # (board CR, 2026-10-29) they no longer fit 1280x1000's 914 px viewport (measured:
+            # the button 974 px down with the page scrolled to the field). C2212.
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1600})
             # C2142 (the operator, 2026-10-29): the 100 ms bar is this scenario's precondition,
             # not the product's result. A press that lands past it did not test the race, so
             # the scenario runs again on a fresh page, at most PRECONDITION_TRIES times; every
@@ -1028,5 +1032,12 @@ def _type_and_press(b, text, css):
             {"type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
              "actions": pointer}]})
     except HTTPError as exc:          # the driver's own words, not only its status
-        raise AssertionError(f"the actions call was refused: {exc.read()[:600]!r}") from exc
+        # Where the button sat when the pointer was refused, and how far the page can scroll.
+        where = b.js(f"var e = document.querySelector({css!r}), r = e.getBoundingClientRect(),"
+                     " s = document.scrollingElement; return {top: r.top, bottom: r.bottom, "
+                     "viewport: innerHeight, scrolled: s.scrollTop, height: s.scrollHeight, "
+                     "overflow: getComputedStyle(document.body).overflow, change_records: "
+                     "document.querySelectorAll('#change-record-part').length}")
+        raise AssertionError(f"the actions call was refused: {exc.read()[:300]!r}; the button "
+                             f"{where}") from exc
     b._call("DELETE", f"/session/{b.session}/actions")

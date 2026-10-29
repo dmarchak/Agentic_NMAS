@@ -412,6 +412,40 @@ def test_ai_feedback(ai_feedback_world):
                widths=((1440, 1.0), (390, 2.0)), act=open_first)
 
 
+def test_change_record(tmp_path, monkeypatch):
+    """Board CR (ChangeRecordDraft, 1440) beside a device's deploy preview with its change record
+    drafted (PHASE8_PLAN 16.11 item 3), on tests/test_ai_change_record.py's world (r2's real
+    capture: `lldp run` and a dangerous `shutdown` on GigabitEthernet3 to send; the provider's
+    planted answer): the card opened as Plan a deploy… opens it with the reason typed, Draft a
+    change record pressed in the page; then the residue line ticked for removal, so the card is
+    planned again with another program and the draft is stale."""
+    from tests import browser
+    from tests.test_ai_change_record import REASON, deploy_world
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    deploy_world(monkeypatch, tmp_path)
+    _device_boards([("change-record", "ChangeRecordDraft.dc.html", 1440, 1.0),
+                    ("change-record", "ChangeRecordDraft.dc.html", 390, 2.0)])
+    card = f"/v2/device/r2/deploy?back=overview&dz::0={REASON}"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as d:
+                d.open("/v2/device/r2?list=Lab")
+                d.swap(card, f"{_DEVICE_CARD} && "
+                             "!!document.querySelector('button[data-op=\"change-record\"]')")
+                _full(d.b, os.path.join(OUT, f"change-record-offered-page-{width}.png"))
+                d.b.js("document.querySelector('button[data-op=\"change-record\"]').click(); "
+                       "return 1")
+                d.until("!!document.querySelector('#change-record .cr-doc')")
+                _full(d.b, os.path.join(OUT, f"change-record-page-{width}.png"))
+                d.b.js("var r = document.querySelector('#deploy-form input[name=\"rm\"]'); "
+                       "r.click(); return 1")
+                d.until("!!document.querySelector('#change-record .cr-stale')")
+                _full(d.b, os.path.join(OUT, f"change-record-stale-page-{width}.png"))
+
+
 def test_ai_spend(settings_ai, monkeypatch):
     """Boards AI1 (AiChip, 1440) and AI2 (AiSpendPanel, 1440) beside the top bar's AI chip and
     the spend panel it opens, on Settings › AI's page, in tests/test_settings_ai_v2.py's world

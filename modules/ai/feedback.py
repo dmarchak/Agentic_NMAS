@@ -56,7 +56,8 @@ PAGE = 50
 #: task is its row's `feature` (`gateway`), so these are the tasks' names.
 FEATURES = {"explain": "Explain", "nl_query": "Ask in words",
             "intent_patch": "An intent change in words",
-            "sdn_classify": "Classify (an SDN detection)"}
+            "sdn_classify": "Classify (an SDN detection)",
+            "change_record": "A change record draft"}
 #: The review's status filter, in the board's order.
 STATUSES = {TO_REVIEW: "To review", ACCEPTED: "Accepted", DISMISSED: "Dismissed",
             "right": "Said right"}

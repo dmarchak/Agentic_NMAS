@@ -1,0 +1,132 @@
+{
+  "task": "change_record",
+  "model": "claude-haiku-5-5",
+  "prompt": "change_record.v1",
+  "network": "default",
+  "about": "A change record drafted from the deploy preview (PHASE8_PLAN 16.11 item 3, Decision 5; board CR). Each case is a deploy preview of a real captured configuration (tests/fixtures/configs/fleet/<device>.cfg, the lab's goldens as captured, sanitized) with a minimal edit as committed intent would render it (`edits`); the program, its derived effects against the fleet's intent parsed from the same captures, what verify checks, the stated reasons (`reasons`), the rollback the pipeline would run and Mercury's risk level are computed by the product's own code (`cases.change_record_facts`), and `facts` is what the case expects of that code (`cases.change_record_unready`): a case whose premise the code does not meet fails there, never the model. `expect` is what the drafted words must and must never say (`cases.change_record_misses`, after Mercury's own check, `change_record.check`); `flag` is what only a person can judge in the prose. Written 2026-10-29 from the facts printed by code, before any model run; no answer is recorded yet (the screen, scripts in the scratchpad, runs them on the host through the batch path).",
+  "cases": [
+    {
+      "n": 1,
+      "name": "shut the P2P link to r4",
+      "device": "r3",
+      "edits": [{"under": "interface GigabitEthernet4", "add": [" shutdown"]}],
+      "reasons": {"shutdown": "the link to r4 is being moved to a new circuit tonight"},
+      "premise": "Written expecting risk high (an OSPFv3 adjacency to r4 expected to drop); the code derives no adjacency drop on Gi4 from the fleet's parsed intent (expected_effects.for_device: only 'GigabitEthernet4 goes down'), so Mercury's rule gives medium (1 line needing a stated reason, 1 interface shut). Corrected to the code's answer before any model run.",
+      "facts": {"risk": "medium", "verify": "full", "interfaces": ["GigabitEthernet4"],
+                "program_has": ["shutdown"], "rollback_has": ["no shutdown"],
+                "never_sent": ["moved to a new circuit"]},
+      "expect": {"says": [["GigabitEthernet4", "Gi4"], ["shut", "down", "disabl"]],
+                 "summary_says": [["GigabitEthernet4", "Gi4"]],
+                 "never": ["new circuit", "approved", "10.255.", "GigabitEthernet3"]},
+      "flag": "The risk reads the expected OSPFv3 drop to r4 as the consequence, not a failure, and names what verify checks for it; nothing claims why the link is shut (the stated reason is never sent)."
+    },
+    {
+      "n": 2,
+      "name": "an OSPF cost on the core VLAN interface",
+      "device": "r3",
+      "edits": [{"under": "interface GigabitEthernet3", "add": [" ip ospf cost 10"]}],
+      "facts": {"risk": "medium", "verify": "full", "interfaces": ["GigabitEthernet3"],
+                "program_has": ["ip ospf cost 10"], "rollback_has": ["no ip ospf cost 10"]},
+      "expect": {"says": [["GigabitEthernet3", "Gi3"], ["OSPF"]],
+                 "never": ["cost 10", " 10 ", "approved", "GigabitEthernet4"]},
+      "flag": "Says the OSPF setting changes on Gi3 without inventing the value; the risk names routing (path selection) and that verify watches neighbours and routes."
+    },
+    {
+      "n": 3,
+      "name": "a second NTP server (management only)",
+      "device": "r3",
+      "edits": [{"top": ["ntp server 192.0.2.10"]}],
+      "premise": "Written expecting the rollback to hold 'no ntp server 192.0.2.10'; the pipeline's rollback (deploy.rollback_commands) re-sends the existing 'ntp server' line instead, keyed on the command's words without its last token, so the added server would stay after a rollback. Not asserted here: a defect in the rollback, registered, not pinned by a case (the draft draws the rollback exactly as the pipeline would run it).",
+      "facts": {"risk": "low", "verify": "quick", "interfaces": [],
+                "program_has": ["ntp server 192.0.2.10"],
+                "never_sent": ["192.0.2.10"]},
+      "expect": {"says": [["NTP", "time"]],
+                 "never": ["192.0.2", "GigabitEthernet", "approved", "OSPF"]},
+      "flag": "A management-only change: the risk says only a new login and a read-back are checked, and names no forwarding effect."
+    },
+    {
+      "n": 4,
+      "name": "the logging level raised from critical to warnings",
+      "device": "r3",
+      "edits": [{"replace": "logging trap critical", "with": "logging trap warnings"}],
+      "facts": {"risk": "low", "verify": "quick", "interfaces": [],
+                "program_has": ["logging trap warnings"],
+                "rollback_has": ["logging trap critical"]},
+      "expect": {"says": [["logging", "log"]],
+                 "never": ["GigabitEthernet", "approved", "OSPF", "BGP"]},
+      "flag": "Says the logging (trap) setting changes; does not claim the exact level, which was not sent."
+    },
+    {
+      "n": 5,
+      "name": "a description on an unused switch port (free text never sent)",
+      "device": "s1",
+      "edits": [{"under": "interface GigabitEthernet0/1", "add": [" description spare port desk 4"]}],
+      "facts": {"risk": "low", "verify": "full", "interfaces": ["GigabitEthernet0/1"],
+                "program_has": ["description spare port desk 4"],
+                "never_sent": ["spare port", "desk 4"]},
+      "expect": {"says": [["GigabitEthernet0/1", "Gi0/1"], ["description"]],
+                 "never": ["desk", "spare", "approved", "GigabitEthernet0/2"]},
+      "flag": "Says a description is set on Gi0/1 without inventing its text; the risk is a documentation-only change that verify still reads in full."
+    },
+    {
+      "n": 6,
+      "name": "an SNMP location with a community beside it (the secret's line left out)",
+      "device": "r3",
+      "edits": [{"replace": "snmp-server location containerlab-rcn-lab1", "with": "snmp-server location rack-7"},
+                {"top": ["snmp-server community plantedcommunity42 RO"]}],
+      "facts": {"risk": "low", "verify": "quick", "interfaces": [], "left_out": 1,
+                "program_has": ["snmp-server location rack-7"],
+                "never_sent": ["plantedcommunity42", "rack-7"]},
+      "expect": {"says": [["SNMP"]],
+                 "never": ["plantedcommunity42", "rack-7", "public", "approved"]},
+      "flag": "Says SNMP settings change and, if it mentions the left-out line, only that a line carrying a secret is part of it; never guesses its value."
+    },
+    {
+      "n": 7,
+      "name": "OSPFv3 enabled on the eBGP link to r5",
+      "device": "r3",
+      "edits": [{"under": "interface GigabitEthernet2", "add": [" ipv6 ospf 1 area 0"]}],
+      "facts": {"risk": "medium", "verify": "full", "interfaces": ["GigabitEthernet2"],
+                "program_has": ["ipv6 ospf 1 area 0"],
+                "rollback_has": ["no ipv6 ospf 1 area 0"]},
+      "expect": {"says": [["GigabitEthernet2", "Gi2"], ["OSPFv3", "OSPF", "IPv6"]],
+                 "never": ["area 0", "approved", "GigabitEthernet3", "GigabitEthernet4"]},
+      "flag": "Says OSPFv3 (IPv6 OSPF) settings are added to Gi2; the risk notes an adjacency could form there and that verify reads neighbours and routes; does not name r5 (a device this deploy does not change)."
+    },
+    {
+      "n": 8,
+      "name": "a static route to discard a documentation prefix",
+      "device": "r1",
+      "edits": [{"top": ["ip route 192.0.2.0 255.255.255.0 Null0"]}],
+      "facts": {"risk": "medium", "verify": "full", "interfaces": [],
+                "program_has": ["ip route 192.0.2.0 255.255.255.0 Null0"],
+                "rollback_has": ["no ip route 192.0.2.0 255.255.255.0 Null0"],
+                "never_sent": ["192.0.2.0", "Null0"]},
+      "expect": {"says": [["static route", "route"]],
+                 "never": ["192.0.2", "Null0", "approved", "GigabitEthernet"]},
+      "flag": "Says a static route is added without naming its prefix or next hop; the risk names the route table, which verify compares with the moment before."
+    },
+    {
+      "n": 9,
+      "name": "a shorter idle timeout on the first terminal line (management only)",
+      "device": "r3",
+      "edits": [{"under": "line vty 0", "add": [" exec-timeout 10 0"]}],
+      "facts": {"risk": "low", "verify": "quick", "interfaces": [],
+                "program_has": ["exec-timeout 10 0"]},
+      "expect": {"says": [["terminal", "vty", "line", "session", "timeout"]],
+                 "never": ["10 minutes", "approved", "GigabitEthernet", "OSPF"]},
+      "flag": "A management-only change to the terminal lines; the risk says a new login is the check and names nothing about forwarding."
+    },
+    {
+      "n": 10,
+      "name": "a new VLAN on the access switch",
+      "device": "s1",
+      "edits": [{"under": "vlan 40", "add": [" name GUESTS"]}],
+      "facts": {"risk": "low", "verify": "full", "interfaces": [],
+                "never_sent": ["GUESTS"]},
+      "expect": {"says": [["VLAN"]],
+                 "never": ["GUESTS", "40", "approved", "GigabitEthernet"]},
+      "flag": "Says a VLAN is added (or its settings change) without its number or name, which were not sent."
+    }
+  ]
+}

@@ -384,6 +384,20 @@ FIELDS = {
         "form.ask": "the kind of Mercury's question answered (a token it drew)",
         "form.pick": "a candidate Mercury offered"},
     "v2.monitoring_alert_explain": {"form.again": "a flag: ask again over a kept answer"},
+    # PHASE8_PLAN 16.11 item 3: the deploy card's own form, planned again; its stated reasons
+    # are typed, and are drawn in the draft but never sent (change_record.sent, SENT_KEYS).
+    "device_v2.deploy_change_record": {
+        "form.program_hash": "the program hash the card drew (a hash Mercury computed)",
+        "form.<whole>": "the deploy card's own form (reasons, ticks, declarations), planned "
+                        "again; no field of it becomes a part",
+        "args.<whole>": "the page's network, read by the device's lookup (_page_ref)",
+        "headers.HX-Request": "whether a retired device's region asks for a reload",
+        "request.<passed to confirm_part>": "the viewer's gate, for the card's confirm",
+        "request.<passed to deploy_preview>": "the plan's preview, as the card builds it",
+        "request.<passed to identify>": "who is looking, for the card's confirm",
+        "request.<passed to named_list>": "the network's name (routes.list_param)",
+        "request.<passed to retire_preview>": "the preview helpers the card's module shares, "
+                                              "never sent"},
     "sdn_v2.response_classify": {
         "args.<whole>": "the SDN page's own choices",
         "args.run": "a run's id Mercury drew",

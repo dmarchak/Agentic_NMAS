@@ -1,0 +1,14 @@
+{
+  "words": "Draft a change record (the deploy preview)",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 12000,
+  "max_tokens": 2048,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "Starts on Haiku 5.5, the smallest model (PHASE8_PLAN 15.12 (b)): a document drafted from facts Mercury computed, the model writing only a Summary and the Risk's reading. Its recorded cases run on it first; a larger model only if Haiku misses the floor.",
+    "max_prompt_tokens": "Stated, not yet measured by the provider: the largest recorded case's whole request (tests/fixtures/ai_cases/change_record/recorded.json, case 1; the ten run from 5,135 to 5,386 characters, measured 2026-10-29 with gateway.build_request) is 2,993 tokens by the fallback's 1.8 characters a token (an over-estimate, gateway.CHARS_PER_TOKEN); 12,000 is about 4x that, for a program of many sections and checks, and far under Haiku 5.5's long tier (100,000). Re-derived from the provider's counts once the cases are run (C1898's rule).",
+    "max_tokens": "Stated, not yet measured: the schema's answer is at most 1,500 characters of words (change_record.MAX_SUMMARY plus MAX_RISK) and a few mentions, about 500 tokens; 2,048 is about 4x that, with thinking off. Re-derived as 2.5x the largest output once the cases are run (C1757's rule).",
+    "thinking": "Off: the model writes two short sections over facts already computed; nothing to reason through that a check does not hold. A measurement may ask adaptive for one run (gateway.ask's thinking)."
+  }
+}
