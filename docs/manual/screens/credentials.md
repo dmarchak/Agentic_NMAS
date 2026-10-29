@@ -82,7 +82,11 @@ Rotation policy column says the policy, how many devices follow it, how many are
 next due date. The **Scheduled rotation** card below the table leads with how many devices are
 due, says when the last run ran and what it did, and lists each device's credential age and
 next due date in three collapsed groups (due now, within their policy, no policy on); a device
-Mercury has never rotated says "never rotated by Mercury" and is due. A no-change window is
+Mercury has never rotated says "never rotated by Mercury" and is due. Beside the due date,
+**The timer rotates it** says when the timer would rotate the device, "about <time>
+(estimate)", from the timer's own rules (its policy's run at most once in any 24 hours, its
+preferred window, the no-change windows, its limit a run, the five-minute look), the basis on
+hover; it is the time to plan a hold around ([how it is worked out](rotate#scheduled)). A no-change window is
 said in the summary ("No run starts inside <window>"). When the last run stopped on a failure,
 the card says **The timer is stopped**: no scheduled run starts until a later run finishes
 without one, and Needs attention names the device and the stage. **Rotate due devices

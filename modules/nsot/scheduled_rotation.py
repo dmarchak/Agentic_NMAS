@@ -34,6 +34,12 @@ What it refuses, and what it skips (each with its reason, kept in the run's reco
 Credential age is the rotation record's (`credential_rotation.rotation_records_as_known`):
 the device's last rotation that reached the device. None recorded: "never rotated by Mercury",
 and due.
+
+**When the timer rotates it** (`expected`, C2158) is not when it falls due: a policy's
+scheduled run starts at most once in any 24 hours after its last one that ran, inside its
+preferred window and no no-change window, at the timer's next tick, so a device due at 23:59
+waited for the pass at about 01:10. The schedule says both, the rotation time as an estimate
+from these rules with its basis.
 """
 
 import datetime as _dt
@@ -459,6 +465,126 @@ def device_state(list_name: str, dev: dict, now=None) -> dict:
     for s in device_states(now, lists=[list_name], devices_of=lambda _l: [dev]):
         return s
     return None
+
+
+# ------------------------------------------------------------------ when the timer rotates it
+
+def last_scheduled_starts(rows) -> dict:
+    """``{profile: epoch}``: when each profile's latest scheduled run that ran (``done``)
+    started, from the runs record *rows*: what the timer's once-in-any-24-hours rule counts
+    (`tick`, `run`'s *ran_today*)."""
+    out = {}
+    for r in rows or []:
+        if r.get("trigger") != "scheduled" or r.get("state") != "done":
+            continue
+        at = _epoch(r.get("started", ""))
+        for p in r.get("policies") or []:
+            if at is not None and at > out.get(p, 0):
+                out[p] = at
+    return out
+
+
+def next_start(policy: dict, t: float, windows=()):
+    """The first moment at or after *t* at which the timer may start *policy*'s scheduled
+    run: inside its preferred window (`in_window`) and inside no no-change window of
+    *windows* (`change_windows.holding`). None when none is found within a few days' steps (a
+    window set that holds every hour)."""
+    from modules import change_windows
+
+    x = float(t)
+    for _ in range(96):
+        if not in_window(policy, x):
+            x = (int(x) // 3600 + 1) * 3600            # the window is whole UTC hours
+            continue
+        w = change_windows.holding(x, given=list(windows))
+        if w:
+            t_ = time.gmtime(x)
+            minute = t_.tm_hour * 60 + t_.tm_min
+            ahead = (change_windows._minute(w["end"]) - minute) % 1440 or 1440
+            x = (int(x) // 60) * 60 + ahead * 60       # where that window ends
+            continue
+        return x
+    return None
+
+
+def expected(states: list, now=None, *, rows=None, windows=None, whole: bool = True) -> list:
+    """*states* (`device_states`'s) each with when the TIMER would rotate it (C2158: the
+    schedule named when a device falls due, and the timer rotated it at its next pass, an hour
+    later): ``expected_at`` (the earliest moment its scheduled run may start, "" when none
+    will), ``expected_words`` (that, said as an estimate) and ``expected_basis`` (the rules
+    and the measurements it came from). Estimated from the timer's own rules, never a
+    device's clock: a policy's scheduled run starts at most once in any 24 hours after its
+    last one that ran (*rows*, the runs record), inside its preferred window and no
+    no-change window (*windows*, the installation's), and takes at most its limit a run,
+    oldest first (`select`); the timer then starts it at its next tick, up to
+    :data:`TICK_SECONDS` later, and a run rotates its devices one after another. A stopped
+    timer (`halted`) rotates nothing. *whole* False: *states* are not every device of their
+    policy (one device's page), so the limit is not judged and the words say so. Files only:
+    the runs record and the settings."""
+    from modules import change_windows
+
+    now = _now(now)
+    rows = runs()["rows"] if rows is None else rows
+    windows = change_windows.windows() if windows is None else windows
+    out = [dict(s, expected_at="", expected_words="", expected_basis="") for s in states]
+    if halted(rows) is not None:
+        for s in out:
+            if s.get("on"):
+                s.update(expected_words=(
+                    "the timer rotates nothing while it is stopped (the last run stopped on a "
+                    "failure)"), expected_basis="the timer's halt (`halted`)")
+        return out
+    starts = last_scheduled_starts(rows)
+    tick_min = TICK_SECONDS // 60
+    by_profile = {}
+    for s in out:
+        if s.get("on") and s.get("profile"):
+            by_profile.setdefault(s["profile"], []).append(s)
+    for profile, members in by_profile.items():
+        pol = members[0]["policy"]
+        limit = int(pol.get("max_per_run") or 0)
+        # `select`'s order: never rotated first, then the oldest credential, which under one
+        # policy's days is also the earliest due.
+        members.sort(key=lambda s: (now if s["never"] else (_epoch(s["due_at"]) or now),
+                                    not s["never"], _epoch(s["rotated_at"]) or 0,
+                                    s["list"], s["device"]))
+        last = starts.get(profile)
+        after = now if last is None else max(now, last + 86400)
+        basis = [f"{profile}'s policy runs on the timer at most once in any 24 hours"
+                 + (f", its last scheduled run having started {_iso(last)}" if last else
+                    ", and no scheduled run of it is recorded")]
+        w_start, w_end = int(pol.get("window_start", 0)), int(pol.get("window_end", 24))
+        if not (w_start == w_end or (w_start == 0 and w_end == 24)):     # `in_window`'s whole day
+            basis.append(f"inside its preferred window ({policy_words(pol)})")
+        if windows:
+            basis.append("outside " + "; ".join(change_windows.words(w) for w in windows))
+        if limit:
+            basis.append(f"at most {limit} a run, oldest first"
+                         + ("" if whole else ", the devices ahead of this one not counted "
+                                             "here (Credentials › Profiles counts them)"))
+        basis.append(f"the timer starts it at its next tick, up to {tick_min} min later, and a "
+                     "run rotates its devices one after another")
+        said = "; ".join(basis)
+        i, n, passes = 0, len(members), 0
+        while i < n and passes < 1000:
+            first = members[i]
+            due = now if first["never"] else (_epoch(first["due_at"]) or now)
+            at = next_start(pol, max(after, due), windows)
+            if at is None:
+                for s in members[i:]:
+                    s.update(expected_basis=said, expected_words=(
+                        "no moment the timer may start it was found: its preferred window and "
+                        "the no-change windows leave none"))
+                break
+            j = i
+            while j < n and (not limit or not whole or j - i < limit) and (
+                    members[j]["never"] or (_epoch(members[j]["due_at"]) or now) <= at):
+                members[j].update(expected_at=_iso(at), expected_basis=said, expected_words=(
+                    f"the timer rotates it at about {_iso(at)}, an estimate (up to {tick_min} min "
+                    "later)"))
+                j += 1
+            i, after, passes = max(j, i + 1), at + 86400, passes + 1
+    return out
 
 
 # ------------------------------------------------------------------ the runs record
@@ -1004,8 +1130,10 @@ def page_view(now=None) -> dict:
     last run, and whether the timer is stopped. Files only."""
     from modules import change_windows
     now = _now(now)
+    got = runs()
     try:
-        states = device_states(now)
+        # Each device with when the timer would rotate it (C2158), beside when it falls due.
+        states = expected(device_states(now), now, rows=got["rows"])
         error = ""
     except Exception as exc:                            # noqa: BLE001
         states, error = [], f"the devices' credential ages could not be read: {exc}"
@@ -1027,7 +1155,6 @@ def page_view(now=None) -> dict:
         if s["on"] and not s["due"] and s["due_at"] and (not p["next_due"]
                                                           or s["due_at"] < p["next_due"]):
             p["next_due"] = s["due_at"]
-    got = runs()
     last = got["rows"][-1] if got["rows"] else None
     decisive = last_decisive(got["rows"])
     groups = [("due", "due now", [s for s in states if s["due"]]),

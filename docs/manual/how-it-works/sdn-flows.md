@@ -97,7 +97,11 @@ always waits for you, whatever the allowed risk, saying "the source was inferred
 topology: a person confirms it" with the comparison it made: AUTO applies only a source the flows
 themselves name, the flows entering that port name none, and where the source came from. It is a
 row of Needs attention like any response awaiting you, and Mercury refuses an unattended confirm
-of such a source too, sending nothing. Every response,
+of such a source too, sending nothing. **When AUTO cannot preview its response** (the switch
+is no longer on the controller, the connection is gone, the plan refused), nothing is sent and
+the response waits for you as in HITL, its card saying "AUTO could not preview <action>: <why>"
+and its Needs attention row naming that failure and that AUTO sent nothing; it clears when you
+confirm the response or dismiss it. Every response,
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
 

@@ -489,23 +489,31 @@ def checks(ref, dev: dict) -> list:
                                   + startup_check.brief(srow.get("detail") or st or "unknown")
                                   + "); it reads it again at the next run")})
 
-    # Credential: its age and its next rotation under its profile's policy (C724).
+    out.append(credential_check(ref.name, dev))
+    out.append(alerts_check(host, ip, ref.name))
+    return out
+
+
+def credential_check(list_name: str, dev: dict) -> dict:
+    """The Credential check: the device's credential age and its next rotation under its
+    profile's policy (C724), and when the timer would rotate it (C2158: this device alone,
+    so its policy's limit is not judged here, and the words say so)."""
     try:
         from modules.nsot import scheduled_rotation
-        cs = scheduled_rotation.device_state(ref.name, dev)
+        cs = scheduled_rotation.device_state(list_name, dev)
+        if cs is not None:
+            cs = scheduled_rotation.expected([cs], whole=False)[0]
     except Exception as exc:                     # noqa: BLE001
         cs = {"_error": f"its credential age could not be read ({type(exc).__name__})"}
     if cs is None or cs.get("_error"):
-        out.append({"name": "Credential", "state": "unknown",
-                    "text": (cs or {}).get("_error") or "not in its list's inventory"})
-    else:
-        out.append({"name": "Credential",
-                    "state": "warn" if cs["due"] else ("ok" if cs["on"] else "off"),
-                    "at": cs["rotated_at"] or None,
-                    "text": f"{cs['age_words']}; {cs['words']}"})
-
-    out.append(alerts_check(host, ip, ref.name))
-    return out
+        return {"name": "Credential", "state": "unknown",
+                "text": (cs or {}).get("_error") or "not in its list's inventory"}
+    return {"name": "Credential",
+            "state": "warn" if cs["due"] else ("ok" if cs["on"] else "off"),
+            "at": cs["rotated_at"] or None,
+            "text": f"{cs['age_words']}; {cs['words']}"
+                    + (f"; {cs['expected_words']}, from the timer's rules (its basis on "
+                       "Credentials › Profiles)" if cs.get("expected_words") else "")}
 
 
 def alerts_check(host: str, ip: str, list_name: str) -> dict:

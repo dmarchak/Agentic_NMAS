@@ -51,7 +51,17 @@ throw away an unrelated edit made since.
    settings named, because which edit should win is your decision, made by editing intent.
    The first intent commit a device has is refused too: there is no earlier state to return
    to.
-4. **Show the result**. Read: nothing more. Sent: nothing. Recorded: nothing. The preview
+4. **Refuse a VLAN the device cannot hold**. Read: only when the revert puts a VLAN back (a
+   `vlans` entry the intent committed now does not hold, as reverting a commit that took one
+   off does), whether the device has a VLAN database, from what {{product}} holds; never the
+   device. Sent: nothing. Recorded: nothing. It is the same check [Edit intent](edit-intent),
+   [Change it in words](intent-in-words#vlan-database) and [Bulk intent](bulk-intent) run: the
+   VLAN is put back only where the device's VLAN database is declared or measured. Otherwise
+   the revert is refused, its own check failing with the words naming the reverted commit, the
+   VLAN, the device, its platform and device type, and where the answer came from, or what
+   would answer it. A revert that takes a VLAN off, or leaves the list as it was, is never
+   asked about. The apply computes the revert again, so it runs the check again.
+5. **Show the result**. Read: nothing more. Sent: nothing. Recorded: nothing. The preview
    draws the intent document after the revert against the document committed now, each
    setting with its value now and after, the later commits it keeps, and the block. The
    confirm is bound to a hash of the commit, the intent committed now and the document that

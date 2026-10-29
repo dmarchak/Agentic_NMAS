@@ -44,8 +44,11 @@ step, the one AI call, which runs only where its feature is on (below).
    as Mercury, recorded as autonomous with the setting and its reason, and with who chose the
    action; otherwise (HITL, the default) the response is kept as awaiting a person
    (`pending`), with the classification when there is one, its preview built fresh when a
-   person opens it. A detection that fires again while its response awaits a person is not
-   classified again: the response is marked active again;
+   person opens it. **AUTO's own preview failing (C2159)** sends nothing and keeps the
+   response awaiting a person as HITL does, the failure said on it ("HITL for this one: AUTO
+   could not preview <action>: <why>"), so its card and its Needs attention row name it,
+   where it was once said only in this log. A detection that fires again while its response
+   awaits a person is not classified again: the response is marked active again;
 5. a response's meter whose flows have expired is removed (`flow_ops.expire_meters`).
 
 **Already mitigated (C2005).** A detection that fires while one of Mercury's responses already
@@ -273,7 +276,8 @@ def run_text(network: str, job: str = "") -> dict:
 
 def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
             now: float = None, classification: dict = None, params: dict = None,
-            classified: str = "", refused_call: str = "", incident: dict = None) -> dict:
+            classified: str = "", refused_call: str = "", incident: dict = None,
+            auto_failed: str = "") -> dict:
     """Keep a response awaiting a person: one incident's (C1999). One per detection key: a
     second for a key already awaiting (its incident's own, or one seen also) is not added.
     *classification* the loop's AI classification, when one passed; *params* the action's
@@ -281,7 +285,9 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     whose answer the check refused, when one was; *incident* `incidents.record`'s answer (its
     key, window, ingress and the switches seen also), kept on the row, the detection carrying
     its compact copy (`incidents.stamp`). Without one the response is an incident of its
-    detection alone."""
+    detection alone. *auto_failed* AUTO's own preview's failure, when AUTO decided to act and
+    could not preview (C2159): the response is a person's as if AUTO were off, and the
+    failure is kept on it, for its card and its Needs attention row."""
     from modules.sdn import incidents
 
     now = time.time() if now is None else now
@@ -293,6 +299,8 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
            "detection": incidents.stamp(detection, incident) if incident else detection,
            "classification": classification, "params": dict(params or {}),
            "classified": classified, "refused_call": refused_call}
+    if auto_failed:
+        row["auto_failed"] = auto_failed
     if incident:
         row["incident"] = incident
     _append(network, PENDING_FILE, row)
@@ -1040,7 +1048,22 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 continue
             preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
             if not preview["ok"]:
-                line("respond", f"AUTO could not preview {action}: {preview['error']}")
+                # AUTO's own preview failed (C2159): nothing is sent, and the detection is a
+                # person's, as if AUTO were off: the HITL path's own response, the failure on
+                # it, so its card and its Needs attention row say why AUTO did not act.
+                failed = (f"AUTO could not preview {action}: "
+                          f"{preview.get('error') or 'no reason given'}")
+                row = propose(network, d, action, risk, now=now(), why=(
+                    f"HITL for this one: {failed}; nothing was sent, and a person previews it "
+                    "again and confirms or dismisses it"),
+                    classification=verdict["classification"], params=params,
+                    classified=verdict["words"], refused_call=verdict["refused_call"],
+                    incident=rec, auto_failed=failed)
+                out["proposed"].append(row["id"])
+                out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
+                                         "switches": 1 + len(rec["seen_also"])})
+                line("respond", f"{failed}: nothing was sent; awaiting a person ({row['id']})",
+                     response=row["id"])
                 continue
             done = closed_loop.respond_to_threat(
                 network, d, action, confirm={"ask": preview["ask"],

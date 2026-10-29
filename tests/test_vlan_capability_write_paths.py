@@ -1,10 +1,13 @@
-"""C2043 and C2044: every intent write path asks the one VLAN check (`vlan_capability.judge`
-and its words, `vlan_capability.refusal`), so C1692's refusal holds wherever intent is written.
+"""C2043, C2044 and C2062: every intent write path asks the one VLAN check
+(`vlan_capability.judge` and its words, `vlan_capability.refusal`), so C1692's refusal holds
+wherever intent is written.
 
-The three paths: the intent patch (`intent_patch`, per operation; C1692), the intent editor's
-commit (`intent_edit.commit`, `commit_many`, and the Intent tab's route over them; C2044) and
-bulk intent (`bulk_intent.plan` and `apply`, and Devices › Change a setting over them; C2043).
-Each refuses a change that ADDS a VLAN to a device whose VLAN database is declared "no" or is
+The four paths: the intent patch (`intent_patch`, per operation; C1692), the intent editor's
+commit (`intent_edit.commit`, `commit_many`, and the Intent tab's route over them; C2044),
+bulk intent (`bulk_intent.plan` and `apply`, and Devices › Change a setting over them; C2043)
+and Revert intent (`intent_ops.revert_entry`, the preview its apply computes again, and the
+device page's revert card and confirm over them; C2062: a revert of a commit that took a VLAN
+off puts it back). Each refuses a change that ADDS a VLAN to a device whose VLAN database is declared "no" or is
 unknown, naming the device, its platform and device type, where the answer came from and what
 would answer it; each allows it on a switch measured to have one; none refuses a VLAN removed,
 or a change leaving the list as it was, and none reads the answer for such a change. The
@@ -33,6 +36,11 @@ from tests.test_vlan_capability import (PLAIN_SWITCH, REFUSALS, ROUTER_NAMED_LIK
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUESTS = {"extra": [], "id": "40", "name": "GUESTS"}
+#: VLAN 40 with no name, in the shape of s1's committed VLAN 10 (tests/fixtures/committed/
+#: s1.yml): a `vlans` list holding an unnamed VLAN is one leaf to `hostvars.plan_revert`, so a
+#: revert of its removal puts the whole list back (C2062's case; a named VLAN alone is keyed
+#: by its name, and a revert of its removal does not put it back: found building C2062).
+BARE = {"extra": [], "id": "40", "name": ""}
 #: r2 as the router it is, its NetBox device type the one the platform table declares.
 R2_DECLARED = dict(DEVICES["r2"], _model="C8000V")
 
@@ -578,3 +586,149 @@ class TestThePathsShareTheOneCheck:
                                   {k.arg for k in node.keywords} >= {"list_name"}))
         assert len(calls) >= 3, f"the floor: the route, the script and apply; found {calls}"
         assert all(named for _r, _l, named in calls), calls
+
+    def test_the_revert(self, host, planted):  # noqa: F811
+        from modules.nsot import intent_ops
+        removal = _history(host, "r2", BARE)
+        got = intent_ops.revert_entry("Lab", "r2", removal)
+        assert got["error"] == f"PLANTED r2: reverting {removal[:12]} adds VLAN 40"
+        assert planted == ["r2"]
+
+
+# ── Revert intent (C2062) ────────────────────────────────────────────────────
+
+def _history(host_, name, vlan, *, take_off=True):  # noqa: F811
+    """*name*'s intent history as one committed before the check could hold it: a commit
+    adding *vlan* (written as a pre-C1692 commit was, past no check), then, *take_off*, the
+    editor's commit taking it off again (a removal, never asked). The removal's sha (what a
+    revert of it would put back is *vlan*), or without *take_off* the adding commit's."""
+    from modules.nsot import hostvars, intent_edit
+    from modules.nsot.repo import save_host_vars
+    repo = host_["repo"]
+    doc = hostvars.read_committed(repo, name)
+    hostvars.write_committed(repo, dict(doc, vlans=list(doc.get("vlans") or []) + [vlan]))
+    assert save_host_vars("Lab", [name], actor="t", source="extraction",
+                          message=f"host_vars: {name} adds VLAN {vlan['id']}")["ok"]
+    if not take_off:
+        return _head(repo)
+    text, base = _edit(host_, name, drop=str(vlan["id"]))
+    took = intent_edit.commit("Lab", name, text, f"drop VLAN {vlan['id']}", base, "a.person")
+    assert took["ok"] and took["changed"], took
+    removal = _head(repo)
+    assert vlan not in (hostvars.read_committed(repo, name).get("vlans") or []), "premise"
+    return removal
+
+
+def _revert(name, sha):
+    from modules.nsot import intent_ops
+    entry = intent_ops.revert_entry("Lab", name, sha)
+    return entry, intent_ops.revert_apply("Lab", name, sha, entry["hash"] or "none",
+                                          "a.person")
+
+
+class TestTheRevert:
+    """C2062: a revert of a commit that took a VLAN off puts it back, so it asks the one check.
+    The history is r2's and s1's real committed intent with a VLAN added and taken off again;
+    the commit reverted is the removal."""
+
+    def test_a_router_declared_without_one_is_refused_and_nothing_committed(  # noqa: F811
+            self, host, monkeypatch):
+        from modules.nsot import hostvars
+        _inventory(monkeypatch, R2_DECLARED, DEVICES["s1"])
+        removal = _history(host, "r2", BARE)
+        before = _head(host["repo"])
+        entry, out = _revert("r2", removal)
+        assert (entry["selectable"], entry.get("stage"), entry["hash"]) == (
+            False, "capability", "")
+        assert entry["error"].startswith(
+            f"reverting {removal[:12]} adds VLAN 40, and r2 (cisco_iosxe, device type C8000V) "
+            "has no VLAN database: declared: no VLAN database (Mercury's platform table, "
+            "cisco_iosxe device type C8000V, documented: ")
+        assert entry["error"].endswith(". Nothing is added")
+        assert entry["vlan_database"] == {"ok": False, "added": ["40"],
+                                          "words": entry["error"]}
+        assert (out["outcome"], out["reason"]) == ("refused", entry["error"])
+        assert _head(host["repo"]) == before, "nothing was committed"
+        assert BARE not in (hostvars.read_committed(host["repo"], "r2").get("vlans") or [])
+
+    def test_an_unknown_router_is_refused_naming_what_would_answer_it(  # noqa: F811
+            self, host, monkeypatch):
+        _inventory(monkeypatch, DEVICES["r2"], DEVICES["s1"])
+        removal = _history(host, "r2", BARE)
+        entry, out = _revert("r2", removal)
+        assert entry["error"] == (
+            f"reverting {removal[:12]} adds VLAN 40, and whether r2 (cisco_iosxe, device type "
+            "not named) has a VLAN database is not declared and not measured: run `show vlan "
+            "id 1` on r2 (Show commands, or Ask the device on its page) to measure it, or name "
+            "its device type in NetBox, by which Mercury's platform table declares a VLAN "
+            "database (none is named). A VLAN is added only where a VLAN database is declared "
+            "or measured")
+        assert out["outcome"] == "refused"
+
+    def test_a_switch_measured_without_one_is_refused(self, host):  # noqa: F811
+        measure("Lab", "s1", REFUSALS[1])
+        removal = _history(host, "s1", BARE)
+        entry, out = _revert("s1", removal)
+        assert entry.get("stage") == "capability" and out["outcome"] == "refused"
+        assert "has no VLAN database: measured: no VLAN database (s1's answer to " \
+               "`show vlan id 1` at " in entry["error"]
+
+    def test_a_measured_switch_takes_it_back(self, host):  # noqa: F811
+        from modules.nsot import hostvars
+        measure("Lab", "s1", SWITCH_ANSWERS[0])
+        removal = _history(host, "s1", BARE)
+        entry, out = _revert("s1", removal)
+        assert entry["selectable"] and entry["vlan_database"]["ok"] is True, entry
+        assert entry["vlan_database"]["words"].startswith(
+            "measured: a VLAN database (s1's answer to `show vlan id 1` at ")
+        assert out["outcome"] == "reverted", out
+        assert BARE in hostvars.read_committed(host["repo"], "s1")["vlans"]
+
+    def test_a_revert_taking_a_vlan_off_is_never_asked(self, host, monkeypatch):  # noqa: F811
+        """Reverting the commit that ADDED the VLAN takes it off: nothing is read (a read
+        would fail the test), and the revert commits on r2, whose answer would refuse an add
+        (a committed document stays committable)."""
+        from modules.nsot import hostvars
+        added_it = _history(host, "r2", BARE, take_off=False)
+        _no_read(monkeypatch)
+        entry, out = _revert("r2", added_it)
+        assert "vlan_database" not in entry and entry["selectable"], entry
+        assert out["outcome"] == "reverted", out
+        assert BARE not in (hostvars.read_committed(host["repo"], "r2").get("vlans") or [])
+
+    def test_the_card_draws_the_refusal_as_its_own_check(self, host,  # noqa: F811
+                                                        monkeypatch):
+        """The revert card (v2 device page, board 11): the VLAN check is its own gate, failed
+        with the check's words, the change's own gate passing, and no confirm offered."""
+        from modules.preview_confirm import revert_preview
+        from modules.nsot import intent_ops
+        _inventory(monkeypatch, R2_DECLARED, DEVICES["s1"])
+        removal = _history(host, "r2", BARE)
+        entry = intent_ops.public(intent_ops.revert_entry("Lab", "r2", removal))
+        with host["client"].application.test_request_context("/"):
+            from flask import request
+            shown = revert_preview(entry, list_name="Lab", request=request)
+        (target,) = shown["targets"]
+        gates = {g["name"]: (g["state"], g["detail"]) for g in target["gates"]}
+        assert gates["the commit's change can be undone"][0] == "pass"
+        assert gates["r2 can hold the VLAN(s) this revert puts back (40)"] == (
+            "fail", entry["error"])
+        (what,) = shown["what"]["targets"]
+        assert what["selectable"] is False and entry["error"] in what["why_not"], what
+
+    def test_the_route_refuses_it_in_place(self, host, monkeypatch):  # noqa: F811
+        """Through the card's confirm (`/v2/device/<name>/revert/confirm`): refused, the
+        check's words drawn, nothing committed."""
+        import html as _h
+        from types import SimpleNamespace
+        _inventory(monkeypatch, R2_DECLARED, DEVICES["s1"])
+        monkeypatch.setattr("routes.device_v2._named_device", lambda name, lst, tpl: (
+            SimpleNamespace(name="Lab"), dict(DEVICES[name]), None))
+        removal = _history(host, "r2", BARE)
+        before = _head(host["repo"])
+        r = host["client"].post("/v2/device/r2/revert/confirm",
+                                data={"list": "Lab", "sha": removal[:12], "hash": "0" * 16})
+        words = _words(r.get_data(as_text=True))
+        assert f"reverting {removal[:12]} adds VLAN 40, and r2 (cisco_iosxe, device type " \
+               "C8000V) has no VLAN database" in words, words[:800]
+        assert _head(host["repo"]) == before

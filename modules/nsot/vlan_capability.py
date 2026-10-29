@@ -34,7 +34,8 @@ list), the table, and the network's recorded Show commands runs. Never a device 
 **One check for every intent write path** (C2043, C2044): :func:`judge` refuses a change that
 ADDS a VLAN (an entry of ``vlans`` present after and not before) to a device whose answer is
 not yes, in :func:`refusal`'s words, which the intent patch (per operation), the intent
-editor's commit and bulk intent all use. Removing a VLAN, or leaving the list as it was, is
+editor's commit, bulk intent and Revert intent (C2062: a revert's inverse that puts a VLAN
+back) all use. Removing a VLAN, or leaving the list as it was, is
 never asked about, so a document committed before the check stays committable.
 """
 
@@ -197,7 +198,8 @@ def unknown_words(hostname: str, dialect: str = "", model: str = "") -> str:
 # ── the one check every intent write path asks (C1692, C2043, C2044) ──────────
 #
 # The intent patch (`intent_patch`, per operation, its apply pure), the intent editor's commit
-# (`intent_edit.commit_many`) and bulk intent (`bulk_intent.plan`) each refuse a VLAN added to
+# (`intent_edit.commit_many`), bulk intent (`bulk_intent.plan`) and Revert intent
+# (`intent_ops.revert_entry`, its preview and apply; C2062) each refuse a VLAN added to
 # a device whose answer is not yes, in these words. A VLAN removed, or a list left as it was,
 # is never asked about, so a document committed before this check stays committable.
 

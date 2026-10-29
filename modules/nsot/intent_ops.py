@@ -26,6 +26,14 @@ classifier (`note_applicability`) whether the note still blocks, and clears it
 only when it measurably does not. A retry is the one path that lifts a
 standing block, and it says so.
 
+**A revert asks the VLAN check** (C2062): its inverse can put back a VLAN a
+later commit or a person took off, so the revert's preview and its apply (one
+computation) run the one check every intent write path asks
+(`vlan_capability.judge`, from the intent committed now to the document the
+revert would commit), and refuse a VLAN put back on a device whose VLAN
+database is declared or measured no, or unknown, naming the device and where
+its answer came from. A revert putting back no VLAN reads nothing.
+
 Nothing here opens a session: intent and the record are read from git and the
 repository.
 """
@@ -115,6 +123,22 @@ def _applicability(list_name: str, hostname: str) -> str:
 # Revert
 # ---------------------------------------------------------------------------
 
+def _vlan_check(list_name: str, hostname: str, committed, after, target: str):
+    """The VLAN check of a revert (C2062): `vlan_capability.judge` from the intent committed
+    now to the document the revert would commit, the subject naming the commit reverted.
+    None when the revert adds no VLAN (the device's answer then not read), else ``{"ok",
+    "added", "words"}``: the refusal's words, or on a yes where the answer came from."""
+    from modules.nsot import vlan_capability
+
+    got = vlan_capability.judge(list_name, hostname, committed, after,
+                                subject=f"reverting {target[:12]}")
+    if not got["added"]:
+        return None
+    return {"ok": got["ok"], "added": list(got["added"]),
+            "words": (got.get("capability") or {}).get("words", "") if got["ok"]
+            else got["error"]}
+
+
 def revert_entry(list_name: str, hostname: str, sha: str = "") -> dict:
     """What reverting one of *hostname*'s intent commits would commit.
 
@@ -144,6 +168,15 @@ def revert_entry(list_name: str, hostname: str, sha: str = "") -> dict:
     if not plan.get("ok"):
         return {**base, "conflicts": plan.get("conflicts", []), "error": plan["error"]}
     now_text, _committed = hostvars.committed_at_head(repo, hostname)
+    # The one VLAN check every intent write path asks (C2062; C1692, C2043, C2044): a revert
+    # whose inverse puts back a VLAN is refused on a device whose VLAN database is declared or
+    # measured no, or unknown, in the check's own words; a revert adding none reads nothing.
+    vlans = _vlan_check(list_name, hostname, hostvars.from_yaml(now_text or ""),
+                        plan["document"], plan["target"])
+    if vlans is not None:
+        base["vlan_database"] = vlans
+        if not vlans["ok"]:
+            return {**base, "stage": "capability", "error": vlans["words"]}
     document = hostvars.to_yaml(plan["document"])
     diff = [l for l in difflib.unified_diff((now_text or "").splitlines(),
                                              document.splitlines(), lineterm="", n=2)

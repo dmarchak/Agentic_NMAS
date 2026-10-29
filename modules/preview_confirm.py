@@ -3924,6 +3924,12 @@ def revert_preview(entry: dict, *, list_name: str, request) -> dict:
                          "text": ("Refused: a later commit changed the same setting(s). Decide "
                                   "which edit should win and make that edit in its intent."),
                          "lines": list(entry["conflicts"])})
+    # The VLAN check (C2062), drawn only for a revert that puts a VLAN back: its own gate, so a
+    # refusal says which check refused it, and a pass where the device's answer came from.
+    vlans = entry.get("vlan_database")
+    vlan_gates = [gate(f"{name} can hold the VLAN(s) this revert puts back "
+                       f"({', '.join(vlans['added'])})", "pass" if vlans["ok"] else "fail",
+                       vlans["words"])] if vlans else []
     target = {
         "name": name,
         "state": "revertible" if ok else "refused",
@@ -3946,9 +3952,12 @@ def revert_preview(entry: dict, *, list_name: str, request) -> dict:
             {"name": "later commits kept", "value": str(len(entry.get("kept") or []))},
             {"name": "rollback block", "value": _note_words(note)},
             {"name": "revert hash", "value": entry.get("hash") or "none"}],
-        "gates": [gate("the commit's change can be undone", "pass" if ok else "fail",
-                       "no later commit changed the same settings" if ok
+        "gates": [gate("the commit's change can be undone",
+                       "pass" if ok or entry.get("stage") == "capability" else "fail",
+                       "no later commit changed the same settings"
+                       if ok or entry.get("stage") == "capability"
                        else entry.get("error") or ""),
+                  *vlan_gates,
                   busy_gate(entry),
                   gate("intent unchanged since this preview", "at_apply",
                        "the revert is computed again at apply, and a different hash refuses "
