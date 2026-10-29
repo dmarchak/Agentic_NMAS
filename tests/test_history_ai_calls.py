@@ -97,6 +97,40 @@ def test_a_join_is_drawn_as_a_join_of_its_call_and_the_call_names_who_joined(wor
     assert calls.spent_usd(row["at"][:10])["calls"] == 1, "a join is no call"
 
 
+def test_history_parses_the_record_once_then_only_what_was_appended(world, monkeypatch):  # noqa: F811
+    """History's 13 s on the host (2026-10-29): the whole AI calls record (416 MB) parsed twice a
+    load. History reads the kept rows (`calls.kept_all`): one parse of the record a process,
+    later loads parsing only the lines appended since, a call recorded between loads drawn,
+    and no row kept holding the request as sent (`WINDOW_WITHOUT`; an opened row reads its
+    call whole)."""
+    from modules import records_migrate as RM
+
+    parses = []
+    real_tail, real_all = RM._tail_rows, calls._all
+    monkeypatch.setattr(RM, "_tail_rows", lambda *a, **k: parses.append(a[0]) or real_tail(*a, **k))
+
+    def history(ctx):
+        # The whole-record read refused while History reads (a feature's own call may use it).
+        monkeypatch.setattr(calls, "_all", lambda: (_ for _ in ()).throw(
+            AssertionError("History read the whole record")))
+        try:
+            return [e["call"] for e in HS.ai_calls(ctx)["events"]]
+        finally:
+            monkeypatch.setattr(calls, "_all", real_all)
+
+    first = _call(world)
+    ctx = {"device": "", "limit": 50}
+    before = len(parses)
+    assert history(ctx) == [first]
+    assert len(parses) - before <= 1, parses
+    parsed = len(parses)
+    second = _call(world)
+    assert history(ctx) == [second, first]
+    assert len(parses) == parsed, "the appended lines alone were parsed, not the record again"
+    assert all("request" not in r for _at, r in RM._kept[calls._path()]["rows"])
+    assert calls.find(second)["row"]["request"], "an opened row still reads its call whole"
+
+
 def test_a_device_s_tab_shows_only_the_calls_about_it(world):  # noqa: F811
     _call(world)
     assert len(HS.ai_calls({"device": "r1", "limit": 50})["events"]) == 1

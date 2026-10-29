@@ -256,6 +256,38 @@ def rows_since(start) -> dict:
     return dict(got, rows=[r for r in got["rows"] if "use_of" not in r])
 
 
+#: Before any row the record holds: `kept_all`'s window, all of it.
+EVER = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
+
+
+def kept_all() -> dict:
+    """Every row, calls and their use rows, OLDEST first, each without the keys in
+    `WINDOW_WITHOUT`, through the one kept read `rows_since` uses (`records_migrate.
+    _tail_rows_kept`: the record parsed once a process, then only the lines appended since):
+    History's AI calls, which draw no request (an opened row reads its call whole by `find`).
+    The whole-record read, twice a load, was History's 13 s on the host (416 MB, 2026-10-29),
+    and the same rows were already kept for Needs attention's month of spend, so keeping them
+    from `EVER` holds nothing more. ``{"state", "rows", "error"}``."""
+    from modules import records_migrate
+
+    got = records_migrate.store_rows_since(STORE, _path(), EVER, ORDER_SLACK_S,
+                                           skip_unparsable=True, drop=WINDOW_WITHOUT)
+    if got["state"] == "unreadable":
+        log.error("ai_calls: unreadable (%s)", got["error"])
+    return got
+
+
+def warm() -> None:
+    """Read the record once into the kept rows (`kept_all`), so a page's first read after a
+    start is not the cold parse (10 s on the host, 2026-10-29). Started by the app's own
+    start-up on a background task, never on import; a failure is logged and the first read
+    pays it instead."""
+    t = time.monotonic()
+    got = kept_all()
+    log.info("ai_calls: kept %d rows in %.1f s (%s)", len(got.get("rows") or []),
+             time.monotonic() - t, got.get("state"))
+
+
 def day_rows(day: str, zone: str = None) -> dict:
     """``{"state", "rows", "error"}``: the calls recorded on the cap's *day*, oldest first,
     read within that day's window (`rows_since`). A day that is no date holds no row."""

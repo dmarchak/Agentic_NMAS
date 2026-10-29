@@ -1114,11 +1114,16 @@ def ai_calls(ctx):
     sent and the answer as received (`/v2/history/ai-call/<id>`). A device's tab shows the
     calls whose subject names the device; the installation's own calls are no device's."""
     from modules.ai import calls
-    got = calls.read()
+    # One kept read (`calls.kept_all`), its calls and their use rows both: the whole record
+    # read twice (`read` and `uses`) was this page's 13 s on the host (2026-10-29).
+    got = calls.kept_all()
     if got["state"] == "unreadable":
         return _out(errors=[f"the record of AI calls could not be read: {got.get('error', '')}"])
-    used = calls.uses()
-    rows = got.get("rows") or []
+    used = {}
+    for r in got.get("rows") or []:
+        if "use_of" in r:
+            used.setdefault(r["use_of"], []).append(r)
+    rows = [r for r in reversed(got.get("rows") or []) if "use_of" not in r]
     # A press that joined another's call (C1854) is its own row, drawn as a join of that call:
     # its outcome the call's, its detail opening the call's prompt and answer; the call names
     # who joined it.

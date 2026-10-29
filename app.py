@@ -617,6 +617,14 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Prometheus targets keeper did not start: %s", _e)
 
+    # The record of AI calls read once into the kept rows (History and Needs attention read
+    # them): on a background task, so the first page after a start is not its cold parse.
+    try:
+        from modules.ai import calls as _ai_calls
+        socketio.start_background_task(_ai_calls.warm)
+    except Exception as _e:
+        app.logger.error("AI calls record not warmed: %s", _e)
+
     # The scheduled credential rotation's timer (C724): a run only when a policy is on.
     try:
         from modules.nsot import scheduled_rotation as _scheduled_rotation
