@@ -15,7 +15,24 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
-Templates sha256: `d566a67b55f833299f00cd8a4f28fd161db36e1b2edc376308743a21f0207a1c`
+Templates sha256: `0877edf116dafadaa27e121315778120797d2b0077e37dfa697ca6d9778eb5b0`
+
+**Compared again 2026-10-29 (C2174, an alert firing on its data's absence):**
+`_evidence_pack.html`'s alert piece gains one clause, drawn only when the piece carries
+``absence`` (a rule whose no data is its fault, firing as "Alerting (NoData)"): after the rule,
+its kind and state, "The fault is the data's absence: **no heartbeat received for 750 s from
+r2** (the rule's no-data state is Alerting: no data is its alert)." No other region changed.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-29 05:5x UTC,
+  at 1440, 1280 and 390 beside the board at 1440): its alert is r3's heartbeat set to Alerting,
+  so the clause does not draw and every region reads as before. The clause is shot on History's
+  rebuilt pack (`::test_monitoring_alerts_history`, docs/fidelity/alerts-history.md), the same
+  template: r2's heartbeat episode of 21 Oct fired on no data.
+- **Verdict:** a **deviation**, the one new clause: the board (version 143, revised for the
+  beta label) draws no alert firing on no data. Its line is in docs/STANDING_APPROVAL_LOG.md
+  ("P1 Alerts and P1-H: an alert firing on its data's absence"). No other region's verdict
+  changed.
+
+Templates sha256 before: `d566a67b55f833299f00cd8a4f28fd161db36e1b2edc376308743a21f0207a1c`.
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_explain.html` includes
 Was this right? (`_ai_feedback.html`) under an answer drawn, after "This call in History", and

@@ -789,8 +789,9 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
 
 
 #: The alert piece's kind while its condition holds (`grafana_alerts._kind`: Grafana's
-#: Alerting or firing; an SDN detection's own, `sdn.detect`): never no data, error, pending or
-#: normal, each its own kind.
+#: Alerting or firing, and "Alerting (NoData)" of a rule whose no data is its fault, C2174; an
+#: SDN detection's own, `sdn.detect`): never no data, error, pending or normal, each its own
+#: kind.
 FIRING_KIND = "condition"
 #: An alert state that is not firing, however its kind reads (a state Mercury did not write).
 NOT_FIRING = ("normal", "resolved", "inactive", "pending")
@@ -802,7 +803,9 @@ def fault_shown(pack: dict) -> str:
     `FIRING_KIND`, its condition holding (a state no word of `NOT_FIRING` begins), as of the
     pack's time (its ``built_at``, the alert's time); and the pack records no resolve at or
     before that time (``resolved_at``, a pack built from the alert history). A resolved alert,
-    one with no data or an error, and a pack whose alert section was not read show no fault."""
+    one with no data or an error, and a pack whose alert section was not read show no fault;
+    a heartbeat or telemetry alert firing on its data's absence ("Alerting (NoData)" of a rule
+    whose no data is its fault, the condition kind, C2174) shows one."""
     sec = next((s for s in pack.get("sections") or [] if s.get("name") == "alert"), {})
     piece = (sec.get("pieces") or [{}])[0] if sec.get("state") == "ok" else {}
     state = str(piece.get("state") or "")

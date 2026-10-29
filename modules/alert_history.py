@@ -201,6 +201,19 @@ def kind_of(state: str) -> str:
     return G._kind(state)
 
 
+def kind_read(r: dict) -> str:
+    """A transition row's kind as History reads it: the kind recorded, but a row recorded
+    ``no_data`` for Grafana's "Alerting (NoData)" is the condition (C2174): the state Grafana
+    gives only a rule whose no data is its fault, which the reader and the backfill each
+    classed as no data before. The row is never rewritten; its state words stay Grafana's."""
+    from modules.readers import grafana_alerts as G
+
+    to = r.get("to") or ""
+    if to == "no_data" and G.alerting_on_no_data(r.get("state")):
+        return "condition"
+    return to
+
+
 def _device(labels: dict, device_from: str = "") -> dict:
     """The device a row names: the reader's own answer when it gave one, else the ``device``
     label, else the polled ``instance`` address (never a guessed name)."""
@@ -627,9 +640,9 @@ def episodes(rows, firing_now=frozenset()) -> list:
                 if not open_["rule_uid"] and r.get("rule_uid"):
                     open_["rule_uid"] = r["rule_uid"]
                 open_["states"].append({"at": r.get("at") or "", "state": r.get("state") or "",
-                                        "to": r.get("to") or ""})
+                                        "to": kind_read(r)})
                 open_["sources"].add(r.get("source") or "")
-                if r.get("to") == "condition" and not open_["fired_at"]:
+                if kind_read(r) == "condition" and not open_["fired_at"]:
                     open_["fired_at"] = r.get("at") or ""
             elif open_ is not None:
                 open_["resolved_at"], open_["resolved_state"] = r.get("at") or "", r.get("state")

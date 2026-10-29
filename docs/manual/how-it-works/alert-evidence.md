@@ -18,9 +18,35 @@ firing below them. Nothing in a pack is decided by a model, and no device is ask
 After each read of Grafana's alerts (every 60 s), each alert whose condition holds and which
 has no pack yet gets one: an alert is the rule, its labels and when its condition first held,
 so an alert that resolves and fires again is a new alert with a new pack. A rule reading no
-data, or one that cannot evaluate, is not firing, and gets none. At most ten packs are built
+data, or one that cannot evaluate, is not firing, and gets none, unless its no data is its
+fault (below). At most ten packs are built
 after one read; the rest wait for the next, and the tab says how many are waiting. Nothing
 reaches {{product}} from Grafana by a webhook: the reader asks.
+
+### When no data is the fault {#absence}
+
+A heartbeat rule and a telemetry rule look for something that should keep arriving: a device's
+syslog heartbeat, or a telemetry subscription's samples. When the device goes silent, the
+rule's query returns nothing at all, so Grafana reports the alert as **Alerting (NoData)**. For
+such a rule the silence is the fault, and the alert is firing: it gets its pack when it fires,
+is listed on Monitoring › Alerts with the other firing alerts, and Needs attention raises it as
+alerting.
+
+{{product}} tells such a rule by a setting the rule itself carries in Grafana: its **no-data
+state** is **Alerting**, meaning its author told Grafana that no data is the alert. Both of
+{{product}}'s rule generators set it, for the heartbeat and the telemetry rules. A rule whose
+no-data state is OK or NoData is unchanged: its no data is not firing and gets no pack. The
+label a rule carries never decides it.
+
+The pack's alert section keeps Grafana's own state words, "Alerting (NoData)", and says what
+was absent, over the rule's own window: "The fault is the data's absence: no heartbeat received
+for 750 s from <device>". Explain reads such an alert as firing, so a "no fault found" on it is
+kept needing a person (see [A needs a person set by Mercury](#needs-a-person)).
+
+Past alerts of this kind recorded before {{product}} read them this way are not built again by
+themselves: on Monitoring › Alerts › History they read as fired and resolved, their states as
+Grafana named them, and **Build evidence** builds each one's pack, saying what was absent (see
+[Build evidence](alert-history#build)).
 
 ## What it holds {#sections}
 
@@ -383,7 +409,9 @@ bytes with it as without it.
 An alert that is firing has a cause, even when the evidence does not show it. So when the model
 answers **no fault found** and does not ask for a person, while the alert's own source shows the
 alert firing (its section read, its condition holding, not no data, an error, pending or
-normal, and not resolved by the pack's time), {{product}} keeps the answer needing a person.
+normal, and not resolved by the pack's time; a heartbeat or telemetry alert firing on its
+data's absence counts as firing, see [When no data is the fault](#absence)), {{product}} keeps
+the answer needing a person.
 That is {{product}}'s change, not the model's: the answer is drawn with **needs a person** and
 **set by Mercury**, with the reason in words, and the model's answer stays as it was received
 in History. A no fault found on an alert that had resolved by then is kept as the model gave it.

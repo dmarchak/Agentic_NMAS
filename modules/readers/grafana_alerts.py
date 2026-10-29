@@ -14,6 +14,22 @@ pattern's, each from a finding on 2026-09-28:
   returns nothing is not a rule whose condition holds, and a rule that
   cannot evaluate is neither.
 
+- **But a rule whose no data IS its fault fires on it** (C2174; the operator,
+  2026-10-29: heartbeat and telemetry alerts fired as "Alerting (NoData)",
+  were read as no data, and got no evidence pack). The property is the rule's
+  own, as Grafana states it: its no-data state is ``Alerting``
+  (`no_data_is_fault`), the rule's author having told Grafana that a query
+  returning nothing is the alert. Both generators set it, with a heartbeat or
+  stream query that returns no series when the device falls silent
+  (`scripts/nmas-heartbeat-rules`, `scripts/nmas-telemetry-rules`); no
+  hand-built rule in the capture does (OK or NoData). Grafana carries it into
+  the state it reports: "Alerting (NoData)" is the state it gives, on no
+  data, only to such a rule (`alerting_on_no_data`; OK gives "Normal
+  (NoData)", NoData gives "NoData"). Such an instance is the reader's
+  ``condition`` kind, with its state words kept, and says what is absent
+  (``absence``: "no heartbeat received for 750 s from edge1", from the rule's
+  own query window). Every other rule's no data stays ``no_data``.
+
 - **A rule in no-data is shown, not only its firing instances.** Two of the
   seven hand-built rules read no-data for days while the network was healthy
   (C166, C168), and nothing outside Grafana saw it. `rules[].health` carries
@@ -172,15 +188,65 @@ def _instance_device(labels: dict, source: dict) -> dict:
     return {"device_from": "none"}
 
 
-def _kind(state: str) -> str:
+#: The no-data state (the ruler's ``no_data_state``) by which a rule's author tells Grafana
+#: that its query returning nothing IS the alert (C2174): a heartbeat or a stream that stopped.
+NO_DATA_FAULT_STATE = "Alerting"
+#: What a product-generated rule's absence is of, by the family its generator declares in its
+#: ``nmas`` label (scripts/nmas-heartbeat-rules, scripts/nmas-telemetry-rules). WORDS only:
+#: whether no data is the fault is the rule's no-data state, never this label.
+ABSENT_WORDS = {"heartbeat": "no heartbeat received",
+                "telemetry": "no telemetry sample received"}
+
+
+def no_data_is_fault(no_data_state) -> bool:
+    """Whether a rule's no data is its fault: its no-data state, as the ruler holds it, is
+    `NO_DATA_FAULT_STATE` (C2174)."""
+    return str(no_data_state or "") == NO_DATA_FAULT_STATE
+
+
+def alerting_on_no_data(state) -> bool:
+    """Whether *state* is Grafana's "Alerting (NoData)": the alerting state Grafana gives, on
+    no data, only to a rule whose no-data state is Alerting (C2174). Matched whole, spaces and
+    case aside, never as a substring: "Alerting (NoData, KeepLast)" is not it."""
+    return re.sub(r"\s+", "", str(state or "")).lower() == "alerting(nodata)"
+
+
+def query_window_seconds(data) -> int:
+    """A rule's own window: the longest time range its queries read (each query's
+    ``relativeTimeRange.from``; the expressions read none), or 0 when none says."""
+    spans = [int(((d or {}).get("relativeTimeRange") or {}).get("from") or 0)
+             for d in data or [] if (d or {}).get("datasourceUid") != "__expr__"]
+    return max(spans, default=0)
+
+
+def absence_words(labels: dict, who: str, window) -> str:
+    """What a rule whose no data is its fault found absent, in words: "no heartbeat received
+    for 750 s from edge1", from the rule's family (`ABSENT_WORDS`, else "no data
+    received"), its own window and the device (or address) its instance names (C2174)."""
+    labels = labels or {}
+    what = ABSENT_WORDS.get(labels.get("nmas"), "no data received")
+    if labels.get("subscription"):
+        what += f" on subscription {labels['subscription']}"
+    span = f" for {int(window)} s" if window else " over the rule's window (not recorded)"
+    return what + span + (f" from {who}" if who else "")
+
+
+def _kind(state: str, no_data_state=None) -> str:
     """The rules view's instance state, as one of the three kinds (or a state
     that is not a problem). ``Normal (NoData)`` is a rule whose no-data state
-    is OK by decision (Interface down: no data is healthy), so it is normal."""
+    is OK by decision (Interface down: no data is healthy), so it is normal.
+    "Alerting (NoData)" is the condition (C2174): the state Grafana gives only a rule whose
+    no data is its fault. *no_data_state* is the rule's, from the ruler; given, it must say
+    so too (`no_data_is_fault`); None (a history row, a rule the ruler did not list) leaves
+    Grafana's state words to say it."""
     s = (state or "").lower()
     if s.startswith("normal"):
         return "normal"
     if s.startswith("pending"):
         return "pending"
+    if alerting_on_no_data(state) and (no_data_state is None
+                                       or no_data_is_fault(no_data_state)):
+        return "condition"
     if "nodata" in s:
         return "no_data"
     if "error" in s:
@@ -238,6 +304,7 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                     "labels": rule.get("labels") or {},
                     "no_data_state": ga.get("no_data_state"),
                     "exec_err_state": ga.get("exec_err_state"),
+                    "query_window_seconds": query_window_seconds(ga.get("data")),
                     "device_source": device_source(rule.get("labels"), exprs)}
 
     data = (view or {}).get("data") or {}
@@ -277,11 +344,13 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                 "for_seconds": cfg.get("for_seconds", 0),
                 "no_data_state": cfg.get("no_data_state"),
                 "exec_err_state": cfg.get("exec_err_state"),
+                "query_window_seconds": cfg.get("query_window_seconds", 0),
                 "device_source": source, "configured": uid in config,
                 "value_expr": cfg.get("value_expr", ""),
                 "labels": cfg.get("labels") or r.get("labels") or {}})
             for a in listed_alerts:
-                kind = _kind(a.get("state"))
+                # The rule's own no-data state where the ruler holds the rule (C2174).
+                kind = _kind(a.get("state"), cfg.get("no_data_state") if uid in config else None)
                 if kind == "normal":
                     counts["normal_no_data" if "nodata" in (a.get("state") or "").lower()
                            else "normal"] += 1
@@ -295,7 +364,8 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                     continue
                 counts[kind] += 1
                 labels = _public(a.get("labels"))
-                instances.append({
+                device = _instance_device(labels, source)
+                inst = {
                     "rule_uid": uid, "rule": r.get("name"), "kind": kind,
                     "state": a.get("state"), "labels": labels,
                     "active_at": a.get("activeAt"), "value": a.get("value", ""),
@@ -303,7 +373,14 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                     "window_seconds": int(labels.get("window_seconds") or 0) or None,
                     "window_basis": labels.get("window_basis"),
                     "fingerprint": None, "starts_at": None, "silenced_by": [],
-                    "silences": [], **_instance_device(labels, source)})
+                    "silences": [], **device}
+                if kind == "condition" and alerting_on_no_data(a.get("state")):
+                    # Firing on its data's absence (C2174): what is absent, from the rule's
+                    # own window, beside the state words Grafana gave.
+                    inst["absence"] = absence_words(
+                        labels, device.get("device") or device.get("address") or "",
+                        cfg.get("query_window_seconds") or inst["window_seconds"])
+                instances.append(inst)
 
     # The Alertmanager's instances carry what the rules view lacks: the label
     # fingerprint and `startsAt` (8.6's instance identity). Joined on the

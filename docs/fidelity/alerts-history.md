@@ -15,7 +15,26 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
-Templates sha256: `1b15c99544e66eb30ab02e734c315d42faa50fc4dcaec42da50b3dadcf56b6ec`
+Templates sha256: `088fd539a74d8b0d2d3aa4b0b16e976dd8f54957143530ef0fec54c387084166`
+
+**Compared again 2026-10-29 (C2174, an alert firing on its data's absence):** the heartbeat
+and telemetry rules' "Alerting (NoData)" episodes are fired, their state words kept, so the
+21 Oct slice's summary reads 23 fired and resolved, 18 pending never fired, 0 read no data, 0
+could not evaluate (before, 12 fired and 11 read no data: 3 heartbeat and 8 telemetry
+episodes), and the heartbeat and telemetry
+groups are drawn under Fired. `_evidence_pack.html`'s alert piece gains one clause on such a
+pack: "The fault is the data's absence: **no heartbeat received for 750 s from r2** (the rule's
+no-data state is Alerting: no data is its alert)."
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_history` (2026-10-29 05:5x UTC,
+  at 1440, 1280 and 390 beside the board at 1440): the counts as above; r2's rebuilt pack opened
+  with the clause after its rule, kind and state, on one line with the condition's times at 1440
+  and 1280, wrapping at 390 with no sideways scroll. `::test_monitoring_alerts_history_rebuild`
+  was not shot: it fails before its shot on the tree as it was, its awaited pack id written for
+  schema 5 while this release builds 6 (a finding of its own, reported with C2174).
+- **Verdict:** a **deviation**, the one new clause (log: "P1 Alerts and P1-H: an alert firing on
+  its data's absence"); the counts and groups are the same regions holding other numbers, **same**.
+
+Templates sha256 before: `1b15c99544e66eb30ab02e734c315d42faa50fc4dcaec42da50b3dadcf56b6ec`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

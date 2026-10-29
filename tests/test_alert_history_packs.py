@@ -43,11 +43,12 @@ def history(pack_lab, monkeypatch):  # noqa: F811
 
 
 def _episode(rule=RULE):
-    """r2's heartbeat episode, edited only to read as firing: the captured rule fired on no
-    data (`Alerting (NoData)`, the reader's no-data kind), so its first state is set to the
-    condition's kind to stand for a firing alert; its times and labels are the capture's."""
+    """r2's heartbeat episode as captured: the rule fired on no data (`Alerting (NoData)`),
+    which is its fault and so the condition (C2174), so the episode fired when it began; its
+    times and labels are the capture's, unedited."""
     e = next(e for e in H.episodes(H.read()["rows"]) if e["rule"] == rule)
-    return dict(e, fired_at=e["started_at"], outcome="fired")
+    assert e["outcome"] == "fired" and e["fired_at"] == e["started_at"], e
+    return e
 
 
 def _marks(pack):

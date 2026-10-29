@@ -18,6 +18,11 @@ began. A resolve is recorded from the alert's normal state, at the time Grafana 
 normal, when its last recorded state was not normal; the reader keeps alerts that resolved
 within the last hour, so a missed read still sees a resolve.
 
+A heartbeat or telemetry alert that fired on its device's silence, Grafana's **Alerting
+(NoData)**, is recorded as firing, its state words kept: for such a rule no data is the fault
+(see [When no data is the fault](alert-evidence#absence)). One recorded as no data before
+{{product}} read it this way is read as firing too, its line never rewritten.
+
 Each transition is recorded **once**: it is known by its rule, its labels, the state Grafana
 named and the second it began, whoever records it. A second read, a second worker, and the
 backfill below never add a second line for it.

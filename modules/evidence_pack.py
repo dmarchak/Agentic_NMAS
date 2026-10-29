@@ -18,7 +18,9 @@ Explain call (P1's second half) cites its pieces, and a citation is checked agai
 
 **Triggered by the reader, never by a webhook** (C1656: Mercury takes no inbound alert
 webhook). The reader's after-store step (`after_alerts_read`) looks at every alert it stored as
-firing (`kind == "condition"`: no-data and error are not firing, the reader's own rule) and
+firing (`kind == "condition"`: no-data and error are not firing, the reader's own rule, but
+for a rule whose no data is its fault, a heartbeat or a telemetry stream, Grafana's "Alerting
+(NoData)" is firing, C2174, and its alert piece says what was absent, ``absence``) and
 builds a pack for each one no pack holds yet, keyed by the alert instance's identity
 (`alert_key`: the rule, its labels and when its condition first held; a re-fire after a resolve
 is a new instance, so a new pack). At most `MAX_PER_RUN` are built per read, so a storm of
@@ -231,7 +233,8 @@ def superseded(rows) -> dict:
 
 def firing(value: dict) -> list:
     """The instances a reader value holds as firing: the condition holds. No-data and error
-    are the reader's other two kinds, never "firing" (grafana_alerts' first rule)."""
+    are the reader's other two kinds, never "firing" (grafana_alerts' first rule); a rule whose
+    no data is its fault fires on it, as the condition (C2174, the reader's second rule)."""
     return [i for i in (value or {}).get("instances") or [] if i.get("kind") == "condition"]
 
 
@@ -334,6 +337,10 @@ def _alert_section(inst: dict, store: str, value_at: str, onset, basis: str,
              "for_seconds": int(inst.get("for_seconds") or 0),
              "window_seconds": int(inst.get("window_seconds") or 0),
              "onset": _iso(onset), "onset_basis": basis, "silences": silences}
+    if inst.get("absence"):
+        # Firing on its data's absence (C2174): the fault is what did not arrive. Carried only
+        # on such an alert, so every other pack's alert piece is as it was.
+        piece["absence"] = inst["absence"]
     return _section("alert", source or f"Grafana's alert state, as the {store} reader stored "
                     "it", value_at, "ok", pieces=[piece])
 
@@ -1299,17 +1306,45 @@ def sdn_view(pack: dict) -> dict:
 def episode_instance(e: dict) -> dict:
     """An alert history episode (`alert_history.episodes`) as a firing instance in the alerts
     reader's shape: its rule and labels, its condition first holding when the episode began,
-    alerting from when it fired, both Grafana's times."""
+    alerting from when it fired, both Grafana's times. An episode that fired on its data's
+    absence (Grafana's "Alerting (NoData)", C2174) keeps those state words and says what was
+    absent, over the rule's own window (its ``window_seconds`` label, else the query window
+    the alerts reader holds for its rule now, `_rule_window`)."""
+    from modules.readers import grafana_alerts as G
+
     labels = dict(e.get("labels") or {})
     window = labels.get("window_seconds")
-    return {"rule": e.get("rule") or "", "rule_uid": e.get("rule_uid") or "",
+    window = int(window) if str(window or "").isdigit() else 0
+    fired = next((s.get("state") for s in e.get("states") or []
+                  if s.get("to") == "condition"), "")
+    inst = {"rule": e.get("rule") or "", "rule_uid": e.get("rule_uid") or "",
             "kind": "condition", "state": "Alerting", "value": "", "labels": labels,
             "device": e.get("device") or "", "address": e.get("address") or "",
             "device_from": e.get("device_from") or ("label" if e.get("device") else "address"),
             "active_at": e.get("started_at") or "", "starts_at": e.get("fired_at") or "",
-            "fingerprint": "", "for_seconds": 0,
-            "window_seconds": int(window) if str(window or "").isdigit() else 0,
+            "fingerprint": "", "for_seconds": 0, "window_seconds": window,
             "silences": []}
+    if G.alerting_on_no_data(fired):
+        inst["state"] = fired
+        inst["absence"] = G.absence_words(
+            labels, inst["device"] or inst["address"],
+            window or _rule_window(e.get("store") or "", inst["rule_uid"], inst["rule"]))
+    return inst
+
+
+def _rule_window(store: str, uid: str, title: str = "") -> int:
+    """The query window the alerts reader holds now for the rule in *store* named by *uid*
+    (else by its *title*: a backfilled row carries no uid, Grafana's annotations naming the
+    rule by title) as its ``query_window_seconds``, or 0 when it holds none: a past alert's
+    rule may have changed or gone since, and then its window is said not recorded."""
+    from modules import reader_job
+
+    if not store or not (uid or title):
+        return 0
+    got = reader_job.read_cached(store)
+    value = (((got.get("doc") or {}).get("last_good") or {}).get("value") or {})
+    return next((int(r.get("query_window_seconds") or 0) for r in value.get("rules") or []
+                 if (r.get("uid") == uid if uid else r.get("title") == title)), 0)
 
 
 def build_for_episode(e: dict, *, actor: str, loki=None, prometheus=None,

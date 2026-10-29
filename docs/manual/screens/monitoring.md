@@ -168,7 +168,10 @@ alerts no longer firing.
 
 The alerts are grouped by rule (a rule generated per device, such as a heartbeat, is one
 group), each alert a closed card naming its device, its network, when it began and its onset,
-how many pieces its pack holds and how many of its sources could not be read. Open a card to
+how many pieces its pack holds and how many of its sources could not be read. A heartbeat or
+telemetry alert whose device went silent fires as **Alerting (NoData)** and is listed here like
+any firing alert, its pack saying what was absent (see
+[When no data is the fault](alert-evidence#absence)). Open a card to
 read its pack, section by section, each with its source, when it was read and the reference
 the pack gave it. **Show** narrows the cards to a rule, device or label. **Earlier** holds the
 packs of alerts that have resolved, the newest 50 drawn. A Needs attention row about an alert

@@ -382,7 +382,15 @@ class TestEpisodes:
         fired = [e for e in eps if e["outcome"] == "fired"]
         assert fired and all(e["fired_at"] and e["started_at"] <= e["fired_at"] for e in fired)
         assert all(e["resolved_at"] >= e["fired_at"] for e in fired if e["resolved_at"])
-        assert {e["outcome"] for e in eps} >= {"fired", "pending_only", "no_data"}
+        # The slice's no-data episodes are its heartbeat and telemetry rules' "Alerting
+        # (NoData)": their no data IS their fault (C2174, the operator 2026-10-29), so they
+        # fired, their state words kept. A rule's own NoData stays no data:
+        # TestNoDataIsTheFault.test_a_no_data_state_episode_still_reads_no_data.
+        assert {e["outcome"] for e in eps} == {"fired", "pending_only"}
+        absent = [e for e in eps if any(s["state"] == "Alerting (NoData)" for s in e["states"])]
+        assert {e["rule"].split(":")[0] for e in absent} == {"NMAS heartbeat missing",
+                                                              "NMAS telemetry stream lost"}
+        assert all(e["outcome"] == "fired" for e in absent)
         s3 = [e for e in fired if e["device"] == "s3" and
               e["rule"] == "Device unreachable (SNMP)"]
         assert s3 and s3[0]["duration_words"]

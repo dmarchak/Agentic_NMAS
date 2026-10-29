@@ -81,6 +81,7 @@
       <li data-ref="{{ p.ref }}" id="{{ pack.id }}-{{ p.ref }}"><span class="pack-ref">{{ p.ref }}</span>
         {%- if s.name == 'alert' %}
         <strong>{{ p.rule }}</strong> ({{ p.kind }}, {{ p.state }}){% if p.value %}: <code>{{ p.value }}</code>{% endif %}.
+        {%- if p.absence %} The fault is the data's absence: <strong>{{ p.absence }}</strong> <span class="muted small">(the rule's no-data state is Alerting: no data is its alert)</span>.{% endif %}
         Condition held from {{ stamp(p.active_at) }}{% if p.starts_at %}, alerting from {{ stamp(p.starts_at) }}{% endif %}; onset {{ stamp(p.onset) }} ({{ p.onset_basis }}){% if p.for_seconds %}; pending {{ p.for_seconds }} s{% endif %}{% if p.window_seconds %}; window {{ p.window_seconds }} s{% endif %}.
         <span class="muted small" title="rule {{ p.rule_uid }}; fingerprint {{ p.fingerprint or 'not recorded' }}">Labels:</span>
         {%- for k, v in p.labels|dictsort %} <span class="mono small">{{ k }}=<span class="pack-text">{{ v }}</span></span>{{ ',' if not loop.last }}{% endfor %}
