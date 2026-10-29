@@ -126,8 +126,8 @@ It is the same import, with the same preview, confirmation and records. The diff
 Retire frees a device record's IP addresses when it sets the record to Decommissioning. A
 record retired before Retire did that still holds them. When the import of a device finds
 that device's management address on such a record, its preview names the record ("192.0.2.9/30
-is held by edge1-retired-21 (NetBox device 21, Decommissioning)") and offers **Free 192.0.2.9
-from edge1-retired-21…**. It works the same on the NetBox page's import and on a device page's
+is held by edge1-retired-21 (NetBox device 21, Decommissioning)") and offers **Free <address>
+from <record>…** (here, Free 192.0.2.9 from edge1-retired-21…). It works the same on the NetBox page's import and on a device page's
 NetBox tab, and for an IPv4 or an IPv6 address. The import of every network does not offer it:
 import the network or the device.
 

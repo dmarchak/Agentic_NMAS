@@ -22,7 +22,8 @@ conditional, a join, a name the template binds to literals by a loop, a ``set`` 
 calls), anything else a placeholder ``<x>``. Its ``aria-label`` and ``title`` are names too;
 a control with no words is labelled by them.
 
-**The manual's names** (`bold_names()`): every ``**bold**`` span outside code, and each
+**The manual's names** (`bold_names()`): every ``**bold**`` span outside code, read over a
+paragraph's lines joined as the renderer joins them (`inline_text`, C2218), and each
 segment of a bold path (``**Actions › Save…**``). The manual writes a value the page fills as
 ``<placeholder>``, a count as ``N``, and a plural as ``line(s)``; each is normalised to the
 template's placeholder (`normal()`).
@@ -83,9 +84,63 @@ def prose(text: str) -> str:
     return _FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
 
 
+def inline_text(text: str) -> str:
+    """A page as the renderer (modules/manual.py ``render``) hands its inline grammar the
+    words: one block per line, a paragraph's lines stripped and joined by one space, a list
+    item's continuation lines (indented past its marker) joined to it, a heading or a diagram
+    line by itself, and a fenced block dropped (C2218: a bold label wrapped across a line break
+    is one span to the renderer, so it is one here). The renderer does not expose its joining,
+    so its loop is followed step for step; `TestTheBoldSpansAreTheRenderersOwn` holds the two
+    together page by page."""
+    lines = text.splitlines()
+    out, para = [], []
+
+    def flush():
+        if para:
+            out.append(" ".join(para))
+            para.clear()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
+        if line.startswith("```"):
+            flush()
+            i += 1
+            while i < len(lines) and not lines[i].startswith("```"):
+                i += 1
+            i += 1
+            continue
+        if manual._HEAD.match(line) or manual._DIAGRAM.match(line):
+            flush()
+            out.append(line)
+            i += 1
+            continue
+        b = manual._BULLET.match(line)
+        if b:
+            flush()
+            indent, item = len(b.group(1)), line
+            j = i + 1
+            while j < len(lines) and lines[j].startswith(" " * (indent + 2)) \
+                    and not manual._BULLET.match(lines[j]) and lines[j].strip():
+                item += " " + lines[j].strip()
+                j += 1
+            out.append(item)
+            i = j
+            continue
+        if not line.strip():
+            flush()
+            i += 1
+            continue
+        para.append(line.strip())
+        i += 1
+    flush()
+    return "\n".join(out)
+
+
 def bold_spans(text: str) -> list:
-    """``[(start, end, label)]`` for each bold span of a page, as the renderer reads it."""
-    return [(m.start(), m.end(), m.group(2)) for m in _INLINE.finditer(prose(text))
+    """``[(start, end, label)]`` for each bold span of a page, as the renderer reads it: over
+    `inline_text`, whose offsets `pressed_names` and `tab_names` read the words around."""
+    return [(m.start(), m.end(), m.group(2)) for m in _INLINE.finditer(inline_text(text))
             if m.group(2) is not None]
 
 
@@ -108,7 +163,7 @@ def pressed_names(texts: dict) -> list:
     paths and ellipsis labels left to their own checks."""
     out = []
     for slug, text in sorted(texts.items()):
-        body = prose(text)
+        body = inline_text(text)
         spans = bold_spans(text)
         pressed = False
         for i, (start, end, label) in enumerate(spans):
@@ -126,7 +181,7 @@ def tab_names(texts: dict) -> list:
     """``(slug, label)`` for each bold label the prose calls a tab ("the **Intent** tab")."""
     out = []
     for slug, text in sorted(texts.items()):
-        body = prose(text)
+        body = inline_text(text)
         out += [(slug, label) for _s, end, label in bold_spans(text)
                 if re.match(r" tabs?\b", body[end:end + 6]) and not _SEP.search(label)]
     return sorted(set(out))

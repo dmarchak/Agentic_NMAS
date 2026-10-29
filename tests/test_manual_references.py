@@ -150,7 +150,7 @@ def label_pattern(label: str):
 def dead_controls(texts: dict, drawn: str) -> list:
     """``(slug, label)`` for each dialog control a page names that nothing in v2 draws."""
     return [(slug, label) for slug, text in sorted(texts.items())
-            for label in sorted(set(DIALOG.findall(text)))
+            for label in sorted(set(DIALOG.findall(MC.inline_text(text))))
             if not label_pattern(label).search(drawn)]
 
 
@@ -274,6 +274,10 @@ class TestTheManualAgainstTheProduct:
 
     def test_the_populations(self):
         texts = manual_texts()
+        # Every bold span the renderer draws: 2442 measured 2026-10-29 (C2218; the raw-line
+        # reading found 2363, 116 wrapped labels missed and 37 mis-paired runs of prose in
+        # their place, on 27 pages).
+        assert sum(len(MC.bold_spans(t)) for t in texts.values()) >= 2200
         assert len(MC.pressed_names(texts)) >= 15
         assert len(MC.tab_names(texts)) >= 8
         assert len(MC.paths(texts)) >= 90
@@ -304,6 +308,24 @@ class TestTheManualAgainstTheProduct:
         data = MC.split(_controls(), MC.bold_names(manual_texts()))[2]
         assert len(data) <= MC.DATA_LABELLED_CEILING, \
             [(c["template"], c["labels"]) for c in data]
+
+
+class TestTheBoldSpansAreTheRenderersOwn:
+    """C2218: `MC.inline_text` follows the renderer's loop because the renderer does not expose
+    its joining; this holds the two together, every page's bold spans, in order, being exactly
+    the ``<strong>`` elements modules/manual.py draws (its figure caption's own lead aside)."""
+
+    def test_every_page_reads_its_bold_as_the_renderer_draws_it(self):
+        bad, pages = [], 0
+        for slug, text in sorted(manual_texts().items()):
+            drawn = [s for s in re.findall(r"<strong>(.*?)</strong>", manual.render(text)["html"],
+                                           re.S) if s != "The diagram in words."]
+            read = [manual._inline(l, []) for _s, _e, l in MC.bold_spans(text)]
+            pages += bool(drawn)
+            if read != drawn:
+                bad.append((slug, [x for x in read if x not in drawn],
+                            [x for x in drawn if x not in read]))
+        assert pages >= 50 and bad == []      # 68 of 69 pages draw bold, 2026-10-29
 
 
 class TestTheTwoWayCheckCanFail:
@@ -367,6 +389,22 @@ class TestTheTwoWayCheckCanFail:
         assert found == [("p", "Frobnicate"), ("p", "Save"), ("p", "Test")]
         assert dead_pressed(found, "<button>Save</button><button>Test</button>") == [
             ("p", "Frobnicate")]
+
+    def test_a_bold_label_wrapped_across_a_line_break_is_found(self):
+        """C2218: the renderer joins a paragraph's lines before it reads bold, so a label
+        wrapped across a line break is one span, and a list item's continuation line joins its
+        item; a blank line ends a paragraph, and a fenced block is never read."""
+        texts = {"p": "Open the page and press **Frobnicate the\nwidget**, then **Save**.\n\n"
+                      "- Choose **Plan a\n  deploy…** to preview it.\n\n"
+                      "The **Mode\n\nfield** is two paragraphs.\n\n```\n**Not bold**\n```\n"}
+        assert [l for _s, _e, l in MC.bold_spans(texts["p"])] == [
+            "Frobnicate the widget", "Save", "Plan a deploy…"]
+        assert MC.pressed_names(texts) == [("p", "Frobnicate the widget"), ("p", "Save")]
+        # The wrapped label enters its control, and the wrapped dialog label is checked.
+        v2 = {"x.html": "<button>Frobnicate the widget</button><button>Plan a deploy…</button>"}
+        assert MC.unentered(MC.all_controls(v2), MC.bold_names(texts)) == {}
+        assert dead_controls(texts, "") == [("p", "Plan a deploy…")]
+        assert dead_controls(texts, v2["x.html"]) == []
 
     def test_a_tab_naming_nothing_is_found(self):
         texts = {"p": "Open the **Intent** tab, then the **Nowhere** tab; **Intent** alone."}
