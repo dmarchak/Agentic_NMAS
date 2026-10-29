@@ -118,7 +118,10 @@ def test_a_scan_s_rate_limit_takes_every_host_s_port_from_the_topology_with_only
     (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
     assert "to a host the controller's topology does not list yet is not metered" in gap
     assert "Only 192.0.2.1's IPv4 traffic is metered" in gap
-    done = CL.respond_to_threat("Default", None, confirm={"ask": preview["ask"],
+    # C2148: the same host's IPv6 addresses, as the captured topology lists them, named.
+    assert ("lists this host (00:00:00:00:00:01) with the addresses 2001:db8:8::1, "
+            "fe80::200:ff:fe00:1 (link-local): traffic from them is not metered") in gap
+    done =CL.respond_to_threat("Default", None, confirm={"ask": preview["ask"],
                                                           "hash": preview["plan"]["hash"]},
                                 actor="op@example.com", actor_verified="access",
                                 driver=fake.driver, sleep=lambda s: None, counter_interval=0)
@@ -277,3 +280,94 @@ def test_modify_strict_on_ovs_keeps_the_cookie_and_timeouts():
     assert {k: after[k] for k in O.MODIFY_KEEPS} == {k: before[k] for k in O.MODIFY_KEEPS}
     assert after["actions"] == [{"port": "CONTROLLER", "type": "OUTPUT"}] != before["actions"]
     assert m["after_cleanup"] == []
+
+
+def _scan_switch(topology):
+    """s1 holding the scan capture's flows (scan_s1.json, h1 SYN-scanning h3), its controller's
+    topology *topology* (the real capture's answers by path, or None: Ryu's 404)."""
+    entries = lab8("scan_s1.json")
+    fake = FakeRyu(BASE, flows={1: flows_of(entries, 1)}, features=features_of(entries, 1),
+                   dpids=(1,), topology=topology)
+    fake.driver = lambda net, name: C.driver_for(net, name, session=fake, sleep=lambda s: None)
+    return fake
+
+
+def _family_gap(preview):
+    (gap,) = [w for w in preview["plan"]["will_not"] if w.startswith("Only ")]
+    return gap
+
+
+def _without_ipv6_of(topo, mac):
+    hosts = topo["/v1.0/topology/hosts"]
+    topo["/v1.0/topology/hosts"] = [dict(h, ipv6=[]) if h["mac"] == mac else h for h in hosts]
+    return topo
+
+
+def _without_host(topo, mac):
+    hosts = topo["/v1.0/topology/hosts"]
+    topo["/v1.0/topology/hosts"] = [h for h in hosts if h["mac"] != mac]
+    return topo
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("family", ["ipv4", "ipv6"])
+def test_a_drop_says_on_its_preview_what_the_host_s_other_family_leaves_unmatched(family):
+    """C2148: a drop matches the one address, so a dual-stack host named by its IPv4 address
+    keeps sending over IPv6 (and the other way round). The preview's What will not happen says
+    so, naming the addresses the controller's topology lists for the same host: the real
+    capture lists h1 (00:00:00:00:00:01) with 192.0.2.1, 2001:db8:8::1 and its link-local
+    fe80::200:ff:fe00:1. The IPv6 case is the capture's scan detection with one edit: its
+    source and target the same two hosts by their IPv6 addresses, as the topology lists them."""
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    if family == "ipv6":
+        d = dict(d, source="2001:db8:8::1", sources=["2001:db8:8::1"],
+                 targets=["2001:db8:8::3"])
+    fake = _scan_switch(captured_topology())
+    preview = CL.respond_to_threat("Default", d, "drop_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    body = json.loads(preview["plan"]["steps"][0]["request"]["body"])
+    gap = _family_gap(preview)
+    if family == "ipv4":
+        assert body["match"] == {"eth_type": 0x0800, "ipv4_src": "192.0.2.1"}
+        assert gap.startswith("Only 192.0.2.1's IPv4 traffic is dropped: the same host's IPv6 "
+                              "traffic is not.")
+        assert ("The controller's topology lists this host (00:00:00:00:00:01) with the "
+                "addresses 2001:db8:8::1, fe80::200:ff:fe00:1 (link-local): traffic from them "
+                "is not dropped by this response.") in gap
+    else:
+        assert body["match"] == {"eth_type": 0x86DD, "ipv6_src": "2001:db8:8::1"}
+        assert gap.startswith("Only 2001:db8:8::1's IPv6 traffic is dropped: the same host's "
+                              "IPv4 traffic is not, nor what it sends from any other IPv6 "
+                              "address.")
+        assert ("lists this host (00:00:00:00:00:01) with the addresses 192.0.2.1, "
+                "fe80::200:ff:fe00:1 (link-local)") in gap
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("topology,said", [
+    ("h1 with no IPv6", "The controller's topology lists this host (00:00:00:00:00:01) with no "
+                        "other address; it lists only the addresses it has seen the host send "
+                        "from, so it may still have an IPv6 address."),
+    ("without h1", "The controller's topology does not list 192.0.2.1, so the host's other "
+                   "addresses are not known here."),
+    (None, "The controller's topology could not be read (HTTP 404"),
+], ids=["none-listed", "unlisted", "unread"])
+def test_a_drop_whose_host_s_other_addresses_are_unknown_says_which(topology, said):
+    """C2148: none listed, the host not listed, and the topology unread are three states, each
+    said as itself; the family sentence is said in every one, and the drop is still built."""
+    topo = None
+    if topology == "h1 with no IPv6":
+        topo = _without_ipv6_of(captured_topology(), "00:00:00:00:00:01")
+    elif topology == "without h1":
+        topo = _without_host(captured_topology(), "00:00:00:00:00:01")
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    fake = _scan_switch(topo)
+    preview = CL.respond_to_threat("Default", d, "drop_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    gap = _family_gap(preview)
+    assert gap.startswith("Only 192.0.2.1's IPv4 traffic is dropped: the same host's IPv6 "
+                          "traffic is not.")
+    assert said in gap, gap
+    assert "2001:db8:8::1" not in gap
+    assert fake.writes == []

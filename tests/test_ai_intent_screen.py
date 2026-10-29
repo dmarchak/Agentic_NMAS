@@ -240,6 +240,80 @@ def test_another_device_s_possessive_is_not_resolved_on_this_tab():
     assert got["ok"] and got["resolutions"] == [], got
 
 
+@pytest.mark.parametrize("sentence,sent", [
+    ("make gi0/1 the trunk", "make GigabitEthernet0/1 the trunk"),
+    ("make gi0/1 the uplink", "make GigabitEthernet0/1 the uplink"),
+    ("configure gi0/1 as the uplink to r1", "configure GigabitEthernet0/1 as the uplink to r1"),
+    ("turn Gi0/1 into the host port", "turn GigabitEthernet0/1 into the host port"),
+    ("shut gi0/1 and set it to the trunk", "shut GigabitEthernet0/1 and set it to the trunk"),
+], ids=["make-the-trunk", "make-the-uplink", "as-the-uplink-to", "into-the-host-port",
+        "set-it-to"])
+def test_a_definite_reference_standing_as_the_state_wanted_stays_as_words(sentence, sent):
+    """C1890's class with a definite article (2026-10-29): "make gi0/1 the trunk" on s1 was
+    sent as "make GigabitEthernet0/1 GigabitEthernet0/3" and "configure gi0/1 as the trunk" as
+    "... as GigabitEthernet0/3": the reference stood as the state wanted, never as ports. Only
+    the interface named by its shape is rewritten; "the uplink" and "the host port", which
+    no vocabulary refusal catches, reach the model as the person wrote them."""
+    got = _resolve(sentence)
+    assert got["ok"] and got["sentence"] == sent, got
+    assert [r["to"] for r in got["resolutions"]] == [["GigabitEthernet0/1"]], got
+
+
+@pytest.mark.parametrize("sentence,sent", [
+    ("add vlan 30 to the trunk", "add vlan 30 to GigabitEthernet0/3"),
+    ("set the trunk to a routed port", "set GigabitEthernet0/3 to a routed port"),
+    ("shut Gi0/1 as well as the trunk", "shut GigabitEthernet0/1 as well as "
+                                        "GigabitEthernet0/3"),
+    ("set vlan 30 to the trunk", "set vlan 30 to GigabitEthernet0/3"),
+], ids=["to-the-trunk", "the-subject", "as-well-as", "a-vlan-object"])
+def test_a_definite_reference_naming_ports_beside_a_target_word_still_resolves(sentence, sent):
+    """The other side of the line (C1890, 2026-10-29): "to" after a VLAN, the reference as
+    the sentence's subject, "as well as", and a VLAN as the verb's object (never an interface)
+    name ports, and are read."""
+    got = _resolve(sentence)
+    assert got["ok"] and got["sentence"] == sent, got
+
+
+with open(os.path.join(ROOT, "tests", "fixtures", "committed", "r2.yml"), encoding="utf-8") as fh:
+    R2_COMMITTED = yaml.safe_load(fh)
+
+
+@pytest.mark.parametrize("device,sentence,sent", [
+    ("s1", "make gi0/1 a trunk", "make GigabitEthernet0/1 a trunk"),
+    ("s1", "shut gi 0/1", "shut GigabitEthernet0/1"),
+    ("s1", "shut Gig0/1", "shut GigabitEthernet0/1"),
+    ("s1", "shut lo 0", "shut Loopback0"),
+    ("s1", "shut Vl10", "shut Vlan10"),
+    ("r2", "shut Gi2", "shut GigabitEthernet2"),
+    ("r2", "shut GigabitEthernet 3", "shut GigabitEthernet3"),
+    ("r2", "shut gi1 and describe it as trunk 2", "shut GigabitEthernet1 and describe it as "
+                                                  "trunk 2"),
+], ids=["the-row", "ios-spaced", "ios-gig", "loopback", "svi", "iosxe-gi", "iosxe-spaced",
+        "iosxe-value"])
+def test_only_an_interface_by_its_shape_is_rewritten_on_ios_and_ios_xe(device, sentence, sent):
+    """C1890's sentence and real interface forms on the host's committed s1 (IOS: slot/port)
+    and r2 (IOS-XE: GigabitEthernet1 to 3): the shared table's abbreviations, spaced or not,
+    become the device's own names; nothing else in the sentence moves."""
+    doc = S1 if device == "s1" else R2_COMMITTED
+    nb = FAR if device == "s1" else {"ports": {}, "said": []}
+    got = intent_names.resolve("Lab", device, doc, sentence, neighbours=nb, endpoints=[])
+    assert got["ok"] and got["sentence"] == sent, got
+
+
+@pytest.mark.parametrize("sentence", [
+    "shut trunk", "shut a trunk port", "shut port 1", "add vlan 10", "set the as 65001",
+    "add 192.0.2.0/24 to ospf area 0", "add 2001:db8:10::/64 to ospf area 0", "set it to 10",
+    "turn up 2 ports",
+], ids=lambda v: v[:24])
+def test_plain_words_and_numbers_stay_words(sentence):
+    """Words with numbers beside them that are no interface's shape ("port 1", "as 65001",
+    "area 0", an address), and nouns with no definite article, are never rewritten."""
+    for device, doc in (("s1", S1), ("r2", R2_COMMITTED)):
+        got = intent_names.resolve("Lab", device, doc, sentence, neighbours={
+            "ports": {}, "said": []}, endpoints=[])
+        assert got["ok"] and got["sentence"] == sentence and got["resolutions"] == [], got
+
+
 @pytest.mark.parametrize("sentence,value", [
     ("set the description of Gi0/1 to uplink to r1", "uplink to r1"),
     ("set the description on Gi0/1 to the uplink to r1", "the uplink to r1"),

@@ -9,7 +9,9 @@ flow Mercury changes. Without a confirm it is the preview, writing nothing; with
 apply. The actions:
 - ``drop_source`` (risk low): one flow on the detection's switch matching the source address
   (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
-  response_priority`), with the network's hard timeout;
+  response_priority`), with the network's hard timeout; its preview says the same host's other
+  family is not matched, naming the other addresses the controller's topology lists for the
+  host (`drop_gap`, C2148);
 - ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
   burst), then, for every host the controller's topology lists other than the source (the
   evidence's targets first), a flow matching the pair whose actions are the meter and the port
@@ -1258,12 +1260,11 @@ def _destinations(flows: list, source: str) -> list:
     return sorted(out, key=str)
 
 
-def rate_limit_gap(source: str, params: dict) -> str:
+def rate_limit_gap(source: str, params: dict, same_host: dict = None) -> str:
     """What a rate limit leaves unmetered, in words, for its preview's will-not list: the hosts
     it meters and where their ports came from, what it does not meter and why, no NORMAL, and
-    that an IPv4 source's IPv6 traffic is not metered (C1997)."""
-    import ipaddress
-
+    that the source's other family is not metered (C1997), the host's other addresses the
+    controller's topology lists named (`family_gap`, C2148)."""
     metered = ", ".join(params.get("targets") or [])
     ports_from = params.get("ports_from") or "the switch's flows"
     later = ("a host the controller's topology does not list yet" if
@@ -1274,13 +1275,75 @@ def rate_limit_gap(source: str, params: dict) -> str:
              "flow here forwards with NORMAL.")
     if params.get("not_metered"):
         words += f" Not metered now: {'; '.join(params['not_metered'])}."
+    return words + family_gap(source, "metered", same_host)
+
+
+def drop_gap(source: str, same_host: dict = None) -> str:
+    """What a drop leaves passing, in words, for its preview's will-not list (C2148): its flow
+    matches the one address, so the same host's other family (and its other addresses) is not
+    dropped; the addresses the controller's topology lists for the host named (`_same_host`)."""
+    return family_gap(source, "dropped", same_host).strip()
+
+
+def family_gap(source: str, verb: str, same_host: dict = None) -> str:
+    """The sentence a drop's or rate limit's preview says about the family it does not match
+    (C1997, C2148): the flow matches *source*'s one address, so the same host's traffic from
+    its other family, and from any other address, is not *verb*; then what the controller's
+    topology lists for the host (*same_host*, `_same_host`'s answer): its other addresses by
+    name, none listed, the host not listed, or the topology unread, each said as such. ""
+    when *source* is not an address."""
+    import ipaddress
+
     try:
-        if ipaddress.ip_address(source).version == 4:
-            words += (f" Only {source}'s IPv4 traffic is metered: the same host's IPv6 "
-                      "traffic is not.")
+        version = ipaddress.ip_address(str(source).strip()).version
     except ValueError:
-        pass
+        return ""
+    other = "IPv6" if version == 4 else "IPv4"
+    words = (f" Only {source}'s IPv{version} traffic is {verb}: the same host's {other} "
+             "traffic is not" + ("." if version == 4 else
+                                 ", nor what it sends from any other IPv6 address."))
+    same = same_host or {}
+    state, mac = same.get("state"), same.get("mac") or ""
+    if state == "listed":
+        named = [a + (" (link-local)" if ipaddress.ip_address(a).is_link_local else "")
+                 for a in same.get("addresses") or []]
+        many = len(named) != 1
+        words += (f" The controller's topology lists this host ({mac}) with "
+                  f"{'the addresses' if many else 'the address'} {', '.join(named)}: traffic "
+                  f"from {'them' if many else 'it'} is not {verb} by this response.")
+    elif state == "none":
+        words += (f" The controller's topology lists this host ({mac}) with no other address; "
+                  "it lists only the addresses it has seen the host send from, so it may "
+                  f"still have an {other} address.")
+    elif state == "unlisted":
+        words += (f" The controller's topology does not list {source}, so the host's other "
+                  "addresses are not known here.")
+    elif state == "unread":
+        words += (" The controller's topology could not be read "
+                  f"({same.get('why') or 'no answer'}), so the host's other addresses are not "
+                  "known here.")
     return words
+
+
+def _same_host(drv, source: str) -> dict:
+    """The host the controller's topology lists with *source* among its addresses, read from
+    the controller now (C2148): ``{"state", "mac", "addresses", "why"}``. *state* ``listed``
+    (*addresses* its other addresses, IPv4 then IPv6, as the controller learned them, less the
+    unspecified ones `base.topo_host` leaves out), ``none`` (listed with no other address),
+    ``unlisted`` (no host carries *source*) or ``unread`` (*why* the read's error). Never a
+    refusal: a drop is built whether or not the host's other addresses are known."""
+    got = drv.hosts()
+    if not got.get("ok"):
+        return {"state": "unread", "mac": "", "addresses": [],
+                "why": got.get("error") or "no answer"}
+    want = _canon(source)
+    for host in got.get("hosts") or []:
+        mine = list(host.get("ipv4") or []) + list(host.get("ipv6") or [])
+        if want in {_canon(a) for a in mine}:
+            others = [a for a in mine if _canon(a) != want]
+            return {"state": "listed" if others else "none", "mac": host.get("mac") or "",
+                    "addresses": others, "why": ""}
+    return {"state": "unlisted", "mac": "", "addresses": [], "why": ""}
 
 
 def _hard_timeout(network: str, params: dict) -> int:
@@ -1459,6 +1522,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
             priority = flow_ops.response_priority(read["flows"], own, recorded,
                                                   match=_source_match(source))
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
+            # The host's other addresses, as the controller's topology lists them (C2148):
+            # the flow matches the one address, and the preview names what it leaves.
+            out["same_host"] = _same_host(drv, source)
             if action_id == "drop_source":
                 changes.append({"do": "add_flow", "flow": {
                     "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
@@ -1610,10 +1676,14 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         if not built["ok"]:
             return dict(built, plan=None)
         p = flow_ops.plan(network, built["ask"], driver=driver)
+        source = built["params"].get("source") or (detection or {}).get("source") or ""
         if p["ok"] and built["action"] == "rate_limit_source":
-            p["will_not"].append(rate_limit_gap(
-                built["params"].get("source") or (detection or {}).get("source") or "",
-                built["params"]))
+            p["will_not"].append(rate_limit_gap(source, built["params"], built.get("same_host")))
+        elif p["ok"] and built["action"] == "drop_source":
+            # The drop's own family gap, said on its screen (C2148), not only in the manual.
+            gap = drop_gap(source, built.get("same_host"))
+            if gap:
+                p["will_not"].append(gap)
         return dict(built, plan=p, ok=p["ok"], error=p["error"])
     ask = (confirm or {}).get("ask")
     if not isinstance(ask, dict):

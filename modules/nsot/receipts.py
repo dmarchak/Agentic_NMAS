@@ -227,6 +227,15 @@ def stages_before_send() -> tuple:
     return tuple(STAGE_NAMES[:STAGE_NAMES.index("deploy")])
 
 
+def was_sent(result: dict) -> bool:
+    """Whether a batch's per-device *result* sent its program (C1540): a program in hand, not
+    refused, and not stopped at a stage before the send. Never attempted, found changed since
+    its capture (`deploy.SKIPPED_DRIFTED`) and stopped before the send are not sent. The one
+    answer: the receipt's ``sent`` and the paired deploy's ends never sent (C1967)."""
+    return (bool(result.get("commands")) and result.get("outcome") != "refused"
+            and result.get("stage") not in stages_before_send())
+
+
 def intent_commits(list_name: str, hosts: list) -> dict:
     """``{host: commit}``: each device's newest commit of its committed intent
     (``host_vars/<host>.yml``) now, the intent a deploy renders at apply (C1775); a device whose
@@ -290,8 +299,7 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # C1540: a run that stopped at a stage before the send sent nothing, its program
             # in hand or not (a router's failed at pre_snapshot read "It received 8 line(s)",
             # Lab 9).
-            "sent": (bool(commands) and result.get("outcome") != "refused"
-                     and result.get("stage") not in stages_before_send()),
+            "sent": was_sent(result),
             "program": [redact_text(c) for c in commands],
             "program_lines": len(commands),
             "program_hash": program_hash,

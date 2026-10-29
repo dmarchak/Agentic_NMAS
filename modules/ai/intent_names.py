@@ -28,7 +28,10 @@ them; NetBox's cables are made from those same LLDP links, so they are not read 
   the tab's own device as a possessive ("edge2's trunk" on edge2's tab). An indefinite or
   target-state phrase describes the state wanted, never a port: "a trunk", "an access port",
   "as a trunk", "to a routed port", "make gi0/1 a trunk" stay as words (the operations that
-  would make them are refused by `intent_words.not_an_operation`, or by the model).
+  would make them are refused by `intent_words.not_an_operation`, or by the model). So does a
+  definite one standing as the state wanted: after "as" or "into", or as the complement of a
+  verb whose object is one interface ("make gi0/1 the uplink", "configure gi0/1 as the host
+  port"); "add VLAN 10 to the trunk" and "set the trunk to a routed port" still name ports.
 
 **Questions before any call** (the operator's order of 2026-10-27, item b): where code can tell
 the words leave a choice only the person can make, Mercury asks, with no call and no cost, and
@@ -56,6 +59,15 @@ _ALL = (r"(?:(?P<all>all|both|every)\s+(?:of\s+)?)?"
         r"(?P<det>(?:the|that|this|these|those)\s+)?")
 #: The tab's device as a possessive just before a reference ("edge2's trunk").
 _OWNER = re.compile(r"(?<![\w.-])([\w][\w.-]*)['’]s\s+$")
+#: Where a reference stands as the state wanted, never as ports, a definite article or not
+#: (C1890: target-state phrases are never resolved): just after "as" or "into" ("configure
+#: gi0/1 as the uplink", never "as well as" or "such as"), or as the complement of a verb whose
+#: object is one interface or "it" ("make gi0/1 the uplink", "set it to the host port"). Its
+#: object, *obj*, is read as a name (`definite`): "set vlan 10 to the trunk" names a port.
+_TARGET = re.compile(
+    r"(?:(?<!\bwell\s)(?<!\bsuch\s)\b(?:as|into)\s+"
+    r"|\b(?:make|turn|set|configure|change|convert)\s+"
+    r"(?P<obj>it|[A-Za-z][A-Za-z-]*\s?\d+(?:[/.:]\d+)*)\s+(?:to\s+)?)$", re.I)
 REFERENCES = (
     ("port_to", re.compile(r"\b" + _ALL + r"(?P<noun>ports?|interfaces?|links?)\s+(?:to|toward|towards"
                            r"|facing)\s+(?P<x>[\w][\w.-]*)", re.I)),
@@ -111,9 +123,13 @@ def definite(kind: str, m, before: str, device: str) -> bool:
     of 2026-10-27): "the", "that", "this", "these", "those", "all", "both" or "every" in it, or
     *device* as the possessive just *before* it ("edge2's trunk" on its tab). "toward X" names a
     neighbour, never a state, and is always read. Anything else ("a trunk", "an uplink", "make
-    gi0/1 a trunk") stays as words."""
+    gi0/1 a trunk") stays as words, and so does a definite one standing as the state wanted
+    (`_TARGET`: "make gi0/1 the uplink", "configure gi0/1 as the trunk")."""
     if kind == "toward":
         return True
+    target = _TARGET.search(before)
+    if target and (_parts(target.group("obj") or "")[0].lower() not in _NOT_SHORTHAND):
+        return False
     got = m.groupdict()
     if got.get("all") or got.get("det"):
         return True

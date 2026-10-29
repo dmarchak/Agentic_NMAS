@@ -43,7 +43,9 @@ what the pair adds to it, in the order the steps run (`STEPS`):
   that run's pre-change read, the device read back after it), and each rolled-back device's
   intent is marked rolled back, the single-device path's record of a change that did not land
   (`hostvars.record_rolled_back`), so the next plan does not offer it again; an end never sent
-  is marked the same way, so its half is never offered alone.
+  is marked the same way, so its half is never offered alone: never attempted, or attempted
+  and stopped before the send (found changed since its capture at its own pre-snapshot, C1967;
+  `receipts.was_sent`), and never said rolled back, since nothing was sent to undo.
 - ``save_both``: when nothing failed, the held saves run, both ends.
 - ``record``: each device's receipt says what it achieved, and the link's verify and why it was
   rolled back (``pair`` on its row, `receipts.rows_for`).
@@ -833,6 +835,7 @@ def settle(report: dict, link: dict, order: list, *, contexts: dict, devices: di
     (``paired_rollback``), both saved when nothing failed (``save_both``), and ``pair`` put on
     each result and on the report for the record. Mutates and returns *report*."""
     from modules import pipeline
+    from modules.nsot import receipts
     from modules.nsot.deploy import DEPLOYED, UNATTEMPTED
 
     results = {r["device"]: r for r in report.get("results") or []}
@@ -867,6 +870,15 @@ def settle(report: dict, link: dict, order: list, *, contexts: dict, devices: di
             r["reason"] = (f"not sent: {failed} did not deploy, and both ends of the link "
                            f"{words} change together or neither does")
             _note_unsent(list_name, host, programs.get(host) or [], r["reason"], run_id)
+        elif reason and not receipts.was_sent(r):
+            # Never sent, though attempted (C1967): found changed since its capture at its own
+            # pre-snapshot, or stopped at another stage before the send. Nothing to undo, so
+            # it is never said rolled back; its intent is marked as an unattempted end's is,
+            # so its half is never offered alone. Its own reason stays on its result.
+            _note_unsent(list_name, host, programs.get(host) or [], (
+                "not sent: " + (f"{r.get('stage')}: " if r.get("stage") else "")
+                + f"{r.get('reason') or r.get('outcome', '')}; both ends of the link {words} "
+                "change together or neither does"), run_id)
         elif not reason and r.get("outcome") == DEPLOYED and contexts.get(host) is not None:
             ctx = contexts[host]
             try:

@@ -50,7 +50,10 @@ given the device's own names, and the draft lists how your words were read.
 - **Only a definite reference is read:** "the trunk", "that uplink", "all host ports", "the port
   to edge1", or the device's own name as a possessive on its tab ("edge2's trunk" on edge2).
   "A trunk", "an access port", "as a trunk", "to a routed port" describe the state you want,
-  never a port, and stay as your words.
+  never a port, and stay as your words. So does a definite one standing as the state wanted:
+  after "as" or "into", or after the one interface a verb makes something ("make Gi0/1 the
+  uplink", "configure Gi0/1 as the trunk"). "Add VLAN 10 to the trunk", "set the trunk to a
+  routed port" and "shut Gi0/1 as well as the trunk" still name the trunk.
 - A description's own words ("set Gi0/2's description to uplink to edge1", "set the description
   of Gi0/1 to uplink to edge1", "describe Gi0/1 as the trunk to edge2") are never resolved.
 

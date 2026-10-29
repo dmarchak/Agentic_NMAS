@@ -806,6 +806,86 @@ class TestTheFirstEndsTransient:
         assert by["r4"]["outcome"] == "unattempted"
 
 
+class TestAnEndNeverSentIsMarkedAsTheOtherIs:
+    """C1967 (2026-10-29): an end found changed since its capture is refused at its own apply
+    and sent nothing; its pair failed, so its intent is marked rolled back as an unattempted
+    end's is (`_note_unsent`, keyed on its program), its half never offered alone, and it
+    never reads as rolled back (nothing was sent, so nothing was undone). The drift is the
+    lab's real pre-snapshot (the `lab` fixture: the pipeline's own stages over r3's and r4's
+    captures), r4's or r3's running config edited by hand (the one edit)."""
+
+    @staticmethod
+    def _drift(dev):
+        dev.running = dev.running.replace(" description P2P to r3 Gi4", " description by hand")
+        if dev.running == dev.before:
+            dev.running = dev.running.replace(" description P2P to r4 Gi4",
+                                              " description by hand")
+        assert dev.running != dev.before, "the hand edit did not land: this is not the case"
+
+    @pytest.mark.parametrize("drifted", ["r4", "r3"], ids=["second-end", "first-end"])
+    def test_the_drifted_end_is_marked_and_never_read_as_rolled_back(self, lab, drifted):
+        other = "r3" if drifted == "r4" else "r4"
+        self._drift(lab["devices"][drifted])
+        report = lab["apply"]()
+        by = _by(report)
+        assert lab["devices"][drifted].sent == [], "a device found changed was sent its half"
+        assert by[drifted]["outcome"] != "deployed", by[drifted]
+        notes = _notes(lab)
+        assert set(notes) == {"r3", "r4"}, notes
+        note = notes[drifted]
+        assert note["intent_commit"] == lab["sha"] and note["commands"] == AUTH, note
+        assert "not sent" in note["reason"] and "change together or neither does" in \
+            note["reason"], note
+        # Nothing was sent to it, so nothing was rolled back: never said so.
+        assert drifted not in report["pair"]["rolled_back"], report["pair"]
+        assert by[drifted]["pair"]["rolled_back_for"] == "", by[drifted]["pair"]
+        assert not by[drifted].get("rolled_back"), by[drifted]
+        row = _rows(lab)[drifted]
+        assert row["sent"] is False and row["rollback"]["performed"] is False, row
+        assert lab["saved"] == []
+        if drifted == "r4":
+            # The first end deployed and was rolled back by its far end's failure.
+            assert by[other]["outcome"] == "failed" and by[other]["stage"] == "pair"
+            assert other in report["pair"]["rolled_back"]
+        else:
+            # The first end failed, so the second was never sent: marked as ever.
+            assert by[other]["outcome"] == "unattempted" and lab["devices"][other].sent == []
+            assert report["pair"]["rolled_back"] == []
+
+    def test_an_end_stopped_before_the_send_is_marked_too(self, lab, monkeypatch):
+        """The same class by another stage: r4's pre-snapshot read fails (its session refused
+        the read), so its run stops before the send with its program in hand; r3 deployed and
+        is rolled back, and r4's intent is marked, never said rolled back."""
+        real = lab["lab"].answer
+
+        def answer(host, cmd):
+            if host == "r4" and cmd.strip() == "show running-config":
+                raise OSError("Authentication to device failed")
+            return real(host, cmd)
+        monkeypatch.setattr(lab["lab"], "answer", answer)
+        report = lab["apply"]()
+        by = _by(report)
+        assert by["r4"]["outcome"] == "failed" and by["r4"]["stage"] == "pre_snapshot", by["r4"]
+        assert by["r4"].get("commands"), "r4 stopped with no program: this is not the case"
+        assert lab["devices"]["r4"].sent == []
+        notes = _notes(lab)
+        assert set(notes) == {"r3", "r4"}, notes
+        assert notes["r4"]["commands"] == AUTH and "not sent: pre_snapshot: " in \
+            notes["r4"]["reason"], notes["r4"]
+        assert report["pair"]["rolled_back"] == ["r3"]
+        assert _rows(lab)["r4"]["sent"] is False
+
+    def test_its_own_failure_keeps_the_pipelines_mark(self, lab):
+        """The control's other side: an end its own pipeline sent to and rolled back keeps the
+        pipeline's mark (its additions, its run's reason), never overwritten by the pair's."""
+        lab["push_fails"].add("r4")
+        report = lab["apply"]()
+        notes = _notes(lab)
+        assert set(notes) == {"r3", "r4"}
+        assert "not sent" not in notes["r4"]["reason"], notes["r4"]
+        assert _by(report)["r4"]["outcome"] == "failed"
+
+
 class TestWhatEachEndLeavesToTheLink:
     """`transient_for`: what each end's own verify leaves to the link's (C1964)."""
 

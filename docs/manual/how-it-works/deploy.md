@@ -396,7 +396,10 @@ starts the apply as a job. Its steps, in the order the code declares them:
    run's own pre-change read, the device read back after it. Each rolled-back device's intent
    is marked rolled back, as a single device's is after its rollback, so the next plan does not
    offer the change again; an end that was never sent is marked the same way, so its half is
-   never offered alone. **Revert or retry** (see [Revert or retry after a rollback](revert-retry))
+   never offered alone: one not attempted because its far end failed first, and one attempted
+   but stopped before anything was sent (found changed since its capture when it was read
+   before the change, or its read failing). Nothing was sent to such an end, so it is never
+   said to be rolled back; its result keeps its own reason. **Revert or retry** (see [Revert or retry after a rollback](revert-retry))
    lifts it, on each device. The capture each end handed the batch is dropped: the device is
    back, so it is not its golden.
 7. `save_both`. When nothing failed, the held saves run on both ends (the one save there is,

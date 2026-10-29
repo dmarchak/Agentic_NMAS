@@ -133,7 +133,14 @@ and the detection says why:
   controller's topology again when you press it, and is refused saying why if it still cannot.
 
 The source is matched in one family: a host named by its IPv4 address is dropped or rate-limited
-by that address, so the same host's IPv6 traffic is not matched.
+by that address, so the same host's IPv6 traffic is not matched (and a host named by an IPv6
+address keeps its IPv4 traffic and any other IPv6 address). **The preview says so under What
+will not happen**, for a drop as for a rate limit, and names the host's other addresses as the
+controller's topology lists them when you press Preview ("The controller's topology lists this
+host (00:00:00:00:00:01) with the addresses 2001:db8:8::1, fe80::200:ff:fe00:1 (link-local):
+traffic from them is not dropped by this response"). Where it cannot name them it says which:
+the topology lists the host with no other address (it lists only addresses it has seen the host
+send from), does not list the host, or could not be read, with why.
 
 ### A threat already answered {#already-mitigated}
 
