@@ -221,22 +221,28 @@ class TestThePackFromTheCaptures:
             assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", s["read_at"]), s
         assert _section(pack, "alert")["read_at"] == "2026-10-15T08:24:00Z"
 
-    def test_the_intent_check_carries_its_state_never_a_configuration_line(self, pack_lab,
-                                                                           monkeypatch):
-        """15.11: the pack is in the allowed class. The comparison's own lines (a differs with
-        two of them, in intent_match's own shape) never reach the pack; its counts do."""
+    def test_the_intent_check_carries_its_state_and_its_lines_masked(self, pack_lab,
+                                                                     monkeypatch):
+        """15.11's "intent diffs" (the operator's order of 2026-10-29 (c), which replaced
+        "never a configuration line"): the comparison's own lines (a differs with two of them,
+        in intent_match's own shape, IPv4 and IPv6) reach the pack beside its counts, and a
+        match carries none. tests/test_explain_who.py holds their masking."""
         from modules.nsot import intent_match as IM
 
-        lines = ["+ snmp-server location rack-7-planted", "- ntp server 192.0.2.250"]
+        lines = ["+ snmp-server location rack-7-planted", "- ntp server 192.0.2.250",
+                 "- ntp server 2001:db8::250"]
         monkeypatch.setattr(IM, "intent_match", lambda *a, **k: {
-            "state": "differs", "adds": 1, "removes": 1, "reordered": 0, "lines": lines,
+            "state": "differs", "adds": 1, "removes": 2, "reordered": 0, "lines": lines,
             "why": ""})
         pack = _build(_alerts(heartbeat=True))
         (st,) = _section(pack, "intent")["pieces"]
-        assert (st["state"], st["adds"], st["removes"]) == ("differs", 1, 1)
-        text = _text(pack)
-        for line in lines:
-            assert line[2:] not in text, line
+        assert (st["state"], st["adds"], st["removes"]) == ("differs", 1, 2)
+        assert st["lines"] == lines and EP.intact(pack)
+        monkeypatch.setattr(IM, "intent_match", lambda *a, **k: {
+            "state": "match", "adds": 0, "removes": 0, "reordered": 0, "lines": lines,
+            "why": ""})
+        (st,) = _section(_build(_alerts(heartbeat=True)), "intent")["pieces"]
+        assert st["state"] == "match" and st["lines"] == []
 
 
 # ---------------------------------------------------------------- what the pack must not carry
@@ -524,7 +530,7 @@ def test_the_card_in_a_real_browser(pack_lab):
             assert b.js("return document.querySelectorAll('details.pack-card[open]').length") == 0
             b.click(f'details[data-keep="pack-{key}"] > summary')
             b.wait_for(f"return document.querySelectorAll('details[data-keep=\"pack-{key}\"] "
-                       f"section.pack-section').length === {len(EP.SECTIONS)}", 15)
+                       f"details.pack-section').length === {len(EP.SECTIONS)}", 15)
             got = b.js(f"var d = document.querySelector('details[data-keep=\"pack-{key}\"]');"
                        "return [Array.from(d.querySelectorAll('[data-ref]')).map("
                        "e => e.getAttribute('data-ref')), d.textContent,"

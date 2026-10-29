@@ -5,7 +5,7 @@
     which it does after the packs for newly firing alerts are built (PHASE8_PLAN 15.9, P1).
     Built ahead of its board: board owed Saturday, the operator's ruling of 2026-10-25. -#}
 {%- set c = e.counts -%}
-<div class="alert-evidence" id="alert-evidence" hx-get="{{ url_for('v2.monitoring_alerts_list', q=e.q or none) }}"
+<div class="alert-evidence" id="alert-evidence" hx-get="{{ url_for('v2.monitoring_alerts_list', q=e.q or none, kind=e.kind or none) }}"
      hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
   <p class="att-summary">
     <strong>{{ c.firing }} firing</strong> · {{ c.packed }} with {{ 'its' if c.packed == 1 else 'their' }} evidence pack
@@ -28,14 +28,28 @@
   {%- if e.store.state == 'unreadable' %}
   <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ e.store.error }}. No pack is built or shown until they can be: a firing alert below reads as waiting.</div></div>
   {%- endif %}
+  {#- The firing alerts counted by kind (their group, `evidence_pack.family`), most first, over
+      everything firing whatever the filter; each count a link filtering the list to its group,
+      the one chosen marked, Every kind back to all (board AlertsExplain revised 2026-10-29). -#}
+  {%- if e.kinds %}
+  <nav class="alert-kinds" aria-label="Firing alerts by kind">
+    <span class="muted small">By kind:</span>
+    {%- if e.kind %} <a class="kind-chip" href="{{ url_for('v2.monitoring_alerts', q=e.q or none) }}">Every kind</a>{% endif %}
+    {%- for k in e.kinds %} <a class="kind-chip{{ ' on' if k.family == e.kind }}" href="{{ url_for('v2.monitoring_alerts', q=e.q or none, kind=k.family) }}" data-kind="{{ k.family }}"{% if k.family == e.kind %} aria-current="true"{% endif %}><strong>{{ k.count }}</strong> {{ k.family }}</a>{% endfor %}
+    {%- if e.kind %} <span class="muted small" data-kind-shown>{{ c.shown }} of {{ c.firing }} firing shown</span>{% endif %}
+  </nav>
+  {%- endif %}
   <form class="toolbar" method="get" action="{{ url_for('v2.monitoring_alerts') }}" role="search">
     <label class="sr-only" for="alert-q">Filter by rule, device or label</label>
     <input id="alert-q" name="q" type="search" value="{{ e.q }}" maxlength="80" placeholder="Filter by rule, device or label">
+    {%- if e.kind %}<input type="hidden" name="kind" value="{{ e.kind }}">{% endif %}
     <button type="submit" class="btn btn-small btn-outline">Show</button>
-    {%- if e.q %}<span class="muted small">{{ c.shown }} of {{ c.firing }} firing match &ldquo;{{ e.q }}&rdquo;</span>{% endif %}
+    {%- if e.q %}<span class="muted small">{{ c.shown }} of {{ c.firing }} firing match &ldquo;{{ e.q }}&rdquo;{% if e.kind %} of the kind &ldquo;{{ e.kind }}&rdquo;{% endif %}</span>{% endif %}
   </form>
   {%- if not c.firing %}
   <p class="att-clear">{{ icon('check', 16) }} Nothing is firing in what the reader stored.</p>
+  {%- elif e.kind and not c.shown %}
+  <p class="muted small" data-kind-none>Nothing of the kind &ldquo;{{ e.kind }}&rdquo; is firing{% if e.q %} that matches &ldquo;{{ e.q }}&rdquo;{% endif %}. <a href="{{ url_for('v2.monitoring_alerts', q=e.q or none) }}">Every kind</a></p>
   {%- endif %}
   {%- for g in e.groups %}
   <section class="card pack-group">
@@ -52,7 +66,7 @@
           {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
           {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
         {%- else %} {{ badge('pack waiting', 'warn', title='built the next time the alerts are read') }}{% endif %}
-        <span class="muted small" title="{{ k.state }}; read from {{ 'SDN detection' if k.switch else k.store }}">{{ k.summary_labels }}</span>
+        <span class="muted small alert-labels" title="{{ k.state }}; read from {{ 'SDN detection' if k.switch else k.store }}">{{ k.summary_labels }}</span>
       </summary>
       <div class="pack-body">{% if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ ('switch ' ~ k.switch.dpid) if k.switch else (p.device or 'no one device') }}{% if p.network %} in {{ p.network }}{% endif %}, built {{ stamp(p.built_at) }}…</p>{% else %}<p class="muted small">No pack yet: it is built the next time the alerts are read.</p>{% endif %}</div>
     </details>

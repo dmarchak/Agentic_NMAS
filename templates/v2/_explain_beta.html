@@ -1,22 +1,18 @@
 {%- from "v2/_macros.html" import badge, info -%}
 {#- Explain's "Advisory (beta)" label (PHASE8_PLAN 15.12, Explain's ship ruling of 2026-10-29,
-    condition (b); board AlertsExplain, revised 2026-10-29): drawn on every Explain answer
-    (_explain.html, each answer it draws, no fault found and Mercury's needs a person among
-    them) and beside every Explain control (_explain_block.html, _alert_history.html). The
-    figure is `explain_beta()`'s, read from the one dated record (`explain.MEASURED`), never
-    typed here; the chip's hover is the whole record in words. tests/test_explain_beta.py holds
-    that every template drawing an answer or the control calls one of these.
+    condition (b); board AlertsExplain, revised 2026-10-29): drawn in the header of every
+    Explain answer card (_explain.html, each answer it draws, no fault found and Mercury's needs
+    a person among them), whose Explain again draws none of its own (the board's revision "the
+    answer card first"), and under every Explain control with no answer drawn
+    (_explain_ask.html, _alert_history.html). The figure is `explain_beta()`'s, read from the
+    one dated record (`explain.MEASURED`), never typed here; the chip's hover is the whole
+    record in words. tests/test_explain_beta.py holds that every template drawing an answer or
+    the control draws it.
 
     - label: the chip, the figure (or why it is not the pinned prompt's), How was this
-      measured? (the manual's section) and "A person should confirm.";
-    - chip: the chip alone, beside a control whose answer, drawn under it, carries the label. -#}
+      measured? (the manual's section) and "A person should confirm.". -#}
 
 {%- macro label() -%}
 {%- set b = explain_beta() %}
 <p class="explain-beta" data-explain-beta="{{ b.state }}">{{ badge('Advisory (beta)', 'info', title=b.hover) }} <span class="explain-beta-figure">{{ b.words }}.</span> {{ info('alert-evidence', 'beta', label='How Explain was measured, and why it is in beta', words='How was this measured?') }} <span class="explain-beta-confirm">A person should confirm.</span></p>
-{%- endmacro %}
-
-{%- macro chip() -%}
-{%- set b = explain_beta() %}
-<span class="explain-beta-chip" data-explain-beta="{{ b.state }}">{{ badge('Advisory (beta)', 'info', title=b.hover) }}</span>
 {%- endmacro %}

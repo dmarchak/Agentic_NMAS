@@ -48,12 +48,15 @@ CONTROLS = {
         "task": "explain",
         "words": "Explain",
         "endpoints": ("v2.monitoring_alert_explain",),
-        # Drawn in each pack's card (_evidence_pack.html includes it) and as Explain's own
-        # answer, with the answer kept with the pack (C1853).
-        "template": "v2/_explain_block.html",
+        # Drawn in each pack's card (_evidence_pack.html includes _explain_block.html, which
+        # includes it) and as Explain's own answer, with the answer kept with the pack (C1853):
+        # above the pack with no answer, and as the answer card's Explain again (board
+        # AlertsExplain revised 2026-10-29).
+        "template": "v2/_explain_ask.html",
         # A past alert with no pack yet draws it too, disabled beside Build evidence, its mark
-        # and reason as ever (Monitoring › Alerts › History, C1808).
-        "also": ("v2/_alert_history.html",),
+        # and reason as ever (Monitoring › Alerts › History, C1808); and the answer card's
+        # header carries its mark (_explain.html).
+        "also": ("v2/_alert_history.html", "v2/_explain.html"),
         "screen": "Monitoring › Alerts, an alert's card",
         "beside": "the evidence pack",
     },

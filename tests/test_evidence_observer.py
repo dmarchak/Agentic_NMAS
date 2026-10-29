@@ -351,7 +351,7 @@ class TestInThePack:
         packs = self._packs(monkeypatch)
         for k, pack in packs.items():
             sec = _section(pack, "observer")
-            assert pack["schema"] == EP.SCHEMA == 6 and EP.intact(pack), k
+            assert pack["schema"] == EP.SCHEMA == 7 and EP.intact(pack), k
             assert [s["name"] for s in pack["sections"]] == list(EP.SECTIONS), k
             assert sec["state"] == "ok" and sec["window"]["to"] == pack["built_at"], k
             assert "observer:job:cisco_8000v" in {p["ref"] for p in sec["pieces"]}, k

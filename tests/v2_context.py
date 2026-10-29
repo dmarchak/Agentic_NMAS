@@ -1129,10 +1129,14 @@ def _alert_evidence(client, _lab, _mp):
         from modules.ai import anthropic_adapter, calls, gateway
         pack = EP.read()["rows"][-1]
         cite = next(s["ref"] for s in pack["sections"] if s["name"] == "alert")
+        # Two hypotheses: the answer card's Most likely cause and its Other possibilities
+        # (board AlertsExplain revised 2026-10-29), so both of the card's loops draw.
         answer = {"outcome": "answer", "rationale": "The heartbeat stopped.",
                   "hypotheses": [{"claim": "The device stopped sending heartbeats.",
                                   "evidence_refs": [cite],
-                                  "confirm_with": "show logging | include HEARTBEAT"}],
+                                  "confirm_with": "show logging | include HEARTBEAT"},
+                                 {"claim": "The collector stopped receiving them.",
+                                  "evidence_refs": [cite], "confirm_with": "show logging"}],
                   "checked": [], "needs_human": True, "why_not": ""}
         allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
                                  "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
@@ -1175,6 +1179,30 @@ def _alert_evidence(client, _lab, _mp):
         r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain", data={"again": "1"},
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "cited by Mercury" in r.get_data(as_text=True)
+        # And a hypothesis citing a change without saying who made it (the operator's order of
+        # 2026-10-29, "WHO, guaranteed in code"): Mercury adds who, drawn as Mercury's. The
+        # walk's packs are replays, so History after the alert's time is left out of them: a
+        # copy of r3's pack holding a deploy's receipt, kept under its own id and hashed.
+        import copy
+        planted = copy.deepcopy(pack)
+        planted["id"] = EP.pack_id("f" * 20)
+        hist = next(s for s in planted["sections"] if s["name"] == "history")
+        hist.update(state="ok", why="", pieces=[{
+            "ref": "history:1", "at": planted["built_at"], "kind": "receipt",
+            "what": "Interface description sent: deployed", "who": "operator@example.com",
+            "outcome": "deployed", "sha": "0123456789ab", "detail": "1 line(s) sent",
+            "verified": "access"}])
+        planted.pop("hash")
+        planted["hash"] = EP.digest(planted)
+        assert EP.record(planted)["ok"]
+        answer = {"outcome": "answer", "rationale": "A recorded change preceded it.",
+                  "hypotheses": [{"claim": "A recorded change preceded the heartbeat's stop.",
+                                  "evidence_refs": ["history:1", "alert"],
+                                  "confirm_with": "show logging | include HEARTBEAT"}],
+                  "checked": [], "needs_human": True, "why_not": ""}
+        r = client.post(f"/v2/monitoring/alerts/pack/{planted['id']}/explain",
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == 200 and "who, added by Mercury" in r.get_data(as_text=True)
         # History's window on that call (15.14): the prompt as sent, the answer as received.
         newest = calls.read()["rows"][0]["id"]
         r = client.get(f"/v2/history/ai-call/{newest}", headers={"Accept": "text/html"})

@@ -14,8 +14,8 @@ test_device_v2's lab with tests/v2_context.py's `_alert_evidence` set-up: r3's r
 instance and a silenced syslog instance firing, each pack built by the real trigger over the
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
-Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
-Templates sha256: `0877edf116dafadaa27e121315778120797d2b0077e37dfa697ca6d9778eb5b0`
+Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
+Templates sha256: `dd0da45972844f5bfbc6a40515e7313b01d139c36a8cb220c52f1c24f7b1272a`
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):**
 `_evidence_pack.html`'s alert piece gains one clause, drawn only when the piece carries
@@ -309,3 +309,91 @@ docs/fidelity/alerts-history.md.
 
 Templates sha256 before: `2a07a8c2be05812ce15017e868ed816db837e707f7f7cae5b2aa6b44053058f1`
 (over the four templates compared before `_explain_beta.html` was added).
+
+**Compared again 2026-10-29 (the answer card first; the operator's order of 2026-10-29, items 3
+and 4a, C2172 item 3 and C2173's first step):** against `AlertsExplain.dc.html` revised again
+with a note "Revised 2026-10-29: the answer card first" (the agent's copy of the beta revision,
+canvas version 178, parts 1, 2, 3, 4, 6 and 9 redrawn in the card's form, 5, 7 and 8 kept, 10 to
+12 new; not yet on the canvas; signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md,
+"Board AlertsExplain revised: the answer card first"). A new template, `_explain_ask.html`,
+draws Explain's control in its two places (above the pack with no answer, and as the card's
+Explain again); it is added to the templates compared. `_explain.html` draws the answer as a
+card; `_explain_block.html` draws the card alone when there is an answer, else the control and
+what was drawn; `_evidence_pack.html` draws each section collapsed with its count
+(`evidence_pack.section_count`) and an alert's end as cleared; `_alert_evidence.html` counts the
+firing alerts by kind, each a filter (`evidence_pack.tab`'s `kinds`).
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-29 05:2x UTC,
+  at 1440, 1280 and 390 beside the revised board at 1440; the boards folder held the revised
+  board alone), the planted answer now three hypotheses: `-tab` (the kinds row), `-open`,
+  `-explained` (the card), `-cited` (a chip pressed: the alert section opened and highlighted),
+  `-kept`. At 390 the card's header label wraps under its title, Other possibilities stays
+  collapsed, the foot's Was this right? and Explain again each take a line; no sideways scroll.
+- **Regions not shot,** compared by the template and tests/test_explain_card.py (each through
+  the real route): no fault found, Mercury's needs a person, a refusal, hosted AI off, the kinds
+  at 900 alerts and their filter, and the alert states (History is compared in
+  docs/fidelity/alerts-history.md).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The kinds row | above the filter: "By kind:", a chip per kind with its count, most first; chosen, marked, with Every kind and "N of M firing shown" | the same, after the reader's line, a kind each rule group (`evidence_pack.family`) | **same** |
+| The answer card's header | part 1: the AI mark, "Explain's answer", the whole beta label | the same | **same** |
+| Most likely cause | part 1: the lead, the claim, who, the chips, the read, "Why:" | the same order and words | **same** |
+| Who a hypothesis names | part 1: "Who: no record of who" on each, "added by Mercury" on one Mercury filled | drawn when the answer carries `who` (tests/test_explain_card.py plants it); the answers built now carry none, so none is drawn | **later** C2172 item 1 (who, guaranteed in code) |
+| Other possibilities | part 1: "Other possibilities · 2", collapsed, each numbered | the same | **same** |
+| Needs a person | parts 1 and 6: the model's reason, or "set by Mercury" with Mercury's | the same | **same** |
+| The card's foot | parts 1, 2 and 6: Was this right?, then the AI mark and Explain again (secondary) with its cost, then the pack read and this call in History | the same | **same** |
+| No fault found | part 2: the lead, what it found, Checked as chips | the same | **same** |
+| A refusal, AI off | parts 3 and 4: no card, the primary Explain with the whole label | the same | **same** |
+| The pack's sections | parts 1, 4, 5 and 9: each collapsed, its words, its count, its ref and state | the same | **same** |
+| A chip pressed | part 10: its section opens, the piece highlighted and focused, by a click or Enter | the same (tests/test_ai_explain.py's real-browser walk, both ways) | **same** |
+| Alert states in a pack | part 12: an earlier pack's "Cleared"; another alert firing then amber, cleared neutral | the same; pending then neutral (the board says nothing of it) | **same** |
+| Phone | part 9 | at 390 the same | **same** |
+
+No other region's verdict changed.
+
+Templates sha256 before: `0877edf116dafadaa27e121315778120797d2b0077e37dfa697ca6d9778eb5b0`
+(over the five templates compared before `_explain_ask.html` was added, as C2174 left them;
+the card was first compared over `d566a67b…`, before C2174, and its paragraph's shots are of
+that tree).
+
+**Compared again 2026-10-29 (the answer card merged with "WHO, guaranteed in code", the
+operator's order of 2026-10-29; C2172 item 1):** the card's region **later** above (who a
+hypothesis names) is now built. Each hypothesis carries `who` as Explain computes it
+(`who.who_of`): one entry per actor of each change or action it cites (a History action, a
+configuration-change log line, the Intent check's difference), the model's when its claim names
+the actor, else Mercury's. `_explain.html` draws each after the claim and before its citations:
+"Who:", the actor and how established (or "no record of who"), the chip **who, added by
+Mercury** on Mercury's, then "from" and the record as a citation chip; whose words named it on
+the line's hover. A hypothesis citing no change draws none. `_evidence_pack.html` draws, under
+a differing Intent check's words, "The lines, masked: N lines" and the lines (each "+ " or "- ",
+one to a line), or, on an older pack, that they are on the device's Intent tab; then who last
+committed the intent, or no record of who.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-29 06:2x UTC,
+  on the combined tree: C2174, the card and WHO; at 1440, 1280 and 390 beside the revised board
+  at 1440; the boards folder held the revised board and AlertsHistory), with a sixth state, `alerts-explain-who`: a deploy's receipt planted in each
+  device's History (the shape History's reader returns), r3's card opened and explained with a
+  planted answer whose Most likely cause cites r3's `history:1` and names no one. The card draws
+  "Who: operator@example.com (verified sign-in)", the chip "who, added by Mercury", "from" and
+  the `history:1` chip, then "Cites history:1". The other five states are as before (the s4
+  pack's History is nothing to read, so its answer draws no Who). At 390 the Who line wraps, the
+  chip on its own line; no sideways scroll. C2174's clause ("The fault is the data's absence")
+  is inside the alert section, collapsed under the card in every state shot, so it is not in
+  these shots; its paragraph above (shot on a tree whose sections were drawn open) and
+  tests/test_no_data_is_the_fault.py hold it.
+- **Regions not shot,** compared by the template and tests: the model's who (the claim naming
+  the actor) and none on a hypothesis citing no change (tests/test_explain_card.py's
+  `test_who_a_hypothesis_names_is_the_model_s_or_mercury_s`, through the real route), the intent
+  lines and who committed (tests/test_explain_who.py's
+  `test_the_pack_card_draws_the_lines_and_who_committed`; the shot's packs hold no differing
+  check).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Who a hypothesis names | parts 1 and 9: "Who:" on each hypothesis, "no record of who" on those citing no change; Mercury's "dana@example.com (verified), from Mercury's receipt" with the chip "added by Mercury" | "Who:" only on a hypothesis citing a change or action; Mercury's chip "who, added by Mercury" and the record as a chip after "from" | **deviation** (log: P1 Alerts: who a hypothesis names, as WHO computes it) |
+| The Intent check's lines and its last commit | the check's state alone ("Intent check · matches") | the lines masked, one to a line, and who last committed | **deviation** (log: P1 Alerts and P1-H: the intent difference's lines and who committed the intent, in the pack) |
+
+No other region's verdict changed.
+
+Templates sha256 before: `d993cb4d19458d23705970405811b2f466909c5ef5dab082c77eadf3af0fb235`
+(the card alone, before C2174 and WHO; never on main: the card, WHO and this comparison land
+together, on top of C2174, and the shots above are of that combined tree).

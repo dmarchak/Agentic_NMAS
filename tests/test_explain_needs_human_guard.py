@@ -160,7 +160,8 @@ def test_the_card_draws_set_by_mercury_with_its_reason(world):  # noqa: F811
                                  headers={"HX-Request": "true"})
     html = unescape(r.get_data(as_text=True))
     assert r.status_code == 200 and "no fault found" in html
-    mine = re.search(r'<p class="small explain-mercury-needs-human".*?</p>', html, re.S)
+    # The answer card's Needs a person (board AlertsExplain revised 2026-10-29).
+    mine = re.search(r'<p class="[^"]*\bexplain-mercury-needs-human\b[^"]*".*?</p>', html, re.S)
     assert mine, html
     assert "needs a person" in mine.group(0) and "set by Mercury" in mine.group(0)
     assert "The model found no fault and did not ask for a person" in mine.group(0)
@@ -213,7 +214,8 @@ def test_the_guarded_answer_is_the_raw_one_where_the_guard_does_not_apply():
     assert cases.guarded(None, WALK) is None
     assert cases.explain_graded({"outcome": ["answer"]}, None, WALK, "couldnt_analyse")[
         "guarded"] == {"misses": ["no answer: couldnt_analyse"], "pass": False,
-                       "confidently_wrong_candidate": False, "set_by_mercury": ""}
+                       "confidently_wrong_candidate": False, "set_by_mercury": "",
+                       "who_by_mercury": []}
 
 
 #: The recorded runs the guard changes: every no fault found with needs_human false, each on a

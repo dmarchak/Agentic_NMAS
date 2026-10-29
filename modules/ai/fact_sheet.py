@@ -13,7 +13,8 @@ device's own figures are sent, and the sheet compares nothing beside them); the 
 devices only from the topology sent (*roles*), never a lookup. A line that needs what the pack
 does not hold says so, by name.
 
-The four lines, in the operator's numbering (his line 3 is not built in this iteration):
+The lines, in the operator's numbering (his line 3 is not built in this iteration), with the
+changes and actions in the window after line 2:
 
 1. **Heartbeat cadence** (`heartbeat_line`, C2117): the alert's device's heartbeats in the
    window (how many, the longest gap and when it ended, the last one received and how long
@@ -26,6 +27,16 @@ The four lines, in the operator's numbering (his line 3 is not built in this ite
    (the device's uptime counter falling) in the window, with whether a Mercury Reload
    ("requested by Mercury's Reload, <who>") or a planned-restart window accounts for it, else
    "no receipt or window: unexplained".
+- **Changes and actions in the window** (`changes_line`, the operator's order of 2026-10-29,
+  "WHO, guaranteed in code" (a); sent after line 2): each Mercury receipt or record History
+  holds in the window (a deploy or restore, a Reload, an intent commit, a golden recorded, a
+  planned-restart window), with its action, its actor and how that actor was established, its
+  time and its id; each configuration-change log line (``%SYS-5-CONFIG_I`` and its IOS-XE
+  forms) with the user and the source it names, IPv4 or IPv6 (`who.config_change`); and the
+  Intent check when it differs, its lines' count, the lines whose only difference is a masked
+  value, and the intent file's last commit (who, how established, when). Each says "no record
+  of who" where the pack holds none (`who.change_of`). The records History holds from before
+  the window are counted, the newest named.
 4. **Observer health at the alert's time** (`observer_line`): each scrape job of the observer
    section, the alert's own job (its ``job`` label) first: whether it was failing in the
    window's last minute, the most of its targets failing at once (`evidence_observer.at_once`,
@@ -61,8 +72,11 @@ HEAD = ("Facts computed by Mercury from the pack below, by code, not by a model.
 RELOAD_LINE = re.compile(r"%SYS-\d-(?:RELOAD|RESTART)\b")
 #: The most a quoted log line keeps, and a section's why.
 QUOTE_CHARS = 160
-#: The line names, in the order sent (the operator's numbering 1, 2, 4 and 5).
-LINES = ("heartbeat", "reloads", "observer", "lacks")
+#: The line names, in the order sent (the operator's numbering 1, 2, 4 and 5, and the changes
+#: and actions after 2).
+LINES = ("heartbeat", "reloads", "changes", "observer", "lacks")
+#: The most changes the line names before the window (the newest), the rest counted.
+BEFORE_NAMED = 3
 
 
 def _section(sections, name: str) -> dict:
@@ -263,6 +277,97 @@ def _iso(ts) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts)) if ts is not None else "?"
 
 
+# ── changes and actions in the window (the operator's order of 2026-10-29 (a)) ─────────────
+
+def _history_words(c: dict) -> str:
+    return (f"{c['at'] or 'an unrecorded time'}: {c['what']} by {c['words']} [{c['ref']}]"
+            + (f", record {c['id']}" if c.get("id") else ""))
+
+
+def _intent_words(piece: dict, c: dict) -> str:
+    """The Intent check's difference, its lines' count and those whose only difference is a
+    masked value, and who last committed the intent (`who.change_of`'s *c*)."""
+    from modules.ai import who
+
+    said = (f"the Intent check differs [{piece.get('ref')}]: {piece.get('adds', 0)} line(s) in "
+            f"intent and not on the device (+), {piece.get('removes', 0)} on the device and not "
+            f"in intent (-), {piece.get('reordered', 0)} section(s) reordered")
+    if "lines" not in piece:
+        return said + (". This pack (older than schema 7) holds neither the lines nor who "
+                       f"committed the intent: {c['words']}")
+    lines = [str(x) for x in piece.get("lines") or []]
+    said += f"; {len(lines)} of the lines are in the pack, masked"
+    plus = {x[2:] for x in lines if x.startswith("+ ")}
+    minus = {x[2:] for x in lines if x.startswith("- ")}
+    same = sorted(x for x in plus & minus if "<redacted:" in x)
+    if same:
+        said += (f"; {len(same)} differ only in a masked value, the same line on both sides "
+                 "(" + "; ".join(same[:3]) + ")")
+    commit = piece.get("intent_commit") or {}
+    if commit.get("state") == "ok":
+        by = (f"by {c['who']} ({who.how(commit)})" if c["who"] and who.how(commit)
+              else f"by {c['who']}" if c["who"] else who.NO_RECORD)
+        said += (f"; intent last committed {commit.get('at') or 'at an unrecorded time'} "
+                 f"{by}, commit {commit.get('sha') or '?'}")
+    else:
+        said += (f"; {c['words']}: "
+                 + (commit.get("why") or "the pack holds no commit of the device's intent"))
+    return said
+
+
+def changes_line(pack: dict, sections: list) -> str:
+    """Each change or action in the window and who made it (the module's docstring)."""
+    from modules.ai import who
+
+    head = f"Changes and actions in the window ({LABEL}): "
+    start, end = _window(pack, sections)
+    history, logs = _section(sections, "history"), _section(sections, "logs")
+    intent = _section(sections, "intent")
+    events, before, said = [], [], []
+    if history.get("state") == "ok":
+        for p in history.get("pieces") or []:
+            c = who.change_of("history", p)
+            if not c:
+                continue
+            at = _epoch(p.get("at"))
+            if at is not None and start is not None and at < start:
+                before.append((at, c))
+            elif at is None or end is None or at <= end:
+                events.append((at, _history_words(c)))
+    elif history.get("state") == "empty":
+        said.append("History holds no record of these kinds")
+    else:
+        said.append(f"History was not read ({history.get('state') or 'not in the pack'}), so "
+                    "no receipt or record is known")
+    n_logs = len(logs.get("pieces") or [])
+    if logs.get("state") == "ok":
+        for p in logs.get("pieces") or []:
+            c = who.change_of("logs", p)
+            if c:
+                via = f" from {c['via']}" if c.get("via") else ""
+                events.append((_epoch(p.get("at")),
+                               f"{p.get('at') or 'an unrecorded time'}: {c['device'] or 'the '
+                               'device'} logged a configuration change{via}, by {c['words']} "
+                               f"[{c['ref']}]"))
+    elif logs.get("state") != "empty":
+        said.append(f"the log lines were not read ({logs.get('state') or 'not in the pack'})")
+    out = [w for _t, w in sorted(events, key=lambda e: (e[0] or 0))]
+    if not out:
+        out = [f"none between {_iso(start)} and {_iso(end)}: no Mercury receipt or record in "
+               "History, and no configuration-change line (%SYS-5-CONFIG_I) among the pack's "
+               f"{n_logs} log line{'s' if n_logs != 1 else ''}"]
+    if before:
+        before.sort(key=lambda b: b[0], reverse=True)
+        out.append(f"before the window, History holds {len(before)} more, the newest "
+                   + "; ".join(_history_words(c) for _t, c in before[:BEFORE_NAMED]))
+    ipiece = (intent.get("pieces") or [{}])[0] if intent.get("state") == "ok" else {}
+    if ipiece.get("state") == "differs":
+        out.append(_intent_words(ipiece, who.change_of("intent", ipiece)))
+    elif intent and intent.get("state") != "ok":
+        said.append(f"the Intent check was not read ({intent.get('state')})")
+    return head + "; ".join(out + said) + "."
+
+
 # ── 4. observer health at the alert's time ─────────────────────────────────────────────────
 
 def observer_line(pack: dict, sections: list) -> str:
@@ -371,7 +476,8 @@ def lacks_line(pack: dict, sections: list) -> str:
 def lines(pack: dict, sections: list, roles: dict = None) -> list:
     """The sheet's lines, its head first, unmasked (`sheet` masks them)."""
     return [HEAD, heartbeat_line(pack, sections, roles), reloads_line(pack, sections),
-            observer_line(pack, sections), lacks_line(pack, sections)]
+            changes_line(pack, sections), observer_line(pack, sections),
+            lacks_line(pack, sections)]
 
 
 def sheet(pack: dict, sections: list, roles: dict = None) -> str:

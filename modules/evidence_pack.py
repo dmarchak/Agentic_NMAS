@@ -46,8 +46,13 @@ the same inputs give the same hash and any changed piece moves it, and a later E
 references are checked against the pack they cite (`resolve`).
 
 **What leaves it is in the allowed class** (15.11): alert labels, the masked log lines, the
-Intent check's STATE (match, differs, unknown, with counts), never a configuration line; every
-string in the pack is masked by `redact.redact_text` before it is hashed or stored. A line
+Intent check's state (match, differs, unknown, with counts) and, when it differs, the intent
+difference's lines, masked (the operator's order of 2026-10-29, "WHO, guaranteed in code" (c):
+15.11's "intent diffs"; `intent_section`), with who last committed the device's intent; never
+a golden, a captured configuration or a deploy's program. Every string in the pack is masked
+by `redact.redact_text` before it is hashed or stored, and the intent difference's lines by
+`redact.redact_egress` too, the mask of what leaves the host, since they are kept only to be
+read and sent. A line
 planted in an interface description or a log line is carried as data, unchanged by anything it
 says: nothing here reads a piece's text to decide what to do.
 
@@ -88,8 +93,12 @@ log = logging.getLogger(__name__)
 #: rewriting the pack. 6 (C1896, 2026-10-27) adds `observer`, the monitoring side over the
 #: window (the scrape jobs polling the devices across all their targets, the SNMP exporter, the
 #: host Prometheus runs on; `evidence_observer`); a pack of 5 stays readable and holds none, and
-#: its card offers Build again.
-SCHEMA = 6
+#: its card offers Build again. 7 (the operator's order of 2026-10-29, "WHO, guaranteed in
+#: code") adds to the Intent check's piece the intent difference's lines, masked (``lines``),
+#: and its intent file's last commit (``intent_commit``: when, by whom, how established), and to
+#: each History piece how its actor was established (``verified``, where History knows it); a
+#: pack of 6 stays readable, holds none of them, and Explain's fact sheet says so.
+SCHEMA = 7
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
@@ -412,9 +421,12 @@ def history_section(ref, host: str, until: float = None) -> dict:
             events = [e for e in events if (e.get("at") or "") <= cut]
             source += (f"; {len(later)} recorded after the alert's time {cut} left out, the "
                        "pack being of that time")
+    # How each actor was established (schema 7), where History knows it (a commit's
+    # Actor-Verified, a store's record): the key only then, so "not said" is never "".
     pieces = [{"at": e.get("at") or "", "kind": e.get("kind") or "", "what": e.get("what") or "",
                "who": e.get("who_short") or "", "outcome": e.get("outcome") or "",
-               "sha": (e.get("sha") or "")[:12], "detail": e.get("detail") or ""}
+               "sha": (e.get("sha") or "")[:12], "detail": e.get("detail") or "",
+               **({"verified": e.get("verified") or ""} if "verified" in e else {})}
               for e in events]
     extra = {"errors": errors, "total": int(got.get("total") or len(events)),
              "subset": int(got.get("total") or 0) > len(events)}
@@ -427,11 +439,63 @@ def history_section(ref, host: str, until: float = None) -> dict:
     return _section("history", source, at, "ok", pieces=pieces, **extra)
 
 
+#: The most of the intent difference's lines a pack keeps (`intent_match.LINE_CAP`'s, the
+#: comparison's own cap); its counts are always whole.
+INTENT_LINES = 20
+
+
+def intent_lines(result: dict) -> list:
+    """The intent difference's lines as the pack keeps them (the operator's order of 2026-10-29
+    (c)): only when the check differs, at most `INTENT_LINES`, each ``+ <line>`` (in intent and
+    not on the device) or ``- <line>`` (on the device and not in intent), masked as what leaves
+    the host is masked (`redact.redact_egress`: by position and by known value, then every
+    secret, password, key and hash shape): a secret's line is kept as its shape, its value
+    masked, never the value. `intent_match` masks its lines already (C1688); this mask is the
+    pack's own, so a comparison that ever returned a value in clear still keeps it out."""
+    from modules import redact
+
+    if result.get("state") != "differs":
+        return []
+    return [redact.redact_egress(str(line)) for line in (result.get("lines") or [])
+            [:INTENT_LINES]]
+
+
+def intent_commit(repo_dir: str, host: str) -> dict:
+    """The last commit of *host*'s intent file in the repository *repo_dir* as checked out
+    (`hostvars.committed_rel`): ``{"state": "ok", "sha", "at", "actor", "verified", "how"}``
+    (its ``Actor:`` and ``Actor-Verified:``, how that was established in words, when it was
+    committed); ``{"state": "absent", "why"}`` when no commit holds the file;
+    ``{"state": "unreadable", "why"}`` when git could not say. Who changed the profile or a
+    template the intent inherits is not this commit's."""
+    from modules.nsot import hostvars
+    from modules.nsot import repo as R
+
+    rel = hostvars.committed_rel(host)
+    sep = "\x1f"
+    fmt = sep.join(["%H", "%cI", "%(trailers:key=Actor,valueonly)",
+                    "%(trailers:key=Actor-Verified,valueonly)"])
+    rc, out, err = R.git(repo_dir, "log", "-1", f"--format={fmt}", "HEAD", "--", rel)
+    if rc != 0:
+        return {"state": "unreadable",
+                "why": ((err or out or "git log failed").strip().splitlines() or ["?"])[0]}
+    if not (out or "").strip():
+        return {"state": "absent", "why": f"no commit holds {rel}"}
+    from modules.ai import who
+
+    parts = [p.strip() for p in (out.split(sep) + ["", "", "", ""])[:4]]
+    first = lambda v: (v.splitlines() or [""])[0].strip()      # noqa: E731
+    commit = {"state": "ok", "sha": parts[0][:12], "at": parts[1], "actor": first(parts[2]),
+              "verified": first(parts[3])}
+    commit["how"] = who.how(commit)
+    return commit
+
+
 def intent_section(ref, dev: dict) -> dict:
-    """The device's Intent check, its STATE only (15.11: the pack is in the allowed class):
-    the deploy plan's own comparison (`intent_match`) of the committed golden against
-    effective intent, as match, differs (with its counts) or unknown (with why). The lines
-    that differ are configuration, and never enter the pack."""
+    """The device's Intent check (15.11: the pack is in the allowed class, its "intent
+    diffs"): the deploy plan's own comparison (`intent_match`) of the committed golden against
+    effective intent, as match, differs (with its counts) or unknown (with why); when it
+    differs, its lines, masked (`intent_lines`), so Explain can judge whether the difference
+    could explain the alert; and who last committed the device's intent (`intent_commit`)."""
     from modules.nsot import intent_match as IM
     from modules.nsot import manifest
     from modules.nsot import repo as R
@@ -459,7 +523,12 @@ def intent_section(ref, dev: dict) -> dict:
              "words": (IM.first_boot_words(host) if first else IM.words(r)
                        if r["state"] != "unknown" else
                        f"cannot be compared: {r.get('why') or 'no reason recorded'}"),
-             "why": r.get("why") or "", "golden_commit": (golden.get("commit") or "")[:7]}
+             "why": r.get("why") or "", "golden_commit": (golden.get("commit") or "")[:7],
+             "lines": intent_lines(r)}
+    try:
+        piece["intent_commit"] = intent_commit(ref.repo_dir, host)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        piece["intent_commit"] = {"state": "unreadable", "why": _failed(exc)}
     return _section("intent", source, at, "ok", pieces=[piece])
 
 
@@ -1534,13 +1603,88 @@ def pack_summary(pack: dict) -> dict:
     return out
 
 
-def tab(q: str = "") -> dict:
+#: Each section's count, in a person's words, as its collapsed summary names it (board
+#: AlertsExplain revised 2026-10-29, "the answer card first": "Log lines around the onset · 14
+#: lines", "Neighbours · 1 down, 4 up"): the noun one piece of the section is.
+COUNT_NOUNS = {"alert": "alert", "concurrent": "other alert", "device": "device",
+               "history": "record", "intent": "check", "neighbours": "neighbour",
+               "observed": "item", "endpoints": "endpoint", "health": "figure",
+               "observer": "monitoring figure", "logs": "line", "sdn": "piece"}
+#: A neighbour's, an observed item's and another alert's states, in the order a count names
+#: them (what needs a look first) and in its words. Another alert's state is as it stood at the
+#: alert's time, never now, and its end is "cleared" (C2173: nothing says it was fixed).
+STATE_ORDER = ("down", "not_seen", "unexpected", "firing", "pending", "no data", "error",
+               "resolved", "up", "unknown state")
+COUNT_STATE_WORDS = {"not_seen": "not seen", "firing": "firing then", "pending": "pending then",
+                     "no data": "no data then", "error": "in error then", "resolved": "cleared"}
+
+
+def _plural(k: int, noun: str) -> str:
+    return f"{k} {noun}{'' if k == 1 else 's'}"
+
+
+def _by_state(pieces, key="state") -> str:
+    counts = {}
+    for p in pieces:
+        counts[p.get(key) or "unknown state"] = counts.get(p.get(key) or "unknown state", 0) + 1
+    order = sorted(counts, key=lambda s: (STATE_ORDER.index(s) if s in STATE_ORDER
+                                          else len(STATE_ORDER), s))
+    return ", ".join(f"{counts[s]} {COUNT_STATE_WORDS.get(s, s.replace('_', ' '))}"
+                     for s in order)
+
+
+def section_count(section: dict) -> str:
+    """The count a pack section's collapsed summary names (board AlertsExplain revised
+    2026-10-29): how many pieces it holds in its own noun ("14 lines", "14 of 40 lines" when the
+    pack kept a subset), its neighbours and observed items by state ("1 down, 4 up"), the other
+    alerts by their state at the alert's time, its health figures with their devices, and the
+    intent check's verdict. "" for a section that holds nothing because it was not read, not
+    configured or had nothing to read: its state chip says so. Pure: words over the stored
+    section, never a read."""
+    name = section.get("name") or ""
+    pieces = section.get("pieces") or []
+    n = len(pieces)
+    noun = COUNT_NOUNS.get(name, "piece")
+    if not pieces:
+        return f"no {noun}s" if section.get("state") in ("ok", "empty") else ""
+    total = section.get("total") if section.get("subset") else None
+    counted = (f"{n} of {total} {noun}s" if isinstance(total, int) and total > n
+               else _plural(n, noun))
+    if name == "neighbours":
+        peers = [p for p in pieces if p.get("kind") != "protocol"]
+        protocols = n - len(peers)
+        said = _by_state(peers) if peers else "no neighbour"
+        return said + (f"; {_plural(protocols, 'protocol')} measured" if protocols else "")
+    if name == "observed":
+        return _by_state(pieces)
+    if name == "concurrent":
+        return f"{counted}: {_by_state(pieces)}"
+    if name == "health":
+        devices = len({p.get("device") or p.get("dev") for p in pieces})
+        return f"{_plural(devices, 'device')}, {counted}"
+    if name == "intent":
+        words = {"match": "matches", "differs": "differs"}
+        return ", ".join(words.get(p.get("state"), (p.get("state") or "not checked")
+                                   .replace("_", " ")) for p in pieces)
+    if name == "sdn":
+        c = section.get("counts") or {}
+        return ", ".join(_plural(c.get(k) or 0, w) for k, w in (("flows", "flow"),
+                                                                 ("ports", "port"))) \
+            if c else counted
+    return counted
+
+
+def tab(q: str = "", kind: str = "") -> dict:
     """Monitoring › Alerts: every firing alert, grouped by rule, each with its pack's summary
     (or that it is waiting for one), and the packs of alerts no longer firing, newest first.
-    Reads the alerts reader's stores and the pack store, once each: no source is asked."""
+    ``kinds`` counts every firing alert by its group (`family`), most first, each a filter
+    (*kind*, its group's name exactly: board AlertsExplain revised 2026-10-29), over everything
+    firing whatever the filter. Reads the alerts reader's stores and the pack store, once each:
+    no source is asked."""
     from modules import reader_job
 
     q = (q or "").strip()[:80]
+    kind = (kind or "").strip()[:200]
     sources, firing_now = [], []
     for name in _alert_stores():
         got = reader_job.read_cached(name)
@@ -1569,7 +1713,14 @@ def tab(q: str = "") -> dict:
     def matches(*texts):
         return not want or any(want in (t or "").lower() for t in texts)
 
-    shown = [c for c in cards if matches(c["rule"], c["device"], c["summary_labels"])]
+    every = {}
+    for c in cards:
+        f = family(c["rule"], c["device"])
+        every[f] = every.get(f, 0) + 1
+    kinds = [{"family": f, "count": k}
+             for f, k in sorted(every.items(), key=lambda kv: (-kv[1], kv[0]))]
+    shown = [c for c in cards if matches(c["rule"], c["device"], c["summary_labels"])
+             and (not kind or family(c["rule"], c["device"]) == kind)]
     groups = {}
     for c in shown:
         groups.setdefault(family(c["rule"], c["device"]), []).append(c)
@@ -1579,8 +1730,8 @@ def tab(q: str = "") -> dict:
     earlier_all = [pack_summary(p) for p in reversed(store["rows"])
                    if p.get("alert_key") not in keys and p.get("id") not in gone]
     earlier_all = [e for e in earlier_all if matches(e["rule"], e["device"])]
-    return {"q": q, "sources": sources, "store": {"state": store["state"],
-                                                  "error": store["error"]},
+    return {"q": q, "kind": kind, "kinds": kinds,
+            "sources": sources, "store": {"state": store["state"], "error": store["error"]},
             "counts": {"firing": len(cards), "packed": sum(1 for c in cards if c["pack"]),
                        "waiting": sum(1 for c in cards if not c["pack"]),
                        "shown": len(shown), "earlier": len(earlier_all)},

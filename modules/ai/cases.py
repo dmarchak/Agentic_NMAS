@@ -584,15 +584,27 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
 def guarded(answer, pack: dict):
     """The answer as Mercury keeps it (the operator's order of 2026-10-29, C2141): *answer* (the
     model's, as JSON) with Mercury's needs_human set where `explain.needs_human_guard` sets it
-    on a shown answer, and ``mercury_needs_human`` its reason; the answer itself when the guard
-    does not apply; None stays None (Mercury refused it)."""
-    from modules.ai import explain
+    on a shown answer, and ``mercury_needs_human`` its reason; and (the operator's order of
+    2026-10-29, "WHO, guaranteed in code") each hypothesis's claim with the actors Mercury
+    adds after it (`who.mercury_who`, ``mercury_who``), as the card draws it; the answer itself
+    when neither applies; None stays None (Mercury refused it). *answer* is never changed."""
+    from modules.ai import explain, who
 
     if answer is None:
         return None
     guard = explain.needs_human_guard(answer.get("outcome"), bool(answer.get("needs_human")),
                                       pack)
-    return dict(answer, needs_human=True, mercury_needs_human=guard) if guard else answer
+    kept = dict(answer, needs_human=True, mercury_needs_human=guard) if guard else answer
+    # Who, guaranteed (the operator's order of 2026-10-29 (b)): each actor a hypothesis's
+    # changes record that its claim does not name, added after the model's words as the card
+    # draws them (`who.inserted`); graded as a person reads it.
+    added = who.mercury_who(answer.get("hypotheses") or [], pack.get("sections") or [])
+    if not added:
+        return kept
+    hyps = [dict(h, claim=who.inserted(h.get("claim") or "", [
+        w for w in added if w["hypothesis"] == i])) for i, h in enumerate(
+        answer.get("hypotheses") or [], 1)]
+    return dict(kept, hypotheses=hyps, mercury_who=added)
 
 
 def confidently_wrong_candidate(misses: list, answer) -> bool:
@@ -616,6 +628,7 @@ def explain_graded(expect: dict, answer, pack: dict, error: str = "") -> dict:
                      "confidently_wrong_candidate": confidently_wrong_candidate(misses, a)}
     out["guarded"]["set_by_mercury"] = ((kept or {}).get("mercury_needs_human") or {}).get(
         "reason", "")
+    out["guarded"]["who_by_mercury"] = list((kept or {}).get("mercury_who") or [])
     return out
 
 

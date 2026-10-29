@@ -50,11 +50,20 @@ The model only reasons over the pack. Everything else is Mercury's, deterministi
 - **The monitoring side** (C1896): the pack's `observer` section, the scrape jobs polling the
   devices across all their targets, the SNMP exporter and the collector's host, one line per
   piece, each cited ``observer:<what>``.
-- **The fact sheet** (the operator's order of 2026-10-29, C2117; `fact_sheet`, `facts`): four
-  lines computed by Mercury from the pack as sent, each labelled so, the first data block
+- **The fact sheet** (the operator's order of 2026-10-29, C2117; `fact_sheet`, `facts`): lines
+  computed by Mercury from the pack as sent, each labelled so, the first data block
   (uncached, so the cached prefix is unchanged): heartbeat cadence against the neighbours,
-  reloads in the window and what accounts for them, the scrape jobs at the alert's time, and
-  what the pack lacks. Every prompt but v1 receives it: it is input, not prompt text.
+  reloads in the window and what accounts for them, the changes and actions in the window
+  and who made each (the operator's order of 2026-10-29, "WHO, guaranteed in code"), the
+  scrape jobs at the alert's time, and what the pack lacks. Every prompt but v1 receives it:
+  it is input, not prompt text.
+- **Who, guaranteed** (the same order, `modules/ai/who.py`): a hypothesis citing a change or
+  an action (a History receipt or record, a configuration-change log line, the Intent check's
+  difference) carries who made it (``who``), from the pack's records; one whose claim does not
+  name that actor, or say "no record of who" where none is recorded, has it added by Mercury
+  (`who.mercury_who`, recorded with the use; on each hypothesis kept, the ``who`` entry whose
+  *by* is "mercury"), drawn as Mercury's after the model's words; the model's answer stays as
+  received in the call's record.
 - **Mercury's needs_human** (the operator's order of 2026-10-29, C2141; `needs_human_guard`):
   no fault found with needs_human false while the alert's own source shows it firing
   (`fault_shown`) is kept needing a person, recorded apart (``mercury_needs_human``, its
@@ -100,7 +109,8 @@ STEPS = (
     ("ask", "one recorded, capped call through the AI gateway, as the person who pressed "
             "Explain: a fact sheet computed by Mercury from the pack (heartbeat cadence "
             "against the neighbours, reloads in the window and what accounts for them, the "
-            "scrape jobs at the alert's time, what the pack lacks), the pack, its health "
+            "changes and actions in the window and who made each, the scrape jobs at the "
+            "alert's time, what the pack lacks), the pack, its health "
             "figures for the devices within two hops, and the topology as data, no tool "
             "offered"),
     ("check", "every reference resolves to the pack or to the topology as sent (an adjacency "
@@ -113,7 +123,10 @@ STEPS = (
               "Mercury's; one the pack does not hold, or anything else that does not hold, "
               "is couldn't analyse, and nothing is shown; no fault found that does not ask "
               "for a person while the alert's own source shows it firing is kept needing a "
-              "person, set by Mercury and drawn as Mercury's"),
+              "person, set by Mercury and drawn as Mercury's; a hypothesis citing a change or "
+              "an action carries who made it, from the pack's records, and one whose words "
+              "do not name them (or say no record of who) has it added by Mercury, drawn as "
+              "Mercury's"),
     ("show", "the hypotheses drawn beside the pack, or no fault found with what it checked, "
              "each reference linked to its piece; nothing runs"),
 )
@@ -1139,12 +1152,19 @@ def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
     # the alert's own source shows the fault is not kept as it came: Mercury sets needs_human,
     # recorded and drawn as its own change.
     guard = needs_human_guard(answer.outcome.value, answer.needs_human, pack)
+    # The operator's order of 2026-10-29, "WHO, guaranteed in code" (b): a hypothesis citing a
+    # change or an action carries who made it; one whose claim does not name them has it added
+    # by Mercury, kept apart from the model's words (`who.mercury_who`).
+    from modules.ai import who
+    added_who = who.mercury_who(answer.hypotheses, sections)
     # What Mercury added or read differently is recorded with the use: the call's record keeps
     # the model's answer as received, so both stand.
     note = "; ".join(
         [f"cited by Mercury: {a['device']} by the pack's {a['ref']}" for a in added]
         + [f"read {w} as the topology's {c}" for c, w in sorted(written.items())]
-        + ([f"needs a person, set by Mercury: {guard['reason']}"] if guard else []))
+        + ([f"needs a person, set by Mercury: {guard['reason']}"] if guard else [])
+        + [f"who, added by Mercury to hypothesis {w['hypothesis']}: {w['words']} "
+           f"({', '.join(w['refs'])})" for w in added_who])
     calls.record_use(got["call_id"], "shown: " + answer.outcome.value.replace("_", " "),
                      actor=actor, links=links, **({"detail": note[:800]} if note else {}))
     # What is drawn (an answer or no fault found by now, its why_not empty); the whole answer
@@ -1163,6 +1183,12 @@ def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
                     **({"as_sent": r} if mine != r else {}),
                     **({"as_written": written[r]} if r in written else {}))
     for h in shown["hypotheses"]:
+        # Who made each change it cites, one representation (`who.who_of`): each actor with
+        # *by* "model" when the claim names them, else "mercury" (what Mercury added, the same
+        # entries `added_who` recorded with the use), and the pieces recording it as citations,
+        # drawn after the model's claim, Mercury's as Mercury's.
+        h["who"] = [dict(w, cites=[cite(r) for r in w["refs"]])
+                    for w in who.who_of(h["claim"], h["evidence_refs"], sections)]
         h["cites"] = [cite(r) for r in h.pop("evidence_refs")]
     shown["checked"] = [cite(r) for r in getattr(answer, "checked", None) or []]
     # Mercury's citations, never among the model's: each the device named, where, and the piece.

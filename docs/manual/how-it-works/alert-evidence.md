@@ -53,7 +53,10 @@ Grafana named them, and **Build evidence** builds each one's pack, saying what w
 Eleven sections, each naming its source, when it was read, and its state: **read**, **read,
 nothing found**, **nothing to read** (no device, no committed golden, no onset), **not
 configured**, or **could not be read**, with why. A source that fails is a section saying so,
-never a shorter pack.
+never a shorter pack. Each is drawn collapsed under Explain's answer, its summary naming how much
+it holds in its own words ("14 lines", "14 of 40 lines" when a subset was kept, "1 down, 4 up"
+for the neighbours, "2 devices, 6 figures" for the health figures, the other alerts by their
+state then); open it to read its pieces.
 
 1. **The alert:** its rule, state, value, labels, silences, and its onset (when the trouble
    began, as Needs attention works it out).
@@ -64,10 +67,17 @@ never a shorter pack.
    device label, the syslog line's origin, or the polled address), and its network. An address
    two networks share, or a name no inventory holds, is said, never guessed.
 4. **Recent History:** the device's deploys and restores, goldens, intent, restarts, reloads
-   and planned windows over the last 7 days, the newest 20, from the History tab's own reader.
+   and planned windows over the last 7 days, the newest 20, from the History tab's own reader,
+   each with who did it and how that person was established (a verified sign-in, a host login,
+   or not verified).
 5. **Intent check:** whether the device's committed golden matches its intent (matches,
-   differs with how many lines, or cannot be compared, with why). Only the state: the lines
-   are configuration, and stay on the device's Intent tab.
+   differs with how many lines, or cannot be compared, with why). When it differs, the lines
+   that differ go with it, at most 20 (`+` in intent and not on the device, `-` on the device
+   and not in intent), masked as everything that leaves {{product}} is masked: a line holding a
+   secret is kept as its shape, `username admin secret 9 <redacted:user_password>`, never the
+   value. And who last committed the device's intent, how they were established, and when; "no
+   record of who" when no commit holds it. A pack built before this holds only the state, and
+   says so.
 6. **Neighbours:** the adjacencies its intent implies and what the device reports, from the
    Neighbours tab's own view, Prometheus asked as of the alert's time.
 7. **The network around it, as observed:** the adjacencies and cables the Topology reader last
@@ -176,9 +186,11 @@ alert's time**:
 
 - its rule, and its device (with the device's id where the network model knows it) or, for an
   alert whose labels name no device, the address it was polled at (IPv4 or IPv6);
-- its state then (pending, firing, no data, error, or resolved), when it started, when it fired
-  and when it resolved, each in Grafana's time. A resolve after the alert's time is not in the
-  pack: it was not known then;
+- its state then (pending, firing, no data, error, or cleared), when it started, when it fired
+  and when it cleared, each in Grafana's time. A clear after the alert's time is not in the
+  pack: it was not known then. One firing then is drawn amber, never red: red is only for an
+  alert firing now, which the pack cannot know of another alert; one cleared is neutral, since
+  a clear says the condition stopped, not that anything fixed it;
 - **same alert**, when it is an earlier episode of this very alert (the same rule and labels
   flapping in the window). The alert's own episode is not listed.
 
@@ -249,8 +261,10 @@ against these references: a citation that names no piece is refused.
 
 Every string in a pack is masked before it is hashed or kept, as every line {{product}} shows
 is: a password, secret, community or key in a log line is a placeholder. A pack holds alert
-labels, masked log lines, the Intent check's state, observed adjacencies and cables, and metric
-figures, never a configuration line or a credential. A line that reads like an instruction (in an interface description, a log line or
+labels, masked log lines, the Intent check's state and, when it differs, its differing lines
+masked (a secret, password, key or hash in one is a placeholder, by where it stands and by the
+values {{product}} knows), observed adjacencies and cables, and metric figures; never a golden,
+a captured configuration, a deploy's program or a credential. A line that reads like an instruction (in an interface description, a log line or
 a label) is kept and drawn as text; nothing in a pack is followed.
 
 ## Explain {#explain}
@@ -309,17 +323,28 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    order, or a topology id written with `topology:` before it, is read as the id the topology
    sent, and what the answer wrote is on that reference's hover. A **no fault found** that does
    not ask for a person while the alert's own source shows it firing is kept needing a person,
-   set by {{product}} (below).
+   set by {{product}} (below). A hypothesis that cites a change or an action (a deploy's
+   receipt or another record in History, a configuration-change log line, the Intent check's
+   difference) carries who made it; when its words do not name them, {{product}} adds who
+   ([below](#who)).
 6. `keep`: the model's answer (hypotheses, no fault found, "the pack cannot say", or "couldn't
    analyse") is kept with the pack, beside any earlier one. A refusal before the model answered
    (hosted AI off, a cap, the provider down) is not an answer and is not kept.
-7. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
-   the references it cites (a pack piece is a link to it above; a topology id is drawn as text)
-   and its confirming read; under them, **cited by Mercury** lists each citation
-   {{product}} added (the device, where the answer named it, and the pack's piece, linked),
-   never among a hypothesis's own. It is a hypothesis, not a finding: nothing was run. Run the read
-   through **Show commands** to check it. Or **no fault found**: what the evidence shows, and
-   each piece it checked, linked. That is an assessment of the pack, not of the network: only
+7. `show`: a card on top of the pack. Its header carries **Advisory (beta)** (below). Then
+   **Most likely cause**: the first of at most three hypotheses, since the answer lists them
+   most likely first (its schema keeps them as an ordered list, and the prompt asks for the
+   most likely first; {{product}} labels the order, it does not rank them itself), with
+   **Who:** for each change or action it cites (when its words did not name who made it,
+   {{product}} adds who from the record, marked **who, added by Mercury**, and the record is a
+   chip beside it; hovering the line says whose words named it), the references it cites as
+   chips, its confirming read, and the answer's reasoning; **Other possibilities**, the others, collapsed; **cited by Mercury**,
+   each citation {{product}} added (the device, where the answer named it, and the pack's
+   piece), never among a hypothesis's own; **Needs a person**, with the model's reason or
+   {{product}}'s; **Was this right?**; and **Explain again**. A chip, pressed or reached by the
+   keyboard and Enter, opens the section holding its piece, scrolls to it and highlights it; a
+   topology id is drawn as text, since the pack does not hold it. It is a hypothesis, not a
+   finding: nothing was run. Run the read through **Show commands** to check it. Or **no fault
+   found**: what the evidence shows, and each piece it checked, as chips. That is an assessment of the pack, not of the network: only
    what the pack holds was checked, and an alert can fire on a passing blip or a threshold set
    too low. Explain is told to say so rather than invent a cause.
 
@@ -392,12 +417,24 @@ the pack does not hold says so.
    a planned-restart window covered (and who declared it), a window declared before it whose
    span the pack does not hold (said, not guessed), or "no receipt or window: unexplained".
    History not read is said, never read as nothing there.
-3. **Observer health at the alert's time:** each scrape job of the pack's monitoring side, the
+3. **Changes and actions in the window:** each record History holds in the window of
+   something a person or {{product}} did (a deploy or restore's receipt, a Reload, an intent
+   commit, a golden recorded, a planned-restart window declared), with its action, who did it
+   and how they were established, its time and its record's id; each configuration-change line
+   the device logged (`%SYS-5-CONFIG_I: Configured from console by <user> on vty0 (<address>)`
+   and its IOS-XE forms, `CONFIG_P` and NETCONF's), with the user and the source it names, an
+   address IPv4 or IPv6 kept whole (the user is the device's own account, never a verified
+   person); and the Intent check when it differs: how many lines each way, those whose only
+   difference is a masked value (the same line on both sides, a secret between them), and who
+   last committed the device's intent and when. Each says "no record of who" where the pack
+   holds none. The records History holds from before the window are counted and the newest
+   three named.
+4. **Observer health at the alert's time:** each scrape job of the pack's monitoring side, the
    alert's own job first: whether it was failing in the window's last minute (or when it last
    was), the most of its targets failing at once, how many of its targets failed at all, which
    of the pack's devices failed in it, and every job's targets counted together. A pack built
    before the monitoring side was gathered says so.
-4. **What the pack lacks:** each section not read, empty, withheld or not in the pack at all
+5. **What the pack lacks:** each section not read, empty, withheld or not in the pack at all
    (an older pack), and each figure not measured, by device.
 
 The sheet is masked on its way out, as every string {{product}} shows, and the gateway masks the
@@ -415,6 +452,22 @@ the answer needing a person.
 That is {{product}}'s change, not the model's: the answer is drawn with **needs a person** and
 **set by Mercury**, with the reason in words, and the model's answer stays as it was received
 in History. A no fault found on an alert that had resolved by then is kept as the model gave it.
+
+### Who made a change {#who}
+
+An answer that says a change came before the alert should say who made it. {{product}} does not
+leave that to the model's words. A hypothesis describes a change or an action when it cites one:
+a record in History of something a person or {{product}} did (a deploy or restore's receipt, a
+Reload, an intent commit, a golden recorded, a planned-restart window), a configuration-change
+line the device logged, or the Intent check's difference (or the whole section holding one).
+Which it cites decides, never what its words say. Each such hypothesis carries who made each of
+those changes, from the pack's own records: History's actor and how they were established, the
+user the device's log line names, or who last committed the intent; and "no record of who" when
+the pack holds none. When the hypothesis's words do not name that person (their name, or the part
+of it before the `@`, as a whole word), or do not say "no record of who", {{product}} adds it
+after the model's words, under **who, added by Mercury**, with the piece it comes from. That is
+{{product}}'s addition, kept apart from the model's words: the model's answer stays as it was
+received in History, and the use's record there says what {{product}} added.
 
 ### An answer is kept with its pack {#kept-answers}
 

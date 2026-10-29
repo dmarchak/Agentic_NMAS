@@ -1,29 +1,21 @@
-{%- from "v2/_macros.html" import how -%}
-{%- import "v2/_ai.html" as ai -%}
-{%- import "v2/_explain_beta.html" as beta -%}
-{#- Explain on one evidence pack (P1's one AI step, a button only, 15.6), and its answer below
-    it: drawn in the pack's card (_evidence_pack.html) and, whole, as Explain's own answer
+{#- Explain on one evidence pack (P1's one AI step, a button only, 15.6), and its answer: drawn
+    in the pack's card (_evidence_pack.html) and, whole, as Explain's own answer
     (`v2.monitoring_alert_explain` swaps this block). An AI control (PHASE8_PLAN 15.13): the AI
     mark; disabled with its reason while hosted AI cannot answer, the pack drawn as ever.
 
     *x* is the answer to draw, or none: a kept one (modules/ai/explain_answers.py, C1853) when
-    the card opens, so reopening the alert shows it and sends nothing. With one kept, the
-    button is **Explain again**, a new call said with its cost, and the answer kept stays.
+    the card opens, so reopening the alert shows it and sends nothing.
 
-    The "Advisory (beta)" label beside the control (_explain_beta.html, Explain's ship ruling
-    of 2026-10-29): the chip alone when an answer is drawn under it (the answer carries the
-    whole label), else the whole label under the control. -#}
-{%- set aic = ai_control('explain') %}
-{#- Explain again: an answer is kept, or whether one is cannot be read (then only a press that
-    says it is a new call asks). -#}
-{%- set again = x and (x.kept or x.error == 'answers_unreadable') %}
+    The answer card first (board AlertsExplain revised 2026-10-29): an answer drawn is the card
+    (_explain.html), whose header carries the whole "Advisory (beta)" label and whose foot holds
+    **Explain again** (_explain_ask.html, *card*), a new call said with its cost, the answer
+    kept staying. With no answer drawn (none yet, a refusal, hosted AI off, the kept answers
+    unreadable), the control is above, with the whole label under it (_explain_ask.html). -#}
 <div class="explain-block" id="explain-block-{{ pack.id }}">
-  <form class="explain-ask" method="post" action="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-post="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-target="#explain-block-{{ pack.id }}" hx-swap="outerHTML">
-    {%- if again %}<input type="hidden" name="again" value="1">{% endif %}
-    <span class="op-act">{{ ai.mark(aic) }} <button type="submit" class="btn btn-small" data-op="alert-evidence" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="{% if again %}A new recorded AI call ({{ explain_model }}), up to ${{ '%.4f' | format(aic.per_call) }}; {% if x.kept %}the answer below stays kept, with its call in History{% else %}whatever is kept stays{% endif %}{% else %}One recorded AI call ({{ explain_model }}), capped; it reads this pack and runs nothing{% endif %}">{% if again %}<span class="op-idle">Explain again</span><span class="op-busy">Explaining again…</span>{% else %}<span class="op-idle">Explain</span><span class="op-busy">Explaining…</span>{% endif %}</button>{{ how('alert-evidence', 'explain', compact=True) }}{% if x and x.ok %}{{ beta.chip() }}{% endif %}</span>
-    {%- if again %}<span class="muted small explain-again-cost">A new call, up to ${{ '%.4f' | format(aic.per_call) }}{% if x.kept %}; this answer stays{% endif %}.</span>{% endif %}
-    {%- if not (x and x.ok) %}{{ beta.label() }}{% endif %}
-    {{- ai.reason(aic) }}
-  </form>
+  {%- if x and x.ok %}
+  {%- include "v2/_explain.html" %}
+  {%- else %}
+  {%- with card = False %}{% include "v2/_explain_ask.html" %}{% endwith %}
   {%- if x %}{% include "v2/_explain.html" %}{% else %}<div class="explain" id="explain-{{ pack.id }}"></div>{% endif %}
+  {%- endif %}
 </div>

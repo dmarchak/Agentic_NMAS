@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import how -%}
+{%- import "v2/_ai.html" as ai -%}
+{%- import "v2/_explain_beta.html" as beta -%}
+{#- Explain's control (P1's one AI step, a button only, 15.6; an AI control, PHASE8_PLAN 15.13:
+    the AI mark, disabled with its reason while hosted AI cannot answer). Two places (board
+    AlertsExplain revised 2026-10-29, "the answer card first"):
+
+    - above the pack with no answer drawn (*card* false): Explain, or Explain again when whether
+      one is kept cannot be read, with the whole "Advisory (beta)" label under it;
+    - at the foot of the answer card (*card* true, from _explain.html): **Explain again**, a
+      secondary button, a new call said with its cost; the answer drawn stays kept. The card's
+      header carries the label.
+
+    Either way the press swaps the whole block (`#explain-block-<pack>`, _explain_block.html),
+    and the button is busy on itself until the answer arrives. -#}
+{%- set aic = ai_control('explain') %}
+{%- set pid = x.pack_id if (x and x.pack_id) else pack.id %}
+{#- Explain again: an answer is kept, or whether one is cannot be read (then only a press that
+    says it is a new call asks). -#}
+{%- set again = x and (x.kept or x.error == 'answers_unreadable') %}
+<form class="explain-ask{{ ' explain-again' if card }}" method="post" action="{{ url_for('v2.monitoring_alert_explain', pack_id=pid) }}" hx-post="{{ url_for('v2.monitoring_alert_explain', pack_id=pid) }}" hx-target="#explain-block-{{ pid }}" hx-swap="outerHTML">
+  {%- if again %}<input type="hidden" name="again" value="1">{% endif %}
+  <span class="op-act">{{ ai.mark(aic) }} <button type="submit" class="btn btn-small{{ ' btn-outline' if card }}" data-op="alert-evidence" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="{% if again %}A new recorded AI call ({{ explain_model }}), up to ${{ '%.4f' | format(aic.per_call) }}; {% if x.kept %}the answer {{ 'above' if card else 'below' }} stays kept, with its call in History{% else %}whatever is kept stays{% endif %}{% else %}One recorded AI call ({{ explain_model }}), capped; it reads this pack and runs nothing{% endif %}">{% if again %}<span class="op-idle">Explain again</span><span class="op-busy">Explaining again…</span>{% else %}<span class="op-idle">Explain</span><span class="op-busy">Explaining…</span>{% endif %}</button>{{ how('alert-evidence', 'explain', compact=True) }}</span>
+  {%- if again %}<span class="muted small explain-again-cost">A new call, up to ${{ '%.4f' | format(aic.per_call) }}{% if x.kept %}; this answer stays{% endif %}.</span>{% endif %}
+  {%- if not card %}{{ beta.label() }}{% endif %}
+  {{- ai.reason(aic) }}
+</form>

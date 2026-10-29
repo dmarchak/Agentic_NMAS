@@ -1,8 +1,8 @@
 # Alert history: past alerts and their evidence
 
 {{product}} keeps every state change of every Grafana alert: when it went pending, when it
-fired, when it resolved, when it read no data or could not evaluate. **Monitoring › Alerts ›
-History** lists the alerts that fired and resolved, each with its evidence pack when one was
+fired, when it cleared, when it read no data or could not evaluate. **Monitoring › Alerts ›
+History** lists the alerts that fired and cleared, each with its evidence pack when one was
 kept, and **Build evidence** for one that has none. Every time here is **Grafana's**, never a
 device's clock and never when {{product}} happened to read it. Nothing here asks or changes a
 device.
@@ -37,15 +37,19 @@ rule edited) is not a transition and is not kept. `--dry-run` counts without rec
 
 ## History {#history}
 
-The summary comes first: how many alerts fired and resolved in the range, on how many devices,
+An alert's end is **cleared**: the condition stopped, which says nothing about whether
+anything fixed it. Nothing here fires now, so nothing here is red: a count of past firings is
+neutral (red is only for an alert firing now, on **Firing**).
+
+The summary comes first: how many alerts fired and cleared in the range, on how many devices,
 how many have an evidence pack, and the counts of the rest (pending and never fired, read no
 data, could not evaluate). Below it, where the transitions came from and how far back they go.
 Filter by words (rule, device or label), by rule, by device, by time (the last 24 hours, 7 days,
 30 days, 90 days or all), and **Fired** or **All**. Each rule is a closed group with its count
 (a rule generated per device, such as a heartbeat, is one group); open it for its alerts, the
-newest first, at most 100 drawn. A row names the device, when it fired and resolved and for how
+newest first, at most 100 drawn. A row names the device, when it fired and cleared and for how
 long, and its pack. Open a row for every state it passed through, and its pack or Build
-evidence. An alert whose resolve Grafana did not record, and which the reader no longer holds,
+evidence. An alert whose clear Grafana did not record, and which the reader no longer holds,
 says so.
 
 The list is drawn again each time the alerts reader reads Grafana (about every minute), but

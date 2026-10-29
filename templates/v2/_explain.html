@@ -1,62 +1,62 @@
 {%- from "v2/_macros.html" import badge, icon, stamp -%}
+{%- import "v2/_ai.html" as ai -%}
 {%- import "v2/_explain_beta.html" as beta -%}
-{#- Explain's answer, in its pack (modules/ai/explain.py; PHASE8_PLAN 15.9, P1): the rationale,
-    then each hypothesis with what it cites (a pack piece a link to it, an id of the topology
-    sent drawn as text, 15.15) and the read that would confirm it; or why there is none; and,
-    when no topology went with the pack, why. Drawn as text: nothing in it is followed, and
-    nothing runs. Mercury's own citations (the operator's decision 7a, 2026-10-28) are drawn
-    apart from the model's, under "cited by Mercury", never among a hypothesis's. Mercury's
-    needs_human on a no fault found while the alert fires (the operator's order of 2026-10-29)
-    is drawn under "set by Mercury", with its reason. Every answer drawn opens with the
-    "Advisory (beta)" label (_explain_beta.html, Explain's ship ruling of 2026-10-29); a
-    refusal draws none, since no answer of the model's is shown. -#}
+{#- Explain's answer, in its pack (modules/ai/explain.py; PHASE8_PLAN 15.9, P1), as a card on
+    top of the pack (board AlertsExplain revised 2026-10-29, "the answer card first"):
+
+    1. the header: "Explain's answer" and the whole "Advisory (beta)" label (_explain_beta.html,
+       Explain's ship ruling of 2026-10-29);
+    2. **Most likely cause**: the first hypothesis. Explain's answer lists its hypotheses most
+       likely first (its schema's `hypotheses` is an ordered list, and the pinned prompt asks
+       "at most three, the most likely first": prompts/explain.v4.md, and `explain.vocabulary`
+       sent with every call), so the label is the order's, with no prompt change. Its claim,
+       who made each change or action it cites (`who`, below: the answer's words when they
+       name the actor, else Mercury's from the pack's records, drawn as Mercury's), what it
+       cites, each a chip that opens its section and
+       highlights its piece (nmas_v2.js, `jumpToCite`), and the read that confirms it; then the
+       answer's reasoning;
+    3. **Other possibilities**: the rest, collapsed;
+    4. **Needs a person**: the model's, or Mercury's on a no fault found while the alert fires
+       (the operator's order of 2026-10-29, C2141), drawn under "set by Mercury" with its
+       reason; Mercury's own citations (decision 7a) under "cited by Mercury", apart from the
+       model's;
+    5. the foot: Was this right? (16.11's control), then **Explain again**, a secondary button
+       (_explain_ask.html), then where the answer came from.
+
+    No fault found (C1742) draws its rationale and the healthy evidence checked in the place of
+    the hypotheses. A refusal, or hosted AI off, draws no card: no answer of the model's is
+    shown, so it carries no label (the control above carries it). Drawn as text: nothing in it
+    is followed, and nothing runs. -#}
 {%- macro cited(c, pid) -%}
-{%- if c.in_pack %}<a class="pack-ref" href="#{{ pid }}-{{ c.ref }}" data-ref="{{ c.ref }}">{{ c.ref }}</a>{% else %}<code class="topo-ref" data-ref="{{ c.ref }}" title="in the network's topology sent with the pack{% if c.as_written %}; the answer wrote it {{ c.as_written }}{% endif %}">{{ c.ref }}</code>{% endif %}
+{%- if c.in_pack %}<a class="pack-ref cite-chip" href="#{{ pid }}-{{ c.ref }}" data-ref="{{ c.ref }}" data-cite="{{ pid }}-{{ c.ref }}" title="Show {{ c.ref }} in the pack below">{{ c.ref }}</a>{% else %}<code class="topo-ref" data-ref="{{ c.ref }}" title="in the network's topology sent with the pack{% if c.as_written %}; the answer wrote it {{ c.as_written }}{% endif %}">{{ c.ref }}</code>{% endif %}
 {%- endmacro %}
 {%- macro mercury_cites(a, pid) -%}
 {%- if a.mercury_cites %}
   <p class="muted small explain-mercury-cites" title="The answer named these devices and cited nothing of them; the pack holds each one's own evidence, so Mercury cites it. The model did not cite these.">{{ badge('cited by Mercury', 'neutral') }} {% for c in a.mercury_cites %}<span class="mercury-cite" data-device="{{ c.device }}">{{ c.device }}, named in {{ c.named_in }}: the pack's {{ cited(c, pid) }}</span>{{ '; ' if not loop.last }}{% endfor %}.</p>
 {%- endif %}
 {%- endmacro %}
-<div class="explain" id="explain-{{ x.pack_id }}">
-{%- if x.ok and x.answer.outcome == 'no_fault_found' %}
-  {#- No fault found (C1742): what the evidence shows, and each healthy piece checked. -#}
-  {%- set a = x.answer %}
-  {%- set t = x.topology or {} %}
-  {#- Advisory (beta) on every answer (Explain's ship ruling of 2026-10-29), first. -#}
-  {{ beta.label() }}
-  <p class="explain-why">{{ badge('no fault found', 'neutral') }} {{ a.rationale }}</p>
-  <p class="muted small explain-checked">Checked {% for c in a.checked %}{{ cited(c, x.pack_id) }}{{ ', ' if not loop.last }}{% endfor %}.</p>
-  {{- mercury_cites(a, x.pack_id) }}
-  {%- if a.mercury_needs_human %}
-  {#- Mercury's needs_human (the operator's order of 2026-10-29, C2141): the model found no
-      fault and did not ask for a person while the alert's own source shows it firing. -#}
-  <p class="small explain-mercury-needs-human" title="The model answered no fault found and did not ask for a person; Mercury set this. The model's answer is kept as received in History.">{{ badge('needs a person', 'warn') }} {{ badge('set by Mercury', 'neutral') }} {{ a.mercury_needs_human.reason }}.</p>
-  {%- elif a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} Something in the pack could not be read.</p>{% endif %}
-  <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
-  {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
-  {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
-{%- elif x.ok %}
-  {%- set a = x.answer %}
-  {{ beta.label() }}
-  <p class="explain-why">{{ a.rationale }}</p>
-  <ol class="explain-list">
-    {%- for h in a.hypotheses %}
-    <li><strong>{{ h.claim }}</strong>
-      <span class="muted small">Cites {% for c in (h.cites or []) %}{{ cited(c, x.pack_id) }}{{ ', ' if not loop.last }}{% endfor %}. To confirm, a read: <code>{{ h.confirm_with }}</code> (Show commands).</span></li>
-    {%- endfor %}
-  </ol>
-  {{- mercury_cites(a, x.pack_id) }}
-  {%- if a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} The evidence does not settle the cause.</p>{% endif %}
-  {%- set t = x.topology or {} %}
-  <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">A hypothesis, not a finding: each cites the pack above{% if t.sent %} or the network around {{ t.subject }}{% endif %}. Nothing was run.</p>
-  {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
-  {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
-{%- elif x.error == 'ai_off' %}
-  <p class="muted small">{{ icon('info', 14) }} Not explained: hosted AI is off until it is allowed (Settings › Installation › AI). The pack above is the whole of what Mercury gathered.</p>
-{%- else %}
-  <p class="refusal" role="alert">Not explained: {{ x.detail }}.</p>
-{%- endif %}
+{#- Who made each change or took each action a hypothesis cites (the operator's order of
+    2026-10-29, "WHO, guaranteed in code"; C2172 item 1), as Mercury reads it from the pack's
+    records (`who.who_of`, in `explain.explain_pack`): ``h.who`` is a list, one entry per actor,
+    ``{"words", "who", "refs", "by", "cites"}``: *words* how a person reads who (the actor and
+    how it was established, or "no record of who"), *who* the actor's id ("" for none), *refs*
+    the pieces recording it as sent, *cites* the same as citations (as ``h.cites`` holds them),
+    and *by* "model" when the claim names that actor, else "mercury": Mercury added it, drawn
+    under "who, added by Mercury", never as the model's. A hypothesis citing no change or
+    action carries none (``[]``), and an answer kept before who existed has no ``who``: nothing
+    is drawn. -#}
+{%- macro who(h, pid) -%}
+{%- for w in (h.who or []) %}
+<span class="answer-line explain-who" data-who-by="{{ w.by }}" data-actor="{{ w.who }}" data-refs="{{ w.refs | join(' ') }}" title="Who: {{ w.words }} ({{ w.refs | join(', ') }}, {{ 'named by the answer' if w.by == 'model' else 'added by Mercury' }})"><span class="faint">Who:</span> {{ w.words }}{% if w.by == 'mercury' %} {{ badge('who, added by Mercury', 'neutral', title="The hypothesis cites a change or an action and did not say who made it; Mercury adds who from the pack's records. The model's answer is kept as received in History.") }}{% endif %} <span class="faint">from</span> {% for c in (w.cites or []) %}{{ cited(c, pid) }}{{ ' ' if not loop.last }}{% endfor %}</span>
+{%- endfor %}
+{%- endmacro %}
+{%- macro hypothesis(h, pid) -%}
+<strong class="answer-claim">{{ h.claim }}</strong>
+{{- who(h, pid) }}
+<span class="answer-line"><span class="faint">Cites</span> {% for c in (h.cites or []) %}{{ cited(c, pid) }}{{ ' ' if not loop.last }}{% endfor %}</span>
+<span class="answer-line"><span class="faint">To confirm, a read:</span> <code>{{ h.confirm_with }}</code> <span class="faint">(Show commands)</span></span>
+{%- endmacro %}
+{%- macro provenance(x) -%}
 {%- if x.pack_read and x.call_id %}
   {#- Which pack the call read (C1862): an alert may keep two, the one built again and the one
       it was built from. -#}
@@ -76,8 +76,79 @@
   {#- The link to the call's own row (15.14's links both ways): its prompt as sent, the answer
       as received, its tokens and cost. -#}
   <p class="muted small explain-call"><a href="{{ url_for('v2.history_page', call=x.call_id) }}">This call in History</a> (${{ '%.4f' | format(x.cost_usd or 0) }})</p>
-  {#- Was this right? (PHASE8_PLAN 16.11 item 1, board FB): under an answer drawn, never under
-      one Mercury's check refused. -#}
-  {%- if x.ok %}{% with fb=ai_feedback(x.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
+{%- endif %}
+{%- endmacro %}
+<div class="explain" id="explain-{{ x.pack_id }}">
+{%- if x.ok %}
+  {%- set a = x.answer %}
+  {%- set t = x.topology or {} %}
+  {%- set nff = a.outcome == 'no_fault_found' %}
+  {%- set hs = a.hypotheses or [] %}
+  <article class="answer-card" aria-label="Explain's answer" data-outcome="{{ a.outcome }}">
+    <header class="answer-head">
+      <h3>{{ ai.mark(ai_control('explain')) }} Explain's answer</h3>
+      {{- beta.label() }}
+    </header>
+    <div class="answer-body">
+    {%- if nff %}
+      <section class="answer-likely" data-part="no-fault">
+        <p class="answer-lead">No fault found</p>
+        <p class="explain-why">{{ a.rationale }}</p>
+        <p class="answer-line explain-checked"><span class="faint">Checked</span> {% for c in a.checked %}{{ cited(c, x.pack_id) }}{{ ' ' if not loop.last }}{% endfor %}</p>
+      </section>
+    {%- elif hs %}
+      <section class="answer-likely" data-part="most-likely" data-rank="1">
+        <p class="answer-lead">Most likely cause</p>
+        {{ hypothesis(hs[0], x.pack_id) }}
+      </section>
+      <p class="answer-why explain-why"><span class="faint">Why:</span> {{ a.rationale }}</p>
+      {%- if hs|length > 1 %}
+      <details class="answer-others" data-part="others" data-keep="explain-others-{{ x.pack_id }}">
+        <summary>Other possibilities · {{ hs|length - 1 }}</summary>
+        <ol class="explain-list" start="2">
+          {%- for h in hs[1:] %}
+          <li data-rank="{{ loop.index + 1 }}">{{ hypothesis(h, x.pack_id) }}</li>
+          {%- endfor %}
+        </ol>
+      </details>
+      {%- endif %}
+    {%- else %}
+      {#- An answer that names no cause and asks for a person (`explain.check` allows it only
+          with needs_human): its rationale alone. -#}
+      <section class="answer-likely" data-part="no-cause">
+        <p class="answer-lead">No cause named</p>
+        <p class="explain-why">{{ a.rationale }}</p>
+      </section>
+    {%- endif %}
+      {{- mercury_cites(a, x.pack_id) }}
+      {%- if a.mercury_needs_human %}
+      {#- Mercury's needs_human (the operator's order of 2026-10-29, C2141): the model found no
+          fault and did not ask for a person while the alert's own source shows it firing. -#}
+      <p class="answer-needs small explain-mercury-needs-human" data-part="needs-a-person" title="The model answered no fault found and did not ask for a person; Mercury set this. The model's answer is kept as received in History.">{{ badge('needs a person', 'warn') }} {{ badge('set by Mercury', 'neutral') }} {{ a.mercury_needs_human.reason }}.</p>
+      {%- elif a.needs_human %}
+      <p class="answer-needs small" data-part="needs-a-person">{{ badge('needs a person', 'warn') }} {{ 'Something in the pack could not be read.' if nff else 'The evidence does not settle the cause.' }}</p>
+      {%- endif %}
+      {%- if nff %}
+      <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
+      {%- else %}
+      <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">A hypothesis, not a finding: each cites the pack below{% if t.sent %} or the network around {{ t.subject }}{% endif %}. Nothing was run.</p>
+      {%- endif %}
+      {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
+      {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
+    </div>
+    <footer class="answer-foot">
+      {#- Was this right? (PHASE8_PLAN 16.11 item 1, board FB): under an answer drawn, never
+          under one Mercury's check refused. -#}
+      {%- if x.call_id and not (x.recorded is defined and not x.recorded) %}{% with fb=ai_feedback(x.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
+      {%- if pack is defined %}{% with card = True %}{% include "v2/_explain_ask.html" %}{% endwith %}{% endif %}
+      <div class="answer-from">{{ provenance(x) }}</div>
+    </footer>
+  </article>
+{%- elif x.error == 'ai_off' %}
+  <p class="muted small">{{ icon('info', 14) }} Not explained: hosted AI is off until it is allowed (Settings › Installation › AI). The pack below is the whole of what Mercury gathered.</p>
+  {{- provenance(x) }}
+{%- else %}
+  <p class="refusal" role="alert">Not explained: {{ x.detail }}.</p>
+  {{- provenance(x) }}
 {%- endif %}
 </div>

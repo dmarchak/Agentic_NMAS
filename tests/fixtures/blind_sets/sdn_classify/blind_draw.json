@@ -99,7 +99,7 @@
   "U6": "drawn",
   "U3": "drawn",
   "BU1": "drawn",
-  "BU3": "drawn",
+  "BU3": "drawn; run as an approximation, accepted by the operator (2026-10-29): controller-equivalent flows re-added with cookie 0x5, not a controller restarted with a changed cookie",
   "BU2": "drawn",
   "N2": "drawn",
   "N1": "drawn"

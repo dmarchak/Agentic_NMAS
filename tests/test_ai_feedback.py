@@ -205,8 +205,11 @@ def test_the_answers_templates_are_every_ai_answer():
     from modules.ai import controls
     drawn = {c["template"].split("/")[-1] for k, c in controls.CONTROLS.items()
              if k != "ai_card_test" and c.get("template")}
-    # Explain's control is drawn by _explain_block.html, which includes its answer, _explain.html.
-    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html"}) | {"_explain_block.html"}
+    # Explain's control is drawn by _explain_ask.html, which the answer card, _explain.html,
+    # includes at its foot (board AlertsExplain revised 2026-10-29), and the block above it.
+    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html"}) | {"_explain_ask.html"}
+    assert "_explain_ask.html" in open(os.path.join(ROOT, "templates", "v2", "_explain.html"),
+                                       encoding="utf-8").read()
 
 
 def test_accept_is_bound_to_the_draft_and_the_draft_names_no_person(fb):

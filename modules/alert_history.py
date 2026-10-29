@@ -80,9 +80,12 @@ GROUP_SHOWN = 100
 RANGES = {"24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400, "all": None}
 RANGE_WORDS = {"24h": "the last 24 hours", "7d": "the last 7 days", "30d": "the last 30 days",
                "90d": "the last 90 days", "all": "all the history kept"}
-#: An episode's outcomes, in the summary's order.
+#: An episode's outcomes, in the summary's order, and their words on Monitoring › Alerts ›
+#: History. An alert's end is "cleared", never "resolved", until incident statuses exist (the
+#: operator's order of 2026-10-29, C2173's first step): the condition stopped, and nothing says
+#: what, if anything, fixed it.
 OUTCOMES = ("fired", "pending_only", "no_data", "error")
-OUTCOME_WORDS = {"fired": "fired and resolved", "pending_only": "pending, never fired",
+OUTCOME_WORDS = {"fired": "fired and cleared", "pending_only": "pending, never fired",
                  "no_data": "read no data", "error": "could not evaluate"}
 #: A pack matches an episode when its alert began within this much of the episode's span.
 PACK_SLACK_SECONDS = 60

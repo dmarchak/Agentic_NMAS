@@ -2275,14 +2275,44 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
                                   silences=[GR.SILENCE])["instances"]
     with open(reader_job.store_path("grafana-alerts-walk"), "w", encoding="utf-8") as fh:
         _json.dump({"last_good": {"value": value, "value_at": "2026-10-15T08:24:00Z"}}, fh)
+    # A deploy's receipt in each device's History before the alert (the shape History's own
+    # reader returns, as tests/v2_context.py's `_alert_evidence` plants it), so the card draws
+    # who made a change a hypothesis cites (WHO, guaranteed in code, merged 2026-10-29).
+    from modules import history_sources as HS
+    receipt = {"at": "2026-10-15T08:10:00Z", "kind": "receipt",
+               "what": "Interface description sent: deployed",
+               "who_short": "operator@example.com", "outcome": "deployed",
+               "sha": "0123456789abcdef", "detail": "1 line(s) sent", "verified": "access"}
+    monkeypatch.setattr(HS, "timeline", lambda ref, host, **k: {
+        "events": [dict(receipt)], "errors": [], "total": 1})
     assert EP.after_alerts_read(clock=lambda: T.NOW)
     pack = EP.read()["rows"][-1]
     cite = next(s["ref"] for s in pack["sections"] if s["name"] == "alert")
+    # Three hypotheses (board AlertsExplain revised 2026-10-29, "the answer card first"): the
+    # card's Most likely cause, and its Other possibilities collapsed.
     answer = {"outcome": "answer", "rationale": "The heartbeat stopped while the device was up.",
               "hypotheses": [{"claim": "The device stopped sending its heartbeat.",
                               "evidence_refs": [cite],
-                              "confirm_with": "show logging | include HEARTBEAT"}],
+                              "confirm_with": "show logging | include HEARTBEAT"},
+                             {"claim": "The collector stopped receiving it.",
+                              "evidence_refs": [cite], "confirm_with": "show logging"},
+                             {"claim": "The alert rule's window is shorter than the cadence.",
+                              "evidence_refs": [cite], "confirm_with": "show clock"}],
               "checked": [], "needs_human": True, "why_not": ""}
+    # r3's pack holds the receipt in its History: an answer whose Most likely cause cites it
+    # and names no one, so Mercury adds who (the `who` state below).
+    r3_pack = next(p for p in EP.read()["rows"] if p.get("device") == "r3")
+    r3_hist = next(p["ref"] for s in r3_pack["sections"] if s["name"] == "history"
+                   for p in s.get("pieces") or [] if p.get("kind") == "receipt")
+    with_who = {"outcome": "answer", "rationale": "A deploy reached r3 before its heartbeat "
+                                                  "stopped.",
+                "hypotheses": [{"claim": "A recorded change on the device preceded the stop.",
+                                "evidence_refs": [r3_hist],
+                                "confirm_with": "show archive log config all"},
+                               {"claim": "The device stopped sending its heartbeat.",
+                                "evidence_refs": [r3_hist], "confirm_with": "show logging"}],
+                "checked": [], "needs_human": True, "why_not": ""}
+    planted = {"answer": answer}
     allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
                              "reason": "the shot's planted answer"}, "ai_cap_usd_per_day": 1.5}
     real_get = settings_schema.get_setting
@@ -2292,11 +2322,13 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
     monkeypatch.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
-        status=200, body={"content": [{"type": "text", "text": _json.dumps(answer)}],
+        status=200, body={"content": [{"type": "text", "text": _json.dumps(planted["answer"])}],
                           "stop_reason": "end_turn",
                           "usage": {"input_tokens": 4000, "output_tokens": 200}},
         attempts=1, latency_s=0.5))
     card = "document.querySelector('details.pack-card')"
+    r3 = ("[...document.querySelectorAll('details.pack-card')].find(d => "
+          "/NMAS heartbeat missing: r3/.test(d.querySelector('summary').textContent))")
     try:
         import app as A
         from modules.ai import explain_answers
@@ -2307,7 +2339,18 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
                 # Each width starts with no answer kept (C1853), so its first press is Explain.
                 if os.path.exists(explain_answers._path()):
                     os.remove(explain_answers._path())
+                planted["answer"] = answer
                 b.go(served.url("/v2/monitoring/alerts"))
+
+            def who(b):
+                # r3's card opened and explained: Most likely cause cites the receipt in its
+                # History and names no one, so Mercury's who is drawn under its chip.
+                planted["answer"] = with_who
+                b.wait_for(f"return !!{r3}", 20)
+                b.js(f"{r3}.open = true; return 1")
+                b.wait_for(f"return !!{r3}.querySelector('[data-op=\"alert-evidence\"]')", 20)
+                b.js(f"{r3}.querySelector('[data-op=\"alert-evidence\"]').click(); "
+                     f"{r3}.scrollIntoView(); return 1")
 
             def reopened(b):
                 # The page drawn again and the card opened: the answer kept with the pack is
@@ -2321,9 +2364,13 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
                  f"!!{card}.querySelector('[data-op=\"alert-evidence\"]')"),
                 ("explained", f"{card}.querySelector('[data-op=\"alert-evidence\"]').click()",
                  f"/The device stopped sending its heartbeat/.test({card}.textContent)"),
+                # A citation chip pressed: its section opened, its piece highlighted.
+                ("cited", f"{card}.querySelector('.answer-likely a.cite-chip').click()",
+                 f"!!{card}.querySelector('.cite-hit')"),
                 ("kept", reopened,
                  f"/kept with the pack/.test({card}.textContent) && "
-                 f"/Explain again/.test({card}.textContent)")],
+                 f"/Explain again/.test({card}.textContent)"),
+                ("who", who, f"/who, added by Mercury/.test({r3}.textContent)")],
                 widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     finally:
         next(gen, None)

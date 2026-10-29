@@ -78,8 +78,10 @@ def page(c, pack) -> str:
 
 
 def section_html(html: str) -> str:
-    """The ``sdn`` section's own HTML."""
-    m = re.search(r'<section class="pack-section" data-ref="sdn".*?</section>', html, re.S)
+    """The ``sdn`` section's own HTML (a collapsed `<details>` since board AlertsExplain's
+    revision of 2026-10-29, "the answer card first")."""
+    m = re.search(r'<details class="pack-section" data-ref="sdn".*?</details>\s*(?:<details '
+                  r'class="pack-section"|<p class="card-foot")', html, re.S)
     assert m, "no sdn section drawn"
     return m.group(0)
 

@@ -268,11 +268,11 @@ def test_a_refresh_mid_explain_keeps_the_row_and_the_answer_lands(history_row):
                        "return {open: !!r && r.open, note: n ? n.textContent : '',"
                        " busy: !!r && !!r.querySelector('[data-op=alert-evidence][aria-busy=true]')}")
             w.release.set()
-            b.wait_for(f"return !!document.querySelector('{sel} .explain-list li')", 20)
+            b.wait_for(f"return !!document.querySelector('{sel} .answer-likely .answer-claim')", 20)
             b.wait_for("var n = document.querySelector('#alert-history .held-note');"
                        "return !!n && n.textContent.indexOf('Paused while you work') >= 0", 10)
             after = b.js(f"var r = document.querySelector('{sel}');"
-                         "return {open: r.open, claim: r.querySelector('.explain-list li strong')"
+                         "return {open: r.open, claim: r.querySelector('.answer-likely .answer-claim')"
                          ".textContent, again: r.querySelector('[data-op=alert-evidence] .op-idle')"
                          ".textContent.trim()}")
             # Show it now: the newer list, the row open again, its pack and kept answer drawn.
@@ -285,7 +285,7 @@ def test_a_refresh_mid_explain_keeps_the_row_and_the_answer_lands(history_row):
             b.go(srv.url(HISTORY))
             _open_row(b, sel)
             b.wait_for(f"return !!document.querySelector('{sel} .explain-kept')", 15)
-            reloaded = b.js(f"return document.querySelector('{sel} .explain-list li strong')"
+            reloaded = b.js(f"return document.querySelector('{sel} .answer-likely .answer-claim')"
                             ".textContent")
         finally:
             w.release.set()             # never left holding a request thread
@@ -323,8 +323,8 @@ def test_a_press_after_a_reload_mid_call_joins_the_call(history_row, monkeypatch
             b.js(f"document.querySelector('{sel} [data-op=alert-evidence]').click(); return 1")
             time.sleep(0.5)
             w.release.set()
-            b.wait_for(f"return !!document.querySelector('{sel} .explain-list li')", 20)
-            claim = b.js(f"return document.querySelector('{sel} .explain-list li strong')"
+            b.wait_for(f"return !!document.querySelector('{sel} .answer-likely .answer-claim')", 20)
+            claim = b.js(f"return document.querySelector('{sel} .answer-likely .answer-claim')"
                          ".textContent")
         finally:
             w.release.set()             # never left holding a request thread

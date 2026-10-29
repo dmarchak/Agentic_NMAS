@@ -1874,7 +1874,15 @@ admin enables the class there, and says so beside its control):
 - **Section 6's feature 10** (template draft for a new platform): the platform's captured
   configuration, its secret-bearing lines dropped.
 - **15.9's P2** (the "differs" explainer): the unclassified difference's lines. P1's pack stays
-  in the allowed class: it carries the Intent check's state, never its lines.
+  in the allowed class: it carries the Intent check's state and, since the operator's order of
+  2026-10-29 ("WHO, guaranteed in code" (c)), its differing lines as the allowed class's
+  "intent diffs": at most 20, masked by `redact.redact_egress` (by position and by known value,
+  then every secret, password, key and hash shape), a secret's line kept as its shape, never
+  its value, so Explain can judge whether the difference could explain the alert; never a
+  golden, a captured configuration or a deploy's program. Its cost: up to 20 masked lines per
+  pack sent. The defect class it prevents: an answer unable to say whether a difference it
+  cannot see explains the alert. Data leaving the host: the irreversible tier's hand check
+  (docs/TIER_HAND_CHECK.md, 2026-10-29 "WHO").
 
 **The topology class (the operator's egress ruling, 2026-10-25).** It holds what the network
 context model (15.15) sends:
@@ -2094,6 +2102,23 @@ needs_human false while the alert's own source shows it firing (`explain.fault_s
 needing a person, set by Mercury and drawn as Mercury's; the round grades each run raw and as
 kept (`cases.explain_graded`) and reports confidently wrong both ways. The next round measures
 both.
+
+**WHO, guaranteed in code (the operator's order of 2026-10-29; built, not yet measured):**
+(a) the fact sheet gains "Changes and actions in the window" (`fact_sheet.changes_line`): each
+Mercury receipt or record History holds in the window (action, actor and how established,
+time, id), each configuration-change log line with the user and source it names
+(`who.config_change`: IOS and IOS-XE's `%SYS-5-CONFIG_I`, `CONFIG_P` and `%DMI-5-CONFIG_I`, IPv4
+and IPv6), and the Intent check's difference with its intent file's last commit, each "no
+record of who" where none exists; (b) a hypothesis that cites a change or an action (a History
+receipt or record, a configuration-change line, the Intent check's difference: by what it
+cites, never by its words) carries who made it, and one whose claim does not name them has them
+added by Mercury after its words (`who.mercury_who`, drawn "who, added by Mercury"), the model's
+response untouched in the call's record, and the round grades raw and as kept
+(`cases.guarded`); (c) the pack (schema 7) carries the intent difference's lines, masked (15.11),
+its intent file's last commit, and each History piece's `verified`. On the recorded answers no
+grade moves. Its cost: one fact-sheet line, up to 20 masked lines per pack, and a few words
+after a claim. The defect class it prevents: an answer describing a change with no one
+accountable named, though the pack records who.
 
 **Explain's ship ruling (the operator, 2026-10-29 ~03:4x UTC), on the stop rule reached by the
 10-run round of that night (v4 with the fact sheet and the guard: 81% of cases reliable; confidently
@@ -4031,8 +4056,12 @@ docs/boards/ holds a drawing for it.
 | 2026-10-28 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, revised (not yet on the canvas: the agent's copy, based on C1999's revision): a states section "Revised 2026-10-28 for C2002" drawing an opened incident's Source line in four states: one host on the port, named, no picker; several, "one of N" and a source picker beside Preview limited to those hosts; none to act on, why and no Preview; not read when it fired, the preview looking it up | A port's detection's source and its picker on SDN › Responses (C2002) | 2026-10-28, "SDN C2002: SdnResponses revised for a port's source and its picker"; docs/fidelity/sdn.md |
 | 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (version 143), deviation: on a no fault found whose model did not ask for a person while the alert fires, "needs a person" with a "set by Mercury" chip and Mercury's reason, in the place of the model's sentence; the board draws only the model's needs a person | Explain's answer (the operator's order of 2026-10-29, C2141) | 2026-10-29, "P1 Alerts: a needs a person Mercury set, drawn as Mercury's"; docs/fidelity/alerts-explain.md |
 | 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (a copy of version 143 with a note "Revised 2026-10-29: Explain Advisory (beta)", parts 1 to 4 revised in place and parts 5 to 9 added; not yet on the canvas), revised | Explain's "Advisory (beta)" label (the ship ruling of 2026-10-29, condition (b)): on every answer the chip, the measured reliability from the one dated record, How was this measured? and "A person should confirm."; beside a control the chip alone with an answer under it, else the whole label (a card not yet explained, a refusal, AI off, a past alert with no pack); Not measured when the pin is not the record's; phone | 2026-10-29, "Explain Advisory (beta): board AlertsExplain revised"; docs/fidelity/alerts-explain.md |
+| 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (the beta revision, canvas version 178, with a further note "Revised 2026-10-29: the answer card first", parts 1, 2, 3, 4, 6 and 9 redrawn, 5, 7 and 8 kept, 10 to 12 added; not yet on the canvas), revised | Explain's answer as a card on top of the pack (the operator's order of 2026-10-29, items 3 and 4a; C2172 item 3, C2173's first step): the header with the whole beta label, Most likely cause (the first hypothesis), who each names (the model's, or Mercury's from a cited record), Other possibilities collapsed, Needs a person (the model's or Mercury's), Was this right?, Explain again as a secondary button at the foot; the pack's sections collapsed, each with its count; citations as chips that open, scroll to, highlight and focus their piece; the firing alerts counted by kind, each a filter; alert states: red only for firing now, past firings neutral, an alert's end "cleared"; no fault found, a refusal, AI off, phone | 2026-10-29, "Board AlertsExplain revised: the answer card first"; docs/fidelity/alerts-explain.md, docs/fidelity/alerts-history.md |
+| 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (revised "the answer card first"), deviation: who drawn only for a hypothesis citing a change or action (none for one citing none, where the board draws "no record of who"), Mercury's chip "who, added by Mercury" (the board's "added by Mercury"), the record a citation chip after "from" | Explain's answer card, who each hypothesis names (the operator's order of 2026-10-29, "WHO, guaranteed in code"; C2172 item 1) | 2026-10-29, "P1 Alerts: who a hypothesis names, as WHO computes it"; docs/fidelity/alerts-explain.md |
+| 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (revised "the answer card first"), and P1-H, `AlertsHistory.dc.html`, deviation: a differing Intent check's lines, masked, one to a line with its side, and who last committed the intent, under the check's words; both boards draw the check's state alone | The evidence pack's Intent check (the operator's order of 2026-10-29, "WHO, guaranteed in code" (c)) | 2026-10-29, "P1 Alerts and P1-H: the intent difference's lines and who committed the intent, in the pack"; docs/fidelity/alerts-explain.md, docs/fidelity/alerts-history.md |
+| 2026-10-29 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (version 143 as revised for the beta label), and P1-H, `AlertsHistory.dc.html`, deviation: an alert firing on its data's absence listed firing, its pack's alert piece drawing "The fault is the data's absence: ..." with the rule's no-data state in quiet text, and History counting its episodes as fired; neither board draws an alert firing on no data | A heartbeat or telemetry alert's pack (C2174, the operator's rule of 2026-10-29; added a commit late, found by the merge agent) | 2026-10-29, "P1 Alerts and P1-H: an alert firing on its data's absence"; docs/fidelity/alerts-explain.md, docs/fidelity/alerts-history.md |
 
-**Count:** 177 rows: 54 drawn, 20 revised, 24 no drawing, 79 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 181 rows: 54 drawn, 21 revised, 24 no drawing, 82 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

@@ -11,10 +11,12 @@ to rely on, or a figure on a screen that no longer matches what was measured.
 
 **What is held here:**
 - every Explain answer drawn (an answer, no fault found, no fault found with Mercury's needs a
-  person) opens with the whole label; a refusal draws none on itself, and its control draws the
-  whole label;
-- every Explain control carries the label: the chip alone with an answer drawn under it, the
-  whole label without one, on an alert's card and on a past alert's row with no pack;
+  person) is a card whose header holds the whole label, before anything of the answer (board
+  AlertsExplain revised 2026-10-29, "the answer card first"); a refusal draws none on itself,
+  and its control draws the whole label;
+- every Explain control carries the label: in the card's header when the control is the card's
+  Explain again (the control itself drawing none, so the label is drawn once), the whole label
+  under it without an answer, on an alert's card and on a past alert's row with no pack;
 - the figure comes from the one record: a record changed is a page changed, a pin the record is
   not of says Not measured, and no template holds a figure of its own;
 - every field of the record is drawn (on the chip's hover);
@@ -52,8 +54,9 @@ def _press(world, answer):
 
 
 def _parts(html):
-    """The block's control (its form) and its answer (the `.explain` div), apart."""
-    form = re.search(r'<form class="explain-ask".*?</form>', html, re.S).group(0)
+    """The block's control (its form) and its answer (the `.explain` div, which holds the
+    control at its card's foot when an answer is drawn), apart."""
+    form = re.search(r'<form class="explain-ask[^"]*".*?</form>', html, re.S).group(0)
     answer = html[html.index('<div class="explain"'):]
     return form, answer
 
@@ -71,17 +74,20 @@ def _whole(label):
     assert link and link.groups() == ("/v2/help/alert-evidence#beta", "How was this measured?")
 
 
-def _chip_only(form):
-    assert re.search(r'<span class="explain-beta-chip" data-explain-beta="measured">'
-                     r'<span class="badge badge-info" title="Explain is advisory while in beta'
-                     r'[^"]*">Advisory \(beta\)</span></span>', form), form
-    assert not _labels(form), "the answer under it carries the whole label"
+def _in_the_cards_header(drawn, form):
+    """The answer card's header holds the one whole label; its Explain again, at the card's
+    foot, draws none of its own (the label is drawn once, in the header)."""
+    head = re.search(r'<header class="answer-head">.*?</header>', drawn, re.S)
+    assert head, drawn
+    assert len(_labels(head.group(0))) == 1, head.group(0)
+    assert 'class="explain-ask explain-again"' in form and "Explain again" in form, form
+    assert not _labels(form) and "Advisory (beta)" not in form, form
 
 
 # ── on every answer drawn, and beside its control ─────────────────────────────────────────
 
 @pytest.mark.parametrize("kind", ["answer", "no_fault_found", "no_fault_found_set_by_mercury"])
-def test_every_answer_opens_with_the_label_and_its_control_the_chip(world, kind):  # noqa: F811
+def test_every_answer_is_a_card_with_the_label_in_its_header(world, kind):  # noqa: F811
     answer = {"answer": lambda p: _answer(p),
               "no_fault_found": lambda p: _no_fault(p, needs_human=True),
               "no_fault_found_set_by_mercury": lambda p: _no_fault(p)}[kind](world.pack)
@@ -90,11 +96,13 @@ def test_every_answer_opens_with_the_label_and_its_control_the_chip(world, kind)
     labels = _labels(drawn)
     assert len(labels) == 1, labels
     _whole(labels[0])
-    # First in the answer, before its rationale.
-    assert drawn.index('class="explain-beta"') < drawn.index('class="explain-why"')
+    # First in the answer, before its rationale and its causes.
+    assert drawn.index('class="explain-beta"') < re.search(
+        r'class="[^"]*\bexplain-why\b', drawn).start()
+    assert drawn.index('class="explain-beta"') < drawn.index('class="answer-body"')
     if kind == "no_fault_found_set_by_mercury":
         assert drawn.index('class="explain-beta"') < drawn.index("explain-mercury-needs-human")
-    _chip_only(form)
+    _in_the_cards_header(drawn, form)
 
 
 def test_a_refusal_draws_no_label_and_its_control_the_whole_label(world):  # noqa: F811
@@ -102,7 +110,7 @@ def test_a_refusal_draws_no_label_and_its_control_the_whole_label(world):  # noq
         "claim": "A cause.", "evidence_refs": ["logs:999"], "confirm_with": "show version"}]))
     form, drawn = _parts(html)
     assert "Not explained: couldn't analyse" in drawn
-    assert not _labels(drawn) and "explain-beta-chip" not in html
+    assert not _labels(drawn) and "answer-card" not in html
     labels = _labels(form)
     assert len(labels) == 1
     _whole(labels[0])
@@ -155,7 +163,9 @@ def test_a_pin_the_record_is_not_of_says_not_measured(world, monkeypatch, moved)
     assert body.count("Not measured: Explain now asks explain v4 on ") == 1, body
     assert "the measurement of 2026-10-29 was of explain v" in body
     assert "%" not in body and "A person should confirm." in body
-    assert 'data-explain-beta="not_measured"' in _parts(html)[0], "the chip says so too"
+    # Drawn once, in the card's header: no other mark of the beta anywhere says "measured".
+    assert 'data-explain-beta="measured"' not in html
+    assert html.count('data-explain-beta="not_measured"') == 1
 
 
 def test_the_record_is_the_rulings_and_of_the_pin_now():
@@ -222,10 +232,14 @@ def _ast(source):
 def explain_drawers(templates: dict) -> dict:
     """The templates that draw an Explain answer (include the answer partial, or are it) or
     Explain's control (`ai_control('explain')`), by the Jinja AST, never by text: {template:
-    (why, whether it calls the label or the chip of `_explain_beta.html`)}."""
+    (why, whether it draws the label)}. A template draws the label when it calls
+    `_explain_beta.html`'s `label`, or includes a template of *templates* that draws it (since
+    board AlertsExplain's revision of 2026-10-29 the answer card draws the label in its header
+    and holds its own control, and the block includes the card and the control): an include of
+    a template not in *templates*, or of one that does not draw it, draws nothing."""
     from jinja2 import nodes
 
-    out = {}
+    facts = {}
     for name, source in templates.items():
         tree = _ast(source)
         includes = {n.template.value for n in tree.find_all(nodes.Include)
@@ -233,15 +247,24 @@ def explain_drawers(templates: dict) -> dict:
         control = any(isinstance(n.node, nodes.Name) and n.node.name == "ai_control"
                       and n.args and isinstance(n.args[0], nodes.Const)
                       and n.args[0].value == "explain" for n in tree.find_all(nodes.Call))
-        answer = ANSWER in includes or name == ANSWER
-        if not (answer or control):
-            continue
         aliases = {n.target for n in tree.find_all(nodes.Import)
                    if isinstance(n.template, nodes.Const) and n.template.value == BETA}
         called = any(isinstance(n.node, nodes.Getattr) and isinstance(n.node.node, nodes.Name)
-                     and n.node.node.name in aliases and n.node.attr in ("label", "chip")
+                     and n.node.node.name in aliases and n.node.attr == "label"
                      for n in tree.find_all(nodes.Call))
-        out[name] = ("draws an Explain answer" if answer else "draws Explain's control", called)
+        facts[name] = (includes, control, called)
+    draws = {n for n, (_i, _c, called) in facts.items() if called}
+    while True:
+        more = {n for n, (inc, _c, _d) in facts.items() if n not in draws and inc & draws}
+        if not more:
+            break
+        draws |= more
+    out = {}
+    for name, (includes, control, _called) in facts.items():
+        answer = ANSWER in includes or name == ANSWER
+        if answer or control:
+            out[name] = ("draws an Explain answer" if answer else "draws Explain's control",
+                         name in draws)
     return out
 
 
@@ -284,9 +307,24 @@ def test_a_planted_template_without_the_label_is_found():
         "v2/_drawn.html": '{%- import "v2/_explain_beta.html" as b -%}{{ b.label() }}'
                           '{% include "v2/_explain.html" %}',
         "v2/_unrelated.html": "{%- set aic = ai_control('ask_in_words') %}",
+        # Through an include: a control drawn by a partial that draws the label is drawn; one
+        # whose partial does not (or is not among the templates scanned) is missing.
+        "v2/_planted_ask.html": "{%- import \"v2/_explain_beta.html\" as beta -%}"
+                                "{%- set aic = ai_control('explain') %}{{ beta.label() }}",
+        "v2/_planted_block.html": '{% include "v2/_planted_ask.html" %}'
+                                  '{% include "v2/_explain.html" %}',
+        "v2/_planted_bare_ask.html": "{%- set aic = ai_control('explain') %}<button>x</button>",
+        "v2/_planted_bad_block.html": '{% include "v2/_planted_bare_ask.html" %}'
+                                      '{% include "v2/_explain.html" %}',
+        # Its chip alone is not the label.
+        "v2/_planted_chip.html": '{%- import "v2/_explain_beta.html" as beta -%}{{ beta.chip() }}'
+                                 '{% include "v2/_explain.html" %}',
     }
     assert label_missing(planted) == [
         ("v2/_planted_answer.html", "draws an Explain answer"),
         ("v2/_planted_control.html", "draws Explain's control"),
         ("v2/_planted_import.html", "draws an Explain answer"),
-        ("v2/_planted_comment.html", "draws an Explain answer")]
+        ("v2/_planted_comment.html", "draws an Explain answer"),
+        ("v2/_planted_bare_ask.html", "draws Explain's control"),
+        ("v2/_planted_bad_block.html", "draws an Explain answer"),
+        ("v2/_planted_chip.html", "draws an Explain answer")]

@@ -643,7 +643,9 @@ def redact_egress(text: str, values: dict = None) -> str:
     """Mask *text* for a payload leaving the host (C1654): `redact_text` (by position and by
     known value), then every secret, password and key value anywhere on a line, SNMPv3's
     auth and priv values, and every hash-shaped token. Idempotent: a placeholder is left
-    alone. Never applied to what Mercury stores (goldens stay verbatim)."""
+    alone. Never applied to what Mercury stores (goldens stay verbatim), but for the evidence
+    pack's intent difference lines (`evidence_pack.intent_lines`, the operator's order of
+    2026-10-29), kept only to be read and sent, never restored from."""
     if not text:
         return text
     text = redact_text(text, values)

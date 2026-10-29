@@ -1,8 +1,9 @@
 """Explain's fact sheet (the operator's order of 2026-10-29, C2117 and C2141):
 modules/ai/fact_sheet.py, sent by modules/ai/explain.py (`facts`, `parts`, `budgeted`).
 
-Four lines computed by Mercury from the pack as sent, each labelled "computed by Mercury",
-sent as the first data block:
+Lines computed by Mercury from the pack as sent, each labelled "computed by Mercury", sent as
+the first data block (the changes and actions in the window, the operator's order of
+2026-10-29, are tests/test_explain_who.py's):
 
 - **heartbeat cadence** (C2117): the alert's device's beats beside its neighbours', its own
   role first, its longest gap against their median; recorded case 19's shape (s4's 392 s
@@ -334,7 +335,9 @@ def test_every_line_is_labelled_and_the_sheet_is_masked(monkeypatch):
                         lambda: {"Planted5ecretValue9": "Lab:planted"})
     text = fact_sheet.sheet(pack, pack["sections"])
     assert text.split("\n")[0] == fact_sheet.HEAD
-    assert len(text.split("\n")) == 5
+    # The head and a line each of `LINES` (the changes and actions since the operator's order
+    # of 2026-10-29; tests/test_explain_who.py).
+    assert len(text.split("\n")) == 1 + len(fact_sheet.LINES) == 6
     assert all("(computed by Mercury)" in ln for ln in text.split("\n")[1:])
     assert "Planted5ecretValue9" not in text and "Pl4ntedCommunity" not in text
     assert "<redacted:" in text

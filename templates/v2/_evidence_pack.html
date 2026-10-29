@@ -10,6 +10,13 @@
 {#- Each section's mark (schema 4, evidence_pack.PROVENANCE): captured at the time is quiet text;
     rebuilt afterwards and cannot be rebuilt are chips, each with its words in full below. -#}
 {%- set PW = {'rebuilt': 'rebuilt', 'missing': 'cannot be rebuilt'} -%}
+{#- Another alert's state at the alert's time (the concurrent section), as stored (the pack and
+    its hash keep "resolved"), drawn in the words and colours of an alert's state (the
+    operator's order of 2026-10-29, C2173's first step): red is only for an alert firing NOW,
+    which a pack cannot know of another alert, so one firing then is amber; one that stopped is
+    "cleared" and neutral, never "resolved" and never green, since nothing says it was fixed. -#}
+{%- set AW = {'resolved': 'cleared'} -%}
+{%- set AK = {'firing': 'warn'} -%}
 {%- set PK = {'rebuilt': 'warn', 'missing': 'muted'} -%}
 {#- An SDN detection's pack (C1867): `sdn` is evidence_pack.sdn_view's answer, {} for any other
     pack. A number is drawn with its thousands; a match is drawn as the switch reported it,
@@ -25,7 +32,7 @@
 <p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
 {%- else %}
 <div class="pack" data-pack="{{ pack.id }}">
-  <p class="pack-meta">{% if pack.provenance == 'rebuilt' %}{{ badge('rebuilt afterwards', 'warn', title='built after the alert, as of its time: each section says whether it was captured, rebuilt or cannot be rebuilt') }} {% elif not pack.provenance %}<span class="pack-prov" title="built before each section was marked (schema {{ pack.schema }})">parts not marked</span> {% endif %}Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; {{ 'rebuilt' if pack.episode else 'replayed' }} {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger }}.{% if pack.resolved_at %} Resolved {{ stamp(pack.resolved_at, note="Grafana's time") }}.{% endif %}
+  <p class="pack-meta">{% if pack.provenance == 'rebuilt' %}{{ badge('rebuilt afterwards', 'warn', title='built after the alert, as of its time: each section says whether it was captured, rebuilt or cannot be rebuilt') }} {% elif not pack.provenance %}<span class="pack-prov" title="built before each section was marked (schema {{ pack.schema }})">parts not marked</span> {% endif %}Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; {{ 'rebuilt' if pack.episode else 'replayed' }} {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger|replace(', resolved at ', ', cleared at ') }}.{% if pack.resolved_at %} Cleared {{ stamp(pack.resolved_at, note="Grafana's time: the alert stopped firing; nothing here says what, if anything, fixed it") }}.{% endif %}
     {{ pack.rule }} on {% if sdn %}switch <span class="mono">{{ sdn.switch.dpid }}</span>{% if sdn.switch.name %} ({{ sdn.switch.name }}){% endif %} on {{ sdn.switch.connection }}{% else %}{{ pack.device or 'no one device' }}{% endif %}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     {%- if sdn %} {{ badge('SDN detection', 'info', title="Mercury's own detection over its SDN controllers' flows and port counters, never a Grafana alert") }}{% endif %}
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ 'SDN detection' if sdn else pack.store }}">{{ pack.hash[:12] }}</span>
@@ -54,11 +61,16 @@
   {#- Explain and its answer (_explain_block.html): the answer kept with this pack, when there
       is one (C1853), drawn with no new call; it names the pack it read (C1862). -#}
   {%- with x = explained %}{% include "v2/_explain_block.html" %}{% endwith %}
+  {#- Each section collapsed (board AlertsExplain revised 2026-10-29, "the answer card first"):
+      its summary names it, its count (`evidence_pack.section_count`, carried as
+      *section_counts*), its reference, state and mark; it opens by a click, or by a citation
+      chip in the answer above (nmas_v2.js, `jumpToCite`), which highlights the piece. -#}
   {%- for s in pack.sections %}
-  <section class="pack-section" data-ref="{{ s.ref }}" id="{{ pack.id }}-{{ s.ref }}">
-    <h3>{{ s.words }} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}
+  {%- set n = (section_counts or {}).get(s.ref) %}
+  <details class="pack-section" data-ref="{{ s.ref }}" id="{{ pack.id }}-{{ s.ref }}" data-keep="sec-{{ pack.id }}-{{ s.ref }}">
+    <summary><h3><span class="pack-sec-words">{{ s.words }}</span>{% if n %} <span class="pack-count" data-count="{{ s.ref }}">· {{ n }}</span>{% endif %} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}
       {%- if s.provenance == 'captured' %} <span class="pack-prov" data-provenance="captured" title="{{ s.provenance_words }}">captured at the time</span>
-      {%- elif s.provenance %} {{ badge(PW.get(s.provenance, s.provenance), PK.get(s.provenance, 'muted'), title=s.provenance_words) }}{% endif %}</h3>
+      {%- elif s.provenance %} {{ badge(PW.get(s.provenance, s.provenance), PK.get(s.provenance, 'muted'), title=s.provenance_words) }}{% endif %}</h3></summary>
     {%- if s.provenance and s.provenance != 'captured' %}<p class="pack-source" data-provenance="{{ s.provenance }}">{{ s.provenance_words[:1]|upper }}{{ s.provenance_words[1:] }}{% if s.as_of_commit %} (the Intent check at <span class="mono">{{ s.as_of_commit }}</span>){% endif %}.</p>{% endif %}
     <p class="pack-source">{{ sdn.alert_source if sdn and s.name == 'alert' else (s.source or s.name) }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
     {%- if s.name == 'sdn' and sdn %}
@@ -87,13 +99,22 @@
         {%- for k, v in p.labels|dictsort %} <span class="mono small">{{ k }}=<span class="pack-text">{{ v }}</span></span>{{ ',' if not loop.last }}{% endfor %}
         {%- for x in p.silences %}; silenced in Grafana {% if x.unresolved %}by silence {{ x.id }}, whose author and end were not returned{% else %}by {{ x.created_by or 'an unnamed account' }} until {{ x.ends_at or 'an unrecorded time' }}{% if x.comment %} (&ldquo;{{ x.comment }}&rdquo;){% endif %}{% endif %}{% endfor %}
         {%- elif s.name == 'concurrent' %}
-        <strong>{{ p.rule }}</strong> on {% if p.device %}<span title="{{ p.dev or 'not in the network model' }}">{{ p.device }}</span>{% else %}<span class="mono">{{ p.address or 'no device named' }}</span>{% endif %}: {{ badge(p.state, {'firing': 'danger', 'pending': 'warn', 'resolved': 'ok'}.get(p.state, 'muted')) }} at the alert's time{% if p.same_alert %} <span class="muted small">an earlier episode of this alert</span>{% endif %}. Started {{ stamp(p.started_at) }}{% if p.fired_at %}, fired {{ stamp(p.fired_at) }}{% endif %}{% if p.resolved_at %}, resolved {{ stamp(p.resolved_at) }}{% endif %} <span class="muted small">(Grafana's times)</span>
+        <strong>{{ p.rule }}</strong> on {% if p.device %}<span title="{{ p.dev or 'not in the network model' }}">{{ p.device }}</span>{% else %}<span class="mono">{{ p.address or 'no device named' }}</span>{% endif %}: {{ badge(AW.get(p.state, p.state), AK.get(p.state, 'muted')) }} at the alert's time{% if p.same_alert %} <span class="muted small">an earlier episode of this alert</span>{% endif %}. Started {{ stamp(p.started_at) }}{% if p.fired_at %}, fired {{ stamp(p.fired_at) }}{% endif %}{% if p.resolved_at %}, cleared {{ stamp(p.resolved_at) }}{% endif %} <span class="muted small">(Grafana's times)</span>
         {%- elif s.name == 'device' %}
         <strong>{{ p.device }}</strong> in {{ p.network }}{% if p.address %}, <span class="mono">{{ p.address }}</span>{% endif %}{% if p.platform %}, {{ p.platform }}{% endif %}: {{ p.note }} <span class="muted small">(by {{ p.device_from }})</span>
         {%- elif s.name == 'history' %}
-        {{ stamp(p.at) }} · {{ p.kind }} · {{ p.what }}{% if p.outcome %} · {{ p.outcome }}{% endif %}{% if p.who %} · {{ p.who }}{% endif %}{% if p.sha %} <span class="mono small">{{ p.sha }}</span>{% endif %}{% if p.detail %} <span class="muted small">{{ p.detail }}</span>{% endif %}
+        {{ stamp(p.at) }} · {{ p.kind }} · {{ p.what }}{% if p.outcome %} · {{ p.outcome }}{% endif %}{% if p.who %} · <span{% if p.verified is defined %} title="Actor-Verified: {{ p.verified or 'not recorded' }}"{% endif %}>{{ p.who }}</span>{% endif %}{% if p.sha %} <span class="mono small">{{ p.sha }}</span>{% endif %}{% if p.detail %} <span class="muted small">{{ p.detail }}</span>{% endif %}
         {%- elif s.name == 'intent' %}
-        {{ badge(p.state, {'match': 'ok', 'differs': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.state == 'differs' %} ({{ p.adds }} in intent and not on the device, {{ p.removes }} on the device and not in intent, {{ p.reordered }} reordered){% endif %}{% if p.why and p.why not in p.words %}: {{ p.why }}{% endif %}{% if p.golden_commit %} <span class="muted small">(golden <span class="mono">{{ p.golden_commit }}</span>)</span>{% endif %}. The lines are on the device's Intent tab, never in the pack.
+        {{ badge(p.state, {'match': 'ok', 'differs': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.state == 'differs' %} ({{ p.adds }} in intent and not on the device, {{ p.removes }} on the device and not in intent, {{ p.reordered }} reordered){% endif %}{% if p.why and p.why not in p.words %}: {{ p.why }}{% endif %}{% if p.golden_commit %} <span class="muted small">(golden <span class="mono">{{ p.golden_commit }}</span>)</span>{% endif %}.
+        {#- The difference's lines, masked, when the check differs (the operator's order of
+            2026-10-29, "WHO, guaranteed in code" (c); `evidence_pack.intent_lines`): each a
+            string as the pack holds it, "+ " in intent and not on the device, "- " on the
+            device and not in intent, drawn one to a line with its side; a pack built before
+            carries none and says where they are. Then who last committed the intent file
+            (`evidence_pack.intent_commit`), or no record of who. -#}
+        {%- if p.lines %} <span class="pack-line"><span class="muted small">The lines, masked: {{ p.lines|length }} line{{ '' if p.lines|length == 1 else 's' }}</span></span><code class="pack-text pack-diff" data-intent-lines="{{ p.lines|length }}">{% for l in p.lines %}<span class="pack-diff-line" data-side="{{ 'intent' if l[:2] == '+ ' else 'device' if l[:2] == '- ' else 'unknown' }}">{{ l }}</span>{{ '\n' if not loop.last }}{% endfor %}</code>
+        {%- elif p.lines is not defined and p.state == 'differs' %} This pack predates the intent difference's lines: they are on the device's Intent tab.{% endif %}
+        {%- if p.intent_commit %} <span class="muted small intent-commit">Intent last committed{% if p.intent_commit.state == 'ok' %} {{ stamp(p.intent_commit.at) }} by {{ p.intent_commit.actor or 'no record of who' }}{% if p.intent_commit.actor and p.intent_commit.how %} (<span title="Actor-Verified: {{ p.intent_commit.verified or 'not recorded' }}">{{ p.intent_commit.how }}</span>){% endif %} <span class="mono">{{ p.intent_commit.sha }}</span>{% else %}: no record of who ({{ p.intent_commit.why }}){% endif %}.</span>{% endif %}
         {%- elif s.name == 'neighbours' %}
         {%- if p.kind == 'protocol' %}<strong>{{ p.proto }}</strong>: {{ 'measured' if p.measured else 'not measured' }}{% if p.why %} ({{ p.why }}){% endif %}{% if p.as_of %}, as of {{ stamp(p.as_of) }}{% endif %}
         {%- else %}{{ p.proto }} {{ p.peer or 'a peer outside management' }}{% if p.address %} <span class="mono">{{ p.address }}</span>{% endif %}{% if p.via %} via {{ p.via }}{% endif %}: {{ badge(p.state|replace('_', ' '), {'up': 'ok', 'down': 'danger', 'not_seen': 'warn', 'unexpected': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.at %}, scraped {{ stamp(p.at) }}{% if p.as_of %}, not current{% endif %}{% elif p.as_of %}, as of {{ stamp(p.as_of) }}, not current{% endif %}{% if not p.managed %} <span class="muted small">outside management</span>{% endif %}{% endif %}
@@ -175,7 +196,7 @@
       </ul>
     </div>
     {%- endif %}
-  </section>
+  </details>
   {%- endfor %}
   <p class="card-foot">Every line in the pack is masked as every line Mercury shows, and is drawn as text: nothing in it is followed. {{ how('alert-evidence') }}</p>
 </div>

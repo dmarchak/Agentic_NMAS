@@ -282,23 +282,47 @@ def test_explain_in_a_real_browser(world):
             b.wait_for(f"var f = document.querySelector('{sel} form.explain-ask');"
                        "return !!(f && f['htmx-internal-data'])", 15)
             b.js(f"document.querySelector('{sel} [data-op=alert-evidence]').click(); return 1")
+            # The answer card (board AlertsExplain revised 2026-10-29): Most likely cause first.
+            likely = f"{sel} .answer-likely[data-part=most-likely]"
             try:
-                b.wait_for(f"return !!document.querySelector('{sel} .explain-list li')", 15)
+                b.wait_for(f"return !!document.querySelector('{likely} .answer-claim')", 15)
             except AssertionError:
                 raise AssertionError(b.js("return location.href + ' | ' + "
                                           "document.body.innerHTML.slice(0, 400)")) from None
-            claim = b.js(f"return document.querySelector('{sel} .explain-list li strong')"
+            claim = b.js(f"return document.querySelector('{likely} .answer-claim')"
                          ".textContent")
-            href = b.js(f"return document.querySelector('{sel} .explain-list a.pack-ref')"
+            href = b.js(f"return document.querySelector('{likely} a.cite-chip')"
                         ".getAttribute('href')")
             target = b.js(f"return !!document.getElementById("
                           f"'{href[1:]}')") if href else False
             wide = b.js("return document.documentElement.scrollWidth <= window.innerWidth")
+            # Its citation chip pressed: the piece's section, collapsed, opens; the piece is
+            # highlighted and takes the focus; the page does not leave for the fragment.
+            state = ("var t = document.getElementById(arguments[0]);"
+                     "var d = t && t.closest('details.pack-section');"
+                     "return {open: !!d && d.open, hit: !!t && t.classList.contains('cite-hit'),"
+                     " focus: document.activeElement === t, hash: location.hash,"
+                     " hits: document.querySelectorAll('.cite-hit').length}")
+            closed = b.js("var t = document.getElementById(arguments[0]);"
+                          "var d = t.closest('details.pack-section'); return !!d && !d.open",
+                          href[1:])
+            b.click(f"{likely} a.cite-chip")
+            clicked = b.js(state, href[1:])
+            # And by the keyboard: Enter on the chip (WebDriver's key events into it), after
+            # the section closed again.
+            b.js("var t = document.getElementById(arguments[0]);"
+                 "t.closest('details.pack-section').open = false; t.classList.remove('cite-hit');"
+                 "return 1", href[1:])
+            b.type(f"{likely} a.cite-chip", "")
+            keyed = b.js(state, href[1:])
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
     assert claim == "A configuration change on r1 preceded the errors.", claim
     assert target is True and wide is True, (href, target, wide)
+    assert closed is True, "the pack's sections are drawn collapsed"
+    want = {"open": True, "hit": True, "focus": True, "hash": "", "hits": 1}
+    assert clicked == want and keyed == want, (clicked, keyed)
 
 
 def test_the_schema_is_registered_and_committed():

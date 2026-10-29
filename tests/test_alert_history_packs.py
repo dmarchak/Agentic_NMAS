@@ -60,9 +60,9 @@ def _marks(pack):
 class TestEachSectionIsMarked:
     def test_a_pack_built_as_its_alert_fired_is_captured_throughout(self, pack_lab):
         pack = _build(_alerts(V4))
-        # Schema 5 (C1849 to C1851) and 6 (C1896) keep schema 4's marks, on their new sections
-        # too.
-        assert pack["provenance"] == "captured" and pack["schema"] == 6
+        # Schema 5 (C1849 to C1851), 6 (C1896) and 7 (the intent lines) keep schema 4's marks,
+        # on their new sections too.
+        assert pack["provenance"] == "captured" and pack["schema"] == 7
         assert set(_marks(pack).values()) == {"captured"} and "concurrent" in _marks(pack)
         assert "observer" in _marks(pack)
         assert all(s["provenance_words"].startswith("captured at the time")
@@ -205,7 +205,8 @@ class TestTheHistoryTab:
         r = c.get("/v2/monitoring/alerts/history?range=all")
         html = unescape(r.get_data(as_text=True))
         assert r.status_code == 200 and "Content-Security-Policy" in r.headers
-        assert "fired and resolved" in html and "Build evidence" in html
+        # An alert's end is "cleared" (the operator's order of 2026-10-29, C2173).
+        assert "fired and cleared" in html and "Build evidence" in html
         assert 'aria-current="page">History' in html
         assert "NMAS heartbeat missing" in html and "Transitions as Grafana timed them" in html
         part = c.get("/v2/monitoring/alerts/history/list?range=all&show=all&device=r2")

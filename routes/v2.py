@@ -1503,7 +1503,7 @@ def _alerts_ctx() -> dict:
     from modules import evidence_pack
 
     want = request.args.get("open", "")
-    return {"e": evidence_pack.tab(request.args.get("q", "")),
+    return {"e": evidence_pack.tab(request.args.get("q", ""), request.args.get("kind", "")),
             "open_key": want if _PACK_KEY.match(want) else ""}
 
 
@@ -1565,10 +1565,15 @@ def _pack_context(pack, rows) -> dict:
     """What every drawing of one pack's card is handed beside the pack: its lineage
     (`_pack_lineage`, C1862) and, for an SDN detection's pack, ``sdn`` (C1867,
     `evidence_pack.sdn_view`: the switch's name, the pieces' references by evidence id and
-    the meters its flows name, from the SDN reader's stored value, one read); {} otherwise."""
+    the meters its flows name, from the SDN reader's stored value, one read); {} otherwise.
+    And ``section_counts``, each section's count by its reference as its collapsed summary
+    names it (`evidence_pack.section_count`; board AlertsExplain revised 2026-10-29)."""
     from modules import evidence_pack
 
-    return dict(_pack_lineage(pack, rows), sdn=evidence_pack.sdn_view(pack) if pack else {})
+    counts = {s.get("ref"): evidence_pack.section_count(s)
+              for s in ((pack or {}).get("sections") or [])}
+    return dict(_pack_lineage(pack, rows), sdn=evidence_pack.sdn_view(pack) if pack else {},
+                section_counts=counts)
 
 
 def _explain_model() -> str:

@@ -3,19 +3,22 @@
 {%- import "v2/_explain_beta.html" as beta -%}
 {#- Monitoring › Alerts › History (modules/alert_history.tab; the operator's order of
     2026-10-26; board P1-H, AlertsHistory.dc.html, signed off under the Phase 7 mode): the
-    alerts that fired and resolved, from Mercury's alert history, each transition timed by
+    alerts that fired and cleared, from Mercury's alert history, each transition timed by
     Grafana. The summary first (counts by outcome in the range), the filter, then one closed group
     per rule with a row per past alert; a row opens its evidence pack (a read) or offers Build
     evidence (POST, gated, recorded). Redrawn when the alerts reader announces. -#}
 {%- set c = h.counts -%}
-{%- set OK = {'fired': 'danger', 'pending_only': 'muted', 'no_data': 'warn', 'error': 'warn'} -%}
+{#- Every alert here has stopped firing, so nothing is red (the operator's order of 2026-10-29,
+    C2173's first step: red only for an alert firing now; a count of past firings neutral), and
+    an alert's end is "cleared", never "resolved": nothing says it was fixed. -#}
+{%- set OK = {'fired': 'muted', 'pending_only': 'muted', 'no_data': 'warn', 'error': 'warn'} -%}
 <div class="alert-history" id="alert-history" hx-get="{{ url_for('v2.monitoring_alerts_history_list', q=h.q or none, rule=h.rule or none, device=h.device or none, range=h.range, show=h.show) }}"
      hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
   {%- if h.store.state == 'unreadable' %}
   <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The alert history cannot be read.</strong> {{ h.store.error }}. Nothing is listed until it can be: an empty list here would read as a quiet network.</div></div>
   {%- else %}
   <p class="att-summary">
-    <strong>{{ c.outcomes.fired }} alert{{ '' if c.outcomes.fired == 1 else 's' }} fired and resolved</strong> in {{ h.range_words }}
+    <strong>{{ c.outcomes.fired }} alert{{ '' if c.outcomes.fired == 1 else 's' }} fired and cleared</strong> in {{ h.range_words }}
     · {{ c.devices }} device{{ '' if c.devices == 1 else 's' }}{% if h.show == 'all' %} in the {{ c.shown }} shown{% endif %}
     · {{ c.packed }} with an evidence pack
   </p>
@@ -42,23 +45,23 @@
     {%- if h.q or h.rule or h.device %}<span class="muted small">{{ c.shown }} of {{ c.in_range }} in {{ h.range_words }} match</span>{% endif %}
   </form>
   {%- if h.store.state != 'unreadable' and not h.groups %}
-  <p class="att-clear">{{ icon('check', 16) }} No alert {{ 'fired and resolved' if h.show == 'fired' else 'ended' }} in {{ h.range_words }}{% if h.q or h.rule or h.device %} that matches{% endif %}.</p>
+  <p class="att-clear">{{ icon('check', 16) }} No alert {{ 'fired and cleared' if h.show == 'fired' else 'ended' }} in {{ h.range_words }}{% if h.q or h.rule or h.device %} that matches{% endif %}.</p>
   {%- endif %}
   {%- for g in h.groups %}
   <details class="card ah-group" data-keep="ah-group-{{ loop.index }}-{{ g.family|length }}">
-    <summary class="card-head"><h2>{{ g.family }}</h2>{{ badge(g.count ~ (' resolved' if h.show == 'fired' else ' ended'), 'danger' if h.show == 'fired' else 'muted') }} <span class="muted small">{{ g.devices }} device{{ '' if g.devices == 1 else 's' }}</span></summary>
+    <summary class="card-head"><h2>{{ g.family }}</h2>{{ badge(g.count ~ (' cleared' if h.show == 'fired' else ' ended'), 'muted') }} <span class="muted small">{{ g.devices }} device{{ '' if g.devices == 1 else 's' }}</span></summary>
     {%- for e in g.episodes %}
     {%- set p = e.pack %}
     <details class="pack-card ah-row" data-keep="ah-{{ e.id }}"{% if p %} hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="toggle once" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack"{% endif %}>
       <summary><strong>{{ e.device or e.address or 'no one device' }}</strong>{% if e.networks %} <span class="muted">in {{ e.networks|join(', ') }}</span>{% endif %}
         · {% if e.fired_at %}fired {{ stamp(e.fired_at, note="Grafana's time") }}{% else %}began {{ stamp(e.started_at, note="Grafana's time") }}{% endif %}
-        · {% if e.resolved_at %}resolved {{ stamp(e.resolved_at, note="Grafana's time; " ~ e.resolved_state) }}{% if e.duration_words %} ({{ e.duration_words }}){% endif %}{% else %}<span title="no normal state was recorded after it, and the alerts reader no longer holds it">ended, its resolve not recorded</span>{% endif %}
+        · {% if e.resolved_at %}cleared {{ stamp(e.resolved_at, note="Grafana's time; " ~ e.resolved_state) }}{% if e.duration_words %} ({{ e.duration_words }}){% endif %}{% else %}<span title="no normal state was recorded after it, and the alerts reader no longer holds it">ended, its clear not recorded</span>{% endif %}
         {%- if e.outcome != 'fired' %} {{ badge(h.outcome_words[e.outcome], OK[e.outcome]) }}{% endif %}
         {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', schema ' ~ p.schema ~ ', built ' ~ p.built ~ ', as of ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
           {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
           {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
         {%- else %} {{ badge('no evidence pack', 'muted') }}{% endif %}
-        <span class="muted small" title="{{ e.rule }}{% if e.rule_uid %} (rule {{ e.rule_uid }}){% endif %}; read from {{ e.store }}; recorded by {{ e.sources|join(' and ') }}; device by {{ e.device_from }}; alert {{ e.identity }}">{{ e.summary_labels }}</span>
+        <span class="muted small alert-labels" title="{{ e.rule }}{% if e.rule_uid %} (rule {{ e.rule_uid }}){% endif %}; read from {{ e.store }}; recorded by {{ e.sources|join(' and ') }}; device by {{ e.device_from }}; alert {{ e.identity }}">{{ e.summary_labels }}</span>
       </summary>
       <div class="pack-body">
         <p class="pack-source">{% for s in e.states %}{{ s.state }} at {{ stamp(s.at, s.at[11:19] ~ ' UTC') }}{{ '; ' if not loop.last }}{% endfor %}{% if e.resolved_at %}; {{ e.resolved_state }} at {{ stamp(e.resolved_at, e.resolved_at[11:19] ~ ' UTC') }}{% endif %}.</p>

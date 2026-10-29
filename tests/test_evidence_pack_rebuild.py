@@ -118,7 +118,7 @@ class TestBuildAgain:
         assert EP.intact(rows[0]) and rows[0]["schema"] == 4
         new = rows[1]
         assert new["id"] == EP.rebuilt_id(old["alert_key"]) == old["id"] + f"-s{EP.SCHEMA}"
-        assert new["schema"] == EP.SCHEMA == 6 and EP.intact(new)
+        assert new["schema"] == EP.SCHEMA == 7 and EP.intact(new)
         assert new["rebuilt_from"] == {"id": old["id"], "schema": 4,
                                        "built_at": old["replayed_at"], "hash": old["hash"]}
         assert "concurrent" in {s["name"] for s in new["sections"]}
@@ -318,13 +318,13 @@ def test_build_again_in_a_real_browser(history):
             text = b.js(f"return {row}.querySelector('.pack').textContent")
             assert "Built again from pack " + old["id"] in text
             assert b.js(f"return {row}.querySelectorAll("
-                        "'section.pack-section[data-ref=\"concurrent\"]').length") == 1
+                        "'details.pack-section[data-ref=\"concurrent\"]').length") == 1
             b.js(f"{row}.querySelector('.pack-lineage button').click()")
             b.wait_for(drawn + f"'{old['id']}'", 15)
             text = b.js(f"return {row}.querySelector('.pack').textContent")
             assert f"Built again as pack {old['id']}-s{EP.SCHEMA}" in text
             assert b.js(f"return {row}.querySelectorAll("
-                        "'section.pack-section[data-ref=\"concurrent\"]').length") == 0
+                        "'details.pack-section[data-ref=\"concurrent\"]').length") == 0
             assert len(EP.read()["rows"]) == 2
         finally:
             b.go("about:blank")

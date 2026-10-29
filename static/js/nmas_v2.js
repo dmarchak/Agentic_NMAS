@@ -1431,6 +1431,41 @@
     return added;
   }
 
+  /* Explain's citations as chips (_explain.html's `cited`; board AlertsExplain revised
+     2026-10-29, "the answer card first"): a chip is a link to its pack piece's id, so it
+     works with no script; with it, pressing the chip (a click, or Enter on it) opens every
+     collapsed section holding the piece, scrolls to it, highlights it (the piece highlighted
+     before loses it) and gives it the focus. PURE: the id a chip's href names, '' for any
+     href that is not this page's own fragment. */
+  function citeTarget(href) {
+    if (!href || href.charAt(0) !== '#' || href.length < 2) return '';
+    try { return decodeURIComponent(href.slice(1)); } catch (e) { return href.slice(1); }
+  }
+
+  /* Over *doc* (the page, or a stand-in in the tests): the piece with id *id* shown, as
+     above. False, with nothing changed, when no such piece is on the page. */
+  function jumpToCite(doc, id) {
+    var el = id ? doc.getElementById(id) : null;
+    if (!el) return false;
+    for (var p = el; p && p !== doc; p = p.parentNode) {
+      if (p.tagName === 'DETAILS' && !p.open) p.open = true;
+    }
+    var was = doc.querySelectorAll('.cite-hit');
+    for (var i = 0; i < was.length; i++) was[i].classList.remove('cite-hit');
+    el.classList.add('cite-hit');
+    if (!el.getAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    if (el.scrollIntoView) el.scrollIntoView({block: 'center'});
+    if (el.focus) el.focus({preventScroll: true});
+    return true;
+  }
+
+  function citeClicked(e) {
+    // An SDN piece's own references (_evidence_pack.html's `cite`) jump the same way.
+    var a = e.target && e.target.closest ? e.target.closest('a.cite-chip, a.pack-cite') : null;
+    if (!a) return;
+    if (jumpToCite(root.document, citeTarget(a.getAttribute('href')))) e.preventDefault();
+  }
+
   /* A page the browser RESTORES from its back/forward cache comes back with its
      script state as it was left, and its live channel closed: a wait that
      ended hours ago still reads "waiting", with Stop waiting beside it (the
@@ -1472,6 +1507,7 @@
     root.document.addEventListener('htmx:afterRequest', noteSent);
     root.document.addEventListener('htmx:configRequest', keyThePress);
     root.document.addEventListener('click', resumeHeld);
+    root.document.addEventListener('click', citeClicked);
     // `toggle` does not bubble: heard in the capture phase.
     root.document.addEventListener('toggle', aiSpendToggled, true);
     root.document.addEventListener('nmas:ai_calls', aiSpendPanel);
@@ -1503,5 +1539,6 @@
                   isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
-                  reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey};
+                  reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey,
+                  citeTarget: citeTarget, jumpToCite: jumpToCite};
 })(typeof window !== 'undefined' ? window : this);

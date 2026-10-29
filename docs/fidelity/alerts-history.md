@@ -14,12 +14,12 @@ group is opened on r2's past alert, and Build evidence is pressed: its rebuilt p
 the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept, frozen, so the
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
-Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html
-Templates sha256: `088fd539a74d8b0d2d3aa4b0b16e976dd8f54957143530ef0fec54c387084166`
+Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
+Templates sha256: `f8803871ac5e952685719a419ff643b276e64be36d4f84ffaf848f2cf364c0be`
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):** the heartbeat
 and telemetry rules' "Alerting (NoData)" episodes are fired, their state words kept, so the
-21 Oct slice's summary reads 23 fired and resolved, 18 pending never fired, 0 read no data, 0
+21 Oct slice's summary reads 23 fired (now "fired and cleared", the answer card's item 4(a)), 18 pending never fired, 0 read no data, 0
 could not evaluate (before, 12 fired and 11 read no data: 3 heartbeat and 8 telemetry
 episodes), and the heartbeat and telemetry
 groups are drawn under Fired. `_evidence_pack.html`'s alert piece gains one clause on such a
@@ -164,3 +164,52 @@ No region of P1-H changed.
 
 Templates sha256 before: `3ed477210b497088fef46b7446a101f1c453d6ab4d2dc487b59711db24f4b0e6`
 (over the four templates compared before `_explain_beta.html` was added).
+
+**Compared again 2026-10-29 (alert states, C2173's first step; the operator's order of
+2026-10-29, item 4a):** nothing here fires now, so nothing is red: the summary reads "N alerts
+fired and cleared", each group's chip "N cleared" (or "N ended" under All) neutral where it was
+red, each row "cleared <time>" (or "ended, its clear not recorded"), the outcome chip of a fired
+alert neutral; a row's pack, opened, says "Cleared" for its end and draws its other alerts
+firing then amber and cleared neutral. "resolved" is drawn nowhere an alert's end is. The page's
+subtitle (monitoring.html) says "fired and cleared". Explain's control, in a row with no pack,
+is now drawn by `_explain_ask.html` (added to the templates compared), its words and label as
+before. P1-H draws "resolved" and a red count; the regions are drawn by `AlertsExplain.dc.html`
+revised again, part 12 ("Revised 2026-10-29: the answer card first"), and compared against it.
+- **Compared:** by the templates and tests/test_explain_card.py's
+  `test_nothing_that_has_stopped_firing_is_red` and `test_no_alert_s_end_is_drawn_as_resolved`
+  (History through the real route, Fired and All, with the 21 Oct slice); **not shot**:
+  `::test_monitoring_alerts_history` needs `AlertsHistory.dc.html` in the boards folder, which
+  is in neither canvas index, so its shots at 1440, 1280 and 390 stay owed.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The summary and a group's count | AlertsExplain part 12: "12 alerts fired and cleared", "7 cleared" neutral | the same | **same** |
+| A row's end | part 12: "fired 3 h ago · cleared 2 h ago (54 min)" | the same | **same** |
+| An opened pack's end and its other alerts | part 12: "Cleared …"; firing then amber, cleared neutral | the same | **same** |
+
+Templates sha256 before: `088fd539a74d8b0d2d3aa4b0b16e976dd8f54957143530ef0fec54c387084166`
+(over the five templates compared before `_explain_ask.html` was added, as C2174 left them;
+the card was first compared over `1b15c995…`, before C2174).
+
+**Compared again 2026-10-29 ("WHO, guaranteed in code", the operator's order of 2026-10-29
+(c)):** `_evidence_pack.html` draws, under a differing Intent check's words, "The lines, masked:
+N lines" and the lines (each "+ " or "- ", one to a line), or, on a pack of an older schema,
+that they are on the device's Intent tab; then who last committed the intent, or no record of
+who. A rebuilt pack on History draws its Intent check the same way. No other template here
+changed.
+- **Compared:** by the template and tests/test_explain_who.py's
+  `test_the_pack_card_draws_the_lines_and_who_committed`. **Shots:**
+  `tests/test_board_shots.py::test_monitoring_alerts_history` (2026-10-29 06:2x UTC, on the
+  combined tree: C2174, the card and WHO; at 1440, 1280 and 390 beside `AlertsHistory.dc.html`
+  at 1440, the copy C2174 shot against): "23 alerts fired and cleared", each group's "N ended"
+  neutral, r2's rebuilt pack (schema 7) opened, its sections collapsed with their counts, its
+  Intent check "nothing to read" (the shot's lab holds no intent, so the new region is not in
+  the shot). `::test_monitoring_alerts_history_rebuild` fails before its shot, as C2174
+  reported (its awaited pack id written for an older schema).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A pack's Intent check | the check's state alone | the lines masked, one to a line, and who last committed | **deviation** (log: P1 Alerts and P1-H: the intent difference's lines and who committed the intent, in the pack) |
+
+Templates sha256 before: `55a592a4bcf91f66543ccb3c50e6f377ca6f69f904785a3aab61d1eaba8f1f95`
+(the card alone, before C2174 and WHO; never on main: they land together, on top of C2174).

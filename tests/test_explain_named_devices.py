@@ -334,7 +334,10 @@ def test_mercury_s_citation_is_kept_recorded_and_drawn_as_mercury_s(world, monke
     assert "cited by Mercury" in mine.group(0)
     assert "r1, named in hypothesis 1: the pack's" in mine.group(0)
     assert f'href="#{world.pack["id"]}-alert"' in mine.group(0)
-    hyp = re.search(r'<ol class="explain-list">.*?</ol>', html, re.S).group(0)
+    # The one hypothesis, drawn as the answer card's Most likely cause (board AlertsExplain
+    # revised 2026-10-29).
+    hyp = re.search(r'<section class="answer-likely" data-part="most-likely".*?</section>', html,
+                    re.S).group(0)
     assert 'data-ref="concurrent"' in hyp and 'data-ref="alert"' not in hyp
     kept = explain_answers.kept(world.pack)["answer"]["result"]["answer"]
     assert kept["mercury_cites"][0]["ref"] == "alert"

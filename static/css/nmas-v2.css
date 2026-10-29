@@ -686,7 +686,46 @@ p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; mar
 .explain-beta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 6px 0;
   font-size: 12.5px; color: var(--ink-2); }
 .explain-beta .explain-beta-confirm { color: var(--ink); font-weight: 500; }
-.explain-beta-chip { margin-left: 6px; }
+/* Explain's answer card (_explain.html, board AlertsExplain revised 2026-10-29, "the answer
+   card first"): the header with the beta label, Most likely cause, Other possibilities
+   collapsed, Needs a person, then the foot (Was this right?, Explain again, where it came
+   from); it wraps at phone width with no sideways scroll. */
+.answer-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface);
+  display: flex; flex-direction: column; min-width: 0; margin: 4px 0 6px; }
+.answer-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line-2); background: var(--surface-2);
+  border-radius: var(--r-card) var(--r-card) 0 0; }
+.answer-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.answer-head .explain-beta { margin: 0; }
+.answer-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; min-width: 0; }
+.answer-body p { margin: 0; }
+.answer-likely { display: flex; flex-direction: column; gap: 4px; }
+.answer-lead { margin: 0; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3); }
+.answer-claim { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.answer-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; font-size: 12.5px;
+  color: var(--ink-2); overflow-wrap: anywhere; }
+.answer-line code { overflow-wrap: anywhere; }
+.answer-why { font-size: 12.5px; color: var(--ink-2); }
+.answer-others { border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; }
+.answer-others > summary { cursor: pointer; font-size: 13px; font-weight: 500; padding: 2px 0; }
+.answer-others .explain-list { margin: 6px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.answer-others .explain-list li { display: flex; flex-direction: column; gap: 3px; }
+.answer-needs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 6px 10px;
+  border-radius: 6px; background: var(--warn-soft); }
+.answer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px;
+  border-top: 1px solid var(--line-2); }
+.answer-foot .explain-ask { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.answer-from { flex: 1 1 100%; display: flex; flex-direction: column; gap: 2px; }
+.answer-from p { margin: 0; }
+/* A citation as a chip (`cited` in _explain.html): it opens its section and highlights its
+   piece (nmas_v2.js `jumpToCite`); without script it is a link to the piece. */
+a.cite-chip { display: inline-block; font-family: var(--mono); font-size: 11.5px; color: var(--accent-ink);
+  background: var(--accent-soft); border: 1px solid var(--line); border-radius: 10px; padding: 0 7px;
+  margin-right: 0; text-decoration: none; white-space: nowrap; }
+a.cite-chip:hover { border-color: var(--accent); }
+.mercury-cite a.cite-chip { border-style: dashed; background: var(--surface-2); color: var(--ink-2); }
+.cite-hit { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); border-radius: 4px; }
 .cmd { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 /* A multi-line command (a one-time root step) keeps its lines. */
 .cmd code { white-space: pre-wrap; }
@@ -706,6 +745,24 @@ p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; mar
 .pack { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
 .pack-meta, .pack-source { margin: 0; color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
 .pack-section h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+/* Each pack section collapsed, its count in its summary (board AlertsExplain revised
+   2026-10-29). */
+details.pack-section { border-top: 1px solid var(--line-2); padding: 4px 0; }
+details.pack-section > summary { cursor: pointer; }
+details.pack-section > summary h3 { display: inline; margin: 0; }
+details.pack-section[open] > summary { margin-bottom: 4px; }
+.pack-count { font-weight: 400; color: var(--ink-2); }
+/* The intent difference's lines in the pack (`_evidence_pack.html`), one to a line, masked;
+   "+ " in intent and not on the device, "- " on the device and not in intent. */
+code.pack-diff { display: block; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0;
+  padding: 4px 8px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 4px;
+  font-family: var(--mono); font-size: 12px; }
+/* Monitoring › Alerts: the firing alerts counted by kind, each a filter. */
+.alert-kinds { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; font-size: 13px; }
+a.kind-chip { display: inline-flex; gap: 6px; align-items: baseline; border: 1px solid var(--line); border-radius: 14px;
+  padding: 1px 10px; text-decoration: none; color: var(--ink); background: var(--surface); }
+a.kind-chip:hover { border-color: var(--accent); }
+a.kind-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
 .pack-pieces { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
 .pack-pieces li { overflow-wrap: anywhere; }
 .pack-ref { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-right: 6px; }

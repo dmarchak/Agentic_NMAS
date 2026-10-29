@@ -2847,3 +2847,53 @@ parametrized test only up to the first space in its id. Not covered here: a live
 provider request was made, and the wire shape is the provider's documentation, read
 2026-10-29.**
 
+## 2026-10-29: "WHO, guaranteed in code", the intent difference's lines off the host, by hand
+
+**What touches the tier: data off the host.** The operator's order of 2026-10-29 (c): the
+evidence pack (schema 7) carries the Intent check's differing lines, which Explain sends with
+the pack to the AI provider (PHASE8_PLAN 15.11, the allowed class's "intent diffs"). Beside them,
+and of the same kind as what was already sent, the intent file's last commit (its actor, how
+established, time, sha) and each History piece's `verified`; History's actors were already
+sent. The fact sheet's new line, "Changes and actions in the window", quotes no configuration
+line but a pair of the pack's own masked lines (the same shape on both sides). The changed lines
+that decide what leaves and how it is masked:
+- `modules/evidence_pack.py`: `intent_lines`, lines 450 to 453 (only a difference; at most
+  `INTENT_LINES`; each line through `redact.redact_egress`); `intent_section`, line 520 (the
+  piece's lines are `intent_lines`', never the comparison's own).
+- `modules/ai/fact_sheet.py`: `_intent_words`, line 302 (only a pair differing in a masked value
+  is quoted); `sheet`, line 487 (the sheet through `redact.redact_text`, unchanged).
+No line of masking code changed (`modules/redact.py`'s one change is its docstring, naming the
+pack's intent lines as the one stored thing the egress mask is applied to). The pack's own
+mask over every string (`build`, line 1196, `redact.redact_payload`) and the gateway's over the
+request (`gateway.ask`, line 624, `redact.egress_payload`) stand behind both; the mutants below
+include them, to show they cover the new field.
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it, on the
+change's tree (uncommitted, on 0b7802aa). Each mutant is one exact text replacement, found
+exactly once, in its own `scripts/nmas-control` throwaway worktree (`scratchpad/ctlwho/<name>.py`
+through `ctlwho/run.sh`, one per invocation; `ctl/ctl_common.py` replaces the text and names
+each failing test), then the aimed tests through `scripts/nmas-test` in CI's interpreter
+(tests/test_explain_who.py, test_evidence_pack.py, test_explain_fact_sheet.py,
+test_ai_explain.py). Baseline: 129 passed, 2 skipped. tests/test_explain_who.py was written for
+this check before the mutants were run: a user secret, a community and a mid-line `$9$` hash
+planted in the comparison's lines with its own mask bypassed (so the pack's mask is what keeps
+them out), read in the pack, the store and, through the real gateway and the adapter, the bytes
+sent; a value that became a known secret after the pack was built (only the gateway's mask
+sees it); the cap; a match carrying no lines. Every worktree was removed with the working tree
+untouched (nmas-control's fingerprint).
+| mutant | result | killed by |
+|---|---|---|
+| H00 canary: `intent_lines` raising at its start | killed | 17 failed, 42 errors (every pack built), test_the_intent_check_carries_its_state_and_its_lines_masked and test_a_secret_in_an_intent_line_is_kept_as_its_shape among them |
+| H01 lines carried for every state, a match's included | killed | 1, test_evidence_pack's `test_the_intent_check_carries_its_state_and_its_lines_masked` |
+| H02 the lines masked by `redact_text` only, not the egress shapes | killed | 1, `test_a_secret_in_an_intent_line_is_kept_as_its_shape` (the mid-line hash kept in clear) |
+| H03 the lines unmasked by `intent_lines` (the pack's whole-payload mask left) | killed | 1, the same (the hash no position names) |
+| H04 no cap | killed | 1, `test_at_most_the_cap_of_lines_is_kept_and_its_counts_whole` |
+| H05 the piece's lines the comparison's own, not `intent_lines`' | killed | 3, the shape, cap and match tests |
+| H06 the pack's whole-payload mask off | killed | 1, test_evidence_pack's `test_a_planted_secret_in_an_alert_label_never_appears` (the intent lines are masked by their own mask, so none of the new tests sees it: it is the other fields') |
+| H07 the gateway's egress mask off | killed | 2, `test_the_bytes_sent_hold_each_planted_secret_only_masked` (the late value) and test_ai_explain's `test_a_stored_secret_the_pack_kept_is_masked_in_the_bytes_sent` |
+| H08 the sheet quoting every intent line, not only a masked pair | survived (the planted lines were one pair), then killed | 1, `test_only_a_line_on_both_sides_differing_in_its_masked_value_is_quoted` (added) |
+| H09 the sheet unmasked | killed | 2, `test_the_line_is_in_the_sheet_after_the_reloads_masked_and_labelled` (a known value planted as a log line's user) and test_explain_fact_sheet's `test_every_line_is_labelled_and_the_sheet_is_masked` |
+**The result: 10 mutants with the canary; every one killed, H08 after a test was added; the
+canary killed. Not covered here: a real `intent_match` hydrating a stored secret into a `+`
+line (its own mask, C1688, is its tests'); the lines are planted in the comparison's shape. No
+provider request was made.**
+

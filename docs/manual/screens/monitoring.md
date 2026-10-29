@@ -164,7 +164,12 @@ Every network's firing alerts, as Grafana's alert reader last stored them, each 
 **evidence pack**: what was gathered about its device when the alert began (see
 [An alert's evidence pack](alert-evidence)). The line at the top counts them: how many are
 firing, how many have their pack, how many are waiting for one, and how many packs belong to
-alerts no longer firing.
+alerts no longer firing. **By kind** counts the firing alerts by their group, most first, over
+everything firing ("9 Device unreachable (SNMP) · 5 IP SLA probe failing"); press a count to
+show only that group, and **Every kind** to show them all again.
+
+Red is only for an alert firing now. What has stopped firing is drawn neutral, and its end is
+**cleared**: the condition stopped, which says nothing about whether anything fixed it.
 
 The alerts are grouped by rule (a rule generated per device, such as a heartbeat, is one
 group), each alert a closed card naming its device, its network, when it began and its onset,
@@ -172,17 +177,26 @@ how many pieces its pack holds and how many of its sources could not be read. A 
 telemetry alert whose device went silent fires as **Alerting (NoData)** and is listed here like
 any firing alert, its pack saying what was absent (see
 [When no data is the fault](alert-evidence#absence)). Open a card to
-read its pack, section by section, each with its source, when it was read and the reference
-the pack gave it. **Show** narrows the cards to a rule, device or label. **Earlier** holds the
-packs of alerts that have resolved, the newest 50 drawn. A Needs attention row about an alert
-opens its card here. An open pack's **Explain** carries the **AI** mark; when hosted AI cannot
-answer it is disabled with the reason under it, and the pack is drawn whole (see
-[The AI mark](installation-settings#ai-mark)). Its answer is kept with the pack: opening the
-card again draws it, and nothing is sent; **Explain again** is a new call, said with its cost
-(see [An answer is kept with its pack](alert-evidence#kept-answers)). Explain is advisory, in
-beta: every answer, and the control itself, carries **Advisory (beta)**, the reliability
-measured and "A person should confirm"; **How was this measured?** opens what was measured and
-why it is still in beta (see [Advisory (beta)](alert-evidence#beta)).
+read its pack: each section is collapsed, its summary naming it, how much it holds ("Log lines
+around the onset · 14 lines", "Neighbours · 1 down, 4 up"), its reference and state; open a
+section to read its pieces. **Show** narrows the cards to a rule, device or label, within the
+kind chosen. **Earlier** holds the packs of alerts that have cleared, the newest 50 drawn. A
+Needs attention row about an alert opens its card here. An open pack's **Explain** carries the
+**AI** mark; when hosted AI cannot answer it is disabled with the reason under it, and the pack
+is drawn whole (see [The AI mark](installation-settings#ai-mark)).
+
+Explain's answer is a card on top of the pack: **Most likely cause** (the first of its
+hypotheses, which Explain lists most likely first), with who made each change or action it
+cites (from the pack's records: the model's words when they name the person, else **who, added
+by Mercury**; see [Who made a change](alert-evidence#who)), what it cites and the read that
+would confirm it, then why; **Other possibilities**, the rest, collapsed; **Needs a person**, when the model or {{product}} asks for one, with the reason; **Was
+this right?**; and **Explain again**, a new call, said with its cost. Each citation is a chip:
+press it (or Enter on it) and its section opens, the page scrolls to the piece and highlights
+it. The answer is kept with the pack: opening the card again draws it, and nothing is sent (see
+[An answer is kept with its pack](alert-evidence#kept-answers)). Explain is advisory, in beta:
+the card's header, and the control with no answer under it, carry **Advisory (beta)**, the
+reliability measured and "A person should confirm"; **How was this measured?** opens what was
+measured and why it is still in beta (see [Advisory (beta)](alert-evidence#beta)).
 
 The list redraws when the alert reader finishes a read, after any new pack is built, but never
 under you: while a card you opened is open, or while Explain is being answered, it waits, and
@@ -196,10 +210,10 @@ if its state cannot be read, the tab says so and lists none of them. Their cards
 flows, ports and meters the detection rests on in words (see
 [An SDN detection's pack](alert-evidence#sdn)).
 
-The tab has two views, **Firing** (above) and **History**: the alerts that fired and resolved,
+The tab has two views, **Firing** (above) and **History**: the alerts that fired and cleared,
 from {{product}}'s alert history, every time Grafana's own (see
 [Alert history: past alerts and their evidence](alert-history)). History leads with a summary
-(how many fired and resolved in the range, on how many devices, how many have a pack, and the
+(how many fired and cleared in the range, on how many devices, how many have a pack, and the
 counts of those that only went pending, read no data or could not evaluate), then the filter
 (words, rule, device, time, and **Fired** or **All**), then each rule as a closed group with its
 count. A past alert with its pack opens it, with Explain; one without offers **Build evidence**,
