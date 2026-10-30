@@ -42,6 +42,13 @@ The operator's decision, 2026-10-18 (it replaces "its remote chosen by the deplo
   edge kit's offline sync. They are never a reason to hold Mercury's own pushes behind a
   terminal step.
 - **"Mercury is the one writer" is policy.** No GitHub ruleset holds it on the remote for now.
+- **Every use of GitHub is optional, the app's own included** (the operator, 2026-10-30, C2241).
+  This covers a network's remote, and also the app's own repository, its CI verdict and the
+  Update check. Mercury works as expected offline, with only its local files and its own git
+  repositories. An outside service that could not be asked is stated where it is read ("not
+  asked: why, last answered when") and under Needs attention's What was checked. It is never a
+  Needs attention row, and never critical. A problem the service did answer, such as a remote
+  holding commits Mercury lacks, is a different state.
 
 What still assumes a remote, each place marked fine or must change, is `docs/REMOTE_OPTIONAL.md`.
 

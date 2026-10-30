@@ -114,6 +114,15 @@ remote:
 An installation that updates from elsewhere is Stage 10's concern (the release), not this
 audit's.
 
+**Brought into scope for one property (the operator, 2026-10-30; C2241):** GitHub is optional
+here too. When these readers cannot ask GitHub, that is stated, never a Needs attention row:
+- `app_pushed` raises job health's `failing` (danger) when its `ls-remote` times out;
+- `ci_verdict` is the same kind of read and goes through the same job health;
+- the network remote's own `not_asked` state (`remote_publication.py:297-300`) is a warning row,
+  and R11's failed push a danger row.
+
+Where updates come from stays Stage 10's.
+
 ## Where each goes
 
 - **R10 and the foreign-changes half of R8:** C1315, post-Phase 7, with the edge kit's offline
