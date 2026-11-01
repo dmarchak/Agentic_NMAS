@@ -63,7 +63,9 @@ class TestDerived:
 
     def test_a_program_that_shuts_nothing_implies_nothing(self):
         got = fx.for_device(INTENTS, "r3", ["interface GigabitEthernet3", " description x"])
-        assert got == {"down": [], "up": [], "adjacencies_drop": [], "may_form": []}
+        # reach_lost None: nothing shut, so no path is judged (R5's reach, below).
+        assert got == {"down": [], "up": [], "adjacencies_drop": [], "may_form": [],
+                       "reach_lost": None}
 
     def test_identities_compare_as_the_device_prints_them(self):
         drops = [{"proto": "bgp", "address": "2001:db8:51::2"},
@@ -76,11 +78,74 @@ class TestDerived:
         assert fx.neighbour_ids(snap, "bgp") == {"2001:db8:51::2"}
 
 
+#: R5's shape (2026-10-30): this host on r1's Gi1 subnet; r1's Gi3 the only link to s1, whose
+#: management address is on that link; r4 reached another way, through r1's Gi2.
+R5 = {
+    "r1": {"hostname": "r1", "interfaces": [
+        {"name": "GigabitEthernet1", "ipv4": "198.51.100.1 255.255.255.0"},
+        {"name": "GigabitEthernet2", "ipv4": "203.0.113.5 255.255.255.252"},
+        {"name": "GigabitEthernet3", "ipv4": "203.0.113.1 255.255.255.252"}]},
+    "s1": {"hostname": "s1", "interfaces": [
+        {"name": "GigabitEthernet0/1", "ipv4": "203.0.113.2 255.255.255.252"}]},
+    "r4": {"hostname": "r4", "interfaces": [
+        {"name": "GigabitEthernet1", "ipv4": "203.0.113.6 255.255.255.252"}]},
+}
+MERCURY = ["198.51.100.0/24"]
+
+
+class TestReachLost:
+    """R5: r1's Gi3 shut through Deploy cut Mercury's only path to s1, and the plan said
+    nothing, though Reload says it for a whole device (`blast_radius.radius`). The plan now
+    says which devices a program's shut interfaces cut, from the same graph."""
+
+    def test_r5_shutting_r1_gi3_cuts_s1_and_the_plan_names_the_repair_route(self):
+        from modules.preview_confirm import expected_part
+        got = fx.for_device(R5, "r1", ["interface GigabitEthernet3", " shutdown", "exit"],
+                            host_networks=MERCURY)
+        assert got["reach_lost"]["state"] == "known" and got["reach_lost"]["cut"] == ["s1"]
+        words = expected_part(got)["derived"]
+        lost = [w for w in words if w.startswith("Mercury loses its path to s1:")]
+        assert len(lost) == 1 and "name the repair route" in lost[0]
+        assert "IPv4" in lost[0], "the graph's IPv4-only limit is said where it is used"
+
+    def test_shutting_a_link_with_another_path_cuts_nothing_and_says_nothing(self):
+        from modules.preview_confirm import expected_part
+        both = {**R5, "s1": {"hostname": "s1", "interfaces": [
+            {"name": "GigabitEthernet0/1", "ipv4": "203.0.113.2 255.255.255.252"},
+            {"name": "GigabitEthernet0/2", "ipv4": "198.51.100.21 255.255.255.0"}]}}
+        got = fx.for_device(both, "r1", ["interface GigabitEthernet3", " shutdown", "exit"],
+                            host_networks=MERCURY)
+        assert got["reach_lost"] == {"state": "known", "cut": [], "why": got["reach_lost"]["why"]}
+        assert not [w for w in expected_part(got)["derived"] if "loses its path" in w]
+
+    def test_the_device_s_own_path_is_judged_too(self):
+        own = {"r1": R5["r1"], "s1": {"hostname": "s1", "interfaces": [
+            {"name": "GigabitEthernet0/1", "ipv4": "203.0.113.2 255.255.255.252"},
+            {"name": "GigabitEthernet0/2", "ipv4": "192.0.2.1 255.255.255.0"}]},
+            "s9": {"hostname": "s9", "interfaces": [
+                {"name": "GigabitEthernet0/1", "ipv4": "192.0.2.9 255.255.255.0"}]}}
+        got = fx.for_device(own, "s1", ["interface GigabitEthernet0/1", " shutdown", "exit"],
+                            host_networks=MERCURY)
+        assert got["reach_lost"]["cut"] == ["s1", "s9"]
+
+    def test_a_host_on_no_device_s_subnet_is_not_known_never_none(self):
+        from modules.preview_confirm import expected_part
+        got = fx.for_device(R5, "r1", ["interface GigabitEthernet3", " shutdown", "exit"],
+                            host_networks=["192.0.2.0/24"])
+        assert got["reach_lost"]["state"] == "unknown"
+        assert any(w.startswith("Whether Mercury loses its path to any device once "
+                                "GigabitEthernet3 is down is not known")
+                   for w in expected_part(got)["derived"])
+
+
 class TestThePlanSaysIt:
     def test_the_words(self):
         from modules.preview_confirm import expected_part
+        # This host on r3's and r1's subnet, so shutting Loopback1 cuts no path (this host's own
+        # addresses are not the test's: given, never read).
         part = expected_part(fx.for_device(INTENTS, "r3",
-                                           ["interface Loopback1", " shutdown", "exit"]))
+                                           ["interface Loopback1", " shutdown", "exit"],
+                                           host_networks=["192.0.2.0/24"]))
         assert part["derived"] == [
             "Loopback1 goes down: the program shuts it.",
             "BGP to 198.51.100.1 drops: it is sourced from Loopback1, which the program shuts."]

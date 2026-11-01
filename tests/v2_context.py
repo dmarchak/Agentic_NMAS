@@ -1438,12 +1438,28 @@ def _netbox_lag(client, _lab, _mp):
         mp.undo()
 
 
+#: Two real commits asking for the same checked host step, `[updater]`, newest first, each
+#: trailer cut to its first sentence: what the panel's checked-done row draws (C2246).
+UPDATER_STEPS = (
+    ("149c8f89761a9f93edd938f2f8d87c4100daf0a4",
+     "C1669: a rollback in minutes\n\nHost-Step-After: [updater] re-install the updater's copy "
+     "of scripts/nmas-deploy (docs/UPDATE.md, \"Re-install\"); the updater check reads done "
+     "once it matches.\n"),
+    ("63c0b436f99c2e85d16ebfcea5c84abb2cf8d62c",
+     "The updater\n\nHost-Step-After: [updater] re-install the updater's copies of "
+     "deploy/update/nmas-update and scripts/nmas-deploy (docs/UPDATE.md, \"Re-install\"); the "
+     "updater check reads done once they match.\n"),
+)
+
+
 def _update_owed(client, _lab, _mp):
-    """Update with a host step the running release still owes (C795): `host_steps.owed` read
-    from one real commit's trailer, 99664f27's not-checkable `Host-Step-After`, never from the
-    checkout's history. The walk drew this only while the checkout's last 200 commits held an
-    owed step, and 3db04b01 moved 99664f27 to 201 back (CI #994). Its patches are undone before
-    the next provider."""
+    """Update with a host step the running release still owes (C795) and one the tool's own
+    check reads done, asked for by two commits (C442's superseded row): `host_steps.owed` read
+    from real commits' trailers, 99664f27's not-checkable `Host-Step-After` and two
+    `[updater]` steps (UPDATER_STEPS), never from the checkout's history. The walk drew each
+    only while the checkout's last 200 commits held one: 3db04b01 moved 99664f27 to 201 back
+    (CI #994), and ebbf71ca moved 149c8f89, the last `[updater]` step, to 201 back
+    (2026-11-01, C2246). Its patches are undone before the next provider."""
     import pytest
 
     from modules import host_steps
@@ -1453,15 +1469,21 @@ def _update_owed(client, _lab, _mp):
     body = ("C794: the host step turning Loki's own detected_level off\n\nHost-Step-After: on "
             "the NMAS host: bash scripts/host-steps/c794-loki-detected-level-off.sh (Loki's own "
             "detected_level off; severity the one level)\n")
+    log_text = "".join(f"{s}\x1f{b}\x1e" for s, b in UPDATER_STEPS) + f"{sha}\x1f{body}\x1e"
     real = host_steps.owed
     mp = pytest.MonkeyPatch()
     try:
         mp.setattr(health, "_COMMIT", sha)
-        mp.setattr(host_steps, "owed",
-                   lambda running, **kw: real(running, log_text=f"{sha}\x1f{body}\x1e"))
-        r = client.get("/v2/update", headers={"Accept": "text/html"})
-        assert r.status_code == 200 and 'id="update-owed-steps"' in r.get_data(as_text=True), \
-            r.status_code
+        mp.setattr(host_steps, "owed", lambda running, **kw: real(running, log_text=log_text))
+        mp.setitem(host_steps.CHECKS, "updater",
+                   lambda root: {"state": "done", "detail": "the updater's copies match"})
+        for path in ("/v2/update", "/v2/update/panel"):
+            r = client.get(path, headers={"Accept": "text/html"})
+            text = r.get_data(as_text=True)
+            assert r.status_code == 200 and 'id="update-owed-steps"' in text, (path,
+                                                                               r.status_code)
+            assert "the updater&#39;s copies match" in text or "the updater's copies match" \
+                in text, f"{path}: the checked-done step was not drawn"
     finally:
         mp.undo()
 

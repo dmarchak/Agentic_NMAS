@@ -1079,7 +1079,14 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             f"{u.get('title') or u.get('key')} ({u.get('words')})"
             for u in seen.get("unjudged") or []]
         state, switches = collected.get("state"), s.get("switches", 0)
+        # A flood candidate inside its hold is not health (C2238's sibling, F6 on 2026-10-29:
+        # "network healthy" logged for 19 s while about 60 Mbit/s of flood ran, the rule's
+        # 30 s hold under way): each is named with how long it has held.
+        pending = [f"{p.get('port')} {p.get('words')}" for p in seen.get("pending") or []]
         quiet = (f"no new threat; {len(still)} still active: {'; '.join(still)}" if still else
+                 f"no threat fired yet; {len(pending)} flood candidate(s) over threshold, "
+                 f"held until the rule's window passes: {'; '.join(pending)}: not called "
+                 "healthy" if pending else
                  "network healthy: no threat detected" if state == "ok" and switches else
                  f"no threat detected on the switches read, but the collection was {state} "
                  f"({collected.get('error') or 'no reason given'}): not called healthy"

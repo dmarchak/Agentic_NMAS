@@ -25,9 +25,9 @@ import logging
 
 log = logging.getLogger(__name__)
 
-CAVEAT = ("from committed intent's subnets and this host's addresses: a path the routing does "
-          "not use still counts as reach, and a switch carrying a subnet at layer 2 with no "
-          "address in it is not seen")
+CAVEAT = ("from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the "
+          "routing does not use still counts as reach, a switch carrying a subnet at layer 2 "
+          "with no address in it is not seen, and a path over IPv6 alone is not judged")
 
 
 def _attachments(intents: dict) -> dict:
@@ -113,6 +113,36 @@ def radius(intents: dict, host_networks: list, device: str) -> dict:
     after = _reachable(attach, mine, gone=device)
     cut = sorted(before - after - {device})
     return {"state": "known", "cut": cut, "attached": devices_on_mine, "why": CAVEAT}
+
+
+def radius_of_shutdowns(intents: dict, host_networks: list, device: str, down) -> dict:
+    """PURE. ``{"state", "cut", "why"}`` for a program that shuts *down* (interface names, as
+    `expected_effects.canonical` gives them) on *device* (C2240's sibling, R5 of 2026-10-30:
+    a router's link shut cut Mercury's only path to a switch, and Deploy said nothing while Reload says it
+    for a whole device). *cut* is every device, *device* included, a path reaches from
+    Mercury's subnets now and not once those interfaces are down; ``unknown`` with *why* when
+    the graph cannot be built. The same graph as `radius`, so the same caveat."""
+    from modules.nsot.expected_effects import canonical
+
+    gone = {canonical(n) for n in (down or [])}
+    attach = _attachments(intents)
+    if device not in attach:
+        return {"state": "unknown", "cut": [],
+                "why": f"{device} has no committed intent, so its links are not known"}
+    mine = []
+    for net in host_networks or []:
+        try:
+            mine.append(ipaddress.ip_network(net, strict=False))
+        except ValueError:
+            continue
+    if not any(n in mine for rows in attach.values() for n, _name in rows):
+        return {"state": "unknown", "cut": [],
+                "why": ("no subnet this host is on holds any device's interface, so where "
+                        "Mercury attaches to the network is not known")}
+    after = dict(attach)
+    after[device] = [(n, name) for n, name in attach[device] if canonical(name) not in gone]
+    cut = sorted(_reachable(attach, mine) - _reachable(after, mine))
+    return {"state": "known", "cut": cut, "why": CAVEAT}
 
 
 def host_networks() -> list:

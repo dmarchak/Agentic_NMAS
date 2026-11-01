@@ -54,8 +54,9 @@ STEPS = (
      "its management address asked on SSH's port until it answers, within the bound",
      ("wait",)),
     ("verify", "Verify",
-     "a login with the credential Mercury holds, and what it runs compared with what it ran",
-     ("verify",)),
+     "a login with the credential Mercury holds, tried again for up to 3 minutes while the "
+     "device starts serving SSH, and what it runs compared with what it ran; the window ends "
+     "only once this passes", ("verify",)),
     ("record", "Record", "the reload's row: who, why, the window and each step's outcome",
      ("record",)),
 )
@@ -300,6 +301,42 @@ def _wait_for_ssh(ip: str, bound: float, *, clock=time.monotonic, sleep=time.sle
             "detail": f"it did not answer on SSH's port within {round(bound)} s"}
 
 
+#: How long verify keeps trying to sign in after the device's SSH port first answers, and its
+#: pauses between tries. The port answers before the device serves SSH: a C8000v on 2026-10-30
+#: (B2) answered at about 01:11:37 UTC and logged `%SSH-5-ENABLED` at 01:11:51, 14 s later, so a
+#: single read failed and a reload that came back read unverified (C2240). The bound is the
+#: operator's, about 3 minutes (2026-11-01), 13 times that measured gap.
+VERIFY_BOUND_S = 180
+VERIFY_PAUSES_S = (5, 10, 20, 30)
+
+
+def _verify_read(read, bound: float = VERIFY_BOUND_S, *, clock=time.monotonic,
+                 sleep=time.sleep) -> dict:
+    """*read* (one session) until it answers, within *bound*: ``{"ok", "reads", "attempts",
+    "after_s", "error", "refused"}``. A refused host key is never tried again: it is the
+    device's answer, not its boot (C2239), and ``refused`` carries it. The pauses grow
+    (VERIFY_PAUSES_S, then the last of them) and the last try starts inside the bound."""
+    from modules.host_keys import HostKeyRefused
+
+    start, attempts, error = clock(), 0, ""
+    while True:
+        attempts += 1
+        try:
+            reads = read()
+            return {"ok": True, "reads": reads, "attempts": attempts,
+                    "after_s": round(clock() - start), "error": "", "refused": None}
+        except HostKeyRefused as exc:
+            return {"ok": False, "reads": None, "attempts": attempts,
+                    "after_s": round(clock() - start), "error": str(exc), "refused": exc}
+        except Exception as exc:                      # noqa: BLE001
+            error = str(exc)
+        pause = VERIFY_PAUSES_S[min(attempts - 1, len(VERIFY_PAUSES_S) - 1)]
+        if clock() - start + pause >= bound:
+            return {"ok": False, "reads": None, "attempts": attempts,
+                    "after_s": round(clock() - start), "error": error, "refused": None}
+        sleep(pause)
+
+
 def records_path(repo_dir: str) -> str:
     """Where a network's reloads are recorded, from its repository folder: resolving it
     creates nothing (a READ must not bring a network's folder into being)."""
@@ -360,9 +397,10 @@ def read_records(repo_dir: str) -> dict:
 
 
 def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
-        wait=None, reader=None, reloader=None) -> dict:
+        wait=None, reader=None, reloader=None, clock=None, verify_sleep=None) -> dict:
     """The run, holding the device. ``{"ok", "outcome", "steps", "record", ...}``; *wait*,
-    *reader* and *reloader* replace the device-facing parts in tests."""
+    *reader* and *reloader* replace the device-facing parts in tests, *clock* and
+    *verify_sleep* the verify's retry timing."""
     from modules import restarts
     from modules.connection import with_temp_connection
     from modules.device_reload import reload_device
@@ -435,24 +473,43 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
                  else back.get("detail", "it did not answer"))
             if not back.get("ok"):
                 return finish("not_back")
-            # It is back: the window ends now, not at its declared end, so a fall after this
-            # is raised at once; its Grafana silence ends a settle margin later, since the
-            # alerts outlast the return (B3).
-            if window:
-                ended = restarts.end_window(window, time.time(),
-                                            f"the reload is back: {host} answered after "
-                                            f"{back.get('after_s')} s", by=actor)
-                out["window"]["ended"] = ended.get("ended_at")
-                out["window"]["end_words"] = ended.get("words", "")
-            try:
-                after = (reader or read_device)(device)
-            except Exception as exc:                  # noqa: BLE001
-                step("verify", False, f"it answers on SSH's port and could not be read: {exc}")
+            # Its port answers before it serves SSH (C2240: 14 s on a C8000v), so verify signs in
+            # again within a bound; the window stays open until the reload is verified, and
+            # otherwise runs to its declared end.
+            tried = _verify_read(lambda: (reader or read_device)(device),
+                                 **({"clock": clock} if clock else {}),
+                                 **({"sleep": verify_sleep} if verify_sleep else {}))
+            if tried["refused"] is not None:
+                refused = tried["refused"]
+                step("verify", False,
+                     f"it answered with an SSH host key Mercury does not hold (offered "
+                     f"{refused.offered.get('fingerprint', '?')}, held "
+                     f"{refused.held.get('fingerprint', '?')}): every session to it is refused "
+                     "until a person reviews the new key")
+                return finish("host_key_changed")
+            if not tried["ok"]:
+                step("verify", False,
+                     f"it answers on SSH's port and could not be read in {tried['attempts']} "
+                     f"{'try' if tried['attempts'] == 1 else 'tries'} over {tried['after_s']} s: "
+                     f"{tried['error']}")
                 return finish("unverified")
+            after = tried["reads"]
             same = roundtrip.stored_is_device(reads.get("running", ""), after.get("running", ""))
             if same.get("equal"):
+                # Verified: the window ends now, not at its declared end, so a fall after this
+                # is raised at once; its Grafana silence ends a settle margin later, since the
+                # alerts outlast the return (B3).
+                if window:
+                    ended = restarts.end_window(
+                        window, time.time(),
+                        f"the reload is verified: {host} answered after {back.get('after_s')} s "
+                        f"and signed in after {tried['after_s']} s more", by=actor)
+                    out["window"]["ended"] = ended.get("ended_at")
+                    out["window"]["end_words"] = ended.get("words", "")
                 step("verify", True, "it signed in with the credential Mercury holds, and runs "
-                                     "what it ran")
+                                     "what it ran"
+                     + (f" (signed in on try {tried['attempts']}, {tried['after_s']} s after its "
+                        "port answered)" if tried["attempts"] > 1 else ""))
                 return finish("reloaded", ok=True)
             step("verify", False, f"it runs something else: {len(same.get('only_left') or [])} "
                                   f"line(s) gone, {len(same.get('only_right') or [])} new")

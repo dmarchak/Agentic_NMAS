@@ -280,6 +280,17 @@ def test_a_detection_still_active_is_named_never_healthy(networks):  # noqa: F81
     assert w == "no new threat; 1 still active: 192.0.2.1 reached 25 ports"
 
 
+def test_a_flood_candidate_inside_its_hold_is_named_never_healthy(networks):  # noqa: F811
+    """F6 (2026-10-29): from 22:35:27 to 22:35:46 UTC the loop logged "network healthy" while
+    about 60 Mbit/s of flood ran, the flood rule's 30 s hold under way (`pending`)."""
+    w = _quiet(networks, OK_READ, {"detections": [], "pending": [
+        {"port": "lab-controller|0000000000000002|3",
+         "words": "over its threshold for 19 s of 30 s"}]})
+    assert w == ("no threat fired yet; 1 flood candidate(s) over threshold, held until the "
+                 "rule's window passes: lab-controller|0000000000000002|3 over its threshold "
+                 "for 19 s of 30 s: not called healthy")
+
+
 def test_a_detection_whose_subject_was_not_read_stays_named(networks):  # noqa: F811
     w = _quiet(networks, OK_READ, {"detections": [], "unjudged": [
         {"key": "k2", "title": "SDN flood", "words": "its subject was not read in this "

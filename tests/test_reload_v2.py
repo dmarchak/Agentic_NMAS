@@ -258,6 +258,16 @@ class TestTheRun:
         assert out["outcome"] == "not_back" and out["ok"] is False
         assert run_lab["sent"] == ["reload"]
 
+    def test_back_running_something_else_keeps_its_window_open(self, run_lab, monkeypatch):
+        from modules import restarts
+        monkeypatch.setattr(restarts, "end_window",
+                            lambda *a, **k: pytest.fail("an unverified reload ended its window"))
+        reads = iter([_reads(run_lab), _reads(run_lab, running="hostname r2\nend\n")])
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=lambda d: next(reads), reloader=run_lab["reloader"],
+                            wait=run_lab["back"])
+        assert out["outcome"] == "differs"
+
     def test_back_running_something_else(self, run_lab):
         reads = iter([_reads(run_lab), _reads(run_lab, running="hostname r2\nend\n")])
         out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
@@ -289,6 +299,96 @@ class TestTheRun:
         step = out["steps"][-1]
         assert step["step"] == "reload" and step["ok"] is False
         assert "the session dropped" in step["detail"]
+
+
+class _Clock:
+    """A clock only the fake sleep moves; ``slept`` is every pause asked for."""
+
+    def __init__(self):
+        self.now, self.slept = 0.0, []
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.now += s
+
+
+class TestTheVerifyWaitsForSSH:
+    """C2240 (B2, 2026-10-30): r8's SSH port answered about 01:11:37 UTC and it logged
+    `%SSH-5-ENABLED` at 01:11:51; verify read once, failed "TCP connection to device failed",
+    recorded "Back, not verified" and had already ended the planned window. Verify signs in
+    again within a bound, and the window ends only once the reload is verified."""
+
+    def _reader(self, run_lab, fails):
+        """The run's first read is the preview's; after the reload, *fails* (a list of
+        exceptions) are raised in turn before the device answers."""
+        calls = {"n": 0}
+
+        def read(_d):
+            calls["n"] += 1
+            if calls["n"] > 1 and fails:
+                raise fails.pop(0)
+            return _reads(run_lab)
+        return read, calls
+
+    def _spy_end(self, monkeypatch):
+        from modules import restarts
+        ended = []
+        real = restarts.end_window
+        monkeypatch.setattr(restarts, "end_window",
+                            lambda *a, **k: ended.append(a[2] if len(a) > 2 else "") or real(*a, **k))
+        return ended
+
+    def test_a_device_not_yet_serving_ssh_is_tried_again_and_verified(self, run_lab, monkeypatch):
+        ended = self._spy_end(monkeypatch)
+        clock = _Clock()
+        read, calls = self._reader(run_lab, [ConnectionError("TCP connection to device failed"),
+                                             ConnectionError("TCP connection to device failed")])
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=read, reloader=run_lab["reloader"], wait=run_lab["back"],
+                            clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "reloaded" and out["ok"] is True, out["steps"]
+        assert calls["n"] == 4 and clock.slept == [5, 10]
+        assert "signed in on try 3, 15 s after its port answered" in out["steps"][-1]["detail"]
+        assert len(ended) == 1 and "the reload is verified" in ended[0]
+
+    def test_never_signing_in_within_the_bound_is_unverified_and_its_window_stays(
+            self, run_lab, monkeypatch):
+        from modules import restarts
+        monkeypatch.setattr(restarts, "end_window",
+                            lambda *a, **k: pytest.fail("an unverified reload ended its window"))
+        clock = _Clock()
+        read, calls = self._reader(run_lab, [ConnectionError("TCP connection to device failed")]
+                                   * 50)
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=read, reloader=run_lab["reloader"], wait=run_lab["back"],
+                            clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "unverified" and out["ok"] is False
+        assert clock.now < reload_op.VERIFY_BOUND_S, "a try started past the bound"
+        assert sum(clock.slept) + 30 >= reload_op.VERIFY_BOUND_S, "it gave up early"
+        detail = out["steps"][-1]["detail"]
+        assert f"in {calls['n'] - 1} tries over {round(clock.now)} s" in detail
+        assert detail.endswith("TCP connection to device failed")
+
+    def test_a_refused_host_key_is_not_tried_again_and_names_both_keys(self, run_lab,
+                                                                         monkeypatch):
+        from modules import restarts
+        from modules.host_keys import HostKeyRefused
+        monkeypatch.setattr(restarts, "end_window",
+                            lambda *a, **k: pytest.fail("a refused reload ended its window"))
+        clock = _Clock()
+        refused = HostKeyRefused("refused", ip="203.0.113.12",
+                                 offered={"fingerprint": "SHA256:NEWnewNEW"},
+                                 held={"fingerprint": "SHA256:OLDoldOLD"})
+        read, calls = self._reader(run_lab, [refused, ConnectionError("never reached")])
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=read, reloader=run_lab["reloader"], wait=run_lab["back"],
+                            clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "host_key_changed" and calls["n"] == 2 and clock.slept == []
+        detail = out["steps"][-1]["detail"]
+        assert "offered SHA256:NEWnewNEW, held SHA256:OLDoldOLD" in detail
 
 
 class TestTheRunJudgesAgain:

@@ -127,7 +127,7 @@ def _interface_networks(hv: dict) -> dict:
     return out
 
 
-def for_device(intents: dict, host: str, commands) -> dict:
+def for_device(intents: dict, host: str, commands, host_networks=None) -> dict:
     """Every effect the program implies on *host*, derived, never declared (C506 phase 2):
 
     * ``down``, ``up``: interfaces the program shuts and brings up (:func:`derive`);
@@ -135,7 +135,10 @@ def for_device(intents: dict, host: str, commands) -> dict:
       shuts (OSPF and OSPFv3, by interface), and each BGP session sourced from one
       (`neighbor X update-source IFACE`) or to a peer on one's subnet, with why;
     * ``may_form``: an interface the program brings up with OSPF enabled on it: an adjacency
-      may form there, required only if a person declares who it is with.
+      may form there, required only if a person declares who it is with;
+    * ``reach_lost``: when the program shuts an interface, the devices Mercury loses its path
+      to (`blast_radius.radius_of_shutdowns`, this device included), or ``unknown`` and why.
+      *host_networks* this host's subnets; None reads them now.
 
     Read from committed intent, never the device: what the plan shows is what verify uses."""
     import ipaddress
@@ -191,8 +194,18 @@ def for_device(intents: dict, host: str, commands) -> dict:
                 owner = ""
             drops.append({"proto": "bgp", "peer": owner, "rid": "", "address": peer,
                           "via": sources.get(peer, ""), "why": why})
+    reach_lost = None
+    if fx["down"]:
+        from modules.nsot import blast_radius
+        try:
+            nets = blast_radius.host_networks() if host_networks is None else host_networks
+            reach_lost = blast_radius.radius_of_shutdowns(intents, nets, host, fx["down"])
+        except Exception as exc:                # noqa: BLE001 (said, never raised)
+            reach_lost = {"state": "unknown", "cut": [],
+                          "why": f"this host's addresses could not be read ({exc})"}
     return {"down": fx["down"], "up": fx["up"], "adjacencies_drop": drops,
-            "may_form": [{"proto": "ospf", "via": n} for n in fx["up"] if _ospf_on(commands, n)]}
+            "may_form": [{"proto": "ospf", "via": n} for n in fx["up"] if _ospf_on(commands, n)],
+            "reach_lost": reach_lost}
 
 
 def _addr(value: str) -> str:

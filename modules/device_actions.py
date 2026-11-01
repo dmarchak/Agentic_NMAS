@@ -350,6 +350,8 @@ JOB_STEPPERS = {
 RELOAD_WORDS = {"reloaded": ("Reloaded and verified", "ok"),
                 "differs": ("Back, running something else", "danger"),
                 "unverified": ("Back, not verified", "warn"),
+                # C2240: verify stops at once on a key Mercury does not hold (C2239's case).
+                "host_key_changed": ("Back with a new SSH host key", "danger"),
                 "not_back": ("Not back", "danger"),
                 "moved": ("Not reloaded: it moved", "warn"),
                 "refused": ("Not reloaded: a gate fails", "warn"),

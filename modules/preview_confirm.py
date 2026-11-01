@@ -417,6 +417,20 @@ def expected_part(effects) -> dict:
     "unread": why or ""}``; ``derived`` empty when the program implies none."""
     fx = effects or {}
     derived = [f"{n} goes down: the program shuts it." for n in fx.get("down") or []]
+    # R5 (2026-10-30): a shut interface can be Mercury's only path to a device; Reload says
+    # so for a whole device (`blast_radius`), and the plan says it for the interfaces shut.
+    lost = fx.get("reach_lost") or {}
+    if lost.get("state") == "known" and lost.get("cut"):
+        derived.append(
+            f"Mercury loses its path to {', '.join(lost['cut'])}: no other path joins "
+            f"{'it' if len(lost['cut']) == 1 else 'them'} to this host once "
+            f"{', '.join(fx.get('down') or [])} is down ({lost.get('why', '')}). Verify and "
+            "any rollback cannot reach what is cut: name the repair route, a path that does "
+            "not cross it, in the reason.")
+    elif lost.get("state") == "unknown":
+        derived.append("Whether Mercury loses its path to any device once "
+                       f"{', '.join(fx.get('down') or [])} is down is not known: "
+                       f"{lost.get('why', '')}.")
     for d in fx.get("adjacencies_drop") or []:
         who = d.get("peer") or d.get("address") or d.get("rid") or "a peer"
         derived.append(f"{d.get('proto', '').upper()} to {who} drops: {d.get('why', '')}.")

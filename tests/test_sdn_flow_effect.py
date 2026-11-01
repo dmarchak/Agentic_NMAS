@@ -117,6 +117,100 @@ def test_the_lab_8_redirect_diverts_from_the_controller_s_own_forwarding(family)
     assert "which sends it to the controller, so the controller decides it" in e["words"]
 
 
+#: The controller's topology's hosts on s2's connection as `flow_intent.bindings_of` reads them:
+#: h3 at 00:00:00:00:00:03 (its IPv4 and its IPv6 twin), h4 at 00:00:00:00:00:04.
+BOUND = {"192.0.2.3": "00:00:00:00:00:03", "2001:db8:8::3": "00:00:00:00:00:03",
+         "192.0.2.4": "00:00:00:00:00:04", "2001:db8:8::4": "00:00:00:00:00:04"}
+
+
+def _redirect_out(actions):
+    """The Lab 8 redirect (cookie 0xbad0, IPv4 to h3) with its one edit: *actions*."""
+    return lambda flows: [dict(f, actions=actions) if f["cookie"] == 0xBAD0 else f
+                          for f in flows]
+
+
+def _bound_effect(entries):
+    got = classified(entries, 2)
+    (f,) = [x for x in got["flows"] if x["cookie"] == 0xBAD0]
+    return F.effect(f, got["flows"], [], bindings=BOUND), got["flows"]
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_bu1_a_flow_forwarding_to_h3_as_the_controller_does_forwards(family):
+    """BU1 (2026-10-29): an engineer's static flow, IPv4 to h3 out h3's own port 1, read
+    "diverts" against the controller's L2 flow to h1 (port 3). With h3's MAC bound from the
+    topology, only the controller's flow to h3 takes its traffic: it forwards as they do."""
+    entries = edited(lab8(REDIRECT), 2, family, _redirect_out(["OUTPUT:1"]))
+    e, table = _bound_effect(entries)
+    to_h3 = id_of(table, in_port=3, eth_dst="00:00:00:00:00:03")
+    to_h1 = id_of(table, in_port=1, eth_dst="00:00:00:00:00:01")
+    assert e["class"] == "forwards", e
+    assert to_h3 in e["evidence"] and to_h1 not in e["evidence"]
+    assert "is at 00:00:00:00:00:03, so its traffic carries that destination MAC" in e["words"]
+    unbound, _m, _t = effect_of(entries, 2, 0xBAD0)
+    assert unbound["class"] == "diverts", "the premise: without the binding it read diverts"
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_bu2_a_sampling_flow_differs_only_by_its_copy_to_the_controller(family):
+    """BU2: the same, plus a copy to the controller: compared with the controller's flow to
+    h3 alone, whose one port it keeps."""
+    e, table = _bound_effect(edited(lab8(REDIRECT), 2, family,
+                                    _redirect_out(["OUTPUT:1", "OUTPUT:CONTROLLER"])))
+    to_h3 = id_of(table, in_port=3, eth_dst="00:00:00:00:00:03")
+    assert e["class"] == "diverts"
+    assert e["words"].startswith("diverts the traffic it takes: it sends it out port 1 and the "
+                                 "reserved port CONTROLLER, where without it the controller's "
+                                 f"own flow {to_h3} sends it out port 1")
+    assert "00:00:00:00:00:01" not in e["words"]
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_the_redirect_bound_is_compared_with_the_flow_to_h3_alone(family):
+    e, table = _bound_effect(edited(lab8(REDIRECT), 2, family))
+    to_h1 = id_of(table, in_port=1, eth_dst="00:00:00:00:00:01")
+    assert e["class"] == "diverts" and to_h1 not in e["evidence"]
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_the_rule_binds_from_the_controller_s_topology(family):
+    """The unauthorised rule hands the stored topology's hosts on the switch's connection to
+    the effect (`detect.unauthorised`'s *topo*, `flow_intent.bindings_of`)."""
+    sw = ryu_switch(edited(lab8(REDIRECT), 2, family, _redirect_out(["OUTPUT:1"])), 2)
+    collected = ryu_collection("Default", AT, [sw])
+    topo = {"controllers": [{"name": "lab", "hosts": [
+        {"mac": "00:00:00:00:00:03", "ipv4": ["192.0.2.3"], "ipv6": ["2001:db8:8::3"]}]}]}
+    (d,) = D.unauthorised(collected, {"state": "ok", "flows": [], "withdrawn": {}},
+                          now=D._epoch(AT), topo=topo)["detections"]
+    assert d["effect"]["class"] == "forwards", d["effect"]
+    (d0,) = D.unauthorised(collected, {"state": "ok", "flows": [], "withdrawn": {}},
+                           now=D._epoch(AT))["detections"]
+    assert d0["effect"]["class"] == "diverts", "without the topology nothing is bound"
+
+
+@pytest.mark.usefixtures("networks")
+def test_observe_binds_from_the_stored_topology(monkeypatch):
+    """`observe` hands the unauthorised rule the stored topology it reads for the others."""
+    from modules.sdn import topology as SDN
+    sw = ryu_switch(edited(lab8(REDIRECT), 2, "v4", _redirect_out(["OUTPUT:1"])), 2)
+    collected = ryu_collection("Default", AT, [sw])
+    monkeypatch.setattr(SDN, "stored", lambda network, *a, **kw: {"controllers": [
+        {"name": "lab", "hosts": [{"mac": "00:00:00:00:00:03", "ipv4": ["192.0.2.3"]}]}]})
+    got = D.observe("Default", collected, values=dict(D.THRESHOLDS),
+                    intent={"state": "ok", "flows": [], "withdrawn": {}, "error": ""})
+    assert got["ok"], got.get("error")
+    (d,) = [x for x in got["detections"] if x["rule"] == "unauthorised_flow"]
+    assert d["effect"]["class"] == "forwards", d["effect"]
+
+
+def test_a_destination_the_topology_does_not_list_is_compared_as_before():
+    entries = edited(lab8(REDIRECT), 2, "v4", _redirect_out(["OUTPUT:1"]))
+    got = classified(entries, 2)
+    (f,) = [x for x in got["flows"] if x["cookie"] == 0xBAD0]
+    e = F.effect(f, got["flows"], [], bindings={"192.0.2.99": "00:00:00:00:00:99"})
+    assert e["class"] == "diverts" and "is at" not in e["words"]
+
+
 @pytest.mark.parametrize("family", FAMILIES)
 def test_the_redirect_with_its_output_removed_drops(family):
     """Held-out case 7's edit: the unauthorised flow's one action removed."""

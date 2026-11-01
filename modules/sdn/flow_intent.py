@@ -836,19 +836,72 @@ def displaced(flow: dict, records: list) -> list:
             and r.get("dpid") == flow.get("dpid") and flow_ops._same_place(r, flow)]
 
 
-def effect(flow: dict, table: list, displaced_flows: list = ()) -> dict:
+def bindings_of(topo: dict, connection: str) -> dict:
+    """``{address: MAC}`` for every host the controller's stored topology (`topology.stored`)
+    lists on *connection*, addresses compressed, MACs lower-case: what `effect` binds an
+    IP-only destination to."""
+    out = {}
+    ctl = next((c for c in (topo or {}).get("controllers") or []
+                if c.get("name") == connection), None) or {}
+    for h in ctl.get("hosts") or []:
+        mac = str(h.get("mac") or "").strip().lower()
+        if not mac:
+            continue
+        for value in list(h.get("ipv4") or []) + list(h.get("ipv6") or []):
+            try:
+                addr = ipaddress.ip_address(str(value).strip())
+            except ValueError:
+                continue
+            if not addr.is_unspecified:
+                out.setdefault(addr.compressed, mac)
+    return out
+
+
+def _bound_destination(match: dict, bindings: dict) -> tuple:
+    """``(MAC, address)`` when *match* sends to one host by IP alone and *bindings* lists that
+    host, else ``(None, None)``."""
+    if not bindings or any(k in (match or {}) for k in ("eth_dst", "dl_dst")):
+        return None, None
+    for key in ("ipv4_dst", "ipv6_dst", "nw_dst"):
+        raw = str((match or {}).get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            net = ipaddress.ip_network(raw, strict=False)
+        except ValueError:
+            return None, None
+        if net.num_addresses != 1:
+            return None, None
+        addr = net.network_address.compressed
+        return bindings.get(addr), addr
+    return None, None
+
+
+def effect(flow: dict, table: list, displaced_flows: list = (), bindings: dict = None) -> dict:
     """Unauthorised *flow*'s effect on the traffic it takes (C2021), from its switch's table as
     read: *flow* a row of `classify`'s ``flows``, *table* every row of them for its switch
     (each with its ``owner`` and evidence ``id``), *displaced_flows* the Mercury flows it
     displaced (`displaced`), each as an evidence piece with its ``id``, ``cookie`` and
     ``actions``. ``{"class": one of `EFFECTS`, "words", "evidence": [the ids the words name]}``;
     how each class is decided is the module's docstring's. Never raises: what it cannot compare
-    is ``unknown``, naming why."""
+    is ``unknown``, naming why.
+
+    *bindings* (`bindings_of`): a flow that sends to one host by IP alone is compared as
+    carrying that host's MAC, which the controller's topology lists, so the controller's L2
+    flows for OTHER hosts' MACs are not taken for its traffic (BU1, 2026-10-29: a flow
+    forwarding to one host exactly as the controller does read "diverts", compared with the
+    flows to two other hosts). The words say so; a routed destination, whose packets carry a gateway's MAC,
+    is outside what the binding holds for."""
     def ref(f):
         return f.get("id") or cookie_hex(f.get("cookie"))
 
+    mac, bound_to = _bound_destination(flow.get("match"), bindings)
+    implied = (f" (taking the controller's topology: {bound_to} is at {mac}, so its traffic "
+               "carries that destination MAC)") if mac else ""
+
     def answer(cls, words, ids=()):
-        return {"class": cls, "words": words, "evidence": list(dict.fromkeys(i for i in ids if i))}
+        return {"class": cls, "words": words + implied,
+                "evidence": list(dict.fromkeys(i for i in ids if i))}
 
     def unknown(why, ids=()):
         return answer("unknown", f"has an effect the table cannot tell: {why}", ids)
@@ -862,7 +915,7 @@ def effect(flow: dict, table: list, displaced_flows: list = ()) -> dict:
 
     moved = [p.get("id") for p in displaced_flows]
     try:
-        mine = _fields(flow.get("match"))
+        mine = _fields(dict(flow.get("match") or {}, eth_dst=mac) if mac else flow.get("match"))
     except _CannotTell as exc:
         return unknown(str(exc), moved)
     table_id, prio = flow.get("table_id", 0), flow.get("priority", 0)

@@ -1446,6 +1446,13 @@ def _response_source(drv, connection: str, dpid: int, detection: dict, params: d
     choose is refused saying why, never offering a choice. *params*'s ``source_from`` is set
     to how the source was found, or chosen."""
     chosen = str(params.get("source") or "").strip()
+    replying = detection.get("replying_to")
+    if replying:
+        # C2237: never a response against a flood's destination, a person's choice included.
+        raise ResponseRefused(
+            f"{', '.join(detection.get('replying_hosts') or []) or 'its host'} sends replies "
+            f"to {replying.get('source')}'s traffic, not traffic of its own: "
+            f"{replying.get('words', '')}")
     sources, found, live = _sources(detection), {}, False
     named = detection.get("source_from") or {}
     if sources and detection.get("source") and named:

@@ -633,12 +633,93 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
             "no_baseline": no_baseline}
 
 
+#: How many times larger one side's mean packet is than the other's before it is called the
+#: sender of a two-way pair: a bulk TCP transfer's data against its ACKs is far past it
+#: (BF1 to BF3, 2026-10-29: about 15 Gbit/s each way of data against small ACKs), an ICMP
+#: flood's requests against its replies (F3: the same size) never reaches it.
+SENDER_SIZE_RATIO = 3.0
+
+
+def _mean_packet(collected: dict, d: dict):
+    """*d*'s port's mean received packet, bytes (its byte rate over its packet rate), or None
+    when the port or either rate is not in the collection."""
+    for ctl, sw in _switches(collected):
+        if (ctl.get("connection") or "") != d.get("connection") or \
+                sw.get("dpid_hex") != d.get("dpid_hex"):
+            continue
+        for p in sw.get("ports") or []:
+            if p.get("port_no") == d.get("port"):
+                pps, bps = p.get("rx_pps"), p.get("rx_bytes_per_s")
+                return (bps / pps) if pps and bps is not None else None
+    return None
+
+
+def mark_replies(detections: list, collected: dict) -> list:
+    """*detections* with each rate detection whose source is the DESTINATION of another
+    rate detection's traffic (a different source) marked as replying, never a source (C2237:
+    F3's victim named as the source of its echo replies, BF1 to BF3's receivers of their ACKs,
+    each with a rate limit proposed against it). A marked detection keeps its evidence; its
+    ``source`` and ``sources`` are emptied, the addresses kept as ``replying_hosts``, and
+    ``replying_to`` names the sender and why. In a two-way pair the side whose mean received
+    packet is at least SENDER_SIZE_RATIO times the other's is the sender and stays a source;
+    otherwise neither side is named a source, and a person decides from the evidence."""
+    rate = [d for d in detections if d.get("basis") == "rate" and d.get("source")]
+    marks = {}
+    for d in rate:
+        src = _canon_addr(d["source"])
+        for o in rate:
+            if o is d or _canon_addr(o["source"]) == src:
+                continue
+            if src not in {_canon_addr(t) for t in o.get("targets") or []}:
+                continue
+            mutual = _canon_addr(o["source"]) in {_canon_addr(t) for t in d.get("targets") or []}
+            mine, theirs = _mean_packet(collected, d), _mean_packet(collected, o)
+            if mutual and mine and theirs and mine >= SENDER_SIZE_RATIO * theirs:
+                continue                                   # d is the pair's sender
+            # A two-way pair whose sizes do not name the sender: neither side is a source.
+            neither = mutual and not (mine and theirs and theirs >= SENDER_SIZE_RATIO * mine)
+            where = (f"{o.get('rule')} on switch {o.get('dpid_hex')} port {o.get('port')}")
+            marks[id(d)] = {
+                "source": o["source"], "rule": o.get("rule"), "port": o.get("port"),
+                "dpid_hex": o.get("dpid_hex"), "neither": neither,
+                "words": ((f"{d['source']} and {o['source']} are each other's destination "
+                           f"({where}) and their packet sizes do not say which one sends, so "
+                           "neither is named a source: one is replying to the other, and a "
+                           "person decides which from the evidence") if neither else
+                          (f"{d['source']} is the destination of {o['source']}'s traffic "
+                           f"({where}): what its port sends is its replies")) +
+                ". Mercury proposes no response against a flood's destination"}
+            break
+    out = []
+    for d in detections:
+        m = marks.get(id(d))
+        if m is None:
+            out.append(d)
+            continue
+        out.append(dict(d, source=None, sources=[], replying_hosts=_sources_of(d),
+                        replying_to=m, words=f"{d.get('words', '')}; {m['words']}"))
+    return out
+
+
+def _canon_addr(value) -> str:
+    try:
+        return ipaddress.ip_address(str(value).strip()).compressed
+    except ValueError:
+        return str(value or "").strip().lower()
+
+
+def _sources_of(d: dict) -> list:
+    return list(dict.fromkeys(s for s in [d.get("source")] + list(d.get("sources") or []) if s))
+
+
 # ───────────────────────────────────────────────────────────────────────────── unauthorised
 
-def unauthorised(collected: dict, intent: dict, now: float = None) -> dict:
+def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = None) -> dict:
     """The unauthorised-flow rule: ``{"detections", "judged", "error"}``, each flow
     `flow_intent.classify` calls unauthorised on a switch whose table was read; *intent*
-    `flow_intent.intent`'s answer. An unreadable intent judges nothing, and says so."""
+    `flow_intent.intent`'s answer. An unreadable intent judges nothing, and says so. *topo* the
+    controllers' stored topology, whose hosts bind an IP-only destination to its MAC in the
+    flow's effect (`flow_intent.bindings_of`); None binds nothing."""
     from modules.sdn import flow_intent
 
     if (intent or {}).get("state") != "ok":
@@ -662,7 +743,8 @@ def unauthorised(collected: dict, intent: dict, now: float = None) -> dict:
             match = f.get("match") or {}
             moved = [displaced_piece(conn, dh, r)
                      for r in flow_intent.displaced(f, got["records"])]
-            effect = flow_intent.effect(f, got["flows"], moved)
+            effect = flow_intent.effect(f, got["flows"], moved,
+                                        bindings=flow_intent.bindings_of(topo, conn))
             detections.append(_detection(
                 "unauthorised_flow", collected, ctl, sw, subject=("flow", f["id"]),
                 scope=flows_scope(conn, dh), source=_address(match, "src"),
@@ -947,8 +1029,9 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                               f"one last judged ({net['collected_at']}): nothing was judged")
             scanned = scan(collected, values, net.get("seen"), topo=topo)
             flooded = flood(collected, net.get("baseline"), values, net.get("over"), topo=topo)
-            unauth = unauthorised(collected, intent, now=at)
-            detections = scanned["detections"] + flooded["detections"] + unauth["detections"]
+            unauth = unauthorised(collected, intent, now=at, topo=topo)
+            detections = mark_replies(scanned["detections"] + flooded["detections"],
+                                      collected) + unauth["detections"]
             judged = scanned["judged"] | flooded["judged"] | unauth["judged"]
             if unauth["error"]:
                 out["notes"].append(unauth["error"])
