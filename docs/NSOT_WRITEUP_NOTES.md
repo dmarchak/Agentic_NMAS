@@ -10824,6 +10824,21 @@ the first move is to split it, not to explain it.
 
 ---
 
+## A platform quirk: the vIOS-L2 image makes a new SSH host key at every boot (2026-11-01)
+
+The operator's B2 run (2026-10-30) found r8 back from Mercury's planned Reload with a new SSH
+host key (C2239). A read-only measurement on 2026-11-01 (`show crypto key mypubkey rsa` on
+every device but s3) found the routers' key pairs saved (`Storage Device: private-config`) but
+the four vIOS-L2 switches' only pair `not specified`. A Save All two days before had not
+changed that. So a vIOS-L2 reload always brings a new key, and Mercury rightly refuses it until
+a person re-keys. The operator's decision: accept Re-key after every switch reload in the lab,
+and treat it as the lab image's quirk, since real switches keep their keys. The lesson for the
+product is that whether a key survives a reload is a per-platform measurement (PUBLIC_RELEASE.md
+section h), read from the device by the Reload's check, never assumed from a premise measured
+on another platform (C941 had measured one C8000v keeping its key).
+
+---
+
 ## How the writeup is kept (moved from CLAUDE.md on 2026-10-02)
 
 CLAUDE.md's paragraph on the writeup, moved verbatim. NSOT_WRITEUP.md's own "How it

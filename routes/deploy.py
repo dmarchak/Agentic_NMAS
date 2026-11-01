@@ -1449,6 +1449,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # The device-only lines stage 4 accepted as new hardware (C1383): an interface the
         # capture lacks, at its platform's measured default, that this program configures.
         "new_hardware": list((result.new_hardware or {}).get(device.get("ip", ""), [])),
+        # The devices this program cut Mercury's path to (C2243's computation), for the
+        # batch's baseline judgement (C2270): a device cut off stands only by its record.
+        "reach_lost": effects.get("reach_lost"),
     }
 
 
@@ -1632,6 +1635,33 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
             "failed_devices": failed, "intent": intent, **earned}
 
 
+def _reach_cut(report: dict) -> list:
+    """Why this batch earns no baseline because a program it sent cut Mercury's path to a
+    device, or ``[]`` (C2270; R5, 2026-10-30: a router's link shut cut Mercury's only path to
+    a switch, and the deploy earned baseline/20261030T000810Z with the switch judged by its
+    record; the operator, 2026-11-01: such a deploy earns none). A device Mercury cannot reach is not shown at its
+    intent at this moment, whatever its record says. A program that shut an interface where
+    the cut could not be computed earns none either, naming why: unproven is not shown."""
+    from modules.nsot.deploy import DEPLOYED
+
+    out = []
+    for entry in report.get("results") or []:
+        lost = entry.get("reach_lost")
+        if entry.get("outcome") != DEPLOYED or not lost:
+            continue
+        device = entry.get("device", "?")
+        if lost.get("state") == "known":
+            if lost.get("cut"):
+                out.append(f"{device}'s program cut Mercury's path to "
+                           f"{', '.join(lost['cut'])}, so the network is not shown at its "
+                           "intent: repair the path, then Save All")
+        else:
+            out.append(f"whether {device}'s program cut Mercury's path to a device is not "
+                       f"known ({lost.get('why') or 'no reason was given'}), so the network "
+                       "is not shown at its intent: Save All")
+    return out
+
+
 def _baseline_earned(report: dict, pending: list, failed: list,
                      source_ref: str = "", *, list_name: str) -> dict:
     """Whether this batch produced a state worth calling a baseline.
@@ -1674,6 +1704,7 @@ def _baseline_earned(report: dict, pending: list, failed: list,
     reasons = []
     if failed:
         reasons.append(f"{len(failed)} device(s) did not succeed: {sorted(failed)}")
+    reasons += _reach_cut(report)
 
     try:
         # The batch's own list (C215), never the active one.

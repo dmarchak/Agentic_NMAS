@@ -675,6 +675,50 @@ class TestABaselineAfterAScopedDeploy:
                               "intent state is departs (+1))"), why
         assert not_targeted_only(why) == 1
 
+    def _report(self, reach_lost):
+        from modules.nsot.deploy import DEPLOYED
+        return {"batch_id": "t1", "results": [
+            {"device": "r2", "outcome": DEPLOYED, "golden_pending": self._pending(),
+             "reach_lost": reach_lost}]}
+
+    def test_a_deploy_that_cut_mercury_off_a_device_earns_no_baseline(self, lab, monkeypatch):
+        """C2270 (R5, 2026-10-30: r1's Gi3 shut cut Mercury's only path to s1, and the deploy
+        earned baseline/20261030T000810Z with s1 judged by its record; the operator,
+        2026-11-01): r7 stands at its intent by its record, but r2's program cut Mercury's
+        path to it, so the commit is not shown to be the network and carries the reason."""
+        from routes.deploy import _commit_batch_golden
+
+        self._fleet(lab, monkeypatch)
+        got = _commit_batch_golden("Lab", self._report(
+            {"state": "known", "cut": ["r7"], "why": "IPv4 only"}), actor="t")
+        assert got["ok"] and got["baseline"] is False, got
+        assert not [t for t in got.get("tags") or [] if t.startswith("baseline/")]
+        why = ("r2's program cut Mercury's path to r7, so the network is not shown at its "
+               "intent: repair the path, then Save All")
+        assert why in got["baseline_reasons"], got["baseline_reasons"]
+        body = R.git(lab, "log", "-1", "--format=%B", got["commit"])[1]
+        assert f"Baseline: denied: {why}" in body
+
+    def test_a_cut_that_could_not_be_computed_earns_none_and_says_why(self, lab, monkeypatch):
+        self._fleet(lab, monkeypatch)
+        from routes.deploy import _baseline_earned
+        out = _baseline_earned(self._report({"state": "unknown", "cut": [],
+                                             "why": "r2 has no committed intent"}),
+                               self._pending(), [], source_ref="", list_name="Lab")
+        assert out["baseline"] is False
+        assert ("whether r2's program cut Mercury's path to a device is not known (r2 has no "
+                "committed intent), so the network is not shown at its intent: Save All"
+                ) in out["baseline_reasons"]
+
+    @pytest.mark.parametrize("reach_lost", [None, {"state": "known", "cut": [], "why": "x"}])
+    def test_a_program_that_cut_nothing_still_earns_one(self, lab, monkeypatch, reach_lost):
+        """The controls: no shut interface (None), or one that cut no path."""
+        self._fleet(lab, monkeypatch)
+        from routes.deploy import _baseline_earned
+        out = _baseline_earned(self._report(reach_lost), self._pending(), [], source_ref="",
+                               list_name="Lab")
+        assert out["baseline"] is True, out["baseline_reasons"]
+
     @pytest.mark.parametrize("errors, drifted, words", [
         (("r7",), (), "the last drift run could not read it"),
         ((), ("r7",), "the last drift run found it departing from its golden"),

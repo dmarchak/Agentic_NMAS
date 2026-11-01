@@ -189,3 +189,29 @@ The operator, 2026-10-13: registered here for after Phase 7.
 
 **Size:** small (the scrypt change; its compatibility test the main part). The key's size is
 the redesign's.
+
+---
+
+## h. SSH host keys across a reload: check per platform (a platform quirk, measured)
+
+The operator, 2026-11-01 (C2239). Whether a device keeps its SSH host key across a reload is a
+property of the platform and image, not of Mercury, and it decides whether a planned Reload
+ends in a refused session that a person must re-key.
+
+- **Measured in the lab (2026-11-01, read-only, `show crypto key mypubkey rsa`):** the IOS-XE
+  C8000v routers keep their key pairs `Storage Device: private-config`. The **vIOS-L2 switch
+  image keeps its only key pair `Storage Device: not specified`, and a save does not change
+  that** (a Save All wrote every device's startup on 2026-10-30, and all four switches still
+  read not specified two days later). So every reload of a vIOS-L2 switch makes a new SSH host
+  key, which Mercury refuses (naming both fingerprints) until a person re-keys it.
+- **The lab's decision:** accept Re-key after each vIOS-L2 reload. The Reload's preview already
+  says beforehand when the key may not survive (its seventh check), and the result offers
+  Review the new key.
+- **Real switches keep their keys** (the operator, 2026-11-01): IOS and IOS-XE hardware keep a
+  saved key pair in NVRAM. The vIOS-L2 behaviour is a lab image's, never to be taken as a
+  platform's, and a real platform's answer is still measured on it.
+- **For release:** the per-platform question ("does a reload keep the SSH host key?") is part
+  of onboarding a new platform (section b's registry). Each platform's answer is measured,
+  never assumed, and the Reload's check reads the device's own answer every time.
+
+**Size:** nothing to build for IOS and IOS-XE; one measurement per new platform.

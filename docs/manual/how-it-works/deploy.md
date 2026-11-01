@@ -286,8 +286,11 @@ After the last device, in this order:
    that succeeded, with `Source: pipeline`, `Actor:` you, `Actor-Verified: access`, a
    `Program-Hash:` per device, `Failed-Devices:`, `Intent-Match:` and the `Baseline:` decision,
    and a `golden/<device>/<time>` tag per changed device. It is tagged `baseline/<time>` only if
-   every inventory device was targeted and succeeded and every capture matches its committed
-   intent. When no device succeeded, nothing is committed.
+   every inventory device was targeted and succeeded (or, outside the deploy, stands at its
+   committed intent by its golden and the last drift run), every capture matches its committed
+   intent, and no program cut Mercury's path to a device: a device Mercury can no longer reach
+   is not shown at its intent, so that deploy's `Baseline:` says it was denied and why. When no
+   device succeeded, nothing is committed.
 2. **Publish.** Sent: the commit to the list's remote, by `git push` where a remote is set, and
    each changed golden, masked, to the S3 archive where one is configured. Recorded: the push's outcome, which the Remote
    card and Needs attention read. The post-commit hooks run in the background and never hold

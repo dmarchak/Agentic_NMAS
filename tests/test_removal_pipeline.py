@@ -165,6 +165,36 @@ class TestDeployOne:
             # No running IP SLA operation is re-created here (recreate.py).
             "recreates": [], "recreate_commands": []}
 
+    def test_the_result_carries_the_cut_the_program_was_computed_with(self, monkeypatch):
+        """C2270: the batch's baseline judgement reads each result's ``reach_lost``, the same
+        computation the plan drew (`_effects_and_declared`), carried from the context the
+        pipeline ran with."""
+        import modules.pipeline as P
+        import routes.deploy as rd
+        from modules.nsot.render_artifact import build_artifact
+
+        monkeypatch.setattr("modules.nsot.deploy.prepare_for_deploy",
+                            lambda a: {"config": W.INTENT})
+        cut = {"state": "known", "cut": ["s9"], "why": "planted"}
+        monkeypatch.setattr("modules.nsot.expected_effects.for_device",
+                            lambda intents, host, commands, **kw: {"reach_lost": cut})
+
+        class _Runner:
+            def __init__(self, ctx):
+                self.ctx = ctx
+
+            def run(self):
+                self.ctx.final_status = "success"
+                return self.ctx
+
+        monkeypatch.setattr(P, "PipelineRunner", _Runner)
+        artifact = build_artifact("s4", CAPTURE, "cisco_ios", template_approved=True)
+        out = rd._deploy_one({"artifact": artifact, "fresh": CAPTURE}, "Lab",
+                             {"s4": {"hostname": "s4", "ip": "203.0.113.24"}},
+                             {"s4": [SHUT, REASON]}, remove={"s4": [UNIT]})
+        assert out["outcome"] == "deployed", out
+        assert out["reach_lost"] == cut
+
     def test_no_reason_fails_before_the_pipeline(self, monkeypatch):
         out, ctx = self._run(monkeypatch, [UNIT], [SHUT])
         assert out["stage"] == "authorisation" and ctx is None and KEY in out["reason"]

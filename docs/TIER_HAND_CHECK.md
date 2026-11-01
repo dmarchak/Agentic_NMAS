@@ -1,8 +1,10 @@
 # The irreversible tier's hand checks
 
 The tier's proof for Allow during the Phase 8 sprint (the operator's ruling of 2026-10-25,
-PHASE8_PLAN 15.12, docs/TESTING.md "The deploy bar"; it expires Sat 31 Oct, and Stage 10
-restores the run bar). Each check is a dated section. Each section records:
+PHASE8_PLAN 15.12, docs/TESTING.md "The deploy bar"). It lasts until the sprint's condition is
+met (both the SDN Lab 8 slice and Phase 8's AI scope at their done bars; CLAUDE.md, the
+mutation rule; the operator, 2026-10-27), not until a date: an earlier "expires Sat 31 Oct"
+here was corrected on 2026-11-01. Stage 10 restores the run bar. Each check is a dated section. Each section records:
 - every mutant of each function, applied by hand;
 - the test that killed each mutant;
 - the canary's outcome.
