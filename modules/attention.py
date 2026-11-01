@@ -4218,6 +4218,14 @@ def host_key_source(refused=None) -> dict:
 AI_WITHHELD_WINDOW_S = 86400
 
 
+def _evaluation_call(r: dict) -> bool:
+    """Whether call record *r* is an evaluation's (`triggers.evaluation`; its actor
+    ``evaluation:<run>``)."""
+    trig = r.get("trigger") or {}
+    return trig.get("kind") == "evaluation" or str(r.get("actor") or "").startswith(
+        "evaluation:")
+
+
 def ai_withheld_source(rows=None, now=None) -> dict:
     """Lines withheld from AI requests as instruction-like (C2271's flagger; C2272, IBN_DESIGN
     13 item 5, "ignored and reported"): someone who can write a device's logs, descriptions or
@@ -4242,6 +4250,10 @@ def ai_withheld_source(rows=None, now=None) -> dict:
         rows = got["rows"]
     by = {}
     for r in rows:
+        # An evaluation's call raises no row (C2295): its lines are a recorded case's, planted
+        # on purpose (injection case 22), never a person's network writing to the model.
+        if _evaluation_call(r):
+            continue
         if r.get("withheld") and (_ts(r.get("at")) or now) >= now - AI_WITHHELD_WINDOW_S:
             by.setdefault(r.get("feature") or "an AI feature", []).append(r)
     out = []
@@ -4272,6 +4284,7 @@ def ai_withheld_source(rows=None, now=None) -> dict:
                     "href": "/v2/history?kind=ai_calls"},
             operands={"feature": feature, "calls": [r.get("id") for r in rs],
                       "patterns": names}))
+        out[-1]["dispositions"] = list(DISPOSITIONS[("ai_withheld", "withheld")])
     return source_result("ai_withheld", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"{len(rows)} AI call(s) in the last day; "
@@ -5190,12 +5203,26 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 "operations": "interrupted_source", "grafana": "grafana_source",
                 "host_key_windows": "host_key_window_source",
                 "adjacency_log": "adjacency_log_source", "deploys": "deploy_source",
-                "console_ztp": "console_ztp_source"}
+                "console_ztp": "console_ztp_source",
+                # Lines withheld as instructions (C2272): its row drew Acknowledge… from the
+                # start, and this map lacked it, so every acknowledgement was refused (C2295).
+                "ai_withheld": "ai_withheld_source"}
+
+#: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
+#: instructions are a true positive (someone aimed them at the model: investigate), benign or
+#: a test (an evaluation's planted line, a person's own text), or a false positive (the
+#: flagger's tuning evidence).
+DISPOSITIONS = {("ai_withheld", "withheld"): (
+    ("true_positive", "A true positive: investigate who wrote it"),
+    ("benign_test", "Benign, or a test"),
+    ("false_positive", "A false positive: not instructions"))}
 
 
-def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:
+def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
+                disposition: str = "") -> dict:
     """A person acknowledges ONE event row. Refused unless the row is on the page now, of a
-    kind acknowledged here, about this same event, and the reason has the shape of one."""
+    kind acknowledged here, about this same event, and the reason has the shape of one; a kind
+    in DISPOSITIONS also needs one of its dispositions, recorded with it."""
     from modules import acknowledgements as ACK
     from modules.nsot.authorisation import reason_problem
 
@@ -5258,6 +5285,14 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
                                           "of the last week) was not read, and an "
                                           "acknowledgement here holds only within one"}
         extra = {"band": ops["band"], "value": (ops.get("band_reading") or {}).get("value")}
+    asked = DISPOSITIONS.get((found["source"].split("@", 1)[0], found["kind"]))
+    if asked:
+        if disposition not in {v for v, _w in asked}:
+            return {"ok": False, "error": (
+                "Not acknowledged: say what it was, one of "
+                + ", ".join(f"{w.split(':')[0].lower()} ({v})" for v, w in asked)
+                + f", not {disposition or 'none given'}")}
+        extra = {"disposition": disposition}
     try:
         entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
                            kind=f"{found['source']}/{found['kind']}", what=found["what"],
@@ -5269,7 +5304,7 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
                                       f"recorded ({type(exc).__name__}: {first}); the row "
                                       "stays"}
     out = {"ok": True, "acknowledged": entry, "hides_now": True, "words": ""}
-    if extra:
+    if "band" in extra:
         # An acknowledgement within a band that cannot hide its row NOW says so (C533, the
         # operator, 2026-10-06: three acknowledgements recorded, each above its band, and the
         # button stayed "Acknowledging…" saying nothing).

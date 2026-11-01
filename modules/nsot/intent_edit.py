@@ -219,7 +219,30 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
         hostvars.assert_no_secret_values(text, hostname)
     except Exception as exc:                  # noqa: BLE001
         return refuse("secrets", str(exc))
+
+    # 3b. The sign-in account's reference is that account's alone (C2289), the rule Set value…
+    #     keeps too (`secret_refs.managed_words`): another account naming it would be given the
+    #     credential only Rotate changes.
+    from modules.nsot import secret_refs
+    shared = secret_refs.shared_managed(parsed, _signs_in_as(list_name, hostname))
+    if shared:
+        account, ref = shared[0]
+        return refuse("secrets", f"account {account} names {ref}: "
+                      f"{secret_refs.managed_words(ref)}. Give {account} its own reference "
+                      f"(user_{account}_secret)", _line_of(text, f"secret_ref: {ref}"), 1)
     return {"ok": True, "parsed": parsed}
+
+
+def _signs_in_as(list_name: str, hostname: str) -> str:
+    """The account Mercury signs in to *hostname* with, from its inventory row; "" unknown."""
+    if not list_name:
+        return ""
+    from modules.nsot.restore import _devices_of
+    try:
+        row = next((d for d in _devices_of(list_name) if d.get("hostname") == hostname), None)
+    except Exception:                         # noqa: BLE001 (unknown: the rule asks nothing)
+        return ""
+    return (row or {}).get("username") or ""
 
 
 def unmodelled(parsed: dict) -> list:

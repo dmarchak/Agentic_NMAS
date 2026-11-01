@@ -124,6 +124,74 @@ class TestCommitting:
         assert last["subject"] == "host_vars: s4 the uplink's real description"
         assert "Nothing was sent to s4" in html
 
+    def test_a_reference_with_no_value_greys_the_deploy_and_offers_set_value(
+            self, ed, tmp_path, monkeypatch):
+        """C2288 (the operator's process finding, 2026-11-01, the lab account on r2 to r4): a
+        commit naming a reference with no value names it on the result with Set value…, and
+        Plan a deploy… is greyed naming it until it holds one; the offer is re-read when a
+        value is stored, and offers Plan a deploy… once none is missing. No value is drawn."""
+        from modules import credentials
+        from modules.nsot import secret_refs
+        monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "credential_profiles.json"))
+        opened = intent_edit.open_doc("lab", "s4")
+        text = opened["yaml"].replace("users: []\n", "users:\n- name: lab\n  privilege: 15\n"
+                                      "  secret_kind: secret\n  secret_ref: user_lab_secret\n", 1)
+        assert text != opened["yaml"]
+        r, html = _post(ed, "/v2/device/s4/intent/commit", yaml=text, base=opened["base"],
+                        summary="the temporary lab account")
+        assert r.status_code == 200 and "Committed to s4's intent" in html, html[:600]
+        offer = html.split('id="ie-deploy-offer"')[1]
+        assert "Before it can be deployed" in offer and "user_lab_secret" in offer
+        assert 'hx-get="/v2/device/s4/intent/secrets?set=user_lab_secret"' in offer
+        assert 'aria-disabled="true"' in offer and "no value" in offer
+        assert 'href="/v2/device/s4?op=deploy"' not in offer
+        assert 'hx-trigger="nmas:credentials from:body"' in offer
+        # Every reference named, valued: the offer re-read offers Plan a deploy….
+        for ref in [m for m in re.findall(r'set=([a-z_0-9]+)"', offer)]:
+            credentials.set_template_secret(credentials.template_secret_key("lab", "s4", ref),
+                                            "Not-Real-1", list_name="lab")
+        again = ed["client"].get("/v2/device/s4/intent/deploy-offer").get_data(as_text=True)
+        assert "Before it can be deployed" not in again, again[:600]
+        assert 'href="/v2/device/s4?op=deploy"' in again and "Not-Real-1" not in again
+        assert secret_refs.listing("lab", "s4")["counts"]["none"] == 0
+
+    def test_another_account_naming_the_sign_in_reference_is_refused_at_commit(
+            self, ed, monkeypatch):
+        """C2289 (the operator's r6, 2026-11-01: `lab` committed with `secret_ref:
+        user_admin_secret`, the account Mercury signs in with): refused at commit, nothing
+        written, in the words Set value… uses for the same rule; the account itself may name it,
+        and bulk intent refuses the same result."""
+        from modules.nsot import bulk_intent, secret_refs
+        monkeypatch.setattr(intent_edit, "_signs_in_as", lambda list_name, host: "admin")
+        opened = intent_edit.open_doc("lab", "s4")
+
+        def users(*names):
+            return opened["yaml"].replace("users: []\n", "users:\n" + "".join(
+                f"- name: {n}\n  privilege: 15\n  secret_kind: secret\n"
+                "  secret_ref: user_admin_secret\n" for n in names), 1)
+        shared = users("admin", "lab")
+        r, html = _post(ed, "/v2/device/s4/intent/commit", yaml=shared, base=opened["base"],
+                        summary="the temporary lab account")
+        import html as _h
+        words = secret_refs.managed_words("user_admin_secret")
+        assert r.status_code == 400 and "Committed to" not in html, html[:400]
+        said = _h.unescape(html)
+        assert "account lab names user_admin_secret" in said and words in said, said[:800]
+        assert intent_edit.open_doc("lab", "s4")["yaml"] == opened["yaml"], "nothing written"
+        assert words == ("user_admin_secret is the account Mercury signs in with; it changes "
+                         "by Rotate only and can't be shared")
+        assert any(c["detail"] == words for c in secret_refs.check(
+            "lab", "s4", "user_admin_secret", "x", "x", "r", signs_in_as="admin",
+            intent={"users": [{"name": "admin", "secret_ref": "user_admin_secret"}]})), \
+            "Set value… keeps the same rule in the same words"
+        assert intent_edit.validate("s4", users("admin"), "lab")["ok"], "its own account may"
+        report = bulk_intent.plan(ed["repo"], ["s4"], [{
+            "path": ["users"], "before": [],
+            "after": [{"name": "lab", "privilege": 15, "secret_kind": "secret",
+                       "secret_ref": "user_admin_secret"}]}],
+            render=lambda h, hv: ("", True, []), list_name="lab")
+        assert report["refused"] and words in report["refused"][0]["reason"], report
+
     def test_a_moved_intent_writes_nothing_and_places_the_edit_on_theirs(self, ed):
         opened, text = self._edited()
         # Another person commits a change to a DIFFERENT line first.

@@ -170,7 +170,7 @@ def standing_bands(rows: list) -> list:
 
 def record(row_id: str, event: str, *, why: str, by: str, verified: str,
            kind: str, what: str, band: float = None, value: float = None,
-           devices: list = None) -> dict:
+           devices: list = None, disposition: str = "") -> dict:
     """Append one acknowledgement. The caller has checked the row exists now and the
     reason's shape (`attention.acknowledge`, the one caller). *band* and *value* are a chronic
     alert's measured band and its value then (C433): it holds only within the band. *devices*
@@ -188,6 +188,9 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
         entry["band"], entry["value"] = float(band), (None if value is None else float(value))
     if devices:
         entry["devices"] = [str(d) for d in devices]
+    if disposition:
+        # What the person found (C2295): kept on the entry History draws.
+        entry["disposition"] = disposition
     line = json.dumps(entry, sort_keys=True)
     if _on_database():
         from modules import records_migrate

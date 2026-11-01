@@ -257,8 +257,12 @@ explain call in the last day", its cause naming the kinds of words found, the ne
 what it was about and where in its data each line was. Someone who can write a device's logs,
 descriptions or records may have aimed them at the model. Its action: read the call's record in
 History and the lines where they were read, and find who wrote them. It clears a day after the
-last such call, or when you acknowledge it with a reason; a later call that withholds a line
-raises it again.
+last such call, or when you acknowledge it with a reason and what it was: a true positive
+(someone aimed the lines at the model: investigate who wrote them), benign or a test, or a false
+positive (the words were not instructions; these are the flagger's tuning evidence). What you
+chose is recorded with the acknowledgement and shown in History. A later call that withholds a
+line raises it again. An evaluation's own calls (a recorded case planting a line on purpose)
+raise no row.
 
 ## How a row clears {#clearing}
 

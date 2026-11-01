@@ -27,7 +27,17 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `3a4716458cf3c8b58a47f3be90adfae602c4cbf39c2d43091d41a372701c95b3`
+Templates sha256: `c7de06101538b630589d9924a6cdac4284f05dc154d57a2b702dab0914d155b8`
+
+**Compared again 2026-11-01 (C2288):** the committed result's footer takes
+`_intent_deploy_offer.html` (included by `_intent_edit.html`): when the committed intent names a
+secret reference with no value, "Before it can be deployed" names each with **Set value…** (the
+Secret references card's write-only form, scrolled into view) and **Plan a deploy…** is drawn
+greyed with its reason; re-read on `nmas:credentials`. Shot `tab-intent-done` again (1440, 1280,
+390) beside DevIntentStates' state 2: the result's head, its two columns and Edit again / See it
+in History **same**; the offer is a **deviation** (board H's state 2 draws Plan a deploy… alone),
+logged in STANDING_APPROVAL_LOG. Templates sha256 before:
+`3a4716458cf3c8b58a47f3be90adfae602c4cbf39c2d43091d41a372701c95b3`.
 
 **Compared again 2026-11-01 (C2287):** `_intent_secrets.html` gains a fifth state, "the
 device's value, as it keeps it" (a value the device keeps as typed, an SNMP community's, seeded

@@ -610,6 +610,40 @@ def _intent_check(client, lab, _mp):
         assert r.status_code == 200, r.status_code
 
 
+def _intent_deploy_offer(client, _lab, _mp):
+    """The commit result's deploy offer (C2288) on r3, whose references the walk's credential
+    store holds no value for: each named with Set value…, Plan a deploy… greyed."""
+    r = client.get("/v2/device/r3/intent/deploy-offer")
+    assert r.status_code == 200, r.status_code
+    assert "Before it can be deployed" in r.get_data(as_text=True), "r3 has every value"
+
+
+def _attention_withheld(client, _lab, _mp):
+    """Needs attention with a withheld-lines row (C2295): its Acknowledge… form draws the
+    disposition choice. The record of AI calls planted for this provider alone, then undone."""
+    import time as _time
+
+    import pytest
+
+    from modules import attention
+
+    mp = pytest.MonkeyPatch()
+    try:
+        at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(_time.time() - 60))
+        call = {"id": "call-1", "feature": "explain", "at": at, "actor": "op@example.com",
+                "subject": {"kind": "alert", "id": "ep-1", "devices": ["r2"]},
+                "withheld": [{"where": "pack[9].pieces[0].text",
+                              "patterns": ["ignore_instructions"]}]}
+        real = attention.ai_withheld_source
+        mp.setattr(attention, "ai_withheld_source", lambda rows=None, now=None: real([call]))
+        mp.setattr(attention, "SOURCES", [attention.ai_withheld_source])
+        r = client.get("/v2/attention")
+        assert r.status_code == 200, r.status_code
+        assert 'name="disposition"' in r.get_data(as_text=True), "no disposition drawn"
+    finally:
+        mp.undo()
+
+
 def _intent_words(client, lab, _mp):
     """Change it in words on r3's Intent tab (feature 7, 15.16): hosted AI allowed and the
     adapter answering as planted, a draft that sets the description of r3's first committed
@@ -2364,7 +2398,8 @@ def _sdn_evidence(client, _lab, _mp):
 
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
+PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _attention_withheld,
+                   _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,

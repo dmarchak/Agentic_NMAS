@@ -78,6 +78,39 @@ def test_it_is_a_source_with_its_words_and_how_it_clears():
     assert A.CLEARS[("ai_withheld", "withheld")][0] == ("acknowledge", "time")
 
 
+def test_an_evaluation_s_call_raises_no_row():
+    """C2295 (the operator, 2026-11-01: the row was injection case 22's own evaluation calls):
+    a call an evaluation made, by its trigger or its actor, raises nothing."""
+    by_trigger = dict(_call(1, NOW - 60, withheld=W), trigger={"kind": "evaluation", "run": "x"})
+    by_actor = dict(_call(2, NOW - 30, withheld=W), actor="evaluation:explain-cases-x")
+    assert A.ai_withheld_source(rows=[by_trigger, by_actor], now=NOW)["rows"] == []
+    assert A.ai_withheld_source(rows=[by_actor, _call(3, NOW - 20, withheld=W)],
+                                now=NOW)["rows"][0]["what"].startswith("1 line ")
+
+
+def test_it_is_acknowledged_with_a_reason_and_a_disposition_recorded(tmp_path, monkeypatch):
+    """C2295: the row drew Acknowledge… and the handler refused it ("not a row a person
+    acknowledges"). Now it is acknowledged with a reason and what it was (a true positive, benign
+    or a test, a false positive), the disposition kept on the entry History draws; without one,
+    refused naming the three."""
+    from modules import acknowledgements as ACK
+    monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
+    rows = [_call(1, NOW - 60, withheld=W)]
+    monkeypatch.setattr(A, "ai_withheld_source",
+                        lambda rows=rows, now=None, real=A.ai_withheld_source: real(rows, NOW))
+    (r,) = A.ai_withheld_source()["rows"]
+    assert r["acknowledge"] and [v for v, _w in r["dispositions"]] == [
+        "true_positive", "benign_test", "false_positive"]
+    why = "the planted line of injection case 22, an evaluation run"
+    refused = A.acknowledge(r["id"], r["event"], why, by="op@example.com", verified="access")
+    assert not refused["ok"] and "say what it was" in refused["error"], refused
+    got = A.acknowledge(r["id"], r["event"], why, by="op@example.com", verified="access",
+                        disposition="benign_test")
+    assert got["ok"], got
+    (entry,) = [e for e in ACK.read()["rows"] if e["row"] == r["id"]]
+    assert entry["disposition"] == "benign_test" and entry["kind"] == "ai_withheld/withheld"
+
+
 def test_a_real_call_that_withheld_a_line_is_raised(tmp_path, monkeypatch):
     """Through the real gateway (test_ai_typed_text.py's `gw`): the call's row carries what was
     withheld, and the source reads it from the record."""

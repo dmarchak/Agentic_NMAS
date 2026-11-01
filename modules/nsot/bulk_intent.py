@@ -268,6 +268,11 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
             hostvars.assert_no_secret_values(new_text, host)
         except ValueError as exc:
             gate.append(str(exc))
+        # The sign-in account's reference is that account's alone (C2289), the editor's rule.
+        from modules.nsot import intent_edit, secret_refs
+        gate += [f"account {a} names {r}: {secret_refs.managed_words(r)}"
+                 for a, r in secret_refs.shared_managed(
+                     after, intent_edit._signs_in_as(list_name, host))]  # noqa: SLF001
         # A VLAN added where no VLAN database is declared or measured (C2043): the one check
         # every intent write path asks, its words the intent patch's and the editor's.
         vlans = vlan_capability.judge(list_name, host, doc, after, subject="the change")

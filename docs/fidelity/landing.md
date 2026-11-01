@@ -35,7 +35,14 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `a8f86222680902c3742e7568e77154241c0b2e7841a9a88e9263798354604b87`
+Templates sha256: `505bb09711857f1fe45631860f26fd10adb4198abd2c94458d8249c739818d84`
+
+Compared again 2026-11-01 (C2295), by the template: the Acknowledge… form of a row whose kind
+asks a disposition (lines withheld as instructions) draws a choice before the reason (a true
+positive, benign or a test, a false positive); every other row's form is unchanged. No board
+draws an acknowledgement's disposition: **deviation**, logged in STANDING_APPROVAL_LOG. No other
+region changed. Templates sha256 before:
+`a8f86222680902c3742e7568e77154241c0b2e7841a9a88e9263798354604b87`.
 
 Compared again 2026-10-28 (C2056): `_attention.html` gains one branch, for an action whose
 `open` is `ai_spend_panel` (an AI spend row): "Open the spend panel", an outline button with its

@@ -211,6 +211,60 @@ def test_the_case_keeps_its_judging_history():
     assert "one_of" not in BY[1]["expect"] and "lead_not_only" not in BY[1]["expect"]
 
 
+#: Case 9's pack in the product's shape (schema 8), its pieces' references as the rebuilt pack
+#: of 2026-11-01 names them: r4's own figures, r6's absent ones, and r6's reload line.
+CASE_9_PACK = {"sections": [
+    {"name": "health", "pieces": [
+        {"ref": f"health:dev:{d}:{f}", "device": name, "figure": f}
+        for d, name in (("u4", "r4"), ("24", "r6"))
+        for f in ("cpu", "heartbeat", "scrapes", "discards")]},
+    {"name": "logs", "ref": "logs", "pieces": [{"ref": "logs:1"}]},
+    {"name": "neighbour_events", "ref": "neighbour_events", "pieces": [
+        {"ref": "neighbour_events:1", "device": "r6", "at": "2026-10-21T22:34:34Z",
+         "text": "%SYS-5-RELOAD: Reload requested by console. Reload Reason: Reload Command."}]},
+]}
+
+
+def _case_9(*hyps):
+    return {"outcome": "answer", "needs_human": True, "rationale": "", "why_not": "",
+            "hypotheses": [{"claim": "c", "evidence_refs": list(h)} for h in hyps]}
+
+
+def test_case_9_s_revision_keeps_its_history_and_is_dated_before_any_re_run():
+    """C2276 (the operator, 2026-11-01, REVISE by the rule): the old expectation kept under
+    `was`, the correction quoting the flag note and its three lines of evidence, and the quality
+    signal tracked apart from the pass condition."""
+    c = BY[9]
+    assert c["was"]["expect"]["together"] and "together" not in c["expect"]
+    assert c["corrected"].startswith("2026-11-01T22:3xZ, the operator (C2276")
+    for said in (c["flag"], "%SYS-5-RELOAD: Reload requested by console", "C1526"):
+        assert said in c["corrected"], said
+    assert "Not a pass condition" in c["track"]
+    assert c["needs"] == ["health:r4:scrapes", "health:r6:heartbeat"]
+
+
+def test_case_9_passes_on_the_reload_leading_and_r6_s_silence_anywhere():
+    e = BY[9]["expect"]
+    same = _case_9(["neighbour_events:1", "health:dev:24:heartbeat", "logs:1"])
+    apart = _case_9(["neighbour_events:1", "logs:1"], ["health:dev:24:scrapes"])
+    assert cases.explain_misses(e, same, CASE_9_PACK) == []
+    assert cases.explain_misses(e, apart, CASE_9_PACK) == [], "silence anywhere passes"
+
+
+def test_case_9_misses_r6_s_silence_leading_and_the_reload_absent():
+    e = BY[9]["expect"]
+    silence_first = _case_9(["health:dev:24:heartbeat", "logs:1"], ["neighbour_events:1"])
+    assert cases.explain_misses(e, silence_first, CASE_9_PACK) == [
+        "the leading hypothesis cites none of ['neighbour_events:*']"]
+    no_silence = _case_9(["neighbour_events:1", "logs:1"])
+    assert cases.explain_misses(e, no_silence, CASE_9_PACK) == [
+        "cites none of ['health:r6:heartbeat', 'health:r6:scrapes']"]
+    r4_alone = _case_9(["health:dev:u4:cpu", "health:dev:u4:scrapes"],
+                       ["neighbour_events:1", "health:dev:24:heartbeat"])
+    assert "the leading hypothesis rests on" in " ".join(
+        cases.explain_misses(e, r4_alone, CASE_9_PACK))
+
+
 @pytest.mark.parametrize("figure", ["cpu", "scrapes", "heartbeat"])
 def test_a_shared_cause_on_three_devices_passes_on_any_cross_device_figure(ctx,  # noqa: F811
                                                                           figure):

@@ -73,6 +73,13 @@ def s1(tmp_path, monkeypatch):
                       source="test", actor="test", allow_new=True)
     document = get_parser("cisco_ios").parse(config)
     document["hostname"] = "s1"
+    # Each reference's value from s1's own capture, as seeding stores it: a deployable device,
+    # so its commit offers Plan a deploy… (C2288 greys it while a reference has no value).
+    from modules import credentials
+    monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "credential_profiles.json"))
+    for ref, value in (document.get("secrets") or {}).items():
+        credentials.set_template_secret(credentials.template_secret_key("lab", "s1", ref),
+                                        value, list_name="lab")
     hostvars.write_committed(repo_dir, document)
     _repo.save_host_vars("lab", ["s1"], actor="test", message="host_vars: s1 parsed", source="test")
     # Its template in the library and approved against s1, as the walk's was: a removal is

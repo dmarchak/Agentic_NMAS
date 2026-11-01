@@ -2035,16 +2035,15 @@
         "outcome": [
           "answer"
         ],
-        "together": [
+        "lead_cites": [
           [
-            [
-              "logs:*"
-            ],
-            [
-              "health:r6:heartbeat",
-              "health:r6:scrapes",
-              "health:r6:cpu"
-            ]
+            "neighbour_events:*"
+          ]
+        ],
+        "cites": [
+          [
+            "health:r6:heartbeat",
+            "health:r6:scrapes"
           ]
         ],
         "lead_not_only": [
@@ -2054,6 +2053,49 @@
           "health:r4:discards"
         ],
         "figures_from_pack": true
+      },
+      "was": {
+        "expect": {
+          "outcome": [
+            "answer"
+          ],
+          "together": [
+            [
+              [
+                "logs:*"
+              ],
+              [
+                "health:r6:heartbeat",
+                "health:r6:scrapes",
+                "health:r6:cpu"
+              ]
+            ]
+          ],
+          "lead_not_only": [
+            "health:r4:cpu",
+            "health:r4:heartbeat",
+            "health:r4:scrapes",
+            "health:r4:discards"
+          ],
+          "figures_from_pack": true
+        }
+      },
+      "corrected": "2026-11-01T22:3xZ, the operator (C2276, REVISE by the rule), from evidence, before any re-run on the new pack: the flag note of 2026-10-26 reads \"A person reads the recording: the drop is r6 going silent (its figures absent, its beats stopped), r4 being fine; why r6 went silent is offered as a hypothesis (a reload, a crash, its link), never as fact, since r6's own log is not here.\" Its premise, r6's own log not in the pack, is removed by the neighbour section (C2176, schema 8). Evidence: (1) the flag note's own ground, quoted; (2) the neighbour line `%SYS-5-RELOAD: Reload requested by console. Reload Reason: Reload Command.` at 2026-10-21T22:34:34Z on r6, the adjacency's other end and the silent device, 42 s before r4's onset (neighbour_events:1, the pack rebuilt 2026-11-01T22:27:43Z); (3) C1526, the operator's same-evening report (2026-10-21 ~23:3x UTC) of r6's console write erase and reload. Now: the leading hypothesis cites r6's reload event (neighbour_events) as the cause of r4's adjacency drop; r6's heartbeat or scrape figures are cited anywhere in the answer; lead_not_only on r4's own figures, figures_from_pack and the needs kept. The recording of 2026-10-26 was judged on `was`.",
+      "track": "Not a pass condition (the operator, 2026-11-01): the best answer presents r6's silence as a consequence of the reload in the same hypothesis, not as a competing cause. Each re-run records whether its leading hypothesis cites the reload and r6's heartbeat or scrape figures together (`same_hypothesis`), a quality signal for a later prompt round.",
+      "rescored": {
+        "at": "2026-11-01T22:4xZ",
+        "why": "C2276's revision, scored on the new pack (schema 8) before any other change, as the operator ordered: v4, 3 runs",
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "actor": "evaluation:explain-case9-revised-20261101",
+        "batch": "msgbatch_01LWspfJGRUSYLRyzB4eCwTS",
+        "cost_usd": 0.0771,
+        "runs": [
+          {"run": 0, "pass_raw": true, "pass_guarded": true, "same_hypothesis": false, "reload_in": [1], "silence_in": [2]},
+          {"run": 1, "pass_raw": true, "pass_guarded": true, "same_hypothesis": false, "reload_in": [1], "silence_in": [2]},
+          {"run": 2, "pass_raw": true, "pass_guarded": true, "same_hypothesis": false, "reload_in": [1], "silence_in": [2]}
+        ],
+        "words": "3 of 3 pass, raw and guarded; the tracked signal: 0 of 3 present r6's silence in the reload's hypothesis (each leads on the reload and cites r6's silence in its second hypothesis)"
       },
       "flag": "A person reads the recording: the drop is r6 going silent (its figures absent, its beats stopped), r4 being fine; why r6 went silent is offered as a hypothesis (a reload, a crash, its link), never as fact, since r6's own log is not here.",
       "recorded": {

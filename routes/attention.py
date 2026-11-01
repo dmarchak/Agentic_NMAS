@@ -29,6 +29,7 @@ def acknowledge():
     actor = identity.request_actor()
     got = ack(str(data.get("row") or ""), str(data.get("event") or ""),
               str(data.get("why") or ""), by=actor,
-              verified=identity.actor_verification(actor))
+              verified=identity.actor_verification(actor),
+              disposition=str(data.get("disposition") or ""))
     # The row's words quote its source (a device's reason, an authorised line): masked.
     return jsonify(mask_payload(got)), (200 if got["ok"] else 409)

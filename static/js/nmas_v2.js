@@ -1190,6 +1190,8 @@
         cancel: function () { if (this.busy) return; this.isOpen = false; this.said = ''; },
         send: function () {
           var self = this, el = this.$root, box = el.querySelector('input[name="why"]');
+          // A disposition, where the row asks one (C2295: lines withheld as instructions).
+          var pick = el.querySelector('select[name="disposition"]');
           var ctl = root.AbortController ? new root.AbortController() : null;
           var timer = root.setTimeout(function () {
             if (ctl) ctl.abort();
@@ -1209,7 +1211,7 @@
           root.fetch(el.getAttribute('data-url'), {
             method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: JSON.stringify({row: el.getAttribute('data-row'), event: el.getAttribute('data-event'),
-                                  why: box ? box.value : ''}),
+                                  why: box ? box.value : '', disposition: pick ? pick.value : ''}),
             signal: ctl ? ctl.signal : undefined
           }).then(function (r) {
             return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });

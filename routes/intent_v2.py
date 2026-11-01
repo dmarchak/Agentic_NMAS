@@ -316,7 +316,40 @@ def commit(name):
                                 refused=refused), got.get("status", 400))
     p = intent_edit.preview(ref.name, host, text)
     return _card({"state": "done", "host": host, "list": ref.name, "r": got, "p": p,
-                  "summary": summary, "actor": identity.request_actor()})
+                  "summary": summary, "actor": identity.request_actor(),
+                  "offer": deploy_offer_ctx(ref, dev)})
+
+
+def deploy_offer_ctx(ref, dev) -> dict:
+    """What the commit result's deploy offer draws (C2288): each reference the committed intent
+    names that holds no value, with Set value… where it may be set, and whether Plan a deploy…
+    is offered (only when none is missing: its deploy would be refused). Never a value. A
+    listing that cannot be read is said, and Plan a deploy… stays offered (its own plan then
+    names what is missing)."""
+    from modules.nsot import secret_refs
+
+    host = dev.get("hostname", "")
+    try:
+        sr, error = secret_refs.listing(ref.name, host,
+                                        signs_in_as=dev.get("username") or ""), ""
+    except Exception as exc:                          # noqa: BLE001 (said on the result)
+        sr, error = {"refs": []}, type(exc).__name__
+    missing = [{"ref": r["ref"], "for": r["for"], "settable": r["settable"]}
+               for r in sr["refs"] if r["state"] == "none"]
+    return {"host": host, "missing": missing, "error": error,
+            "may": bool(may_commit().get("may"))}
+
+
+@bp.route("/<name>/intent/deploy-offer", methods=["GET"])
+def deploy_offer(name):
+    """The commit result's deploy offer alone (C2288), re-read when a value is stored
+    (`nmas:credentials`): Plan a deploy… once every reference holds a value. Reads only."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_intent_deploy_offer.html",
+                                   o=deploy_offer_ctx(ref, dev)))
 
 
 @bp.route("/<name>/intent/reopen", methods=["POST"])

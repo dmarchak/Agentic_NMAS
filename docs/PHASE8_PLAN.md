@@ -2081,8 +2081,10 @@ label. The defect class it prevents: a confidently wrong explanation shipped bec
 average looked good, or a useful one held back by a floor it nearly meets.
 
 **The measurement budget and screening (the operator's decisions, 2026-10-29 ~00:4x UTC).** A
-new $200 credit, expiring 2026-11-29 (every earlier credit expired), of which **$120 is Phase 8's
-measurement budget**; every report states spend against it. Mercury's day cap is back to $80,
+new $200 credit, expiring 2026-11-29 (every earlier credit expired), of which **$150 is Phase 8's
+measurement budget** (raised from $120 by the operator, 2026-11-01, at about $111.6 spent; the
+next spend: sdn_classify's 20 blind cases built and scored, then Explain's 5; new Explain
+variants held); every report states spend against it. Mercury's day cap is back to $80,
 and a round that would pass it is asked for first. **Screen before adopting:** a candidate (a
 prompt version, a fact sheet, a model) gets a 3-run screen first, and only one that passes the
 screen gets a 10-run adoption round. Evaluation rounds (never a live feature) go through the
@@ -4104,8 +4106,10 @@ docs/boards/ holds a drawing for it.
 | 2026-11-01 | Device page, Devices, Topology; an operation's card | PS, `PlannedState.dc.html`, drawn: the planned state (amber, linked to the operation) and the card's Expected effects, Unexpected and Overdue | The attribution rule seen where people look (20.2, 20.3; C2274) | 2026-11-01, "Board PS drawn and approved" |
 | 2026-11-01 | The device's Intent tab | H-S, deviation: a fifth state, "the device's value, as it keeps it" (a seeded value, or a typed one a verified deploy carried) | C2287 | 2026-11-01, "H-S, the Secret references card: a fifth state"; docs/fidelity/tab-intent.md |
 | 2026-11-01 | The device page's Actions menu | ActionsMenu (board 7), deviation: Verify again… after Reload…, offered only while the last reload ended not verified | C2280 | 2026-11-01, "The device's Actions menu: Verify again…"; docs/fidelity/device.md |
+| 2026-11-01 | The device's Intent tab | H (DevIntentStates, state 2), deviation: the committed result names each reference with no value with Set value…, Plan a deploy… greyed until each holds one | C2288 | 2026-11-01, "H's committed result: a reference with no value named"; docs/fidelity/tab-intent.md |
+| 2026-11-01 | Needs attention | Landing, deviation: a withheld-lines row's Acknowledge… asks a disposition (true positive, benign or test, false positive) | C2295 | 2026-11-01, "Needs attention: a withheld-lines row acknowledged with a disposition"; docs/fidelity/landing.md |
 
-**Count:** 202 rows: 59 drawn, 21 revised, 24 no drawing, 98 deviation (2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 204 rows: 59 drawn, 21 revised, 24 no drawing, 100 deviation (the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

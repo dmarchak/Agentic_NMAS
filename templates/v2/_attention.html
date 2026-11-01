@@ -102,6 +102,10 @@
         <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
         <span class="att-ack-form" x-show="isOpen" x-cloak>
           <label class="sr-only" for="ack-{{ loop.index }}">Why this needs nothing more</label>
+          {%- if r.dispositions %}
+          <label class="sr-only" for="ackd-{{ loop.index }}">What it was</label>
+          <select id="ackd-{{ loop.index }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
+          {%- endif %}
           <input id="ack-{{ loop.index }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
           <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
           <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>

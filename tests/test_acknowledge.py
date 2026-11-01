@@ -88,6 +88,25 @@ class TestEveryKindSaysHowItClears:
             assert ways and set(ways) <= set(CLEAR_WAYS), kind
             assert len(words.split()) >= 3 and not words.endswith("."), kind
 
+    def test_every_row_that_draws_acknowledge_is_one_the_handler_accepts(self):
+        """C2295's contract (the operator, 2026-11-01; C2280's class, the UI promising what its
+        handler will not do): every kind a row draws Acknowledge… for (ACKNOWLEDGED_HERE, the
+        row's ``acknowledge``) has its source in the handler's map, a function the handler
+        can read the row from; and a kind outside it draws neither the button nor the words."""
+        from modules import attention as A
+        sources = {s for s, _k in A.ACKNOWLEDGED_HERE}
+        assert len(sources) >= 8, sources
+        missing = sorted(s for s in sources if s not in A._ACK_SOURCES)  # noqa: SLF001
+        assert missing == [], f"drawn Acknowledge…, refused by the handler: {missing}"
+        for s, fn in A._ACK_SOURCES.items():  # noqa: SLF001
+            assert callable(getattr(A, fn, None)), (s, fn)
+        page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "templates", "v2", "_attention.html"), encoding="utf-8").read()
+        assert "{%- if r.acknowledge %}" in page, "the button is drawn only where it may be"
+        row = A.row(source="restarts", kind="unplanned", key="k", what="w", cause="c",
+                    action={"label": "read it"}, level="warning", event="e")
+        assert row["acknowledge"] is True
+
     def test_the_kinds_acknowledged_here_say_so(self):
         from modules.attention import ACKNOWLEDGED_HERE, CLEARS
         assert ACKNOWLEDGED_HERE == {("restarts", "unplanned"), ("authorisations", "repeated"),

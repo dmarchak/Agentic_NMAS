@@ -126,6 +126,26 @@ def managed_ref(username: str) -> str:
     return f"user_{username}_secret" if username else ""
 
 
+def managed_words(ref: str) -> str:
+    """THE words of the one rule Set value… and an intent commit both keep (C2289): the sign-in
+    account's reference is that account's alone."""
+    return (f"{ref} is the account Mercury signs in with; it changes by Rotate only and can't "
+            "be shared")
+
+
+def shared_managed(intent: dict, signs_in_as: str) -> list:
+    """``[(account, ref)]``: each account of *intent* other than the one Mercury signs in with
+    (*signs_in_as*) that names that account's reference (C2289: a second account once named
+    the sign-in account's reference, so a deploy would have given it the sign-in credential).
+    [] when the sign-in account is unknown."""
+    ref = managed_ref(signs_in_as)
+    if not ref:
+        return []
+    return [(u.get("name"), ref) for u in (intent or {}).get("users") or []
+            if isinstance(u, dict) and u.get("secret_ref") == ref
+            and u.get("name") != signs_in_as]
+
+
 def listing(list_name: str, host: str, *, signs_in_as: str = "", intent: dict = None) -> dict:
     """``{"refs": [{"ref", "for", "state", "words", "settable", "why_not"}], "counts"}`` for
     every reference *host*'s committed intent names; never a value. *signs_in_as* is the
@@ -160,8 +180,7 @@ def check(list_name: str, host: str, ref: str, value: str, again: str, reason: s
          else f"{ref} is not named in {host}'s committed intent"},
         {"name": "not Mercury's own account", "ok": ref != managed_ref(signs_in_as),
          "detail": "it is not the account Mercury signs in with"
-         if ref != managed_ref(signs_in_as)
-         else "Mercury signs in with this account: it changes by Rotate only"},
+         if ref != managed_ref(signs_in_as) else managed_words(ref)},
         {"name": "a reason", "ok": bool((reason or "").strip()),
          "detail": "recorded with who and when" if (reason or "").strip()
          else "say why in one line; it is recorded with who and when"},
