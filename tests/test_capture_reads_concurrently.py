@@ -69,7 +69,9 @@ class TestTheReadsOverlap:
     def test_nine_devices_take_the_slowest_ones_time_not_the_sum(self, monkeypatch):
         # Spaced 0.1 s apart: per-device times are rounded to 0.1 s, so a
         # closer spacing ties and the slowest is named by order, not by time.
-        delays = {f"d{i}": 0.05 + 0.1 * i for i in range(9)}       # slowest d8, 0.85 s
+        # The shortest read lasts 0.5 s, far past a thread's start: at 0.05 s CI's loaded
+        # runner started the ninth read after the first had ended (#1352, peak 8; C2269).
+        delays = {f"d{i}": 0.5 + 0.1 * i for i in range(9)}        # slowest d8, 1.3 s
         state = _fake_reads(monkeypatch, delays)
         read, timing = G._read_all("Lab", "/nowhere", _devices(9))
         assert state["peak"] == 9, "every read in flight at once"
