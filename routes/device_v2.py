@@ -1432,6 +1432,9 @@ def _deploy_card(ref, dev, back, fields, focus="", keep: dict = None):
         entry = plan_devices(ref.name, [host], remove=remove,
                              authorise={host: authorise}, declare=declare)[0]
     out = mask_payload({"entry": entry, "preview": deploy_preview([entry], request, scope="")})
+    # Each masked secret named by its reference, never its kind (C2293); after masking.
+    from modules.nsot import secret_refs
+    out = secret_refs.label_by_ref(out, secret_refs.intent_for_names(ref.name, host))
     c = device_actions.deploy_card(
         ref, host, out["entry"], out["preview"],
         viewer=dict(confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""),

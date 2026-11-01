@@ -135,6 +135,52 @@ def negated_still(chain, line: str, held: set, key) -> str:
     return ""
 
 
+#: An account or enable line in a secret's position, as a program sends it: `username <name>`
+#: with its optional privilege and algorithm, or `enable`, then `secret` or `password`, an
+#: optional type, the value.
+_ACCOUNT = re.compile(r"^(?:username\s+(?P<name>\S+)(?P<opts>(?:\s+(?:privilege\s+\d+|"
+                      r"algorithm-type\s+\S+))*)|enable)\s+(?P<kind>secret|password)"
+                      r"(?:\s+(?P<type>\d+))?\s+\S+")
+#: The forms a device stores each kind in (a typed `secret` becomes type 5, 8 or 9; a
+#: `password` stays 0 or becomes 7 under service password-encryption).
+_STORED = {"secret": {"5", "8", "9"}, "password": {"0", "7"}}
+
+
+def account_form(line: str):
+    """``{"name", "privilege", "kind"}`` for a top-level account or enable line in a secret's
+    position (*name* "" for `enable`), else None."""
+    m = _ACCOUNT.match(line.strip())
+    if not m:
+        return None
+    priv = re.search(r"privilege\s+(\d+)", m.group("opts") or "")
+    return {"name": m.group("name") or "", "privilege": priv.group(1) if priv else "",
+            "kind": m.group("kind")}
+
+
+def account_held(line: str, running: str) -> str:
+    """Why account *line* (a program's, `account_form`) does not read back in *running*, or ""
+    when it does: the device prints the account (or enable) with the same privilege and a
+    secret of the kind it makes from what was sent (C2291). Never names a value."""
+    want = account_form(line)
+    for printed in (running or "").splitlines():
+        got = account_form(printed)
+        if got is None or got["name"] != want["name"]:
+            continue
+        m = _ACCOUNT.match(printed.strip())
+        stored = m.group("type") or ("0" if got["kind"] == "password" else "")
+        who = f"account {want['name']}" if want["name"] else "the enable secret"
+        if want["privilege"] and got["privilege"] != want["privilege"]:
+            return (f"{who} is there with privilege {got['privilege'] or 'unset (1)'}, not "
+                    f"{want['privilege']}")
+        if got["kind"] != want["kind"] or stored not in _STORED[want["kind"]]:
+            return (f"{who} is there with {got['kind']} type {stored or 'unknown'}, not a "
+                    f"{want['kind']} the device makes (type "
+                    f"{' or '.join(sorted(_STORED[want['kind']]))})")
+        return ""
+    return (f"the device prints no `username {want['name']}`" if want["name"]
+            else "the device prints no enable secret")
+
+
 def read_back(commands: list, running: str, vlans: dict = None) -> dict:
     """Each new line of a program, quick or full (C732), looked for in *running*
     under its section. ``{"missing": [...], "skipped": [{line, why}], "checked": n,
@@ -261,6 +307,14 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
             checked += 1
             if still:
                 missing.append(f"{shown} (the device still prints `{still}`)")
+        elif not leaf.chain and account_form(line) is not None:
+            # A secret-bearing account line (C2291: the lab account's four deploys verified
+            # "0 of 1"): its value is stored in another form, but what CAN be read is checked,
+            # the account there with its privilege and a secret of the kind the device makes.
+            checked += 1
+            why = account_held(line, running or "")
+            if why:
+                missing.append(f"{redact_positional(shown)} ({why})")
         elif redact_positional(line) != line:
             skipped.append({"line": redact_positional(shown),
                             "why": "a secret the device stores in another form"})

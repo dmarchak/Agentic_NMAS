@@ -70,6 +70,17 @@ def _intent(list_name: str, host: str) -> dict:
     return hostvars.from_yaml(raw) if raw is not None else {}
 
 
+def intent_for_names(list_name: str, host: str) -> dict:
+    """*host*'s committed intent for `label_by_ref`, or {} when it cannot be read: a preview
+    is never refused for a label (its masks then keep their kind)."""
+    try:
+        return _intent(list_name, host)
+    except Exception as exc:                          # noqa: BLE001 (the labels keep their kind)
+        log.warning("secret refs: %s's intent could not be read to name its masks: %s", host,
+                    type(exc).__name__)
+        return {}
+
+
 def _uses(intent: dict) -> dict:
     """``{ref: what it is for}`` for every reference *intent* names (`hostvars.named_refs`, the
     list hydration resolves, so the card and the deploy never disagree on what is named)."""
@@ -124,6 +135,37 @@ def _state(list_name: str, host: str, ref: str) -> str:
 def managed_ref(username: str) -> str:
     """The reference of the account Mercury signs in with (a rotation's `user_<name>_secret`)."""
     return f"user_{username}_secret" if username else ""
+
+
+_MASKED_USER = re.compile(r"(username\s+(\S+)\b[^\n<]*?)<redacted:user_password>")
+_MASKED_ENABLE = re.compile(r"(enable\s+(?:secret|password)\b[^\n<]*?)<redacted:enable_secret>")
+
+
+def label_by_ref(value, intent: dict):
+    """*value* (a preview's masked payload: a string, or lists and dicts of them) with each
+    masked secret named by the reference intent names for it, never by its kind (C2293: a
+    person could not tell which value was hidden): an account's line by its `users[]`
+    entry's `secret_ref`, the enable secret's by `enable_secret_ref`. Runs AFTER masking, on
+    text that holds no value; a line whose reference is unknown keeps its kind."""
+    users = {str(u.get("name")): str(u.get("secret_ref"))
+             for u in (intent or {}).get("users") or []
+             if isinstance(u, dict) and u.get("name") and u.get("secret_ref")}
+    enable = str((intent or {}).get("enable_secret_ref") or "")
+
+    def one(text):
+        text = _MASKED_USER.sub(lambda m: (f"{m.group(1)}<redacted:{users[m.group(2)]}>"
+                                           if m.group(2) in users else m.group(0)), text)
+        if enable:
+            text = _MASKED_ENABLE.sub(lambda m: f"{m.group(1)}<redacted:{enable}>", text)
+        return text
+
+    if isinstance(value, str):
+        return one(value) if "<redacted:" in value else value
+    if isinstance(value, list):
+        return [label_by_ref(v, intent) for v in value]
+    if isinstance(value, dict):
+        return {k: label_by_ref(v, intent) for k, v in value.items()}
+    return value
 
 
 def managed_words(ref: str) -> str:

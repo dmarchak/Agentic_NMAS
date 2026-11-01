@@ -18,6 +18,134 @@ changes recorded in section 9 ("Decided") and applied in sections 5 to 7.** It b
 [IBN_DESIGN.md](IBN_DESIGN.md) (C750): what each IBN function needs, the AI layer, and the
 binding AI engineering standards (its section 10).
 
+## 0. Road map (the operator, 2026-11-01): the one home for what is left
+
+This section is the standing queue until Phase 8 is done; the sections beneath it are the
+detail. Each report opens with 0.4 ("Needs the operator") and states where 0.3 stands. Statuses come
+from evidence: a measurement, a commit, or a register row, as of 2026-11-01 ~23:0x UTC.
+
+### 0.1 Done means
+
+1. **Every Phase 8 feature in 0.2 meets its 15.12 bar, or ships labelled beta with its gap
+   stated.** The bar: deployed, about 20 recorded cases passing in CI, reliability at 10 runs a
+   case over the recorded set and a blind held-out set of about 30 at or above the floor (95%;
+   Explain and the Analyst 90%), and the operator's walk on the lab. A feature without an AI
+   evaluation (the spend tracker, History's AI audit) is done when deployed, tested and walked.
+2. **No A row blocks Phase 8,** and the A and B rows blocking it stay at or under 60 (register
+   rule 4). Measured 2026-11-01 ~23:0x UTC: 39 open A and B rows tagged "Phase 8: blocks"; 7
+   open A rows, of which 4 block Phase 8: C2003 (17.4), and C2237, C2238 and C2278 (SDN),
+   re-tagged with this road map ("Phase 8: blocks 17.1", worked in 0.3's workstream 3): a HITL
+   proposal that rate-limits the victim, or a benign sender, is wrong even
+   with a person approving it, and HITL is Phase 8's. AUTO (closed-loop remediation) is not in
+   Phase 8 (the operator, 2026-10-24, 15.2): its gate (17.7) may be designed, never enabled,
+   in Phase 8.
+3. **Mercury is fully functional with AI off:** every screen and operation works, each AI
+   control drawn disabled with its reason (15.13), proven by a walk with hosted AI off.
+4. **The drain-and-replace walk passes** (P5's done bar: the AI plans the drain for the
+   device's role, a person confirms each step, drained proven by measured traffic and NetBox
+   set by code, the device replaced, the restore verified).
+5. **A demo path** for the end-of-November video and Lab 10: one script, each step a walked
+   screen, nothing staged.
+
+### 0.2 The features
+
+| Feature | Status (evidence) | Bar | Last measurement | Depends on |
+|---|---|---|---|---|
+| P7, the toolbar assistant (A1, 16.10) | **not built**, grounding started: board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 70 pages, 514 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
+| P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phases 1 and 2; PS (C2274); expected effects |
+| Explain (P1) | **measured, below its bar**: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
+| Explain in Needs attention (20.6) | **not built**: board NA-R approved 2026-11-01 | built, tested, walked | none | PS (C2274), 20.5's one row per cause |
+| Ask in words, metrics (feature 1) | **measured, below its bar**: v10 live; main 23 of 23 reliable, held-out set 4 27 of 30 (90.0%) | 95% | 2026-10-27, 10 runs (run m10cmp-202610270145) | a held-out round after C1887 (closed) |
+| Ask in words, logs | **measured, near its bar**: v4 live; 20 of 20, blind sets 10 of 10 and 10 of 10 at 5 runs | 95% at 10 runs, about 30 held-out | 2026-10-26, 5 runs | the 10-run round and a held-out set of about 30 |
+| Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
+| Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
+| Expected effects (A2.2) | deterministic effects **built** (C506; PS drawn, C2274 open); the AI proposal **not built** | 15.12 for the AI part | none | PS's build |
+| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; A rows C2237, C2238, C2278 open; C2277 closed 2026-11-01; S-HR drawn, not built | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
+| The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
+| Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
+| The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
+| The pre-send review on every deploy preview | **not built** (the 2026-11-01 brief, item 11: code checks first, then an advisory AI review folding in the change record and expected effects, never blocking alone; R5 its first case) | 15.12 | none | P5's board; A2.2, A2.3 |
+| AI pipeline checks: a new pre-deploy check proposed when an issue slipped through | **not built** (section 6 rank 6, "a pipeline check proposed after an escape"; the brief's learning loop: each miss proposes a code check, reviewed before it joins the pipeline) | 15.12, and a person's review of each check | none | the pre-send review; recorded escapes (R5 the first) |
+| Save as a script: an AI Action's sequence or an Explain fix, reviewed, saved as a reusable hard-coded script | **not built** (16.7 item 8, "Save as action": a procedure of Mercury's gated operations, parameterised, preconditions re-checked each run, the operator's review before it enters the library, replayed with no AI call) | the operator's review; a replay with no AI call | none | P5; the action library |
+| The open-loop to closed-loop proposal: Mercury proposes when an item has earned closed loop | **not built**, and nothing in the plan or code yet (registered with this road map); the proposal only, enabling closed loop stays a later phase (15.2) | a proposal that names the evidence it rests on (its runs, its misses), walked | none | the feedback loop; the pipeline checks' record |
+| AI features greyed and marked when AI is off | **built** (15.13: one AI mark, each control drawn disabled with its reason, `modules/ai/controls.py`); **the AI-off walk not done** (0.1.3) | the AI-off walk | n/a | none |
+| The spend tracker (18.3) | **built** (C1843 closed: the chip, the panel, Settings › AI, spend history) | deployed, tested, walked | n/a | none |
+| The AI budget QoS (the 2026-11-01 brief, item 10) | **not built**; board and simulator only until the operator signs off | the operator's walk (a replay and an SDN flood, security served) | none | C2039's reservations (built) |
+| History's AI audit (15.14) | **built** | deployed, tested, walked | n/a | none |
+| The injection defence (C2271 to C2273, C2295) | **built** 2026-11-01: lines withheld at the gateway, raised and acknowledged with a disposition; case 22 recorded in a 3-run screen | 15.12 for case 22; hand-checked (TIER_HAND_CHECK) | 2026-11-01, 3 runs | case 22's 5-run recording |
+| Egress (15.11, 15.16) | **built**: three classes, the egress mask, feature 7's touched sections; the irreversible tier hand-checked | hand-checked; tested | n/a | none |
+
+### 0.3 The workstreams, in order
+
+The operator's proposal, kept, with three changes where the evidence disagrees (each said):
+
+0. **A rows and today's fixes:** C2003 (the only A row tagged blocking); the 2026-11-01 queue's
+   open items: C2291 (verify on a secret-bearing line; closed 2026-11-01), C2292 (one id in the editor; closed
+   2026-11-01), C2293 (a masked secret named by its reference; closed 2026-11-01), the cache mark off an interactive press (C2261, the
+   operator's decision: a code change with no spend, so it is here, not in 2).
+1. **Foundations:** PS (C2274), NA-R (20.6), notifications, live refresh (C2268), History's
+   alert episodes, FC phases 1 to 3 (layers and provenance; the plan and run; Credentials the
+   one home, C2294).
+2. **Evaluation:** sdn_classify's 20 blind cases built and scored, then Explain's 5; today's
+   recorded cases (C2237, C2238 from the captures; case 22's recording).
+3. **The SDN slice to its bars.** **Changed:** it opens with C2237, C2238 and C2278 (A, safety),
+   re-tagged "Phase 8: blocks 17.1": they are tagged "after" today, but a HITL proposal that
+   rate-limits the victim or a benign sender is wrong with a person approving it, so 0.1.2 must
+   count them. Then S-HR, C2279, the slice's walks. AUTO stays out of Phase 8 (17.4, 17.7).
+4. **Explain to its bar:** a 10-run round on the recorded set and the blind 5; a candidate only
+   if the evidence asks for one (variants held, the operator, 2026-11-01).
+5. **P7,** stages 1 to 3.
+6. **P5 and the drain-and-replace walk;** save as a script; FC phase 4 (removal, after C2228's
+   measurement) and 5 (P5 and P7 on FC) here.
+7. **The intent editor's AI scopes** (C2290), change records (A2.3), expected effects (A2.2),
+   the pre-send review, then AI pipeline checks (a check proposed after an escape).
+8. **Background features,** off by default and QoS-gated: the digest, incident correlation; the
+   QoS budget's board and simulator first; the open-loop to closed-loop proposal (a proposal
+   only).
+9. **Hardening.** **Changed:** it holds 0.1.3's walk with AI off, as its own item, since no
+   walk has proven it.
+10. **Finish:** the manual, GUI reachability, the demo script (0.1.5).
+
+A workstream waiting on the operator does not stop the queue: the next item is worked meanwhile.
+
+### 0.4 Needs the operator (each report's first section, batched)
+
+- **Human sessions:** the CLI sessions 6 to 11 (from 2026-11-02); each feature's walk (0.1.1);
+  the AI-off walk; the drain-and-replace walk.
+- **Architectural boards:** board FC revision 2 (canvas 189, for a glance); P5's plan editor;
+  the QoS budget; the pre-send review.
+- **Root host steps:** none open.
+- **Secrets:** none open (a value is always typed by the operator).
+- **Case decisions after runs:** case 22's narrowed expectation was agreed; each new blind
+  set's expectations are written before any run, and a disputed case is the operator's.
+- **Budget raises:** asked before a round that would pass the cap (0.5).
+- **Register sorts that are the operator's:** C2003 (A, the operator's sort, blocks 17.4): the
+  stall is now visible, a stale note with Reload (2026-10-28), so a response is never shown as
+  current; its cause needs a stall caught live (its time, the tab, the page's live channel).
+  Recommended: close the A part as built, keep the cause as an UNKNOWN row naming that
+  measurement.
+
+### 0.5 Spend: the rest of the budget
+
+**$150, about $111.7 spent** (2026-11-01 ~22:4x UTC), so about $38 left. By workstream, each an
+estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
+2026-11-01 and 2026-10-27), shown before its round:
+- 2, evaluation: sdn_classify's 20 blind × 10 runs (its cost per call measured on the first
+  run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**;
+- 4, Explain: a 10-run round on 22 recorded and 5 blind (about $7); one candidate screen if
+  asked (about $2): **about $9**;
+- 5, P7: about 30 recorded and a blind set at 10 runs: **about $8**;
+- 3 and 7: the SDN classify after S-HR, feature 7's scope, change records' first run, the
+  pre-send review: **about $8**;
+- 8: the digest and correlation's cases: **about $4**;
+- held back for walks, the demo and reruns: **about $5**.
+
+**Each workstream's real cost is measured on its first run and its line re-estimated from it**
+(the operator, 2026-11-01). If a line will overrun by more than half, a budget request goes into
+0.4 and work continues on the items that spend nothing; spend is never a reason to stop the
+whole road map. A round that would pass the day cap ($15) is reported first with its estimate;
+a raise of the $150 is the operator's (0.4).
+
 ## 1. The goal
 
 Mercury becomes an intent-based networking platform: Translate, Activate, Assure, Respond. AI is
@@ -3533,6 +3661,10 @@ and Mercury offers only that.
   expiry the mode returns to HITL, and the History says so.
 - **Where it lives:** under SDN › Responses for the lab. It moves to a general automation area
   when Phase 9 covers every action.
+- **AUTO is not in Phase 8** (the operator, 2026-10-24, 15.2: closed-loop remediation is a later
+  phase; restated 2026-11-01). It was built for Lab 8 and is refused on any network not marked
+  lab (17.7's guard). In Phase 8 its production gate (17.7) may be designed, never enabled;
+  Phase 8's SDN bar is HITL's.
 
 ### 17.5 Boards (drawn first; signed off under Phase 7 mode; hashes pinned by fidelity records)
 
@@ -4107,9 +4239,11 @@ docs/boards/ holds a drawing for it.
 | 2026-11-01 | The device's Intent tab | H-S, deviation: a fifth state, "the device's value, as it keeps it" (a seeded value, or a typed one a verified deploy carried) | C2287 | 2026-11-01, "H-S, the Secret references card: a fifth state"; docs/fidelity/tab-intent.md |
 | 2026-11-01 | The device page's Actions menu | ActionsMenu (board 7), deviation: Verify again… after Reload…, offered only while the last reload ended not verified | C2280 | 2026-11-01, "The device's Actions menu: Verify again…"; docs/fidelity/device.md |
 | 2026-11-01 | The device's Intent tab | H (DevIntentStates, state 2), deviation: the committed result names each reference with no value with Set value…, Plan a deploy… greyed until each holds one | C2288 | 2026-11-01, "H's committed result: a reference with no value named"; docs/fidelity/tab-intent.md |
+| 2026-11-01 | The device's Intent tab | H, deviation: the editor's head names the commit, the document's id labelled | C2292 | 2026-11-01, "H's head: one id"; docs/fidelity/tab-intent.md |
+| 2026-11-01 | Devices, Intent (layers), a device's Intent tab, Credentials | FC, `FleetChanges.dc.html`, approved with changes by the operator (revision 2, canvas 189): layers, provenance, one plan and run with one stop rule, Credentials the one home, removal, P5/P7 on top | C2283, C2294 | 2026-11-01, "Board FC approved with changes by the operator" |
 | 2026-11-01 | Needs attention | Landing, deviation: a withheld-lines row's Acknowledge… asks a disposition (true positive, benign or test, false positive) | C2295 | 2026-11-01, "Needs attention: a withheld-lines row acknowledged with a disposition"; docs/fidelity/landing.md |
 
-**Count:** 204 rows: 59 drawn, 21 revised, 24 no drawing, 100 deviation (the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 206 rows: 60 drawn, 21 revised, 24 no drawing, 101 deviation (H's head, one id, C2292; board FC, approved with changes by the operator; the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

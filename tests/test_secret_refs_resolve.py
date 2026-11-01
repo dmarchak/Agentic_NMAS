@@ -169,6 +169,30 @@ def test_the_card_lists_every_reference_the_deploy_resolves(monkeypatch):
     assert SR._uses(doc)["snmp_community_ro"].startswith("SNMP community")
 
 
+# ── a mask named by its reference (C2293) ──────────────────────────────────────────────
+
+def test_a_masked_secret_is_named_by_the_reference_intent_gives_it():
+    """C2293 (the operator's finding 6, 2026-11-01: "<redacted:user_password>" named the kind):
+    after masking, an account's and the enable secret's masks read their reference; an account
+    intent does not name keeps its kind; no value is ever involved."""
+    from modules import redact
+    from modules.nsot import secret_refs
+
+    lines = ["username lab privilege 15 secret 9 $9$NotRealHash$abc",
+             "username guest privilege 1 secret Plain-Not-Real",
+             "enable secret 9 $9$AlsoNotReal$def"]
+    masked = [redact.redact_text(l) for l in lines]
+    assert all("<redacted:" in m for m in masked), masked
+    intent = {"users": [{"name": "lab", "secret_ref": "user_lab_secret"}],
+              "enable_secret_ref": "enable_ref"}
+    named = secret_refs.label_by_ref({"program": {"lines": masked}}, intent)["program"]["lines"]
+    assert named[0] == "username lab privilege 15 secret 9 <redacted:user_lab_secret>", named
+    assert named[1] == masked[1], "an account intent does not name keeps its kind"
+    assert named[2].endswith("<redacted:enable_ref>"), named
+    assert secret_refs.label_by_ref(masked, {}) == masked
+    assert "NotReal" not in " ".join(named)
+
+
 # ── the words ───────────────────────────────────────────────────────────────────────────
 
 def test_the_guard_says_what_happened_and_that_nothing_was_sent():

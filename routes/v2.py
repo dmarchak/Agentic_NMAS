@@ -1949,6 +1949,15 @@ def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
                                authorise=authorise, scope=plan_scope(scope))
     preview = deploy_preview(devices, req, scope=plan_scope(scope))
     out = mask_payload({"devices": devices, "preview": preview})
+    # Each masked secret named by its reference, never its kind (C2293), each device by its own
+    # committed intent; after masking.
+    from modules.nsot import secret_refs
+    intents = {d.get("device"): secret_refs.intent_for_names(list_name, d.get("device"))
+               for d in out["devices"] if d.get("device")}
+    out["devices"] = [secret_refs.label_by_ref(d, intents.get(d.get("device")) or {})
+                      for d in out["devices"]]
+    out["preview"]["targets"] = [secret_refs.label_by_ref(t, intents.get(t.get("name")) or {})
+                                 for t in out["preview"].get("targets") or []]
     # The six parts keep a target's state and selectability under "what", and
     # its program, operands and gates under "targets": one row of both.
     by_name = {t["name"]: dict(t) for t in out["preview"]["targets"]}

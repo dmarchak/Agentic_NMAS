@@ -61,6 +61,19 @@ class TestOpening:
         assert _text(html) == opened["yaml"] and _base(html) == opened["base"]
         assert 'data-op="edit-intent"' in html and "Commit to s4's intent" in html
 
+    def test_the_editor_names_the_commit_the_rest_of_mercury_names(self, ed):
+        """C2292 (the operator's r2, 2026-11-01: the editor said "opened at ff1ead7", the
+        committed view and the deploy 715e3cc14b): opened at the commit, as they name it, and
+        the document's own id labelled beside it, never alone."""
+        from modules.nsot import hostvars
+        html = ed["client"].get("/v2/device/s4/intent/edit").get_data(as_text=True)
+        last = hostvars.last_intent_commit(ed["repo"], "s4")
+        base = intent_edit.open_doc("lab", "s4")["base"]
+        assert re.search(r'opened at commit <span class="mono" title="[0-9a-f]+">'
+                         + re.escape(last["commit"][:10]) + "</span>", html), html[:900]
+        assert f'document <span class="mono" title="the document' in html and base[:7] in html
+        assert f'opened at <span class="mono">{base[:7]}</span>' not in html
+
     def test_a_viewer_who_may_not_commit_gets_no_commit(self, ed, monkeypatch):
         from modules import identity
         monkeypatch.setattr(identity, "identify",

@@ -210,7 +210,11 @@ the run ends. Its stages, in the order the code declares them:
    new line is read back from the configuration read after the push, whatever the program
    touches; a `vlan <N>` line and the `name` under it are read where a switch keeps them,
    `show vlan id <N>` (one read per VLAN after the push: a switch in VTP server or client mode
-   prints no VLAN in its configuration), and must show the VLAN, named as sent. Removals must
+   prints no VLAN in its configuration), and must show the VLAN, named as sent. An account's
+   line (`username <name> … secret|password …`, or the enable secret) is read for what can
+   be read, since the device stores its value in another form: the account there, with the
+   privilege sent, and a secret of the kind the device makes from it (type 5, 8 or 9 for a
+   `secret`, 0 or 7 for a `password`); its value is never compared or shown. Removals must
    read back gone, and re-created IP SLA operations as intent defines
    them. A failure triggers a rollback. A protocol intent declares that the
    device was not running before and is still not up, a read that could not be trusted, or a

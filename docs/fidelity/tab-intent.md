@@ -27,7 +27,14 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `c7de06101538b630589d9924a6cdac4284f05dc154d57a2b702dab0914d155b8`
+Templates sha256: `c646b63fb30256202c2c6899fbd0836d40711adb229a65d7885991dac8eb4944`
+
+**Compared again 2026-11-01 (C2292), by the template:** the editor's head reads "opened at
+commit <sha, 10> (its subject, its time), document <blob, 7>", the commit the committed view
+and a deploy name, the document's own id labelled; the moved notice names each side's document
+and the commit that moved it. Boards H and DevIntentStates draw "opened at c81d03e" alone: a
+**deviation** in wording only, logged in STANDING_APPROVAL_LOG. Templates sha256 before:
+`c7de06101538b630589d9924a6cdac4284f05dc154d57a2b702dab0914d155b8`.
 
 **Compared again 2026-11-01 (C2288):** the committed result's footer takes
 `_intent_deploy_offer.html` (included by `_intent_edit.html`): when the committed intent names a

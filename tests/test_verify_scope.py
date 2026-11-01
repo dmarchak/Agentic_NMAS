@@ -95,13 +95,36 @@ class TestTheReadBack:
         """A secret and a banner are skipped, each with its reason; a `no` line is read as
         the absence it claims (C1415): r3 prints no `logging console`, so it is held."""
         assert "\nlogging console" not in R3, "floor"
-        rb = V.read_back(["no logging console", "username ops privilege 15 secret 0 Zq7value",
+        # A secret in a position no account holds (C2291 checks an account's line, so the
+        # skipped example is a community's).
+        rb = V.read_back(["no logging console", "snmp-server community Zq7value RO",
                           "banner motd ^Cx^C"], R3)
         assert rb["checked"] == 1 and rb["missing"] == []
         assert [s["why"] for s in rb["skipped"]] == [
             "a secret the device stores in another form",
             "a banner reads back in the device's own delimiter"]
         assert "Zq7value" not in str(rb)
+
+    def test_an_account_line_is_checked_for_what_can_be_read(self):
+        """C2291 (the operator's finding 3, 2026-11-01: the lab account's four deploys
+        verified "0 of 1"): an account's line is checked for what can be read, the account
+        there with its privilege and a secret of the kind the device makes; never its value.
+        r3's capture holds `username admin privilege 15 password 0 …`."""
+        held = V.read_back(["username admin privilege 15 password 0 Zq7value"], R3)
+        assert held["checked"] == 1 and held["missing"] == [] and held["skipped"] == []
+        cases = {
+            "username ops privilege 15 secret 0 Zq7value": "the device prints no `username ops`",
+            "username admin privilege 1 password 0 Zq7value":
+                "account admin is there with privilege 15, not 1",
+            "username admin privilege 15 secret 0 Zq7value":
+                "account admin is there with password type 0, not a secret the device makes "
+                "(type 5 or 8 or 9)",
+        }
+        for line, why in cases.items():
+            rb = V.read_back([line], R3)
+            assert rb["checked"] == 1 and len(rb["missing"]) == 1, rb
+            assert rb["missing"][0].endswith(f"({why})"), rb["missing"]
+            assert "Zq7value" not in str(rb)
 
 
 def _r2():
@@ -137,7 +160,8 @@ class TestTheReadBackRecordsEachLineWhole:
     def test_each_skipped_line_is_recorded_with_its_line_and_its_reason(self):
         from modules.redact import redact_positional
         from tests.test_verify_read_back_line_ranges import R7_LINES
-        secret = "username ops privilege 15 secret 0 Zq7value"
+        # A secret in a position no account holds: an account's line is checked (C2291).
+        secret = "snmp-server community Zq7value RO"
         rb = V.read_back(["line vty 0 4", " no exec-timeout", "exit", "vlan 10", " no name",
                           "exit", secret, "banner motd ^Cx^C"], R7_LINES, {})
         assert rb["skipped"] == [
