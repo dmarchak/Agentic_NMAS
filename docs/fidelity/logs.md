@@ -17,7 +17,9 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `e2e6dbe76b6d98a38ca182ea13ce5df2d0ed95c671fa5c16e9b473e85bf4df0f`
+Templates sha256: `4c2281d4d47ec4208b53b0b0c9d200ca9ce30cc4fa3a5b1048cac9bcca403b10`
+
+Compared again 2026-11-01 (the overnight brief, item 6), by the template: `_history_body.html`'s identity line is not drawn when the kinds chosen show no commit ("No commit shown (kinds: ai_calls)…" counted nothing); no region of this record changed. Templates sha256 before: `e2e6dbe76b6d98a38ca182ea13ce5df2d0ed95c671fa5c16e9b473e85bf4df0f`.
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence ("It claims: …") inside a Baselines row's detail, the block drawing each baseline's

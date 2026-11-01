@@ -1283,6 +1283,25 @@ button.menu-item[disabled]:hover { background: none; }
 /* The device page's Intent tab (step 4). */
 .intent-profile { margin: 6px 0; font-size: 13px; }
 .intent-doc { max-height: 520px; }
+/* Board H-S (C235): the Secret references card below the document, and Set value…'s form in
+   it, its fields two to a row as the board draws them; the third column hidden on a phone. */
+.intent-secrets { margin-top: 16px; }
+.intent-secrets > .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.intent-secrets > .card-head p { margin: 2px 0 0; }
+.sr-form { margin: 12px 0 4px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface-2); }
+.sr-form-hd, .sr-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
+.sr-form-hd { border-bottom: 1px solid var(--line-2); align-items: flex-start; }
+.sr-form-hd h3 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.sr-form-hd p { margin: 2px 0 0; }
+.sr-foot { border-top: 1px solid var(--line-2); }
+.sr-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; padding: 14px 16px; }
+.sr-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); }
+.sr-fields .sr-wide { grid-column: 1 / -1; }
+.sr-fields input { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); }
+.sr-body { padding: 0 16px 12px; }
+.sr-checks { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.sr-form .notice { margin: 12px 16px 0; }
+@media (max-width: 900px) { .sr-table th:nth-child(3), .sr-table td:nth-child(3) { display: none; } }
 /* The device page's Neighbours tab (step 4, C38). */
 .nb-proto { font-size: 14px; margin: 14px 0 4px; }
 /* C706: every protocol's table shares one column layout, so OSPF's, OSPFv3's and BGP's columns

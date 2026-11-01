@@ -1358,7 +1358,11 @@
     if (!xhr || !target) return;
     var type = xhr.getResponseHeader('Content-Type') || '', body = d.serverResponse;
     if (d.isError) {
-      if (!isFragment(body, type)) {
+      // C2267: a LIVE redraw (an announcement's) that is answered with an error keeps what the
+      // region shows and says it could not be read: swapping in the error's fragment would
+      // replace the region with a notice that has no listener, so it would never update again.
+      // A person's own request still swaps its error, since that answer is what they asked.
+      if (!isFragment(body, type) || isLiveUpdate(d)) {
         d.shouldSwap = false;
         sayCouldnt(target, askedBy(d, e), failWords(xhr.status, xhr.statusText, body, type));
         return;

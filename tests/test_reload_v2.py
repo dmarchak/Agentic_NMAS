@@ -450,6 +450,129 @@ class TestTheVerifyWaitsForSSH:
         assert "offered SHA256:NEWnewNEW, held SHA256:OLDoldOLD" in detail
 
 
+class TestVerifyAgain:
+    """C2240's last part (the overnight brief, 2026-11-01): a reload that ended not verified
+    raises ONE Needs attention row for its device, with Verify again; Verify again signs in
+    within the same bound and compares what it runs with its committed golden, records its
+    row beside the reload's, sends nothing, and its record replaces the reload's as the
+    device's newest, so a verified one clears the row."""
+
+    def _unverified(self, run_lab):
+        clock = _Clock()
+        n = {"n": 0}
+
+        def read(_d):
+            n["n"] += 1
+            if n["n"] > 1:
+                raise ConnectionError("TCP connection to device failed")
+            return _reads(run_lab)
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=read, reloader=run_lab["reloader"], wait=run_lab["back"],
+                            clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "unverified"
+        return out
+
+    def _rows(self):
+        from modules import attention
+        got = attention.reload_unverified_source(found={"Lab": reload_op.unverified("Lab")})
+        return got["rows"]
+
+    def test_an_unverified_reload_raises_one_row_and_a_verified_again_clears_it(self, run_lab):
+        self._unverified(run_lab)
+        (row,) = self._rows()
+        assert row["level"] == "warning" and row["devices"] == ["r2"]
+        assert "was not verified" in row["what"]
+        assert "TCP connection to device failed" in row["cause"]
+        assert row["action"]["href"] == "/v2/device/r2?op=reload_verify&list=Lab"
+        sent = list(run_lab["sent"])
+        clock = _Clock()
+        out = reload_op.verify_again("Lab", "r2", actor="b", reader=lambda d: _reads(run_lab),
+                                     clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "reloaded" and out["ok"] is True, out["steps"]
+        assert "runs what its committed golden holds" in out["steps"][0]["detail"]
+        assert out["record"]["ok"] and out["record"]["commit"]
+        newest = reload_op.read_records(reload_op._repo("Lab"))["rows"][0]
+        assert newest["kind"] == "verify_again" and newest["by"] == "b"
+        assert self._rows() == []
+        assert run_lab["sent"] == sent, "Verify again sent something"
+
+    def test_still_failing_keeps_one_row_naming_the_newer_attempt(self, run_lab):
+        self._unverified(run_lab)
+        clock = _Clock()
+
+        def fails(_d):
+            raise ConnectionError("still refusing")
+        out = reload_op.verify_again("Lab", "r2", actor="b", reader=fails, clock=clock,
+                                     verify_sleep=clock.sleep)
+        assert out["outcome"] == "unverified" and out["ok"] is False
+        (row,) = self._rows()
+        assert "still refusing" in row["cause"]
+
+    def test_running_something_else_than_its_golden_is_said_and_clears_the_row(self, run_lab):
+        self._unverified(run_lab)
+        clock = _Clock()
+        other = _reads(run_lab)["running"] + "\nbanner motd ^C changed ^C\n"
+        out = reload_op.verify_again("Lab", "r2", actor="b",
+                                     reader=lambda d: _reads(run_lab, running=other),
+                                     clock=clock, verify_sleep=clock.sleep)
+        assert out["outcome"] == "differs" and out["ok"] is False
+        assert "something other than its committed golden" in out["steps"][0]["detail"]
+        assert self._rows() == []
+
+    def test_a_refused_host_key_stops_at_once(self, run_lab):
+        from modules.host_keys import HostKeyRefused
+        self._unverified(run_lab)
+        clock = _Clock()
+
+        def refused(_d):
+            raise HostKeyRefused("refused", ip="203.0.113.12",
+                                 offered={"fingerprint": "SHA256:NEWnewNEW"},
+                                 held={"fingerprint": "SHA256:OLDoldOLD"})
+        out = reload_op.verify_again("Lab", "r2", actor="b", reader=refused, clock=clock,
+                                     verify_sleep=clock.sleep)
+        assert out["outcome"] == "host_key_changed" and clock.slept == []
+
+    def test_the_row_opens_the_card_with_verify_again_and_it_runs_as_a_job(self, run_lab,
+                                                                          monkeypatch):
+        from modules.nsot import capture_job
+        self._unverified(run_lab)
+        monkeypatch.setattr(reload_op, "read_device", lambda d: _reads(run_lab))
+        page = run_lab["client"].get("/v2/device/r2?op=reload_verify&list=Lab") \
+            .get_data(as_text=True)
+        assert "Back, not verified" in page and "TCP connection to device failed" in page
+        assert 'hx-post="/v2/device/r2/reload/verify' in page and "Verify again" in page
+        html = run_lab["client"].post("/v2/device/r2/reload/verify",
+                                      data={"list": "Lab"}).get_data(as_text=True)
+        assert "Verifying r2 again" in html
+        job = re.search(r"/reload/job/([0-9a-f]+)", html).group(1)
+        assert capture_job.wait(job, 30)
+        card = run_lab["client"].get(f"/v2/device/r2/reload/job/{job}").get_data(as_text=True)
+        assert "Verify r2 again" in card and "Back, verified" in card
+        assert self._rows() == []
+
+    def test_a_changed_key_s_result_offers_review_the_new_key(self, run_lab, monkeypatch):
+        """C2239: the Reload's result for a key Mercury does not hold opens Re-key's card."""
+        from modules import device_actions
+        from modules.nsot import capture_job
+        from types import SimpleNamespace
+        monkeypatch.setattr(capture_job, "get", lambda job: {
+            "kind": "reload", "state": "done",
+            "payload": {"outcome": "host_key_changed", "ok": False, "by": "a", "reason": "r",
+                        "steps": [{"step": "verify", "ok": False, "detail": "offered X"}]}})
+        c = device_actions.reload_job_card(SimpleNamespace(name="Lab"), "r2", "j", {
+            "kind": "reload", "state": "done",
+            "payload": {"outcome": "host_key_changed", "ok": False, "steps": []}})
+        assert c["chip"] == "Back with a new SSH host key"
+        card = run_lab["client"].get("/v2/device/r2/reload/job/j?list=Lab").get_data(as_text=True)
+        assert "Review the new key" in card and 'hx-get="/v2/device/r2/rekey' in card
+
+    def test_a_device_with_nothing_unverified_offers_nothing(self, run_lab):
+        page = run_lab["client"].get("/v2/device/r2?op=reload_verify&list=Lab") \
+            .get_data(as_text=True)
+        assert "there is nothing to verify again" in page
+        assert 'hx-post="/v2/device/r2/reload/verify' not in page
+
+
 class TestTheRunJudgesAgain:
     def test_a_gate_failing_at_the_run_refuses_with_nothing_sent(self, run_lab, monkeypatch):
         """Lab 7 (b): the run's own "a gate fails now" refusal was reached by no test, so

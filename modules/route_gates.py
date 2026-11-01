@@ -90,6 +90,7 @@ GATES = {
     "v2.history_reapply_confirm": _g(C, "re-applies a baseline to every device it holds, as one batch job (History › Baselines)"),
     "adopt_v2.confirm": _g(C, "adds the tool's account to a device the tool did not build and "
                               "brings it under management (board G)", "adopt"),
+    "device_v2.reload_verify": _g(K, "Verify again (C2240): holds the device, signs in within the reload's verify bound and compares what it runs with its committed golden, as a job, and records its row beside the reload's; sends nothing but its reads"),
     "device_v2.reload_confirm": _g(C,"reloads the device, its planned-restart window declared first (P.14, cutover blocker 6), which sets a Grafana silence on its alerts as the person, with their reason (B3)", "reload"),
     "dhcp_v2.exclusion_confirm": _g(C, "adds or removes a DHCP exclusion: writes the subnet's "
                                        "pools as the pieces through the subnet's write, reloads "
@@ -171,6 +172,7 @@ GATES = {
     "reads_v2.show_commands_save_set": _g(K, "commits a saved command set to the network's "
                                              "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
+    "intent_v2.secrets_set": _g(A, "stores a typed value for one secret reference a device's committed intent names, write-only, for that device only, never the account Mercury signs in with (board H-S, C235; secret_refs.set_value), and commits its record (who, when, why; never the value); sends nothing to the device: a later deploy acts on it"),
     "intent_v2.words_commit": _g(A, "commits a change drafted in words to a device's intent (feature 7, part 2), as Source: ai-draft with its AI-Call:, bound to the drafted patch and the version it was previewed on; with plan, the deploy preview opens next, never confirmed for the person"),
     "bulk_intent_v2.apply": _g(A, "commits one change to the ticked devices' intent, from "
                                   "Devices (board D; routes.templatize.bulk_apply_of)"),

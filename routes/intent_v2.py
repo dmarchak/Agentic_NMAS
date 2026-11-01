@@ -330,3 +330,67 @@ def reopen(name):
     return _card(editor_ctx(ref, dev, text=request.form.get("yaml", ""),
                             base=request.form.get("base", ""),
                             summary=request.form.get("summary", "")))
+
+
+def secrets_ctx(ref, dev, opened: str = "", refused: str = "", done: dict = None) -> dict:
+    """What the Intent tab's Secret references card draws (board H-S, C235;
+    `modules/nsot/secret_refs.py`): every reference the committed intent names with its state,
+    never a value; Set value…'s form for *opened* (a reference the card lists and may set);
+    a refusal's words; the set just made. A listing that cannot be read is said, never drawn
+    as an empty card."""
+    from modules.nsot import secret_refs
+
+    host, signs_in_as = dev.get("hostname", ""), dev.get("username") or ""
+    try:
+        sr, error = secret_refs.listing(ref.name, host, signs_in_as=signs_in_as), ""
+    except Exception as exc:                          # noqa: BLE001 (said on the card)
+        log.error("intent secrets: %s's references could not be read: %s", host,
+                  type(exc).__name__)
+        sr, error = {"refs": [], "counts": {}}, type(exc).__name__
+    settable = {r["ref"] for r in sr["refs"] if r["settable"]}
+    return {"host": host, "list": ref.name, "sr": sr, "error": error,
+            "opened": opened if opened in settable else "", "refused": refused,
+            "done": done or {}, "may": may_commit(), "signs_in_as": signs_in_as}
+
+
+def _secrets_card(ctx: dict, code: int = 200):
+    return _strict(render_template("v2/_intent_secrets.html", c=ctx), code)
+
+
+@bp.route("/<name>/intent/secrets", methods=["GET"])
+def secrets(name):
+    """The Secret references card alone; ``?set=<ref>`` opens Set value… for that reference.
+    Reads the committed intent and the credential store's kinds; never a value."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _secrets_card(secrets_ctx(ref, dev, opened=request.args.get("set", "").strip()))
+
+
+@bp.route("/<name>/intent/secrets/set", methods=["POST"])
+def secrets_set(name):
+    """Store a typed value for one reference, as the verified person (`secret_refs.set_value`):
+    the card again with the set made, or Set value… open with the checks that failed. The
+    value is never drawn back, and nothing is sent to the device."""
+    from modules import identity
+    from modules.nsot import secret_refs
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    which = request.form.get("ref", "").strip()
+    actor = identity.request_actor()
+    try:
+        got = secret_refs.set_value(ref.name, dev.get("hostname", ""), which,
+                                    request.form.get("value", ""),
+                                    request.form.get("again", ""),
+                                    request.form.get("reason", ""), actor=actor,
+                                    signs_in_as=dev.get("username") or "")
+    except secret_refs.Refused as exc:
+        return _secrets_card(secrets_ctx(ref, dev, opened=which, refused=str(exc)), 400)
+    rec = got.get("record") or {}
+    return _secrets_card(secrets_ctx(ref, dev, done={
+        "ref": which, "by": actor, "commit": rec.get("commit", ""),
+        "record_error": rec.get("error") or rec.get("commit_error") or ""}))

@@ -97,3 +97,14 @@ def test_a_narrowed_window_says_so_and_none_is_never_zero_of_zero(lab):  # noqa:
     text = _text(page)
     assert "No commit shown (person: nobody), so no identity to count." in text
     assert "0 of 0" not in text
+
+
+def test_kinds_that_show_no_commit_draw_no_identity_line(lab):  # noqa: F811
+    """The overnight brief, 2026-11-01, item 6: "No commit shown (kinds: ai_calls)…" counted
+    nothing a person could act on; such a line is not drawn."""
+    _plant(lab["repo"])
+    _r, page = _get(lab, "/v2/history?kind=ai_calls")
+    assert 'id="hist-identity"' not in page and "no identity to count" not in _text(page)
+    # The planted commits touch profile/: the fleet's own commits, kind `commits`.
+    _r, page = _get(lab, "/v2/history?kind=commits")
+    assert 'id="hist-identity"' in page, "a kind that shows commits keeps its line"

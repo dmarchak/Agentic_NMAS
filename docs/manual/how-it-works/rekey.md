@@ -37,12 +37,12 @@ Opened from the Needs attention row, or with `?op=rekey` on the device's page. R
 
 ## The apply, in order
 
-The apply holds the device, so no other operation runs on it meanwhile.
+The confirm, **Keep the new key for <device>**, needs a verified person and **why** the new key is the device's own (it was rebuilt, or a reload that saved no key made a new one), in the shape of a reason; without one nothing is kept. A Reload that came back with a key {{product}} does not hold offers **Review the new key** on its result, which opens this card. The apply holds the device, so no other operation runs on it meanwhile.
 
 1. **Read the key again** (`read`). Read: the key the device presents now, with no credential. Sent: nothing. Recorded: nothing. The plan is computed again: a different key, or a record that moved, gives a different hash and refuses with nothing kept, naming both.
 2. **Keep it** (`keep`). Read: the record. Sent: nothing. Recorded: the new key in place of the held one, as you, only if the held key is still the one the preview showed.
 3. **Verify** (`verify`). Read: the record, read back. It holds the new key, or the result says it does not.
-4. **Record** (`record`). The record keeps the old key in its history, with who replaced it, when and why (the restart evidence the preview showed). The device's [History](device-page#history-tab) draws each key kept: on first contact, re-keyed, or kept under a planned window.
+4. **Record** (`record`). The record keeps the old key in its history, with who replaced it, when and why (your reason, and the restart evidence the preview showed). The device's [History](device-page#history-tab) draws each key kept: on first contact, re-keyed, or kept under a planned window.
 
 ## A console server's key {#console-server}
 

@@ -39,7 +39,17 @@ Inside its window the device is **restarting as planned**, not broken: its page'
 - **It moved since the preview:** nothing is sent; the result says why and offers **Read it again**.
 - **It does not come back within the bound:** red, with the time it waited. The way in is the console, with the device's break-glass record; the planned window stays declared until its end, and from then Needs attention raises it.
 - **Grafana did not take the silence:** the `window` step says so and why; the reload goes ahead, and Grafana's own notifications for the device are not held. Mercury's Needs attention holds its alerts during the window all the same. The result is never green over it: the card leads with "Grafana's alerts were NOT silenced during this reload: …" naming why, and asks you to tell whoever the alerts page that this was the planned reload; the reload's record keeps the window's silence as failed, with the same words.
+- **It comes back and cannot be verified:** amber, "Back, not verified": its port answered and no sign-in succeeded within the 3 minutes, so nobody knows it runs what it ran. The window runs to its declared end. Needs attention raises one row for the device until a later record replaces it, and the result offers **Verify again** (below).
 - **It comes back running something else:** red, with how many lines went and came (a line the platform rejected at boot is dropped silently). Its golden is not changed by the reload.
+
+## Verify again {#verify-again}
+
+For a reload that ended not verified. Needs attention's row ("<device> came back from its reload and was not verified") opens it on the device's page, and the reload's result offers it too. **Verify again** needs a verified person and runs as a job holding the device, on the stepper:
+
+1. `verify`: Mercury signs in with the credential it holds, trying again as the run's verify does (5, 10, 20 and then 30 seconds, for up to 3 minutes), and compares the running configuration with the device's **committed golden**. The run kept no copy of what the device ran before it; the preview's check that it matched its golden (or your reason that it did not) is what stands in. Read: the running configuration. Sent: nothing. A host key Mercury does not hold stops it at once, naming both keys, as the run's verify does.
+2. `record`: its row, kind Verify again, is written beside the reload's in `.nsot/reloads.jsonl` and committed as you. History draws it as **Verify again**.
+
+Its result: **Back, verified** (green; the Needs attention row clears), **Still not verified** (amber; the row stands, now naming this attempt), or **Back, running something else than its golden** (red: the row clears, and the drift check raises the difference, as for any device). It never ends the reload's window: by then the window has run to its end.
 - **There is no rollback.** A reload cannot be undone, and the preview says so.
 
 ## What a reload does not do

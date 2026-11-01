@@ -224,6 +224,7 @@ DECLARED = {
     "v2.decline_confirm": ("intent", "remote"),
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "intent_v2.commit": ("intent", "remote"),
+    "intent_v2.secrets_set": ("credentials", "remote"),
     "intent_v2.words_commit": ("intent", "remote", "ai_calls"),
     # A read writes only its run's record; its end is the job's announcement (`reads`).
     "reads_v2.ask_run": ("reads",),
@@ -374,6 +375,9 @@ DECLARED = {
                                       "persist-read)"),
     "device_v2.reload_start": Nothing("starts the preview's read as a job; the job ANNOUNCES "
                                       "reload when it finishes (ANNOUNCERS reload)"),
+    "device_v2.reload_verify": Nothing("starts Verify again as a job and answers at once; the "
+                                       "job ANNOUNCES reload, restarts and device_state when it "
+                                       "ends (ANNOUNCERS reload)"),
     "device_v2.reload_confirm": Nothing("starts the reload as a job and answers at once; the "
                                         "run ANNOUNCES reload, restarts and device_state when "
                                         "it ends, and device_progress at each step "

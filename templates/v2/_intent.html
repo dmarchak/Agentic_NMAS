@@ -38,6 +38,7 @@
   {%- endfor %}
   {%- endif %}
   <pre class="apply-program intent-doc">{{ iv.text }}</pre>
+  {%- if secrets and not iv.bootstrap %}{% with c=secrets %}{% include "v2/_intent_secrets.html" %}{% endwith %}{% endif %}
   {%- endif %}
   {%- if iv.bootstrap %}<p class="muted">Bootstrap intent is not edited: Actions › Seed intent… gives {{ device.hostname }} its first full intent.</p>{% elif not may_edit %}<p class="muted">Editing intent needs a verified person who may commit it.</p>{% endif %}
 </section>

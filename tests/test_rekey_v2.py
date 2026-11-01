@@ -56,6 +56,9 @@ def _card(world, device="r2", back="history"):
 
 def _confirm(world, html, device="r2", **over):
     vals = json.loads(re.search(r"hx-vals='([^']*)'", html[html.index("op-confirm"):]).group(1))
+    # The person's reason, the field `hx-include` sends with the confirm (C2239).
+    assert 'id="rekey-reason" name="reason"' in html
+    vals["reason"] = "the device was rebuilt from a fresh disk"
     return world["client"].post(f"/v2/device/{device}/rekey/confirm", data={**vals, **over})
 
 
@@ -171,6 +174,19 @@ class TestTheConfirm:
         assert [e["what"] for e in tl["events"]] == ["SSH host key re-keyed",
                                                      "SSH host key kept on first contact"]
         assert tl["events"][0]["who"] == "test-person@example.invalid"
+
+    @pytest.mark.parametrize("reason", ["", "ok", "re-keying r2"])
+    def test_a_confirm_without_a_reason_keeps_nothing(self, world, reason):
+        """C2239: why the new key is the device's own, in the shape of a reason."""
+        r = _confirm(world, _card(world), reason=reason)
+        assert r.status_code == 400 and "Nothing was kept" in r.get_data(as_text=True)
+        assert _held()["fingerprint"] == _fp(world, 0)
+
+    def test_the_reason_is_recorded_with_the_key_it_replaces(self, world):
+        _confirm(world, _card(world))
+        why = _held()["history"][-1]["replaced_why"]
+        assert why.startswith("re-keyed from the device page because the device was rebuilt "
+                              "from a fresh disk; "), why
 
     def test_a_key_that_moved_since_the_preview_is_refused(self, world):
         html = _card(world)

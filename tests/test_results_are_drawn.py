@@ -131,6 +131,11 @@ PAGE_RECORD = {
     # deploy would send now), and the committed intent read back by the Intent tab.
     "intent_v2.commit": ("templates/v2/_intent_edit.html",
                          ("c.state == 'done'", "c.r.commit", "c.actor"), "device_v2.intent"),
+    # Board H-S (C235): a set value drawn in place (the reference, who, its commit), and the
+    # reference's state read back by the card.
+    "intent_v2.secrets_set": ("templates/v2/_intent_secrets.html",
+                              ("c.done.ref", "c.done.by", "c.done.commit"),
+                              "intent_v2.secrets"),
     # Feature 7's part 2: a drafted change committed, drawn in place in the row (the commit,
     # who, Source ai-draft and its call), and the committed intent read back by the Intent tab.
     "intent_v2.words_commit": ("templates/v2/_intent_words.html",

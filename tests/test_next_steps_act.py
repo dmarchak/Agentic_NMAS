@@ -78,6 +78,10 @@ OPENERS = {
     # spend panel).
     "ai_spend_panel": ("document.getElementById('ai-spend').open && "
                        "document.querySelector('#nmas-ai-panel .ai-head')"),
+    # The v2 device page's Re-key card (C2239: a Reload back with a new SSH key's Review the
+    # new key).
+    "rekey_card": ("document.querySelector('#device-op h2') && /Re-key r2/"
+                   ".test(document.querySelector('#device-op h2').textContent)"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -180,6 +184,8 @@ class TestEachOpenerActsInARealBrowser:
         # The template editor's Approve… (cutover blocker 5), as its link loads it.
         ("template_approve", "/v2/templates?list=Lab&approve=cisco_iosxe/base.j2"),
         ("persist", "/v2/device/r2?op=persist"),
+        # A Reload back with a new SSH key's Review the new key (C2239), as its link loads it.
+        ("rekey_card", "/v2/device/r2?op=rekey&list=Lab"),
         # A drift row's two answers (C739), as their links load them.
         ("capture_card", "/v2/device/r2?op=capture&list=Lab"),
         ("deploy_card", "/v2/device/r2?op=deploy&list=Lab"),

@@ -66,7 +66,10 @@
 {%- set idn = h.identity or {} -%}
 {%- set narrowed = [('device', f.device), ('person', f.person)] | selectattr(1) | map('join', ': ') | list + (['kinds: ' ~ (f.kinds | join(', '))] if f.kinds else []) -%}
 {%- set where = ('shown (' ~ (narrowed | join('; ')) ~ ')') if narrowed else 'in this window' -%}
-{%- if idn %}
+{#- Kinds chosen that show no commit (AI calls, say) leave the identity line nothing to count:
+    it is not drawn then, rather than "No commit shown (kinds: ai_calls)…" (the overnight
+    brief, 2026-11-01, item 6). -#}
+{%- if idn and not (f.kinds and not idn.commits and not f.identity) %}
 <p class="hist-identity small" role="status" id="hist-identity">
   {%- if f.identity %}{{ idn.commits }} commit{{ 's' if idn.commits != 1 }} {{ where }} {{ 'are' if idn.commits != 1 else 'is' }} not verified{% if idn.commits %} ({% for w, n in idn.others if n %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}. <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds) }}">Show every identity</a>
   {%- elif not idn.commits %}No commit {{ where }}, so no identity to count.

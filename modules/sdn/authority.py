@@ -43,6 +43,7 @@ DIRECT = {
     "device_v2.retry_confirm": ("view", "name"),
     "intent_v2.commit": ("view", "name"),
     "intent_v2.words_commit": ("view", "name"),
+    "intent_v2.secrets_set": ("view", "name"),
     "v2.decline_confirm": ("form", "device"),
     # Batches over named devices.
     "v2.save_confirm": ("form_list", "device"),

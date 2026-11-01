@@ -3642,6 +3642,16 @@ autonomously (C2021).
 
 Until both are fixed, sdn_lab is not marked lab, so AUTO stays refused on it (C2009's guard).
 
+**The Perigo W10 to W12 prerequisites, mapped (the operator's overnight brief, 2026-11-01,
+item 8):**
+- **Already rows above:** the responder rate limit, the block budget and pause-and-alert after M
+  actions in N s (C2011); the never-target list (C2010, with C2019's approved scanner); escalation
+  outside the app (C1999's row 6, designed in section 20.7); shadow AUTO (C2012).
+- **New rows, B, blocking this gate:** an expected-activity list that both holds a declared
+  activity and feeds the classifier's prompt (C2262); a dead man's switch tying responses to the
+  loop being alive (C2263); fail open or closed per network, default open (C2264); OpenFlow
+  flow-removed records (C2265).
+
 **Order, by dependency:** the guard (C2009) first; then the stage (9) with protected hosts (1),
 limits and the breaker (2) and the kill switch (8), which make any autonomy safe to try; then the
 shadow mode (3), the per-rule policy (4) and the notification (6); then the reliability gate (5),
@@ -4082,8 +4092,11 @@ docs/boards/ holds a drawing for it.
 | 2026-10-29 | Deploy preview (PHASE8_PLAN 16.11 item 3) | CR, `ChangeRecordDraft.dc.html`, deviation: every fact the draft carries is drawn (the removals count, the network on hover, the families, the expected effects, What left Mercury, the trigger and model) | The draft's facts | 2026-10-29, "Board CR built: every fact the draft carries is drawn"; docs/fidelity/change-record.md |
 | 2026-10-29 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: no cap's confirmation asks for a one-line reason beside the typed words, a refusal names each part missing, and the card's no-cap notice names who chose it, when and why | The AI (hosted) card's no cap | 2026-10-29, "The AI card's no cap asks for a reason"; docs/fidelity/settings-ai.md |
 | 2026-10-29 | C1843: AI cost safety | AI2, `AiSpendPanel.dc.html`, deviation: a standing warning row "AI spend uncapped" while hosted AI is on and the day cap is unset, naming who unset it, when and why, which the board does not draw (rule 10c amended) | Needs attention while no day cap is set | 2026-10-29, "Needs attention: AI spend uncapped, a standing row while no day cap is set"; docs/fidelity/ai-spend.md |
+| 2026-11-01 | The device's Intent tab | H-S built, deviation: five (the subtitle at HEAD, not the sha; the purpose and a held value's provenance not drawn; the app's table head; the checks at Store, not live chips; the result in place, not a second card) | C235 | 2026-11-01, "Board H-S built: five deviations" |
+| 2026-11-01 | SDN › Responses | S-HR, `SdnHighRate.dc.html`, drawn: the scan rule's L2-only fallback as High packet rate (watching, lower confidence, nothing proposed, joins a flood), its rules-table row | C2238 (a flood's onset reported as a scan) | 2026-11-01, "Board S-HR drawn and approved" |
+| 2026-11-01 | The device's Intent tab | H-S, `DevIntentSecrets.dc.html`, drawn: the Secret references card (each reference intent names, what it is for, whether a value is held, never the value) and its write-only Set value… form (the value twice, a reason, the checks, Store the value) | Typing a value for a secret reference (C235; the lab account, item 2) | 2026-11-01, "Board H-S drawn and approved" |
 
-**Count:** 190 rows: 54 drawn, 21 revised, 24 no drawing, 91 deviation. The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 193 rows: 56 drawn, 21 revised, 24 no drawing, 92 deviation (2026-11-01: H-S and S-HR drawn, H-S's build a deviation). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and
@@ -4093,3 +4106,206 @@ deviation rows the log names the board by letter or number; the canvas index gav
 (`AskLibrary`, `AskMetric`, `AskLogs`, `InstallTabs`, `InstallCards`, `SettingsNetwork`,
 `FleetSelect`, `OnboardList`, `DevRevertRetry`; the log names the rest), and the log line about
 the operator's confirmation of C1273 joins its deviation's row.
+
+## 20. Planned work, alerts and notifications: one design (the operator, 2026-11-01)
+
+The operator's overnight brief of 2026-11-01, item 4: the signals that a problem exists, how
+they reach Needs attention, and how a planned operation's own effects stop reading as faults,
+designed once. **Industry need:** an operator who reloads a router expects the tool to know
+what that reload will do and to stay quiet about exactly that, and loud about anything else;
+tools that alert on every symptom of planned work (a link down, a peer lost, a probe failing)
+train people to ignore alerts. Maintenance windows in commercial monitoring suppress by device
+and time only; Mercury knows the operation's predicted blast radius, so it can hold exactly
+what was predicted, for exactly as long as it should take, and raise everything else.
+**Order:** the audit (20.1, done), then the attribution rule (20.2) and the planned state
+(20.3), proven by the B2 replay (20.4); then one row per cause (20.5); the Needs attention
+redesign (20.6, board first); notifications (20.7, board first, after 20.2). Nothing of 20.2
+onward is built yet.
+
+### 20.1 The audit (read-only, 2026-11-01 ~10:0x UTC, over HEAD 6749c68a)
+
+Every source that can signal a problem, and what it does now (`modules/attention.py`; the
+lines are the audit's, in the working tree of that morning):
+
+| Source | Reaches Needs attention | Severity | One row per | Clears | Consults a window, hold or effects |
+|---|---|---|---|---|---|
+| Grafana alerts (`grafana_source`) | yes: incident, series, rule, stalled, heartbeat floor; **pending never** | danger when a member is a firing condition, else unknown; rule nodata warning | onset group (360 s); a series per series | resolves (incident); resolves or acknowledged (series) | **per device:** its own planned window plus the settle margin (`_planned_alert_hold`), and a drained device |
+| SDN detections (`detect.firing`) | **no**: Monitoring › Alerts only | — | — | — | no |
+| SDN responses, mitigation, controllers, loop | yes | danger when escalated or high | per incident, response, network | applied, dismissed, re-read | no |
+| Reachability | yes, **one row for all devices** | danger | — | resolves | **own device only** (`_planned_down`) |
+| Adjacencies (Prometheus; RIP by its reader) | yes | link danger; unmeasured, error unknown | per link | resolves | **no**: two reads (`PERSIST_READS`) |
+| Adjacency log | yes | warning | per adjacency | resolves, acknowledge, or 24 h | the logging device's own window or a receipt within 600 s; **not the peer's** |
+| Drift | yes | drifted danger; failed, never, unreachable unknown | per device | resolves | no |
+| Job health and reader liveness | yes | by state; an unmapped state danger | per job | resolves | a rotation row skips a held device |
+| SSH host keys | yes | danger | per address | resolves | upstream: a window declaring new keys keeps them |
+| Baseline | yes | warning | per network | resolves | no |
+| AI spend and caps | yes | danger at 80% or reached, warning at 50% | per cap, feature, call | resolves or time | no |
+| Scheduled rotation | yes | danger | per halting run | resolves | no |
+| Deploy receipts | yes | failed danger when anything was sent | per device's latest receipt | resolves; read-back acknowledged | a pending receipt while held; **declared effects: no** (verify only) |
+| Restarts | yes | danger with a crash file, else warning | per restart | acknowledge or 7 days | **yes**: planned windows |
+| Interrupted operations | yes | warning | per operation | acknowledge | the holds left behind |
+| Reloads not verified (C2240, built 2026-11-01) | yes | warning | per device | a later record | — |
+
+The operator's five known gaps, tested against the code: (1) "firing Grafana alerts raise no
+row while an SDN response does": **refuted as written**: a firing alert is a danger row unless
+held; what is true is that an SDN **detection** raises none, only its response. (2) "heartbeat
+and telemetry arrive as no_data": **refuted** in current code by C2174 (Alerting NoData is a
+condition when the rule says so; both generators set it); two states still read `no_data`
+(C2252). (3) "the Firing tab count is stale": **confirmed** (C2251). (4) "predicted side effects
+raised as CRITICAL": **confirmed** (C2249: the window covers the reloaded device only). (5) "s5
+raised twice": **confirmed** (C2250). Also found: the device page and Monitoring count firing
+differently (C2252).
+
+The model to reuse is the device page's: `restarts.holding(host, list, now,
+margin=SETTLE_SECONDS)` (1,140 s) and its words "X is restarting as planned (until T, by Y)",
+already copied in `_planned_alert_hold` and `_planned_down`.
+
+### 20.2 The attribution rule
+
+Every source asks one question before it raises: **is this explained by an operation in
+progress, or one that just finished?** One function will answer it (proposed:
+`attribution.explains(signal, now)`, not yet written), returning the operation, what it
+predicted, and "expected back by", or nothing.
+
+1. **An operation declares its scope when it declares its window**, recorded on the window:
+   the device; the devices its preview predicted unreachable (Reload's `blast_radius`; Deploy's
+   cut path, C2243's `reach_lost`); the adjacencies and sessions through it (from intent, as
+   `expected_effects` computes them); a deploy's declared effects (the receipt already carries
+   them). Expand, then contract: a window without the new fields still reads, as today.
+2. **A signal inside that scope and inside the window plus the settle margin is explained:**
+   off Needs attention, and shown on the operation's card as **Expected effects**, each with
+   "expected back by <time>". Its alert and its evidence pack are kept as they are.
+3. **Still raised, with the operation named:** a signal that outlasts its time is **"overdue
+   after <operation>"**; one the operation did not predict is **"unexpected during
+   <operation>"**. Neither is ever held.
+4. **A drift or protocol check that fails inside a window runs again after it,** and only that
+   second reading is raised.
+5. **AI never suppresses anything.** A preview may add "expected (AI, unconfirmed)" effects for a
+   person to read; afterwards an answer may say "probably caused by <operation>"; neither
+   holds or clears a row.
+6. **Known boot effects are declared per platform**, not learned: a C8000v's
+   `%PKI-2-NON_AUTHORITATIVE_CLOCK` at boot is an expected effect of any restart.
+
+Every source in 20.1 whose last column says no, or own device only, consults `explains`:
+adjacencies, adjacency log (the peer too), reachability (predicted devices), Grafana (predicted
+devices), drift (the re-run), deploy receipts (declared effects).
+
+### 20.3 The planned state, everywhere
+
+One state model for a device under a planned operation, shared with C2173's incident states:
+**"Reloading · by <person> · step 4 of 6 · back by ~<time>"**, amber, linked to the operation, on
+Devices, Topology, the device page and any row that names it; a device the operation predicted
+unreachable reads **"Unreachable as expected · r8 reloading"**. Red only past the window. The
+same model serves deploying, rotating, onboarding and draining.
+
+### 20.4 The acceptance test (to build)
+
+A replay of 2026-10-30's B2 sources (the Reload of r8) through `needs_attention()`: the 11
+items the operator counted become **1**, the heartbeat check's standing row. R5's "no baseline"
+becomes a follow-up on that deploy's card, not a row. **Proposed:** a deploy that cuts a device
+off (C2243's `reach_lost`) earns no baseline (R5 earned baseline/20261030T000810Z with s1 cut
+off): a baseline claims every device at its intent and working, and one it cannot reach is
+neither measured nor working.
+
+### 20.5 One row per cause, and the standing row
+
+OSPF and OSPFv3 to the same neighbour are one row (one cause: the link); a silent device is one
+row, its reachability, heartbeat and drift-unreachable folded into it (C2250). The
+`nmas-heartbeat-check` row (never succeeded, s3's stale band, critical for 8 days and more,
+C1791) is either fixed at its cause or acknowledged **with a reason**, the row coming back if
+its state changes; its severity re-sized. The rule: **Needs attention holds only what a person
+can act on.**
+
+### 20.6 The Needs attention redesign (board first)
+
+A collapsible section per severity with its count ("Critical · 2"; Critical open by default,
+the others remembered per viewer); each item ONE line (severity, title naming devices never
+addresses, age, its primary action's button); expanded, **What to do** first (the action, its
+button, "Clears when …"), then the details under a divider; an "Acknowledged · N" section; the
+sidebar's badge counts unacknowledged Critical and Warning. A row backed by an alert or an
+incident with a pack offers the same kept Explain answer as Monitoring, after What to do,
+advisory, click-only behind its cost confirm; Mercury's own deterministic findings get a
+code-written "Why this happened" instead. A grouped incident gets one Explain citing all its
+alerts. Firing alerts: a badge on Monitoring and its Alerts tab (re-read live, C2251), and one
+row per cause. Alert titles from the device label, never the instance's address.
+
+### 20.7 Notifications out of the app (board first; built after 20.2)
+
+Settings › Notifications: per person, several emails and phone numbers; **teams** (named groups
+with their own emails, phones and webhooks); every method verified by a code before use, each
+enabled on its own, with a test send. Channels: email (any SMTP relay), SMS through a provider
+or email-to-SMS, push through self-hostable ntfy, Slack, Teams and generic webhooks (signed).
+Routing by network, severity, kind and device group; quiet hours; on-call schedules later.
+Escalation: unacknowledged after N minutes, the next method, person or team. A storm is one
+message, with a resolve notice. Contact details encrypted and shown masked; a message carries no
+secret (the egress mask), minimal detail and a link; each channel's delivery log in History; a
+failure to notify is itself raised. All optional, off by default. **Acceptance:** the B2 replay
+sends 0 notifications; an unplanned M1-like outage sends 1 grouped incident, 1 notification per
+routed person or team, escalates if unacknowledged, and sends a resolve notice.
+
+## 21. Live refresh keeps what a person is doing: one mechanism (the operator, 2026-11-01)
+
+The operator's overnight brief of 2026-11-01, item 5 ("live refresh destroys view state",
+recurring). **Industry need:** an operator watching a live screen while acting on it (a menu
+open, a row expanded, a value half typed, a list scrolled) loses their place each time the
+screen redraws, and stops trusting it. Dashboards solve this by merging updates into what is
+shown and pausing while the person works; Mercury half-does it (below), once per page.
+
+### 21.1 The audit (read-only, 2026-11-01 ~11:0x UTC)
+
+About 75 self-updating regions, every one fed one way: an announcement (or a write's
+`X-NMAS-Invalidates`) fires one `nmas:<key>` event on the page body (`relay`,
+static/js/nmas_v2.js), and every region listing that key fetches itself again and **replaces
+its whole markup** (outerHTML or innerHTML; no morph or keyed merge anywhere). The only timed
+poll is a chart panel's 30 s refresh, which rebuilds its chart.
+
+**What already protects every region** (nmas_v2.js, page-wide): the hold, which skips an
+`nmas:` redraw while the region holds a text field being edited, a `[data-editing]` element, a
+request in flight, an open `details[hx-get]` or a `[data-holds-live]` mark, and then shows
+**"Paused while you work: newer data is waiting. Show it now"** (`holdWhileEditing`,
+`holdReason`, `notePaused`, `releaseHeld`, `resumeHeld`); `data-keep`, which reopens the same
+`<details>` after a swap; `hx-include`, which carries a form's values into the redraw; and view
+state written into a region's own URL.
+
+**The root causes:** (1) the only update is replacing the whole region; (2) announcements are
+broadcast to every listener, and some regions list many keys (History's timeline 10, the
+Actions menu 7, a running job card every step); (3) view state lives only in the DOM or in
+Alpine (selects, checkboxes, scroll and Alpine components are never held); (4) the hold is
+narrow (only `nmas:` events, not out-of-band swaps, not `fetch` posts); (5) reopening depends
+on stable keys, and one list's are positional; (6) a person's own result is drawn inside a live
+region whose GET cannot draw it again, so the write's own announcement wipes it; (7) an
+unexpected error replaces a region with a bare notice that never updates again (C2267). The
+regions with no protection for what a person does in them: C2268.
+
+### 21.2 The one mechanism
+
+1. **Keyed merge, not replacement.** A live region's redraw is merged by element key: rows,
+   cards and entries carry a stable `data-key`, and the merge replaces only what changed, keeps
+   a keyed element's open state, focus, scroll and typed values, and adds or removes rows by
+   key. Built on the vendored htmx, as one function every region uses (no new library unless a
+   licence is cleared, the operator's).
+2. **View state kept by region id and key, outside the replaced markup:** open details (today's
+   `data-keep`, extended), scroll inside the region, selects, checkboxes and Alpine components'
+   open state.
+3. **"N new, show" while a person interacts:** the hold extended to every redraw path
+   (out-of-band swaps, `htmx.ajax` re-asks, non-`nmas:` events, `fetch` posts) and to selects,
+   checkboxes, open menus and scroll away from the top; one wording, today's "Paused while you
+   work".
+4. **A person's own result outside the live region**, in a result slot the region's GET never
+   redraws (C656's pattern, `_history_views_result.html`), so an announcement cannot wipe it.
+5. **An error in one row never replaces the region:** a region's failed redraw keeps what it
+   shows, says "Couldn't load: <why>" above it, and keeps its trigger (C2267); a store that
+   cannot be read says so above the rows it last drew, never in place of them.
+
+### 21.3 The guardrails
+
+A contributor rule (a live region declares its keys and its view state); a CI check (every
+template with an `nmas:` trigger has `data-key` on its rows and no result slot inside it); a
+required browser test per live region (expand, type, scroll, wait two announcements, assert the
+state kept and the new data arrived); and the board checklist. **In scope:** firing cards not
+clearing until a refresh, the stale "Firing · N" count (C2251), C2003, C2217, C2267, C2268.
+**Order:** 21.2's (5) and (4) first (correctness), then (1) to (3), region by region, the
+busiest first (Actions menu, Monitoring › Alerts, History's timeline, SDN, DHCP). Built: (5)'s
+error path, 2026-11-01 (C2267: an error answering a live redraw keeps the region, says
+"Couldn't load" and keeps its listener); a store that cannot be read is still drawn in place of
+its rows. The rest is not built.

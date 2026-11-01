@@ -579,9 +579,11 @@ def fleet_commits(ctx):
     unborn = _unborn(ctx, "the repository's other commits")
     if unborn:
         return unborn
-    # A reload's record commit is drawn as its reload (`reloads`), never a second row.
+    # A reload's record commit is drawn as its reload (`reloads`), a set value's as its set
+    # (`secret_values`), never a second row.
     rows, err = _log(ctx, [".", ":(exclude)golden", ":(exclude)host_vars",
-                           ":(exclude).nsot/reloads.jsonl"])
+                           ":(exclude).nsot/reloads.jsonl",
+                           ":(exclude).nsot/secret_values.jsonl"])
     if err:
         return _out(errors=[f"the repository's other commits could not be read: {err}"])
     events = [_from_commit(r, "commit", r["subject"], [],
@@ -1819,8 +1821,10 @@ def reloads(ctx):
         host = r.get("device", "")
         if not _mine(ctx, host) or not _recent(ctx, r.get("at")):
             continue
+        # C2240: a Verify again's row sits beside the reloads', named as itself.
+        what = "Verify again" if r.get("kind") == "verify_again" else "Reload"
         events.append(_event(r.get("at", ""), "reload",
-                             f"Reload: {'back, verified' if r.get('ok') else r.get('outcome', '')}",
+                             f"{what}: {'back, verified' if r.get('ok') else r.get('outcome', '')}",
                              [host], who=r.get("by", ""), detail=r.get("reason", ""),
                              outcome="ok" if r.get("ok") else "failed",
                              marks=[] if r.get("ok") else ["stopped"],
@@ -1828,6 +1832,29 @@ def reloads(ctx):
                                      ("Steps", "; ".join(f"{s.get('step')}: {s.get('detail')}"
                                                          for s in r.get("steps") or [])),
                                      ("Window", (r.get("window") or {}).get("end_words"))]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events)
+
+
+def secret_values(ctx):
+    """Each value a person set for a secret reference on the Intent tab (C235, board H-S;
+    modules/nsot/secret_refs.py): who, which reference, why. Never a value: the record holds
+    none."""
+    from modules.nsot import secret_refs
+    got = secret_refs.read_records(ctx["ref"].repo_dir)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the secret values' record could not be read: {got['error']}"])
+    events = []
+    for r in got["rows"]:
+        host = r.get("device", "")
+        if not _mine(ctx, host) or not _recent(ctx, r.get("at")):
+            continue
+        events.append(_event(r.get("at", ""), "secret_value",
+                             f"A value set for {r.get('ref', '')}", [host], who=r.get("by", ""),
+                             detail=r.get("reason", ""), outcome="ok",
+                             record=[("Reference", r.get("ref")), ("Reason", r.get("reason")),
+                                     ("State", r.get("state"))]))
         if len(events) >= ctx["limit"]:
             break
     return _out(events)
@@ -2059,7 +2086,7 @@ SOURCES = {
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations,
-    "alert_rule_changes": alert_rule_changes,
+    "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2089,6 +2116,7 @@ KIND_GROUPS = (
                                ("views", "Saved views", ("view",)),
                                ("reveals", "Reveals", ("reveal",)),
                                ("hostkeys", "SSH host keys", ("hostkey",)),
+                               ("secret_values", "Secret values set", ("secret_value",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("ai_calls", "AI calls", ("ai_call",)),
@@ -2203,7 +2231,7 @@ SOURCE_KINDS = {
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
-    "alert_rule_changes": ("alert_rule",),
+    "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

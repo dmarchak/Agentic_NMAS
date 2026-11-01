@@ -3279,3 +3279,44 @@ Baseline: 9 passed. No device was asked: every configuration is the tests' own t
 | M9 a failure raised, not said | killed | 1, `test_a_failure_is_said_never_raised` |
 | M10 every entry's kind read as `plaintext` | killed | 4 |
 **The result: 11 mutants with the canary; every one killed.**
+
+## 2026-11-01: a value a person types for a secret reference (C235, board H-S), by hand
+**What touches the tier.** Code that stores a secret value: `secret_refs.set_value` stores the
+value a person typed for a reference *host*'s committed intent names
+(`credentials.set_template_secret`, kind `plaintext`), once every check passes: the two entries
+match, it is one token a CLI accepts, the reference is named in intent, it is not the account
+Mercury signs in with (Rotate only), and a reason is given. It records the set (who, when, the
+device, the reference, the reason) in the network's repository and commits it; no value is
+returned, logged or recorded. `listing` names each reference's state, never a value.
+**The method:** as C2031's, on the working tree over 6749c68a: each mutant one exact text
+replacement, required to match once, in its own `scripts/nmas-control` throwaway worktree,
+then tests/test_secret_refs.py run whole in CI's interpreter (`scratchpad/mut_secret_refs.py`).
+Baseline: 8 passed. No device was asked. M12 first survived: `Logger.addHandler` gives every
+handler the masking filter (modules/redact.py), which masks a value once it is stored, so a
+test reading the log through caplog, or through a handler it added, saw the logged value
+masked. The test now puts its own handler on the logger's list directly and reads what the
+module says, not what the net catches; M12 is then killed.
+| mutant | result | killed by |
+| C0 canary: `set_value` raises before its checks | killed | 7 |
+| M1 a failed check not refused | killed | 6 |
+| M2 the value may hold a space | killed | 1, the space case |
+| M3 Mercury's own account settable | killed | 1, the managed case |
+| M4 a reference intent does not name settable | killed | 1, the not-named case |
+| M5 the value stored as `hash`, not `plaintext` | killed | 1 |
+| M6 no reason needed | killed | 1, the no-reason case |
+| M7 the value written into the record | killed | 1, `test_a_value_is_stored_typed_and_its_set_recorded_and_committed_without_it` |
+| M8 the two entries not compared | killed | 1, the differ case |
+| M9 Mercury's own account listed as settable | killed | 1, the listing test |
+| M10 the device's own form listed as typed | killed | 1, the listing test |
+| M11 the record's commit not returned | killed | 1 |
+| M12 the value logged | survived, then killed | 1, by the test's own handler on the logger's list |
+**The result: 13 mutants with the canary; every one killed, M12 once the test read the
+module's own log past the masking net.**
+**The route that carries the value** (`intent_v2.secrets_set`, board H-S's Store the value)
+passes it to `set_value` and draws nothing of it: tests/test_intent_secrets_v2.py asserts the
+value in no response (the set, the refusal, the card after). Its controls, each in its own
+`scripts/nmas-control` worktree: the route declared a read (no gate) fails
+`test_a_viewer_who_is_not_a_verified_person_is_offered_none_and_refused`; the settable filter
+removed fails the two `?set=` cases for Mercury's own account and an unnamed reference; the
+card left out of the tab fails the tab's test. Declared configure instead of approve passed:
+both kinds need a verified person (identity.GATED_ACTIONS), so it is no control of this.

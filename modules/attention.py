@@ -174,6 +174,8 @@ ROW_KINDS = {
     ("scheduled_rotation", "stopped"): ("a scheduled credential rotation stopped on a failure",
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
+    ("reloads", "unverified"): ("a device came back from its reload and was not verified",
+                                "press Verify again on its page"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -414,6 +416,8 @@ CLEARS = {
                                         "or the failed device's rotation is committed (its "
                                         "device page's Rotate); until then the timer starts "
                                         "no scheduled run"),
+    ("reloads", "unverified"): (("resolves",), "a later record for the device replaces it: "
+                                "Verify again on its page, or another reload"),
     ("host_keys", "changed"): (("resolves",), "a session finds the device answering with the "
                                "key Mercury holds: after a re-key on its page keeps the new "
                                "one, or when the device answers with the held key again"),
@@ -4124,6 +4128,54 @@ def host_key_source(refused=None) -> dict:
                          + f"{len(rows)} refused at their last connection")
 
 
+def reload_unverified_source(found=None) -> dict:
+    """Each device whose newest reload record ended NOT VERIFIED (C2240): it answered on
+    SSH's port after the reload and could not be signed in to within the verify's bound, so
+    nobody knows it runs what it ran. ONE row per device, standing until a later record
+    replaces it (Verify again on its page, or another reload). One record file per network,
+    never a device."""
+    from modules.nsot import listref, reload_op
+
+    started = time.time()
+    label = "Reloads not verified"
+    rows, unread = [], []
+    try:
+        names = listref.names() if found is None else sorted(found)
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("reloads", label, read_at=started, took_ms=0,
+                             error=f"the networks could not be listed: {type(exc).__name__}")
+    for network in names:
+        try:
+            got = reload_op.unverified(network) if found is None else found[network]
+        except (OSError, ValueError) as exc:
+            unread.append(f"{network} ({exc})")
+            continue
+        for rec in got:
+            host = rec.get("device", "?")
+            detail = next((s.get("detail", "") for s in rec.get("steps") or []
+                           if s.get("step") == "verify"), "")
+            who = rec.get("by") or "nobody recorded"
+            what_ran = "Verify again" if rec.get("kind") == "verify_again" else "The reload"
+            rows.append(row(
+                source="reloads", kind="unverified", key=f"{network}:{host}", level="warning",
+                devices=[host], since=_ts(rec.get("at")),
+                what=(f"{host} came back from its reload and was not verified: nobody knows "
+                      "it runs what it ran"),
+                cause=(f"{what_ran} of {rec.get('at', '?')} by {who} ({network}) could not "
+                       "sign in after its SSH port answered"
+                       + (f": {detail}" if detail else "") + "."),
+                action={"label": (f"Verify again on {host}'s page: it signs in within 3 "
+                                  "minutes and compares what it runs with its committed "
+                                  "golden, sending nothing"),
+                        "href": f"/v2/device/{host}?op=reload_verify&list={network}"},
+                operands={"device": host, "list": network, "reload_at": rec.get("at", "")}))
+    error = ("the reload record could not be read for " + "; ".join(unread)) if unread else ""
+    return source_result("reloads", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=rows, error=error,
+                         checked=f"{len(names)} network(s)' reload records, {len(rows)} "
+                                 "ended not verified")
+
+
 def host_key_window_source(found=None) -> dict:
     """Each CLOSED planned window that kept new SSH host keys (the operator, 2026-10-16): one
     row, "<n> new host keys accepted during '<reason>'", until a person acknowledges it. The
@@ -4625,7 +4677,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
-           host_key_window_source, netbox_inventory_source, adjacency_log_source,
+           reload_unverified_source, host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, sdn_loop_source, sdn_responses_source, sdn_mitigation_source,
            sdn_controllers_source)
@@ -4689,6 +4741,9 @@ SOURCE_KEYS = {
     "sdn_controllers_source": ("sdn",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
+    # A reload's record (its run, or Verify again) ends a job that announces restarts (C2240;
+    # reload_op.ANNOUNCE_KEYS).
+    "reload_unverified_source": ("restarts",),
     # A window's summary written by its reader announces the same key (C906).
     "host_key_window_source": ("host_keys",),
     # A console survey's or kick-start's end announces these (console_ztp.ANNOUNCE_KEYS).

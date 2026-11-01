@@ -32,7 +32,9 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `f8111df04f15575e2311b6fad8790f46f4e2261ac5bb52e7c31a4c7dcf73dfcf`
+Templates sha256: `5376cf9b4a43a244ea7c2aa08f36ea200ec6bab2b584d0e4597038ff2c72baee`
+
+Compared again 2026-11-01 (the overnight brief, item 6), by the template: the identity line is not drawn when the kinds chosen show no commit ("No commit shown (kinds: ai_calls)…" counted nothing a person could act on); with no kind chosen, or a person or device that shows none, it still says so. No other region changed. Templates sha256 before: `f8111df04f15575e2311b6fad8790f46f4e2261ac5bb52e7c31a4c7dcf73dfcf`.
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's

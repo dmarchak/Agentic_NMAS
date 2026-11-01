@@ -2580,6 +2580,53 @@ def test_monitoring_alerts_history_rebuild(tmp_path, monkeypatch):
         next(gen, None)
 
 
+def test_tab_intent_secrets(monkeypatch, tmp_path):
+    """Board H-S (`DevIntentSecrets.dc.html`, 1440; approved 2026-11-01, C235) beside r2's
+    Intent tab on the browser layout test's lab (test_tab_intent's: r2's intent parsed from its
+    captured configuration), given an account `lab` first, committed as a person does: the
+    Secret references card, Set value… opened for `lab`, then the value stored."""
+    from tests import browser
+    from tests import test_profile_apply as P
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    P.lab.__wrapped__(monkeypatch, tmp_path)
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(L.R2), dict(L.R6)])
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    from modules.nsot import intent_edit
+    opened = intent_edit.open_doc("Lab", "r2")
+    text = opened["yaml"]
+    account = ("- name: lab\n  privilege: 15\n  secret_kind: secret\n"
+               "  secret_ref: user_lab_secret\n")
+    assert "\nusers:\n" in text, text[:200]
+    # The syslog heartbeat first, as test_tab_intent gives it (C490).
+    text = (text.replace("heartbeat: 0", "heartbeat: 300") if "heartbeat: 0" in text
+            else text.replace("  syslog:\n", "  syslog:\n    heartbeat: 300\n", 1))
+    got = intent_edit.commit("Lab", "r2", text.replace("\nusers:\n", "\nusers:\n" + account, 1),
+                             "the blind runs' temporary lab account", opened["base"],
+                             "operator@example.com")
+    assert got["ok"], got
+    card = "document.querySelector('#intent-secrets')"
+    store = ("['f-sr-value', 'f-sr-again'].forEach(function (i) { "
+             "document.getElementById(i).value = 'Shot-Not-Real-1'; }); "
+             "document.getElementById('f-sr-why').value = "
+             "'Blind runs: the temporary lab account (C2193)'; "
+             "document.querySelector('#sr-form button[data-op=\"set-secret-value\"]').click()")
+    states = [
+        ("view", f"{card}.scrollIntoView()", f"!!{card}"),
+        ("open", "document.querySelector('#intent-secrets a[data-op=\"set-secret-value\"]"
+                 "[href*=\"user_lab_secret\"]').click()", "!!document.querySelector('#sr-form')"),
+        ("done", store, "!!document.querySelector('#intent-secrets [data-sr-done]')"),
+    ]
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _d_walk("tab-intent-secrets", served, "/v2/device/r2?tab=intent", states,
+                boards=(("DevIntentSecrets.dc.html", 1440),))
+
+
 def test_tab_intent_words(tmp_path, monkeypatch):
     """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
     tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row

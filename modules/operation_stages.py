@@ -225,6 +225,14 @@ STAGES = {
     # and a commit handed anything else is refused before it writes.
     "intent_v2.words_commit": Stages(
         "intent_v2.words", "patch", NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
+    # Board H-S (C235): a value typed for a secret reference; the deploy that later sends it
+    # has the five stages itself.
+    "intent_v2.secrets_set": Stages(
+        "n/a: no program: the value is stored for a later deploy, whose own preview shows the "
+        "line it sends, masked; the form draws its checks",
+        "n/a: nothing previewed to bind; the value is checked in the same request",
+        NO_DEVICE, "n/a: setting the value again replaces it; the record is one commit",
+        "modules.nsot.secret_refs.record"),
     # The v2 device page's Revert and Retry (7.3, board 11): intent_ops' applies, the list carried.
     "device_v2.revert_confirm": Stages(
         "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
@@ -348,6 +356,7 @@ HISTORY = {
     "onboard_v2.verify": ("onboarding", "golden"),
     "adopt_v2.confirm": ("onboarding", "golden"),
     "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
+    "device_v2.reload_verify": ("reloads",),
     "v2.history_reapply_confirm": ("receipts", "golden"),
     "onboard_v2.abandon": ("onboarding",),
     "update.apply": NOT_A_DEVICE,
@@ -366,6 +375,7 @@ HISTORY = {
     "onboard_v2.create": ("intent",),
     "intent_v2.commit": ("intent",),
     "intent_v2.words_commit": ("intent", "ai_calls"),
+    "intent_v2.secrets_set": ("secret_values",),
     "bulk_intent_v2.apply": ("intent",),
     "device_v2.revert_confirm": ("intent",),
     "device_v2.retry_confirm": ("retries",),

@@ -63,6 +63,19 @@ STEPS = (
      ("record",)),
 )
 
+#: Verify again's steps (C2240), for a reload that ended not verified: the same sign-in within
+#: the bound, then what it runs compared with its committed golden (the run kept no copy of
+#: what it ran; the preview's gate 2 checked it matched its golden, or took a reason).
+VERIFY_STEPS = (
+    ("verify", "Sign in and compare",
+     "signed in to within the bound, the pauses growing, and what it runs compared with its "
+     "committed golden", ("verify",)),
+    ("record", "Record", "the verify's row beside the reload's: who, when and the outcome",
+     ("record",)),
+)
+#: The job kind of a Verify again (`reload_job_card` draws its stepper from VERIFY_STEPS).
+VERIFY_KIND = "reload_verify"
+
 #: How long a reload takes, per platform, from the reload to SSH answering: MEASURED where
 #: known (an emulated IOS-XE router finishes booting in about 6.5 minutes, measured during
 #: onboarding, docs/manual/how-it-works/onboard.md). None: not measured yet.
@@ -589,6 +602,103 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
         out["error"] = f"Not reloaded: {exc}. Nothing was sent."
         out["outcome"] = "busy"
         return out
+
+
+def unverified(list_name: str) -> list:
+    """Each device of *list_name* whose newest reload record ended not verified (C2240):
+    ``[row, ...]``, newest first; a later record (a reload or a Verify again) replaces it.
+    Raises OSError or ValueError when the record cannot be read."""
+    got = read_records(_repo(list_name))
+    if got["state"] == "unreadable":
+        raise ValueError(got.get("error") or "the reload record could not be read")
+    newest = {}
+    for r in got["rows"]:
+        newest.setdefault(r.get("device", ""), r)
+    return [r for r in newest.values() if r.get("outcome") == "unverified"]
+
+
+def verify_again(list_name: str, host: str, *, actor: str, reader=None, clock=None,
+                 verify_sleep=None) -> dict:
+    """Verify again (C2240), holding the device: sign in within the verify's bound and compare
+    what it runs with its committed golden; recorded beside the reload as its own row (kind
+    ``verify_again``). Sends nothing but the reads. ``{"ok", "outcome", "steps", "record",
+    ...}``, the run's shape, so the Reload card draws it."""
+    from modules.nsot import device_ops, repo as R, roundtrip
+
+    device = _device(list_name, host)
+    steps = []
+    out = {"ok": False, "device": host, "list": list_name, "by": actor, "kind": "verify_again",
+           "reason": "Verify again, after a reload that ended not verified",
+           "outcome": "", "steps": steps}
+
+    def step(name, ok, detail):
+        steps.append({"step": name, "ok": bool(ok), "detail": detail})
+        device_ops.note(name)
+
+    def finish(outcome, ok=False):
+        out.update(outcome=outcome, ok=ok, at=_iso(time.time()))
+        out["record"] = record(list_name, {k: out[k] for k in
+                                           ("at", "device", "list", "by", "reason", "outcome",
+                                            "ok", "steps", "kind")})
+        device_ops.note("record")
+        return out
+
+    if device is None:
+        out["error"] = f"{host} is not in {list_name}'s inventory"
+        return out
+    try:
+        with device_ops.hold(list_name, host, "reload", actor or "unknown"):
+            tried = _verify_read(lambda: (reader or read_device)(device),
+                                 **({"clock": clock} if clock else {}),
+                                 **({"sleep": verify_sleep} if verify_sleep else {}))
+            if tried["refused"] is not None:
+                refused = tried["refused"]
+                step("verify", False,
+                     f"it answered with an SSH host key Mercury does not hold (offered "
+                     f"{refused.offered.get('fingerprint', '?')}, held "
+                     f"{refused.held.get('fingerprint', '?')}): review it with Re-key…")
+                return finish("host_key_changed")
+            if not tried["ok"]:
+                step("verify", False,
+                     f"it could not be read in {tried['attempts']} "
+                     f"{'try' if tried['attempts'] == 1 else 'tries'} over {tried['after_s']} s: "
+                     f"{tried['error']}")
+                return finish("unverified")
+            golden = R.golden_at(_repo(list_name), host, "HEAD") or ""
+            if not golden:
+                step("verify", False, "it signed in, and has no committed golden to compare "
+                                      "what it runs with")
+                return finish("unverified")
+            same = roundtrip.stored_is_device(golden, tried["reads"].get("running", ""))
+            if same.get("equal"):
+                step("verify", True, "it signed in with the credential Mercury holds, and runs "
+                                     "what its committed golden holds")
+                return finish("reloaded", ok=True)
+            step("verify", False, f"it signed in, and runs something other than its committed "
+                                  f"golden: {len(same.get('only_left') or [])} line(s) gone, "
+                                  f"{len(same.get('only_right') or [])} new")
+            return finish("differs")
+    except device_ops.DeviceBusy as exc:
+        out["error"] = f"Not verified: {exc}. Nothing was read."
+        out["outcome"] = "busy"
+        return out
+
+
+def verify_again_start(list_name: str, host: str, *, actor: str, ident=None) -> dict:
+    """Verify again as a job (it reads the device for up to the verify's bound). ``{"job"}``."""
+    from modules import identity
+    from modules.nsot import capture_job
+    from modules.outbound import mask_payload
+
+    def work(_job_id):
+        with identity.carried(ident):
+            return mask_payload(verify_again(list_name, host, actor=actor))
+
+    job = capture_job.start(list_name, f"verifying {host} again", actor, work,
+                            kind=VERIFY_KIND, announce_keys=ANNOUNCE_KEYS,
+                            announcer=ANNOUNCER, device=host, card="reload")
+    log.info("reload: %s/%s verify again started by %s as job %s", list_name, host, actor, job)
+    return {"job": job}
 
 
 def _iso(epoch: float) -> str:

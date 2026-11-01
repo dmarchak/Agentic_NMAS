@@ -10,6 +10,15 @@
 {%- macro close_button(words) -%}
 <button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
 {%- endmacro -%}
+{#- C2240: Verify again, for a reload that ended not verified: signs in within the verify's
+    bound and compares what it runs with its committed golden, as a job; sends nothing. -#}
+{%- macro verify_again(c) -%}
+<form method="post" action="{{ url_for('device_v2.reload_verify', name=c.host) }}" hx-post="{{ url_for('device_v2.reload_verify', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+  <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+  <span class="op-act"><button type="submit" class="btn btn-primary" data-op="reload" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Verify again</span><span class="op-busy">Starting…</span></button>{{ how('reload', 'verify-again', compact=True, op='verifying') }}</span>
+  <span class="muted">signs in to {{ c.host }} within 3 minutes and compares what it runs with its committed golden; it sends nothing</span>
+</form>
+{%- endmacro -%}
 {%- if c.state == 'starting' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
          hx-post="{{ url_for('device_v2.reload_start', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
@@ -68,16 +77,16 @@
 <section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
          hx-get="{{ url_for('device_v2.reload_job_card', name=c.host, job=c.job, back=c.back) }}"
          hx-trigger="nmas:reload from:body, nmas:device_progress from:body" hx-swap="outerHTML">
-  <div class="op-hd"><h2 id="op-title">Reloading {{ c.host }}</h2>
-    <div class="op-hd-actions">{{ how('reload') }}</div></div>
+  <div class="op-hd"><h2 id="op-title">{% if c.verify %}Verifying {{ c.host }} again{% else %}Reloading {{ c.host }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('reload', 'verify-again' if c.verify else '') }}</div></div>
   <div class="op-part"><h3>Where it is</h3><div>
-    {{ run_stepper(c.steps | one_run(c.host, 'Reload progress')) }}
-    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; the result is kept in the reload's record and the restart in History.</p></div></div>
+    {{ run_stepper(c.steps | one_run(c.host, 'Verify again progress' if c.verify else 'Reload progress')) }}
+    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; the result is kept in the reload's record{% if not c.verify %} and the restart in History{% endif %}.</p></div></div>
 </section>
 {%- elif c.state == 'result' %}
 {%- set r = c.r %}
 <section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
-  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
+  <div class="op-hd"><h2 id="op-title">{% if r.kind == 'verify_again' %}Verify {{ c.host }} again{% else %}Reload {{ c.host }}{% endif %} {{ badge(c.chip, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
     {%- if c.alerts %}<p class="notice notice-warn" id="reload-not-silenced">{{ icon('warn', 16) }} {{ c.alerts }}. Its alerts fired as for an outage: tell whoever they page that this was the planned reload.</p>{% endif %}
@@ -94,6 +103,28 @@
   {%- if r.outcome == 'not_back' %}
   <div class="op-part"><h3>What next</h3><div class="op-next">
     <div><a class="btn" data-next-acts="breakglass_export" href="{{ url_for('v2.credentials') }}">Its break-glass record</a><span class="muted">the credential to sign in at its console; the planned window stays declared until it ends</span></div></div></div>
+  {%- elif r.outcome == 'unverified' %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">{{ verify_again(c) }}</div></div>
+  {%- elif r.outcome == 'host_key_changed' %}
+  {#- C2239: the key it came back with is the decision; Re-key's card shows both keys. -#}
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><span class="op-act"><a class="btn btn-primary" data-op="rekey" data-next-acts="rekey_card" href="{{ url_for('device_v2.device', name=c.host, op='rekey') }}" hx-get="{{ url_for('device_v2.rekey', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Review the new key</a>{{ how('rekey', compact=True, op='re-key') }}</span><span class="muted">both keys side by side; keep the new one only if {{ c.host }} made it, as a reload that saved no key does</span></div></div></div>
+  {%- endif %}
+</section>
+{%- elif c.state == 'verify_offer' %}
+{#- C2240: Needs attention's "Verify again" opens this, for a reload whose newest record ended
+    not verified. -#}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge('Back, not verified', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('reload', 'verify-again') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if c.rec %}
+    <p>Its reload of {{ stamp(c.rec.at) }}, by {{ c.rec.by or 'nobody recorded' }}, ended not verified{% if c.detail %}: {{ c.detail }}{% endif %}.</p>
+    {%- else %}
+    <p>{{ c.host }}'s newest reload record did not end not verified{% if c.rec_error %} ({{ c.rec_error }}){% endif %}: there is nothing to verify again.</p>
+    {%- endif %}</div></div>
+  {%- if c.rec %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">{{ verify_again(c) }}</div></div>
   {%- endif %}
 </section>
 {%- elif c.state == 'refused' %}

@@ -164,6 +164,11 @@ def _intent_ctx(ref, dev):
         # Normalise the formatting… without script (C1693): the same card its route draws.
         from routes.intent_v2 import normalise_ctx
         ctx["ed"] = normalise_ctx(ref, dev)
+    elif ctx["iv"].get("state") not in ("unreadable", "never_committed"):
+        # Board H-S's Secret references card below the document; `?set_secret=<ref>` opens
+        # Set value… without script.
+        from routes.intent_v2 import secrets_ctx
+        ctx["secrets"] = secrets_ctx(ref, dev, opened=request.args.get("set_secret", "").strip())
     return ctx
 
 
@@ -392,6 +397,7 @@ def device(name):
                       _rekey_card(ref, dev, tab) if op == "rekey" else
                       {"state": "starting", "op": "reload", "host": dev.get("hostname", ""),
                        "list": ref.name, "back": tab} if op == "reload" else
+                      _reload_verify_card(ref, dev, tab) if op == "reload_verify" else
                       # C537 (3), board C: no card asked for, and this device has an operation
                       # running, or one finished this person has not opened: THAT card.
                       _reopened(ref, dev, tab) if not op else None)
@@ -1001,8 +1007,16 @@ def rekey_confirm(name):
         return _strict(render_template("v2/_rekey.html", c={
             "state": "refused_hash", "host": host, "list": ref.name,
             "back": _back(request.form)}), 400)
+    # C2239: why the new key is the device's own, in the shape of a reason, recorded with it.
+    from modules.nsot.authorisation import reason_problem
+    reason = " ".join((request.form.get("reason") or "").split())
+    problem = reason_problem({"reason": reason, "line": f"re-keying {host}"})
+    if problem:
+        return _strict(render_template("v2/_rekey.html", c={
+            "state": "refused_reason", "host": host, "list": ref.name, "error": problem,
+            "back": _back(request.form)}), 400)
     actor = identity.identify(request).actor or ""
-    out = rekey_op.apply(ref.name, host, actor=actor, confirmed_hash=confirmed)
+    out = rekey_op.apply(ref.name, host, actor=actor, confirmed_hash=confirmed, reason=reason)
     c = device_actions.rekey_result_card(ref, host, out,
                                          rekey_result(out, out.get("plan") or {}, actor))
     c.update(back=_back(request.form))
@@ -1215,6 +1229,45 @@ def reload_confirm(name):
     return _reload_card({"state": "reloading", "host": host, "list": ref.name, "back": back,
                          "job": got["job"],
                          "steps": device_actions.job_steps("reload", ref.name, host)})
+
+
+def _reload_verify_card(ref, dev, back) -> dict:
+    """C2240: the Reload card offering Verify again, for the reload whose newest record ended
+    not verified (Needs attention's row opens it); says so when there is none."""
+    from modules.nsot import reload_op
+
+    host = dev.get("hostname", "")
+    c = {"state": "verify_offer", "op": "reload", "host": host, "list": ref.name, "back": back,
+         "rec": None, "rec_error": "", "detail": ""}
+    try:
+        c["rec"] = next((r for r in reload_op.unverified(ref.name) if r.get("device") == host),
+                        None)
+    except (OSError, ValueError) as exc:
+        c["rec_error"] = f"the reload record could not be read: {exc}"
+    # Why its verify failed: the record's verify step, the one the row names.
+    c["detail"] = next((s.get("detail", "") for s in (c["rec"] or {}).get("steps") or []
+                        if s.get("step") == "verify"), "")
+    return c
+
+
+@bp.route("/device/<name>/reload/verify", methods=["POST"])
+def reload_verify(name):
+    """Verify again (C2240) as a job, as the person who asked: sign in within the verify's
+    bound and compare what it runs with its committed golden. Sends nothing but its reads;
+    records its row beside the reload's."""
+    from modules import device_actions, identity
+    from modules.nsot import reload_op
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_reload.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    got = reload_op.verify_again_start(ref.name, host,
+                                       actor=identity.identify(request).actor or "",
+                                       ident=identity.verified_identity())
+    return _reload_card({"state": "reloading", "verify": True, "host": host, "list": ref.name,
+                         "back": _back(request.form), "job": got["job"],
+                         "steps": device_actions.job_steps("reload_verify", ref.name, host)})
 
 
 @bp.route("/device/<name>/when-free", methods=["GET"])

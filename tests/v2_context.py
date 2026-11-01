@@ -974,7 +974,8 @@ def _rekey(client, _lab, mp):
     vals = re.search(r'"hash": "([0-9a-f]+)"', card.get_data(as_text=True))
     assert vals, "the re-key card offers no confirm"
     r = client.post("/v2/device/r3/rekey/confirm",
-                    data={"list": "Lab", "hash": vals.group(1), "back": "overview"})
+                    data={"list": "Lab", "hash": vals.group(1), "back": "overview",
+                          "reason": "the device was rebuilt from a fresh disk"})
     assert r.status_code == 200, r.status_code
 
 

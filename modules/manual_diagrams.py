@@ -1016,6 +1016,29 @@ def rekey():
     ])
 
 
+def set_secret_value():
+    return svg(400, (
+        "Setting a secret reference's value, write-only. You type the value twice with a "
+        "reason. It is checked: the two match, one token a device's CLI accepts, the reference "
+        "named in the device's committed intent and not the account Mercury signs in with; "
+        "any failure stores nothing. The value is stored encrypted for this device, never "
+        "shown again, and the set is committed with who, when and the reason, never the value. "
+        "Nothing is sent to the device now: the next deploy sends it, and once that deploy "
+        "verifies, the device's own form of the value replaces what you typed."), [
+        lanes(20, 394),
+        person(14, 40, 186, 30, "You type it twice, a reason"), num(14, 40, 1),
+        doc("box", 14, 86, 186, 40, "The checks, by name", "a failure: nothing stored"),
+        num(14, 86, 2),
+        store(14, 142, 186, 40, "Stored, encrypted", "this device and reference"), num(14, 142, 3),
+        repo(14, 198, 186, 46, "One commit", "who, when, why; never the value"), num(14, 198, 4),
+        t(262, 60, "Nothing sent now", "sm"),
+        band(264, 120, "Later · the next deploy"),
+        device(262, 286, 118, 80, "The device", "stores its own form", top=True),
+        *rows([(318, "send", 5, "The deploy sends it", "verified")]),
+        store(14, 330, 186, 40, "Its own form kept", "in place of what you typed"), num(14, 330, 6),
+    ])
+
+
 def dhcp_reservation():
     return svg(470, (
         "Reserving an address. The preview asks Kea for its configuration and leases and reads "
@@ -1752,6 +1775,7 @@ DIAGRAMS = {
     "edit-template": edit_template,
     "reload": reload,
     "rekey": rekey,
+    "set-secret-value": set_secret_value,
     "dhcp-reservation": dhcp_reservation,
     "dhcp-subnet": dhcp_subnet,
     "dhcp-exclusion": dhcp_exclusion,

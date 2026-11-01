@@ -358,6 +358,12 @@ RELOAD_WORDS = {"reloaded": ("Reloaded and verified", "ok"),
                 "unread": ("Not reloaded: unread", "warn"),
                 "no_window": ("Not reloaded: no window", "warn"),
                 "busy": ("Not reloaded: held", "warn")}
+#: Verify again's outcome (C2240) -> (its chip, its level): what the reload's record lacked.
+VERIFY_WORDS = {"reloaded": ("Back, verified", "ok"),
+                "differs": ("Back, running something else than its golden", "danger"),
+                "unverified": ("Still not verified", "warn"),
+                "host_key_changed": ("Back with a new SSH host key", "danger"),
+                "busy": ("Not verified: held", "warn")}
 
 
 def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
@@ -366,9 +372,11 @@ def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
     card = {"op": "reload", "host": host, "list": ref.name, "job": job_id}
     if got is None:
         return dict(card, state="unknown")
-    run = got.get("kind") == "reload"
+    verify = got.get("kind") == "reload_verify"
+    run = got.get("kind") == "reload" or verify
     if got["state"] == "running":
-        return dict(card, state="reloading", steps=job_steps("reload", ref.name, host)) \
+        return dict(card, state="reloading", verify=verify,
+                    steps=job_steps("reload_verify" if verify else "reload", ref.name, host)) \
             if run else dict(card, state="reading")
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
@@ -379,8 +387,8 @@ def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
         may = may or {"may": False, "statement": "nobody is identified"}
         return dict(card, state="preview", p=p, may=may,
                     can=bool(may.get("may")) and not p.get("failing"))
-    chip, level = RELOAD_WORDS.get(p.get("outcome", ""),
-                                   (f"Not reloaded: {p.get('outcome') or 'no outcome'}", "warn"))
+    chip, level = (VERIFY_WORDS if verify else RELOAD_WORDS).get(
+        p.get("outcome", ""), (f"Not reloaded: {p.get('outcome') or 'no outcome'}", "warn"))
     # A window whose Grafana silence could not be set (the token refused, Grafana down): the
     # reload went ahead and its alerts fired as an outage's would, so the card says so plainly
     # and is never green over it (the operator, 2026-10-17).
@@ -470,12 +478,14 @@ def waited_for_turn(steps, trail) -> int:
 
 def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:
     """The stepper rows for *op*'s running job on *host*, from its declared steps and the
-    device's hold; [] for a card that declares why it draws none."""
+    device's hold; [] for a card that declares why it draws none. ``reload_verify`` is the
+    Reload card's Verify again (C2240), its job on the same card, its steps its own."""
     import importlib
 
     from modules.nsot import device_ops
 
-    ref = JOB_STEPPERS[op]
+    ref = (("modules.nsot.reload_op", "VERIFY_STEPS", None) if op == "reload_verify"
+           else JOB_STEPPERS[op])
     if isinstance(ref, str):
         return []
     mod = importlib.import_module(ref[0])

@@ -106,6 +106,8 @@ NOT_AN_OPERATION = {
                                         "the link",
     ("_intent_words.html", "Cancel"): "reopens the Intent tab without the question: nothing was "
                                       "drafted or sent",
+    ("_intent_secrets.html", "Cancel"): "draws the Secret references card again without Set "
+                                        "value…: nothing was stored",
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     ("_dhcp_subnet.html", "Cancel"): "puts the Subnets tab back, writing nothing",
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",

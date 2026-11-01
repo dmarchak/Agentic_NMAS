@@ -66,6 +66,7 @@ PAGES = (
     ("edit-template", "Edit a template", H, "how-it-works/edit-template.md"),
     ("reload", "Reload a device", H, "how-it-works/reload.md"),
     ("rekey", "Re-key a device: its SSH host key", H, "how-it-works/rekey.md"),
+    ("set-secret-value", "Set a secret reference's value", H, "how-it-works/set-secret-value.md"),
     ("dhcp-reservation", "Reserve an address: add, change or remove a DHCP reservation", H,
      "how-it-works/dhcp-reservation.md"),
     ("dhcp-subnet", "Change a DHCP subnet: its pool, options and lease times", H,
@@ -236,6 +237,8 @@ OPERATIONS = {
     "change-record": ("modules.ai.change_record", "STEPS"),
     # C1909: both ends of a link deployed as one change, on the deploy page.
     "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
+    # C235 (board H-S): a value typed for a secret reference, on the Intent tab.
+    "set-secret-value": ("modules.nsot.secret_refs", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

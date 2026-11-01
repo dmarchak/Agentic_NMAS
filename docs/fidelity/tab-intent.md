@@ -26,8 +26,42 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `-open`, `-edited`, `-error`, `-fixed`, `-done`), and `tab-intent-moved` and
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
-Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `72208aaa5435a15ff1e368ea12a0856ac024393ab2370ae85a430ce7243686e6`
+Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
+Templates sha256: `4f553988df556adb2447708cf276fe108d8283edf123306bfa37a1fe428dd7a3`
+
+**Compared again 2026-11-01 (C235, board H-S, `DevIntentSecrets.dc.html`, approved under the
+Phase 7 mode):** `_intent.html` includes the **Secret references** card
+(`_intent_secrets.html`, which joins the templates compared) below the committed document, for
+a device whose intent is not bootstrap only. Shot `tab-intent-secrets`
+(`tests/test_board_shots.py::test_tab_intent_secrets`, on test_tab_intent's lab: r2's intent
+parsed from its captured configuration, given an account `lab` and its syslog heartbeat in one
+commit): the board at 1440, and the page at 1440, 1280 and 390, the card, Set value… opened
+for `lab`, then the value stored.
+- The card's head: the title, the count of references by state and the refusal sentence, How
+  does this work? at the right. **same**, but the subtitle says "at HEAD" where the board names
+  the commit (`9b02d11`): **deviation** (the card reads the document at HEAD and carries no
+  sha; the document card above names the commit).
+- The rows: reference, what it is for, the state's chip, Set value… (or "changes by Rotate
+  only" for the account Mercury signs in with). **same** in order and controls; the purpose is
+  the account and its privilege ("Account lab, privilege 15") where the board adds a human
+  purpose ("the blind runs' temporary account"), and a held value carries no provenance
+  ("rotated 3 d ago", "from its capture"): **deviation** (intent holds no purpose, and the
+  store keeps no time per value). The table head is the app's table style, not the board's
+  capitals: **deviation**. At 390 the Held column is hidden, as the board's own rule does.
+- Set value…'s form: the title with the reference and the device, the write-only sentence,
+  Cancel; the value and the value again side by side; Why, in one line, across; the checks;
+  the capture-back sentence; Stores the value for r2 only; Store the value. **same**, but the
+  checks are listed as rules with the confirming person, where the board draws a pass chip on
+  each as typed: **deviation** (they are checked at Store, and a refusal names each that
+  failed, drawn in the form; no value is posted before Store).
+- After Store the value: the board draws it as a second card; built as a notice at the head of
+  the same card, with the reference, its typed chip, who, just now, what the deploy does next
+  and the commit that recorded it. **deviation** (in place, as every v2 action's result), the
+  row's chip reading typed below it.
+- Every other region of this record rendered as before. No other region's verdict changed.
+  How does this work? sits in its own span at the head's right (C505's rule: beside the head's
+  heading), where the board draws it; compared by the template, the shots' place unchanged.
+Templates sha256 before: `72208aaa5435a15ff1e368ea12a0856ac024393ab2370ae85a430ce7243686e6`.
 
 **Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_intent_words.html`
 includes Was this right? (`_ai_feedback.html`) under a draft, one end's or both ends', after

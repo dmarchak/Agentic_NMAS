@@ -793,6 +793,31 @@ class TestIntentEditCards(_Cards):
         return html
 
 
+# ── Set value… (C235, board H-S), on the intent editor's world, s4 with an account `lab` ─
+
+class TestIntentSecretsCards(_Cards):
+    from tests import test_intent_editor as _ie, test_intent_secrets_v2 as _is
+    world, sr = hosted(_ie.world), hosted(_is.sr)
+
+    CASES = {
+        "intent_secrets": ("_intent_secrets.html", "Store the value", r"Store the value",
+                           "viewer"),
+    }
+
+    def _form(self, request):
+        sr = request.getfixturevalue("sr")
+        return _text(sr["client"].get("/v2/device/s4/intent/secrets?set=user_lab_secret"))
+
+    def drawn_intent_secrets(self, request):
+        return self._form(request)
+
+    def blocked_intent_secrets(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._form(request)
+        assert "Set the value of" in html, "floor: the form is drawn"
+        return html
+
+
 # ── Change it in words (feature 7, part 2), on the host's real committed s1 ─
 
 class TestIntentWordsCards(_Cards):
@@ -1837,9 +1862,10 @@ class TestThePopulation:
         Edit… and Remove…, the editor's Preview, the operation card's Send and a response's
         Preview; 67 until the intent editor's Commit drawn again by its check, C1693,
         2026-10-27; 68 until feature 7's Commit both devices' intent, C1908,
-        2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28)."""
+        2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28; 70 until
+        the Intent tab's Store the value, C235, 2026-11-01)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 70, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 71, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

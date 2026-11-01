@@ -117,6 +117,16 @@ you press **Commit this draft** (or **Commit and plan deploy**, which opens the 
 preview next); **Discard draft** drops it. It changes this device only, and only the
 interfaces, VLANs and networks your sentence names. See [Change it in words](intent-in-words).
 
+**Secret references**, below the document, lists every secret reference the committed intent
+names (an account's `secret_ref`, or one under `secret_refs`), what each is for, and whether
+Mercury holds a value for it: the device's own form, typed and waiting for its deploy, held
+for the network, or no value. It never shows a value. A deploy that needs a reference with no
+value is refused before anything is sent. **Set value…** beside a reference opens a write-only
+form: the value twice and why, in one line. It stores the value for this device only, records
+who, when and why (never the value), and sends nothing to the device; the next deploy sends
+it. The account Mercury signs in with is not set here: it changes by Rotate only. See
+[Set a secret reference's value](set-secret-value).
+
 ## History {#history-tab}
 
 The History page's timeline filtered to this device, over all time. It is the same reader

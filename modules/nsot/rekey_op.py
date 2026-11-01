@@ -151,8 +151,9 @@ def verify(ip: str, fingerprint: str) -> bool:
 
 
 def apply(list_name: str, hostname: str, *, actor: str, confirmed_hash: str,
-          read=None) -> dict:
-    """Keep the key *hostname* answers with now, holding the device, as *actor*.
+          read=None, reason: str = "") -> dict:
+    """Keep the key *hostname* answers with now, holding the device, as *actor*, with the
+    person's *reason* recorded beside the restart it found (C2239).
     ``{"ok", "state", "detail", "plan", "record"}``. The plan is computed again (the key read
     again) and a different hash refuses with nothing kept, naming what moved."""
     from modules import host_keys
@@ -173,7 +174,9 @@ def apply(list_name: str, hostname: str, *, actor: str, confirmed_hash: str,
                     "again")}
             device_ops.note("keep")
             got = host_keys.replace(p["ip"], expected=p["held"]["fingerprint"], new=p["now"],
-                                    by=actor, why=f"re-keyed from the device page; {p['restart']}")
+                                    by=actor, why=(f"re-keyed from the device page"
+                                                   + (f" because {reason}" if reason else "")
+                                                   + f"; {p['restart']}"))
             if not got["ok"]:
                 return {"ok": False, "state": "refused", "plan": p,
                         "detail": got["error"] + "."}

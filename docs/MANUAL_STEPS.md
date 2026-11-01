@@ -55,6 +55,7 @@ host), kept out of the product by the lab-specifics rule; listed so the walk's c
 | M30 | Out-of-band ZTP: make the console server's device and ports, and the device's console port and cable, in NetBox | the Console servers tab ("made in NetBox first") | LABOUR | `console_path.ensure_console_path` builds the device's side behind the write gate, but no screen offers it, and the console server's device must exist first | C1576, C1555 |
 | M31 | Out-of-band onboarding in one decision: confirm "Onboard <device> through its console" with a reason | manual: onboard#out-of-band-onboarding | DECISION | it types on a device and creates it; everything else (the address, mask, VLAN, interface, gateway, config server, Create, the kick-start, the read-back, the copy, the wait for SSH) is the run's | — |
 | M32 | Out-of-band onboarding: type the uplink when NetBox cables none of the device's interfaces to the relay | manual: onboard#out-of-band-onboarding | LABOUR | derived from NetBox's cable when there is one; Mercury keeps no LLDP table to read it from otherwise | C1612 |
+| M33 | Set a secret reference's value: type it twice with a reason, per device (Intent tab, Set value…) | manual: set-secret-value | DECISION | the value is a secret only a person chooses (an account's password); the device's own form is then captured by Mercury, not typed | — |
 
 ## Candidates to automate, sized where known (none built now; Lab 8's build first)
 
