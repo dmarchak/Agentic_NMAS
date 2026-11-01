@@ -3322,3 +3322,34 @@ value in no response (the set, the refusal, the card after). Its controls, each 
 removed fails the two `?set=` cases for Mercury's own account and an unnamed reference; the
 card left out of the tab fails the tab's test. Declared configure instead of approve passed:
 both kinds need a verified person (identity.GATED_ACTIONS), so it is no control of this.
+
+## 2026-11-01: instruction-like lines withheld on the egress path (C2271), by hand
+**What touches the tier.** The egress path's step from the mask to the send: `gateway._prepared`
+now passes every request part but the person's typed ones through
+`injection.withhold_parts` before `build_request`, and the request is built from what it
+returns; each withheld line is listed on the call's row and the result. It can only remove
+text from what is sent (a matching line becomes "[withheld: …]"), never add data.
+**The method:** as C2031's, on the C2176 branch (over 05d49928): each mutant one exact text
+replacement, required to match once, in its own `scripts/nmas-control` throwaway worktree,
+then tests/test_ai_injection.py run whole in CI's interpreter (`scratchpad/mut_injection.py`).
+Baseline: 29 passed. M5 and M15 survived the first run (27 tests then); the test of the
+gateway's own parts (`test_the_person_s_typed_words_go_as_typed_and_retrieved_data_is_withheld`)
+was added for them, and both were killed on the second.
+| mutant | result | killed by |
+| C0 canary: `withhold` raises before it reads a part | killed | 7 |
+| M1 the gateway never withholds | killed | 2 |
+| M2 the request built from the parts before withholding | killed | 1 |
+| M3 the row not told what was withheld | killed | 1 |
+| M4 the result not told | killed | 2 |
+| M5 the person's typed parts withheld too | killed | 1 (second run) |
+| M6 `withhold_parts` ignores *skip* | killed | 1 |
+| M7 a JSON part sent unchanged though something was withheld | killed | 2 |
+| M8 a JSON part with nothing withheld written again (not byte for byte) | killed | 1 |
+| M9 a text part sent unchanged | killed | 3 |
+| M10 the matching line kept | killed | 3 |
+| M11 a list's values not read | killed | 3 |
+| M12 a dict's values not read | killed | 3 |
+| M13 a JSON part read as one text | killed | 2 |
+| M14 a pattern matched only at a line's start | killed | 9 |
+| M15 a part that is not a string not read | killed | 1 (second run) |
+**The result: 15 mutants with the canary; every one killed.**

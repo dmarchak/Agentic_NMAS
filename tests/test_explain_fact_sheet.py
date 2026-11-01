@@ -317,10 +317,12 @@ def test_withheld_and_empty_sections_are_named_and_a_whole_pack_lacks_nothing():
     pack = _case19()
     assert "logs (Log lines around the onset): empty (Loki holds no line from s4)" in \
         fact_sheet.lacks_line(pack, pack["sections"])
-    whole = {"schema": 6, "sections": [_sec(n) for n in ("alert", "concurrent", "device",
+    # A whole pack: every section of this release's schema (8 added the neighbours' events).
+    whole = {"schema": 8, "sections": [_sec(n) for n in ("alert", "concurrent", "device",
                                                           "history", "intent", "neighbours",
                                                           "observed", "endpoints", "health",
-                                                          "observer", "logs")]}
+                                                          "observer", "logs",
+                                                          "neighbour_events")]}
     assert fact_sheet.lacks_line(whole, whole["sections"]).endswith(
         "nothing: every section was read and held something, every figure measured.")
 
@@ -337,7 +339,7 @@ def test_every_line_is_labelled_and_the_sheet_is_masked(monkeypatch):
     assert text.split("\n")[0] == fact_sheet.HEAD
     # The head and a line each of `LINES` (the changes and actions since the operator's order
     # of 2026-10-29; tests/test_explain_who.py).
-    assert len(text.split("\n")) == 1 + len(fact_sheet.LINES) == 6
+    assert len(text.split("\n")) == 1 + len(fact_sheet.LINES) == 7
     assert all("(computed by Mercury)" in ln for ln in text.split("\n")[1:])
     assert "Planted5ecretValue9" not in text and "Pl4ntedCommunity" not in text
     assert "<redacted:" in text

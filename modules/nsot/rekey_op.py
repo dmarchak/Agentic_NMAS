@@ -83,6 +83,69 @@ def _restart_words(list_name: str, hostname: str, since: str) -> str:
         f", and {len(after) - 1} more time(s) since" if len(after) > 1 else "")
 
 
+#: The lines a device logs about its own keys and SSH (C2239's boot-log evidence): a key pair
+#: generated, imported, replaced or deleted, SSH enabled or disabled, a PKI key event. Their
+#: forms: `%CRYPTO_ENGINE-5-KEY_ADDITION` from a lab router's boot of 2026-10-30 (the B2 run's
+#: notes), `%SSH-5-ENABLED` from the same boot, the rest Cisco's documented mnemonics.
+KEY_LINES = (r"%(?:CRYPTO_ENGINE-\d-KEY_(?:ADDITION|DELETED|REPLACE)|SSH-\d-(?:ENABLED|"
+             r"DISABLED)|PKI-\d-[A-Z_]*KEY[A-Z_]*)\b")
+#: The most key lines a card names, the newest; the rest counted.
+KEY_LINES_SHOWN = 4
+#: How far back the log is read: since the key was kept, at most a day.
+KEY_LINES_WINDOW_S = 86400
+
+
+def key_log_words(list_name: str, hostname: str, since: str, *, now: float = None,
+                  client=None) -> str:
+    """What *hostname* logged about its keys and SSH since its key was kept (*since*, at most
+    `KEY_LINES_WINDOW_S` ago), as the card's evidence (C2239: "Review the new key, with the
+    boot-log evidence"; still a person's decision): its newest key lines, each with its time,
+    masked as every line Mercury shows; or that Loki holds none; or why the log could not be
+    read. Read through History › Query's logs builder, `KEY_LINES` as one stage after it."""
+    import re
+
+    from modules import history_logq as Q
+    from modules import redact, restarts
+
+    now = time.time() if now is None else now
+    start = max(restarts._epoch(since or "") or 0, now - KEY_LINES_WINDOW_S)
+    frm = Q._utc(int(start // 60) * 60, "%Y-%m-%d %H:%M")
+    to = Q._utc(-(-int(now) // 60) * 60, "%Y-%m-%d %H:%M")
+    spec, errs = Q.ask({"dev": [hostname], "show": "lines", "range": "custom", "from": frm,
+                        "to": to})
+    rng = Q.window(spec, now)
+    if errs or rng["error"]:
+        return "its log could not be asked: " + "; ".join(errs + [rng["error"] or ""]).strip("; ")
+    try:
+        if client is None:
+            client = Q._client(list_name, Q.wait(Q.limits(list_name)))
+        if not client.is_configured():
+            return f"its log was not read: no log store is configured for {list_name}"
+        disc = Q.discover(list_name, rng["start"], rng["end"], client=client, now=now)
+        if disc["state"] != "ok":
+            return f"its log could not be read: {disc['error']}"
+        built = Q.build(spec, disc, rng, [hostname])
+        built["log_query"] += " |~ " + Q.string(KEY_LINES)
+        got = Q.lines(list_name, spec, built, rng, client, now)
+    except Exception as exc:                      # noqa: BLE001 (said, never raised)
+        return f"its log could not be read: {type(exc).__name__}: {exc}"[:300]
+    if got["state"] == "error":
+        return f"its log could not be read: {got.get('error') or 'no reason given'}"
+    rows = [r for r in got.get("rows") or []
+            if r.get("device") == hostname and re.search(KEY_LINES, r.get("text") or "")]
+    if not rows:
+        return (f"its log holds no key or SSH line between {rng['words']}: no key "
+                "generated or imported was logged")
+    rows = sorted(rows, key=lambda r: r.get("iso") or "", reverse=True)
+    shown = "; ".join(f"{(r.get('iso') or '')[:19].replace('T', ' ')} UTC "
+                      f"{redact.redact_text(r.get('text') or '')}"
+                      for r in rows[:KEY_LINES_SHOWN])
+    more = len(rows) - KEY_LINES_SHOWN
+    return (f"{len(rows)} key or SSH line{'' if len(rows) == 1 else 's'} in its log since the "
+            f"key was kept, the newest first: {shown}"
+            + (f"; and {more} more" if more > 0 else ""))
+
+
 def plan(list_name: str, hostname: str, *, read=None) -> dict:
     """Everything a re-key would keep, what it will not do, and why it would refuse. Reads the
     registry, the inventory, the host-key record, the restart record and the device's key
@@ -136,6 +199,9 @@ def plan(list_name: str, hostname: str, *, read=None) -> dict:
                           f"({held.get('fingerprint')}): there is nothing to re-key")
     out["restart"] = (_restart_words(list_name, hostname, held.get("kept_at", ""))
                       if held else "")
+    # The device's own log of its keys since the key was kept (C2239), only when it changed.
+    out["key_log"] = (key_log_words(list_name, hostname, held.get("kept_at", ""))
+                      if held and now and "changed" not in out["refused_by"] else "")
     out["ok"] = not out["refusals"]
     out["hash"] = hashlib.sha256(json.dumps({
         "list": list_name, "device": hostname, "ip": ip,

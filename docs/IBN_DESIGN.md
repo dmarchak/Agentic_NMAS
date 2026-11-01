@@ -1015,6 +1015,37 @@ do nothing the person could not already do.** Each item is a decision for the op
    identifies no one: a voice request runs as the session that carries it, never as the
    speaker it sounds like, and a change it asks for waits at the GUI's confirm.
 
+**Built 2026-11-01 (C2271; the overnight brief's item 3, W11 and W12): item 5's flagging, at
+the gateway.** Every request is the prompt and its shared context as system blocks, then each
+part of the call's own data in a tagged block (`<data name="…">`) in the user turn, after
+every instruction (`gateway.build_request`). Before the request is built,
+`modules/ai/injection.py` reads every part but those a person typed (`gateway.TYPED_PARTS`)
+line by line, a JSON part value by value. A line that reads as words aimed at the model
+(ignoring the instructions, new instructions, a claim of identity or approval, a change of
+role, prompt markup or a turn, an instruction about what to answer, a link or image to fetch,
+or characters a person cannot see) is replaced by "[withheld: instruction-like text (…)]". The
+line stays where it was kept (the pack on its card), each withheld line is listed on the call's
+record and its result (where, and which patterns, never the line), and Explain's answer card
+says how many lines were withheld and where to read them. The patterns flag nothing in the
+39,829 lines of real captures the suite keeps (tests/test_ai_injection.py). Still to build:
+raising a withheld line as a Needs attention row (C2272), and Explain's recorded cases with a
+planted line, which need the replay to plant one (C2273).
+
+**Where each request's data comes from (the audit of 2026-11-01).** Untrusted means someone
+other than the person asking can write it.
+
+| Feature | Part | What it holds, and from where | Who can write it | Read by the flagger |
+|---|---|---|---|---|
+| Explain | `pack` | the evidence pack's sections: the alert's labels and annotations (Grafana's rule, and label values a device sets, such as an interface's description in `ifAlias`); other alerts; the device's NetBox fields; History's records (commit messages, receipts, the reasons people typed); the Intent check's lines; neighbours and the observed network (LLDP's names and descriptions from the devices); endpoints (host names from controllers and DHCP); health and the monitoring side (numbers); syslog lines, the device's and its neighbours' | device configurations and anyone who can log on a device or reach its syslog; NetBox's editors; Mercury's users; Grafana's rule authors | yes |
+| Explain | `fact_sheet`, `the_alert`, `network_topology` | Mercury's computation over the pack (it quotes log lines); the rule's name; the network model (no description, no configuration line) | as the pack's | yes |
+| Ask in words | `question` | the person's own words | the person asking | no (typed: masked and said, `TYPED_PARTS`) |
+| Ask in words | the catalogue, the series and log lines looked up | metric names and labels (label values a device sets), log lines | as Explain's | yes |
+| Change it in words | `sentence` | the person's own words, quoted text held back as placeholders | the person asking | no (typed) |
+| Change it in words | `devices`, `devices_named` | the devices' committed intent sections (descriptions among them) and their names | Mercury's users, through intent | yes |
+| Change record | `change` | the program's shape in keywords, never the program; the reasons people typed are never sent | Mercury | yes |
+| SDN classification | the detection's pack | flows, ports, host names and addresses from the controller | anything on the network that sends traffic or names a host | yes |
+| Connection check | `word` | a word Mercury chose | Mercury | yes |
+
 **The shape, in code** (illustrative):
 
 ```python

@@ -34,6 +34,18 @@ and the ``sdn`` section, the flows and port rates cited by their evidence ids, c
 detection's time. Its firing instances join the tab's (`sdn_firing`). A Grafana alert's pack is
 unchanged: ``sdn`` is not one of `SECTIONS`.
 
+**What its one-hop neighbours did** (C2176, schema 8, `neighbour_events_section`): a change
+made on a neighbour is often the cause of an alert downstream (the run sheets' R3, R8, C1 and C4:
+the change and its adjacency line logged on one router, the alert fired on its neighbour). So the
+pack holds,
+in a section of its own and never inside the device's own logs or History, the change and
+adjacency lines (`NEIGHBOUR_LINES`) of the devices one hop from the alert's device in the
+network model (by its links, routing or cabling: a switch whose only neighbour is a router by
+its cable is that router's neighbour), in the device's own log window, and their History inside
+that window, each piece naming its neighbour. A neighbour's reload or configuration change is
+the neighbour's: nothing that reads the device's own sections (the fact sheet, WHO) counts it
+as the device's.
+
 **Each piece names its source and when it was read, and carries its own reference** (C1657:
 History rows and reader values carry no identifier, so the pack mints them): a section's
 reference is its name (``logs``), a piece's is the section's name and its place
@@ -50,9 +62,9 @@ Intent check's state (match, differs, unknown, with counts) and, when it differs
 difference's lines, masked (the operator's order of 2026-10-29, "WHO, guaranteed in code" (c):
 15.11's "intent diffs"; `intent_section`), with who last committed the device's intent; never
 a golden, a captured configuration or a deploy's program. Every string in the pack is masked
-by `redact.redact_text` before it is hashed or stored, and the intent difference's lines by
-`redact.redact_egress` too, the mask of what leaves the host, since they are kept only to be
-read and sent. A line
+by `redact.redact_text` before it is hashed or stored, and the intent difference's lines and
+the neighbours' log lines (C2176) by `redact.redact_egress` too, the mask of what leaves the
+host, since they are kept only to be read and sent. A line
 planted in an interface description or a log line is carried as data, unchanged by anything it
 says: nothing here reads a piece's text to decide what to do.
 
@@ -97,14 +109,19 @@ log = logging.getLogger(__name__)
 #: code") adds to the Intent check's piece the intent difference's lines, masked (``lines``),
 #: and its intent file's last commit (``intent_commit``: when, by whom, how established), and to
 #: each History piece how its actor was established (``verified``, where History knows it); a
-#: pack of 6 stays readable, holds none of them, and Explain's fact sheet says so.
-SCHEMA = 7
+#: pack of 6 stays readable, holds none of them, and Explain's fact sheet says so. 8 (C2176,
+#: the operator's decision of 2026-10-29) adds `neighbour_events`: what the alerting device's
+#: one-hop neighbours (by the network model's links, routing or cabling) logged and recorded
+#: in the log window, their change and adjacency lines and their History, each piece naming its
+#: neighbour (`neighbour_events_section`); a pack of 7 stays readable as it is and holds none,
+#: and Explain's pack format and fact sheet say a pack of an older schema lacks it.
+SCHEMA = 8
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
 #: The sections, in the order a person reads them.
 SECTIONS = ("alert", "concurrent", "device", "history", "intent", "neighbours", "observed",
-            "endpoints", "health", "observer", "logs")
+            "endpoints", "health", "observer", "logs", "neighbour_events")
 SECTION_WORDS = {"alert": "The alert",
                  "concurrent": "Other alerts in the network around the onset",
                  "device": "The device", "history": "Recent History",
@@ -114,7 +131,9 @@ SECTION_WORDS = {"alert": "The alert",
                  "health": "Health of the devices around it",
                  "observer": "The monitoring side over the window",
                  "logs": "Log lines around the onset",
-                 "sdn": "The SDN flows and port rates the detection rests on"}
+                 "neighbour_events": "What its one-hop neighbours logged and recorded around "
+                                     "the onset",
+                 "sdn":"The SDN flows and port rates the detection rests on"}
 #: The section only an SDN detection's pack holds (`build_detection`, PHASE8_PLAN 17.1 S6), kept
 #: out of `SECTIONS` so a Grafana alert's pack, and Explain's pack format (the cached prefix,
 #: `explain.vocabulary`), are unchanged: the section rides as pack data, naming itself in its
@@ -679,6 +698,283 @@ def logs_section(ref, host: str, onset, now: float, client=None) -> dict:
     return _section("logs", source, now, "ok", pieces=pieces, **extra)
 
 
+#: The neighbours' log lines a pack keeps (C2176): change and adjacency lines only, so the
+#: section stays small (measured 2026-10-29 07:04 UTC on the host, Default, a quiet 30-minute
+#: window: every line of the median device's 3.5 neighbours would add 4,690 characters, these
+#: under 20). Each ``(name, pattern, words, where the repository holds one)``: the pattern is
+#: both RE2 (asked of Loki as one stage, so a busy neighbour's other lines never fill the page)
+#: and Python's (each line read back is matched again, and named by the first that matches).
+NEIGHBOUR_LINES = (
+    ("config", r"%(?:SYS|DMI)-\d-CONFIG_[IP]\b",
+     "a configuration change: CONFIG_I, CONFIG_P, and IOS-XE's NETCONF and RESTCONF CONFIG_I",
+     "%SYS-5-CONFIG_I: tests/fixtures/loki/lines_s3.json; %SYS-5-CONFIG_P: counted in "
+     "tests/fixtures/loki/day_counts.json; %DMI-5-CONFIG_I: Cisco's documented form, no "
+     "capture"),
+    ("reload", r"%SYS-\d-(?:RELOAD|RESTART)\b", "a reload requested, or the device restarted",
+     "named by the reader's counts in tests/fixtures/ai_cases/nl_query/logs.json; the lines "
+     "Cisco's documented form, no capture"),
+    ("adjacency", r"%OSPF(?:V3|v3)?-\d-(?:ADJCHG|NBRSTATE)\b",
+     "an OSPF or OSPFv3 adjacency's state changing (ADJCHG, NBRSTATE)",
+     "%OSPF-5-ADJCHG: tests/fixtures/loki/ask_lines_labelled.json; NBRSTATE: no capture"),
+    ("ospf_error", r"%OSPF(?:V3|v3)?-[0-4]-\w+",
+     "an OSPF or OSPFv3 error or warning, severity 4 or worse: a duplicate router ID "
+     "(DUP_RTRID), a packet refused for its authentication, area or timers (ERRRCV)",
+     "no capture: Cisco's documented forms"),
+    ("bgp", r"%BGP(?:_SESSION)?-[0-5]-\w+",
+     "a BGP session's change, reset or notification, severity 5 or worse (BGP-5-ADJCHANGE, "
+     "BGP-5-NBR_RESET, BGP-3-NOTIFICATION, IOS-XE's BGP_SESSION-5-ADJCHANGE)",
+     "%BGP-5-ADJCHANGE: tests/fixtures/ai_cases/nl_query/logs_held_out_2.json; the others "
+     "named by the reader's counts in tests/fixtures/ai_cases/nl_query/logs.json"),
+    ("bgp_auth", r"%TCP-\d-BADAUTH\b",
+     "a BGP session's MD5 authentication refused (No or Invalid MD5 digest)",
+     "no capture: Cisco's documented form"),
+    ("link", r"%LINK-\d-\w+", "an interface's link changing state (UPDOWN, CHANGED)",
+     "%LINK-3-UPDOWN: tests/fixtures/console/s5-kickstart-take-syslog.txt; %LINK-5-CHANGED: "
+     "counted in tests/fixtures/loki/day_counts.json"),
+    ("lineproto", r"%LINEPROTO-\d-UPDOWN\b", "an interface's line protocol going up or down",
+     "tests/fixtures/ai_cases/nl_query/logs_held_out_2.json"),
+)
+NEIGHBOUR_PATTERN = "(?:" + "|".join(p for _n, p, _w, _c in NEIGHBOUR_LINES) + ")"
+#: The most a pack keeps (the operator's decision of 2026-10-29): ten lines a neighbour and
+#: thirty in all, those nearest the onset; five History records a neighbour, inside the
+#: window only; the rest counted and said. At most `MAX_NEIGHBOURS` neighbours are read, by
+#: name (a shared segment's members are each one hop, and the model walks a segment of at most
+#: `network_model.MAX_SEGMENT`); the rest counted and said.
+NEIGHBOUR_LINES_EACH = 10
+NEIGHBOUR_LINES_ALL = 30
+NEIGHBOUR_HISTORY_EACH = 5
+MAX_NEIGHBOURS = 16
+#: History's rows read per neighbour, newest first up to the window's end; those in the window
+#: are kept (at most `NEIGHBOUR_HISTORY_EACH`). A read of all of them that is still inside the
+#: window is said: the window may hold more.
+NEIGHBOUR_HISTORY_READ = 20
+
+
+def neighbour_line(text: str) -> str:
+    """The name of the `NEIGHBOUR_LINES` entry *text* is, the first that matches, or ""."""
+    import re
+
+    for name, pattern, _w, _c in NEIGHBOUR_LINES:
+        if re.search(pattern, text or ""):
+            return name
+    return ""
+
+
+def neighbours_of(capture: dict) -> tuple:
+    """``([(id, name, via)], total)``: the devices ONE hop from the capture's subject in the
+    network model (`network_model.capture`'s walk: its links, the adjacencies intent implies,
+    NetBox's cables, and the cables and unexpected adjacencies observed), by name, at most
+    `MAX_NEIGHBOURS`; a peer outside the network and Mercury's host are no device of it.
+    ``(None, 0)`` when the capture was not made."""
+    if not capture or not capture.get("ok"):
+        return None, 0
+    nodes, reached = capture.get("nodes") or {}, capture.get("reached") or {}
+    subject = capture.get("subject")
+    rows = sorted(((nodes[n].get("name") or n), n, (reached[n] or {}).get("via") or "")
+                  for n in nodes if n in reached and n != subject
+                  and (reached[n] or {}).get("hop") == 1)
+    return [(n, name, via) for name, n, via in rows[:MAX_NEIGHBOURS]], len(rows)
+
+
+def _neighbour_lines(ref, names: list, onset: float, start: float, end: float, now: float,
+                     client=None) -> dict:
+    """The neighbours' change and adjacency lines between *start* and *end*: one question for
+    them all, through History › Query's logs builder (one token each, Mercury's heartbeat lines
+    left out) with `NEIGHBOUR_PATTERN` as one stage after it. ``{"state", "why", "rows",
+    "total", "window"}``; each row read back is matched again and must be one of *names*."""
+    from modules import history_logq as Q
+
+    frm = Q._utc(int(start // 60) * 60, "%Y-%m-%d %H:%M")
+    to = Q._utc(-(-int(end) // 60) * 60, "%Y-%m-%d %H:%M")
+    spec, errs = Q.ask({"dev": list(names), "show": "lines", "range": "custom", "from": frm,
+                        "to": to})
+    rng = Q.window(spec, now)
+    window = {"from": _iso(rng["start"]), "to": _iso(rng["end"]), "words": rng["words"]}
+    out = {"state": "", "why": "", "rows": [], "total": 0, "window": window}
+    if errs or rng["error"]:
+        return dict(out, state="unreadable", why="; ".join(errs + ([rng["error"]]
+                                                                   if rng["error"] else [])))
+    try:
+        if client is None:
+            client = Q._client(ref.name, Q.wait(Q.limits(ref.name)))
+        if not client.is_configured():
+            return dict(out, state="not_configured",
+                        why=f"no log store is configured for {ref.name} (its Loki card in "
+                            "Settings)")
+        disc = Q.discover(ref.name, rng["start"], rng["end"], client=client, now=now)
+        if disc["state"] == "not_configured":
+            return dict(out, state="not_configured", why=disc["error"])
+        if disc["state"] != "ok":
+            return dict(out, state="unreadable", why=disc["error"])
+        built = Q.build(spec, disc, rng, list(names))
+        built["log_query"] += " |~ " + Q.string(NEIGHBOUR_PATTERN)
+        got = Q.lines(ref.name, spec, built, rng, client, now)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return dict(out, state="unreadable", why=_failed(exc))
+    window["query"] = built["log_query"]
+    if got["state"] == "error":
+        return dict(out, state="unreadable", why=got.get("error") or "")
+    want = set(names)
+    read = got.get("rows") or []
+    rows = [dict(r, line=neighbour_line(r.get("text") or "")) for r in read
+            if r.get("device") in want]
+    rows = [r for r in rows if r["line"]]
+    # Loki's count is of what its stage matched; a line read back that is not one of the
+    # neighbours' change or adjacency lines is left out here, and then only what was kept is
+    # counted, with whether the page was full (more may match than were read).
+    total = got.get("total")
+    total = int(total) if total is not None and len(rows) == len(read) else len(rows)
+    return dict(out, state="ok" if rows else "empty", rows=rows, total=total,
+                more=bool(got.get("more")))
+
+
+def _neighbour_history(ref, name: str, start: float, end: float) -> dict:
+    """*name*'s History inside the window (`HISTORY_KINDS`, History's own reader asked for its
+    rows up to the window's end): ``{"state", "why", "events", "more"}``, *more* when every row
+    read was inside the window, so it may hold more than were read."""
+    from modules import history_sources as HS
+
+    days = str(max(1, int((time.time() - start) // 86400) + 1))
+    try:
+        got = HS.timeline(ref, name, kinds=HISTORY_KINDS, since_days=days,
+                          limit=NEIGHBOUR_HISTORY_READ, before=(int(end) + 1, ""))
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return {"state": "unreadable", "why": _failed(exc), "events": [], "more": False}
+    events = got.get("events") or []
+    inside = [e for e in events if start <= (HS.epoch(e.get("at") or "") or 0) <= end]
+    errors = list(got.get("errors") or [])
+    if not events and errors:
+        return {"state": "unreadable", "why": "; ".join(errors), "events": [], "more": False}
+    more = bool(got.get("more")) and len(inside) == len(events) and bool(events)
+    return {"state": "ok" if inside else "empty", "why": "; ".join(errors), "events": inside,
+            "more": more}
+
+
+def neighbour_events_section(ref, host: str, capture: dict, onset, now: float, built: float,
+                             client=None) -> dict:
+    """What the alert's device's one-hop neighbours did in its log window (C2176, schema 8):
+    the devices one hop from it in the network model (`neighbours_of`: routing or cabling,
+    never only the Neighbours view's adjacencies), their change and adjacency lines
+    (`NEIGHBOUR_LINES`, one question for them all) from 15 minutes before the onset to 15
+    after it or the alert's time (the device's own log window), at most
+    `NEIGHBOUR_LINES_EACH` a neighbour and `NEIGHBOUR_LINES_ALL` in all, those nearest the
+    onset; and their History inside that window (`HISTORY_KINDS`), at most
+    `NEIGHBOUR_HISTORY_EACH` a neighbour. Every piece names its neighbour (``device``, and its
+    model id ``dev``) and what it is (``evidence``: ``log`` or ``history``); masked as every
+    line Mercury shows. Its own section, never the device's logs or History: a neighbour's
+    reload is not the device's."""
+    source = (f"the devices one hop from {host} in the network model (its links, routing or "
+              "cabling): their change and adjacency lines from the network's Loki, through "
+              "History › Query's logs builder, and their History (history_sources.timeline) in "
+              "the same window")
+    if onset is None:
+        return _absent("neighbour_events", source, "the alert's onset is not recorded, so there "
+                                                   "is no window to read the neighbours over")
+    near, total = neighbours_of(capture)
+    if near is None:
+        return _section("neighbour_events", source, built, "unreadable",
+                        f"the network model could not be read ({capture.get('error')}), so "
+                        f"{host}'s neighbours are not known")
+    from_words = ("the devices one hop away in " + capture["as_now"] + "; the network as "
+                  "observed then was not captured") if capture.get("as_now") else (
+        "the devices one hop away in the network model, walked with the observed overlay "
+        "captured with the pack")
+    if not near:
+        return _section("neighbour_events", source, built, "absent",
+                        f"the network model gives {host} no device one hop away (no link, "
+                        "adjacency or cable to another device of the network)",
+                        neighbours_from=from_words)
+    start = onset - LOGS_BEFORE_SECONDS
+    end = min(onset + LOGS_AFTER_SECONDS, now)
+    names = [n for _d, n, _v in near]
+    ids = {n: d for d, n, _v in near}
+    lines = _neighbour_lines(ref, names, onset, start, end, now, client=client)
+    by_dev = {}
+    for r in lines["rows"]:
+        by_dev.setdefault(r["device"], []).append(r)
+    rows_kept, per = [], []
+    for dev_id, name, via in near:
+        mine = sorted(by_dev.get(name) or [], key=lambda r: abs(r["ns"] / 1e9 - onset))
+        rows_kept += mine[:NEIGHBOUR_LINES_EACH]
+        hist = _neighbour_history(ref, name, start, end)
+        per.append({"device": name, "dev": dev_id, "via": via, "lines": len(mine),
+                    "history_state": hist["state"], "history_why": hist["why"],
+                    "history": len(hist["events"]), "history_more": hist["more"],
+                    "_events": hist["events"]})
+    rows_kept = sorted(rows_kept, key=lambda r: abs(r["ns"] / 1e9 - onset))[:NEIGHBOUR_LINES_ALL]
+    kept_lines = {}
+    pieces = []
+    from modules import redact
+    for r in rows_kept:
+        kept_lines[r["device"]] = kept_lines.get(r["device"], 0) + 1
+        # Masked as what leaves the host is masked (`redact.redact_egress`, as the intent
+        # difference's lines are): these lines are kept to be read and sent, and a change line
+        # can carry a command's secret where no position names it ("... enable secret 0 <v>"
+        # mid-line), which the whole-payload mask (`redact_text`'s positions) leaves.
+        pieces.append({"evidence": "log", "device": r["device"], "dev": ids[r["device"]],
+                       "at": r.get("iso") or "", "line": r["line"],
+                       "severity": r.get("sev"), "severity_word": r.get("sev_word") or "",
+                       "job": r.get("kind") or "",
+                       "text": redact.redact_egress(r.get("text") or ""),
+                       "after_onset": r["ns"] / 1e9 >= onset})
+    errors = []
+    for p in per:
+        events = sorted(p.pop("_events"), key=lambda e: abs(
+            (_epoch_of(e.get("at")) or onset) - onset))[:NEIGHBOUR_HISTORY_EACH]
+        p["lines_kept"] = kept_lines.get(p["device"], 0)
+        p["history_kept"] = len(events)
+        if p["history_state"] == "unreadable":
+            errors.append(f"{p['device']}'s History: {p['history_why']}")
+        for e in events:
+            pieces.append({"evidence": "history", "device": p["device"], "dev": p["dev"],
+                           "at": e.get("at") or "", "kind": e.get("kind") or "",
+                           "what": e.get("what") or "", "who": e.get("who_short") or "",
+                           "outcome": e.get("outcome") or "", "sha": (e.get("sha") or "")[:12],
+                           "detail": e.get("detail") or "",
+                           **({"verified": e.get("verified") or ""} if "verified" in e else {})})
+    pieces.sort(key=lambda p: (_epoch_of(p["at"]) or 0, p["device"], p["evidence"]))
+    if lines["state"] not in ("ok", "empty"):
+        errors.insert(0, f"the neighbours' lines: {lines['state']} ({lines['why']})")
+    matched = int(lines["total"] or 0) + sum(p["history"] for p in per)
+    extra = {"window": lines["window"], "neighbours": per, "neighbours_total": total,
+             "neighbours_from": from_words, "lines_state": lines["state"],
+             "lines_why": lines["why"], "lines_total": int(lines["total"] or 0),
+             "lines_more": bool(lines.get("more")),
+             "errors": errors, "total": matched, "subset": matched > len(pieces)}
+    said = ", ".join(names) + (f" (and {total - len(near)} more not read)"
+                               if total > len(near) else "")
+    unread = [p["device"] for p in per if p["history_state"] == "unreadable"]
+    history_words = (f"History could not be read for {', '.join(unread)}" if unread else
+                     "History records nothing about them in that window")
+    if pieces:
+        return _section("neighbour_events", source, now, "ok", pieces=pieces, **extra)
+    if lines["state"] == "empty":
+        return _section("neighbour_events", source, now, "empty",
+                        f"read {said} between {lines['window']['from']} and "
+                        f"{lines['window']['to']}: Loki holds no change or adjacency line from "
+                        f"them, and {history_words}", **extra)
+    if lines["state"] == "not_configured":
+        return _section("neighbour_events", source, now, "not_configured",
+                        f"the neighbours' lines were not read: {lines['why']}; "
+                        f"{history_words}", **extra)
+    return _section("neighbour_events", source, now, "unreadable",
+                    f"the neighbours' lines could not be read ({lines['why']})", **extra)
+
+
+def _epoch_of(text):
+    from modules import alert_history as AH
+    return AH.epoch(text)
+
+
+def _neighbour_events(ref, host, cap, onset, now, clock, loki) -> dict:
+    """`neighbour_events_section`, never raising: a failure is the section saying so."""
+    try:
+        return neighbour_events_section(ref, host, cap, onset, now, clock, client=loki)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return _section("neighbour_events", "the devices one hop away", clock, "unreadable",
+                        _failed(exc))
+
+
 #: An observed item's fields the pack keeps beside its id and kind (`network_model.observed`'s
 #: entries): what was reported and when, never more.
 OBSERVED_KINDS = {"routing": "adjacency", "cables": "cable"}
@@ -999,11 +1295,11 @@ REBUILT_MARKS = {
     "replay": {"alert": "rebuilt", "concurrent": "rebuilt", "device": "rebuilt",
                "history": "rebuilt", "intent": "rebuilt", "neighbours": "rebuilt",
                "observed": "rebuilt", "health": "rebuilt", "observer": "rebuilt",
-               "logs": "rebuilt"},
+               "logs": "rebuilt", "neighbour_events": "rebuilt"},
     "history": {"alert": "captured", "concurrent": "rebuilt", "device": "rebuilt",
                 "history": "rebuilt", "intent": "rebuilt", "neighbours": "missing",
                 "observed": "missing", "endpoints": "missing", "health": "rebuilt",
-                "observer": "rebuilt", "logs": "rebuilt"},
+                "observer": "rebuilt", "logs": "rebuilt", "neighbour_events": "rebuilt"},
 }
 #: Each mark's words for a section, beyond `PROVENANCE_WORDS`: what it was rebuilt from.
 REBUILT_FROM = {
@@ -1020,12 +1316,17 @@ REBUILT_FROM = {
                  "and the collector's host as Prometheus kept them then; each job's timeout from "
                  "its configuration as it is now"),
     "logs": "Loki asked over the window around the onset",
+    "neighbour_events": ("Loki asked over the window around the onset for the neighbours' "
+                         "lines, and their History as it is now, cut to that window"),
 }
 #: A pack rebuilt from the alert history reads its health figures for the devices within two
 #: hops in the network model AS IT IS NOW (C1851): its mark says so, never a capture.
 REBUILT_FROM_HISTORY = {
     "health": ("Prometheus and Loki asked over the alert's window, for the devices within two "
                "hops in the network model as it is now, which may differ from then"),
+    "neighbour_events": ("Loki asked over the window around the onset and History as it is "
+                         "now, cut to that window, for the devices one hop away in the network "
+                         "model as it is now, which may differ from then"),
 }
 
 
@@ -1127,7 +1428,7 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     if ref is None:
         why = f"no device to read for: {dev_section['why']}"
         for name in ("history", "intent", "neighbours", "observed", "endpoints", "health",
-                     "observer", "logs"):
+                     "observer", "logs", "neighbour_events"):
             sections.append(_absent(name, "", why))
     elif mode == "history":
         sections.append(history_section(ref, host, until=now))
@@ -1155,6 +1456,7 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
             sections.append(_section("observer", "Prometheus", clock, "unreadable",
                                      _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
+        sections.append(_neighbour_events(ref, host, cap, onset, now, clock, loki))
     else:
         sections.append(history_section(ref, host, until=now if replay else None))
         intent = intent_section(ref, dev)
@@ -1188,6 +1490,7 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
             sections.append(_section("observer", "Prometheus", clock, "unreadable",
                                      _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
+        sections.append(_neighbour_events(ref, host, cap, onset, now, clock, loki))
     _marks(sections, mode, clock)
     key = alert_key(inst)
     pack = {"schema": SCHEMA, "id": pack_id(key), "alert_key": key, "built_at": _iso(now),
@@ -1609,7 +1912,8 @@ def pack_summary(pack: dict) -> dict:
 COUNT_NOUNS = {"alert": "alert", "concurrent": "other alert", "device": "device",
                "history": "record", "intent": "check", "neighbours": "neighbour",
                "observed": "item", "endpoints": "endpoint", "health": "figure",
-               "observer": "monitoring figure", "logs": "line", "sdn": "piece"}
+               "observer": "monitoring figure", "logs": "line", "sdn": "piece",
+               "neighbour_events": "piece"}
 #: A neighbour's, an observed item's and another alert's states, in the order a count names
 #: them (what needs a look first) and in its words. Another alert's state is as it stood at the
 #: alert's time, never now, and its end is "cleared" (C2173: nothing says it was fixed).
@@ -1666,6 +1970,14 @@ def section_count(section: dict) -> str:
         words = {"match": "matches", "differs": "differs"}
         return ", ".join(words.get(p.get("state"), (p.get("state") or "not checked")
                                    .replace("_", " ")) for p in pieces)
+    if name == "neighbour_events":
+        # "3 lines, 1 record from 2 neighbours": its two kinds, and whose they are.
+        logs = sum(1 for p in pieces if p.get("evidence") == "log")
+        said = ", ".join(w for w in (_plural(logs, "line") if logs else "",
+                                     _plural(n - logs, "record") if n - logs else "") if w)
+        whose = len({p.get("device") for p in pieces})
+        return (f"{said} from {_plural(whose, 'neighbour')}"
+                + (f" ({n} of {total} kept)" if isinstance(total, int) and total > n else ""))
     if name == "sdn":
         c = section.get("counts") or {}
         return ", ".join(_plural(c.get(k) or 0, w) for k, w in (("flows", "flow"),

@@ -15,7 +15,7 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `f8803871ac5e952685719a419ff643b276e64be36d4f84ffaf848f2cf364c0be`
+Templates sha256: `26501aacd926f311b47df871e9beeade70c97dba7c04478c75962290540eee4c`
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):** the heartbeat
 and telemetry rules' "Alerting (NoData)" episodes are fired, their state words kept, so the
@@ -213,3 +213,19 @@ changed.
 
 Templates sha256 before: `55a592a4bcf91f66543ccb3c50e6f377ca6f69f904785a3aab61d1eaba8f1f95`
 (the card alone, before C2174 and WHO; never on main: they land together, on top of C2174).
+
+**Compared again 2026-11-01 (C2176, the neighbours' evidence, schema 8):** the same template
+change as docs/fidelity/alerts-explain.md's entry of this date: a pack's twelfth section, what
+its one-hop neighbours logged and recorded; an older pack's line adds "It holds nothing of what
+its one-hop neighbours logged and recorded around the onset"; Build again's words add "the
+neighbours' changes". **Not shot here:** the board copy this record was shot against
+(`AlertsHistory.dc.html`) is not among the canvas's published files today, so the comparison
+is by the template, tests/test_evidence_pack_neighbours.py's
+`test_a_pack_of_schema_7_is_drawn_as_it_is_and_says_it_lacks_them`, and the Alerts tab's shots
+of the same template (alerts-explain.md).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A rebuilt pack's sections and its older-schema line | eleven sections; the older line's two clauses | twelve; a third clause for the neighbours | **deviation** (log: P1 Alerts and P1-H: the neighbours' evidence, a section of its own) |
+
+Templates sha256 before: `f8803871ac5e952685719a419ff643b276e64be36d4f84ffaf848f2cf364c0be`.

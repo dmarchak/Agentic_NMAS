@@ -20,6 +20,12 @@ from the model, and said as "no record of who" (`NO_RECORD`) where the pack hold
 - **the Intent check when it differs:** its actor the device's intent file's last commit
   (``intent_commit``, schema 7: the commit's ``Actor:`` and ``Actor-Verified:``, and when);
   an older pack holds none, so no record of who.
+- **a neighbour's History record or configuration-change line** (the pack's
+  ``neighbour_events``, schema 8, C2176), by the same rules, kept apart: its kind
+  ``neighbour_history`` or ``neighbour_config_log``, its ``device`` the neighbour, and its
+  words saying the change was on the neighbour, not the alert's device. Nothing here, and
+  nothing in the fact sheet's lines of the device's own changes and reloads, reads that section
+  as the device's: those read ``history``, ``logs`` and ``intent`` only.
 
 **On the answer** (`mercury_who`, the operator's order (b)): a hypothesis DESCRIBES a change
 or an action when it cites one of those pieces (or the section holding it); each such
@@ -57,8 +63,10 @@ _PROGRAMMATIC = re.compile(r"\bConfigured programmatically by process (?P<proces
                            r"(?:\s*\((?P<address>[^()\s]+)\))?", re.I)
 #: A terminal line, or a word no account is, where a user would stand: no record of who.
 _NOT_A_USER = re.compile(r"^(?:console|con\d*|vty\d+|tty\d+|aux\d*|unknown)$", re.I)
-#: The sections whose pieces can be a change (`change_of`).
-SECTIONS = ("history", "logs", "intent")
+#: The sections whose pieces can be a change (`change_of`). A neighbour's change (the pack's
+#: ``neighbour_events``, C2176) is that neighbour's, said so, and never the alert's device's.
+SECTIONS = ("history", "logs", "intent", "neighbour_events")
+NEIGHBOUR_SECTION = "neighbour_events"
 
 
 def config_change(text: str):
@@ -115,6 +123,8 @@ def change_of(section: str, piece: dict) -> dict:
         return dict(base, kind="config_log", what="a configuration change the device logged",
                     device=piece.get("device") or "", via=c["source"] or "",
                     who=c["user"], words=words, line=c["line"], address=c["address"])
+    if section == NEIGHBOUR_SECTION:
+        return _neighbour_change(piece, base)
     if section == "intent" and piece.get("state") == "differs":
         commit = piece.get("intent_commit") or {}
         who = (commit.get("actor") or "").strip() if commit.get("state") == "ok" else ""
@@ -123,6 +133,37 @@ def change_of(section: str, piece: dict) -> dict:
                     what="the device departs from its committed intent",
                     id=commit.get("sha") or "", who=who, words=words)
     return {}
+
+
+def _neighbour_change(piece: dict, base: dict) -> dict:
+    """A change or action a NEIGHBOUR of the alert's device made or logged (the pack's
+    ``neighbour_events``, C2176), by what its piece is, as the device's own are: a History
+    record of `ACTION_KINDS`, or a configuration-change line. Its *kind* says it is the
+    neighbour's (``neighbour_history``, ``neighbour_config_log``), its *device* names the
+    neighbour, and its words say whose device the change was on: never the alert's device's."""
+    dev = piece.get("device") or "a neighbour"
+    on = f", on the neighbour {dev}, not the alert's device"
+    if piece.get("evidence") == "history":
+        if piece.get("kind") not in ACTION_KINDS:
+            return {}
+        who = (piece.get("who") or "").strip()
+        return dict(base, kind="neighbour_history", device=dev,
+                    what=f"{dev}: " + (piece.get("what") or piece.get("kind") or ""),
+                    id=piece.get("sha") or "", who=who,
+                    words=(_named(who, how(piece)) if who else NO_RECORD) + on)
+    c = config_change(piece.get("text") or "") if piece.get("evidence") == "log" else None
+    if c is None:
+        return {}
+    line = f" on {c['line']}" if c["line"] else ""
+    at = f" from {c['address']}" if c["address"] else ""
+    only = " and ".join(w for w in (f"the line {c['line']}" if c["line"] else "",
+                                    f"the address {c['address']}" if c["address"] else "") if w)
+    words = (f"{c['user']}{line}{at}, {dev}'s account as its log line names it"
+             if c["user"] else NO_RECORD + (f" (the log line names only {only})" if only else ""))
+    return dict(base, kind="neighbour_config_log",
+                what=f"a configuration change the neighbour {dev} logged", device=dev,
+                via=c["source"] or "", who=c["user"], words=words + on, line=c["line"],
+                address=c["address"])
 
 
 def _locate(sections, ref: str) -> tuple:

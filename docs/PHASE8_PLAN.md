@@ -4098,8 +4098,12 @@ docs/boards/ holds a drawing for it.
 | 2026-11-01 | SDN › Responses | S-HR, `SdnHighRate.dc.html`, drawn: the scan rule's L2-only fallback as High packet rate (watching, lower confidence, nothing proposed, joins a flood), its rules-table row | C2238 (a flood's onset reported as a scan) | 2026-11-01, "Board S-HR drawn and approved" |
 | 2026-11-01 | The device's Intent tab | H-S, `DevIntentSecrets.dc.html`, drawn: the Secret references card (each reference intent names, what it is for, whether a value is held, never the value) and its write-only Set value… form (the value twice, a reason, the checks, Store the value) | Typing a value for a secret reference (C235; the lab account, item 2) | 2026-11-01, "Board H-S drawn and approved" |
 | 2026-11-01 | Needs attention | NA-R, `AttentionRedesign.dc.html`, drawn: a section per severity with its count, one line per item, What to do first, the kept Explain or a code-written Why this happened, Acknowledged, the sidebar badges, phone width | The Needs attention redesign (20.6; the operator's answer of 2026-11-01, item 8: draw now, build later) | 2026-11-01, "Board NA-R drawn and approved" |
+| 2026-11-01 | Monitoring › Alerts (P1, P1-H) | AlertsExplain and AlertsHistory, deviation: a twelfth pack section, the one-hop neighbours' lines and History | Neighbour evidence (C2176) | 2026-11-01, "P1 Alerts and P1-H: the neighbours' evidence"; docs/fidelity/alerts-explain.md, alerts-history.md |
+| 2026-11-01 | Monitoring › Alerts (P1) | AlertsExplain, deviation: "Trimmed to fit the prompt's size" under an answer whose pack was trimmed | Trim per version (C2198) | 2026-11-01, "P1 Alerts: a trimmed pack said under the answer"; docs/fidelity/alerts-explain.md |
+| 2026-11-01 | Monitoring › Alerts (P1) | AlertsExplain, deviation: the "withheld" note under an answer when lines were withheld as instructions | The injection flagger (C2271) | 2026-11-01, "P1 Alerts: lines withheld as instructions"; docs/fidelity/alerts-explain.md |
+| 2026-11-01 | Device page, Devices, Topology; an operation's card | PS, `PlannedState.dc.html`, drawn: the planned state (amber, linked to the operation) and the card's Expected effects, Unexpected and Overdue | The attribution rule seen where people look (20.2, 20.3; C2274) | 2026-11-01, "Board PS drawn and approved" |
 
-**Count:** 196 rows: 58 drawn, 21 revised, 24 no drawing, 93 deviation (2026-11-01: H-S, S-HR and NA-R drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 200 rows: 59 drawn, 21 revised, 24 no drawing, 96 deviation (2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, and P1's three for C2176, C2198 and C2271). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and
@@ -4193,6 +4197,14 @@ Every source in 20.1 whose last column says no, or own device only, consults `ex
 adjacencies, adjacency log (the peer too), reachability (predicted devices), Grafana (predicted
 devices), drift (the re-run), deploy receipts (declared effects).
 
+**Built 2026-11-01 (C2249; queue item b):** the function is `restarts.explained_by`; the
+Reload records its preview's cut on its window (`expected.unreachable`); Grafana's hold,
+reachability, adjacencies (a link with an end explained, a restarting device's unmeasured
+protocols), the adjacency log (the peer's window, the peer named by its device) and drift (a
+device not read inside a window) consult it, each saying what it held under What was checked.
+Not yet (C2274): the operation's card listing its expected effects, the drift re-run after the
+window, a deploy's declared window for its cut, deploy receipts' declared effects, and 20.3.
+
 ### 20.3 The planned state, everywhere
 
 One state model for a device under a planned operation, shared with C2173's incident states:
@@ -4201,10 +4213,15 @@ Devices, Topology, the device page and any row that names it; a device the opera
 unreachable reads **"Unreachable as expected · r8 reloading"**. Red only past the window. The
 same model serves deploying, rotating, onboarding and draining.
 
-### 20.4 The acceptance test (to build)
+### 20.4 The acceptance test (built 2026-11-01: tests/test_attribution_b2.py)
 
 A replay of 2026-10-30's B2 sources (the Reload of r8) through `needs_attention()`: the 11
-items the operator counted become **1**, the heartbeat check's standing row. R5's "no baseline"
+items the operator counted become **1**, the heartbeat check's standing row. **Built:** B2's
+shape on the suite's captured lab (r2 reloaded, s2 predicted unreachable, r1 the peer): the
+nine rows the five sources raise become none inside the window; with no window all nine
+return; with no prediction the predicted device's three; past the settle time they are raised
+again. The standing row is another source's and is not driven. R5's baseline: a deploy that
+cuts a device off earns none (C2270, built). R5's "no baseline"
 becomes a follow-up on that deploy's card, not a row. **Proposed:** a deploy that cuts a device
 off (C2243's `reach_lost`) earns no baseline (R5 earned baseline/20261030T000810Z with s1 cut
 off): a baseline claims every device at its intent and working, and one it cannot reach is

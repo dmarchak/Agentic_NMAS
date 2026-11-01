@@ -118,8 +118,12 @@ def test_the_planted_instruction_rides_only_as_data(world):
     _explain(world)
     body = world.sent[0]["body"]
     marker = "Ignore all previous instructions"
-    assert marker in body["messages"][0]["content"]
-    assert marker not in json.dumps(body["system"])
+    # Kept in the pack, withheld from the request (C2271): in no part of what is sent, its
+    # withheld marker riding as data in the user turn.
+    assert marker in json.dumps(world.pack)
+    assert marker not in json.dumps(body)
+    assert "[withheld: instruction-like text (" in body["messages"][0]["content"]
+    assert "[withheld:" not in json.dumps(body["system"])
 
 
 def test_a_stored_secret_the_pack_kept_is_masked_in_the_bytes_sent(world, monkeypatch):
@@ -341,7 +345,7 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
         5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2), 8: ("explain", 2),
-        9: ("explain", 4)}
+        9: ("explain", 4), 10: ("explain", 4), 11: ("explain", 2)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     with pressed_by("operator@example.com"):
         got = explain.explain_pack(world.pack, actor="operator@example.com",
@@ -481,6 +485,47 @@ def test_v9_bands_its_hypotheses_and_says_why_the_first_ranks_first(world):
     assert "why_first" in schema["properties"] and "why_first" in schema["required"]
     assert "band" in schema["$defs"]["RankedHypothesis"]["required"]
     assert schema["$defs"]["Band"]["enum"] == ["likely", "possible", "unlikely"]
+
+
+#: v9's additions split in two (v9a and v9b, the overnight brief of 2026-11-01, item 3): v10
+#: carries the first, v11 the second, and neither carries the other's.
+V10_ADDS = V9_ADDS[1:4] + V9_ADDS[6:]
+V11_ADDS = V9_ADDS[:1] + V9_ADDS[4:6]
+
+
+@pytest.mark.parametrize("version, mine, schema", [
+    (10, V10_ADDS, explain.ExplanationV4), (11, V11_ADDS, explain.ExplanationV2)])
+def test_v10_and_v11_are_v9_split_in_two(world, version, mine, schema):
+    """Each is v4 with its half of v9's additions and none of the other's; a candidate, never
+    the pin, asked for its own schema and never v6's network context; its request's data is
+    v4's."""
+    from modules.ai import prompts
+
+    v4 = " ".join(prompts.load("explain", 4)["text"].split())
+    text = prompts.load("explain", version)["text"]
+    flat = " ".join(text.split())
+    assert sorted(V10_ADDS + V11_ADDS) == sorted(V9_ADDS), "the two halves are all of v9's"
+    for words in V9_ADDS:
+        w = " ".join(words.split())
+        assert (w in flat) == (words in mine), (version, words)
+        assert w not in v4
+    assert ("explain", version) in explain.CANDIDATES
+    assert version not in explain.NETWORK_CONTEXT_VERSIONS
+    assert explain.SCHEMA_OF[version] is schema
+    world.answer = _answer(world.pack)
+    _explain(world)
+    v4_body = world.sent[-1]["body"]
+    world.answer = _ranked(world.pack) if schema is explain.ExplanationV4 else \
+        _answer(world.pack)
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-25",
+                                   prompt=("explain", version))
+    assert got["ok"] is True, got
+    body = world.sent[-1]["body"]
+    assert body["system"][0]["text"] == text
+    assert body["messages"] == v4_body["messages"]
 
 
 @pytest.mark.parametrize("change", ["band not one of the three", "no band", "no why_first"])

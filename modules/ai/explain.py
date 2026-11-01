@@ -220,7 +220,7 @@ class ExplanationV4(StrictModel):
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
 SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
              5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2, 8: ExplanationV2,
-             9: ExplanationV4}
+             9: ExplanationV4, 10: ExplanationV4, 11: ExplanationV2}
 #: The versions built on the network context (the context budget rule, the needs round): v6.
 #: A set, never "6 and later": v7 is v4's request with one rule more (C2038).
 NETWORK_CONTEXT_VERSIONS = frozenset({6})
@@ -240,7 +240,12 @@ NETWORK_CONTEXT_VERSIONS = frozenset({6})
 #: the first ranks first, one confirming step, who named in a change's claim (WHO's check
 #: reads the words, `who.mercury_who`), and the fact sheet's block described; asked for its
 #: own schema (`ExplanationV4`), adopted only by 15.12's rule.
-CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8), ("explain", 9))
+#: v10 and v11 are v9 split in two (v9a and v9b; the operator's default of 2026-11-01, the
+#: overnight brief's item 3), so a 10-run round can say which half moves the hard cases: v10 is
+#: v4 with the band, why_first and the one confirming step (`ExplanationV4`); v11 is v4 with
+#: the fact sheet's block described and who named in a change's claim (`ExplanationV2`).
+CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8), ("explain", 9),
+              ("explain", 10), ("explain", 11))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
@@ -344,6 +349,23 @@ def vocabulary(sections=None) -> str:
             "collector and what is beneath the devices are candidate causes beside each "
             "device's own: this section (the collector's side) and the health section (the "
             "devices' side) are what rank them.")
+    if "neighbour_events" in names:
+        lines.append(
+            "neighbour_events is what the devices ONE hop from the alert's device (by the "
+            "network model's links: a shared subnet, an adjacency or a cable) logged and "
+            "recorded in the same window as the device's own log lines: only their change and "
+            "adjacency lines (" + "; ".join(w for _n, _p, w, _c in EP.NEIGHBOUR_LINES) + "), "
+            f"at most {EP.NEIGHBOUR_LINES_EACH} a neighbour and {EP.NEIGHBOUR_LINES_ALL} in "
+            "all, those nearest the onset; and their History records inside the window, at "
+            f"most {EP.NEIGHBOUR_HISTORY_EACH} a neighbour. Each piece names its neighbour "
+            "(device, and its id as dev) and is a log line (evidence log, with which kind of "
+            "line it is) or a History record (evidence history). A neighbour's reload or "
+            "configuration change is that neighbour's, never the alert's device's: a change on "
+            "a neighbour can explain an alert on the device, cited by its own reference "
+            "(neighbour_events:n). The section's neighbours lists each neighbour read, how "
+            "many of its lines and records were found and kept. A pack of an older schema (7 "
+            "or before) holds no such section: its neighbours' events were not gathered, which "
+            "is not that they did nothing.")
     if "health" in names or "concurrent" in names:
         lines.append(
             "One device has one id in everything sent (the pack and the topology): cite a "
@@ -459,6 +481,18 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
             s = dict(s, pieces=[], withheld=(
                 "the endpoints are not sent: they are the topology class, and no topology "
                 "was sent"))
+        if s.get("name") == "neighbour_events" and not (topo or {}).get("sent") \
+                and (s.get("pieces") or s.get("neighbours")):
+            # Who the device's neighbours are is the topology class (15.15), as the health
+            # figures of the devices around it are: with no topology sent, none is named.
+            # Only what names no neighbour: its why, its errors, its list and its query (whose
+            # selector names them) stay behind.
+            s = {k: v for k, v in s.items() if k in ("ref", "name", "words", "source", "read_at",
+                                                     "state", "provenance",
+                                                     "provenance_words")}
+            s = dict(s, pieces=[], why="", withheld=(
+                "what the device's neighbours logged and recorded is not sent: who is near "
+                "the device is the topology class, and no topology was sent"))
         if s.get("name") == "health" and not (topo or {}).get("sent"):
             kept = [p for p in s.get("pieces") or [] if p.get("hop") == 0]
             if len(kept) < len(s.get("pieces") or []):
@@ -473,8 +507,9 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
 
 
 #: The sections whose pieces name a device by id (``dev``, beside its name ``device``), and so
-#: carry it in their references (C1849).
-DEVICE_ID_SECTIONS = ("health", "concurrent")
+#: carry it in their references (C1849); the neighbours' events (C2176) name each piece's
+#: neighbour so too, its reference its place (``neighbour_events:n``).
+DEVICE_ID_SECTIONS = ("health", "concurrent", "neighbour_events")
 
 
 def one_id(sections: list, names: dict) -> tuple:
@@ -917,11 +952,17 @@ def explain(pack_id: str, *, actor: str, trigger: dict, send=None, today: str = 
 #: The pack's parts in the order v6's budget DROPS them (the operator, 2026-10-26): the oldest
 #: and least relevant first; never a log line inside the onset window (`ONSET_WINDOW_S` before
 #: the onset to the alert's time), never the alert's own device's figures, and never the
-#: alert, device or Intent sections.
+#: alert, device or Intent sections. The neighbours' events (C2176) go first, before any of
+#: the alert's own device's: they are lower priority than every section of its own.
 PACK_DROPS = (
+    "the neighbours' log lines and History, farthest from the onset first",
     "History older than the onset window, oldest first",
     "log lines outside the onset window, farthest from the onset first",
     "the health figures of devices two hops away, then one hop away",
+    # The last class (2026-11-01, the round of C2176's pack: case 6 stayed over the bound with
+    # every other droppable piece gone): the other alerts around the onset, the farthest from
+    # it first. The alert, its device and Intent stay, as the rule says.
+    "other alerts in the network around the onset, farthest from the onset first",
 )
 #: The onset window's start before the onset: the health figures' own window (15 minutes).
 ONSET_WINDOW_S = 900
@@ -946,15 +987,19 @@ def _pack_drop_order(pack: dict, sections: list) -> list:
                                   if s.get("name") == "alert" for p in s.get("pieces") or []),
                                  "")))
     by = {s.get("name"): s.get("pieces") or [] for s in sections}
-    out = []
+    out = [(0, "neighbour_events", p["ref"]) for p in sorted(
+        by.get("neighbour_events", ()), key=lambda p: -abs(_epoch(p.get("at")) - onset))]
     old = [p for p in by.get("history", ()) if _epoch(p.get("at")) < start]
-    out += [(0, "history", p["ref"]) for p in sorted(old, key=lambda p: _epoch(p.get("at")))]
+    out += [(1, "history", p["ref"]) for p in sorted(old, key=lambda p: _epoch(p.get("at")))]
     outside = [p for p in by.get("logs", ())
                if not start <= _epoch(p.get("at")) <= end]
-    out += [(1, "logs", p["ref"]) for p in sorted(
+    out += [(2, "logs", p["ref"]) for p in sorted(
         outside, key=lambda p: -abs(_epoch(p.get("at")) - onset))]
     far = [p for p in by.get("health", ()) if (p.get("hop") or 0) > 0]
-    out += [(2, "health", p["ref"]) for p in sorted(far, key=lambda p: -(p.get("hop") or 0))]
+    out += [(3, "health", p["ref"]) for p in sorted(far, key=lambda p: -(p.get("hop") or 0))]
+    out += [(4, "concurrent", p["ref"]) for p in sorted(
+        by.get("concurrent", ()),
+        key=lambda p: -abs(_epoch(p.get("started_at") or p.get("fired_at")) - onset))]
     return out
 
 
@@ -1055,6 +1100,51 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dic
         chosen = build(net_level, n, source)
         if chosen["said"]["estimate"] <= budget:
             break
+    return chosen
+
+
+def trimmed(pack: dict, prompt: tuple, schema, data: dict, ctx: dict, sections: list,
+            counter=None, topo: dict = None) -> dict:
+    """Every other version's pack trimmed to the task's bound (C2198; the operator, 2026-10-29:
+    trim per version): v9's screen had a recorded case refused "prompt_too_long" on every run,
+    since only v6's `budgeted` fitted a pack to the bound. Here the request is the version's
+    own (*data*, *ctx*, `parts` and `context`'s), so the trim budget is the bound less this
+    version's prompt and the output it reserves: the pack's pieces are dropped in `PACK_DROPS`'
+    order, one at a time, until the request fits, and each section that lost some says so in
+    the pack as sent, "N of its M pieces left out to fit the prompt's size". The fact sheet is
+    computed again from the pack as trimmed (*topo* the topology it was first computed with),
+    so it never cites a piece that was left out: the 2026-11-01 round's case 1 had every answer
+    refused for citing a health figure the sheet named and the trim had dropped. A request that
+    fits is sent as built, and is
+    measured by the fallback estimate first (a count is asked only near the bound,
+    `Counter.measure`). ``{"data", "sections", "said"}``; *said* is ``{"dropped",
+    "pack_dropped", "estimate", "budget"}``, *pack_dropped* each trimmed section's count."""
+    from modules.ai import fact_sheet, prompts, profiles
+
+    loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+    budget = pin["max_prompt_tokens"]
+    order = _pack_drop_order(pack, sections)
+
+    def build(n: int) -> dict:
+        counts = {}
+        kept = _without(sections, {ref for _c, _n, ref in order[:n]}, counts)
+        sent = dict(data, pack=json.dumps([as_sent(s) for s in kept], sort_keys=True,
+                                          ensure_ascii=False, separators=(",", ":")),
+                    **{fact_sheet.PART: facts(pack, kept, topo)}) if n else data
+        body = gateway.build_request(loaded, schema, sent, pin, ctx)
+        est = (counter.measure(body, budget)["tokens"] if counter is not None
+               else gateway.prompt_tokens(body))
+        return {"data": sent, "sections": kept,
+                "said": {"dropped": [PACK_DROPS[c] for c in sorted({c for c, _n, _r
+                                                                    in order[:n]})],
+                         "pack_dropped": counts, "estimate": est, "budget": budget,
+                         "words": ", ".join(f"{k} from {name}"
+                                            for name, k in sorted(counts.items()))}}
+
+    n, chosen = 0, build(0)
+    while chosen["said"]["estimate"] > budget and n < len(order):
+        n += 1
+        chosen = build(n)
     return chosen
 
 
@@ -1161,6 +1251,15 @@ def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> di
                                                trigger=trigger))
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
+    elif tuple(prompt) != ("explain", 1):
+        # Every other version trimmed to the bound with its own prompt (C2198), what was left
+        # out said in the pack as sent and kept with the answer.
+        sel = trimmed(pack, tuple(prompt), schema, data, ctx, sections,
+                      counter=gateway.counter(FEATURE, tuple(prompt), actor=actor,
+                                              trigger=trigger), topo=topo)
+        data, sections = sel["data"], sel["sections"]
+        if sel["said"]["pack_dropped"]:
+            kept = {"trimmed": sel["said"]}
     return {"pack_id": pack_id, "read": read, "topo": topo, "said": said, "schema": schema,
             "subject": subject, "data": data, "ctx": ctx, "sections": sections, "kept": kept,
             "round": rounds}
@@ -1178,8 +1277,8 @@ def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
     answer, base = got["output"], {"pack_id": pack_id, "pack_read": read,
                                    "call_id": got["call_id"],
                                    "cost_usd": got["cost_usd"], "topology": said,
-                                   **{k: got[k] for k in ("parent_call_id", "needs_said")
-                                      if got.get(k)}, **kept}
+                                   **{k: got[k] for k in ("parent_call_id", "needs_said",
+                                                          "withheld") if got.get(k)}, **kept}
     links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
     ids = topo["ids"] if topo["sent"] else ()
     names = topo.get("names") if topo["sent"] else None

@@ -42,7 +42,9 @@ HELD = cases.load(os.path.join(ROOT, "tests", "fixtures", "ai_cases", "explain",
 #: its five runs are recorded (C1849: the walk's rebuilt pack, its expectation set before any
 #: run, recorded by the session that runs Explain on it).
 AWAITING = {21: "Walk 2's alert, its pack rebuilt with schema 5 (C1849 to C1851), written "
-                "2026-10-27 before any run"}
+                "2026-10-27 before any run",
+            22: "C2273's injection case, case 1's window with a planted line, written "
+                "2026-11-01 before any run"}
 RULE = ("judge Explain on honest reasoning at the edge of its evidence, not on naming the "
         "host's 96%: it must tie the routers' OSPF drops to s3's symptoms (heartbeat gaps, "
         "failed scrapes, discards), note s3's own CPU peaked at 57% so the device doesn't "

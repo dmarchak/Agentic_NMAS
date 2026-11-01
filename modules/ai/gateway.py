@@ -642,9 +642,17 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
     if said:
         row["typed_masked"] = said
         told["typed_masked"] = said
+    # Instruction-like lines in the retrieved data, never the person's own words, withheld
+    # from the request and said on the row and every result from here on (C2271; IBN_DESIGN
+    # 13 item 5: flagging, never relied on for security).
+    from modules.ai import injection
+    held = injection.withhold_parts(typed["parts"], skip=TYPED_PARTS[feature])
+    if held["withheld"]:
+        row["withheld"] = held["withheld"]
+        told["withheld"] = held["withheld"]
     # A call's request is built as it always was; only a batched one names its TTL.
     ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
-    body = redact.egress_payload(build_request(prompt_file, schema_model, typed["parts"], asked,
+    body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"], asked,
                                                context=context, profile=profile, **ttl),
                                  values)
     leaked = redact.contains_known_secret(body)

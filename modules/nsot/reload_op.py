@@ -530,8 +530,14 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
                 return finish("refused")
             step("read", True, "the same as the preview")
             started = time.time()
+            # The devices the preview said Mercury loses its path to, kept on the window as
+            # its expected effects (the attribution rule, PHASE8_PLAN 20.2).
+            radius = now.get("radius") or {}
             got = restarts.record_planned([host], started, started + now["bound_s"] + 300,
-                                          actor, reason, "reload", list_name=list_name)
+                                          actor, reason, "reload", list_name=list_name,
+                                          unreachable=(radius.get("cut") or []
+                                                       if radius.get("state") == "known"
+                                                       else []))
             if not got.get("ok"):
                 step("window", False, got.get("error", "not recorded") + ": nothing was sent")
                 return finish("no_window")

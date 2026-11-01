@@ -138,7 +138,9 @@ class TestARowThatClearsByTime:
                          # 24 hours after the restart that stopped an SDN loop (C2000).
                          ("sdn_loop", "restart_stopped"),
                          # A lost response's hard timeout, when it would have expired (C2018).
-                         ("sdn_mitigation", "lost")}
+                         ("sdn_mitigation", "lost"),
+                         # A day after the last AI call that withheld a line (C2272).
+                         ("ai_withheld", "withheld")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

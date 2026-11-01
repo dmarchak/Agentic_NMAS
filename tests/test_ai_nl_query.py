@@ -188,8 +188,11 @@ def test_a_planted_instruction_in_help_text_rides_only_as_data(world):
     world.answer = _choices()
     _ask(world)
     body = world.sent[0]["body"]
-    assert planted in body["messages"][0]["content"]
-    assert planted not in json.dumps(body["system"])
+    # The help text is retrieved data: instruction-like, it is withheld (C2271), in no part
+    # of the request, its marker riding as data in the user turn.
+    assert planted not in json.dumps(body)
+    assert "[withheld: instruction-like text (ignore_instructions)" in \
+        body["messages"][0]["content"]
 
 
 def test_the_prompt_carries_only_its_allowed_fields(world):

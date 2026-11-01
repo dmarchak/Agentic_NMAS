@@ -119,19 +119,83 @@ def observed_then(network: str, at: float, source=None) -> dict:
     return {"value": value, "value_at": _iso(at)}
 
 
+class _Answer:
+    """A Loki answer with lines added: what `history_logq._json` reads of a response."""
+
+    def __init__(self, body):
+        self._body = body
+
+    def json(self):
+        return self._body
+
+
+class Planted:
+    """A Loki client answering as *client* does, with *lines* (``[{"device", "at", "line"}]``)
+    added to each range query whose device selector names their device and whose range holds
+    their time (C2273): a recorded case's planted line (an injection case among them), marked as
+    planted in the pack's trigger, never written to Loki or to any store."""
+
+    def __init__(self, client, lines):
+        self._client, self._lines = client, list(lines or [])
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+    def _get(self, path, **params):
+        import re
+        got = self._client._get(path, **params)       # noqa: SLF001 (the client's one GET)
+        if not got.get("ok") or not path.endswith("query_range") or params.get("step") \
+                or params.get("direction") == "forward":
+            return got
+        m = re.search(r'device(=~?)"((?:[^"\\]|\\.)*)"', params.get("query", ""))
+        if not m:
+            return got
+        want = m.group(2).encode().decode("unicode_escape")
+        lo, hi = int(params["start"]), int(params["end"])
+        add = {}
+        for p in self._lines:
+            ns = int(_epoch(p["at"]) * 1e9)
+            named = (re.fullmatch(want, p["device"]) if m.group(1) == "=~"
+                     else p["device"] == want)
+            if named and lo <= ns <= hi:
+                add.setdefault(p["device"], []).append([str(ns), p["line"]])
+        if not add:
+            return got
+        body = got["response"].json()
+        for dev, values in add.items():
+            body["data"]["result"].append({"stream": {"device": dev, "job": "planted"},
+                                           "values": values})
+        return {"ok": True, "response": _Answer(body)}
+
+
+def _epoch(text: str) -> float:
+    return float(calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")))
+
+
 def build(network: str, device: str, at: float, onset: float, rule: str = RULE,
-          observed=None, now=None) -> dict:
-    """The pack as of *at*, through the product's own builder."""
+          observed=None, now=None, planted=None) -> dict:
+    """The pack as of *at*, through the product's own builder. *planted* (a recorded case's
+    ``replay.plant``, C2273): lines added to what Loki answers (`Planted`), said in the
+    trigger."""
     from modules import evidence_pack as EP
+    from modules import history_logq as Q
 
     if observed is None:
         observed = observed_then(network, at)
     when = _iso(now if now is not None else time.time())
-    return EP.build(instance(device, at, onset, rule), store=STORE, value_at=_iso(at), now=at,
-                    observed_read=observed,
-                    trigger=(f"replayed by scripts/nmas-pack-replay at {when}: a synthesized "
-                             f"alert on {device} as of {_iso(at)}, no Grafana rule alerting "
-                             "on what is replayed"))
+    said = (f"; {len(planted)} line(s) PLANTED by the recorded case (never in Loki): "
+            + "; ".join(f"{p['device']} at {p['at']}" for p in planted)) if planted else ""
+    real = Q._client
+    if planted:
+        Q._client = lambda *a, **k: Planted(real(*a, **k), planted)
+    try:
+        return EP.build(instance(device, at, onset, rule), store=STORE, value_at=_iso(at),
+                        now=at, observed_read=observed,
+                        trigger=(f"replayed by scripts/nmas-pack-replay at {when}: a "
+                                 f"synthesized alert on {device} as of {_iso(at)}, no Grafana "
+                                 f"rule alerting on what is replayed{said}"))
+    finally:
+        Q._client = real
 
 
 def _row(call_id: str) -> dict:

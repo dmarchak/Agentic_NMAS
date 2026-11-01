@@ -37,6 +37,13 @@ changes and actions in the window after line 2:
   value, and the intent file's last commit (who, how established, when). Each says "no record
   of who" where the pack holds none (`who.change_of`). The records History holds from before
   the window are counted, the newest named.
+- **Its one-hop neighbours' changes and reloads** (`neighbours_line`, C2176; sent after the
+  changes): each configuration-change line, reload or restart line, History action and
+  restart of the pack's ``neighbour_events`` section, each said as the NEIGHBOUR's, never the
+  device's, with who where the pack records it (`who.change_of`); the other neighbour lines
+  (adjacency, interface, protocol) counted. Lines 2 and the changes read the device's own
+  ``logs`` and ``history`` only, so a neighbour's reload or change is never counted there. A
+  pack before schema 8 holds no such section, and the line says so.
 4. **Observer health at the alert's time** (`observer_line`): each scrape job of the observer
    section, the alert's own job (its ``job`` label) first: whether it was failing in the
    window's last minute, the most of its targets failing at once (`evidence_observer.at_once`,
@@ -64,8 +71,10 @@ log = logging.getLogger(__name__)
 PART = "fact_sheet"
 #: What the sheet says, as a version: raised whenever a line is added, removed or computed
 #: differently. An Explain answer is kept under it (`explain.asked_with`, C2162), so an answer
-#: asked with an older sheet, or before the sheet existed, is never drawn as today's.
-VERSION = 1
+#: asked with an older sheet, or before the sheet existed, is never drawn as today's. 2 (C2176,
+#: 2026-10-29): the neighbours' changes and reloads line, and what the pack lacks naming the
+#: neighbours' section (a pack before schema 8 holds none).
+VERSION = 2
 #: Every line's label, and the sheet's own first line.
 LABEL = "computed by Mercury"
 HEAD = ("Facts computed by Mercury from the pack below, by code, not by a model. Each line is "
@@ -78,7 +87,7 @@ RELOAD_LINE = re.compile(r"%SYS-\d-(?:RELOAD|RESTART)\b")
 QUOTE_CHARS = 160
 #: The line names, in the order sent (the operator's numbering 1, 2, 4 and 5, and the changes
 #: and actions after 2).
-LINES = ("heartbeat", "reloads", "changes", "observer", "lacks")
+LINES = ("heartbeat", "reloads", "changes", "neighbours", "observer", "lacks")
 #: The most changes the line names before the window (the newest), the rest counted.
 BEFORE_NAMED = 3
 
@@ -372,6 +381,64 @@ def changes_line(pack: dict, sections: list) -> str:
     return head + "; ".join(out + said) + "."
 
 
+# ── the neighbours' changes and reloads (C2176) ────────────────────────────────────────────
+
+def neighbours_line(pack: dict, sections: list) -> str:
+    """The changes, actions, reloads and restarts the alert's device's one-hop NEIGHBOURS
+    logged or recorded in the window (the pack's ``neighbour_events``, schema 8), each said as
+    the neighbour's, never the device's: the lines above of the device's own reloads and
+    changes never read that section."""
+    from modules import evidence_pack as EP
+    from modules.ai import who
+
+    own = pack.get("device") or "the alert's device"
+    head = (f"Its one-hop neighbours' changes and reloads in the window ({LABEL}), each the "
+            f"neighbour's own, never {own}'s: ")
+    if not any(s.get("name") == "neighbour_events" for s in pack.get("sections") or []):
+        return head + (f"not in this pack (pack schema {EP.schema_of(pack)}, before they were "
+                       "gathered), which is not that they did nothing.")
+    sec = _section(sections, "neighbour_events")
+    if sec.get("withheld"):
+        return head + f"not sent ({sec['withheld'][:QUOTE_CHARS]})."
+    if sec.get("state") not in ("ok", "empty"):
+        why = (sec.get("why") or "")[:QUOTE_CHARS]
+        return head + f"not read ({sec.get('state')}" + (f": {why}" if why else "") + ")."
+    events, other, logs = [], 0, 0
+    for p in sec.get("pieces") or []:
+        dev = p.get("device") or "a neighbour"
+        at = p.get("at") or "an unrecorded time"
+        if p.get("evidence") == "log":
+            logs += 1
+            text = p.get("text") or ""
+            c = who.change_of("neighbour_events", p)
+            if c:
+                via = f" from {c['via']}" if c.get("via") else ""
+                events.append((_epoch(p.get("at")), f"{at}: {dev} logged a configuration "
+                               f"change{via}, by {c['words']} [{c['ref']}]"))
+            elif RELOAD_LINE.search(text):
+                events.append((_epoch(p.get("at")), f"{at}: {dev} logged "
+                               f"{text[:QUOTE_CHARS]!r} {_ref(p)}"))
+            else:
+                other += 1
+            continue
+        c = who.change_of("neighbour_events", p)
+        if c:
+            events.append((_epoch(p.get("at")), f"{at}: {c['what']} by {c['words']} "
+                           f"[{c['ref']}]" + (f", record {c['id']}" if c.get("id") else "")))
+        elif p.get("kind") == "restart":
+            events.append((_epoch(p.get("at")), f"{at}: {dev}: {p.get('what') or 'restarted'}"
+                           f", Mercury's restart record of the neighbour {_ref(p)}"))
+    out = [w for _t, w in sorted(events, key=lambda e: (e[0] or 0))]
+    if not out:
+        out = [f"none: no configuration-change or reload line among the section's {logs} "
+               f"neighbour log line{'s' if logs != 1 else ''}, and no change, action or "
+               "restart in their History in the window"]
+    if other:
+        out.append(f"{other} other neighbour line{'s' if other != 1 else ''} (adjacency, "
+                   "interface or protocol) in the section")
+    return head + "; ".join(out) + "."
+
+
 # ── 4. observer health at the alert's time ─────────────────────────────────────────────────
 
 def observer_line(pack: dict, sections: list) -> str:
@@ -480,8 +547,8 @@ def lacks_line(pack: dict, sections: list) -> str:
 def lines(pack: dict, sections: list, roles: dict = None) -> list:
     """The sheet's lines, its head first, unmasked (`sheet` masks them)."""
     return [HEAD, heartbeat_line(pack, sections, roles), reloads_line(pack, sections),
-            changes_line(pack, sections), observer_line(pack, sections),
-            lacks_line(pack, sections)]
+            changes_line(pack, sections), neighbours_line(pack, sections),
+            observer_line(pack, sections), lacks_line(pack, sections)]
 
 
 def sheet(pack: dict, sections: list, roles: dict = None) -> str:

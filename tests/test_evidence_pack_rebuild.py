@@ -37,7 +37,8 @@ from tests.test_evidence_pack import pack_lab  # noqa: F401 (the fixture)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HX = {"HX-Request": "true"}
 WORDS = ("Build again with this release's evidence: other alerts, two-hop health, the "
-         "monitoring side, one id per device; the pack kept now stays")
+         "monitoring side, the neighbours' changes, one id per device; the pack kept now "
+         "stays")
 
 
 def _as_schema_4(pack: dict) -> dict:
@@ -119,7 +120,7 @@ class TestBuildAgain:
         assert EP.intact(rows[0]) and rows[0]["schema"] == 4
         new = rows[1]
         assert new["id"] == EP.rebuilt_id(old["alert_key"]) == old["id"] + f"-s{EP.SCHEMA}"
-        assert new["schema"] == EP.SCHEMA == 7 and EP.intact(new)
+        assert new["schema"] == EP.SCHEMA == 8 and EP.intact(new)
         assert new["rebuilt_from"] == {"id": old["id"], "schema": 4,
                                        "built_at": old["replayed_at"], "hash": old["hash"]}
         assert "concurrent" in {s["name"] for s in new["sections"]}

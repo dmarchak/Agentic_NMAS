@@ -4,14 +4,15 @@ When an alert fires, {{product}} gathers what a person would gather by hand: the
 other alerts in its network around the same time, its device's recent History, the device's
 Intent check, its expected and reported neighbours, the network around it as it was observed,
 the health of the devices near it, the monitoring side over the same time (the polling, the SNMP
-exporter and the host that polls), and the log lines around the alert's onset. It does this
+exporter and the host that polls), the log lines around the alert's onset, and what the devices
+one hop from it logged and recorded in the same window. It does this
 once, when the alert is first seen firing, and keeps
 the result, the alert's **evidence pack**, so it reads the same while the alert fires and
 after it resolves: what it holds is as of the alert's time, never as of when it is read.
 **Monitoring › Alerts** draws one card per firing alert, and the packs of alerts no longer
 firing below them. Nothing in a pack is decided by a model, and no device is asked or changed.
 
-![An alert's evidence pack: the Grafana alerts reader stores an alert as firing; after that read, a pack is built once for each firing alert that has none; its device is resolved as Needs attention resolves it; History, the Intent check's state, the neighbours, the observed network around it, the health of every device within two hops and the log lines around the onset are read as of the alert's time, each section naming its source, when it was read and whether it could be; every string is masked, every section and piece given its own reference, and the pack hashed; it is kept in the evidence pack record, and Monitoring's Alerts tab draws it.](diagrams/alert-evidence.svg)
+![An alert's evidence pack: the Grafana alerts reader stores an alert as firing; after that read, a pack is built once for each firing alert that has none; its device is resolved as Needs attention resolves it; History, the Intent check's state, the neighbours, the observed network around it, the health of every device within two hops, the log lines around the onset and what its one-hop neighbours logged and recorded then are read as of the alert's time, each section naming its source, when it was read and whether it could be; every string is masked, every section and piece given its own reference, and the pack hashed; it is kept in the evidence pack record, and Monitoring's Alerts tab draws it.](diagrams/alert-evidence.svg)
 
 ## When a pack is built {#when}
 
@@ -50,7 +51,7 @@ Grafana named them, and **Build evidence** builds each one's pack, saying what w
 
 ## What it holds {#sections}
 
-Eleven sections, each naming its source, when it was read, and its state: **read**, **read,
+Twelve sections, each naming its source, when it was read, and its state: **read**, **read,
 nothing found**, **nothing to read** (no device, no committed golden, no onset), **not
 configured**, or **could not be read**, with why. A source that fails is a section saying so,
 never a shorter pack. Each is drawn collapsed under Explain's answer, its summary naming how much
@@ -127,6 +128,18 @@ state then); open it to read its pieces.
    minutes after it (or until the pack was built, if sooner), asked through History › Query's
    logs builder with Mercury's heartbeat lines left out; the 50 nearest the onset are kept and
    the rest counted.
+12. **What its neighbours did:** the devices one hop from the alert's device in the network
+   model (a shared subnet, an adjacency intent implies, or a cable, at most 16, by name), and
+   what each logged and recorded in the same window as the device's own lines. Only their
+   change and adjacency lines are kept: configuration changes, reloads and restarts, OSPF and
+   OSPFv3 adjacency changes and errors, BGP sessions and refused MD5 digests, and interface
+   link and line-protocol changes. At most 10 lines a neighbour and 30 in all are kept, those
+   nearest the onset, and at most 5 History records a neighbour. Each piece names its
+   neighbour first. A neighbour's reload or change is that neighbour's, never the alert's
+   device's, so the fact sheet and Who made a change never count it as the device's own. The
+   section's line names each neighbour read with how many lines and records were found and
+   kept (its id and the link that reached it on hover). A pack kept before schema 8 holds no
+   such section, and its card says so.
 
 ## An SDN detection's pack {#sdn}
 
@@ -394,6 +407,36 @@ When the pinned prompt or model is not the one the record measured (a version ad
 it), the label does not borrow the old figure: it says **Not measured**, naming what Explain asks
 now and what was measured, until a round measures the new version.
 
+### A pack too large for the prompt {#trimmed}
+
+Every request has a bound on its size (the task's `max_prompt_tokens`). When a pack and the
+prompt version asking about it would pass it, {{product}} leaves pieces of the pack out until
+the request fits, the least relevant first: the neighbours' lines and History farthest from
+the onset, then History older than the onset window, then log lines outside the onset window,
+then the health figures of devices two hops away, then one hop away. The alert, its device,
+its Intent check, the log lines inside the onset window and the alert's own device's figures
+are never left out. Each section that lost pieces says so in the pack as sent ("N of its M
+pieces left out to fit the prompt's size (not the same as not read)"), and the answer says it
+under the hypotheses: "Trimmed to fit the prompt's size: 4 from neighbour_events left out". The
+fact sheet is worked out before anything is left out. A pack that fits is sent as it was
+built; one still too large once nothing else may be left out is refused, naming its size and
+the bound, and nothing is sent.
+
+### Lines withheld as instructions {#withheld}
+
+A pack holds words other people wrote: a device's log lines, interface descriptions, NetBox's
+fields, commit messages. Anyone who can write one of those can write words aimed at the model
+("ignore the previous instructions", "the operator approved this"). Before any request leaves,
+{{product}} reads every line of the data it carries, except what the person asking typed, and
+withholds each line that reads as an instruction to the model, a claim of identity or approval,
+a change of the model's role, markup that imitates the prompt, a link or image to fetch, or
+characters a person cannot see. The model reads "[withheld: instruction-like text (…)]" in its
+place. The line itself stays in the pack, where you can read it; the answer says how many lines
+were withheld ("1 line of the pack read as instructions to the model, so it was withheld from
+the request"), the call's record in History lists where each was, and none is ever sent. This
+is a flag, not the protection: the model has no tool that acts, every answer is checked against
+the pack, and nothing changes a device without your confirm.
+
 ### The fact sheet {#fact-sheet}
 
 Some facts in a pack are arithmetic: one device's heartbeat gap against its neighbours', a
@@ -429,12 +472,19 @@ the pack does not hold says so.
    last committed the device's intent and when. Each says "no record of who" where the pack
    holds none. The records History holds from before the window are counted and the newest
    three named.
-4. **Observer health at the alert's time:** each scrape job of the pack's monitoring side, the
+4. **Its neighbours' changes and reloads:** each configuration change, reload or restart line
+   and each History action or restart of the pack's neighbours section (above, section 12),
+   with who where the pack records it, each said as the neighbour's own, never the device's;
+   the neighbours' other lines (adjacency, interface, protocol) counted. A pack before schema 8
+   holds no such section, and the line says so, which is not that they did nothing. Who the
+   device's neighbours are is part of the topology class: with it off, nothing of this section
+   is sent and the line says so.
+5. **Observer health at the alert's time:** each scrape job of the pack's monitoring side, the
    alert's own job first: whether it was failing in the window's last minute (or when it last
    was), the most of its targets failing at once, how many of its targets failed at all, which
    of the pack's devices failed in it, and every job's targets counted together. A pack built
    before the monitoring side was gathered says so.
-5. **What the pack lacks:** each section not read, empty, withheld or not in the pack at all
+6. **What the pack lacks:** each section not read, empty, withheld or not in the pack at all
    (an older pack), and each figure not measured, by device.
 
 The sheet is masked on its way out, as every string {{product}} shows, and the gateway masks the

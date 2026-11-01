@@ -6,6 +6,24 @@ never on a date (PHASE8_PLAN 15.12, the operator, 2026-10-27; this line said "$1
 31 Oct" before, which 15.12 replaced). Mercury cannot raise that reminder itself (C1751). Report
 AI spend in every status update meanwhile.**
 
+## THE DAY RUN, 2026-11-01 from 16:20 UTC (the operator's answers to the overnight report)
+
+The report: `~/Documents/nmas-reports/2026-11-01-day-report.md`, Needs you first.
+- **Live: still 753c38cf. Deploys are HELD** until the operator says both "captures done" (the
+  non-blind SDN captures, `blind-runs/sessions.md`, "Recorded-case captures") and "lab account
+  done" (r2, r3, r4, r6). Pushed and waiting to deploy: 815a40c9 (C2270), the queue's combined
+  commit (C2176, C2198, C2275, C2271, C2272, C2273, v10 and v11, C2249, C2239's key log) and the
+  round's commit (C2276, the SDN series helper, P7's manual index).
+- **The Explain round** (batch path, $6.71 of the day's $15): nothing adopted, v4 stays the pin;
+  the new pack's two trim failures fixed (C2275); case 9 on the neighbour evidence is the
+  operator's reading (C2276); injection case 22 withheld on every run, awaiting its recording.
+- **Boards approved today:** NA-R (the Needs attention redesign, v185) and PS (the planned
+  state, v186); neither built (C2274).
+- **Next, once the captures arrive:** copy `/tmp/lab8-series-RC-*.jsonl` off the host, `check`
+  and `replay` them (tests/sdn_series.py), write C2237/C2238's recorded cases, build S-HR and
+  the scan/flood correlation. Then C2274 (board PS), onboarding's key saving (board first), P7
+  stage 1's prompt, schema, panel and cases.
+
 ## THE OVERNIGHT RUN, 2026-11-01 08:35 to ~11:xx UTC (the operator asleep until ~14:00)
 
 The brief: `~/Documents/nmas-reports/prompts/2026-11-01-overnight-prompt.md`; the report, Needs

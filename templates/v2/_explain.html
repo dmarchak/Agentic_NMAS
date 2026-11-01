@@ -135,6 +135,12 @@
       {%- endif %}
       {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
       {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
+      {#- C2198: a pack trimmed to fit the prompt's bound says what was left out, here and in
+          the pack as sent; left out is not the same as not read. -#}
+      {%- if x.trimmed and x.trimmed.pack_dropped %}<p class="muted small explain-trimmed" title="{{ x.trimmed.dropped | join('; ') }}; the request {{ x.trimmed.estimate }} tokens against the bound {{ x.trimmed.budget }}">Trimmed to fit the prompt's size: {{ x.trimmed.words }} left out (not the same as not read).</p>{% endif %}
+      {#- C2271: instruction-like lines in the pack were withheld from the request; each is
+          still in the pack below, where it was read. -#}
+      {%- if x.withheld %}<p class="small warn-text explain-withheld" title="{{ x.withheld | map(attribute='where') | join('; ') }}">{{ badge('withheld', 'warn') }} {{ x.withheld | length }} line{{ '' if x.withheld | length == 1 else 's' }} of the pack read as instructions to the model, so {{ 'it was' if x.withheld | length == 1 else 'they were' }} withheld from the request: read {{ 'it' if x.withheld | length == 1 else 'them' }} in the pack below. Someone who can write a device's logs, descriptions or records may have aimed words at the model.</p>{% endif %}
     </div>
     <footer class="answer-foot">
       {#- Was this right? (PHASE8_PLAN 16.11 item 1, board FB): under an answer drawn, never

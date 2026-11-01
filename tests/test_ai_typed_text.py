@@ -314,8 +314,16 @@ def test_an_explain_pack_is_sent_as_the_request_s_one_mask_makes_it_and_nothing_
                               send=world.send, today="2026-10-28")
     assert got["ok"] is True and "typed_masked" not in got
     (parts,) = handed
-    (b,) = built
-    assert b[2].keys() == parts.keys() and all(b[2][k] is parts[k] for k in parts)
+    # The gateway's build is the last: Explain measures its own request against the bound
+    # first (C2198, `explain.trimmed`). The parts are those Explain handed, as the injection
+    # flagger left them (C2271: the pack's planted instruction withheld, every other part the
+    # very object).
+    b = built[-1]
+    from modules.ai import injection
+    held = injection.withhold_parts(parts)
+    assert b[2] == held["parts"] and held["withheld"], held["withheld"]
+    assert all(b[2][k] is parts[k] for k in parts
+               if not any(w["where"].startswith(k) for w in held["withheld"]))
     body = world.sent[0]["body"]
     assert body == redact.egress_payload(real_build(*b[:4], context=b[4], profile=b[5]))
     assert redact.egress_payload(body) == body, "a second mask changes nothing"

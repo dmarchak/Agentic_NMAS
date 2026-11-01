@@ -1231,7 +1231,8 @@ def alert_evidence():
         "that read, a pack is built once for each firing alert that has none; its device is "
         "resolved as Needs attention resolves it; History, the Intent check's state, the "
         "neighbours, the observed network around it, the health of every device within two "
-        "hops and the log lines around the onset are read as of the alert's time, each "
+        "hops, the log lines around the onset and what its one-hop neighbours logged and "
+        "recorded then are read as of the alert's time, each "
         "section naming its source, when it was read and whether it could be; every string "
         "is masked, every "
         "section and piece given its own reference, and the pack hashed; it is kept in the "
@@ -1247,7 +1248,7 @@ def alert_evidence():
         svc(250, 168, 130, 30, "History, intent", "the repository"),
         svc(250, 214, 130, 30, "Prometheus, Loki", "as of the alert"),
         *rows([(186, "read", 3, "History, Intent state", "never a configuration line"),
-               (232, "read", None, "Neighbours, network, health", "logs around the onset")],
+               (232, "read", None, "Neighbours, network, health", "logs, neighbours' lines")],
               dev_x=250),
         doc("box", 14, 284, 186, 40, "Masked and hashed", "a reference for each piece"),
         num(14, 284, 4),

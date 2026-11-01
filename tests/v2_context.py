@@ -1156,6 +1156,11 @@ def _alert_evidence(client, _lab, _mp):
         # own scrape planted (the lab's Prometheus scrapes none): every kind of its pieces.
         from tests import test_evidence_observer as OB
         OB._install(mp, edit={"figures": OB.with_self_scrape})
+        # The neighbours read (C2176, schema 8): the network model's one-hop answer planted
+        # (the walk's lab holds no shared link; the model's walk over the real fleet is
+        # tests/test_evidence_pack_neighbours.py's), so a pack's neighbours line draws.
+        mp.setattr(EP, "neighbours_of",
+                   lambda capture: ([("dev:302", "r2", "a link in 10.255.3.0/24")], 1))
         os.makedirs(os.path.join(folder, "readers"))
 
         def store(value):

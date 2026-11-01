@@ -60,9 +60,10 @@ def _marks(pack):
 class TestEachSectionIsMarked:
     def test_a_pack_built_as_its_alert_fired_is_captured_throughout(self, pack_lab):
         pack = _build(_alerts(V4))
-        # Schema 5 (C1849 to C1851), 6 (C1896) and 7 (the intent lines) keep schema 4's marks,
-        # on their new sections too.
-        assert pack["provenance"] == "captured" and pack["schema"] == 7
+        # Schema 5 (C1849 to C1851), 6 (C1896), 7 (the intent lines) and 8 (the neighbours'
+        # events, C2176) keep schema 4's marks, on their new sections too.
+        assert pack["provenance"] == "captured" and pack["schema"] == 8
+        assert "neighbour_events" in _marks(pack)
         assert set(_marks(pack).values()) == {"captured"} and "concurrent" in _marks(pack)
         assert "observer" in _marks(pack)
         assert all(s["provenance_words"].startswith("captured at the time")
@@ -77,7 +78,9 @@ class TestEachSectionIsMarked:
                                 "device": "rebuilt", "history": "rebuilt",
                                 "intent": "rebuilt", "neighbours": "missing",
                                 "observed": "missing", "endpoints": "missing",
-                                "health": "rebuilt", "observer": "rebuilt", "logs": "rebuilt"}
+                                "health": "rebuilt", "observer": "rebuilt", "logs": "rebuilt",
+                                # Loki and History keep their past (C2176).
+                                "neighbour_events": "rebuilt"}
         for name in ("neighbours", "observed", "endpoints"):
             s = _section(pack, name)
             assert s["state"] == "absent" and s["pieces"] == []

@@ -3574,6 +3574,8 @@ def rekey_preview(plan: dict, *, busy: str, request) -> dict:
              "value": (f"{now.get('fingerprint')} ({now.get('type')})"
                        if now.get("fingerprint") else not_read(plan))},
             {"name": "since the key was kept", "value": plan.get("restart") or not_read(plan)},
+            {"name": "what it logged about its keys",
+             "value": plan.get("key_log") or "not read: the key did not change"},
             {"name": "plan hash", "value": plan.get("hash") or "none"}],
         "gates": gates,
     }

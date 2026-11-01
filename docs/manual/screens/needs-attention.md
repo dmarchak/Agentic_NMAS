@@ -78,10 +78,11 @@ and each network's own Grafana its own alerts and token expiry.
 an adjacency that drops and comes back between two reads never shows there. The device's own
 log does show it. Mercury reads the routing adjacency changes every managed device logged
 (`%OSPF-5-ADJCHG`, `%OSPFv3-5-ADJCHG`, `%BGP-5-ADJCHANGE`) and raises one row per adjacency.
-The row names the logging device, the protocol, the neighbour, how many times it went down in
-the last day, the last time and the reason the device gave.
-- A drop inside a planned restart's window, or around a deploy to that device, is counted under
-  What was checked and never raised.
+The row names the logging device, the protocol, the neighbour (by its device where committed
+intent gives its router id or address, the id beside it), how many times it went down in the
+last day, the last time and the reason the device gave.
+- A drop inside a planned restart's window, of the logging device or of the neighbour, or
+  around a deploy to that device, is counted under What was checked and never raised.
 - An adjacency that flaps for a known reason can be acknowledged within its band: the highest
   daily count of the last week. It stays quiet while the day's count stays at or under that,
   and returns, saying so, when it goes above.
@@ -248,6 +249,17 @@ panel**, which opens the top bar's spend panel in place on the page you are on (
 A feature's rows also carry **Open…** to Settings › AI, where its caps change and it is turned
 on again.
 
+**Lines withheld from AI requests** (read on each recorded AI call). Before any AI request
+leaves, {{product}} withholds each line of the data it carries that reads as an instruction to
+the model ([Lines withheld as instructions](alert-evidence#withheld)). One warning row per AI
+feature that withheld a line in the last day: "2 lines aimed at the model were withheld from 1
+explain call in the last day", its cause naming the kinds of words found, the newest call,
+what it was about and where in its data each line was. Someone who can write a device's logs,
+descriptions or records may have aimed them at the model. Its action: read the call's record in
+History and the lines where they were read, and find who wrote them. It clears a day after the
+last such call, or when you acknowledge it with a reason; a later call that withholds a line
+raises it again.
+
 ## How a row clears {#clearing}
 
 Every row says, under its cause, how it leaves the page: "Clears when …". There are three ways:
@@ -311,6 +323,15 @@ window's end plus a settle margin (19 minutes: its telemetry alerts outlast its 
 window also sets a Grafana silence on those alerts, as the person who declared it, so Grafana
 pages nobody. If the device is still not answering when the window ends, it is a critical row
 again, naming the window that ended; an alert still firing after the margin is a row again.
+
+What the operation predictably causes elsewhere is held the same way, until the same time: the
+devices its preview said Mercury loses reach to ("access1 is out of Mercury's reach as
+expected while edge1 restarts as planned (by …); expected back by …"), an adjacency with the restarting
+device at one end, its protocols that cannot be measured while it is down, a neighbour's logged
+drop to it, and a drift check that could not read either device (the next run reads them
+again). Each is said under *What was checked*. A device the preview did not predict is raised
+as usual. Only a Reload records what it predicts today; a window declared by hand holds its own
+devices alone.
 
 Each alert is judged by its own device, never by what began beside it. Alerts whose onsets fall
 within six minutes of each other are grouped into one row ("3 alerts began together"), but an

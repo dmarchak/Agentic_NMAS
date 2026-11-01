@@ -219,7 +219,7 @@ def read_reason(dev: dict) -> dict:
 
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
                    list_name: str = "", correction: str = "",
-                   new_host_keys: bool = False) -> dict:
+                   new_host_keys: bool = False, unreachable=()) -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
     or an end before its start, because a planned window is what keeps an alert quiet.
@@ -234,7 +234,14 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     2026-10-02: "don't let a planned-restart window declared after the fact clear an
     unplanned restart"), naming each restart, unless it is marked as a *correction* with
     its own reason: a window that was really planned and only recorded late. A correction
-    is kept as one, and History says so."""
+    is kept as one, and History says so.
+
+    *unreachable* names the other devices the operation predicted Mercury loses its path to
+    while it runs (the Reload's blast radius), kept on the window as ``expected``: the
+    attribution rule (PHASE8_PLAN 20.2, `explained_by`) reads a signal from one of them inside
+    the window as the operation's expected effect. Such a device restarts nothing, so it is
+    never a device the window names: no restart of it is planned and no new host key of it is
+    kept. A window recorded before the field reads as before (expand, then contract)."""
 
     devices = [d for d in (devices or []) if d]
     if not devices or not by or not (why or "").strip() or end < start:
@@ -244,6 +251,9 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
            "by": by, "why": why.strip(), "via": via, "recorded_at": _iso(time.time())}
     if new_host_keys:
         row["new_host_keys"] = True
+    others = sorted({d for d in (unreachable or ()) if d and d not in devices})
+    if others:
+        row["expected"] = {"unreachable": others}
     seen = events()
     if seen["state"] == "unreadable":
         return {"ok": False, "error": "the restart record could not be read, so whether this "
@@ -573,6 +583,41 @@ def holding(device: str, list_name: str, now: float, *, margin: float = 0,
             return {"window": p, "end": end,
                     "words": f"{device} is restarting as planned (until {_iso(end)}, by "
                              f"{p.get('by') or 'an unrecorded person'})"}
+    return None
+
+
+def explained_by(device: str, list_name: str, now: float, *, margin: float = SETTLE_SECONDS,
+                 planned: list = None, ended: dict = None):
+    """The attribution rule (PHASE8_PLAN 20.2; the operator's brief of 2026-11-01, item 4):
+    the planned window that explains a signal from *device* of *list_name* at *now*, or None.
+    A window explains its own devices (they restart), and the devices its operation predicted
+    Mercury loses its path to (``expected.unreachable``, `record_planned`), from its start
+    until its end plus *margin*, the settle time (`SETTLE_SECONDS`, the device page's hold).
+    ``{"window", "end", "how", "words"}``: *how* is ``restarting`` or ``unreachable``; the
+    words name the operation, who declared it and when it is expected back. A signal past
+    the margin is not explained, so it is raised as before ("overdue")."""
+    planned = planned_rows() if planned is None else planned
+    ended = ends() if ended is None else ended
+    for p in reversed(planned):
+        own = _names(p, device, list_name)
+        expected = device in ((p.get("expected") or {}).get("unreachable") or []) and (
+            not p.get("list") or not list_name or p.get("list") == list_name)
+        if not (own or expected):
+            continue
+        end = window_end(p, ended)
+        if not _epoch(p.get("from", "")) - 60 <= now <= end + margin:
+            continue
+        by = p.get("by") or "an unrecorded person"
+        back = _iso(end + margin)
+        if own:
+            # `holding`'s own words, so a row a window already held reads as it did.
+            words = f"{device} is restarting as planned (until {_iso(end)}, by {by})"
+        else:
+            words = (f"{device} is out of Mercury's reach as expected while "
+                     f"{', '.join(p.get('devices') or ['a device'])} restarts as planned (by "
+                     f"{by}); expected back by {back}")
+        return {"window": p, "end": end, "how": "restarting" if own else "unreachable",
+                "words": words}
     return None
 
 

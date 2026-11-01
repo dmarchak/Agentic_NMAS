@@ -174,6 +174,10 @@ ROW_KINDS = {
     ("scheduled_rotation", "stopped"): ("a scheduled credential rotation stopped on a failure",
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
+    ("ai_withheld", "withheld"): ("words that read as instructions to the model were found "
+                                  "in the data AI calls carried, and withheld",
+                                  "read the lines where they were read and find who wrote "
+                                  "them; acknowledge once known"),
     ("reloads", "unverified"): ("a device came back from its reload and was not verified",
                                 "press Verify again on its page"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
@@ -418,6 +422,10 @@ CLEARS = {
                                         "no scheduled run"),
     ("reloads", "unverified"): (("resolves",), "a later record for the device replaces it: "
                                 "Verify again on its page, or another reload"),
+    ("ai_withheld", "withheld"): (("acknowledge", "time"),
+                                  "a day after the last AI call that withheld a line (by "
+                                  "time), or acknowledged with a reason once the lines are "
+                                  "read and their writer found"),
     ("host_keys", "changed"): (("resolves",), "a session finds the device answering with the "
                                "key Mercury holds: after a re-key on its page keeps the new "
                                "one, or when the device answers with the held key again"),
@@ -478,6 +486,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("host_key_windows", "window"),
                                # Within its measured band of daily drops (C589, C433's shape).
                                ("adjacency_log", "flap"),
+                               # The newest call that withheld a line (C2272): a later one
+                               # raises the row again.
+                               ("ai_withheld", "withheld"),
                                # One deploy's lines verify could not read back, the device
                                # printing them in another form (C1542): that deploy only.
                                ("deploys", "read_back"),
@@ -953,7 +964,19 @@ def drift_source(status=None, now=None) -> dict:
             {"label": "Clear what the reason names, then " + _CHECK_NOW[0].lower()
                       + _CHECK_NOW[1:], "href": _DRIFT_HOME, "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})
+    explained_drift = []
     for d in last.get("errors") or []:
+        # The attribution rule (PHASE8_PLAN 20.2): a device a planned window explained when
+        # the run read it (restarting, or predicted unreachable) is that operation's effect;
+        # the next run reads it again, and only that reading is raised.
+        from modules import restarts as _R
+        try:
+            why_held = _R.explained_by(d["hostname"], lst, _ts(last_ts) or now)
+        except RuntimeError:
+            why_held = None
+        if why_held:
+            explained_drift.append(f"{d['hostname']} ({why_held['words']})")
+            continue
         # During a boot the reachability reader saw the device go silent: said
         # first, so a booting device does not read as a broken one.
         from modules.readers.reachability import outage_words
@@ -969,7 +992,10 @@ def drift_source(status=None, now=None) -> dict:
                          value_at=last_ts,
                          stale_after_seconds=int(DRIFT_STALE_INTERVALS * interval) or None,
                          checked=f"list {lst}, the run of {_iso(last_ts) or 'an unrecorded time'}: "
-                                 f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}")
+                                 f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}"
+                                 + (f"; not read during a planned operation, read again by the "
+                                    f"next run: {'; '.join(explained_drift)}"
+                                    if explained_drift else ""))
 
 
 def _page_network() -> str:
@@ -2080,9 +2106,10 @@ def _planned_alert_hold(now: float = None) -> tuple:
                                  "was held for a planned restart")
 
     def hold(device: str) -> str:
+        # The attribution rule (PHASE8_PLAN 20.2): the window's own devices and the devices it
+        # predicted unreachable, each until its end plus the settle time.
         for net in where.get(device) or [""]:
-            got = R.holding(device, net, now, margin=R.SETTLE_SECONDS,
-                            planned=planned, ended=ended)
+            got = R.explained_by(device, net, now, planned=planned, ended=ended)
             if got:
                 return (got["words"] + f", its alerts held {R.SETTLE_SECONDS // 60} min "
                         "after it to settle")
@@ -2371,6 +2398,12 @@ def _planned_down(down: list, now: float = None) -> tuple:
             held[key] = (got["words"] + (": open its reload on its page"
                                          if got["window"].get("via") == "reload" else
                                          f": {got['window'].get('why', '')}"))
+            continue
+        # A device the window's operation predicted unreachable (PHASE8_PLAN 20.2), until the
+        # window's end plus the settle time; past it, it is raised (overdue) as before.
+        got = R.explained_by(key[0], key[1] or "", now, planned=planned, ended=ended)
+        if got and got["how"] == "unreachable":
+            held[key] = got["words"]
             continue
         p = R.ended_while_down(key[0], key[1] or "", now, _ts(d.get("since")) or 0,
                                planned=planned, ended=ended)
@@ -3907,12 +3940,20 @@ def adjacency_source(cached=None) -> dict:
                              value_at=value_at, stale_after_seconds=promise, reader="adjacencies",
                              checked="no Prometheus configured: what the devices report about "
                                      "their neighbours cannot be read")
-    rows, settling = [], 0
+    rows, settling, held = [], 0, []
+    # The attribution rule (PHASE8_PLAN 20.2): a link with an end a planned window explains
+    # (restarting, or predicted unreachable) is that operation's expected effect until the
+    # window's end plus the settle time, said under What was checked, never a row.
+    hold, hold_problem = _planned_alert_hold()
     for key, a in sorted((v.get("adjacencies") or {}).items()):
         if int(a.get("reads") or 0) < PERSIST_READS:
             settling += 1
             continue
         devs = a.get("devices") or []
+        why_held = next((w for w in (hold(d) for d in devs) if w), "")
+        if why_held:
+            held.append(f"{a['protocol']} {' and '.join(devs)} ({why_held})")
+            continue
         # A side judged on a failed scrape's last good value says when it was read (C690).
         rip = a.get("source") == "reader"
         sides = "; ".join(
@@ -3943,6 +3984,10 @@ def adjacency_source(cached=None) -> dict:
                                          "ends' routing configuration",
                                 "href": f"/v2/device/{first}?tab=neighbours"}))
     un = v.get("unmeasured") or []
+    # A device a window explains is not measured while it restarts: its own expected effect.
+    gone = {u["device"]: hold(u["device"]) for u in un if hold(u["device"])}
+    held += [f"{d}'s adjacencies cannot be judged ({w})" for d, w in sorted(gone.items())]
+    un = [u for u in un if u["device"] not in gone]
     if un:
         names = ", ".join(sorted({f"{u['device']} ({u['protocol']})" for u in un}))
         rows.append(row(source="adjacencies", kind="unmeasured", key="unmeasured", level="unknown",
@@ -3964,7 +4009,10 @@ def adjacency_source(cached=None) -> dict:
         stale_after_seconds=promise, reader="adjacencies",
         checked=(f"{v.get('checked', 0)} adjacency report(s) over {v.get('devices', 0)} device(s)"
                  + (f"; {settling} not up for less than {PERSIST_READS} reads, not raised yet"
-                    if settling else "")))
+                    if settling else "")
+                 + (f"; expected during a planned operation, not raised: {'; '.join(held)}"
+                    if held else "")
+                 + (f"; {hold_problem}" if hold_problem else "")))
 
 
 #: A drop within this long BEFORE a deploy's receipt (written as the deploy ends), or a minute
@@ -3974,16 +4022,50 @@ def adjacency_source(cached=None) -> dict:
 DEPLOY_WINDOW_S = 600
 
 
-def _explained(drop: dict, a: dict, planned: list, receipts) -> str:
+def _peer_names(list_name: str, cache: dict) -> dict:
+    """``{router id or address: device}`` for *list_name* from its committed intent (one read
+    per list, kept in *cache*): an adjacency log names its peer by an OSPF or OSPFv3 router id
+    or a BGP address, IPv4 or IPv6, and the attribution rule needs the peer's device (the
+    overnight brief of 2026-11-01, item 3: name the neighbour device, never its router id).
+    An intent that cannot be read names no peer."""
+    if list_name in cache:
+        return cache[list_name]
+    from modules.network_model import _addresses
+    from modules.neighbours import committed_intents, router_id
+    from modules.nsot import listref
+
+    out = {}
+    try:
+        # A read creates no list (`listref.exists` first: `resolve` makes its folders).
+        name = list_name or "Default"
+        intents = (committed_intents(listref.resolve(name).repo_dir)[0]
+                   if listref.exists(name) else {})
+    except Exception:                             # noqa: BLE001 (no peer named, said by absence)
+        intents = {}
+    for host, hv in (intents or {}).items():
+        rid = router_id(hv)
+        if rid:
+            out.setdefault(rid, host)
+        for iface in (hv or {}).get("interfaces") or []:
+            for a in _addresses(iface):
+                out.setdefault(str(a.ip), host)
+    cache[list_name] = out
+    return out
+
+
+def _explained(drop: dict, a: dict, planned: list, receipts, peers: dict = None) -> str:
     """Why a logged drop needs no row, or ``""``: a planned restart's window covering the
-    logging device, or a deploy to it around that time. Its peer is named by an address or a
-    router id, not a device, so a restart of the peer is not looked up: that drop is raised,
-    and its row says the peer may have restarted only by the reason the device gave."""
+    logging device, or its PEER (the device its router id or address names in committed
+    intent, *peers*; PHASE8_PLAN 20.2: the peer's planned window, not only the logging
+    device's), or a deploy to it around that time."""
     from modules import restarts
 
     at = drop["epoch"]
     if restarts.planned_for(a["device"], at, planned, a.get("list", "")):
         return "planned restart"
+    peer = (peers or {}).get(str(a.get("neighbor") or ""))
+    if peer and restarts.planned_for(peer, at, planned, a.get("list", "")):
+        return "the peer's planned restart"
     for r in receipts(a.get("list", ""), a["device"]):
         t = _ts(r.get("at"))
         if t and t - DEPLOY_WINDOW_S <= at <= t + 60:
@@ -4031,10 +4113,12 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                                    f"{got_r.get('error')}")
             return got_r["rows"]
     rows, explained, adjacencies = [], 0, v.get("adjacencies") or {}
+    names = {}
     try:
         for k, a in sorted(adjacencies.items()):
             drops = a.get("drops") or []
-            kept = [d for d in drops if not _explained(d, a, planned, receipts)]
+            peers = _peer_names(a.get("list") or "", names)
+            kept = [d for d in drops if not _explained(d, a, planned, receipts, peers)]
             explained += len(drops) - len(kept)
             if not kept:
                 continue
@@ -4042,7 +4126,9 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
             n = len(kept)
             reasons = sorted({d.get("reason") or "no reason given" for d in kept})
             where = f" on {a['interface']}" if a.get("interface") else ""
-            what = (f"{a['device']}'s {a['protocol']} adjacency to {a['neighbor']} went down "
+            peer = peers.get(str(a.get("neighbor") or ""))
+            to = f"{peer} ({a['neighbor']})" if peer else a["neighbor"]
+            what = (f"{a['device']}'s {a['protocol']} adjacency to {to} went down "
                     f"{n} time{'' if n == 1 else 's'} in the last day")
             cause = (f"{a['device']} logged it down{where} {n} time{'' if n == 1 else 's'}, the "
                      f"last at {last['at'][11:16]} UTC ({'; '.join(reasons)}), outside any "
@@ -4126,6 +4212,70 @@ def host_key_source(refused=None) -> dict:
                          checked=(f"{sum(1 for r in keys.values() if r.get('fingerprint'))} "
                                   "device key(s) held, " if refused is None else "")
                          + f"{len(rows)} refused at their last connection")
+
+
+#: How long a withheld line stays raised after the last call that withheld one (C2272).
+AI_WITHHELD_WINDOW_S = 86400
+
+
+def ai_withheld_source(rows=None, now=None) -> dict:
+    """Lines withheld from AI requests as instruction-like (C2271's flagger; C2272, IBN_DESIGN
+    13 item 5, "ignored and reported"): someone who can write a device's logs, descriptions or
+    records may have aimed words at the model. ONE row per AI feature that withheld a line in
+    the last day, naming how many lines in how many calls, where the newest was and the call
+    to read; it clears a day after the last such call, or when acknowledged. Bounded: the last
+    day's window of the record of AI calls (`calls.rows_since`), never the whole record."""
+    import datetime
+
+    from modules.ai import calls, injection
+
+    started = time.time()
+    now = time.time() if now is None else now
+    label = "AI requests: lines withheld as instructions"
+    if rows is None:
+        got = calls.rows_since(datetime.datetime.fromtimestamp(
+            now - AI_WITHHELD_WINDOW_S, tz=datetime.timezone.utc))
+        if got["state"] == "unreadable":
+            return source_result("ai_withheld", label, read_at=started, took_ms=0,
+                                 error=f"the record of AI calls could not be read: "
+                                       f"{got.get('error')}")
+        rows = got["rows"]
+    by = {}
+    for r in rows:
+        if r.get("withheld") and (_ts(r.get("at")) or now) >= now - AI_WITHHELD_WINDOW_S:
+            by.setdefault(r.get("feature") or "an AI feature", []).append(r)
+    out = []
+    for feature, rs in sorted(by.items()):
+        rs = sorted(rs, key=lambda r: r.get("at") or "")
+        last = rs[-1]
+        n = sum(len(r.get("withheld") or []) for r in rs)
+        names = sorted({p for r in rs for w in r.get("withheld") or [] for p in w["patterns"]})
+        subject = last.get("subject") or {}
+        about = (f" about {subject.get('kind')} {subject.get('id')}"
+                 if subject.get("kind") and subject.get("id") else "")
+        out.append(row(
+            source="ai_withheld", kind="withheld", key=feature, level="warning",
+            devices=list(subject.get("devices") or []), since=_ts(rs[0].get("at")),
+            event=f"{feature}:{last.get('id')}",
+            clears_at=(_ts(last.get("at")) or now) + AI_WITHHELD_WINDOW_S,
+            what=(f"{n} line{'' if n == 1 else 's'} aimed at the model {'was' if n == 1 else 'were'} "
+                  f"withheld from {len(rs)} {feature} call{'' if len(rs) == 1 else 's'} in the "
+                  "last day"),
+            cause=(f"The data these calls carried held words that read as instructions to the "
+                   f"model ({injection.words(names)}), so Mercury withheld those lines and sent "
+                   f"the rest. The newest: call {last.get('id')}{about} at {last.get('at')}, "
+                   f"where: {'; '.join(w['where'] for w in last.get('withheld') or [])}. Someone "
+                   "who can write a device's logs, descriptions or records may have aimed them "
+                   "at the model; the lines stay where they were read."),
+            action={"label": ("Read the call's record in History and the lines where they were "
+                              "read (an evidence pack keeps them); find who wrote them"),
+                    "href": "/v2/history?kind=ai_calls"},
+            operands={"feature": feature, "calls": [r.get("id") for r in rs],
+                      "patterns": names}))
+    return source_result("ai_withheld", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=out,
+                         checked=(f"{len(rows)} AI call(s) in the last day; "
+                                  f"{sum(len(v) for v in by.values())} withheld a line"))
 
 
 def reload_unverified_source(found=None) -> dict:
@@ -4679,8 +4829,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            records_source, scheduled_rotation_source, host_key_source,
            reload_unverified_source, host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
-           ai_spend_source, sdn_loop_source, sdn_responses_source, sdn_mitigation_source,
-           sdn_controllers_source)
+           ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
+           sdn_mitigation_source, sdn_controllers_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -4752,6 +4902,8 @@ SOURCE_KEYS = {
     "intent_format_source": ("intent",),
     # Every AI call's route announces its record; a switch or a cap changed is a settings write.
     "ai_spend_source": ("ai_calls", "settings"),
+    # Every AI call's route announces its record (C2272).
+    "ai_withheld_source": ("ai_calls",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

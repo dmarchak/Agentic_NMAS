@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `dd0da45972844f5bfbc6a40515e7313b01d139c36a8cb220c52f1c24f7b1272a`
+Templates sha256: `1cdf722c346003ad609aa90b6a762799cf4758199af3c2ebd1415ec564086eef`
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):**
 `_evidence_pack.html`'s alert piece gains one clause, drawn only when the piece carries
@@ -397,3 +397,29 @@ No other region's verdict changed.
 Templates sha256 before: `d993cb4d19458d23705970405811b2f466909c5ef5dab082c77eadf3af0fb235`
 (the card alone, before C2174 and WHO; never on main: the card, WHO and this comparison land
 together, on top of C2174, and the shots above are of that combined tree).
+
+**Compared again 2026-11-01 (C2176, the neighbours' evidence, schema 8):** `_evidence_pack.html`
+gains one section at the end of a pack's list, "What its one-hop neighbours logged and recorded
+around the onset" (`neighbour_events`), folded like the others with its state and count; opened,
+its line names each neighbour read, with how many lines and History records were found and
+kept (its id and the link that reached it on hover), how many lines Loki held from them (or
+that their lines were not read, why on hover), and its pieces, each naming its neighbour first.
+An older pack says it holds nothing of its neighbours, and Build again names "the neighbours'
+changes".
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-11-01 ~17:0x
+  UTC, on the C2176 branch, at 1440, 1280 and 390 beside the board at 1440): both cards list
+  the new section, folded, after Log lines around the onset. The walk's neighbours are the
+  network model's answer planted (tests/v2_context.py `_alert_evidence`: the lab holds no
+  shared link), so the section reads "nothing to read" on these replayed packs; its opened
+  line and pieces are compared by the template and tests/test_evidence_pack_neighbours.py's
+  `test_the_card_draws_each_piece_naming_its_neighbour`, not shot.
+- **Verdict:** a **deviation**, the one new section: the board (version 143, as revised) draws
+  the sections up to Log lines around the onset. No other region changed.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The pack's sections | eleven, ending with the log lines | twelve: the neighbours' lines and History last | **deviation** (log: P1 Alerts and P1-H: the neighbours' evidence, a section of its own) |
+| The answer's notes (C2198) | the topology's notes under the hypotheses | the same, and, only when the pack was trimmed to the prompt's bound, "Trimmed to fit the prompt's size: <N from section, …> left out (not the same as not read)", the budget on hover; compared by the template and tests/test_explain_trim.py's `test_the_card_says_what_was_left_out` (the real route, the kept answer drawn again), not shot (the walk's packs fit) | **deviation** (log: P1 Alerts: a trimmed pack said under the answer) |
+| The answer's notes (C2271) | no such note | only when lines of the pack were withheld from the request as instruction-like: the chip **withheld** and "N line(s) of the pack read as instructions to the model, so it was (they were) withheld from the request: read it (them) in the pack below. …", where each was on hover; compared by the template and tests/test_ai_injection.py's `test_the_card_says_a_line_was_withheld` (the real route), not shot (the walk's packs hold none) | **deviation** (log: P1 Alerts: lines withheld as instructions said under the answer) |
+
+Templates sha256 before: `dd0da45972844f5bfbc6a40515e7313b01d139c36a8cb220c52f1c24f7b1272a`.
