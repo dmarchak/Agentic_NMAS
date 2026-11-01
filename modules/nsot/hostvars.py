@@ -862,6 +862,28 @@ def contradiction_problems(host_vars: dict) -> list:
     return out
 
 
+def unshut_problems(committed: dict, host_vars: dict) -> list:
+    """``[(index, message)]``: each interface committed intent shuts (``shutdown: true``) that
+    the edit sets ``shutdown: false`` without ``no_shutdown: true`` (R5, 2026-10-30): neither
+    line then renders, and a merge-only deploy leaves the port shut, the plan offering nothing
+    to bring it up. One admin state: up is ``no_shutdown: true``. ``[]`` if none, or with no
+    committed intent to compare."""
+    was = {str(i.get("name")): i for i in (committed or {}).get("interfaces") or []
+           if isinstance(i, dict)}
+    out = []
+    for n, i in enumerate((host_vars or {}).get("interfaces") or []):
+        if not isinstance(i, dict):
+            continue
+        before = was.get(str(i.get("name"))) or {}
+        if before.get("shutdown") is True and i.get("shutdown") is False \
+                and not i.get("no_shutdown"):
+            out.append((n, f"{i.get('name') or f'interfaces[{n}]'} goes from shutdown: true to "
+                           "shutdown: false with no_shutdown unset, so neither line renders and "
+                           "a deploy leaves the port shut (merge-only sends nothing to undo it). "
+                           "To bring it up, set no_shutdown: true as well"))
+    return out
+
+
 class SessionDescription(ValueError):
     """Authored intent carrying a description that is a run's notes (C428)."""
 

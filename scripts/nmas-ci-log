@@ -193,10 +193,16 @@ EXIT_RED = 3
 def main_verdict(token, opener=None) -> dict:
     """CI's verdict on main: its newest COMPLETED run's (a run still going has none yet, and a
     cancelled or skipped run carries none, so each is passed over). ``{"state": "green" |
-    "red" | "none", "run": {run_number, head_sha, conclusion, html_url, id} or None}``."""
+    "red" | "none", "run": {run_number, head_sha, conclusion, html_url, id} or None}``.
+
+    Newest is by run number, the order the pushes made them, never the listing's order: GitHub
+    lists by `created_at`, and a run on an older commit can carry a later one than the run on
+    main's head (2026-11-01: #1348 on ebbf71ca at 09:54, #1349 on the head at 09:40), so the
+    listing's first completed run was an older commit's red (C2248)."""
     a = get(f"/repos/{REPO}/actions/workflows/{CI_WORKFLOW}/runs?branch=main&per_page=20",
             token, opener)
-    for run in _json(a).get("workflow_runs", []):
+    listed = _json(a).get("workflow_runs", [])
+    for run in sorted(listed, key=lambda r: r.get("run_number") or 0, reverse=True):
         if run.get("status") != "completed" or run.get("conclusion") in ("cancelled", "skipped"):
             continue
         kept = {k: run.get(k) for k in ("run_number", "head_sha", "conclusion", "html_url", "id")}

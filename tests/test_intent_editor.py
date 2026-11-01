@@ -228,6 +228,52 @@ class TestContradictoryKeysAreRefusedByName:
         assert "sets both" not in body.get("error", ""), body
 
 
+class TestUnshuttingNeedsNoShutdown:
+    """R5 (2026-10-30): an interface intent shut, edited to `shutdown: false` alone, renders
+    neither line, and a merge-only deploy leaves the port shut, the plan offering nothing to
+    bring it up. The editor refuses that edit by name and says the one admin state that works."""
+
+    def test_the_check_names_the_interface_and_the_key_to_set(self):
+        from modules.nsot import hostvars
+        committed = {"interfaces": [{"name": "GigabitEthernet5", "shutdown": True}]}
+        edited = {"interfaces": [{"name": "GigabitEthernet5", "shutdown": False,
+                                  "no_shutdown": False}]}
+        (got,) = hostvars.unshut_problems(committed, edited)
+        assert got[0] == 0 and "GigabitEthernet5 goes from shutdown: true to shutdown: false" \
+            in got[1] and "set no_shutdown: true as well" in got[1]
+
+    @pytest.mark.parametrize("edited,committed", [
+        ({"shutdown": False, "no_shutdown": True}, {"shutdown": True}),     # brought up rightly
+        ({"shutdown": False, "no_shutdown": False}, {"shutdown": False}),   # never shut
+        ({"shutdown": True, "no_shutdown": False}, {"shutdown": True}),     # still shut
+    ], ids=["no_shutdown-set", "never-shut", "still-shut"])
+    def test_the_controls_pass(self, edited, committed):
+        from modules.nsot import hostvars
+        assert hostvars.unshut_problems({"interfaces": [dict(name="Gi5", **committed)]},
+                                        {"interfaces": [dict(name="Gi5", **edited)]}) == []
+
+    def test_preview_and_commit_refuse_it_against_what_is_committed(self, world):
+        """s4's own committed intent with its first interface shut and committed, then edited
+        back to `shutdown: false` alone."""
+        import yaml
+
+        from modules.nsot import intent_edit
+        doc = yaml.safe_load(intent_edit.open_doc("lab", "s4")["yaml"])
+        iface = doc["interfaces"][0]
+        iface.update(shutdown=True, no_shutdown=False)
+        first = _commit(world, yaml.safe_dump(doc, sort_keys=False), "R5: out of service")
+        assert first.status_code == 200 and first.get_json()["ok"], first.get_json()
+        iface.update(shutdown=False)
+        trap = yaml.safe_dump(doc, sort_keys=False)
+        body = _preview(world, trap).get_json()
+        assert body["stage"] == "schema", body
+        assert f"{iface['name']} goes from shutdown: true to shutdown: false" in body["error"]
+        assert _commit(world, trap, "R5: back up").status_code == 400
+        iface.update(no_shutdown=True)
+        up = _preview(world, yaml.safe_dump(doc, sort_keys=False)).get_json()
+        assert "goes from shutdown: true" not in up.get("error", ""), up
+
+
 class TestTheSecretGuardsApplyInTheEDITOR:
     """`write_committed_text()` refuses at commit; the editor must refuse
     before the operator has typed a summary and pressed the button."""

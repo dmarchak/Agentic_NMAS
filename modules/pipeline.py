@@ -258,6 +258,8 @@ class PipelineContext:
     saved_startup:       dict = field(default_factory=dict)
     golden_result:       dict = field(default_factory=dict)  # Stage 8.5
     golden_skipped:      list = field(default_factory=list)
+    #: Stage 8.5 (C2031): each typed secret the device's own form replaced, per device.
+    secrets_captured:    dict = field(default_factory=dict)
     warnings:            list = field(default_factory=list)
     rolled_back_ips:     list = field(default_factory=list)
     deploy_failures:     list = field(default_factory=list)
@@ -2447,6 +2449,26 @@ def roll_back_after(ctx: PipelineContext, reason: str) -> PipelineContext:
     return ctx
 
 
+def _capture_typed_secrets(ctx: PipelineContext, repo: str, hostname: str,
+                           running: str) -> None:
+    """C2031: a typed account secret this deploy sent is replaced in the store by the form the
+    device made of it (`credential_rotation.capture_typed_secrets`), from the configuration
+    captured after verify passed; only for a device that deployed and verified. A failure is
+    logged and said in ``ctx.secrets_captured``, never raised: the change itself passed."""
+    from modules.nsot import credential_rotation, hostvars
+
+    try:
+        raw, _state = hostvars.committed_at_head(repo, hostname)
+        intent = hostvars.from_yaml(raw) if raw is not None else {}
+        ctx.secrets_captured[hostname] = credential_rotation.capture_typed_secrets(
+            _list_of(ctx), hostname, intent, running)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("pipeline[8.5/save_golden]: %s's typed secrets not captured: %s",
+                  hostname, type(exc).__name__)
+        ctx.secrets_captured[hostname] = [{"captured": False,
+                                           "why": f"not captured ({type(exc).__name__})"}]
+
+
 def _stage_save_golden(ctx: PipelineContext) -> None:
     """Commit the post-deploy config as the new golden baseline.
 
@@ -2506,6 +2528,7 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
         items.append(GoldenItem(hostname, config, ip,
                                 netbox_id=netbox_id,
                                 device_uid=device_uid))
+        _capture_typed_secrets(ctx, repo, hostname, config)
 
     ctx.golden_skipped = skipped
     if not items:

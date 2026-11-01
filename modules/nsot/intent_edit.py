@@ -178,6 +178,22 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
                       + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
                       line, column)
 
+    # 2c''. An interface intent shut is not "brought up" by shutdown: false alone (R5): neither
+    #       line renders and the port stays shut. Against what is committed at HEAD.
+    committed = None
+    try:
+        raw, _state = hostvars.committed_at_head(_repo_for(list_name), hostname)
+        committed = hostvars.from_yaml(raw) if raw is not None else None
+    except Exception as exc:                          # noqa: BLE001 (the check is skipped, said)
+        log.warning("intent edit: committed intent of %s unread for the admin-state check: %s",
+                    hostname, exc)
+    problems = hostvars.unshut_problems(committed, parsed)
+    if problems:
+        line, column = _key_mark(text, ("interfaces", problems[0][0]), "name")
+        return refuse("schema", "; ".join(m for _n, m in problems[:6])
+                      + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
+                      line, column)
+
     # 2d. No run's notes as a description (C428).
     problems = hostvars.description_problems(parsed)
     if problems:

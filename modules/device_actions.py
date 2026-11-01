@@ -362,7 +362,7 @@ RELOAD_WORDS = {"reloaded": ("Reloaded and verified", "ok"),
 
 def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
     """The Reload card for its job (`capture_job.get`, or None): the preview's read running,
-    the preview with its six gates and its confirm, the run with its stepper, or the result."""
+    the preview with its gates and its confirm, the run with its stepper, or the result."""
     card = {"op": "reload", "host": host, "list": ref.name, "job": job_id}
     if got is None:
         return dict(card, state="unknown")

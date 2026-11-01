@@ -301,6 +301,65 @@ class TestTheRun:
         assert "the session dropped" in step["detail"]
 
 
+def _keys(host: str) -> str:
+    """`show crypto key mypubkey rsa` as Mercury's Show commands recorded it on 2026-11-01
+    (tests/fixtures/operational/crypto_keys/README.md)."""
+    with open(f"tests/fixtures/operational/crypto_keys/{host}.txt", encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestTheHostKeyGate:
+    """C2239 (B2, 2026-10-30): r8 came back from a planned Reload serving another SSH host key,
+    and Mercury refused every session until a person re-keyed it. The preview now reads the key
+    pairs and says, before anything is sent, when the SSH key may not survive."""
+
+    def test_the_captures_parse(self):
+        assert [(k["name"], k["storage"], k["general"]) for k in
+                reload_op.rsa_keys(_keys("s1"))] == [
+            ("s1.example.com", "not specified", True),
+            ("s1.example.com.server", "", False)]
+        assert [k["name"] for k in reload_op.rsa_keys(_keys("r8")) if k["general"]] == [
+            "TP-self-signed-534760603", "r8.example.com"]
+
+    def test_a_key_pair_not_saved_asks_for_a_reason_naming_it(self):
+        """Every vIOS-L2 switch read 2026-11-01: "Storage Device: not specified"."""
+        g = reload_op._host_key_gate({"keys": _keys("s1"), "running": ""})
+        assert g["state"] == "ack"
+        assert "s1.example.com (Storage Device: not specified) is not saved" in g["detail"]
+        assert "refuses every session to it until a person reviews the new key" in g["detail"]
+
+    def test_two_saved_general_keys_and_none_named_ask_for_a_reason(self):
+        g = reload_op._host_key_gate({"keys": _keys("r8"), "running": ""})
+        assert g["state"] == "ack"
+        assert "2 general-purpose key pairs (TP-self-signed-534760603, r8.example.com)" \
+            in g["detail"]
+        assert "its cause not confirmed" in g["detail"]
+
+    def test_the_key_its_configuration_names_and_saved_passes(self):
+        g = reload_op._host_key_gate({"keys": _keys("r1"),
+                                      "running": "ip ssh rsa keypair-name r1.example.com\n"})
+        assert g["state"] == "pass" and "r1.example.com is saved (private-config)" in g["detail"]
+
+    def test_one_saved_general_key_passes(self):
+        one = _keys("s1").replace("Storage Device: not specified",
+                                  "Storage Device: private-config")
+        assert reload_op._host_key_gate({"keys": one, "running": ""})["state"] == "pass"
+
+    def test_keys_not_read_are_not_known_never_passed(self):
+        g = reload_op._host_key_gate({"keys": "", "running": ""})
+        assert g["state"] == "ack" and "is not known" in g["detail"]
+
+    def test_the_gate_is_judged_and_its_storage_binds_the_fingerprint(self, lab):  # noqa: F811
+        unsaved = reload_op.judge("Lab", "r2", "cisco_iosxe",
+                                  dict(_reads(lab), keys=_keys("s1")))
+        assert _gate(unsaved, "host_key")["state"] == "ack"
+        saved = _keys("s1").replace("Storage Device: not specified",
+                                    "Storage Device: private-config")
+        assert reload_op.judge("Lab", "r2", "cisco_iosxe",
+                               dict(_reads(lab), keys=saved))["fingerprint"] \
+            != unsaved["fingerprint"]
+
+
 class _Clock:
     """A clock only the fake sleep moves; ``slept`` is every pause asked for."""
 

@@ -463,6 +463,13 @@ def set_template_secret(name: str, value: str, secret_kind: str = "plaintext",
     return {"ok": True}
 
 
+def template_secret_kind(name: str) -> str:
+    """A named template secret's kind (``plaintext`` or ``hash``), read without decrypting
+    it; empty if unknown."""
+    entry = _load().get("template_secrets", {}).get(name)
+    return str(entry.get("secret_kind") or "") if entry else ""
+
+
 def get_template_secret(name: str) -> str:
     """Decrypt a named template secret. Empty if unknown."""
     entry = _load().get("template_secrets", {}).get(name)

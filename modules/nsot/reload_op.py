@@ -7,7 +7,7 @@ reload (booting a moment from history, the charter's Phase 2) builds on this wit
 it is not this.
 
 The preview (a job: it reads the device) reads the running and startup configurations, `show
-version`, `show boot` and the `dir` reads (`read_device`), and judges P.14's six gates, each drawn by name with what it found:
+version`, `show boot` and the `dir` reads (`read_device`), and judges P.14's six gates and C2239's SSH host key, each drawn by name with what it found:
 1. running against startup (unsaved changes refuse; Persist… saves them first, previewed; a
    certificate startup keeps as a file in nvram: is the same certificate running shows inline
    when `dir nvram:` lists the file, and refuses, named, when it does not);
@@ -18,6 +18,8 @@ version`, `show boot` and the `dir` reads (`read_device`), and judges P.14's six
 4. the image it booted exists, and the boot variable, where the platform has one, names a file
    that exists;
 5. no operation holds the device;
+5a. its SSH host key survives (C2239, `_host_key_gate`): a key pair not saved, or two saved
+   general-purpose key pairs with none named for SSH, asks for the stated reason;
 6. the blast radius: every device Mercury loses reach to while this one is down
    (`blast_radius`), shown above the confirm.
 The confirm carries a stated reason and is bound to the preview's fingerprint (the two
@@ -115,6 +117,8 @@ def read_device(device: dict) -> dict:
         out["version"] = conn.send_command("show version", **_READ) or ""
         boot = conn.send_command("show boot", **_READ) or ""
         out["boot"] = "" if "Invalid input" in boot else boot
+        keys = conn.send_command("show crypto key mypubkey rsa", **_READ) or ""
+        out["keys"] = "" if "Invalid input" in keys else keys
         out["dirs"] = {}
         for path in _images(out["version"], out["boot"]):
             if re.fullmatch(r"[\w.:/-]+", path):           # one token, as the device printed it
@@ -124,6 +128,69 @@ def read_device(device: dict) -> dict:
         return out
 
     return with_temp_connection(device, read)
+
+
+#: Where IOS and IOS-XE say a key pair is kept when `write memory` saved it (C2239: the
+#: routers' keys read "private-config"; every vIOS-L2 switch's read "not specified", 2026-11-01).
+SAVED_STORAGE = ("private-config", "nvram")
+
+
+def rsa_keys(text: str) -> list:
+    """`show crypto key mypubkey rsa` as ``[{"name", "storage", "general"}]``: each key pair,
+    where it is kept (``""`` when not said) and whether it is a general-purpose key (the kind
+    SSH serves; an encryption key is its pair's half)."""
+    keys = []
+    for block in re.split(r"(?m)^% Key pair was generated at:", text or "")[1:]:
+        name = re.search(r"(?m)^\s*Key name:\s*(\S+)", block)
+        storage = re.search(r"(?m)^\s*Storage Device:\s*(.+?)\s*$", block)
+        usage = re.search(r"(?m)^\s*Usage:\s*(.+?)\s*$", block)
+        if name:
+            keys.append({"name": name.group(1),
+                         "storage": storage.group(1) if storage else "",
+                         "general": bool(usage and "general" in usage.group(1).lower())})
+    return keys
+
+
+def _host_key_gate(reads: dict) -> dict:
+    """Whether the SSH host key survives a reload (C2239): a key pair `write memory` did not
+    save is made anew at boot, and Mercury refuses every session to a device whose key changed
+    until a person reviews it. Read from `show crypto key mypubkey rsa` and the running
+    configuration's `ip ssh rsa keypair-name`. A reason acknowledges it; never a refusal, since
+    the reload itself is sound and the new key is a person's to review."""
+    gate = {"name": "its SSH host key survives the reload", "key": "host_key"}
+    text = reads.get("keys")
+    if not text:
+        return dict(gate, state="ack", detail=(
+            "its key pairs were not read (`show crypto key mypubkey rsa`), so whether its SSH "
+            "host key survives the reload is not known. Your reason is recorded as "
+            "acknowledging it"))
+    keys = rsa_keys(text)
+    named = re.search(r"(?m)^ip ssh rsa keypair-name (\S+)", reads.get("running", "") or "")
+    serving = [k for k in keys if k["general"] and (not named or k["name"] == named.group(1))]
+    if not serving:
+        return dict(gate, state="ack", detail=(
+            "no general-purpose key pair " + (f"named {named.group(1)} " if named else "")
+            + "was listed, so which key SSH serves is not known. Your reason is recorded as "
+            "acknowledging it"))
+    unsaved = [k for k in serving if not k["storage"].lower().startswith(SAVED_STORAGE)]
+    if unsaved:
+        return dict(gate, state="ack", detail=(
+            "its key pair "
+            + ", ".join(f"{k['name']} (Storage Device: {k['storage'] or 'not said'})"
+                        for k in unsaved)
+            + " is not saved, so the reload makes a new one: its SSH host key changes, and "
+            "Mercury refuses every session to it until a person reviews the new key on its "
+            "page. Your reason is recorded as acknowledging it"))
+    if len(serving) > 1:
+        return dict(gate, state="ack", detail=(
+            f"it keeps {len(serving)} general-purpose key pairs ("
+            + ", ".join(k["name"] for k in serving) + ") and its configuration names none for "
+            "SSH (`ip ssh rsa keypair-name`), so which one SSH serves after the reload is not "
+            "fixed: a C8000v keeping two came back from a reload serving the other (C2239, its "
+            "cause not confirmed). Your reason is recorded as acknowledging it"))
+    return dict(gate, state="pass", detail=(
+        f"its key pair {serving[0]['name']} is saved ({serving[0]['storage']}), so the reload "
+        "keeps its SSH host key"))
 
 
 def nvram_read(conn, startup: str):
@@ -218,7 +285,8 @@ def _unsaved_words(host: str, same: dict) -> str:
 
 
 def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: bool = False) -> dict:
-    """The six gates from *reads*, and the fingerprint the confirm is bound to. *holding*: the
+    """The gates from *reads* (P.14's six and C2239's SSH host key), and the fingerprint the
+    confirm is bound to. *holding*: the
     run judging under its own hold, which is not another operation's."""
     from modules.nsot import blast_radius, device_ops, onboard, repo as R, roundtrip
     from modules.nsot.intent_match import explain, intent_match
@@ -245,6 +313,7 @@ def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: boo
                   "state": "pass" if carries.get("ok") else "fail",
                   "detail": carries.get("detail", "")})
     gates.append(dict(_image_gate(reads), key="image"))
+    gates.append(_host_key_gate(reads))
     busy = "" if holding else device_ops.busy_text(list_name, host)   # the run holds it itself
     gates.append({"name": "no other operation holds it", "key": "busy",
                   "state": "fail" if busy else "at_apply",
@@ -254,7 +323,9 @@ def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: boo
     shown = json.dumps({"running": _h(running), "startup": _h(startup),
                         "image": _IMAGE.search(reads.get("version", "") or "") and
                         _IMAGE.search(reads.get("version", "")).group(1),
-                        "departs": departs}, sort_keys=True)
+                        "departs": departs,
+                        "keys": [[k["name"], k["storage"]] for k in rsa_keys(reads.get("keys"))]},
+                       sort_keys=True)
     return {"ok": True, "gates": gates, "radius": radius,
             "failing": [g for g in gates if g["state"] == "fail"],
             "departs": departs, "bound_s": seconds, "bound_words": bound_words,

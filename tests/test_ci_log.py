@@ -254,6 +254,15 @@ class TestCisVerdictOnMain:
                            (10, "completed", "failure")))
         assert CL.main_verdict(TOKEN, opener=op)["state"] == "green"
 
+    def test_newest_is_by_run_number_never_the_listing_s_order(self):
+        """C2248: GitHub lists by created_at, and #1348 on an older commit came first, red,
+        though #1349 on main's head had passed."""
+        op = _Opener(_runs((1348, "completed", "failure"), (1349, "completed", "success")))
+        v = CL.main_verdict(TOKEN, opener=op)
+        assert v["state"] == "green" and v["run"]["run_number"] == 1349
+        op = _Opener(_runs((1348, "completed", "success"), (1349, "completed", "failure")))
+        assert CL.main_verdict(TOKEN, opener=op)["run"]["run_number"] == 1349
+
     def test_no_completed_run_is_none_never_green(self):
         op = _Opener(_runs((3, "queued", None)))
         assert CL.main_verdict(TOKEN, opener=op) == {"state": "none", "run": None}

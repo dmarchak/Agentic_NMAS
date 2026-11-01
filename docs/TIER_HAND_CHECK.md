@@ -3253,3 +3253,29 @@ is the tests' fake.
 | M13 a section with no detection not refused | survived, then killed | 1, `test_a_pack_whose_section_holds_no_detection_is_refused_and_nothing_is_sent`, added for it (baseline then 161 passed) |
 **The result: 14 mutants with the canary; every one killed, M13 by the test written when it
 survived (the refusal predates the move; no test held it).**
+
+## 2026-11-01: a typed account secret replaced by the device's own form (C2031), by hand
+**What touches the tier.** Code that stores a secret value: after a verified deploy, the
+pipeline's stage 8.5 (`pipeline._capture_typed_secrets`) calls
+`credential_rotation.capture_typed_secrets`, which, for each `users[]` account whose stored
+secret is a value a person typed (kind `plaintext`, read by `credentials.template_secret_kind`
+without decrypting it), stores the device's own form of it (type 5, 7, 8 or 9, read from the
+configuration captured after verify) in its place, kind `hash`, as a rotation does for the
+managed account. It returns and logs no value.
+**The method:** as C2157's, on the working tree over ebbf71ca: each mutant one exact text
+replacement, required to match once, in its own `scripts/nmas-control` throwaway worktree,
+then tests/test_secret_capture_back.py run whole in CI's interpreter (`scratchpad/mut_c2031.py`).
+Baseline: 9 passed. No device was asked: every configuration is the tests' own text.
+| mutant | result | killed by |
+| C0 canary: `capture_typed_secrets` raises before its loop | killed | 5 |
+| M1 the kind check removed (a rotation's hash taken for a typed value) | killed | 4 |
+| M2 the device's form admits type 0 (the typed text itself) | killed | 1, the type-0 case |
+| M3 the device's form not checked (an absent line stored as empty) | killed | 2 |
+| M4 the captured value stored as `plaintext`, not `hash` | killed | 2 |
+| M5 another account's line captured | killed | 3 |
+| M6 the captured value returned in the result | killed | 2, `test_no_value_is_returned_or_logged` among them |
+| M7 the stage never calls the capture | killed | 1, `test_a_verified_device_is_captured` |
+| M8 the capture made before a rolled-back or failed device is skipped | killed | 2 |
+| M9 a failure raised, not said | killed | 1, `test_a_failure_is_said_never_raised` |
+| M10 every entry's kind read as `plaintext` | killed | 4 |
+**The result: 11 mutants with the canary; every one killed.**

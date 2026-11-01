@@ -564,6 +564,45 @@ def captured_hash(config_text: str, username: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+#: A value the device itself produced, by its type digit (IOS: 5 MD5, 8 PBKDF2, 9 scrypt, 7 the
+#: reversible one): what is captured in place of a typed value. Type 0 is the typed text.
+DEVICE_FORM = r"^[5789] \S+$"
+
+
+def capture_typed_secrets(list_name: str, hostname: str, host_vars: dict,
+                          running: str) -> list:
+    """C2031: each ``users[]`` account of *host_vars* whose stored secret is a value a person
+    typed (kind ``plaintext``) and whose line in *running*, the device's configuration after a
+    verified deploy, holds the device's own form of it: that form stored in its place (kind
+    ``hash``), as a rotation stores the managed account's (`_commit`). Intent then renders the
+    line the device holds, so the Intent check matches, and a later deploy changes nothing.
+    ``[{"account", "ref", "captured", "why"}]``; a value is never returned or logged."""
+    import re
+
+    from modules import credentials
+
+    out = []
+    for user in (host_vars or {}).get("users") or []:
+        name, ref = (user or {}).get("name"), (user or {}).get("secret_ref")
+        if not name or not ref:
+            continue
+        key = credentials.template_secret_key(list_name, hostname, ref)
+        if credentials.template_secret_kind(key) != "plaintext":
+            continue
+        held = captured_hash(running, name)
+        if not re.match(DEVICE_FORM, held or ""):
+            out.append({"account": name, "ref": ref, "captured": False,
+                        "why": ("the device holds no line for it" if not held else
+                                "the device's line is not in a form it produced (type 5, 7, "
+                                "8 or 9)")})
+            continue
+        credentials.set_template_secret(key, held, secret_kind="hash", list_name=list_name)
+        log.info("credential capture: %s's %s secret on %s stored as the device's own form",
+                 list_name, name, hostname)
+        out.append({"account": name, "ref": ref, "captured": True, "why": ""})
+    return out
+
+
 def open_original_session(device: dict):
     """A DEDICATED authenticated session, held open across the rotation.
 
