@@ -156,9 +156,13 @@ class TestMaskNeverReachesDeploy:
             assert_no_mask(clean.rendered_masked, context="deploy")
 
     def test_guard_names_the_remedy(self, clean):
+        """The remedy is a person's (finding 4a, the operator's r2, 2026-11-01): what happened,
+        that nothing was sent, whose fault, and what to do; the developer's "re-render" was it."""
         with pytest.raises(MaskedContentError) as exc:
             assert_no_mask(clean.rendered_masked)
-        assert "re-render" in str(exc.value).lower()
+        words = str(exc.value)
+        assert "plan again" in words and "Nothing was sent" in words
+        assert "fault in Mercury" in words
 
     def test_unmasked_render_passes_the_guard(self, clean):
         """A genuine deploy render, with real secrets, must not be blocked."""

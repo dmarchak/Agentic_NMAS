@@ -28,7 +28,9 @@ still true against intent, and what to do next. **Persist and Rotate run here to
 A device whose SSH host key changed is re-keyed on its page: **Re-key…** on the Actions menu,
 offered only while {{product}} holds a key the device answered with and it refused (otherwise
 it says why), Needs attention's row, and a Reload's **Review the new key** each open the Re-key
-card in place of the tab ([Re-key a device](rekey)). The **Drained** badge beside its name in the header is switched
+card in place of the tab ([Re-key a device](rekey)). A device whose last reload ended not
+verified offers **Verify again…** on the same menu, after Reload… (otherwise it says why), as
+its Needs attention row does: it opens the Reload card's offer ([Reload a device](reload)). The **Drained** badge beside its name in the header is switched
 off for now (see [Devices](devices#drained)).
 
 ## Overview {#overview}
@@ -120,9 +122,10 @@ preview next); **Discard draft** drops it. It changes this device only, and only
 interfaces, VLANs and networks your sentence names. See [Change it in words](intent-in-words).
 
 **Secret references**, below the document, lists every secret reference the committed intent
-names (an account's `secret_ref`, or one under `secret_refs`), what each is for, and whether
-Mercury holds a value for it: the device's own form, typed and waiting for its deploy, held
-for the network, or no value. It never shows a value. A deploy that needs a reference with no
+names (an account's, the enable secret's or an SNMP community's reference, or one under
+`secret_refs`: every one a deploy resolves), what each is for, and whether Mercury holds a
+value for it: the device's own form, the device's value as it keeps it, typed and waiting for
+its deploy, held for the network, or no value. It never shows a value. A deploy that needs a reference with no
 value is refused before anything is sent. **Set value…** beside a reference opens a write-only
 form: the value twice and why, in one line. It stores the value for this device only, records
 who, when and why (never the value), and sends nothing to the device; the next deploy sends

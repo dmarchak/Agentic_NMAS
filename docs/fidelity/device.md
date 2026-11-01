@@ -71,7 +71,14 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `4b1ab5edd8ed8c7cb0bfba61f5bdd899778c09280be6c6cb2bc84dd407b9adb5`
+Templates sha256: `f799e90a3804314f0582cd2272760dfe3e78e5794f29bc9a567dc9974ea5059d`
+
+Compared again 2026-11-01 (C2280, the operator's finding 4), by the template: the Actions menu
+gains **Verify again…** after Reload…, offered only while the device's last reload ended not
+verified and otherwise drawn greyed with its reason (Re-key's pattern); it opens the Reload
+card's Verify again offer in place. Board 7's ActionsMenu draws no such row: **deviation**,
+logged in STANDING_APPROVAL_LOG. No other region changed. Templates sha256 before:
+`4b1ab5edd8ed8c7cb0bfba61f5bdd899778c09280be6c6cb2bc84dd407b9adb5`.
 
 Compared again 2026-11-01 (C2239, the overnight brief's item 1), by the template: the Actions
 menu gains **Re-key…** after Reload…, offered only while Mercury holds a refused SSH host key

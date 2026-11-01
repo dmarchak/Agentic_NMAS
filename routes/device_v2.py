@@ -373,6 +373,8 @@ def device(name):
            "block": _block_state(ref, dev),
            # Re-key is offered only while a refused SSH host key is held (C2239): one read.
            "rekey": _rekey_held(dev),
+           # Verify again is offered only while the last reload ended not verified (C2280).
+           "verify_again": _verify_again_offered(ref, dev),
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
            "drained": _drained_now(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
@@ -458,7 +460,8 @@ def actions_menu(name):
     ref, dev = found
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
                                    tab=_back(request.args), block=_block_state(ref, dev),
-                                   rekey=_rekey_held(dev)))
+                                   rekey=_rekey_held(dev),
+                                   verify_again=_verify_again_offered(ref, dev)))
 
 
 # ---------------------------------------------------------------------------
@@ -1253,6 +1256,17 @@ def _reload_verify_card(ref, dev, back) -> dict:
     return c
 
 
+@bp.route("/device/<name>/reload/verify/offer", methods=["GET"])
+def reload_verify_offer(name):
+    """The Reload card offering Verify again (C2280), as the Actions menu's row asks it in
+    place; the device page draws the same card with ``op=reload_verify``. Reads only."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _reload_card(_reload_verify_card(ref, dev, _back(request.args)))
+
+
 @bp.route("/device/<name>/reload/verify", methods=["POST"])
 def reload_verify(name):
     """Verify again (C2240) as a job, as the person who asked: sign in within the verify's
@@ -1848,6 +1862,20 @@ def _rekey_held(dev) -> dict:
                                    "host key Mercury holds" if rec.get("fingerprint") else
                                    "Mercury holds no SSH host key for it yet; its next session "
                                    "keeps one")}
+
+
+def _verify_again_offered(ref, dev) -> dict:
+    """C2280: whether *dev*'s newest reload record ended not verified (one read of the reload
+    record): the Actions menu offers Verify again… only then, as its Needs attention row does,
+    and otherwise says why, so an acknowledged row never leaves the action unreachable."""
+    from modules.nsot import reload_op
+    host = dev.get("hostname", "")
+    try:
+        pending = any(r.get("device") == host for r in reload_op.unverified(ref.name))
+    except (OSError, ValueError) as exc:
+        return {"offered": False, "why": f"the reload record could not be read ({exc})"}
+    return {"offered": pending, "why": "" if pending else
+            f"{host}'s last reload, if any, was verified: there is nothing to verify again"}
 
 
 def _block_state(ref, dev) -> dict:

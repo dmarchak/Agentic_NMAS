@@ -20,6 +20,10 @@ Run it as root on the Mininet VM (`sudo mn -c` first):
 - `sudo python3 lab8_topology.py --hold /tmp/lab8.json` starts the network, writes each host's
   name, process id and addresses to that file (what `lab8_threats.sh` reads), and holds the
   network up until it is sent SIGTERM or SIGINT, then stops it.
+
+Teardown: `mn -c` leaves processes started with `mnexec` running (18 stale iperf servers were
+found on 2026-11-01), so every session ends with
+`sudo pkill iperf; sudo pkill hping3; pgrep -a 'iperf|hping3' || echo none`.
 """
 
 import argparse

@@ -428,8 +428,32 @@ class TestTheVerifyWaitsForSSH:
         assert clock.now < reload_op.VERIFY_BOUND_S, "a try started past the bound"
         assert sum(clock.slept) + 30 >= reload_op.VERIFY_BOUND_S, "it gave up early"
         detail = out["steps"][-1]["detail"]
-        assert f"in {calls['n'] - 1} tries over {round(clock.now)} s" in detail
-        assert detail.endswith("TCP connection to device failed")
+        assert f"failed: {calls['n'] - 1} tries over {round(clock.now)} s" in detail
+        assert detail.endswith("the last saying “TCP connection to device failed”")
+
+    def test_the_words_name_the_step_that_failed_and_drop_the_library_s_guesses(
+            self, run_lab, monkeypatch):
+        """C2281 (the operator's r8, 2026-11-01): "answers on SSH's port and could not be
+        read: TCP connection to device failed" read as a contradiction, followed by Netmiko's
+        "Common causes" list. The wait step that answered and the sign-in that failed are named
+        apart, each with its time; the error by its first line only."""
+        from modules import restarts
+        monkeypatch.setattr(restarts, "end_window", lambda *a, **k: None)
+        clock = _Clock()
+        netmiko = ("TCP connection to device failed.\n\nCommon causes of this problem are:\n"
+                   "1. Incorrect hostname or IP address.\n2. Wrong TCP port.\n"
+                   "3. Intermediate firewall blocking access.\n\nDevice settings: "
+                   "cisco_xe 192.0.2.8:22\n")
+        read, _calls = self._reader(run_lab, [ConnectionError(netmiko)] * 50)
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=read, reloader=run_lab["reloader"], wait=run_lab["back"],
+                            clock=clock, verify_sleep=clock.sleep)
+        detail = out["steps"][-1]["detail"]
+        assert detail.startswith("its SSH port answered the wait step after ")
+        assert ", then signing in failed: " in detail
+        assert "“TCP connection to device failed.”" in detail
+        assert "Common causes" not in detail and "firewall" not in detail
+        assert "answers on SSH's port and could not be read" not in detail
 
     def test_a_refused_host_key_is_not_tried_again_and_names_both_keys(self, run_lab,
                                                                          monkeypatch):
@@ -571,6 +595,41 @@ class TestVerifyAgain:
             .get_data(as_text=True)
         assert "there is nothing to verify again" in page
         assert 'hx-post="/v2/device/r2/reload/verify' not in page
+
+    def test_the_actions_menu_offers_verify_again_only_while_a_reload_is_unverified(
+            self, run_lab):
+        """C2280 (the operator, 2026-11-01): Verify again was reachable only from its Needs
+        attention row, so an acknowledged row left it unreachable. The device's Actions menu
+        offers it while the last reload ended not verified, and otherwise says why."""
+        menu = run_lab["client"].get("/v2/device/r2/actions?list=Lab").get_data(as_text=True)
+        assert "op=reload_verify" not in menu
+        assert "Verify again…" in menu and "nothing to verify again" in menu
+        self._unverified(run_lab)
+        menu = run_lab["client"].get("/v2/device/r2/actions?list=Lab").get_data(as_text=True)
+        assert re.search(r'data-op="reload" href="[^"]*op=reload_verify', menu), menu[:600]
+        offer = re.search(r'hx-get="(/v2/device/r2/reload/verify/offer[^"]*)"', menu).group(1)
+        card = run_lab["client"].get(offer.replace("&amp;", "&")).get_data(as_text=True)
+        assert 'hx-post="/v2/device/r2/reload/verify' in card and "Verify again" in card
+
+
+def test_every_device_action_a_needs_attention_row_offers_is_on_the_actions_menu():
+    """C2280's class (the operator, 2026-11-01): an action a Needs attention row opens on a
+    device's page (`/v2/device/<name>?op=<op>`) is also on that page's Actions menu, so a row
+    acknowledged or cleared by time never leaves its action unreachable. Read from the code
+    that builds the rows (`modules/attention.py`) and the menu's template, by their anchors."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "modules", "attention.py"), encoding="utf-8") as fh:
+        offered = set(re.findall(r"/v2/device/\{[^}]+\}\?op=([a-z_]+)", fh.read()))
+    assert len(offered) >= 2, f"the scan found {sorted(offered)}: its floor is rekey and " \
+                              "reload_verify"
+    with open(os.path.join(root, "templates", "v2", "_actions_menu.html"),
+              encoding="utf-8") as fh:
+        menu = fh.read()
+    on_menu = set(re.findall(r"url_for\('device_v2\.device'[^)]*\bop='([a-z_]+)'", menu)) | set(
+        re.findall(r"\('[^']+', '([a-z_]+)', '[^']+'\)", menu))
+    assert offered <= on_menu, f"offered by a row and not on the Actions menu: " \
+                               f"{sorted(offered - on_menu)}"
 
 
 class TestTheRunJudgesAgain:

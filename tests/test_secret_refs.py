@@ -44,7 +44,8 @@ def test_the_listing_names_each_reference_and_its_state_never_a_value(world, int
     assert rows["user_lab_secret"]["state"] == "none"
     assert rows["user_lab_secret"]["for"] == "account lab, privilege 15"
     assert rows["snmp_community_ro"]["state"] == "none"
-    assert got["counts"] == {"device_form": 1, "typed": 0, "held": 0, "none": 2}
+    assert got["counts"] == {"device_form": 1, "device_value": 0, "typed": 0, "held": 0,
+                             "none": 2}
     assert "NotReal" not in json.dumps(got)
 
 

@@ -623,16 +623,33 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             entry["to_add"] = []
             entry["removal_warnings"] = []
             entry["refused"] = str(exc)
+            _refused_operands(entry, list_name, hostname)
         except Exception as exc:              # noqa: BLE001
             log.exception("deploy: plan failed for %s", hostname)
             entry["to_add"] = []
             entry["removal_warnings"] = []
             entry["error"] = str(exc)
+            _refused_operands(entry, list_name, hostname)
 
         from modules.nsot.device_ops import busy_text
         entry["busy"] = busy_text(list_name, hostname)       # C99
         devices.append(entry)
     return devices
+
+
+def _refused_operands(entry: dict, list_name: str, hostname: str) -> None:
+    """A plan refused while its program was built still names the intent it was built from,
+    and says why it has no command hash (C2286, 2026-11-01: "intent
+    commit none" and "command hash none" read as if nothing had changed)."""
+    from modules.nsot import hostvars as _hv
+
+    try:
+        entry.setdefault("intent_commit",
+                         _hv.intent_change(_repo_for(list_name), hostname).get("sha", ""))
+    except Exception:                         # noqa: BLE001 (the operand then reads none)
+        log.warning("deploy: the refused plan's intent commit could not be read for %s",
+                    hostname)
+    entry["command_hash_why"] = "not computed: the program was not built"
 
 
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,

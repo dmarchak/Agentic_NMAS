@@ -27,7 +27,15 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `4f553988df556adb2447708cf276fe108d8283edf123306bfa37a1fe428dd7a3`
+Templates sha256: `3a4716458cf3c8b58a47f3be90adfae602c4cbf39c2d43091d41a372701c95b3`
+
+**Compared again 2026-11-01 (C2287):** `_intent_secrets.html` gains a fifth state, "the
+device's value, as it keeps it" (a value the device keeps as typed, an SNMP community's, seeded
+from its capture or carried by a verified deploy), coloured as held and counted with held in
+the head; the purpose names an SNMP community and the enable secret. Shot `tab-intent-secrets`
+again (1440, 1280, 390): the card's layout, controls and order **same**; the community's row
+reads "SNMP community, RO" where it read "named in intent"; the fifth state is a
+**deviation** from board H-S's four (STANDING_APPROVAL_LOG, 2026-11-01).
 
 **Compared again 2026-11-01 (C235, board H-S, `DevIntentSecrets.dc.html`, approved under the
 Phase 7 mode):** `_intent.html` includes the **Secret references** card

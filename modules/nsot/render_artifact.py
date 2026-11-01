@@ -55,11 +55,31 @@ def assert_no_mask(text: str, context: str = "deploy") -> None:
     someone wires 3c to the wrong input.
     """
     if contains_mask(text):
-        raise MaskedContentError(
-            f"masked content reached the {context} path — this artifact was "
-            "rendered for preview and must never be deployed. Re-render from "
-            "the template with secrets resolved at deploy time."
-        )
+        raise MaskedContentError(refusal_words(text, context))
+
+
+#: An unresolved reference's placeholder, as `roundtrip.render` writes it.
+_MISSING_REF = re.compile(r"<missing-secret:([A-Za-z0-9_]+)>")
+
+
+def refusal_words(text: str, context: str = "deploy") -> str:
+    """What `assert_no_mask` tells a person: what Mercury found in the program it built, that
+    nothing was sent, whose fault it is and what to do; the marker found named, never a value
+    (C2285, 2026-11-01: the old words were written for a developer)."""
+    missing = sorted(set(_MISSING_REF.findall(text or "")))
+    if missing:
+        names = ", ".join(missing)
+        return (f"Mercury stopped before the {context}: building the program to send, it found "
+                f"no value for {names}, so it would have sent a placeholder in its place. "
+                "Nothing was sent. Set a value on the device's Intent › Secret references "
+                "(Set value…); if that card already shows one, this is a fault in Mercury, not "
+                f"in your intent (it found the placeholder <missing-secret:{missing[0]}>).")
+    unresolved = "__secret__:" in (text or "")
+    found = "an unresolved __secret__: marker" if unresolved else "a masked value"
+    return (f"Mercury stopped before the {context}: the program it built holds {found}, which "
+            "only the preview copy carries (the preview hides secrets), so it would have sent "
+            "that in place of the secret. Nothing was sent. This is a fault in Mercury, not in "
+            "your intent: plan again, and report it if it recurs.")
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +430,12 @@ def build_artifact(device: str, running_config: str, platform: str,
     parsed = host_vars if host_vars is not None else from_capture
     resolved_platform = parsed.get("platform", platform)
 
-    masked_refs = tuple(sorted((parsed.get("secrets") or {}).keys())
-                        or (parsed.get("secret_refs") or []))
+    # Every reference the document names (`hostvars.named_refs`): `secret_refs` alone left out
+    # an account added under `users`, so the operands' list lacked the very reference that
+    # failed (C2284, 2026-11-01).
+    from modules.nsot.hostvars import named_refs
+    masked_refs = tuple(sorted(set((parsed.get("secrets") or {}).keys())
+                               | set(named_refs(parsed))))
 
     # Validate against the TRUE render. Masking replaces every secret with a
     # placeholder, so comparing a masked render against the real config would

@@ -87,18 +87,32 @@ class TestCheck:
         assert S.check(s, _iso(T0 + 85), _iso(T0 + 145)) == []
 
     def test_each_shortfall_is_named(self):
+        """A pass not read whole is kept and named (`partial`), and counts toward no window
+        (C2277, the operator's finding 1: a partial read under a flood is marked partial and
+        tolerated, so a capture holding one is still a case if its whole passes suffice)."""
         s = self._series(3, 2, 1)
         s["passes"][1]["collected"]["state"] = "unreadable"
         s["passes"][2]["collected"]["controllers"] = [{"switches": [{}]}]
         s["head"], s["unparsed"] = None, 2
+        assert S.partial(s) == [2, 3]
         got = S.check(s, _iso(T0 + 35), _iso(T0 + 55))
         assert got == [
             "no head line: the thresholds and flow intent the rules ran with are unknown",
-            "2 line(s) did not parse", "6 passes, fewer than 18",
-            "passes [2, 3] were not read whole (state ok with 2 switches)",
-            "3 pass(es) before the traffic, fewer than 6",
+            "2 line(s) did not parse", "4 passes read whole (6 in all), fewer than 18",
+            "1 pass(es) before the traffic, fewer than 6",
             "2 pass(es) inside it, fewer than 4",
             "1 pass(es) after it ended, fewer than 3"]
+
+    def test_a_read_that_answered_nothing_is_partial(self):
+        """C2277: a switch whose flows answered none at all (not even its table-miss), or whose
+        every port was in one read only, is a pass not read whole (RC-ICMP pass 10's shape)."""
+        s = self._series(1, 0, 0)
+        empty = {"state": "ok", "dpid_hex": "0000000000000001", "flows": [],
+                 "active_flows": 0, "sample": {"elapsed_s": 5.0},
+                 "ports": [{"port_no": 1, "note": "in the second read only"}]}
+        s["passes"][0]["collected"]["controllers"] = [
+            {"connection": "c", "state": "ok", "switches": [empty, dict(empty)]}]
+        assert S.partial(s) == [1]
 
 
 def test_load_reads_the_collector_s_lines_and_counts_what_did_not_parse(tmp_path):

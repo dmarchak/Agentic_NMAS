@@ -421,6 +421,21 @@ def _verify_read(read, bound: float = VERIFY_BOUND_S, *, clock=time.monotonic,
         sleep(pause)
 
 
+def _unread_words(tried: dict, answered_after=None) -> str:
+    """Why verify could not sign in (C2281): the step that answered and the one that failed,
+    each with its time, and the last try's error by its first line alone; a library's list of
+    possible causes is a guess, never the reason. *answered_after* the wait step's seconds,
+    when there was one (a Reload's; Verify again has none)."""
+    n = tried["attempts"]
+    first = next((l.strip() for l in str(tried.get("error") or "").splitlines() if l.strip()),
+                 "no reason given")
+    tries = f"{n} {'try' if n == 1 else 'tries'} over {tried['after_s']} s"
+    if answered_after is not None:
+        return (f"its SSH port answered the wait step after {answered_after} s, then signing in "
+                f"failed: {tries}, the last saying “{first}”")
+    return f"signing in failed: {tries}, the last saying “{first}”"
+
+
 def records_path(repo_dir: str) -> str:
     """Where a network's reloads are recorded, from its repository folder: resolving it
     creates nothing (a READ must not bring a network's folder into being)."""
@@ -578,10 +593,7 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
                      "until a person reviews the new key")
                 return finish("host_key_changed")
             if not tried["ok"]:
-                step("verify", False,
-                     f"it answers on SSH's port and could not be read in {tried['attempts']} "
-                     f"{'try' if tried['attempts'] == 1 else 'tries'} over {tried['after_s']} s: "
-                     f"{tried['error']}")
+                step("verify", False, _unread_words(tried, back.get("after_s")))
                 return finish("unverified")
             after = tried["reads"]
             same = roundtrip.stored_is_device(reads.get("running", ""), after.get("running", ""))
@@ -665,10 +677,7 @@ def verify_again(list_name: str, host: str, *, actor: str, reader=None, clock=No
                      f"{refused.held.get('fingerprint', '?')}): review it with Re-key…")
                 return finish("host_key_changed")
             if not tried["ok"]:
-                step("verify", False,
-                     f"it could not be read in {tried['attempts']} "
-                     f"{'try' if tried['attempts'] == 1 else 'tries'} over {tried['after_s']} s: "
-                     f"{tried['error']}")
+                step("verify", False, _unread_words(tried))
                 return finish("unverified")
             golden = R.golden_at(_repo(list_name), host, "HEAD") or ""
             if not golden:

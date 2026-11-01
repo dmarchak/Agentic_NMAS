@@ -21,6 +21,7 @@ of them a drop (Mercury's /24, an empty action list); granularity L4 (three flow
 """
 import copy
 import json
+import os
 
 import pytest
 import requests
@@ -220,6 +221,40 @@ class TestFailures:
         assert sw["active_flows"] is None and sw["ports"], "the ports still read"
         assert got["controllers"][0]["state"] == "partial", "its only switch read in part"
         assert got["state"] == "partial"
+
+    def test_a_flow_read_that_answered_none_is_not_read_as_none(self):
+        """C2277: Ryu answers `{"1": []}` both for an empty table and when the switch's reply
+        missed its 1 s wait (the operator's RC-UDP pass 10, under a flood); every switch a
+        controller manages holds at least its table-miss, so none at all is not read."""
+        save()
+        empty = json.loads(json.loads(open(os.path.join(
+            os.path.dirname(__file__), "fixtures", "sdn", "ryu", "flow_stats_empty.json"),
+            encoding="utf-8").read())["body"])["1"]
+        got, _ = run(sessions={"ctl-1": Sampled(BASE, flows=empty)})
+        sw = got["controllers"][0]["switches"][0]
+        assert sw["state"] == "partial" and sw["error"].startswith("flows: the controller "
+                                                                   "answered none")
+        assert sw["active_flows"] is None and sw["coverage"] is None, "not an empty switch"
+        assert sw["ports"], "the ports still read"
+        assert got["state"] == "partial" and got["controllers"][0]["state"] == "partial"
+
+    def test_a_port_read_that_answered_none_is_not_read(self):
+        """C2277: the first port read answered `{"1": []}` (RC-ICMP pass 10: every port then
+        in the second read only), so the switch's rates are not read, never a port idle."""
+        save()
+        sess = Sampled(BASE)
+        real = sess.request
+
+        def first_empty(method, url, **kwargs):
+            if url.endswith(PORT_PATH) and sess.port_reads == 0:
+                sess.port_reads += 1
+                return Response(200, json.dumps({"1": []}))
+            return real(method, url, **kwargs)
+        sess.request = first_empty
+        got, _ = run(sessions={"ctl-1": sess})
+        sw = got["controllers"][0]["switches"][0]
+        assert sw["state"] == "partial" and "ports: a port read answered no port" in sw["error"]
+        assert sw["ports"] == [] and sw["flows"], "the flows still read"
 
     def test_a_switch_with_nothing_read_is_unreadable_and_so_its_controller(self):
         save()

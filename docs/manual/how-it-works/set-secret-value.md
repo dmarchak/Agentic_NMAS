@@ -15,8 +15,11 @@ names, what each is for (the account and its privilege, or "named in intent"), a
 
 - **the device's own form**: the value the device made of it (type 5, 7, 8 or 9), stored by a
   rotation or captured back after a deploy;
-- **typed, waiting for its deploy**: a value a person set here that no verified deploy has
-  carried yet;
+- **the device's value, as it keeps it**: a value the device keeps as it was typed (an SNMP
+  community), read from its captured configuration when it was seeded, or set here and carried
+  by a verified deploy since; it never becomes "the device's own form";
+- **typed, waiting for its deploy**: a value a person set here that no verified deploy of the
+  device has carried yet (the set is newer than the device's last deploy that verified);
 - **held**: a value the network holds for every device (its monitoring profile, for an SNMP
   community);
 - **no value**: nothing held. A deploy that needs it is refused, naming it.

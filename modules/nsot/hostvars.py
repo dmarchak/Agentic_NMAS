@@ -1496,6 +1496,44 @@ def intent_change(repo: str, hostname: str) -> dict:
             "diff": diff if rc == 0 else ""}
 
 
+#: A secret named inside an opaque string (`roundtrip.render`'s `resolve_secrets` filter).
+_MARKER_REF = re.compile(r"__secret__:([A-Za-z0-9_]+)")
+
+
+def named_refs(host_vars: dict) -> list:
+    """Every secret reference *host_vars* names, sorted: THE list of what a render asks
+    `secret()` for, read from where the shipped templates read it (`users[].secret_ref`,
+    `enable_secret_ref`, `snmp.communities[].ref`, a ``__secret__:<ref>`` marker in any
+    string) together with ``secret_refs``. Hydration, the Secret references card, the preview's
+    masked list and a restore's check each read this, so a reference written in one place
+    and not the other is never left unresolved (an account added under ``users`` alone was
+    refused at its deploy as masked content, C2284, 2026-11-01)."""
+    doc = host_vars or {}
+    out = {str(r) for r in doc.get("secret_refs") or [] if r}
+    out |= {str(u.get("secret_ref")) for u in doc.get("users") or []
+            if isinstance(u, dict) and u.get("secret_ref")}
+    if doc.get("enable_secret_ref"):
+        out.add(str(doc["enable_secret_ref"]))
+    snmp = doc.get("snmp") if isinstance(doc.get("snmp"), dict) else {}
+    out |= {str(c.get("ref")) for c in snmp.get("communities") or []
+            if isinstance(c, dict) and c.get("ref")}
+
+    def strings(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for k, v in node.items():
+                if k != "secrets":
+                    yield from strings(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from strings(v)
+
+    for text in strings(doc):
+        out |= set(_MARKER_REF.findall(text))
+    return sorted(out)
+
+
 def hydrate_secrets(host_vars: dict, hostname: str,
                     list_name: str = "") -> dict:
     """Return a copy with ``secrets`` resolved from the credential store.
@@ -1507,8 +1545,8 @@ def hydrate_secrets(host_vars: dict, hostname: str,
     """
     from modules.credentials import get_template_secret, template_secret_key
 
-    refs = host_vars.get("secret_refs") or sorted(
-        (host_vars.get("secrets") or {}).keys())
+    # Every reference the document names (`named_refs`), not the `secret_refs` list alone.
+    refs = sorted(set(named_refs(host_vars)) | set((host_vars.get("secrets") or {}).keys()))
     from modules.credentials import profile_secret_key
 
     secrets = {}

@@ -34,6 +34,13 @@
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="privileged" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='privileged') }}" hx-get="{{ url_for('privileged_v2.privileged', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Run a privileged command…</a>{{ how('privileged', compact=True, op='privileged command') }}</div>
       {#- Reload (P.14, cutover blocker 6): its card reads the device and judges six gates. -#}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload') }}" hx-get="{{ url_for('device_v2.reload_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Reload…</a>{{ how('reload', compact=True, op='reload') }}</div>
+      {#- Verify again (C2280): offered only while the device's last reload ended not verified,
+          as its Needs attention row offers it; else it says why. -#}
+      {%- if verify_again and verify_again.offered %}
+      <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload_verify') }}" hx-get="{{ url_for('device_v2.reload_verify_offer', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Verify again…</a>{{ how('reload', section='verify-again', compact=True, op='verify again') }}</div>
+      {%- else %}
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ verify_again.why if verify_again else 'not read' }}">Verify again…<span class="sr-only"> (not offered: {{ verify_again.why if verify_again else 'not read' }})</span></span></div>
+      {%- endif %}
       {#- Re-key (C2239): offered only while Mercury holds a refused SSH host key for the device;
           else it says why, as Revert and Retry do. -#}
       {%- if rekey.held %}

@@ -47,6 +47,7 @@ STEPS = (
 #: How each state reads on the card (board H-S).
 STATES = {
     "device_form": "the device's own form",
+    "device_value": "the device's value, as it keeps it",
     "typed": "typed, waiting for its deploy",
     "held": "held",
     "none": "no value",
@@ -70,15 +71,43 @@ def _intent(list_name: str, host: str) -> dict:
 
 
 def _uses(intent: dict) -> dict:
-    """``{ref: what it is for}`` for every reference *intent* names."""
+    """``{ref: what it is for}`` for every reference *intent* names (`hostvars.named_refs`, the
+    list hydration resolves, so the card and the deploy never disagree on what is named)."""
+    from modules.nsot.hostvars import named_refs
+
     out = {}
     for user in intent.get("users") or []:
         ref = (user or {}).get("secret_ref")
         if ref:
             out[ref] = (f"account {user.get('name')}, privilege {user.get('privilege', 1)}")
-    for ref in intent.get("secret_refs") or []:
-        out.setdefault(str(ref), "named in intent")
+    if intent.get("enable_secret_ref"):
+        out.setdefault(str(intent["enable_secret_ref"]), "the enable secret")
+    snmp = intent.get("snmp") if isinstance(intent.get("snmp"), dict) else {}
+    for c in snmp.get("communities") or []:
+        if isinstance(c, dict) and c.get("ref"):
+            out.setdefault(str(c["ref"]), f"SNMP community, {c.get('access') or 'access unset'}")
+    for ref in named_refs(intent):
+        out.setdefault(ref, "named in intent")
     return out
+
+
+def _typed_pending(list_name: str, host: str, ref: str) -> bool:
+    """Whether a value a person typed for *ref* on *host* still waits for its deploy: the newest
+    set recorded for it (`RECORDS_REL`) is later than the device's newest deploy that verified
+    (`receipts`). A value stored by seeding, a profile or a capture was never typed; one a
+    verified deploy has carried is on the device, in whatever form the device keeps it (an
+    SNMP community is kept as typed, so its kind stays ``plaintext`` for good)."""
+    from modules.nsot import receipts
+
+    rows = [r for r in read_records(_repo(list_name))["rows"]
+            if r.get("device") == host and r.get("ref") == ref]
+    if not rows:
+        return False
+    typed_at = rows[0].get("at") or ""
+    got = receipts.read(list_name, device=host, limit=20)
+    deployed = [r.get("completed_at") or r.get("at") or "" for r in got.get("rows") or []
+                if r.get("outcome") == "deployed"]
+    return not any(t and t >= typed_at for t in deployed)
 
 
 def _state(list_name: str, host: str, ref: str) -> str:
@@ -87,7 +116,7 @@ def _state(list_name: str, host: str, ref: str) -> str:
     if kind == "hash":
         return "device_form"
     if kind == "plaintext":
-        return "typed"
+        return "typed" if _typed_pending(list_name, host, ref) else "device_value"
     profile = credentials.template_secret_kind(credentials.profile_secret_key(list_name, ref))
     return "held" if profile else "none"
 

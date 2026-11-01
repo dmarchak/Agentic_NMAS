@@ -308,7 +308,8 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
             intent = yaml.safe_load(text) or {}
         except Exception:                      # noqa: BLE001
             continue
-        missing = [r for r in (intent.get("secret_refs") or [])
+        from modules.nsot.hostvars import named_refs
+        missing = [r for r in named_refs(intent)
                    if not get_template_secret(
                        template_secret_key(list_name, host, r))]
         if missing:
@@ -370,7 +371,7 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
         gaps.append(f"the monitoring profile at this ref cannot be used: {exc}")
         return gaps
 
-    for ref_name in (intent.get("secret_refs") or []):
+    for ref_name in hostvars.named_refs(intent):
         if not (get_template_secret(template_secret_key(list_name, hostname, ref_name))
                 or get_template_secret(profile_secret_key(list_name, ref_name))):
             gaps.append(f"secret '{ref_name}' is named by this ref's intent but "

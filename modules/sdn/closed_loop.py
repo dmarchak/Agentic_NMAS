@@ -74,7 +74,10 @@ carry it and the classifier can be sent it. **Every flow and port row carries it
 - a port's, ``port:<connection>:<dpid hex>:<port number>``. A controller that fails is said, per controller
 (``unreadable``, with why) and per switch (``partial`` or ``unreadable``, naming each read that
 failed), never dropped. No connection is ``none``; a store that cannot be read is
-``unreadable``: absent and unreadable are different states.
+``unreadable``: absent and unreadable are different states. A read that answered nothing it
+could have answered (no flow at all, not even the table-miss; no port, or every port in one
+sample only) is not read (`unanswered`, C2277): Ryu answers an empty list when the switch's
+reply misses its 1 s wait, as it does under a flood.
 
 **Bounds.** Every read is bounded by its driver (the connection's timeout). The wait between the
 two samples is *sleep*, and the times are *clock*'s, both injectable: a test passes a fake
@@ -344,10 +347,84 @@ def _switch(dpid: int, one: tuple, two: tuple, interval: float, connection: str 
         for which, got in (("first port read", first_ports), ("second port read", second_ports)):
             if not got.get("ok"):
                 errors.append(f"{which}: {got.get('error')}")
+    for which, words in unanswered(row):
+        errors.append(f"{which}: {words}")
+        if which == "flows":
+            flows_ok = False
+            row.update(flows=[], active_flows=None, drop_flows=[], coverage=None)
+        else:
+            ports_ok = False
+            row["ports"] = []
     if errors:
         row["error"] = "; ".join(errors)
         row["state"] = "partial" if flows_ok or ports_ok else "unreadable"
     return row
+
+
+#: Why an empty answer is not read as "none" (C2277): Ryu 4.34's `ofctl_utils.send_stats_request`
+#: waits `DEFAULT_TIMEOUT` (1 s) for the switch's reply and answers `{"<dpid>": []}` when it has
+#: not come, the same answer as an empty table; under a flood the switch's replies come late
+#: (the operator's recorded captures, 2026-11-01: RC-ICMP passes 10 and 11, RC-UDP pass 10).
+EMPTY_ANSWER = ("the controller answered none for a switch it lists, which Ryu also answers "
+                "when the switch's reply misses its 1 s wait, so it is not read as none")
+
+
+def unanswered(sw: dict) -> list:
+    """``[(which, words)]`` for each read of switch row *sw* that answered nothing it could have
+    answered (C2277): its flows, read, and none at all (every switch a controller manages holds
+    at least its table-miss flow); its ports, read, and none, or every port in one sample only.
+    Refusing by resemblance is safe: such a read is treated as not read, never as an empty
+    switch. `collect_threat_data` applies it to each switch it builds; a recorded series is
+    judged again by it (`rejudge`)."""
+    out = []
+    if sw.get("active_flows") == 0 and not sw.get("flows"):
+        out.append(("flows", EMPTY_ANSWER))
+    ports = [p for p in sw.get("ports") or [] if p.get("port_no") != "LOCAL"]
+    one_read = ("in the first read only", "in the second read only")
+    if sw.get("sample", {}).get("elapsed_s") is not None and (
+            not ports or all(p.get("note") in one_read for p in ports)):
+        out.append(("ports", "a port read answered no port, or every port was in one of the two "
+                             "reads only: " + EMPTY_ANSWER))
+    return out
+
+
+def rejudge(collected: dict) -> dict:
+    """*collected* (a collection, recorded or fresh) with each switch judged again by
+    `unanswered`, its controller's and its own state and the summary recomputed: what a recorded
+    series replays, so a capture taken before C2277 is read as the collector reads now."""
+    import copy
+
+    if not any(sw.get("state") == "ok" and unanswered(sw)
+               for c in collected.get("controllers") or [] for sw in c.get("switches") or []):
+        return collected                                  # nothing judged differently
+    out = copy.deepcopy(collected)
+    for c in out.get("controllers") or []:
+        for sw in c.get("switches") or []:
+            if sw.get("state") != "ok":
+                continue
+            got = unanswered(sw)
+            if not got:
+                continue
+            for which, _words in got:
+                if which == "flows":
+                    sw.update(flows=[], active_flows=None, drop_flows=[], coverage=None)
+                else:
+                    sw["ports"] = []
+            sw["error"] = "; ".join(f"{w}: {x}" for w, x in got)
+            sw["state"] = "partial" if len(got) < 2 else "unreadable"
+        bad = [s for s in c.get("switches") or [] if s.get("state") != "ok"]
+        if c.get("state") == "ok" and bad:
+            c["state"] = ("unreadable" if all(s["state"] == "unreadable" for s in bad)
+                          and len(bad) == len(c["switches"]) else "partial")
+            c["error"] = (f"{len(bad)} of {len(c['switches'])} switch(es) not read whole: "
+                          + "; ".join(f"{s['dpid_hex']}: {s['error']}" for s in bad))
+    states = {c.get("state") for c in out.get("controllers") or []}
+    if out.get("state") == "ok" and states != {"ok"}:
+        out["state"] = "unreadable" if states == {"unreadable"} else "partial"
+        out["error"] = "; ".join(f"{c['connection']}: {c['error']}"
+                                 for c in out["controllers"] if c.get("state") != "ok")
+    out["summary"] = _summary(out.get("controllers") or [])
+    return out
 
 
 def _summary(controllers: list) -> dict:

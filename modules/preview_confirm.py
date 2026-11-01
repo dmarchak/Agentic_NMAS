@@ -550,7 +550,8 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         drift = d.get("intent_drift") or {}
         operands = [
             {"name": "capture hash", "value": d.get("capture_hash") or "none"},
-            {"name": "command hash", "value": d.get("command_hash") or "none"},
+            {"name": "command hash",
+             "value": d.get("command_hash") or d.get("command_hash_why") or "none"},
             {"name": "intent commit",
              "value": ((a or {}).get("intent_commit") or d.get("intent_commit") or "none")[:12]},
             *([{"name": "profile commit", "value": (d.get("profile_commit") or "none")[:12]}]

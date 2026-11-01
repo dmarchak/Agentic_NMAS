@@ -56,9 +56,22 @@ def switches_of(collected: dict) -> int:
     return sum(len(c.get("switches") or []) for c in collected.get("controllers") or [])
 
 
+def partial(series: dict) -> list:
+    """The passes not read whole, each judged as the collector judges now
+    (`closed_loop.rejudge`, C2277: a read that answered nothing is not read): ``[n]``. A
+    capture keeps them (the operator: change nothing to make a capture look right); they are a
+    fact of the case, never counted toward its windows."""
+    from modules.sdn.closed_loop import rejudge
+
+    return [p.get("n") for p in series.get("passes") or []
+            if rejudge(p.get("collected") or {}).get("state") != "ok"
+            or switches_of(p.get("collected") or {}) != SWITCHES]
+
+
 def check(series: dict, t0: str, t1: str) -> list:
     """What *series* lacks to be a recorded case, one line per requirement unmet; ``[]`` when
-    it holds a case. *t0* and *t1*: when the traffic began and ended (UTC)."""
+    it holds a case. *t0* and *t1*: when the traffic began and ended (UTC). Only passes read
+    whole count toward the windows (`partial`)."""
     out = []
     head, passes = series.get("head"), series.get("passes") or []
     if not head:
@@ -67,16 +80,14 @@ def check(series: dict, t0: str, t1: str) -> list:
         out.append("the head's thresholds were not read, so no rule can be replayed")
     if series.get("unparsed"):
         out.append(f"{series['unparsed']} line(s) did not parse")
-    if len(passes) < MIN_PASSES:
-        out.append(f"{len(passes)} passes, fewer than {MIN_PASSES}")
-    bad = [p.get("n") for p in passes
-           if (p.get("collected") or {}).get("state") != "ok"
-           or switches_of(p.get("collected") or {}) != SWITCHES]
-    if bad:
-        out.append(f"passes {bad} were not read whole (state ok with {SWITCHES} switches)")
+    bad = set(partial(series))
+    whole = [p for p in passes if p.get("n") not in bad]
+    if len(whole) < MIN_PASSES:
+        out.append(f"{len(whole)} passes read whole ({len(passes)} in all), fewer than "
+                   f"{MIN_PASSES}")
     start, end = _epoch(t0), _epoch(t1)
     at = [_epoch((p.get("collected") or {}).get("collected_at") or "1970-01-01T00:00:00Z")
-          for p in passes]
+          for p in whole]
     for name, n, want in (("before the traffic", sum(1 for t in at if t < start), BEFORE),
                           ("inside it", sum(1 for t in at if start <= t <= end), DURING),
                           ("after it ended", sum(1 for t in at if t > end), AFTER)):
@@ -90,12 +101,15 @@ def replay(series: dict, values: dict = None, intent: dict = None) -> list:
     the series in order (the unauthorised-flow rule against *intent*, by default the flow intent
     the head recorded), their state carried as `detect.observe` carries it."""
     from modules.sdn import detect
+    from modules.sdn.closed_loop import rejudge
 
     values = values or series["head"]["thresholds"]["values"]
     intent = series["head"].get("intent") if intent is None else intent
     seen, baseline, over, out = {}, {}, {}, []
     for p in series["passes"]:
-        c, topo = p["collected"], p.get("topology")
+        # Each pass as the collector reads it now (C2277), so a read that answered nothing is
+        # not read, as `observe` would be handed it.
+        c, topo = rejudge(p["collected"]), p.get("topology")
         scanned = detect.scan(c, values, seen, topo=topo)
         flooded = detect.flood(c, baseline, values, over, topo=topo)
         unauth = (detect.unauthorised(c, intent, now=_epoch(c.get("collected_at")), topo=topo)

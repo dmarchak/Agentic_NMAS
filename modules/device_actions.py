@@ -652,6 +652,10 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
     summary = (f"Deploy {host}'s committed intent, merge-only"
                + (", with the lines you ticked for removal" if removing else "")
                + (f": exactly these {len(lines)} line(s) are sent, in order." if lines
+                  # A build that was refused is a refusal, never "nothing to send" (finding
+                  # 4b, C2286, 2026-11-01: it read as if the device matched).
+                  else ": refused while building the program, so nothing is sent." if refused
+                  else ": blocked, so nothing is sent (see its gates)." if blocking
                   else ": nothing to send."))
     return {"op": "deploy", "state": "preview", "host": host, "list": ref.name,
             "summary": summary,
