@@ -10,11 +10,13 @@ AI spend in every status update meanwhile.**
 
 The brief: `~/Documents/nmas-reports/prompts/2026-11-01-overnight-prompt.md`; the report, Needs
 you first: `~/Documents/nmas-reports/2026-11-01-overnight-report.md`.
-- **Live: 05d49928** (deployed 10:34 through the safe deploy script, the SDN loop stopped): C2240's
-  verify retry, C2243, C2237's guard, C2245, C2239's preflight, C2247, C2031's capture-back,
-  C2248. **f26aa941** (pushed 11:29; C235's Set value…, C2240's Verify again, C2239's Re-key
-  reason, C2267, PHASE8_PLAN 20 and 21, items 6 to 9) is deployed once its CI is green; this
-  note's commit (Re-key… in Actions, P7 approved) follows it.
+- **Live: 753c38cf** (deployed 12:29 UTC through the safe deploy script, SMOKE OK, the SDN loop
+  stopped; earlier deploys 05d49928 at 10:34 and f26aa941 at 11:44): C2240's verify retry and
+  Verify again, C2243, C2237's guard, C2245, C2239's preflight, Review the new key, Re-key's
+  reason and Actions row, C2247, C2031's capture-back, C2248, C235's Set value…, C2267, C2266,
+  C2269; PHASE8_PLAN 20 and 21 designed; boards H-S, S-HR drawn and P7 approved. Since 11:44
+  Needs attention shows "r8 came back from its reload and was not verified" (B2's record): Verify
+  again clears it.
 - **Waiting on the operator:** a non-blind capture for C2237/C2238's recorded cases; the vIOS-L2
   switches' unsaved SSH keys (accept Re-key in the lab, recommended); a deploy that cuts a device
   off earning no baseline (PHASE8_PLAN 20.4, recommended); the lab account's steps
