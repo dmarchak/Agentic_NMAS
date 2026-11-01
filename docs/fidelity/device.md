@@ -71,7 +71,14 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `46f57eb3cb54da3c7f2c90636527e71f2d925b2fecd91b903c20215fb29f3ac2`
+Templates sha256: `4b1ab5edd8ed8c7cb0bfba61f5bdd899778c09280be6c6cb2bc84dd407b9adb5`
+
+Compared again 2026-11-01 (C2239, the overnight brief's item 1), by the template: the Actions
+menu gains **Re-key…** after Reload…, offered only while Mercury holds a refused SSH host key
+for the device and otherwise drawn greyed with its reason (Revert and Retry's pattern), and
+the menu re-reads on `host_keys`. Board 7's ActionsMenu draws no Re-key row: **deviation**,
+logged in STANDING_APPROVAL_LOG. No other region changed. Templates sha256 before:
+`46f57eb3cb54da3c7f2c90636527e71f2d925b2fecd91b903c20215fb29f3ac2`.
 (2026-10-29: `_deploy.html` gained the Change record part, compared with board CR in
 docs/fidelity/change-record.md; its form an id, and the foot's note one sentence. Before:
 `d33226f1c5dcfd1480130867aeb6b874a88b21b8498264c6c72db31eee13b94d`.)

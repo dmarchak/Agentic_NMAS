@@ -371,6 +371,8 @@ def device(name):
            # Revert and Retry are offered only while a rollback block stands (board 11): one
            # read of the record.
            "block": _block_state(ref, dev),
+           # Re-key is offered only while a refused SSH host key is held (C2239): one read.
+           "rekey": _rekey_held(dev),
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
            "drained": _drained_now(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
@@ -455,7 +457,8 @@ def actions_menu(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
-                                   tab=_back(request.args), block=_block_state(ref, dev)))
+                                   tab=_back(request.args), block=_block_state(ref, dev),
+                                   rekey=_rekey_held(dev)))
 
 
 # ---------------------------------------------------------------------------
@@ -1829,6 +1832,23 @@ def restore_job_card(name, job):
 # ---------------------------------------------------------------------------
 # Revert and Retry, the two ways out of a rollback (7.3; the device-actions canvas, board 11)
 # ---------------------------------------------------------------------------
+
+def _rekey_held(dev) -> dict:
+    """C2239: whether Mercury holds a refused SSH host key for *dev*'s address now (one file
+    read): the Actions menu offers Re-key… only then, and otherwise says why."""
+    from modules import host_keys
+    try:
+        rec = host_keys.read()["keys"].get(dev.get("ip", "")) or {}
+    except Exception as exc:                            # noqa: BLE001 (said on the row)
+        return {"held": False,
+                "why": f"the SSH host-key record could not be read ({type(exc).__name__})"}
+    if rec.get("refused"):
+        return {"held": True, "why": ""}
+    return {"held": False, "why": (f"{dev.get('hostname', 'the device')} answers with the SSH "
+                                   "host key Mercury holds" if rec.get("fingerprint") else
+                                   "Mercury holds no SSH host key for it yet; its next session "
+                                   "keeps one")}
+
 
 def _block_state(ref, dev) -> dict:
     from modules.nsot import intent_ops

@@ -25,8 +25,10 @@ still true against intent, and what to do next. **Persist and Rotate run here to
 [Restore and re-apply a baseline](restore), [Revert or retry after a rollback](revert-retry),
 [Run a privileged command](privileged), [Reload a device](reload), [Retire a device](retire).
 
-A device whose SSH host key changed is re-keyed on its page: Needs attention's row opens the
-Re-key card in place of the tab ([Re-key a device](rekey)); it is not on the Actions menu. The **Drained** badge beside its name in the header is switched
+A device whose SSH host key changed is re-keyed on its page: **Re-key…** on the Actions menu,
+offered only while {{product}} holds a key the device answered with and it refused (otherwise
+it says why), Needs attention's row, and a Reload's **Review the new key** each open the Re-key
+card in place of the tab ([Re-key a device](rekey)). The **Drained** badge beside its name in the header is switched
 off for now (see [Devices](devices#drained)).
 
 ## Overview {#overview}

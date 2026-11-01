@@ -15,7 +15,7 @@
   </div>
   <div class="page-actions" id="actions-menu"
        hx-get="{{ url_for('device_v2.actions_menu', name=device.hostname, back=tab) }}"
-       hx-trigger="nmas:rolled_back from:body, nmas:intent from:body, nmas:goldens from:body, nmas:deploy_job from:body, nmas:device_holds from:body, nmas:inventory from:body, nmas:device_state from:body" hx-swap="innerHTML">
+       hx-trigger="nmas:rolled_back from:body, nmas:intent from:body, nmas:goldens from:body, nmas:deploy_job from:body, nmas:device_holds from:body, nmas:inventory from:body, nmas:device_state from:body, nmas:host_keys from:body" hx-swap="innerHTML">
     {% include "v2/_actions_menu.html" %}
   </div>{{ info('device-page', 'actions', label='How the Actions menu works') }}
 </div>

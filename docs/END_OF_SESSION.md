@@ -6,6 +6,24 @@ never on a date (PHASE8_PLAN 15.12, the operator, 2026-10-27; this line said "$1
 31 Oct" before, which 15.12 replaced). Mercury cannot raise that reminder itself (C1751). Report
 AI spend in every status update meanwhile.**
 
+## THE OVERNIGHT RUN, 2026-11-01 08:35 to ~11:xx UTC (the operator asleep until ~14:00)
+
+The brief: `~/Documents/nmas-reports/prompts/2026-11-01-overnight-prompt.md`; the report, Needs
+you first: `~/Documents/nmas-reports/2026-11-01-overnight-report.md`.
+- **Live: 05d49928** (deployed 10:34 through the safe deploy script, the SDN loop stopped): C2240's
+  verify retry, C2243, C2237's guard, C2245, C2239's preflight, C2247, C2031's capture-back,
+  C2248. **f26aa941** (pushed 11:29; C235's Set value…, C2240's Verify again, C2239's Re-key
+  reason, C2267, PHASE8_PLAN 20 and 21, items 6 to 9) is deployed once its CI is green; this
+  note's commit (Re-key… in Actions, P7 approved) follows it.
+- **Waiting on the operator:** a non-blind capture for C2237/C2238's recorded cases; the vIOS-L2
+  switches' unsaved SSH keys (accept Re-key in the lab, recommended); a deploy that cuts a device
+  off earning no baseline (PHASE8_PLAN 20.4, recommended); the lab account's steps
+  (`blind-runs/sessions.md`) once Set value… is deployed; Remove account's removal shape (C2228,
+  measured on a device); the tier hand check's header date against CLAUDE.md's condition.
+- **On a local branch, not pushed:** `c2176-neighbour-evidence` (cd60910c), C2176's tests green;
+  left: the context walk's provider, the egress test, the manual, shots, the screen round.
+- **AI spend tonight: $0.00.**
+
 ## THE OVERNIGHT RUN, 2026-10-28 02:02 to ~07:3x UTC (the operator asleep, then briefly present)
 
 **Update ~07:3x UTC, after the operator's four answers (~05:5x UTC; the approval log):** live

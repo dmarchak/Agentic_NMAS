@@ -175,6 +175,17 @@ class TestTheConfirm:
                                                      "SSH host key kept on first contact"]
         assert tl["events"][0]["who"] == "test-person@example.invalid"
 
+    def test_the_actions_menu_offers_re_key_only_while_a_key_is_refused(self, world):
+        """C2239: Re-key… on the device's Actions menu, offered only while a refused key is
+        held; otherwise said why, never hidden."""
+        menu = world["client"].get("/v2/device/r2/actions").get_data(as_text=True)
+        assert 'data-op="rekey"' not in menu
+        assert "Re-key…" in menu and "answers with the SSH host key Mercury holds" in menu
+        with pytest.raises(HK.HostKeyRefused):
+            HK.check(IP, world["keys"][1], owner="reader:capture")
+        menu = world["client"].get("/v2/device/r2/actions").get_data(as_text=True)
+        assert re.search(r'data-op="rekey" href="[^"]*op=rekey', menu), menu[:400]
+
     @pytest.mark.parametrize("reason", ["", "ok", "re-keying r2"])
     def test_a_confirm_without_a_reason_keeps_nothing(self, world, reason):
         """C2239: why the new key is the device's own, in the shape of a reason."""
