@@ -29,6 +29,7 @@ returned in a shuffled order), never the provider:
 - **Explain's round:** `explain_packs_batch` sends what `explain_pack` sends for the same pack
   and prompt, and checks each answer as it does.
 """
+import datetime
 import json
 import random
 
@@ -489,7 +490,10 @@ def test_results_are_recorded_at_the_batch_rate_with_the_cache_tokens(world):
     assert row["cache_writes"] == {"5m": 0, "1h": 3000}
     assert row["price"]["batch"]["multiplier"] == 0.5 and row["verdict"] == "ok"
     assert row["batch"] == {"custom_id": "r0", "id": "msgbatch_0test", "multiplier": 0.5}
-    assert calls.spent_usd(TODAY)["usd"] == pytest.approx(row["cost_usd"])
+    # The row is stamped by the real clock, so it counts on the cap's real day (`calls.today()`,
+    # what ask_batch uses when no day is given), not the fixed TODAY the cap judgement above
+    # was handed: asked of TODAY, this failed every day after 2026-10-29 (C2242).
+    assert calls.spent_usd(calls.today())["usd"] == pytest.approx(row["cost_usd"])
 
 
 def test_history_draws_a_batched_call_as_such(world):
@@ -619,14 +623,16 @@ def test_a_workspace_limit_at_submit_is_held(world, tmp_path, monkeypatch):
     from modules.ai import provider_limit
     monkeypatch.setattr(provider_limit, "_path", lambda: str(tmp_path / "limit.json"))
     fake = FakeBatches()
+    # A day ahead of the real clock: a fixed date held only until it passed (2026-11-01, C2242).
+    until = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+             ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def limited(reqs, key):
-        raise A.WorkspaceLimit("HTTP 400: limit", until="2026-11-01T00:00:00Z", said="x",
-                               status=400)
+        raise A.WorkspaceLimit("HTTP 400: limit", until=until, said="x", status=400)
     fake.create = limited
     got = _batch(_requests("a"), fake)
     assert got["error"] == "workspace_limit" and provider_limit.holding()
-    assert _rows()[0]["limit"]["until"] == "2026-11-01T00:00:00Z"
+    assert _rows()[0]["limit"]["until"] == until
 
 
 @pytest.mark.parametrize("reqs,words", [
