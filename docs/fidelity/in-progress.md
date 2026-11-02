@@ -42,7 +42,11 @@ Compared again 2026-10-28 ~11:2x UTC, for base.html alone: the AI chip's mark re
 and its details given `data-keep="ai-spend"` (C472's rule). The shots taken again
 (in-progress-*, ai-chip-*), nothing in In progress moved.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `a8f93ae1dc59e0c4e84b8504fe0947e0b0283f307c40fc966d9ff289c9adf451`
+Templates sha256: `7d57f40dc4dbcf397013bd1b2ee46dc711ac9bc57cc8718daa376d4b0d8f005d`
+(2026-11-02, C2283, board FC's FC2: the sidebar gains Intent, first under SOURCE OF TRUTH as
+the board draws it (tests/test_v2_pages.py pins the order); read against the regions below,
+nothing in the top bar, the chip or its list moves, every verdict stands. Before:
+`a8f93ae1dc59e0c4e84b8504fe0947e0b0283f307c40fc966d9ff289c9adf451`.)
 (2026-11-02, C2268: `base.html`'s AI spend panel also listens for `nmas:ai_spend`, its re-read on
 a recorded call, so the page-wide hold applies to it; nothing drawn changed. Before:
 `5ed96ad348b4c6d7f319f90d6f982562d811dfa23a6d83772e46ae0fa364d263`.)

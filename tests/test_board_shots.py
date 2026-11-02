@@ -2745,6 +2745,52 @@ def test_tab_intent_layers(monkeypatch, tmp_path):
                 boards=(("FleetChanges.dc.html", 1440),))
 
 
+def test_intent_layers(monkeypatch, tmp_path):
+    """Board FC's FC2 (`FleetChanges.dc.html`, 1440; approved with changes 2026-11-01, C2283)
+    beside Source of Truth › Intent on the browser layout test's lab (r2 and r6), given the
+    board's layers committed as `layers/` files are: the network's domain, which r2 overrides,
+    and tag blind-lab's account `lab` on r2; tag blind-lab chosen, as the board draws it."""
+    import subprocess
+
+    import yaml
+
+    from tests import browser
+    from tests import test_profile_apply as P
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab = P.lab.__wrapped__(monkeypatch, tmp_path)
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(L.R2), dict(L.R6)])
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [
+        dict(L.R2, _tags=["blind-lab"], _site="lab-a"), dict(L.R6, _site="lab-a")])
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+    for name, doc, why in (
+            ("network.yml", {"domain_name": "corp.example", "ntp_servers": ["192.0.2.123"]},
+             "network: the domain and the NTP server"),
+            ("site-lab-a.yml", {"snmp": {"settings": ["location lab-a"]}},
+             "site lab-a: its location"),
+            ("tag-blind-lab.yml", {"users": [{"name": "lab", "privilege": 15,
+                                              "secret_kind": "secret",
+                                              "secret_ref": "user_lab_secret"}]},
+             "tag blind-lab: the temporary lab account")):
+        os.makedirs(os.path.join(lab["repo"], "layers"), exist_ok=True)
+        with open(os.path.join(lab["repo"], "layers", name), "w", encoding="utf-8") as fh:
+            fh.write(yaml.safe_dump(doc))
+        for args in (("add", "--", f"layers/{name}"), ("commit", "-q", "-m", why)):
+            subprocess.run(["git", "-C", lab["repo"], *args], check=True, env=env,
+                           capture_output=True)
+    states = [("view", "window.scrollTo(0, 0)", "!!document.querySelector('[data-chosen]')")]
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _d_walk("intent-layers", served, "/v2/intent?list=Lab&layer=tag-blind-lab", states,
+                boards=(("FleetChanges.dc.html", 1440),))
+
+
 def test_tab_intent_words(tmp_path, monkeypatch):
     """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
     tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row

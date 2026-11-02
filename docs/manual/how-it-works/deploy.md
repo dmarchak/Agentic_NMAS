@@ -31,7 +31,9 @@ the server answers from git and the credential store. Planning opens no device s
    computed against; a golden nothing committed, or one committed without a `Source:`
    trailer, refuses the plan by name.
 2. **Render intent.** Read: committed intent (`host_vars/<device>.yml` at HEAD), the network's
-   monitoring profile (merged in, the device's own value winning), the template the device is
+   committed intent layers the device takes (network, site, role, tag, merged under it; see
+   [Intent (layers)](intent-layers)), the network's monitoring profile (merged in under both,
+   the device's own value winning), the template the device is
    bound to in the network's library and that template's approval record, and the secrets
    intent names, from the credential store into memory only. Sent: nothing. Recorded: nothing.
    A device with no committed intent, or only onboarding's bootstrap intent, is refused here,
@@ -46,11 +48,13 @@ the server answers from git and the credential store. Planning opens no device s
    measured; then any removals you selected ([Mode B](removal)), last. This exact list, byte
    for byte, is what will be sent.
 4. **Attribute every line.** Read: the previous committed intent, rendered against the same
-   golden, and the device's own intent rendered without the profile. Sent: nothing. Recorded:
-   nothing. Each line is labelled from your edit, already pending before it (something on the
-   device drifted since the last capture, or an earlier edit was never deployed), or from the
-   monitoring profile, because merge-only sends every missing line and you should see what
-   rides along.
+   golden; the device's own intent rendered alone; and, for each intent layer it takes, its
+   own intent rendered with the layers up to that one, and the commit that last changed each
+   layer's file. Sent: nothing. Recorded: nothing. Each line is labelled from your edit,
+   already pending before it (something on the device drifted since the last capture, or an
+   earlier edit was never deployed), from an intent layer (named, with its commit: the first
+   layer whose render sends the line), or from the monitoring profile, because merge-only
+   sends every missing line and you should see what rides along.
 5. **Check the gates.** Read: the template's approval, the render's report, the receipts (how
    often each flagged line was authorised on this device before), the rolled-back record and
    the device lock. Sent: nothing. Recorded: nothing. Each gate is drawn by name: template

@@ -544,7 +544,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_deploy.html c.authorised": _RESULT,
     "v2/_deploy.html c.checks": _RESULT,
     "v2/_deploy.html c.did_not": _RESULT,
-    "v2/_deploy.html c.failing": _FAILING,
     "v2/_deploy.html dx.declared": _DEPLOY_DECLARED,
     "v2/_deploy.html dx.ends": _DEPLOY_DECLARED,
     "v2/_deploy.html dx.moves": _DEPLOY_DECLARED,
@@ -879,7 +878,9 @@ EMPTY_IN_FIXTURE = {
 #: on Topology (C1910, 2026-10-27): a new loop of a map the walk never reaches (it stores no
 #: topology value); a provider storing one was tried and draws the map, exposing 30 fields the
 #: map carries and draws nowhere, a finding of its own, so the loop is declared with the rest.
-EMPTY_IN_FIXTURE_CEILING = 366
+#: 365 with board FC's layer provenance (C2283, 2026-11-02): its provider gives r3's Deploy…
+#: card a line to send, so the card's failing gates draw.
+EMPTY_IN_FIXTURE_CEILING = 365
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

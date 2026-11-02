@@ -663,6 +663,40 @@ def _reload_effects(client, _lab, _mp):
         mp.undo()
 
 
+def _deploy_layer_lines(client, _lab, _mp):
+    """r3's Deploy… card with an inherited line a committed intent layer supplies (board FC,
+    22.1 (6), C2283): the preview the card is built from is given an attribution note carrying
+    a layer's group, in `preview_confirm`'s shape, planted for this provider alone, then
+    undone."""
+    import pytest
+
+    from modules import device_actions
+
+    mp = pytest.MonkeyPatch()
+    real = device_actions.deploy_card
+
+    def card(ref, host, entry, preview, *a, **kw):
+        for t in preview.get("targets") or []:
+            program = t.setdefault("program", {})
+            # The card draws its notes beside the lines it sends; r3 sends none here.
+            program["lines"] = list(program.get("lines") or []) or ["ntp server 192.0.2.123"]
+            program["notes"] = list(program.get("notes") or []) + [{
+                "title": "Where the added lines come from", "intent_commit": "",
+                "intent_subject": "", "note": "", "from_profile": [],
+                "from_layers": [{"label": "tag blind-lab", "sha": "5a1e2f0" + "0" * 33,
+                                 "subject": "layer tag-blind-lab.yml",
+                                 "lines": ["ntp server 192.0.2.123"]}],
+                "from_this_edit": [], "pre_existing": []}]
+        return real(ref, host, entry, preview, *a, **kw)
+    try:
+        mp.setattr(device_actions, "deploy_card", card)
+        r = client.get("/v2/device/r3/deploy")
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and 'data-attribution-group="layer"' in html, html[:400]
+    finally:
+        mp.undo()
+
+
 def _intent_layers_from(client, _lab, _mp):
     """r3's Intent tab with two committed layers it takes (board FC3, C2283): the network layer
     and a tag layer its row names, read by the real merge and provenance; the layer files, the
@@ -686,6 +720,38 @@ def _intent_layers_from(client, _lab, _mp):
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and '<tr data-from="tag blind-lab"><td>users › lab</td>' \
             in html, html[:400]
+    finally:
+        mp.undo()
+
+
+def _intent_layers_page(client, _lab, _mp):
+    """Source of Truth › Intent with three committed layers (board FC2, C2283): the network
+    layer's domain, which r3's own overrides; tag blind-lab's account and its secret reference;
+    and tag other disagreeing with blind-lab on the banner for r3, which carries both. The layer
+    files, the rows' tags and the layer commit are planted for this provider alone, then
+    undone."""
+    import pytest
+
+    from modules.nsot import intent_layers as L
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(L, "read_layers", lambda repo, ref="HEAD": [
+            ("network", "", "network", {"domain_name": "corp.example"}),
+            ("tag", "blind-lab", "tag blind-lab",
+             {"banner_motd": "a", "users": [{"name": "lab", "privilege": 15,
+                                             "secret_ref": "user_lab_secret"}]}),
+            ("tag", "other", "tag other", {"banner_motd": "b"})])
+        mp.setattr(L, "last_change", lambda repo, rel, ref: {"sha": "5a1e2f0" + "0" * 33,
+                                                            "subject": f"layer {rel}"})
+        mp.setattr("modules.nsot.restore._devices_of", lambda ln: [
+            {"hostname": "r3", "_tags": ["blind-lab", "other"]}, {"hostname": "r4"}])
+        for layer, drawn in (("network", "<td>domain_name</td>"),
+                             ("tag-blind-lab", "<code>user_lab_secret</code>")):
+            r = client.get(f"/v2/intent?list=Lab&layer={layer}")
+            html = r.get_data(as_text=True)
+            assert r.status_code == 200 and drawn in html and "data-layers-conflict" in html, \
+                html[:400]
     finally:
         mp.undo()
 
@@ -2509,7 +2575,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
-                   _intent_layers_from,
+                   _intent_layers_from, _intent_layers_page, _deploy_layer_lines,
                    _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

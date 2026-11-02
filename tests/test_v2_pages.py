@@ -280,11 +280,12 @@ class TestTheLanding:
 
 #: The sidebar, top to bottom: NSOT_STAGE7_PLAN.md acceptance criterion 10 (signed off
 #: 2026-09-30), as the operator has moved it since: Topology joined OBSERVE (P.11), DHCP moved
-#: to SOURCE OF TRUTH after NetBox (C529, 2026-10-06), Show commands joined OBSERVE. "—" is the
-#: rule above Help and Settings at the bottom.
+#: to SOURCE OF TRUTH after NetBox (C529, 2026-10-06), Show commands joined OBSERVE, Intent leads
+#: SOURCE OF TRUTH (board FC's FC2, C2283, 2026-11-02). "—" is the rule above Help and Settings
+#: at the bottom.
 SIDEBAR = ("Needs attention", "Devices", "History",
            "OBSERVE", "Monitoring", "Topology", "SDN", "Show commands", "Logs",
-           "SOURCE OF TRUTH", "Templates", "NetBox", "DHCP", "Credentials",
+           "SOURCE OF TRUTH", "Intent", "Templates", "NetBox", "DHCP", "Credentials",
            "—", "Help", "Settings")
 
 _SIDEBAR_PART = re.compile(r'<div class="nav-head">([^<]+)</div>'

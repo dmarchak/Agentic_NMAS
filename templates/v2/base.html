@@ -60,6 +60,9 @@
       board C); Mercury's own log stays in Settings › Installation › Diagnostics. -#}
   <a class="nav-item{% if active_nav == 'logs' %} active{% endif %}" href="{{ url_for('logs_v2.page') }}"{% if active_nav == 'logs' %} aria-current="page"{% endif %}>{{ icon('logs') }}<span>Logs</span></a>
   <div class="nav-head">SOURCE OF TRUTH</div>
+  {#- Board FC's FC2 (C2283): the network's intent layers, first under Source of Truth as the
+      board draws it. -#}
+  <a class="nav-item{% if active_nav == 'intent' %} active{% endif %}" href="{{ url_for('intent_layers_v2.page') }}"{% if active_nav == 'intent' %} aria-current="page"{% endif %}>{{ icon('intent') }}<span>Intent</span></a>
   <a class="nav-item{% if active_nav == 'templates' %} active{% endif %}" href="{{ url_for('templates_v2.page') }}"{% if active_nav == 'templates' %} aria-current="page"{% endif %}>{{ icon('templates') }}<span>Templates</span></a>
   <a class="nav-item{% if active_nav == 'netbox' %} active{% endif %}" href="{{ url_for('netbox_v2.page') }}"{% if active_nav == 'netbox' %} aria-current="page"{% endif %}>{{ icon('netbox') }}<span>NetBox</span></a>
   {#- C529: DHCP moved from OBSERVE to SOURCE OF TRUTH, after NetBox (the operator, 2026-10-06):

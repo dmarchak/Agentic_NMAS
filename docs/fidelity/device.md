@@ -71,7 +71,17 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `885cd8a00e19bcc08e199e20fd50844260128eb71bf863c0e0f11462cdaa6433`
+Templates sha256: `835af3d490d19c0f3fad66a24769261a067892ff9224cdb6148d21e1430f81b5`
+
+Compared again 2026-11-02 (C2283, board FC's 22.1 (6)), by the template: the deploy preview's
+"Where the added lines come from" (`_attribution.html`, C867's, which no deploy board draws)
+gains a group per committed intent layer the device takes, "From the intent layer tag
+blind-lab (<commit>): N line(s)", above the monitoring profile's, each layer's lines measured
+by the render, never guessed (tests/test_deploy_layer_provenance.py). Board FC4 names the layer
+on each line ("from tag blind-lab, layer commit 5a1e2f0"); a group a layer is the same
+information in the shape the profile's lines already take. With no layer nothing is drawn, so
+no region's verdict moved. Templates sha256 before:
+`885cd8a00e19bcc08e199e20fd50844260128eb71bf863c0e0f11462cdaa6433`.
 
 Compared again 2026-11-02 (C2268, PHASE8_PLAN 21), by the template: the Actions menu's wrapper
 binds `data-editing` to whether it is open, so a live redraw is held while a person has it open

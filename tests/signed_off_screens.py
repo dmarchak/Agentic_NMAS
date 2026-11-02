@@ -101,6 +101,12 @@ SIGNED_OFF = {
                                           "device'), signed off with A and B on canvas v31 "
                                           "(NSOT_STAGE7_PLAN 15.5 to 15.9); built 2026-10-10 "
                                           "(C652), at its board's home since C667"),
+    "intent_layers.html": ("2026-11-01", "board FC's FC2 (FleetChanges.dc.html, Source of "
+                                         "Truth › Intent, a new sidebar item), approved with "
+                                         "changes by the operator 2026-11-01 (C2283): the "
+                                         "network's layers and the chosen one's values, read-"
+                                         "only in phase 1; its writes are phase 2's "
+                                         "(STANDING_APPROVAL_LOG, 2026-11-02)"),
     "templates.html": ("2026-10-05", "7.6's Templates, boards A to C (canvas v47, page '7.6 "
                                      "Source of truth, Templates'), signed off 2026-10-05: the "
                                      "network's configuration templates with their approvals "

@@ -503,6 +503,7 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                           "intent_subject": a.get("intent_subject", ""),
                           "note": a.get("note", ""),
                           "from_profile": a.get("from_profile") or [],
+                          "from_layers": a.get("from_layers") or [],
                           "from_this_edit": a.get("from_this_edit") or [],
                           "pre_existing": a.get("pre_existing") or []})
         removing = {u["line"].strip() for u in ((d.get("removals") or {}).get("removed") or [])}

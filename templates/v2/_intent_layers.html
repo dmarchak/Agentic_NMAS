@@ -1,0 +1,69 @@
+{%- from "v2/_macros.html" import icon, info -%}
+{#- FC2's region (C2283): the layers on the left, the chosen one's values on the right, every
+    same-rank conflict above both. Re-read when intent is committed. Read-only in phase 1:
+    Add a layer…, Edit…, Remove…, Add a value… and Plan this layer's change… are phase 2's. -#}
+{%- set chosen = v.chosen if v else None %}
+<section class="il" id="intent-layers" hx-get="{{ url_for('intent_layers_v2.region', list=list_name, layer=chosen.key if chosen else '') }}"
+         hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+{%- if not known %}
+<div class="notice notice-warn">{{ icon('warn') }}<p>No network is named {{ list_name }}: there are no layers to show. Nothing was read and nothing was created.</p></div>
+{%- elif v.error %}
+<div class="notice notice-danger" data-layers-error>{{ icon('warn') }}<p>{{ list_name }}'s intent layers cannot be read, so no device of it renders until they can: {{ v.error }}.</p></div>
+{%- elif not v.layers %}
+<div class="card il-empty" data-layers-none>
+  <p><strong>{{ list_name }} has no intent layers:</strong> every device's intent is its own.</p>
+  <p class="muted">A layer holds values several devices share (an account, an NTP server, a banner), for the whole network or for a NetBox site, role or tag. It is one file in the intent repository (<code>layers/network.yml</code>, <code>layers/tag-&lt;slug&gt;.yml</code>), committed as intent is. Adding one from here comes with fleet changes' plan.</p>
+</div>
+{%- else %}
+{%- if v.inventory_error %}
+<div class="notice notice-danger" data-inventory-error>{{ icon('warn') }}<p>The inventory could not be read ({{ v.inventory_error }}), so no device is counted in any layer: no group is taken from an earlier read.</p></div>
+{%- endif %}
+{%- if v.intent_error %}
+<div class="notice notice-warn">{{ icon('warn') }}<p>Some committed intent could not be read: {{ v.intent_error }}.</p></div>
+{%- endif %}
+{%- if v.conflicts %}
+<div class="notice notice-danger" data-layers-conflict>{{ icon('warn') }}<div>
+  <p><strong>{{ v.conflicts | length }} value{{ 's' if v.conflicts | length != 1 }} two layers of one rank set differently.</strong> Nothing picks between them: the devices below render nothing until one layer changes.</p>
+  <ul>{% for c in v.conflicts %}<li>{{ c.path }}: {% for label, value in c.layers %}{{ label }} says <code>{{ value }}</code>{% if not loop.last %} and {% endif %}{% endfor %} · {{ c.devices | join(', ') }}</li>{% endfor %}</ul>
+</div></div>
+{%- endif %}
+<div class="il-grid">
+  <nav class="card il-list" aria-label="Layers">
+    {%- for l in v.layers %}
+    <a class="il-item{{ ' on' if chosen and l.key == chosen.key }}" href="{{ url_for('intent_layers_v2.page', list=list_name, layer=l.key) }}"{% if chosen and l.key == chosen.key %} aria-current="true"{% endif %} data-layer="{{ l.key }}">
+      <span><span class="muted">{{ l.rank | capitalize }}</span> {{ l.slug or 'default' }}</span>
+      <span class="muted">{{ l.devices | length }} device{{ 's' if l.devices | length != 1 }} · {{ l.count }} value{{ 's' if l.count != 1 }}</span></a>
+    {%- endfor %}
+    <p class="muted il-note">Groups come from the inventory (NetBox's sites, roles and tags), read with it. Values live in the intent repository, one file a layer, committed as intent is.</p>
+  </nav>
+  {%- if chosen %}
+  <div class="card il-detail" data-chosen="{{ chosen.key }}">
+    <div class="card-head"><h2>{{ chosen.rank | capitalize }} {{ chosen.slug or 'default' }}</h2></div>
+    <p class="muted">{% if chosen.rank == 'network' %}Every device of {{ list_name }}{% else %}The inventory's {{ chosen.rank }} <code>{{ chosen.slug }}</code>{% endif %} · {{ chosen.devices | length }} device{{ 's' if chosen.devices | length != 1 }}
+      {%- if chosen.devices and chosen.devices | length <= 12 %}: {{ chosen.devices | join(', ') }}{% endif %}
+      · <code title="{{ chosen.file }}, last changed by {{ (chosen.sha or '')[:10] }} {{ chosen.subject }}">{{ chosen.file }}</code> last changed by <code>{{ (chosen.sha or '')[:10] }}</code> {{ chosen.subject }}</p>
+    {%- if chosen.devices | length > 12 %}
+    <details class="il-devices" data-keep="il-devices-{{ chosen.key }}"><summary>The {{ chosen.devices | length }} devices</summary><p>{{ chosen.devices | join(', ') }}</p></details>
+    {%- endif %}
+    {%- if chosen.rows %}
+    <table class="table il-values">
+      <thead><tr><th>Path</th><th>Value</th><th>Devices it reaches</th></tr></thead>
+      <tbody>
+      {%- for r in chosen.rows %}
+      <tr><td>{{ r.path }}</td><td><code>{{ r.value }}</code></td>
+        <td>{{ r.takes | length }}{% if not r.over %} <span class="muted">(none overrides it)</span>{% else %} <span class="muted">({% for host, by in r.over %}{{ host }}: {{ by }}{% if not loop.last %}, {% endif %}{% endfor %} override{{ 's' if r.over | length == 1 }} it)</span>{% endif %}</td></tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+    {%- else %}
+    <p class="muted">This layer sets no value.</p>
+    {%- endif %}
+    {%- if chosen.refs %}
+    <p class="il-refs">Secret references this layer names: {% for ref, why in chosen.refs %}<code>{{ ref }}</code> <span class="muted">({{ why }})</span>{% if not loop.last %} · {% endif %}{% endfor %}. A layer names references only, never a value: a value is held per device, set on its Intent tab's Secret references, which does not yet offer a reference only a layer names.</p>
+    {%- endif %}
+    <p class="muted">Precedence: network, site, role, tag, then the device. Two layers of one rank setting one value differently are refused, naming both; nothing picks between them.</p>
+  </div>
+  {%- endif %}
+</div>
+{%- endif %}
+</section>

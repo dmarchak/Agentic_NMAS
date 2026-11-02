@@ -253,37 +253,59 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
 
 def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: list,
                    result: dict) -> dict:
-    """``from_profile``: the lines sent only because the network's monitoring
-    profile (P.9) supplies them, measured as the lines the device's OWN
-    intent, rendered alone, would not send. They leave the other two groups,
-    so no inherited line is ever called "from this edit". No profile, or
-    none that applies, is ``[]``."""
-    from modules.nsot import hostvars, profile as _profile, roundtrip
+    """The lines sent only because something under the device's own intent supplies them,
+    measured as the lines its OWN intent, rendered alone, would not send, then told apart:
+    ``from_layers`` (board FC, 22.1 (6); C2283), ``[{"label", "sha", "lines"}]`` in rank
+    order, each line given to the first committed intent layer whose cumulative render (the
+    layers up to it, the device's own on top) sends it; ``from_profile``, the rest, which only
+    the network's monitoring profile (P.9) supplies. They leave the other two groups, so no
+    inherited line is ever called "from this edit". No layer and no profile is ``[]`` each."""
+    from modules.nsot import hostvars, intent_layers, profile as _profile, roundtrip
     from modules.nsot.deploy import merge_diff
 
-    result["from_profile"] = []
+    result["from_profile"], result["from_layers"] = [], []
     try:
         list_name = hostvars.list_name_for_repo(repo)
         doc = _profile.read_for(list_name, repo)["doc"]             # inherited where none (K11)
         own = hostvars.read_committed(repo, hostname)
-        if not doc or own is None:
+        layers = intent_layers.read_layers(repo) if own is not None else []
+        chosen = (sorted(intent_layers.applicable(layers, _profile._row_of(list_name, hostname)),
+                         key=lambda c: intent_layers.RANKS.index(c[0])) if layers else [])
+        if (not doc and not chosen) or own is None:
             return result
-        if _profile.effective_for(repo, list_name, hostname, own, artifact.platform, doc=doc) == own:
+        if _profile.effective_for(repo, list_name, hostname, own, artifact.platform,
+                                  doc=doc) == own:
             return result
         render_kwargs = {"template_name": (artifact.template or "base.j2").split("/")[-1]}
         if getattr(artifact, "template_root", ""):
             render_kwargs["template_root"] = artifact.template_root
-        alone = roundtrip.render(hostvars.hydrate_secrets(own, hostname, list_name),
-                                 artifact.platform, **render_kwargs)
+        # The device's own intent alone, then each layer's lines: the first cumulative render
+        # that sends them (a layer per render, a handful a device; the merge is the chain's
+        # own, so what renders here is what the deploy rendered).
+        intents = [own] + [intent_layers.merge(chosen[:k + 1], own)["doc"]
+                           for k in range(len(chosen))]
+        renders = [set(merge_diff(roundtrip.render(
+                    hostvars.hydrate_secrets(i, hostname, list_name), artifact.platform,
+                    **render_kwargs), captured)["to_add"]) for i in intents]
+        own_add = renders[0]
+        steps = [(label, s) for (_rank, label, _doc), s in zip(chosen, renders[1:])]
     except Exception as exc:                  # noqa: BLE001
-        log.warning("deploy: the profile's lines could not be told apart for %s: %s",
+        log.warning("deploy: the inherited lines could not be told apart for %s: %s",
                     hostname, exc)
         result["note"] = ((result.get("note") + "; ") if result.get("note") else "") + \
-            f"the profile's lines could not be told apart: {exc}"
+            f"the inherited lines could not be told apart: {exc}"
         return result
-    own_add = set(merge_diff(alone, captured)["to_add"])
     inherited = [l for l in to_add if l not in own_add]
-    result["from_profile"] = inherited
+    given = set()
+    for label, sent in steps:
+        lines = [l for l in inherited if l in sent and l not in given]
+        given.update(lines)
+        if lines:
+            rank, slug = next((r, s) for r, s, lab, _d in layers if lab == label)
+            change = intent_layers.last_change(repo, intent_layers.layer_file(rank, slug), "HEAD")
+            result["from_layers"].append({"label": label, "sha": change["sha"],
+                                          "subject": change["subject"], "lines": lines})
+    result["from_profile"] = [l for l in inherited if l not in given]
     result["from_this_edit"] = [l for l in result["from_this_edit"] if l not in inherited]
     result["pre_existing"] = [l for l in result["pre_existing"] if l not in inherited]
     return result

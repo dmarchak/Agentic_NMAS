@@ -121,6 +121,7 @@ PAGES = (
     ("show-commands-screen", "Show commands", "Screens", "screens/show-commands.md"),
     ("logs", "Logs", "Screens", "screens/logs.md"),
     ("dhcp", "DHCP", "Screens", "screens/dhcp.md"),
+    ("intent-layers", "Intent (layers)", "Screens", "screens/intent-layers.md"),
     ("templates", "Templates", "Screens", "screens/templates.md"),
     ("netbox", "NetBox", "Screens", "screens/netbox.md"),
     ("credentials", "Credentials", "Screens", "screens/credentials.md"),
@@ -146,7 +147,7 @@ ON_TODAYS_APP = frozenset()
 #: Screens page it opens.
 SCREENS = {
     "Needs attention": "needs-attention", "Devices": "devices", "History": "history",
-    "Monitoring": "monitoring", "Topology": "topology", "SDN": "sdn", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Templates": "templates",
+    "Monitoring": "monitoring", "Topology": "topology", "SDN": "sdn", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Intent": "intent-layers", "Templates": "templates",
     "NetBox": "netbox", "Credentials": "credentials", "Help": "help", "Settings": "settings",
 }
 

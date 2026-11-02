@@ -616,6 +616,7 @@ def _deploy_notes(program: dict) -> list:
                         intent_subject=n.get("intent_subject") or "",
                         note=n.get("note") or "",
                         from_profile=list(n.get("from_profile") or []),
+                        from_layers=list(n.get("from_layers") or []),
                         from_this_edit=list(n.get("from_this_edit") or []),
                         pre_existing=list(n.get("pre_existing") or []))
         out.append(note)

@@ -4546,4 +4546,12 @@ names the layers it takes, each with its file's last commit, and a Path, Value, 
 every value a layer supplies and each of the device's own that overrides one
 (`intent_layers.provenance`, tests/test_intent_from_column.py); its row actions wait for phase
 2, its links for FC2 (STANDING_APPROVAL_LOG); found while comparing: the Secret references card
-reads only the device's own document (C2299). Next: FC2, Source of Truth › Intent.
+reads only the device's own document (C2299). (c)'s FC2, the same day: Source of Truth › Intent,
+a new sidebar item, read-only (the layers with their reach, the chosen one's values with who
+overrides each, its references, its file's commit, every same-rank conflict; every device's
+intent in two reads; tests/test_intent_layers_page.py, docs/fidelity/intent-layers.md).
+Provenance on deploy previews (22.1 (6)), closing phase 1: the preview's inherited lines are
+told apart by the render, each committed layer's group (the first cumulative render that sends
+a line) with its commit, then the profile's (routes/deploy.py `_split_profile`,
+tests/test_deploy_layer_provenance.py; C2301, a layer's line read as the profile's, closed).
+**Phase 1 is built.** Next: phase 2, the plan and the run.

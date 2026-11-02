@@ -10,6 +10,12 @@
 <p class="op-wait">{{ n.title }}</p>
 {%- if n.intent_commit %}<p class="muted small" data-attribution-edit>This edit: <code>{{ n.intent_commit[:8] }}</code> {{ n.intent_subject }}</p>{% endif %}
 {%- if n.note %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ n.note[0] | upper }}{{ n.note[1:] }}{{ '' if n.note.endswith('.') else '.' }}</p></div>{% endif %}
+{%- for l in n.from_layers or [] %}
+{#- Board FC (22.1 (6), C2283): each committed intent layer's lines apart, naming the layer and
+    the commit that last changed its file. -#}
+<div data-attribution-group="layer" data-layer="{{ l.label }}"><p>From the intent layer {{ l.label }} (<code title="{{ l.subject }}">{{ (l.sha or '')[:10] }}</code>): <strong>{{ l.lines | length }}</strong> line(s)</p>
+  <pre class="op-diff">{{ l.lines | join('\n') }}</pre></div>
+{%- endfor %}
 {%- if n.from_profile %}
 <div data-attribution-group="profile"><p>Inherited from the network's monitoring profile: <strong>{{ n.from_profile | length }}</strong> line(s)</p>
   <pre class="op-diff">{{ n.from_profile | join('\n') }}</pre></div>

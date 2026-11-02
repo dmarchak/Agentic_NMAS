@@ -42,6 +42,7 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            # and the batch Apply W1 ran (steps 16 to 18) and its records left out, each compared
            # with its boards from those sittings' captures.
            "netbox.html": "netbox.md", "templates.html": "templates.md",
+           "intent_layers.html": "intent-layers.md",
            "settings.html": "settings.md", "apply.html": "apply.md", "tab:logs": "tab-logs.md",
            # C650: three of the four screens W4 (2026-10-17) touched, compared with their boards
            # from local board shots and read beside W4's captures (2026-10-18); About waits on
