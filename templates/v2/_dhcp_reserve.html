@@ -12,7 +12,7 @@
 {%- set verb = {'add': 'Reserve', 'edit': 'Change', 'remove': 'Remove'}[s.op] if s.op in ('add', 'edit', 'remove') else 'Reserve' -%}
 {%- if op.state == 'done' %}
 {%- set r = op.result %}
-<section class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+<section class="op-card op-ok" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{{ name }}'s reservation {{ r.outcome }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-reservation') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
@@ -23,7 +23,7 @@
     <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ op.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/reservations.yml</span>. In History.</p></div></div>
 </section>
 {%- else %}
-<section class="op-card{{ ' op-danger' if op.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+<section class="op-card{{ ' op-danger' if op.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'edit' %}Edit a reservation{% elif s.op == 'remove' %}Remove a reservation{% else %}Reserve an address{% endif %}</h2>
     <div class="op-hd-actions">{{ how('dhcp-reservation') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if op.state == 'refused' %}

@@ -11,7 +11,7 @@
 {%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'exc'}) -%}
 {%- if xop.state == 'done' %}
 {%- set r = xop.result %}
-<div class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+<div class="op-card op-ok" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{{ p.title }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-exclusion') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
@@ -21,7 +21,7 @@
     <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ xop.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
 </div>
 {%- else %}
-<div class="op-card{{ ' op-danger' if xop.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+<div class="op-card{{ ' op-danger' if xop.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'remove' %}Remove an exclusion{% else %}Add an exclusion{% endif %}</h2>
     <div class="op-hd-actions">{{ how('dhcp-exclusion') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if xop.state == 'refused' %}

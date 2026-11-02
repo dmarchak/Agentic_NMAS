@@ -6,6 +6,9 @@
 <a class="{{ cls }}" href="{{ url_for('dhcp_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('dhcp_v2.region') }}{{ g.qs(over) }}" hx-target="#dhcp" hx-swap="outerHTML" hx-push-url="{{ url_for('dhcp_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
 {%- macro ident(by, value) -%}{% if by and by != 'MAC' %}{{ by }} {% endif %}{{ value or '–' }}{%- endmacro -%}
+{#- C2268 (PHASE8_PLAN 21): a change's card (#dh-op: its preview, refusal or result, drawn by
+    the person's own request) carries `data-holds-live`, so an `nmas:dhcp` redraw, which cannot
+    draw it again, is held with "Paused while you review this" and Show it now (C2001's rule). -#}
 <div id="dhcp" class="dh" hx-get="{{ url_for('dhcp_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:dhcp from:body" hx-swap="outerHTML">
 <div class="dh-head">
   <h1>DHCP {{ info('dhcp') }} <span class="chip dh-net">network: {{ g.list }}</span></h1>

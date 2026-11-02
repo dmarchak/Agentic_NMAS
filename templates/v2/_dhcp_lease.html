@@ -11,7 +11,7 @@
 {%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'lea'}) -%}
 {%- if lop.state == 'done' %}
 {%- set r = lop.result %}
-<div class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+<div class="op-card op-ok" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{{ p.title }} {{ badge('released', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-lease-release') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
@@ -21,7 +21,7 @@
     <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ lop.actor }}, your reason in its body, in <span class="mono">dhcp/released-leases.yml</span>. In History.</p></div></div>
 </div>
 {%- else %}
-<div class="op-card{{ ' op-danger' if lop.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+<div class="op-card{{ ' op-danger' if lop.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">
   <div class="op-hd"><h2 id="dh-op-h">{{ p.title if p and p.title else 'Release a lease' }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-lease-release') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if lop.state == 'refused' %}
