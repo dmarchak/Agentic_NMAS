@@ -42,7 +42,10 @@ Compared again 2026-10-28 ~11:2x UTC, for base.html alone: the AI chip's mark re
 and its details given `data-keep="ai-spend"` (C472's rule). The shots taken again
 (in-progress-*, ai-chip-*), nothing in In progress moved.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `5ed96ad348b4c6d7f319f90d6f982562d811dfa23a6d83772e46ae0fa364d263`
+Templates sha256: `a8f93ae1dc59e0c4e84b8504fe0947e0b0283f307c40fc966d9ff289c9adf451`
+(2026-11-02, C2268: `base.html`'s AI spend panel also listens for `nmas:ai_spend`, its re-read on
+a recorded call, so the page-wide hold applies to it; nothing drawn changed. Before:
+`5ed96ad348b4c6d7f319f90d6f982562d811dfa23a6d83772e46ae0fa364d263`.)
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or

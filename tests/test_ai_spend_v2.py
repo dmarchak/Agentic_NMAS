@@ -109,7 +109,9 @@ def test_every_page_carries_the_chip_and_its_panel(spend, page):
     assert re.sub(r"<[^>]+>", "", first).strip() == "AIreading spend……"
     panel = re.search(r'<div class="menu ai-menu card"[^>]*id="nmas-ai-panel"[^>]*>', html).group(0)
     assert re.search(rf'hx-get="{PANEL}(\?list=[^"]*)?"', panel), panel
-    assert 'hx-trigger="nmas-ai-open"' in panel, panel
+    # A person's open reads at once; a recorded call's re-read is a live redraw, `nmas:`, so
+    # the page-wide hold applies to it (C2268).
+    assert 'hx-trigger="nmas-ai-open, nmas:ai_spend"' in panel, panel
 
 
 def test_the_chip_and_the_panel_are_read_by_their_keys_never_by_a_timer():

@@ -71,7 +71,13 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `3516941bcca531f4e8129aef428c8165fa4afb64513f3d9fb1fe9ffcfeb6bb31`
+Templates sha256: `885cd8a00e19bcc08e199e20fd50844260128eb71bf863c0e0f11462cdaa6433`
+
+Compared again 2026-11-02 (C2268, PHASE8_PLAN 21), by the template: the Actions menu's wrapper
+binds `data-editing` to whether it is open, so a live redraw is held while a person has it open
+and happens once it closes (tests/test_live_refresh_holds.py, in a real browser). Nothing drawn
+changed; no region's verdict moved. Templates sha256 before:
+`3516941bcca531f4e8129aef428c8165fa4afb64513f3d9fb1fe9ffcfeb6bb31`.
 
 Compared again 2026-11-02 (board PS, C2274, part 1) after `_status.html` drew the planned state
 (`modules/planned_state.py`): under a running operation, "Reloading · by … · step 4 of 6 (wait) ·

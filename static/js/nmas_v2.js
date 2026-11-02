@@ -404,10 +404,14 @@
      opens, and again on each recorded call (`ai_calls`) while it is open: never while it is
      closed (every page carries it) and never on a timer. A Turn off pressed in it is answered
      in it, and its `settings` re-reads the chip alone, so the answer stays to be read. */
-  function aiSpendPanel() {
+  /* Opened by a person, it reads at once (`nmas-ai-open`); re-read on a recorded call while
+     open, it is a live redraw (`nmas:ai_spend`), which the page-wide hold keeps from replacing
+     what a person is typing in it (C2268: with no `nmas:` prefix the hold never applied). */
+  function aiSpendPanel(e) {
     var doc = root.document, d = doc.getElementById('ai-spend');
     var panel = d && d.open ? doc.getElementById('nmas-ai-panel') : null;
-    if (panel && root.htmx) root.htmx.trigger(panel, 'nmas-ai-open');
+    var live = !!(e && typeof e.type === 'string' && e.type.indexOf('nmas:') === 0);
+    if (panel && root.htmx) root.htmx.trigger(panel, live ? 'nmas:ai_spend' : 'nmas-ai-open');
     return !!panel;
   }
   function aiSpendToggled(e) {

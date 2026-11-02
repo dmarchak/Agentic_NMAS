@@ -104,7 +104,7 @@
         `aiSpendPanel`); Esc or the chip closes it. -#}
     <details class="ai-spend menu-wrap" id="ai-spend" data-keep="ai-spend">
       <summary id="nmas-ai" aria-haspopup="dialog" hx-get="{{ url_for('v2.ai_chip') }}" hx-trigger="load, nmas:ai_calls from:body, nmas:settings from:body" hx-swap="innerHTML"><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">reading spend…</span><span class="ai-short" aria-hidden="true">…</span></span></summary>
-      <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
+      <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open, nmas:ai_spend" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
     </details>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">

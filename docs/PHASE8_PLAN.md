@@ -4481,4 +4481,5 @@ clearing until a refresh, the stale "Firing · N" count (C2251), C2003, C2217, C
 busiest first (Actions menu, Monitoring › Alerts, History's timeline, SDN, DHCP). Built: (5)'s
 error path, 2026-11-01 (C2267: an error answering a live redraw keeps the region, says
 "Couldn't load" and keeps its listener); a store that cannot be read is still drawn in place of
-its rows. The rest is not built.
+its rows. Built 2026-11-02: the device page's Actions menu holds a redraw while open
+(tests/test_live_refresh_holds.py). The rest is not built.

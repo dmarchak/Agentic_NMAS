@@ -3,7 +3,10 @@
     offers (Revert and Retry only while a rollback block stands) is read when it is drawn,
     and the page re-reads it on every key that changes that (`device.html`'s container), so
     a row appears or greys without a reload. `routes/device_v2.actions_menu`. -#}
-  <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close" x-on:nmas-close-menu="close">
+  {#- C2268 (PHASE8_PLAN 21): an open menu is a person working in the region, so the page-wide
+      hold (nmas_v2.js `editingIn`) keeps a live redraw from closing it; closed, the held
+      redraw happens at once. -#}
+  <div class="menu-wrap" x-data="menu" x-bind:data-editing="isOpen ? 'true' : 'false'" x-on:keydown.escape="close" x-on:click.outside="close" x-on:nmas-close-menu="close">
     <button type="button" class="btn btn-primary" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
     <div class="menu" role="menu" x-show="isOpen" x-cloak>
       <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.</p>
