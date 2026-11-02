@@ -10,7 +10,7 @@
       <div><dt>Answering</dt><dd>
         {%- if answer.state == 'unknown' %}not probed yet <span class="muted">({{ answer.why }})</span>
         {%- else %}{{ answer.text }}{% if answer.since %}, since {{ stamp(answer.since) }}{% endif %}
-        <span class="muted">· last probe {{ answer.last_result }}, {{ stamp(answer.checked_at) }}</span>{% endif -%}
+        {%- if answer.last_result %} <span class="muted">· last probe {{ answer.last_result }}, {{ stamp(answer.checked_at) }}</span>{% endif %}{% endif -%}
       </dd></div>
       <div><dt>Committed intent</dt><dd>
         {%- if records.intent %}<span class="mono">{{ records.intent.sha }}</span>, {{ stamp(records.intent.at) }}

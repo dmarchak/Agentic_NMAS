@@ -20,7 +20,12 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `110d8299643e1b3cc3a56c1481354e63f81695b7bc515f85dee0edcbd400604c`
+Templates sha256: `7b314ecadcf851d85bb1abafb3d3b80f90f5a142fa6374ae78dd59b6d4cac273`
+
+Compared again 2026-11-02 (C2003), by the template diff: `_timeline.html`'s kind table gains
+`stall`; a device's History never draws one (a stall is a page's, not a device's), so nothing
+this tab draws moved. Templates sha256 before:
+`110d8299643e1b3cc3a56c1481354e63f81695b7bc515f85dee0edcbd400604c`.
 
 Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
 repository yet, the tab draws one muted notice above the rows, "No repository yet: the

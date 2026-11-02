@@ -509,6 +509,13 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         errors.append(f"whether a device is drained could not be measured ({exc})")
 
     startup = _startup_states(ref.name, errors)
+    # A device under a planned operation (board PS): ONE read of the network's holds and
+    # windows, each row then answered from it.
+    from modules import planned_state as PS
+    planned_ctx = PS.read(ref.name, now)
+    if planned_ctx["error"]:
+        errors.append(f"which devices are under a planned operation is unknown: "
+                      f"{planned_ctx['error']}")
 
     rows = []
     for dev in inventory:
@@ -516,7 +523,14 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         h = history.get(host)
         m = newest_measurement(host, got)
         intent = intent_state(host, got)          # THE state, the device page's too (C532)
-        rows.append({"name": host, "pending": False, "status": _status(reach, dev.get("ip", "")),
+        status = _status(reach, dev.get("ip", ""))
+        planned = PS.state(planned_ctx, host, ref.name,
+                           ((reach or {}).get("devices") or {}).get(dev.get("ip", "")), now)
+        if planned:
+            status = {"state": "warn" if planned["level"] == "plan" else "danger",
+                      "words": planned["short"], "title": planned["title"],
+                      "link": planned["link"], "since": None}
+        rows.append({"name": host, "pending": False, "status": status,
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,
                      "startup": startup.get(host) or STARTUP_NEVER,

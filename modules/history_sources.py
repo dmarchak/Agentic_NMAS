@@ -1345,6 +1345,55 @@ def grafana_writes(ctx):
                  if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
 
 
+def page_stalls(ctx):
+    """Each stall a page recorded as it showed its stale note (C2003, `stall_capture`): the
+    page and tab, what the note said, the page's live connection (its state, session,
+    transport, reconnect attempts, last error, last announcement and heartbeat heard) and the
+    app's view of it (whether the process knew the session, its last heartbeat and
+    announcement sent), and the page's recent live events. A row names the network the page
+    was on; never one device's."""
+    from modules import stall_capture as SC
+    if ctx["device"]:
+        return _out()
+    got = SC.entries()
+    if got["error"]:
+        return _out(errors=[f"the page stall record could not be read: {got['error']}"])
+
+    def what(r):
+        page, live = r.get("page") or {}, r.get("live") or {}
+        return (f"A page showed its stale note: {page.get('page') or '?'} (live updates "
+                f"{live.get('state') or '?'}; the app: "
+                f"{(r.get('server') or {}).get('session') or 'not asked'})")
+
+    def rows(r):
+        page, live, server = r.get("page") or {}, r.get("live") or {}, r.get("server") or {}
+        return [("Page", page.get("page")), ("Tab", page.get("tab")),
+                ("The note said", page.get("words")), ("Shown at", page.get("shown_at")),
+                ("Drawn at", page.get("drawn_at")),
+                ("Promise", f"{page.get('promise_s')} s" if page.get("promise_s") else ""),
+                ("Held for", page.get("held")),
+                ("Live state", f"{live.get('state')} since {live.get('since') or '?'}"),
+                ("Session", live.get("sid")), ("Transport", live.get("transport")),
+                ("Connected at", live.get("connected_at")),
+                ("Reconnect attempts", str(live.get("reconnect_attempts", ""))),
+                ("Last error", f"{live.get('last_error')} at {live.get('last_error_at')}"
+                 if live.get("last_error") else ""),
+                ("Last announcement heard", f"{live.get('last_announce_at')} "
+                 f"({live.get('last_announce_keys')})" if live.get("last_announce_at") else
+                 "none since the page loaded"),
+                ("Last heartbeat heard", live.get("last_heartbeat_at") or "none"),
+                ("The app's view", f"{server.get('session')}; process {server.get('pid')}; "
+                 f"heartbeat sent {server.get('server_last_heartbeat_at') or 'never'}; "
+                 f"announcement sent {server.get('server_last_announce_at') or 'never'} "
+                 f"({', '.join(server.get('server_last_announce_keys') or [])})"),
+                ("Recent live events", " | ".join(r.get("events") or [])),
+                ("Network", r.get("network") or "none named")]
+    return _out([_event(r.get("at"), "stall", what(r), [], who=_who(r.get("by", ""), ""),
+                        outcome="", record=rows(r))
+                 for r in reversed(got["rows"])
+                 if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
+
+
 #: An alert rule change's kind of row, as its line says it.
 _RULE_CHANGE_WORDS = {"added": "added", "changed": "changed", "removed": "removed"}
 
@@ -2087,6 +2136,7 @@ SOURCES = {
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
+    "page_stalls": page_stalls,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2125,7 +2175,8 @@ KIND_GROUPS = (
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
                                ("alert_rules", "Alert rule changes in Grafana",
                                 ("alert_rule",)),
-                               ("show_commands", "Show commands", ("show_commands",)))),
+                               ("show_commands", "Show commands", ("show_commands",)),
+                               ("stalls", "Page stalls (live updates)", ("stall",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}
 #: The kinds one click away, above the timeline on the History page and on a device's History
@@ -2232,6 +2283,7 @@ SOURCE_KINDS = {
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
+    "page_stalls": ("stall",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

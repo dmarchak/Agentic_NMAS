@@ -38,6 +38,10 @@ def needs_one_ack(monkeypatch):
 
 
 def _open_and_type(b, text):
+    # Board NA-R (2026-11-02): the row is one line until a person opens it; Acknowledge… is
+    # under What to do.
+    b.click("details.att > summary.att-line")
+    b.wait_for("return document.querySelector('details.att').open", 5)
     b.click(".att-ack button")
     b.wait_for("var i = document.querySelector('.att-ack input[name=why]');"
                "return !!i && i.offsetParent !== null && document.activeElement === i", 10)

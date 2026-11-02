@@ -305,6 +305,11 @@ DECLARED = {
     "device_v2.persist_confirm": ("device_state",),   # persist_op.apply
     # C906: the key Mercury holds for the device, read by Needs attention and History.
     "device_v2.rekey_confirm": ("host_keys",),
+    # C2003: a page's own stall record; History reads it when opened, and no open screen
+    # draws it live.
+    "v2.stall_capture": Nothing("appends one diagnostic row about the posting page's own "
+                                "stall; no open screen draws it, History reads it when "
+                                "opened"),
     # Out-of-band ZTP (O6b, routes/console_ztp_v2.py): the console survey and kick-start.
     "console_ztp_v2.survey_preview": Nothing("reads NetBox's console path and Mercury's stores "
                                              "and computes the survey's program and hash; it "
@@ -505,6 +510,17 @@ HEARTBEAT_EVENT = "nmas_heartbeat"
 HEARTBEAT_SECONDS = 30
 
 
+#: When this process last SENT a heartbeat and an announcement (and its keys): the app's half
+#: of a stall's record (C2003, `stall_capture.server_view`). Process memory, never a store.
+_last = {"server_last_heartbeat_at": "", "server_last_announce_at": "",
+         "server_last_announce_keys": []}
+
+
+def last_emits() -> dict:
+    """A copy of when this process last sent a heartbeat and an announcement ("" for never)."""
+    return {k: (list(v) if isinstance(v, list) else v) for k, v in _last.items()}
+
+
 def heartbeat_message() -> dict:
     return {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "interval_seconds": HEARTBEAT_SECONDS}
@@ -521,7 +537,9 @@ def heartbeat_loop(sleep, beats: int = None) -> int:
         try:
             if _emitter is None:
                 raise RuntimeError("no emitter")
-            _emitter(HEARTBEAT_EVENT, heartbeat_message())
+            msg = heartbeat_message()
+            _emitter(HEARTBEAT_EVENT, msg)
+            _last["server_last_heartbeat_at"] = msg["at"]
             sent += 1
         except Exception as exc:                        # noqa: BLE001
             log.error("heartbeat not sent: %s; open pages will mark themselves "
@@ -555,6 +573,7 @@ def announce(keys, by: str, ok: bool = True) -> dict:
     msg = {"keys": keys, "by": by, "ok": bool(ok),
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     _emitter(ANNOUNCE_EVENT, msg)
+    _last.update(server_last_announce_at=msg["at"], server_last_announce_keys=keys)
     # C539: a job that changed a store re-reads, at once, each reader that reports on it, so a
     # Needs attention row it resolved clears for every viewer. A READER's own announcement
     # wakes nothing: it changed no store, and some readers announce keys the wake table holds

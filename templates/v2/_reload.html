@@ -19,6 +19,24 @@
   <span class="muted">signs in to {{ c.host }} within 3 minutes and compares what it runs with its committed golden; it sends nothing</span>
 </form>
 {%- endmacro -%}
+{#- Board PS (C2274): what the reload's window explains now, read from the sources' own holds
+    (`planned_state.expected_effects`), what they raise that it does not, and what outlasted
+    it. Every alert and evidence pack is kept as it was. -#}
+{%- macro effects_part(e) -%}
+{%- if e %}
+  <div class="op-part" id="reload-effects"><h3>Expected effects</h3><div>
+    {%- if e.effects %}
+    <table class="table set-table effects-table"><thead><tr><th scope="col">Effect</th><th scope="col">Predicted by</th><th scope="col">Now</th><th scope="col">Expected back by</th></tr></thead>
+      <tbody>{% for f in e.effects %}<tr><td>{{ f.what }}</td><td data-label="Predicted by:">{{ f.predicted_by }}</td><td data-label="Now:">{{ badge('held, not raised' if f.state == 'held' else 'answering', 'warn' if f.state == 'held' else 'ok') }}</td><td data-label="Back by:">{% if f.back_by %}<time datetime="{{ f.back_by }}">{{ f.back_by[11:16] }} UTC</time>{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table>
+    {%- else %}<p>Nothing is held for this reload now.</p>{% endif %}
+    {%- if e.unexpected %}<p class="notice notice-warn">{{ icon('warn', 16) }} Unexpected during this reload, raised on Needs attention: {% for u in e.unexpected %}{{ u.what }} ({{ u.source }}){{ '; ' if not loop.last }}{% endfor %}.</p>
+    {%- else %}<p class="small muted">Unexpected during this reload: none.</p>{% endif %}
+    {%- if e.overdue %}<p class="notice notice-danger">{{ icon('warn', 16) }} Overdue, past the time it was expected back, raised on Needs attention: {% for o in e.overdue %}{{ o.what }} (back by <time datetime="{{ o.back_by }}">{{ o.back_by[11:16] }} UTC</time>){{ '; ' if not loop.last }}{% endfor %}.</p>
+    {%- else %}<p class="small muted">Overdue: none. Every alert and evidence pack is kept as it was; nothing here is hidden from Monitoring.</p>{% endif %}
+    {%- if e.errors %}<p class="notice notice-warn">{{ icon('warn', 16) }} Not read, so what it would hold is unknown: {{ e.errors | join('; ') }}.</p>{% endif %}
+  </div></div>
+{%- endif %}
+{%- endmacro -%}
 {%- if c.state == 'starting' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
          hx-post="{{ url_for('device_v2.reload_start', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
@@ -82,6 +100,7 @@
   <div class="op-part"><h3>Where it is</h3><div>
     {{ run_stepper(c.steps | one_run(c.host, 'Verify again progress' if c.verify else 'Reload progress')) }}
     <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; the result is kept in the reload's record{% if not c.verify %} and the restart in History{% endif %}.</p></div></div>
+  {{ effects_part(c.effects) }}
 </section>
 {%- elif c.state == 'result' %}
 {%- set r = c.r %}
@@ -100,6 +119,7 @@
     {%- if r.error %}<p>{{ r.error }}</p>{% endif %}
     <p>By {{ r.by or 'nobody recorded' }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>
     {%- if r.record and not r.record.ok %}<p class="notice notice-warn">{{ icon('warn', 16) }} The reload's record was not written ({{ r.record.error }}): the restart is still in History.</p>{% endif %}</div></div>
+  {{ effects_part(c.effects) }}
   {%- if r.outcome == 'not_back' %}
   <div class="op-part"><h3>What next</h3><div class="op-next">
     <div><a class="btn" data-next-acts="breakglass_export" href="{{ url_for('v2.credentials') }}">Its break-glass record</a><span class="muted">the credential to sign in at its console; the planned window stays declared until it ends</span></div></div></div>

@@ -25,7 +25,13 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `7b80cb8910a644780954a4e977632d407d1dea3bb653810de745de17fe1f3a7f`
+Templates sha256: `b2ae0b37214556e6c23a59cdd6055bbca4e471bd4d7c13c13b3db74d8297ddb0`
+
+Compared again 2026-11-02 (board PS, C2274) after the Answering row dropped "· last probe …" when
+the reader recorded none (a device under a planned operation with no reachability row read
+"last probe None"); its first words are the header's state. Shot: `planned-device-r3-page-1440`;
+no region's verdict changed (log: Board PS built, part 1). Templates sha256 before:
+`7b80cb8910a644780954a4e977632d407d1dea3bb653810de745de17fe1f3a7f`.
 
 Compared again 2026-10-16 (C532) after `_overview.html` gained an Intent state row under Last
 measured: the Devices list's state for this device, from the one function both draw

@@ -26,7 +26,16 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
-Templates sha256: `10597e1380f0255962273dbd57aef40c0c1d6ae80a1e4a554f832049821033c3`
+Templates sha256: `064befed489ff6fdedd7b085d4b7002d832ed1b005aff9603444275176df2829`
+
+Compared again 2026-11-02 (board PS, C2274, part 1) after `_devices.html` drew a device under a
+planned operation in its Status cell (`modules/planned_state.py`, one read of the network's holds
+and windows for the whole list) and re-reads on a hold ending, a window declared, and an
+operation's step at most once in 5 s. Shots: `planned-devices-page-1440`, `-1280`, `-390`,
+`-390-first` beside `planned-board-board-1440` (`PlannedState.dc.html`, region 3), on Save's lab
+with r3 held by a Reload at its wait and r4 predicted out of reach. The regions are in "Board
+PS" below; no other region moved. Templates sha256 before:
+`10597e1380f0255962273dbd57aef40c0c1d6ae80a1e4a554f832049821033c3`.
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 Compared again 2026-10-23 (the one-decision out-of-band onboarding, boards A and D of
@@ -172,3 +181,18 @@ board.
 | Derived (oob board A) | the address, MAC, interface, gateway and route fields gone, a Derived line naming what the review derives and from where | the same, by the form's own rule (no script) | **same** |
 | The one review (oob board B) | the ONE card in place of the plan's review, no Create button | the same (`oob-run.md` compares the card) | **same** |
 | In progress (oob board D) | "In progress · 2" above the list, a row each: device · operation, the step in its stepper's words, who, since, network; Open its stepper or Open its card | the same; absent while nothing runs; unreadable holds said in red | **same** |
+
+## Board PS (C2274): a row under a planned operation
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The operation's device | "Reloading · step 4 of 6 · back by ~01:12", amber, linked | "Reloading · step 4 of 6 (wait) · back by ~00:11 UTC", amber, linked to r3's page | **deviation** (log: Board PS built, part 1) |
+| A predicted device | "Unreachable as expected · r8 reloading", amber, linked | "Unreachable as expected · r3 reloading · back by ~00:30 UTC", linked to r3's page | **same** |
+| The chip's style | a dashed amber chip | the warning badge | **deviation** (log: Board PS built, part 1) |
+| The person | not in the row | on hover | **same** |
+| Other rows | "Answering", the Intent column as before | unchanged | **same** |
+| Phone width | the chip wraps under the name | the chip wraps inside its cell (`planned-devices-page-390`) | **same** |
+| Inside the window | never red | amber until the window's end (its own device) or the end and the settle time (a predicted one) | **same** |
+| Overdue | red after the time | red, "Not answering · overdue after …"; tested (`tests/test_planned_state.py`) | **same** |
+| A read's hold | not drawn | drawn as before (a capture or show commands is not an operation to wait for) | **same** |
+| Redraw | not drawn | on a hold ending, a window declared, a step at most once in 5 s | **same** |

@@ -978,14 +978,18 @@ def _node_labels(nodes: dict, pos: dict, bgp) -> dict:
 #: The template's own numbers (`_topology_map.html`): the icon a 34 square on the device, its
 #: name at 12.5px mono (7.5 a character) with its baseline 32 below, each tag 15 high from 30
 #: above, 50 apart from 52 left. Each box has 3 to spare, a line's own half width.
-def node_boxes(x: float, y: float, name: str, tags=()) -> list:
-    """The boxes a device occupies on the map: its icon, its name, its tags."""
+def node_boxes(x: float, y: float, name: str, tags=(), below: str = "") -> list:
+    """The boxes a device occupies on the map: its icon, its name, its tags, and the line
+    *below* its name (a planned operation's state, board PS)."""
     out = [(x - HALF - 3, y - HALF - 3, x + HALF + 3, y + HALF + 3)]
     w = len(name) * 7.5
     out.append((x - w / 2 - 3, y + 19, x + w / 2 + 3, y + 37))
     for i, text in enumerate(tags):
         x0 = x - 52 - i * 50
         out.append((x0 - 3, y - 33, x0 + len(text) * 7 + 15, y - 12))
+    if below:
+        w = len(below) * 6.2
+        out.append((x - w / 2 - 3, y + 36, x + w / 2 + 3, y + 51))
     return out
 
 
@@ -1088,10 +1092,24 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
         pairs.setdefault(tuple(sorted((l["a"], l["b"]))), []).append(l["id"])
     tags = _tags(weak) if s["weak"] == "1" else {}
     names = _node_labels(nodes, pos, bgp)
-    # Each device's icon, name and tags: what a link it does not join must not cross (C659: a
-    # link drawn through a device, or under its name, reads as joining it), and what a chip must
-    # not cover.
-    boxes = {name: node_boxes(x, y, names[name], [t["text"] for t in tags.get(name, [])])
+    # A device under a planned operation (board PS): amber, dashed, its state under its name,
+    # never the red cross inside the window. ONE read of the network's holds and windows. Past
+    # it, the node is not answering and draws its cross; its page's header names the overdue.
+    from modules import planned_state as PS
+    planned_ctx = PS.read(view_.get("list") or "")
+    plans = {}
+    for name in pos:
+        n = nodes.get(name) or {}
+        got = (PS.state(planned_ctx, name, view_.get("list") or "",
+                        {"answering": bool(n.get("answering"))})
+               if n.get("managed") else None)
+        if got and got["level"] == "plan":
+            plans[name] = got
+    # Each device's icon, name, tags and planned line: what a link it does not join must not
+    # cross (C659: a link drawn through a device, or under its name, reads as joining it), and
+    # what a chip must not cover.
+    boxes = {name: node_boxes(x, y, names[name], [t["text"] for t in tags.get(name, [])],
+                              (plans.get(name) or {}).get("tag", ""))
              for name, (x, y) in pos.items()}
     taken = [b for bs in boxes.values() for b in bs]
     shapes = {}
@@ -1204,7 +1222,8 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),
                           "role": n.get("role") or "", "manager": name == MANAGER,
-                          "sdn": _sdn_words(name, n), "overlay": bool(n.get("overlay"))})
+                          "sdn": _sdn_words(name, n), "overlay": bool(n.get("overlay")),
+                          "plan": plans.get(name)})
     return {"width": width, "height": height, "card_w": CARD_W, "links": drawn,
             "nodes": out_nodes, "labels": labels, "z": s["z"]}
 

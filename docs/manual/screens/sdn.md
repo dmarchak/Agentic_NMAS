@@ -34,7 +34,9 @@ is current the note is not there. While a card you opened in place holds the red
 offers no Reload, because a reload would close that card: it says "a reload would close the
 card open below. Send or close it first.", or "newer data is waiting, held for the card open
 below" when a redraw already arrived; once the card is sent or closed, the page redraws or
-Reload is offered.
+Reload is offered. Each time the note appears, the page records the stall on History (**Page
+stalls**: the page, its tab, its live connection's state and Mercury's view of it), so why a
+page stopped updating can be read afterwards; you need not catch it as it happens.
 
 For each connection the reader asks its driver for the controller's switches;
 for each switch, its flow table, its port counters twice a second apart, what the switch says

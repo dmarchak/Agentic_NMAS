@@ -6,6 +6,16 @@ The landing page answers one question: does anything need you?
 
 - **When nothing is wrong**, one line says so, and what was checked is one level down, each
   source with the age of its value.
+- **By severity:** a section each for Critical, Warning and Unknown, its count in its heading
+  ("Critical · 2"). Critical is always open; Warning and Unknown stay as you last left them in
+  this browser. A severity with nothing in it has no section. The line above them counts each
+  severity, and when an operation such as a Reload is running, says how many of its expected
+  effects are held for it, linked to its card: they are never rows here.
+- **One line per item:** its severity, what it is, how long ago it began, and its first action
+  (**Open <device>**, or its own page), which works without opening the item. Press the line to
+  open it: **What to do** comes first (every action with its How does this work?, how it
+  clears, and **Acknowledge…** for an event), then the **Details**: the cause, the alerts, the
+  devices with their networks, since when and which source.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the action that deals with it. Most rows have one; a drifted
   device's row has two, which mean opposite things (below), and so has a rollback's

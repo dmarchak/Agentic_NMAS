@@ -618,6 +618,81 @@ def _intent_deploy_offer(client, _lab, _mp):
     assert "Before it can be deployed" in r.get_data(as_text=True), "r3 has every value"
 
 
+def _reload_effects(client, _lab, _mp):
+    """The Reload card's result with board PS's part (C2274): r3's window two hours ago,
+    predicting r4; the holding sources stubbed to hold one signal for it, raise one row about
+    r9 begun in the window (unexpected) and one about r3 past its time (overdue). The job and
+    the window are planted for this provider alone, then undone."""
+    import time as _time
+
+    import pytest
+
+    from modules import planned_state as PS
+    from modules import restarts as R
+    from modules.nsot import capture_job
+
+    mp = pytest.MonkeyPatch()
+    try:
+        now = _time.time()
+        w = {"devices": ["r3"], "list": "Lab", "from": R._iso(now - 7200),
+             "until": R._iso(now - 6600), "by": "op@example.com", "why": "planned reload",
+             "via": "reload", "recorded_at": R._iso(now - 7200),
+             "expected": {"unreachable": ["r4"]}}
+        mp.setattr(R, "planned_rows", lambda: [w])
+        mp.setattr(R, "ends", lambda: {})
+        held = [{"source": "drift", "window": R.window_id(w), "devices": ["r3"],
+                 "what": "Drift: r3 not read; read again by the next run", "how": "restarting",
+                 "back_by": R._iso(now - 6600 + R.SETTLE_SECONDS)}]
+        rows = [{"what": "r9 is not answering", "devices": ["r9"], "since": now - 7000},
+                {"what": "r3 is not answering", "devices": ["r3"], "since": now - 7100}]
+        src = lambda: {"source": "reachability", "label": "Reachability",  # noqa: E731
+                       "state": "read", "rows": rows, "held": held}
+        real = PS.expected_effects
+        mp.setattr(PS, "expected_effects",
+                   lambda window, list_name: real(window, list_name, sources=[src]))
+        job = capture_job.start("Lab", "Reload r3", "op@example.com", lambda _j: {
+            "outcome": "reloaded", "ok": True, "steps": [], "by": "op@example.com",
+            "reason": "planned", "window": {"from": w["from"], "until": w["until"]}},
+            kind="reload", device="r3", card="reload")
+        assert capture_job.wait(job, 10)
+        r = client.get(f"/v2/device/r3/reload/job/{job}?list=Lab")
+        assert r.status_code == 200, r.status_code
+        html = r.get_data(as_text=True)
+        assert "Unexpected during this reload, raised" in html and "Overdue, past" in html, html
+    finally:
+        mp.undo()
+
+
+def _attention_expected(client, _lab, _mp):
+    """Needs attention while r3's Reload runs (board NA-R's decision 4): a source holding two
+    of its effects, so the summary links them to the Reload's card. The window and the source
+    are planted for this provider alone, then undone."""
+    import time as _time
+
+    import pytest
+
+    from modules import attention
+    from modules import restarts as R
+
+    mp = pytest.MonkeyPatch()
+    try:
+        now = _time.time()
+        w = {"devices": ["r3"], "list": "Lab", "from": R._iso(now - 120),
+             "until": R._iso(now + 600), "by": "op@example.com", "why": "planned reload",
+             "via": "reload", "recorded_at": R._iso(now - 120)}
+        mp.setattr(R, "planned_rows", lambda: [w])
+        held = [{"source": "drift", "window": R.window_id(w), "devices": ["r3"],
+                 "what": f"effect {i}", "how": "restarting", "back_by": ""} for i in (1, 2)]
+        mp.setattr(attention, "SOURCES", [lambda: attention.source_result(
+            "drift", "Drift", read_at=now, took_ms=1, checked="read", held=held)])
+        r = client.get("/v2/attention")
+        assert r.status_code == 200, r.status_code
+        assert "2 expected effects of r3&#39;s Reload are on its card" in \
+            r.get_data(as_text=True), "the summary's link is not drawn"
+    finally:
+        mp.undo()
+
+
 def _attention_withheld(client, _lab, _mp):
     """Needs attention with a withheld-lines row (C2295): its Acknowledge… form draws the
     disposition choice. The record of AI calls planted for this provider alone, then undone."""
@@ -2398,7 +2473,8 @@ def _sdn_evidence(client, _lab, _mp):
 
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _attention_withheld,
+PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
+                   _attention_expected, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,

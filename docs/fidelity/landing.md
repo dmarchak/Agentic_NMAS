@@ -35,7 +35,20 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `505bb09711857f1fe45631860f26fd10adb4198abd2c94458d8249c739818d84`
+Templates sha256: `e2f39caecee390c1c5bdd3cac33910682d347eec95247ca7fe5b68c45412361f`
+(2026-11-02: the spend panel's control on a row's line carries its operation and How does this
+work?, as its twin under What to do does; nothing else drawn changed.)
+
+Compared again 2026-11-02 (board NA-R, `AttentionRedesign.dc.html`, approved 2026-11-01;
+PHASE8_PLAN 20.6, part 1): `_attention.html` draws a collapsible section per severity, its
+count in its heading, each item one line (severity, title, age, primary action) opened to What
+to do, then Details; the summary counts by severity and links an operation's expected effects
+to its card; Acknowledged is its own section. Shots (`test_landing_nar`): `nar-board-
+AttentionRedesign-1440` beside `nar-page-1440` and `-1280`, `nar-opened-page-1440` and `-1280`
+(the first critical item opened), `nar-phone-page-390` and `nar-phone-opened-page-390`. The
+regions are in "Board NA-R" below; the earlier boards' regions for the row's anatomy now hold
+one level down. Templates sha256 before:
+`505bb09711857f1fe45631860f26fd10adb4198abd2c94458d8249c739818d84`.
 
 Compared again 2026-11-01 (C2295), by the template: the Acknowledge… form of a row whose kind
 asks a disposition (lines withheld as instructions) draws a choice before the reason (a true
@@ -126,3 +139,19 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Phone (LandingPhone) | the heading with "5 items", "11 sources checked at 23:40", each row a card with its action full width, "2 more below" | the same card stack and summary; each card carries the row's whole anatomy (above) and its action at its own width; no "more below" (the page scrolls) | **deviation** (log: Landing: a row carries its operands and how it clears) |
 | Phone top bar (LandingPhone) | menu, the network as a chip, a search icon, the integrations count, the person | menu, the 32 px mark and the network's name, the search box, the strip's dots, the theme menu, the person | **deviation** (log: Landing: the top bar carries no Assistant) |
 | The drawer (NavPhone) | the mark, "NMAS" over "Network Default", an X, the entries, Integrations and Live in a box above Help | the mark and "Mercury", the entries under their headings, Help and Settings; no X (the scrim closes it, C475), no network line and no integrations box (both stay in the top bar) | **deviation** (log: Landing: the drawer has no close button, network line or integrations box) |
+
+## Board NA-R (PHASE8_PLAN 20.6), part 1
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The summary | "1 critical · 2 warning · 1 acknowledged · 11 sources checked, read 16:40 UTC · 3 expected effects of r8's Reload are on its card" | "51 items · 9 critical · 39 warning · 3 unknown · 10 sources checked · 1 could not be read", the expected effects a link to the Reload's device page, which reopens its card | **same** |
+| A section per severity | Critical · 1, Warning · 2, Unknown · 0, open or closed, the count in the heading | the same headings; Critical always open; Warning, Unknown and Acknowledged as this viewer last pressed them (this browser only) | **same** |
+| An empty section | "· 0" only when it was open last, else left out | left out | **deviation** (log: Board NA-R built, part 1) |
+| The item's line | severity, title naming devices, its age, the primary action | the same four; the title cut with an ellipsis on desktop, wrapped on a phone, whole on hover | **same** |
+| Opened: What to do | the action, its button, Acknowledge…, How does this work?, "Clears when …" | the row's controls as they were, then Clears when, then Acknowledge… | **same** |
+| Opened: Explain or Why this happened | the kept Explain answer for an alert-backed row; code-written Why this happened for Mercury's own findings | not built | **later** NA-R part 2 |
+| Opened: Details | alerts, since, source, the pack, under a divider | the cause, operands, alert members, Also, devices with their networks, since, read, source, under a divider | **same** |
+| Acknowledged | its own section, each with who, when, the reason, Remove acknowledgement | its own section with who, when and the reason; no Remove acknowledgement (no route removes one yet) | **deviation** (log: Board NA-R built, part 1) |
+| Nothing to act on | one line and What was checked, collapsed | "Every source answered and none reports anything a person must do." and What was checked, collapsed | **same** |
+| The sidebar's badge | unacknowledged Critical and Warning items | as it was (attention.badge_of) | **later** NA-R part 2 |
+| Phone | the severity above the title, the action under it | the same (`nar-phone-page-390`) | **same** |

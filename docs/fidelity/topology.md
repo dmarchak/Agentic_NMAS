@@ -22,7 +22,8 @@ Compared again 2026-10-21 (C1487, the overnight run): each single point of failu
 Compared again 2026-10-22 (C1550, the coverage nightly's mid-drag failures): the hidden move form `#topo-move` in `_topology_map.html` gained `hx-sync="closest #topo:replace"` (a save replaces a read of the region still in flight, so the read's older answer can no longer replace the form under the save), and a template comment saying why, which renders nothing. The form draws nothing, so no region's verdict moved; compared by the template diff, not by new shots.
 Compared again 2026-10-27 (PHASE8_PLAN 17.1 S14, C1910): board F, `TopoSdn.dc.html` (canvas version 170, signed off under the Phase 7 mode), an SDN fabric read from its controller. Its regions are in the section "An SDN fabric (board F)" below. **Shots owed:** board F is compared from its source and the page's HTML as `tests/test_sdn_topology.py` renders it (the real reader's value from the captures, Ryu's captured topology, r6's LLDP neighbour named by Ryu's own chassis id), not yet from shots side by side; `tests/test_board_shots.py` gains board F's pair when the shots are taken. A network with no controller connection draws exactly as before (`test_a_network_with_no_controller_has_no_strip_and_no_source_chips`): no strip, no source chip, no SDN legend, so boards A to E's regions did not move.
 Compared again 2026-10-28 (C1991, C2026): board F revised, `TopoSdn.dc.html` with its section "Revised 2026-10-28 for C1991 and C2026" (not yet on the canvas; signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md, "Board F revised: C1991 and C2026"). `_topology_map.html` changed in three places: the header adds the switch and host counts in a network with a controller layer; an SDN node's second line is drawn only when it has one (a host has none; a controller's is its state and switch count); and the Devices list draws a controller's hosts as one closed group per switch, the first naming them all, through the list's existing loops. Compared from the board's source and the page's HTML as `tests/test_sdn_topology_hosts.py` renders it (the real reader's value from the captures, Ryu's captured topology, and the teardown made from it), not from shots (board F's shots stay owed, above). The regions are in "Board F revised (C1991, C2026)" below. A network with no controller connection draws as before (`test_a_network_with_no_controller_has_no_strip_and_no_source_chips`), so boards A to E's regions did not move.
-Templates sha256: `54c7b2633ba3d51417ae5c9cfa79e85e9be9df215bd24ef82478b6735beaae19`
+Templates sha256: `b888bf81857e1eba5dcc4c3885a22b0e02731a0a13291d76d40fb35186712c4f`
+(2026-11-02: board PS's planned node, compared in "Board PS" below.)
 (2026-10-28 ~23:1x UTC: the hosts' per-switch group given its `data-keep` key, so a live redraw
 keeps it open (C472's rule); nothing drawn changed. Before:
 `1ebcefa0ba12dfb36698fdfea22b04d404c28e1a3bbb919f1d38948acbbd2b74`.)
@@ -143,3 +144,26 @@ Compared from the board's source and the page's HTML (above); no shots.
 | The Devices list | "Hosts a controller learned (4)" with "on 2 switches"; a closed group per switch, "s1 · 2 hosts", each host its address, port, MAC and how many addresses | the same: a heading for them all, then a closed group per switch, its hosts in port order | **same** |
 | Weak points, what-if, Path | never see a host | hosts and the controller stay outside every analysis; Path offers managed routing devices and what-if the fleet, neither a host | **same** |
 | Ageing a host out | not drawn; Ryu records no time for a host | not built | **same** |
+
+## Board PS (C2274): a node under a planned operation
+
+Compared 2026-11-02 (part 1): `_topology_map.html` draws a managed node under a planned operation
+amber and dashed with its state under its name and on hover, no red cross while it lasts, and the
+map re-reads on a hold ending, a window declared and a step (at most once in 5 s); the planned
+line is a box links and chips avoid (`topology_page.node_boxes`). Shots: `planned-topology-page-1440`,
+`-1280`, `-390` beside `planned-board-board-1440` (region 3), the captures' map with r2 held by a
+Reload at its wait (its window predicts s1, which answers). Templates sha256 before:
+`54c7b2633ba3d51417ae5c9cfa79e85e9be9df215bd24ef82478b6735beaae19`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The operation's device | dashed amber box, "Reloading · back by ~01:12" under it | dashed amber icon, "Reloading · back by ~00:11 UTC" under its name | **same** |
+| A predicted device, down | dashed amber, "Unreachable as expected" | the same, when not answering (tested; s1 answers in the shot) | **same** |
+| A predicted device that answers | not drawn | drawn as answering | **deviation** (log: Board PS built, part 1) |
+| Its links | dashed amber | as their own state (a link's state is its protocols') | **same** |
+| Where it opens | the operation's card | the node's own page, whose header links the operation | **deviation** (log: Board PS built, part 1) |
+| Overdue | not drawn | the red cross; its page's header names the operation | **deviation** (log: Board PS built, part 1) |
+| The line and a link | clear | chips and other links avoid it; a link leaving that device may meet its end | **deviation** (log: Board PS built, part 1) |
+| Hover | not drawn | the whole state and why | **same** |
+| Phone width | not drawn for the map | the same line, scaled with the map | **same** |
+| Other nodes | unchanged | unchanged | **same** |

@@ -436,8 +436,9 @@ OPEN_PANEL = ('<a class="btn btn-small btn-outline" data-op="getting-started" '
 def _ai_rows(html):
     """{row id: its article's HTML} for every AI spend row Needs attention draws."""
     return {m.group(1): m.group(2) for m in re.finditer(
-        r'<article class="att att-[a-z]+" data-attention-row="(ai_spend:[^"]+)">(.*?)</article>',
-        html, re.S)}
+        # Board NA-R (2026-11-02): a row is a <details>, its one line and its body inside it.
+        r'<details class="att att-[a-z]+" data-attention-row="(ai_spend:[^"]+)" '
+        r'data-keep="[^"]*">(.*?)</details>', html, re.S)}
 
 
 def test_a_day_cap_row_draws_open_the_spend_panel_and_how_it_clears(spend):
@@ -450,7 +451,9 @@ def test_a_day_cap_row_draws_open_the_spend_panel_and_how_it_clears(spend):
     assert "Clears when the day ends (the day cap's midnight)" in text
     assert OPEN_PANEL in body
     assert 'data-manual="getting-started#ai-spend"' in body, "its How does this work?"
-    assert body.count("<a class=\"btn") == 1, "the day cap's row has the one control"
+    # The one control: on the row's line (board NA-R's primary action) and under What to do.
+    assert body.count("<a class=\"btn") == 2, "the day cap's row has the one control, twice"
+    assert body.count('data-ai-open href="#nmas-ai-panel">Open the spend panel</a>') == 2
 
 
 def test_a_features_row_draws_the_panel_and_settings_beside_it(spend):

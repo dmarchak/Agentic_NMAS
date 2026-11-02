@@ -370,6 +370,36 @@
     }
   }
 
+  /* Board NA-R: a section's open or closed state as this viewer last left it
+     (`<details data-remember="…">`), kept in this browser only: a convenience, so a store the
+     browser refuses forgets it and the section draws as its template says. */
+  /* Only a person's own press on the section's summary is remembered (a click, which Enter and
+     Space on it make too): a `toggle` cannot tell a person from a redraw, and a redrawn
+     section drawn open fired one that overwrote what the person chose. */
+  function rememberToggle(e) {
+    var s = e.target && e.target.closest ? e.target.closest('summary') : null;
+    var d = s ? s.parentNode : null;
+    if (!d || d.tagName !== 'DETAILS' || !d.hasAttribute('data-remember')) return;
+    try {
+      // The press is about to flip it: what it will be is what is kept.
+      root.localStorage.setItem('nmas-open:' + d.getAttribute('data-remember'), d.open ? '0' : '1');
+    } catch (x) { /* storage refused: nothing kept */ }
+  }
+  /* Over the whole document after every swap: an outerHTML swap settles on the element it
+     replaced, so its target holds none of the new sections (found by
+     tests/test_attention_sections.py in a real browser). */
+  function applyRemembered(scope) {
+    var at = scope && scope.querySelectorAll ? scope : root.document;
+    var all = at.querySelectorAll('details[data-remember]');
+    for (var i = 0; i < all.length; i++) {
+      var v = null;
+      try { v = root.localStorage.getItem('nmas-open:' + all[i].getAttribute('data-remember')); }
+      catch (x) { v = null; }
+      if (v === '0') all[i].open = false;
+      else if (v === '1') all[i].open = true;
+    }
+  }
+
   /* Boards AI1 and AI2 (C1843): the spend panel under the top bar's AI chip is read when it
      opens, and again on each recorded call (`ai_calls`) while it is open: never while it is
      closed (every page carries it) and never on a timer. A Turn off pressed in it is answered
@@ -706,6 +736,55 @@
     return {words: ': ' + cause + ', so this page may be out of date.', reload: true};
   }
 
+  /* This tab's own id, kept for the tab's life (sessionStorage), so the stalls of one tab can
+     be told from another's; '' when storage is refused (a private window). */
+  function tabId() {
+    try {
+      var id = root.sessionStorage.getItem('nmas-tab');
+      if (!id) {
+        id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        root.sessionStorage.setItem('nmas-tab', id);
+      }
+      return id;
+    } catch (e) { return ''; }
+  }
+
+  /* PURE: a stall's record as the page sends it (C2003; `stall_capture.PAGE_FIELDS` and
+     `LIVE_FIELDS`): the page, the tab, when the note was shown, the drawing's time and
+     promise, what the note says, the region and whether a redraw is held, the live
+     connection's detail, and the last 20 live events (`NMAS.log()`). */
+  function stallBody(page, tab, nowMs, drawnAt, staleAt, promiseS, words, regionId, held,
+                     live, events) {
+    return {page: {page: page, tab: tab, shown_at: new Date(nowMs).toISOString(),
+                   drawn_at: drawnAt || '', stale_at: staleAt || '', promise_s: promiseS,
+                   words: words, region: regionId || '', held: held || ''},
+            live: live, events: (events || []).slice(-20)};
+  }
+
+  /* THE STALL CAPTURES ITSELF (C2003, the operator, 2026-11-02: "no live catching by me"):
+     posted the moment a stale note is shown, to the record History's "Page stalls" reads.
+     Fire and forget: a post that fails is said in the console, never on the page. */
+  function reportStall(note, said, region, nowMs) {
+    var N = root.NMAS;
+    if (!root.fetch || !N || !N.liveDetail) return;
+    var time = note.querySelector ? note.querySelector('time') : null;
+    var body = stallBody(root.location.pathname + root.location.search, tabId(), nowMs,
+                         time ? time.getAttribute('datetime') : '',
+                         note.getAttribute('data-stale-at'),
+                         parseInt(note.getAttribute('data-promise') || '0', 10),
+                         said.words, region ? region.id : '', region ? holdReason(region) : '',
+                         N.liveDetail(), N.log ? N.log() : []);
+    root.fetch('/v2/diagnostics/stall', {
+      method: 'POST', keepalive: true,
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok && root.console) root.console.warn('NMAS: the stall was not recorded: ' + r.status);
+    }, function (e) {
+      if (root.console) root.console.warn('NMAS: the stall was not recorded: ' + e);
+    });
+  }
+
   /* Each live region's stale note, drawn from `staleNote`; the DOM is touched only when what
      it says changes. Run on the frame's one-second tick. */
   function drawStale() {
@@ -725,6 +804,8 @@
       var key = said ? said.words + (said.reload ? ' |reload' : '') : '';
       if ((note.getAttribute('data-said') || '') === key) continue;
       note.setAttribute('data-said', key);
+      // C2003: the moment it is SHOWN (hidden until now), the stall records itself, once.
+      if (said && note.hidden) reportStall(note, said, region, now);
       note.hidden = !said;
       if (!said) continue;
       var why = note.querySelector('.stale-why');
@@ -1497,10 +1578,12 @@
       drawBadge();
       drawStale();
       drawDeploys(root.document);
+      applyRemembered(root.document);
       root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); });
+    root.document.addEventListener('click', rememberToggle);
     root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
     root.document.addEventListener('input', reasonTyped);   // before: it marks the checks drawDeployOf reads
     root.document.addEventListener('input', drawDeployOf);
@@ -1542,6 +1625,7 @@
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
                   badgeDoubt: badgeDoubt, staleNote: staleNote, missedKeys: missedKeys,
+                  stallBody: stallBody,
                   isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,

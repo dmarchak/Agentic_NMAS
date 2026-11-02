@@ -2734,3 +2734,35 @@ def save_job(job):
     s = save_page.job_card(request.args.get("list", ""), job, capture_job.get(job),
                            q=request.args.get("q", ""), outcome=request.args.get("outcome", ""))
     return _strict(render_template("v2/_save.html", s=s))
+
+
+@bp.route("/diagnostics/stall", methods=["POST"])
+def stall_capture():
+    """C2003: a page that has just shown its stale note records the stall (static/js/nmas_v2.js,
+    `reportStall`): the page's own view of its live connection, with the app's view of that
+    connection added here (`stall_capture.server_view`), kept for History's "Page stalls".
+    JSON, answered with ``{"ok", "error"}``: 400 for a body that is not a stall, 429 for a tab
+    past its per-minute count, 500 when the record could not be written."""
+    from flask import current_app, jsonify
+
+    from modules import identity
+    from modules import stall_capture as SC
+    from modules.nsot import listref
+
+    from urllib.parse import parse_qs, urlsplit
+
+    sent = request.get_json(silent=True)
+    sent = sent if isinstance(sent, dict) else {}
+    live = sent.get("live") if isinstance(sent.get("live"), dict) else {}
+    # The network the stalled page was on: its own address's (`?list=`), else the person's.
+    page = str((sent.get("page") or {}).get("page") or "") if isinstance(sent.get("page"),
+                                                                         dict) else ""
+    named = (parse_qs(urlsplit(page).query).get("list") or [""])[0]
+    got = SC.record(sent, actor=identity.request_actor(),
+                    network=named or listref.active_name(),
+                    server=SC.server_view(str(live.get("sid") or ""),
+                                          current_app.extensions.get("socketio")))
+    if got["ok"]:
+        return jsonify({"ok": True, "error": ""})
+    code = 500 if got["entry"] else (429 if "last minute" in got["error"] else 400)
+    return jsonify({"ok": False, "error": got["error"]}), code

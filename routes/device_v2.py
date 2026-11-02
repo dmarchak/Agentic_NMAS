@@ -117,7 +117,7 @@ def _device_or_404(name):
 
 
 def _overview_ctx(ref, dev):
-    return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
+    return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev, ref.name),
             "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
             "hw": device_page.hardware(ref, dev)}
 
@@ -366,7 +366,7 @@ def device(name):
     tab = request.args.get("tab", "overview")
     tab = tab if tab in BUILT else "overview"
     ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
-           "answer": device_page.answering(dev), "who": _who(),
+           "answer": device_page.answering(dev, ref.name), "who": _who(),
            "hw": device_page.hardware(ref, dev),
            # Revert and Retry are offered only while a rollback block stands (board 11): one
            # read of the record.
@@ -526,12 +526,14 @@ def monitoring(name):
 
 @bp.route("/device/<name>/status", methods=["GET"])
 def status(name):
-    """The answering badge, re-fetched when the reachability reader announces."""
+    """The answering badge, or the device's planned state (board PS), re-fetched when the
+    reachability reader, a hold, an operation's step or a planned window announces."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
-    _ref, dev = found
-    return _strict(render_template("v2/_status.html", device=dev, answer=device_page.answering(dev)))
+    ref, dev = found
+    return _strict(render_template("v2/_status.html", device=dev,
+                                   answer=device_page.answering(dev, ref.name)))
 
 
 @bp.route("/device/<name>/panel/<uid>/<int:panel_id>", methods=["GET"])

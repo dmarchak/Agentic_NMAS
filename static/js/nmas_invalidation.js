@@ -171,12 +171,17 @@
          announces nothing, and silence must not read as "nothing changed");
        - CATCH-UP on reconnect: every subscribed panel re-fetches once,
          covering whatever was announced while the channel was down. */
-  var live = {state: 'not_connected', since: null, lastBeat: null, beatSeconds: 30};
+  var live = {state: 'not_connected', since: null, lastBeat: null, beatSeconds: 30,
+              /* C2003: what a stall's record says of this connection (`liveDetail`). */
+              sid: '', transport: '', connectedAt: null, reconnectAttempts: 0,
+              lastError: '', lastErrorAt: null, lastAnnounceAt: null, lastAnnounceKeys: []};
   var BEATS_MISSED = 2.5;
   var TICK_MS = 15000;   // a fifth of the tightest bound (75 s): a mark is at most 20% late
 
   function onAnnounce(msg) {
     var keys = (msg && msg.keys && msg.keys.length !== undefined) ? msg.keys : [];
+    live.lastAnnounceAt = now();
+    live.lastAnnounceKeys = keys.slice(0, 20);
     var names = keys.length ? invalidate(keys) : [];
     record({event: 'announced', by: (msg && msg.by) || '?', ok: !!(msg && msg.ok),
             keys: keys, panels: names});
@@ -244,6 +249,20 @@
       if (old && old.parentNode) old.parentNode.removeChild(old);
       if (html) el.insertAdjacentHTML('afterbegin', html);
     }
+  }
+
+  /* PURE over *state* (default the live channel's): what a stall's record says of the
+     connection (C2003, `stall_capture.LIVE_FIELDS`), each time as ISO, '' for never. */
+  function liveDetail(state) {
+    state = state || live;
+    function iso(ms) { return ms == null ? '' : new Date(ms).toISOString(); }
+    return {state: state.state, since: iso(state.since), sid: state.sid || '',
+            transport: state.transport || '', connected_at: iso(state.connectedAt),
+            reconnect_attempts: state.reconnectAttempts || 0,
+            last_error: state.lastError || '', last_error_at: iso(state.lastErrorAt),
+            last_announce_at: iso(state.lastAnnounceAt),
+            last_announce_keys: (state.lastAnnounceKeys || []).join(','),
+            last_heartbeat_at: iso(state.lastBeat), beat_seconds: state.beatSeconds};
   }
 
   function onHeartbeat(msg) {
@@ -329,11 +348,26 @@
     try {
       var sock = root.io();
       root.__nmasSocket = sock;
-      sock.on('connect', function () { setLive('connected'); });
-      sock.on('disconnect', function () { setLive('disconnected'); });
-      sock.on('connect_error', function () {
+      sock.on('connect', function () {
+        live.sid = sock.id || '';
+        live.connectedAt = now();
+        live.reconnectAttempts = 0;
+        try { live.transport = sock.io.engine.transport.name || ''; } catch (e) { live.transport = ''; }
+        setLive('connected');
+      });
+      sock.on('disconnect', function (reason) {
+        live.lastError = 'disconnected: ' + (reason || 'no reason given');
+        live.lastErrorAt = now();
+        setLive('disconnected');
+      });
+      sock.on('connect_error', function (err) {
+        live.lastError = 'connect_error: ' + ((err && err.message) || String(err));
+        live.lastErrorAt = now();
         if (live.state !== 'disconnected') setLive('failed');
       });
+      if (sock.io && sock.io.on) {
+        sock.io.on('reconnect_attempt', function (n) { live.reconnectAttempts = n || 0; });
+      }
       sock.on('nmas_invalidate', onAnnounce);
       sock.on('nmas_heartbeat', onHeartbeat);
     } catch (e) {
@@ -370,6 +404,7 @@
     onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml, onHeartbeat: onHeartbeat,
     stamp: stamp, ageHtml: ageHtml, tick: tick,
     live: function () { return {state: live.state, since: live.since}; },
+    liveDetail: liveDetail,
     keysFrom: keysFrom, staleMarkerHtml: staleMarkerHtml, _subs: subs,
     log: function () { return log.slice(); },
   };

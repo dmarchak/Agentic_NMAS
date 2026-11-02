@@ -107,7 +107,9 @@ def test_the_page_its_sidebar_and_header(web):
     assert ">Find</span>" not in html
     assert "How does this work?" in html
     assert re.search(r'<a href="/v2/device/r1\?list=Lab">', html), "a device opens its page"
-    assert 'hx-trigger="nmas:topology from:body"' in html
+    # And a device's planned state (board PS, C2274), its step at most once in 5 s.
+    assert ('hx-trigger="nmas:topology from:body, nmas:device_holds from:body, '
+            'nmas:device_progress from:body throttle:5s, nmas:restarts from:body"') in html
 
 
 def test_every_link_names_the_port_at_each_end(web):

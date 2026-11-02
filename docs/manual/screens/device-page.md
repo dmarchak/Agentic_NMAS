@@ -206,7 +206,12 @@ unplanned, and is also on Needs
 attention for seven days. A device that is down is not read, so its readings around a restart
 have a gap as long as the restart; the restart is found by comparing its newest reading with
 the one read before the gap, however long it was gone. While a planned window lasts, the
-header reads "Restarting as planned (until …, by …)" in place of "Not answering".
+header reads "Restarting as planned · by … · back by ~…" in place of "Not answering"; under a
+running operation, the operation and its step ("Reloading · by … · step 4 of 6 (wait) · back by
+~…"), linked to its card; predicted out of reach by another device's reload, "Unreachable as
+expected · edge1 reloading · back by ~…", linked to edge1's page; still down past that time,
+red, "Not answering · overdue after edge1's reload". The states are the Devices list's
+([Under a planned operation](devices#planned)).
 
 ## Monitoring {#monitoring-tab}
 

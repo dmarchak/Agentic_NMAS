@@ -15,6 +15,23 @@ ready to Verify", a ZTP device's stage ("ZTP: fetched its config; not answering 
 "pending: not read yet", the stage's detail on hover and "read <age>" after it; a ZTP device's
 address says ZTP. The list draws itself again when that reader sees a pending device move.
 
+## Under a planned operation {#planned}
+
+A device an operation is working on reads as that operation in its status, amber and linked
+to the page whose card is the operation's: "Reloading · step 4 of 6 (wait) · back by ~01:12
+UTC", "Deploying · step 7 of 9 (verify)" (who started it is on hover). A device inside a
+planned-restart window that is not answering reads "Restarting as planned · back by ~…". A
+device the operation's preview said Mercury loses its path to (a Reload's **What else goes
+down**) reads "Unreachable as expected · edge1 reloading · back by ~…" while it does not answer;
+one that still answers is drawn as answering, since the prediction did not happen. "Back by" is
+the operation's own window for its device, and the window's end plus the settle time (19
+minutes) for a predicted one; inside that time Needs attention holds the same signals
+([Restarting as planned](needs-attention#restarting-as-planned)). Past it, a device still down
+is red, naming what it outlasted: "Not answering · overdue after edge1's reload (back by 01:31
+UTC)". A device only being read (a capture, show commands) is drawn as it always is. The list
+redraws when a hold ends or a window is declared, and as an operation steps, at most once in 5
+s, so a batch over a large fleet does not redraw it for every device's every step.
+
 ## Drained {#drained}
 
 **Switched off for now:** in a network managed in band, the manager's own polling crosses data

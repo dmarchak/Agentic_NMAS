@@ -29,7 +29,7 @@
       <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
     </form>
 {%- endmacro -%}
-<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}" hx-swap="outerHTML">
+<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}, nmas:device_holds from:body, nmas:device_progress from:body throttle:5s, nmas:restarts from:body" hx-swap="outerHTML">
 <svg class="topo-defs" width="0" height="0" aria-hidden="true"><defs>{{ t.symbols | safe }}</defs></svg>
 {%- if op.state == 'refused' %}
 <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not changed:</strong> {{ op.refused }}.</p></div>
@@ -203,17 +203,18 @@
   {%- endfor %}
   {%- endif %}
   {%- for n in g.nodes %}
-  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath topo-onpath-' ~ n.path if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
+  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath topo-onpath-' ~ n.path if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}{{ ' topo-plan' if n.plan }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
     {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
-    <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch', 'sdn', 'host') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% if n.sdn %}. {{ n.sdn.title }}{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
+    <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch', 'sdn', 'host') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% if n.sdn %}. {{ n.sdn.title }}{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}{% if n.plan %}. {{ n.plan.words }}: {{ n.plan.title }}{% endif %}</title>
     <rect class="topo-ic" x="{{ n.x - 17 }}" y="{{ n.y - 17 }}" width="34" height="34" rx="8"></rect>
     <use href="#ti-{{ n.icon }}" x="{{ n.x - 13 }}" y="{{ n.y - 13 }}" width="26" height="26"></use>
     {%- if n.l3 %}<rect class="topo-l3" x="{{ n.x + 9 }}" y="{{ n.y - 22 }}" width="18" height="12" rx="3"></rect><text class="topo-l3-t" x="{{ n.x + 18 }}" y="{{ n.y - 13 }}">L3</text>{% endif %}
-    {%- if not n.answering or n.gone %}<path class="topo-x" d="M{{ n.x - 15 }} {{ n.y - 15 }}l30 30M{{ n.x + 15 }} {{ n.y - 15 }}l-30 30"></path>{% endif %}
+    {%- if (not n.answering and not n.plan) or n.gone %}<path class="topo-x" d="M{{ n.x - 15 }} {{ n.y - 15 }}l30 30M{{ n.x + 15 }} {{ n.y - 15 }}l-30 30"></path>{% endif %}
     <text class="topo-name" x="{{ n.x }}" y="{{ n.y + 32 }}">{{ n.label }}</text>
     {%- if n.sdn and n.sdn.line %}<text class="topo-sdnline" x="{{ n.x }}" y="{{ n.y + 45 }}">{{ n.sdn.line }}</text>{% endif %}
     {%- for tag in n.tags %}<g class="topo-tag topo-tag-{{ tag.cls }}"><title>{{ tag.words }}</title><rect x="{{ n.x - 52 - loop.index0 * 50 }}" y="{{ n.y - 30 }}" width="{{ tag.text | length * 7 + 12 }}" height="15" rx="7"></rect><text x="{{ n.x - 52 - loop.index0 * 50 + 6 }}" y="{{ n.y - 19 }}">{{ tag.text }}</text></g>{% endfor %}
     {%- if n.lost %}<text class="topo-losttag" x="{{ n.x }}" y="{{ n.y + 46 }}">cut off</text>{% endif %}
+    {%- if n.plan %}<text class="topo-planline" x="{{ n.x }}" y="{{ n.y + (59 if n.lost or (n.sdn and n.sdn.line) else 46) }}">{{ n.plan.tag }}</text>{% endif %}
     {%- if n.managed %}</a>{% endif %}
   </g>
   {%- endfor %}

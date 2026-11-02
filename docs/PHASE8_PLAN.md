@@ -79,7 +79,8 @@ from evidence: a measurement, a commit, or a register row, as of 2026-11-01 ~23:
 
 The operator's proposal, kept, with three changes where the evidence disagrees (each said):
 
-0. **A rows and today's fixes:** C2003 (the only A row tagged blocking); the 2026-11-01 queue's
+0. **A rows and today's fixes:** C2003 (the only A row tagged blocking; its A part closed
+   2026-11-02, the stall capturing itself, its cause C2296); the 2026-11-01 queue's
    open items: C2291 (verify on a secret-bearing line; closed 2026-11-01), C2292 (one id in the editor; closed
    2026-11-01), C2293 (a masked secret named by its reference; closed 2026-11-01), the cache mark off an interactive press (C2261, the
    operator's decision: a code change with no spend, so it is here, not in 2).
@@ -119,11 +120,9 @@ A workstream waiting on the operator does not stop the queue: the next item is w
 - **Case decisions after runs:** case 22's narrowed expectation was agreed; each new blind
   set's expectations are written before any run, and a disputed case is the operator's.
 - **Budget raises:** asked before a round that would pass the cap (0.5).
-- **Register sorts that are the operator's:** C2003 (A, the operator's sort, blocks 17.4): the
-  stall is now visible, a stale note with Reload (2026-10-28), so a response is never shown as
-  current; its cause needs a stall caught live (its time, the tab, the page's live channel).
-  Recommended: close the A part as built, keep the cause as an UNKNOWN row naming that
-  measurement.
+- **Register sorts that are the operator's:** none open. C2003 was decided 2026-11-02 (its A
+  part closed once the stall captures itself, on History › Page stalls; built; its cause is
+  C2296, UNKNOWN, closed when a captured stall is analysed).
 
 ### 0.5 Spend: the rest of the budget
 
@@ -4353,6 +4352,11 @@ Devices, Topology, the device page and any row that names it; a device the opera
 unreachable reads **"Unreachable as expected · r8 reloading"**. Red only past the window. The
 same model serves deploying, rotating, onboarding and draining.
 
+**Built 2026-11-02, part 1 (C2274, board PS):** `modules/planned_state.py`, one read of a
+network's holds and windows, drawn on the device page's header, Devices and Topology, amber and
+linked, red past the window (and the settle time, for a predicted device). Part 2, the
+operation's card (Expected effects, Unexpected during, Overdue), is next.
+
 ### 20.4 The acceptance test (built 2026-11-01: tests/test_attribution_b2.py)
 
 A replay of 2026-10-30's B2 sources (the Reload of r8) through `needs_attention()`: the 11
@@ -4377,6 +4381,13 @@ its state changes; its severity re-sized. The rule: **Needs attention holds only
 can act on.**
 
 ### 20.6 The Needs attention redesign (board first)
+
+**Built 2026-11-02, part 1 (board NA-R):** a section per severity with its count, Critical
+always open and the others as the viewer left them; each item one line (severity, title, age,
+its first action), opened to What to do and then the Details; Acknowledged its own section; the
+summary's counts and its one link to an operation's expected effects. Part 2: Explain's kept
+answer and code-written Why this happened, and the sidebar badge counting unacknowledged
+Critical and Warning only.
 
 A collapsible section per severity with its count ("Critical · 2"; Critical open by default,
 the others remembered per viewer); each item ONE line (severity, title naming devices never

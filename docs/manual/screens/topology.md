@@ -28,6 +28,13 @@ where it attaches). Each device opens its page. The map has no bands: devices si
 network's shared layout puts them (see [Arranging the map](#arrange)), and where nobody has placed
 them, where the cabling's springs settle them, from a fixed seed. A refresh moves nothing.
 
+A device under a planned operation is drawn amber and dashed, its state under its name
+("Reloading · back by ~01:12 UTC", "Unreachable as expected · back by ~…"), the whole state on
+hover, and never with the red cross while that lasts; its page opens the operation
+([Under a planned operation](devices#planned)). Past the operation's time, a device still down
+is crossed as any device not answering is, and its page's header names the operation it
+outlasted.
+
 Every link is labelled:
 
 - **the port at each end** (edge1 Gi2 ↔ core1 Gi1/0), LLDP's own names;

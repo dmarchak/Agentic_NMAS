@@ -376,7 +376,8 @@ def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
     run = got.get("kind") == "reload" or verify
     if got["state"] == "running":
         return dict(card, state="reloading", verify=verify,
-                    steps=job_steps("reload_verify" if verify else "reload", ref.name, host)) \
+                    steps=job_steps("reload_verify" if verify else "reload", ref.name, host),
+                    effects=None if verify else _effects(ref, host)) \
             if run else dict(card, state="reading")
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
@@ -401,7 +402,26 @@ def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
                                                                   "silenced: ") else
                      words or "no reason was recorded"))
         level = "warn" if level == "ok" else level
-    return dict(card, state="result", r=p, chip=chip, level=level, alerts=alerts)
+    return dict(card, state="result", r=p, chip=chip, level=level, alerts=alerts,
+                effects=(_effects(ref, host, since=window.get("from", ""))
+                         if window and not verify else None))
+
+
+def _effects(ref, host: str, since: str = ""):
+    """Board PS: the reload's Expected effects, Unexpected during and Overdue
+    (`planned_state.expected_effects`), for its window; None when no window is recorded yet
+    (the run has not reached its window step) or the record cannot be read."""
+    from modules import planned_state
+
+    window = planned_state.window_of(host, ref.name, "reload", since)
+    if not window:
+        return None
+    got = planned_state.expected_effects(window, ref.name)
+    # What the card draws, no more (each effect's words already name its devices).
+    keep = {"effects": ("what", "predicted_by", "state", "back_by"),
+            "unexpected": ("what", "source"), "overdue": ("what", "back_by")}
+    return dict({k: [{f: e.get(f) for f in fields} for e in got[k]]
+                 for k, fields in keep.items()}, errors=got["errors"])
 
 
 def _iso(epoch: float) -> str:
@@ -476,10 +496,12 @@ def waited_for_turn(steps, trail) -> int:
     return round(max(0.0, first - trail[0][1]))
 
 
-def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:
+def job_steps(op: str, list_name: str, host: str, *, now=None, holder: dict = None) -> list:
     """The stepper rows for *op*'s running job on *host*, from its declared steps and the
-    device's hold; [] for a card that declares why it draws none. ``reload_verify`` is the
-    Reload card's Verify again (C2240), its job on the same card, its steps its own."""
+    device's hold (*holder* when the caller has read it already: `planned_state` reads every
+    hold of a network once); [] for a card that declares why it draws none.
+    ``reload_verify`` is the Reload card's Verify again (C2240), its job on the same card,
+    its steps its own."""
     import importlib
 
     from modules.nsot import device_ops
@@ -489,7 +511,7 @@ def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:
     if isinstance(ref, str):
         return []
     mod = importlib.import_module(ref[0])
-    holder = device_ops.holder(list_name, host) or {}
+    holder = (device_ops.holder(list_name, host) if holder is None else holder) or {}
     return stepper(getattr(mod, ref[1]), holder.get("progress"),
                    detours=getattr(mod, ref[2], None) if ref[2] else None, now=now,
                    starts=len(ref) > 3 and ref[3] == "starts")

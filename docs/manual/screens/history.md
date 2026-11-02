@@ -102,7 +102,13 @@ Filters:
     silence Mercury set, moved or expired in Grafana, for whom, with Grafana's answer; one
     Grafana refused is drawn in red; and each re-measure of the heartbeat windows, written from
     the heartbeat check's row on Needs attention, who wrote it and each of the network's
-    devices' windows), alert rule changes in Grafana (below), and Show commands runs.
+    devices' windows), alert rule changes in Grafana (below), Show commands runs, and page
+    stalls (live updates): each time a page showed its "may be out of date" note, the page
+    recorded itself: its address and tab, what the note said, its live connection's state,
+    session, reconnect attempts, last error and the last update and heartbeat it heard, and
+    Mercury's own view of that connection (whether it knew the session, and when it last sent
+    a heartbeat and an update). Each is drawn in red; nothing is needed from you when one
+    appears, it is the evidence a stall's cause is read from.
 - **Since.**
 - **Jump to:** a day; the timeline starts at its end (below).
 

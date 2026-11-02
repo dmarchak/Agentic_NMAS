@@ -1,8 +1,11 @@
 {%- from "v2/_macros.html" import badge -%}
-<span class="status" id="dev-status" hx-get="{{ url_for('device_v2.status', name=device.hostname) }}" hx-trigger="nmas:reachability from:body" hx-swap="outerHTML">
+{#- The answering badge, or the device's planned state (board PS, `planned_state`): amber and
+    linked to the page whose card is the operation's while it runs; red past its window, naming
+    the operation it outlasted. -#}
+<span class="status" id="dev-status" hx-get="{{ url_for('device_v2.status', name=device.hostname) }}" hx-trigger="nmas:reachability from:body, nmas:device_holds from:body, nmas:device_progress from:body, nmas:restarts from:body" hx-swap="outerHTML">
 {%- if answer.state == 'ok' %}{{ badge('Answering', 'ok', 'check') }}
-{%- elif answer.state == 'danger' %}{{ badge('Not answering', 'danger', 'warn') }}
-{%- elif answer.state == 'planned' %}{{ badge(answer.text, 'warn', 'history', 'Inside its planned-restart window: Needs attention raises it only if it is still down when the window ends') }}
+{%- elif answer.state == 'danger' %}{% if answer.link %}<a class="status-op" href="{{ url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'danger', 'warn', answer.title or '') }}{% if answer.link %}</a>{% endif %}
+{%- elif answer.state == 'planned' %}{% if answer.link %}<a class="status-op" href="{{ url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'warn', 'history', answer.title) }}{% if answer.link %}</a>{% endif %}
 {%- else %}{{ badge('Not probed yet', 'muted') }}{% endif -%}
 {%- if answer.since %}<span class="status-since" title="checked {{ answer.checked_at }}">since <time data-age="{{ answer.since }}" datetime="{{ answer.since }}">{{ answer.since }}</time></span>{% endif -%}
 </span>

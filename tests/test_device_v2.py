@@ -300,7 +300,25 @@ class TestThePage:
 
     def test_the_status_refetches_on_the_reachability_announcement(self, lab):
         _, html = _get(lab, "/v2/device/r3/status")
-        assert 'hx-trigger="nmas:reachability from:body"' in html
+        # And on a hold ending, an operation's step and a window declared: the planned state
+        # (board PS, C2274) moves with each.
+        assert ('hx-trigger="nmas:reachability from:body, nmas:device_holds from:body, '
+                'nmas:device_progress from:body, nmas:restarts from:body"') in html
+
+    def test_a_held_device_s_status_is_its_operation_linked_to_its_card(self, lab):
+        # Board PS (C2274): r3 held by a reload at its wait reads as the reload, amber, never
+        # "Answering", and opens r3's page, which reopens the reload's card.
+        from modules.nsot import device_ops as D
+        with D.hold("Lab", "r3", "reload", "ops@example.com"):
+            for step in ("read", "window", "reload"):
+                D.note(step)
+            _, html = _get(lab, "/v2/device/r3/status")
+        assert '<a class="status-op" href="/v2/device/r3?list=Lab">' in html, html
+        assert "Reloading · by ops@example.com · step 4 of 6 (wait)" in html
+        assert "badge-warn" in html and "Answering" not in html
+        # The control: released, it answers again.
+        _, html = _get(lab, "/v2/device/r3/status")
+        assert "Answering" in html and "status-op" not in html
 
     def test_a_device_the_reader_has_no_row_for_is_not_probed_yet(self, lab):
         _, html = _get(lab, "/v2/device/r9/status")

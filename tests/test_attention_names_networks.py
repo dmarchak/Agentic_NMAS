@@ -81,8 +81,9 @@ def _page(client, monkeypatch, *sources):
 
 
 def _article(text, row_id):
-    m = re.search(r'<article class="att[^"]*" data-attention-row="' + re.escape(row_id)
-                  + r'">.*?</article>', text, re.S)
+    # Board NA-R (2026-11-02): a row is a <details>, its one line and its body inside it.
+    m = re.search(r'<details class="att[^"]*" data-attention-row="' + re.escape(row_id)
+                  + r'" data-keep="[^"]*">.*?</details>', text, re.S)
     assert m, f"no row {row_id!r} on the page"
     return re.sub(r"\s+", " ", m.group(0))
 

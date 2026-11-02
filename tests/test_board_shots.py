@@ -1320,6 +1320,79 @@ def test_devices(lab, monkeypatch):            # noqa: F811 (Save's lab, importe
         _group_a_page("devices-selected", served, "/v2/devices", widths, act=tick_and_open)
 
 
+def _planned_reload(monkeypatch, host, unreachable, list_name):
+    """Board PS's world: *host* held by a Reload at its wait (the reload's own steps noted on
+    a real hold) inside its window, which predicts *unreachable*. Returns the hold's context
+    manager, entered by the caller around its shots."""
+    from modules import restarts as R
+    from modules.nsot import device_ops as D
+
+    start = time.time() - 6 * 60
+    window = {"devices": [host], "list": list_name, "from": R._iso(start),
+              "until": R._iso(start + 13 * 60), "by": "person@example.invalid",
+              "why": "planned reload", "via": "reload", "recorded_at": R._iso(start),
+              "expected": {"unreachable": list(unreachable)}}
+    monkeypatch.setattr(R, "planned_rows", lambda: [window])
+    monkeypatch.setattr(R, "ends", lambda: {})
+    return D.hold(list_name, host, "reload", "person@example.invalid")
+
+
+def test_planned_state(lab, monkeypatch):            # noqa: F811 (Save's lab, imported above)
+    """Board PS (`PlannedState.dc.html`, 1440; C2274) beside Devices, the device page's header
+    and its phone width, on Save's lab: r3 held by a Reload at its wait (step 4 of 6), its
+    window predicting r4 (not answering) out of reach."""
+    from tests import browser
+    from modules.nsot import device_ops as D
+    from modules.nsot import listref
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    _group_a_boards("planned-board", "PlannedState.dc.html", ((1440, 1.0),))
+    import app as A
+    with _planned_reload(monkeypatch, "r3", ["r4"], "Lab"), browser.Served(A.app) as served:
+        for step in ("read", "window", "reload"):
+            D.note(step)
+        _group_a_page("planned-devices", served, "/v2/devices", _DEVICE_WIDTHS)
+        _group_a_page("planned-device-r3", served, "/v2/device/r3", _DEVICE_WIDTHS)
+        _group_a_page("planned-device-r4", served, "/v2/device/r4", ((1440, 1.0), (390, 2.0)))
+        # Part 2, region 2: the Reload's running card, reopened on r3's page, with its
+        # Expected effects read from this lab's sources (those not stored here are named).
+        import threading
+        from modules.nsot import capture_job
+        done = threading.Event()
+        job = capture_job.start("Lab", "Reload r3", "person@example.invalid",
+                                lambda _j: done.wait(120) and {}, kind="reload",
+                                device="r3", card="reload")
+        try:
+            _group_a_page("planned-reload-card", served, "/v2/device/r3",
+                          ((1440, 1.0), (390, 2.0)))
+        finally:
+            done.set()
+            capture_job.wait(job, 10)
+
+
+def test_planned_state_topology(tmp_path, monkeypatch):
+    """Board PS's Topology: the captures' map (test_topology's world) with r2 held by a Reload
+    at its wait; its window predicts s1, which answers, so s1 is drawn as answering."""
+    from tests import browser
+    from tests.test_topology_v2 import _store, _value
+    from modules.nsot import device_ops as D
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    _store(_value())
+    import app as A
+    with _planned_reload(monkeypatch, "r2", ["s1"], "Lab"), browser.Served(A.app) as served:
+        for step in ("read", "window", "reload"):
+            D.note(step)
+        _group_a_page("planned-topology", served, "/v2/topology?list=Lab",
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+
+
 def test_bulk_intent(tmp_path, monkeypatch):
     """Devices › Change a setting beside `BulkIntent.dc.html` (board D, 1440), on
     test_bulk_intent's lab (four devices' real fleet intent, the real render with a stub secret
@@ -1567,9 +1640,10 @@ def test_device_page(tmp_path, monkeypatch):
         monkeypatch.setattr(device_page, "_cached", lambda reader, *a, **k: (
             ({"devices": _Every()}, "2026-10-17T00:09:02Z", "") if reader == "reachability"
             else cached(reader, *a, **k)))
-        monkeypatch.setattr(device_page, "_restarting", lambda host, list_name: {
-            "words": "Restarting as planned (until 2026-10-17T00:27:47Z, by "
-                     "person@example.invalid)", "until": "2026-10-17T00:27:47Z"})
+        monkeypatch.setattr(device_page, "_planned", lambda host, list_name, row: {
+            "level": "plan", "words": "Restarting as planned · by person@example.invalid · "
+                                      "back by ~00:27 UTC",
+            "title": "Inside the planned-restart window", "link": host})
         for width, scale in _DEVICE_WIDTHS:
             with _DevicePage(served, width, scale) as p:
                 p.open("/v2/device/r2")
@@ -2983,13 +3057,54 @@ def test_landing(tmp_path, monkeypatch):
     approval, an overdue onboarding, a rollback block, a failed deploy, a denied baseline, an
     authorisation, an unreadable source). Two receipts written through the real store."""
     from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _landing_world(tmp_path, monkeypatch)
+    evidence = ("document.querySelector('#attention details.evidence').open = true",
+                "document.querySelector('#attention details.evidence').open")
+    drawer = ("document.querySelector('.menu-btn').click()",
+              "!!document.querySelector('.sidebar.open')")
+    import app as A_
+    with browser.Served(A_.app) as served:
+        _f1_walk(served, "landing", "/v2/", ((1440, 1.0), (1280, 1.0)),
+                 boards=("redesign/Main.dc.html",),
+                 states=(("", "", "true"), ("evidence",) + evidence))
+        _f1_walk(served, "landing-brand", "/v2/", ((1440, 1.0),),
+                 boards=("BrandSidebar.dc.html", "KnownNoise.dc.html", "C566Coverage.dc.html"))
+        _f1_walk(served, "landing-dark", "/v2/", ((1440, 1.0),), dark=True)
+        _f1_walk(served, "landing-phone", "/v2/", ((390, 2.0),),
+                 boards=("redesign/LandingPhone.dc.html", "redesign/NavPhone.dc.html"),
+                 states=(("", "", "true"), ("drawer",) + drawer))
+
+
+def test_landing_nar(tmp_path, monkeypatch):
+    """Board NA-R (`AttentionRedesign.dc.html`, 1440; PHASE8_PLAN 20.6) beside Needs attention
+    in the landing walk's world: as it opens (Critical open, each item one line), with its
+    first critical item opened (What to do, then Details), and at phone width."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _landing_world(tmp_path, monkeypatch)
+    opened = ("document.querySelector('#attention details.att').open = true",
+              "document.querySelector('#attention details.att').open")
+    import app as A_
+    with browser.Served(A_.app) as served:
+        _f1_walk(served, "nar", "/v2/", ((1440, 1.0), (1280, 1.0)),
+                 boards=("AttentionRedesign.dc.html",),
+                 states=(("", "", "true"), ("opened",) + opened))
+        _f1_walk(served, "nar-phone", "/v2/", ((390, 2.0),),
+                 states=(("", "", "true"), ("opened",) + opened))
+
+
+def _landing_world(tmp_path, monkeypatch):
+    """The landing walk's lab and sources (test_landing's docstring), built once per test."""
     from tests import payload_providers as PP
     from tests import test_profile_apply as P
     from tests.test_profile_reaches_the_program import _propose_management
     from tests.test_template_bring import _commit_stale
 
-    if not browser.available()[0]:
-        pytest.skip(browser.available()[1])
     lab_ = P.lab.__wrapped__(monkeypatch, tmp_path)
     # The modules that bound the accessor when imported (test_device_v2's lab does the same).
     for bound in ("modules.device", "modules.inventory", "modules.inventory.source_config"):
@@ -3012,21 +3127,6 @@ def test_landing(tmp_path, monkeypatch):
         {"id": "f1b", "at": iso(600), "action": "restore", "device": "r2",
          "actor": "operator@example.com", "outcome": "refused", "program_lines": 0,
          "reason": "the device moved since the preview", "golden_commit": ""}])["ok"]
-    evidence = ("document.querySelector('#attention details.evidence').open = true",
-                "document.querySelector('#attention details.evidence').open")
-    drawer = ("document.querySelector('.menu-btn').click()",
-              "!!document.querySelector('.sidebar.open')")
-    import app as A_
-    with browser.Served(A_.app) as served:
-        _f1_walk(served, "landing", "/v2/", ((1440, 1.0), (1280, 1.0)),
-                 boards=("redesign/Main.dc.html",),
-                 states=(("", "", "true"), ("evidence",) + evidence))
-        _f1_walk(served, "landing-brand", "/v2/", ((1440, 1.0),),
-                 boards=("BrandSidebar.dc.html", "KnownNoise.dc.html", "C566Coverage.dc.html"))
-        _f1_walk(served, "landing-dark", "/v2/", ((1440, 1.0),), dark=True)
-        _f1_walk(served, "landing-phone", "/v2/", ((390, 2.0),),
-                 boards=("redesign/LandingPhone.dc.html", "redesign/NavPhone.dc.html"),
-                 states=(("", "", "true"), ("drawer",) + drawer))
 
 
 # --- C650 group F2: show_commands, show_commands_run ---

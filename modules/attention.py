@@ -577,7 +577,7 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
 def source_result(source: str, label: str, *, read_at: float, took_ms: int,
                   rows=None, checked: str = "", error: str = "",
                   value_at: float = None, stale_after_seconds: int = None,
-                  reader: str = None, detail: str = "") -> dict:
+                  reader: str = None, detail: str = "", held=None) -> dict:
     """One source, read. *error* makes the source a row of its own.
 
     *read_at* is when this request read the source; *value_at* is the time of
@@ -599,7 +599,10 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
 
     *checked* says what was FOUND, for a person; *detail* is the debugger's
     part (endpoints, read costs), drawn one level down, on hover (the
-    operator's presentation rule, 2026-09-28)."""
+    operator's presentation rule, 2026-09-28).
+
+    *held* lists each signal a planned window explained (`_held`), the structured twin of the
+    words *checked* gives them: the operation's card reads it (board PS)."""
     if error:
         # Kept where it outlives the row (the operator, 2026-09-29): a transient
         # "could not be read: Approvals" cleared on the next read, and nothing
@@ -623,7 +626,21 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
             "read_at": _iso(read_at),
             "value_at": _iso(read_at if value_at is None else value_at),
             "stale_after_seconds": stale_after_seconds, "reader": reader, "detail": detail,
-            "took_ms": took_ms, "checked": checked, "rows": list(rows or [])}
+            "took_ms": took_ms, "checked": checked, "rows": list(rows or []),
+            "held": list(held or [])}
+
+
+def _held(source: str, got: dict, devices, what: str, *, margin: float = None) -> dict:
+    """One signal a planned window explained and the source held (PHASE8_PLAN 20.2): what the
+    operation's card lists as an expected effect (board PS; `expected_effects`), beside the
+    words *checked* says. *got* is `restarts.explained_by`'s (or `holding`'s) answer; *margin*
+    the settle time the source held it for (default `restarts.SETTLE_SECONDS`)."""
+    from modules import restarts as R
+
+    margin = R.SETTLE_SECONDS if margin is None else margin
+    return {"source": source, "window": R.window_id(got["window"]),
+            "devices": sorted({d for d in devices if d}), "what": what,
+            "how": got.get("how", "restarting"), "back_by": R._iso(got["end"] + margin)}
 
 
 # ---------------------------------------------------------------------------
@@ -964,7 +981,7 @@ def drift_source(status=None, now=None) -> dict:
             {"label": "Clear what the reason names, then " + _CHECK_NOW[0].lower()
                       + _CHECK_NOW[1:], "href": _DRIFT_HOME, "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})
-    explained_drift = []
+    explained_drift, held_for = [], []
     for d in last.get("errors") or []:
         # The attribution rule (PHASE8_PLAN 20.2): a device a planned window explained when
         # the run read it (restarting, or predicted unreachable) is that operation's effect;
@@ -976,6 +993,9 @@ def drift_source(status=None, now=None) -> dict:
             why_held = None
         if why_held:
             explained_drift.append(f"{d['hostname']} ({why_held['words']})")
+            held_for.append(_held("drift", why_held, [d["hostname"]],
+                                  f"Drift: {d['hostname']} not read; read again by the next "
+                                  "run"))
             continue
         # During a boot the reachability reader saw the device go silent: said
         # first, so a booting device does not read as a broken one.
@@ -991,6 +1011,7 @@ def drift_source(status=None, now=None) -> dict:
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
                          value_at=last_ts,
                          stale_after_seconds=int(DRIFT_STALE_INTERVALS * interval) or None,
+                         held=held_for,
                          checked=f"list {lst}, the run of {_iso(last_ts) or 'an unrecorded time'}: "
                                  f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}"
                                  + (f"; not read during a planned operation, read again by the "
@@ -1917,7 +1938,7 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                        if (r.get("labels") or {}).get("nmas") == "heartbeat"}
     drained, drained_why = _drained_devices()
     planned_hold, planned_why = _planned_alert_hold()
-    held, held_planned = [], []
+    held, held_planned, held_for = [], [], []
     def parts_of(group):
         """The rows one onset group makes: ``[(instances, members, whole_pipeline)]``.
 
@@ -1947,9 +1968,10 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         for d, ms in sorted(drained_here.items()):
             held.append(f"{', '.join(sorted({m['rule'] for m in ms}))} on {d} ({drained[d]})")
         for d, ms in sorted(planned_here.items()):
-            held_planned.append(f"{len(ms)} alert(s) ("
-                                + ", ".join(sorted({m['rule'] for m in ms})) + ") on "
-                                + f"{d}: {planned_hold(d)}")
+            rules = ", ".join(sorted({m['rule'] for m in ms}))
+            held_planned.append(f"{len(ms)} alert(s) ({rules}) on {d}: {planned_hold(d)}")
+            held_for.append(_held(src_name, planned_hold.got(d), [d],
+                                  f"{len(ms)} alert(s) on {d}: {rules}"))
         live = [p for p in keep if not p[1]["silences"]]
         quiet = [p for p in keep if p[1]["silences"]]
         return [([p[0] for p in part], [p[1] for p in part], False)
@@ -2069,6 +2091,7 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         src_name, src_label, read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
         reader=GRAFANA_READER, detail="read from " + ", ".join(doc.get("endpoints") or []),
+        held=held_for,
         checked=(f"{c.get('rules', 0)} rule(s); "
                  f"{c.get('condition', 0)} alerting, {c.get('no_data', 0)} no data, "
                  f"{c.get('error', 0)} error, {c.get('pending', 0)} pending, "
@@ -2084,36 +2107,47 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
 
 def _planned_alert_hold(now: float = None) -> tuple:
     """``(hold, problem)``: *hold(device)* is the words of the planned window the device is
-    inside, in any of its networks, counting `restarts.SETTLE_SECONDS` after its end, or "".
-    An unreadable planned record, or inventories that cannot be read, hold nothing, and
-    *problem* says so: a record that cannot be read never hides an alert."""
+    inside, in any of its networks, counting `restarts.SETTLE_SECONDS` after its end, or "";
+    *hold.got(device)* is that window's `restarts.explained_by` answer, or None (board PS:
+    what the operation's card lists). An unreadable planned record, or inventories that cannot
+    be read, hold nothing, and *problem* says so: a record that cannot be read never hides an
+    alert."""
     from modules import restarts as R
+
+    def nothing(_d):
+        return ""
+    nothing.got = lambda _d: None
 
     now = time.time() if now is None else now
     try:
         planned, ended = R.planned_rows(), R.ends()
     except RuntimeError as exc:
-        return (lambda _d: ""), f"{exc}, so no alert was held for a planned restart"
+        return nothing, f"{exc}, so no alert was held for a planned restart"
     # Only a window open now (with its settle margin) holds anything: the record keeps every
     # window ever declared, and the inventories are read only when one is open.
     planned = [p for p in planned if R._epoch(p.get("from", "")) - 60 <= now
                <= R.window_end(p, ended) + R.SETTLE_SECONDS]
     if not planned:
-        return (lambda _d: ""), ""
+        return nothing, ""
     where = _device_networks()
     if where is None:
-        return (lambda _d: ""), ("the networks' inventories could not be read, so no alert "
-                                 "was held for a planned restart")
+        return nothing, ("the networks' inventories could not be read, so no alert was held "
+                         "for a planned restart")
 
-    def hold(device: str) -> str:
+    def got(device: str):
         # The attribution rule (PHASE8_PLAN 20.2): the window's own devices and the devices it
         # predicted unreachable, each until its end plus the settle time.
         for net in where.get(device) or [""]:
-            got = R.explained_by(device, net, now, planned=planned, ended=ended)
-            if got:
-                return (got["words"] + f", its alerts held {R.SETTLE_SECONDS // 60} min "
-                        "after it to settle")
-        return ""
+            answer = R.explained_by(device, net, now, planned=planned, ended=ended)
+            if answer:
+                return answer
+        return None
+
+    def hold(device: str) -> str:
+        answer = got(device)
+        return (answer["words"] + f", its alerts held {R.SETTLE_SECONDS // 60} min after it to "
+                "settle") if answer else ""
+    hold.got = got
     return hold, ""
 
 
@@ -2342,7 +2376,7 @@ def reachability_source(cached=None) -> dict:
     # A device inside its planned-restart window is restarting as planned (the operator's
     # B3, W2 walk 2026-10-17): said under What was checked, as a drained device's alert is,
     # never a row. Once the window ends with it still down, it is a row naming the window.
-    held, planned_why, ended_words = _planned_down(down)
+    held, planned_why, ended_words, held_for = _planned_down(down)
     down = [d for d in down if (d.get("hostname"), d.get("list")) not in held]
     rows = []
     if down:
@@ -2367,7 +2401,7 @@ def reachability_source(cached=None) -> dict:
     return source_result(
         "reachability", "Reachability", read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
-        reader="reachability",
+        reader="reachability", held=held_for,
         checked=(f"{c.get('answering', 0)} answering, {c.get('not_answering', 0)} not answering"
                  + (f", {c.get('missed_last_probe', 0)} missed only the last probe"
                     if c.get("missed_last_probe") else "")
@@ -2376,21 +2410,22 @@ def reachability_source(cached=None) -> dict:
 
 
 def _planned_down(down: list, now: float = None) -> tuple:
-    """``(held, problem, ended)`` for the devices not answering: *held* maps ``(hostname,
-    list)`` to the words of the planned window each is inside ("edge1 is restarting as planned
-    (until T, by X): open its reload on its page"); *ended* maps a device whose window ended
-    while it was down to the clause its row adds. An unreadable planned record holds
-    nothing, and *problem* says so."""
+    """``(held, problem, ended, held_for)`` for the devices not answering: *held* maps
+    ``(hostname, list)`` to the words of the planned window each is inside ("edge1 is
+    restarting as planned (until T, by X): open its reload on its page"); *ended* maps a
+    device whose window ended while it was down to the clause its row adds; *held_for* is each
+    hold's `_held` entry (board PS). An unreadable planned record holds nothing, and *problem*
+    says so."""
     from modules import restarts as R
 
     if not down:
-        return {}, "", {}
+        return {}, "", {}, []
     now = time.time() if now is None else now
     try:
         planned, ended = R.planned_rows(), R.ends()
     except RuntimeError as exc:
-        return {}, f"{exc}, so no device was held as restarting as planned", {}
-    held, after = {}, {}
+        return {}, f"{exc}, so no device was held as restarting as planned", {}, []
+    held, after, held_for = {}, {}, []
     for d in down:
         key = (d.get("hostname"), d.get("list"))
         got = R.holding(key[0], key[1] or "", now, planned=planned, ended=ended)
@@ -2398,12 +2433,16 @@ def _planned_down(down: list, now: float = None) -> tuple:
             held[key] = (got["words"] + (": open its reload on its page"
                                          if got["window"].get("via") == "reload" else
                                          f": {got['window'].get('why', '')}"))
+            held_for.append(_held("reachability", got, [key[0]],
+                                  f"{key[0]} not answering", margin=0))
             continue
         # A device the window's operation predicted unreachable (PHASE8_PLAN 20.2), until the
         # window's end plus the settle time; past it, it is raised (overdue) as before.
         got = R.explained_by(key[0], key[1] or "", now, planned=planned, ended=ended)
         if got and got["how"] == "unreachable":
             held[key] = got["words"]
+            held_for.append(_held("reachability", got, [key[0]],
+                                  f"{key[0]} out of Mercury's reach"))
             continue
         p = R.ended_while_down(key[0], key[1] or "", now, _ts(d.get("since")) or 0,
                                planned=planned, ended=ended)
@@ -2411,7 +2450,7 @@ def _planned_down(down: list, now: float = None) -> tuple:
             after[key] = (f"; its planned-restart window (by {p.get('by') or 'an unrecorded '
                           'person'}) ended at {R._iso(R.window_end(p, ended))} and it is still "
                           "not answering")
-    return held, "", after
+    return held, "", after, held_for
 
 
 def credential_health_source(cached=None) -> dict:
@@ -3940,7 +3979,7 @@ def adjacency_source(cached=None) -> dict:
                              value_at=value_at, stale_after_seconds=promise, reader="adjacencies",
                              checked="no Prometheus configured: what the devices report about "
                                      "their neighbours cannot be read")
-    rows, settling, held = [], 0, []
+    rows, settling, held, held_for = [], 0, [], []
     # The attribution rule (PHASE8_PLAN 20.2): a link with an end a planned window explains
     # (restarting, or predicted unreachable) is that operation's expected effect until the
     # window's end plus the settle time, said under What was checked, never a row.
@@ -3953,6 +3992,9 @@ def adjacency_source(cached=None) -> dict:
         why_held = next((w for w in (hold(d) for d in devs) if w), "")
         if why_held:
             held.append(f"{a['protocol']} {' and '.join(devs)} ({why_held})")
+            held_for.append(_held("adjacencies",
+                                  next(g for g in (hold.got(d) for d in devs) if g), devs,
+                                  f"{a['protocol']} {'–'.join(devs)} not up"))
             continue
         # A side judged on a failed scrape's last good value says when it was read (C690).
         rip = a.get("source") == "reader"
@@ -3987,6 +4029,8 @@ def adjacency_source(cached=None) -> dict:
     # A device a window explains is not measured while it restarts: its own expected effect.
     gone = {u["device"]: hold(u["device"]) for u in un if hold(u["device"])}
     held += [f"{d}'s adjacencies cannot be judged ({w})" for d, w in sorted(gone.items())]
+    held_for += [_held("adjacencies", hold.got(d), [d], f"{d}'s protocols not measured")
+                 for d in sorted(gone)]
     un = [u for u in un if u["device"] not in gone]
     if un:
         names = ", ".join(sorted({f"{u['device']} ({u['protocol']})" for u in un}))
@@ -4006,7 +4050,7 @@ def adjacency_source(cached=None) -> dict:
                                          "known": False}))
     return source_result(
         "adjacencies", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
-        stale_after_seconds=promise, reader="adjacencies",
+        stale_after_seconds=promise, reader="adjacencies", held=held_for,
         checked=(f"{v.get('checked', 0)} adjacency report(s) over {v.get('devices', 0)} device(s)"
                  + (f"; {settling} not up for less than {PERSIST_READS} reads, not raised yet"
                     if settling else "")
@@ -4053,19 +4097,30 @@ def _peer_names(list_name: str, cache: dict) -> dict:
     return out
 
 
+def _drop_window(drop: dict, a: dict, planned: list, peers: dict = None):
+    """The planned window covering a logged drop, ``(window, how)``, or None: the logging
+    device's own (``restarting``), else its PEER's (``peer``: the device its router id or
+    address names in committed intent; PHASE8_PLAN 20.2)."""
+    from modules import restarts
+
+    at = drop["epoch"]
+    p = restarts.planned_for(a["device"], at, planned, a.get("list", ""))
+    if p:
+        return p, "restarting"
+    peer = (peers or {}).get(str(a.get("neighbor") or ""))
+    p = restarts.planned_for(peer, at, planned, a.get("list", "")) if peer else None
+    return (p, "peer") if p else None
+
+
 def _explained(drop: dict, a: dict, planned: list, receipts, peers: dict = None) -> str:
     """Why a logged drop needs no row, or ``""``: a planned restart's window covering the
     logging device, or its PEER (the device its router id or address names in committed
     intent, *peers*; PHASE8_PLAN 20.2: the peer's planned window, not only the logging
     device's), or a deploy to it around that time."""
-    from modules import restarts
-
+    window = _drop_window(drop, a, planned, peers)
+    if window:
+        return "planned restart" if window[1] == "restarting" else "the peer's planned restart"
     at = drop["epoch"]
-    if restarts.planned_for(a["device"], at, planned, a.get("list", "")):
-        return "planned restart"
-    peer = (peers or {}).get(str(a.get("neighbor") or ""))
-    if peer and restarts.planned_for(peer, at, planned, a.get("list", "")):
-        return "the peer's planned restart"
     for r in receipts(a.get("list", ""), a["device"]):
         t = _ts(r.get("at"))
         if t and t - DEPLOY_WINDOW_S <= at <= t + 60:
@@ -4112,14 +4167,27 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                 raise RuntimeError(f"{list_name}'s deploy receipts could not be read: "
                                    f"{got_r.get('error')}")
             return got_r["rows"]
-    rows, explained, adjacencies = [], 0, v.get("adjacencies") or {}
-    names = {}
+    rows, explained, adjacencies, held_for = [], 0, v.get("adjacencies") or {}, []
+    names, ended = {}, restarts.ends()
     try:
         for k, a in sorted(adjacencies.items()):
             drops = a.get("drops") or []
             peers = _peer_names(a.get("list") or "", names)
             kept = [d for d in drops if not _explained(d, a, planned, receipts, peers)]
             explained += len(drops) - len(kept)
+            # Each window that explained a drop of this adjacency, once (board PS's card).
+            by_window = {}
+            for d in drops:
+                w = _drop_window(d, a, planned, peers)
+                if w:
+                    by_window.setdefault(restarts.window_id(w[0]), (w, []))[1].append(d)
+            for (p, how), ds in by_window.values():
+                peer = peers.get(str(a.get("neighbor") or ""))
+                held_for.append(_held(
+                    "adjacency_log", {"window": p, "end": restarts.window_end(p, ended),
+                                      "how": how}, [a["device"], peer],
+                    f"{a['device']} logged its {a['protocol']} adjacency to "
+                    f"{peer or a.get('neighbor')} down ({len(ds)})"))
             if not kept:
                 continue
             last = kept[0]
@@ -4153,7 +4221,7 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                              reader="adjacency-log", error=str(exc))
     return source_result(
         "adjacency_log", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
-        stale_after_seconds=promise, reader="adjacency-log",
+        stale_after_seconds=promise, reader="adjacency-log", held=held_for,
         checked=(f"{v.get('lines', 0)} adjacency line(s) in Loki over the last "
                  f"{v.get('window_days', 7)} days, from {v.get('devices', 0)} managed "
                  f"device(s); {len(adjacencies)} adjacency(ies) logged down"
@@ -5400,6 +5468,43 @@ def _past_promise_rows(results: list, now: float) -> list:
     return out
 
 
+def _expected_on_cards(results: list) -> list:
+    """Board NA-R's decision 4: the signals the sources held for planned windows (`_held`), one
+    entry per window, ``{"n", "device", "words"}``, the summary's quiet link to the
+    operation's card (its device's page reopens it); *device* is "" for a window over several
+    devices or a network. Never rows. An unreadable window record names no device."""
+    from modules import restarts as R
+
+    counts = {}
+    for res in results:
+        for h in res.get("held") or []:
+            counts[h["window"]] = counts.get(h["window"], 0) + 1
+    if not counts:
+        return []
+    try:
+        windows = {R.window_id(p): p for p in R.planned_rows()}
+    except RuntimeError:
+        windows = {}
+    out = []
+    for wid, n in sorted(counts.items()):
+        p = windows.get(wid) or {}
+        named = [d for d in p.get("devices") or [] if d != "*"]
+        one = named[0] if len(named) == 1 and "*" not in (p.get("devices") or []) else ""
+        effects = f"{n} expected effect{'' if n == 1 else 's'}"
+        if one and p.get("via") == "reload":
+            # A Reload has a card: its device's page reopens it.
+            out.append({"n": n, "device": one,
+                        "words": f"{effects} of {one}'s Reload {'are' if n != 1 else 'is'} on "
+                                 "its card"})
+        else:
+            out.append({"n": n, "device": "",
+                        "words": f"{effects} of "
+                                 + (f"{one}'s planned restart" if one else "a planned restart")
+                                 + f" {'are' if n != 1 else 'is'} held, said under What was "
+                                   "checked"})
+    return out
+
+
 def needs_attention(sources=None) -> dict:
     """The page: every row from every source, worst first, and every source
     with its read time, so an empty page says what it looked at."""
@@ -5434,7 +5539,7 @@ def needs_attention(sources=None) -> dict:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,
             "unreadable": unreadable, "acknowledged": acknowledged, "in_force": in_force,
-            "badge": badge_of(rows, results),
+            "badge": badge_of(rows, results), "expected": _expected_on_cards(results),
             "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
                                              "value_at", "took_ms", "checked")}
                         | {"count": len(res["rows"])} for res in results]}

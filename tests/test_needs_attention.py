@@ -304,10 +304,12 @@ class TestThePageAndThePanel:
         # An age, with the absolute time in its `datetime` (answer first, detail below).
         assert f"journalctl -u {U}.service" in html
         assert re.search(r'since <time class="stamp" datetime="20', html), html
-        assert '<div class="att-level">Unknown</div>' in html and "since not recorded" in html
+        # Board NA-R (2026-11-02): the level on the row's one line, in its severity's section.
+        assert '<span class="att-level">Unknown</span>' in html and "since not recorded" in html
         # Worst first, as drawn.
-        assert html.index('<div class="att-level">Critical</div>') < \
-            html.index('<div class="att-level">Unknown</div>')
+        assert html.index('<span class="att-level">Critical</span>') < \
+            html.index('<span class="att-level">Unknown</span>')
+        assert html.index("Critical · ") < html.index("Unknown · 1")
 
     def test_a_failed_read_is_never_drawn_as_nothing(self, monkeypatch):
         """On v2 the list is drawn on the server: a read that raises is the request's failure,

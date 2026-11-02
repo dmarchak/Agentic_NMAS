@@ -1,65 +1,59 @@
 {%- from "v2/_macros.html" import icon, stamp, how -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
-    Re-fetched when any reader it draws from announces (nmas_v2.js relays each key). -#}
+    Re-fetched when any reader it draws from announces (nmas_v2.js relays each key).
+    Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
+    its count in its heading, Critical open by default, Warning and Unknown as this viewer last
+    left them (nmas_v2.js, `data-remember`, a browser convenience only); each item ONE line
+    (severity, title, age, its primary action); opened, What to do first, then the details.
+    Everything a row carried stays; it moves one level down. -#}
 {%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
 {#- Every row names something wrong and its action (attention.ROW_KINDS, the
     operator, 2026-10-02); a fact nobody acts on is in its source's finding,
     under "What was checked", never a row. -#}
 {%- set rows = a.rows or [] -%}
 {%- set sources = a.sources or [] -%}
+{#- The row's first action today (board NA-R's decision 5), on its one line: it works without
+    opening the row. Its full set, with each How does this work?, is under What to do. -#}
+{%- macro primary(r, nets) -%}
+{%- if r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
+{%- elif r.devices %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
+{%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
+{%- endif %}
+{%- endmacro -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
      hx-trigger="{{ attention_trigger }}">
+  {%- set counts = namespace(danger=0, warning=0, unknown=0) %}
+  {%- for r in rows %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}
   <p class="att-summary">
     {%- if rows %}<strong>{{ a.badge.n }} item{{ '' if a.badge.n == 1 else 's' }}</strong>
+    {%- if counts.danger %} · {{ counts.danger }} critical{% endif %}{% if counts.warning %} · {{ counts.warning }} warning{% endif %}{% if counts.unknown %} · {{ counts.unknown }} unknown{% endif %}
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
+    {%- if a.acknowledged %} · {{ a.acknowledged|length }} acknowledged{% endif %}
     · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
     {%- if a.unreadable %} · <span class="warn-text">{{ a.unreadable|length }} could not be read: {{ a.unreadable|join(', ') }}</span>{% endif -%}
+    {#- Board NA-R's decision 4: an operation's expected effects are one quiet link to its
+        card, never rows (PHASE8_PLAN 20.2). -#}
+    {%- for x in a.expected or [] %} · {% if x.device %}<a href="{{ url_for('device_v2.device', name=x.device) }}">{{ x.words }}</a>{% else %}{{ x.words }}{% endif %}{% endfor -%}
   </p>
   {%- if rows %}
   <div class="att-list">
-    {%- for r in rows %}
-    <article class="att att-{{ r.level }}" data-attention-row="{{ r.id }}">
-      <div class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</div>
-      <h2 class="att-what">{{ r.what }}</h2>
-      <p class="att-cause">{{ r.cause }}</p>
-      {%- set ops = (r.operands or {}) %}
-      {%- if ops %}
-      <dl class="att-ops">
-        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join(', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
-      </dl>
-      {%- if ops.members %}
-      <ul class="att-members">
-        {#- C1277: a silence set in Grafana is drawn on the member it covers (who, until when,
-            its comment), so a silenced alert never reads as one firing unattended; an id the
-            silence list did not return is named as that, never guessed (the reader keeps one
-            entry per silencing id, resolved or not: grafana_alerts._silences_on). Its onset and
-            basis are drawn as today's panel drew them; the alert's own identity (fingerprint,
-            Alertmanager's start, where its device came from, the silencing ids) and each
-            silence's id and matchers are its provenance, on hover. -#}
-        {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
-          {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
-          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ s.created_by or 'an unnamed account' }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
-        </li>{% endfor %}
-      </ul>
-      {%- endif %}
-      {%- endif %}
-      {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
-      {#- C493: every device is named with its network (attention._with_networks), so another
-          network's device never reads as this one's. -#}
-      {%- set nets = r.networks or {} %}
-      {%- set seen = namespace(all=[], each_one=true) %}
-      {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
-      {%- set one = seen.all|unique|list %}
-      <p class="att-meta">
-        {%- if r.devices %}
-        {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
-        {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
-        {%- endif %} · {% endif -%}
-        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %}
-        {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
-        {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
-      </p>
-      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
+    {%- for level in ('danger', 'warning', 'unknown') %}
+    {%- set group = rows|selectattr('level', 'equalto', level)|list %}
+    {%- if group %}
+    <details class="att-grp att-grp-{{ level }}" data-keep="att-grp-{{ level }}"{% if level != 'danger' %} data-remember="att-grp-{{ level }}"{% endif %} open>
+      <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ group|length }}</summary>
+    {%- for r in group %}
+    {%- set nets = r.networks or {} %}
+    <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}">
+      <summary class="att-line">
+        <span class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
+        <h2 class="att-what" title="{{ r.what }}">{{ r.what }}</h2>
+        <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted">not recorded</span>{% endif %}</span>
+        <span class="att-primary">{{ primary(r, nets) }}</span>
+      </summary>
+      <div class="att-body">
+      <div class="att-todo">
+      <h3>What to do</h3>
       <div class="att-action">
         {#- In the device's own network when it is known (C493), never the active one's. -#}
         {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>{% endfor %}
@@ -90,6 +84,7 @@
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
         {%- if r.action.run_url and r.action.run_url.startswith('https://github.com/') %}<a class="btn btn-small btn-outline" href="{{ r.action.run_url }}" target="_blank" rel="noopener noreferrer">Open {{ ('run #' ~ r.action.run) if r.action.run else 'the run' }} on GitHub</a>{% endif %}
       </div>
+      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
           (attention.acknowledge); a later event is a new row. -#}
@@ -101,12 +96,12 @@
       <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="editing">
         <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
         <span class="att-ack-form" x-show="isOpen" x-cloak>
-          <label class="sr-only" for="ack-{{ loop.index }}">Why this needs nothing more</label>
+          <label class="sr-only" for="ack-{{ r.id }}">Why this needs nothing more</label>
           {%- if r.dispositions %}
-          <label class="sr-only" for="ackd-{{ loop.index }}">What it was</label>
-          <select id="ackd-{{ loop.index }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
+          <label class="sr-only" for="ackd-{{ r.id }}">What it was</label>
+          <select id="ackd-{{ r.id }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
           {%- endif %}
-          <input id="ack-{{ loop.index }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
+          <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
           <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
           <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>
         </span>
@@ -114,11 +109,65 @@
         <span class="att-ack-note" x-show="note" x-text="note" role="status" x-cloak></span>
       </div>
       {%- endif %}
-    </article>
+      </div>
+      <div class="att-det">
+      <h3>Details</h3>
+      <p class="att-cause">{{ r.cause }}</p>
+      {%- set ops = (r.operands or {}) %}
+      {%- if ops %}
+      <dl class="att-ops">
+        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join(', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
+      </dl>
+      {%- if ops.members %}
+      <ul class="att-members">
+        {#- C1277: a silence set in Grafana is drawn on the member it covers (who, until when,
+            its comment), so a silenced alert never reads as one firing unattended; an id the
+            silence list did not return is named as that, never guessed (the reader keeps one
+            entry per silencing id, resolved or not: grafana_alerts._silences_on). Its onset and
+            basis are drawn as today's panel drew them; the alert's own identity (fingerprint,
+            Alertmanager's start, where its device came from, the silencing ids) and each
+            silence's id and matchers are its provenance, on hover. -#}
+        {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
+          {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
+          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ s.created_by or 'an unnamed account' }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
+        </li>{% endfor %}
+      </ul>
+      {%- endif %}
+      {%- endif %}
+      {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
+      {#- C493: every device is named with its network (attention._with_networks), so another
+          network's device never reads as this one's. -#}
+      {%- set seen = namespace(all=[], each_one=true) %}
+      {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
+      {%- set one = seen.all|unique|list %}
+      <p class="att-meta">
+        {%- if r.devices %}
+        {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
+        {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
+        {%- endif %} · {% endif -%}
+        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %}
+        {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
+        {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
+      </p>
+      </div>
+      </div>
+    </details>
+    {%- endfor %}
+    </details>
+    {%- endif %}
     {%- endfor %}
   </div>
   {%- else %}
   <p class="att-clear">{{ icon('check', 16) }} Every source answered and none reports anything a person must do.</p>
+  {%- endif %}
+  {%- if a.acknowledged %}
+  <details class="att-grp att-grp-ack" data-keep="att-grp-ack" data-remember="att-grp-ack">
+    <summary class="att-grp-sum">Acknowledged · {{ a.acknowledged|length }}</summary>
+    <p class="att-acked">Acknowledged, so not listed:</p>
+    <ul class="att-members">
+      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}</li>{% endfor %}
+    </ul>
+  </details>
   {%- endif %}
   <details class="evidence" data-keep="evidence">
     <summary>What was checked · {{ sources|length }} sources</summary>
@@ -135,12 +184,6 @@
       {%- endfor %}
       </tbody>
     </table>
-    {%- if a.acknowledged %}
-    <p class="att-acked">Acknowledged, so not listed:</p>
-    <ul class="att-members">
-      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}</li>{% endfor %}
-    </ul>
-    {%- endif %}
     {%- if a.in_force %}
     {#- C433: an acknowledgement within a band holds while the value stays inside it, firing or
         not; listed so a person can find and review it even when it hides nothing now. -#}

@@ -274,8 +274,10 @@ class TestNeedsAttention:
             stored["value"], stored["value_at"], ""))
         got = device_page.answering({"hostname": "r6", "ip": "192.0.2.32"})
         assert got["state"] == "planned", got
-        assert got["text"] == (f"Restarting as planned (until {R._iso(now - 120 + 21 * 60)}, "
-                               f"by {OPERATOR})")
+        # Board PS's words (C2274, 2026-11-01): the state, who, and when it is back.
+        until = time.strftime("%H:%M UTC", time.gmtime(now - 120 + 21 * 60))
+        assert got["text"] == f"Restarting as planned · by {OPERATOR} · back by ~{until}"
+        assert got["link"] == "r6", "it opens r6's page, where its operation's card is"
 
     @pytest.fixture
     def alerting(self, monkeypatch):

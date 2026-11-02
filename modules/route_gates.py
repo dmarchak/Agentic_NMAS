@@ -334,6 +334,7 @@ GATES = {
     "intent_v2.acknowledge": _g(N, "rewrites the document in the editor (its unmodeled_ack block); writes nothing"),
     "intent_v2.reopen": _g(N, "opens the editor on what is committed now with the person's edit on it; writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
+    "v2.stall_capture": _g(K, "records a stall the viewer's own page captured as it showed its stale note (C2003): the page, its live connection's state and the app's view of it, a local record History reads; changes nothing a device, a setting or a decision reads"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),
     "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected, and sets a Grafana silence on its devices' alerts as the caller, with the reason (B3); a window covering a restart already seen needs a correction with its reason; with `end`, ends a window early (an abandoned attempt's, C1389), recorded as the caller with the reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),

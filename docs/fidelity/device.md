@@ -71,7 +71,17 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `f799e90a3804314f0582cd2272760dfe3e78e5794f29bc9a567dc9974ea5059d`
+Templates sha256: `3516941bcca531f4e8129aef428c8165fa4afb64513f3d9fb1fe9ffcfeb6bb31`
+
+Compared again 2026-11-02 (board PS, C2274, part 1) after `_status.html` drew the planned state
+(`modules/planned_state.py`): under a running operation, "Reloading · by … · step 4 of 6 (wait) ·
+back by ~…"; predicted out of reach by another device's operation and not answering,
+"Unreachable as expected · r3 reloading · back by ~…"; either amber and linked to the page whose
+card is the operation's; past its time, red, "Not answering · overdue after r3's reload". It
+re-reads on a hold ending, a step and a window declared. Shots: `planned-device-r3-page-1440`,
+`-1280`, `-390`, `planned-device-r4-page-1440`, `-390` beside `planned-board-board-1440`
+(`PlannedState.dc.html`, region 1). The regions are in "Board PS" below. Templates sha256
+before: `f799e90a3804314f0582cd2272760dfe3e78e5794f29bc9a567dc9974ea5059d`.
 
 Compared again 2026-11-01 (C2280, the operator's finding 4), by the template: the Actions menu
 gains **Verify again…** after Reload…, offered only while the device's last reload ended not
@@ -267,3 +277,22 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A held device, its lease and takeover | HoldTakeover (R26): wait while it moves; after 10 minutes still, Take over r2's hold…, recorded | the refusal by name and the redraw when free; no lease, no takeover | **later** R26's lease and recorded takeover (docs/CONCURRENCY_AUDIT.md R26, approved 2026-10-04, not built) |
 | Revert by reload | RevertChoose, RevertRun, RevertRed: the menu row, the moment, the outage, the boot file, the run and its red endings | no row and no card | **later** the charter's Phase 2, revert by reload (docs/PHASE7_BURNDOWN.md) |
 | Changing a device's role | DeviceRoleEdit: Identity's Change…, the preview with what follows | not built | **later** the proposed role change (board proposed, never signed off) |
+
+## Board PS (C2274): the header under a planned operation
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The operation's own device | "Reloading · by … · step 4 of 6 (wait) · back by ~01:12 UTC", amber, beside the name, opening the card | the same words beside the name, amber, linking to the device's page, which reopens the running card | **same** |
+| A predicted device | "Unreachable as expected · r8 reloading · back by ~01:31 UTC" | "Unreachable as expected · r3 reloading · back by ~00:30 UTC", linking to r3's page | **same** |
+| Overdue | red, "Not answering · overdue after r8's reload (back by 01:31)" | the same words, red, linked; tested, not shot (`tests/test_planned_state.py`, `TestOverdue`) | **same** |
+| The chip's style | a dashed amber chip | the warning badge with the history icon | **deviation** (log: Board PS built, part 1) |
+| Phone width | the chip wraps under the name | the chip wraps under the name | **same** |
+| The operation's card: Expected effects (part 2) | a table: Effect, Predicted by, Now, Expected back by; six rows from the preview, the sources and the boot | the same four columns, a row per signal a source holds for this window now (`planned_state.expected_effects`), back by as a clock time; at phone width each a labelled block (`planned-reload-card-page-1440`, `-390`) | **same** |
+| The card's Now column | "not answering since 01:05", "cleared 01:12", "firing since 01:12" | "held, not raised" for a held signal, "answering" for a predicted device back; no since or cleared time (the sources keep no history of a hold) | **deviation** (log: Board PS built, part 2) |
+| The card's boot effect | a C8000v's `%PKI-2-NON_AUTHORITATIVE_CLOCK`, declared per platform | not built: no per-platform boot effects are declared yet | **later** PS's per-platform boot effects (C2274) |
+| Unexpected during, Overdue | one line each, "none" | the same, each a notice naming the rows when there are some | **same** |
+| A source not read | not drawn | named in a warning: "Not read, so what it would hold is unknown" | **deviation** (log: Board PS built, part 2) |
+| A predicted device that answers | not drawn | drawn as answering | **deviation** (log: Board PS built, part 1) |
+| What it re-reads on | not drawn | a hold ending, a step, a window declared, reachability | **same** |
+| Hover | not drawn | the operation and who, or why it is held | **same** |
+| Words of a window with no hold | "Restarting as planned" (20.3) | "Restarting as planned · by … · back by ~…" | **same** |

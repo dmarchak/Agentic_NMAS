@@ -476,6 +476,9 @@ class TestEveryRequestNamesThePageSNetwork:
 #: `routes/page_network` wrote the network into.
 SCRIPT_REQUESTS = {
     ("nmas_apply.js", "root.fetch(el.getAttribute('data-url')"): "drawn: data-url",
+    ("nmas_v2.js", "root.fetch('/v2/diagnostics/stall', {"): (
+        "C2003's stall record: its body carries the page's own address, ?list= included, and "
+        "the route reads the network from it (else the person's active network)"),
     ("nmas_apply.js", "root.location.assign(o.go)"): (
         "the server's answer: v2.ip_sla_commit names the network in the Apply it returns"),
     ("nmas_credentials.js", "a.href = url;"): "a download of bytes already held: no request",

@@ -438,6 +438,20 @@ class TestThePage:
         assert "<h1>Devices <span class=\"muted\">· 2</span>" in html
         assert re.search(r'<a class="nav-item active" href="/v2/devices" aria-current="page">', html)
 
+    def test_a_held_device_s_row_reads_as_its_operation_linked(self, inv):
+        # Board PS (C2274): the row names the operation and its step (the person on hover);
+        # it opens the page whose card is the operation's. The other row is as it was.
+        from modules.nsot import device_ops as D
+        with D.hold("Lab", "r2", "deploy", "ops@example.com"):
+            D.note("verify")
+            _r, html = self._get(inv, "/v2/devices/table")
+        assert ('<a class="status-op" href="/v2/device/r2"><span class="badge badge-warn" '
+                'title="Deploying, by ops@example.com: its card is on r2&#39;s page">'
+                'Deploying · step ') in html, html
+        assert html.count('class="status-op"') == 1
+        _r, html = self._get(inv, "/v2/devices/table")
+        assert 'class="status-op"' not in html, "released, the row is as it was"
+
     def test_a_search_says_how_many_it_shows(self, inv):
         _r, html = self._get(inv, "/v2/devices/table?q=r6")
         assert html.lstrip().startswith('<section class="card devices" id="devices"')
@@ -452,8 +466,13 @@ class TestThePage:
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
         # inventory: a drained mark; intent and templates: what an intent state is judged
         # against moved (C532), so the state becomes "intent changed since measured"; pending:
-        # a pending onboarding's progress moved (C1477, the onboarding-progress reader).
-        assert keys == ["reachability", "goldens", "intent", "templates", "inventory", "pending"]
+        # a pending onboarding's progress moved (C1477, the onboarding-progress reader);
+        # device_holds, device_progress and restarts: a device's planned state moved (board PS,
+        # C2274: a hold ended, an operation stepped, a window was declared).
+        assert keys == ["reachability", "goldens", "intent", "templates", "inventory", "pending",
+                        "device_holds", "device_progress", "restarts"]
+        # A batch steps every device: the step redraws the list at most once in 5 s.
+        assert "nmas:device_progress from:body throttle:5s" in html
         for k in keys:
             assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
 
