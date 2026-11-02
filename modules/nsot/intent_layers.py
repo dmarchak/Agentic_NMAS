@@ -17,11 +17,31 @@ blind-lab" or "this device" for each value (FC3).
 table does not name, never merged by replacement; a list of plain values (NTP servers) is one
 value, a later layer's replacing it whole (22.1 (4)).
 
-Pure: no repository, no NetBox. This module changes nothing that renders until the chain reads
-it (22.1 (8) (b)).
+**Where they come from** (`read_layers`, `applicable`): the committed files under `layers/` in the
+network's intent repository (`network.yml`, `site-<slug>.yml`, `role-<slug>.yml`,
+`tag-<slug>.yml`), read at a ref as every reader takes what is committed; a device takes the
+network layer and each site, role and tag layer its inventory row names (NetBox's slugs). The
+chain that renders reads them through `profile.effective_for` (22.1 (3)); no `layers/` folder
+is today's render, unchanged.
 """
 
 import copy
+import re
+
+#: Where a network's layers are committed, one file a layer.
+LAYERS_DIR = "layers"
+_FILE = re.compile(r"^(network|(site|role|tag)-([a-z0-9][a-z0-9_-]*))\.yml$")
+
+
+from modules.nsot.profile import ProfileRefused
+
+
+class LayersRefused(ProfileRefused):
+    """A layer that cannot be read or merged: its words name the file and why. A render
+    refuses by name rather than drawing a device without what its layers say. A
+    `ProfileRefused`, so every caller of the one chain (`profile.effective_for`) that refuses
+    a broken profile by name refuses a broken layer the same way."""
+
 
 #: The layers' ranks, in merge order; the device's own document comes last.
 RANKS = ("network", "site", "role", "tag")
@@ -169,3 +189,85 @@ def merge(layers: list, device_doc: dict) -> dict:
     held = leaves(out)
     return {"doc": out, "from": {p: origin.get(p, DEVICE) for p in held},
             "conflicts": conflicts(order), "problems": bad}
+
+
+def layer_label(rank: str, slug: str = "") -> str:
+    """How a layer is named on every screen: "network", "site lab-a", "tag blind-lab"."""
+    return rank if rank == "network" else f"{rank} {slug}"
+
+
+def read_layers(repo: str, ref: str = "HEAD") -> list:
+    """The network's committed layers at *ref*: ``[(rank, slug, label, doc)]``, by file name.
+    ``[]`` when there is no `layers/` folder (today's networks). A file whose name is not a
+    layer's, or that is not YAML, RAISES `LayersRefused` naming it: a render never quietly
+    drops what a layer says."""
+    import os
+
+    import yaml
+
+    from modules.nsot import repo as R
+
+    # No repository yet (a network born without one) has nothing committed, so no layer: the
+    # render is today's, asking git nothing.
+    if not repo or not os.path.exists(os.path.join(repo, ".git")):
+        return []
+    rc, out, err = R.git_raw(repo, "ls-tree", "--name-only", ref, "--", LAYERS_DIR + "/")
+    if rc != 0:
+        if "Not a valid object name" in (err or "") or "unknown revision" in (err or ""):
+            return []                            # a repository with no commit yet
+        raise LayersRefused(f"{LAYERS_DIR}/ could not be listed at {ref}: {err or rc}")
+    layers = []
+    for path in sorted(p for p in out.splitlines() if p.strip()):
+        name = path.split("/", 1)[-1]
+        m = _FILE.match(name)
+        if not m:
+            raise LayersRefused(f"{path} is not a layer's name (network.yml, site-, role- or "
+                                "tag-<slug>.yml)")
+        rc, text, err = R.git_raw(repo, "show", f"{ref}:{path}")
+        if rc != 0:
+            raise LayersRefused(f"{path} could not be read at {ref}: {err or rc}")
+        try:
+            doc = yaml.safe_load(text) or {}
+        except yaml.YAMLError as exc:
+            raise LayersRefused(f"{path} is not YAML: {exc}") from exc
+        rank = "network" if m.group(1) == "network" else m.group(2)
+        slug = m.group(3) or ""
+        layers.append((rank, slug, layer_label(rank, slug), doc))
+    return layers
+
+
+def applicable(layers: list, row: dict) -> list:
+    """The layers a device takes, ``[(rank, label, doc)]``: the network layer, and each site,
+    role and tag layer whose slug its inventory row names (`_site`, `_role_slug` or `role`,
+    `_tags`; NetBox's slugs, read with the inventory)."""
+    row = row or {}
+    site = row.get("_site") or ""
+    roles = {r for r in (row.get("_role_slug"), row.get("role")) if r}
+    tags = set(row.get("_tags") or [])
+    out = []
+    for rank, slug, name, doc in layers:
+        if (rank == "network" or (rank == "site" and slug == site)
+                or (rank == "role" and slug in roles) or (rank == "tag" and slug in tags)):
+            out.append((rank, name, doc))
+    return out
+
+
+def for_device(repo: str, row_of, intent: dict, ref: str = "HEAD") -> dict:
+    """*intent* with the layers its device takes merged under it (`merge`), or *intent* itself
+    when the network has no layer or none applies. *row_of* is called for the device's
+    inventory row only when the network has a layer, so a network with none reads no
+    inventory. RAISES `LayersRefused` on a conflict or a layer that cannot be one, naming
+    each: a render refuses rather than pick between two."""
+    layers = read_layers(repo, ref)
+    if not layers:
+        return intent
+    chosen = applicable(layers, row_of())
+    if not chosen:
+        return intent
+    got = merge(chosen, intent)
+    why = got["problems"] + [
+        f"{c['path']}: " + " and ".join(f"{name} says {value!r}" for name, value in c["layers"])
+        for c in got["conflicts"]]
+    if why:
+        raise LayersRefused("the intent layers cannot be merged: " + "; ".join(why))
+    return got["doc"]

@@ -394,12 +394,16 @@ def read_at(repo: str, ref: str):
     return doc
 
 
-def role_of(list_name: str, hostname: str) -> str:
-    """The device's role in its list's inventory (C225), ``""`` when none."""
+def _row_of(list_name: str, hostname: str) -> dict:
+    """The device's row in its list's inventory, ``{}`` when it has none."""
     from modules.nsot.restore import _devices_of
 
-    row = next((d for d in _devices_of(list_name) if d.get("hostname") == hostname), None)
-    return ((row or {}).get("role") or "").strip()
+    return next((d for d in _devices_of(list_name) if d.get("hostname") == hostname), None) or {}
+
+
+def role_of(list_name: str, hostname: str) -> str:
+    """The device's role in its list's inventory (C225), ``""`` when none."""
+    return (_row_of(list_name, hostname).get("role") or "").strip()
 
 
 def effective_for(repo: str, list_name: str, hostname: str, intent: dict, platform: str,
@@ -408,9 +412,17 @@ def effective_for(repo: str, list_name: str, hostname: str, intent: dict, platfo
     (HEAD by default) and the device's inventory role. The intent unchanged
     when the network has no profile. A broken profile RAISES
     (`ProfileRefused`): a caller refuses by name rather than rendering without
-    the lines every device inherits."""
+    the lines every device inherits.
+
+    Board FC (PHASE8_PLAN 22.1 (3)): the network's intent layers are merged under the device's
+    own intent FIRST (`intent_layers.for_device`), and the profile sits under all of it. A
+    network with no `layers/` folder renders as before, reading no inventory for it; a layer
+    that cannot be merged RAISES `LayersRefused`, a `ProfileRefused`."""
     if intent is None:
         return None
+    from modules.nsot import intent_layers
+
+    intent = intent_layers.for_device(repo, lambda: _row_of(list_name, hostname), intent, ref)
     if doc is None:
         # At HEAD, the profile the network takes, inherited where it has none (K11). At an
         # older ref, the network's own profile at that ref: the inheritance is a fact of now.

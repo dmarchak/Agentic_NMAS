@@ -179,6 +179,10 @@ def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = No
             # (board F4, Platforms and roles); like _platform, never sent to a device.
             "_role_slug":   role_slug,
             "_site":        site_slug,
+            # Its NetBox tags' slugs: the tag layers it takes (board FC, intent_layers);
+            # never sent to a device.
+            "_tags":        sorted({str(t.get("slug")) for t in raw.get("tags") or []
+                                    if isinstance(t, dict) and t.get("slug")}),
             # The device type as NetBox names it (its model), which Mercury's platform table
             # declares capabilities by (`vlan_capability`, C1692); never sent to a device.
             "_model":       str(((raw.get("device_type") or {}).get("model")) or "").strip(),

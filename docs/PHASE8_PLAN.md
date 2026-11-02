@@ -4534,3 +4534,11 @@ their cores.
    same-rank refusal, tested alone, changing nothing that renders. (b) The chain's read of the
    layers, proven byte-identical with no layer on every recorded fixture. (c) Source of Truth ›
    Intent (FC2) and the device's From column (FC3). Each its own commit.
+
+**Built 2026-11-02:** (a), the merge (`modules/nsot/intent_layers.py`, tests/test_intent_layers.py);
+(b), the chain: `profile.effective_for` merges the committed layers under the device's intent
+before the profile (`intent_layers.for_device`; the NetBox row now carries its tags' slugs,
+`_tags`, never sent to a device); no `layers/` folder, or no repository, is the intent unchanged
+and reads no inventory; a layer that cannot be merged refuses as a `ProfileRefused`, which the
+chain's callers already refuse by (tests/test_intent_layers_chain.py; the render, deploy and
+restore families pass unchanged, 623 tests). Next: (c), the screens.
