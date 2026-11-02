@@ -1516,8 +1516,11 @@ def monitoring_alerts():
 
 @bp.route("/monitoring/alerts/list", methods=["GET"])
 def monitoring_alerts_list():
-    """The list alone, re-fetched when the alerts reader announces."""
-    return _strict(render_template("v2/_alert_evidence.html", **_alerts_ctx()))
+    """The list alone, re-fetched when the alerts reader announces, with the tab's "Firing · N"
+    out of band, so the count moves with the list (C2251: it kept the page-load count)."""
+    ctx = _alerts_ctx()
+    return _strict(render_template("v2/_alert_evidence.html", **ctx)
+                   + render_template("v2/_alerts_firing_count.html", e=ctx["e"], oob=True))
 
 
 @bp.route("/monitoring/alerts/pack/<pack_id>", methods=["GET"])

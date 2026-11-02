@@ -1,0 +1,4 @@
+{#- Monitoring › Alerts' "Firing · N" (C2251): drawn with the page, and sent again out of band
+    with every redraw of the list (`v2.monitoring_alerts_list`), so the tab's count moves with
+    the list's own instead of keeping the page-load count. -#}
+<span id="alerts-firing-count"{% if oob %} hx-swap-oob="true"{% endif %}>{% if e %} · {{ e.counts.firing }}{% endif %}</span>

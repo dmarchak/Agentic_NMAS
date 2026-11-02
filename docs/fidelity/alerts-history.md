@@ -15,7 +15,10 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `26501aacd926f311b47df871e9beeade70c97dba7c04478c75962290540eee4c`
+Templates sha256: `620d7e7f1f4f7a63233264848b611eb6e972fc834aea7619241ebc88e540ed0f`
+(2026-11-02, C2251: the Firing tab's count is its own fragment, `_alerts_firing_count.html`,
+drawn in place and sent out of band with every redraw of the list; nothing drawn changed.
+Before: `26501aacd926f311b47df871e9beeade70c97dba7c04478c75962290540eee4c`.)
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):** the heartbeat
 and telemetry rules' "Alerting (NoData)" episodes are fired, their state words kept, so the
