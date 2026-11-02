@@ -677,7 +677,7 @@ def _refused_operands(entry: dict, list_name: str, hostname: str) -> None:
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
                 actor: str, actor_kind: str, on_device=None,
-                declare: dict = None, pair: dict = None) -> dict:
+                declare: dict = None, pair: dict = None, stop_at_first: bool = False) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     failed devices). THE apply, for the device page's Deploy… and the v2 batch
@@ -687,7 +687,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     *pair* (``{"device", "port", "far", "far_port"}``; C1908, C1909): the two devices are both
     ends of one link, deployed as ONE change (`modules.nsot.paired_deploy`): both or neither
     start, the second is sent only when the first deployed, the link is verified once both
-    applied, and either end failing, or the link, rolls both back."""
+    applied, and either end failing, or the link, rolls both back.
+
+    *stop_at_first* (board FC's one stop rule, PHASE8_PLAN 22.2 (4)): the first failed device
+    stops the batch, the rest unattempted, as Coverage's combined deploy does."""
     from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
@@ -897,7 +900,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         templates = scope == profile_apply.TEMPLATES
         report = run_batch(batch, _one,
                            paired_deploy.breaker() if pair
-                           else CircuitBreaker(limit=1) if templates
+                           else CircuitBreaker(limit=1) if templates or stop_at_first
                            else CircuitBreaker(list_name=list_name),
                            sequential=templates or bool(pair), list_name=list_name)
         if refused:

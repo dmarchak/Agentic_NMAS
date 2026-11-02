@@ -57,6 +57,14 @@ NOT_DIRECT = {
     "device_v2.retire_confirm": "retirement removes Mercury's records of the device; a "
                                 "controller-managed switch is retired the same way",
     "onboard_v2.create": "a device being created has no inventory record yet",
+    # Board FC (C2283): a layer change's devices are the layer's group, read in its job, never
+    # named by the request; the plan refuses each controller-managed one by `of`
+    # (`fleet_change.plan_layer`), and the run sends only the plan's devices.
+    "intent_layers_v2.change_approve": "the devices are the layer's group, read in the job; "
+                                       "the plan refuses each controller-managed one by its "
+                                       "authority, and the run sends only the plan's devices",
+    "intent_layers_v2.change_go_on": "runs only the paused run's planned devices, each "
+                                     "controller-managed one already refused in its plan",
     "onboard_v2.abandon": "abandoning removes a pending device's records; nothing is sent",
     "adopt_v2.confirm": "adoption names an address, not an inventory device",
     "oob_onboard_v2.confirm": "out-of-band onboarding names a console port, not an inventory "

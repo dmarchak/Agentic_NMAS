@@ -55,10 +55,11 @@ class TestATagLayersChange:
         got = F.plan_layer("Lab", "tag-blind-lab", NTP)
         assert got["ok"], got["error"]
         assert got["devices"] == [{"device": "r2", "change": ["ntp server 192.0.2.123"],
-                                   "pending": got["devices"][0]["pending"],
+                                   "left": [], "pending": got["devices"][0]["pending"],
                                    "command_hash": got["devices"][0]["command_hash"]}]
         assert got["headline"] == "1 device, 1 group"
-        assert got["groups"] == [{"lines": ["ntp server 192.0.2.123"], "devices": ["r2"]}]
+        assert got["groups"] == [{"lines": ["ntp server 192.0.2.123"], "left": [],
+                                  "devices": ["r2"]}]
         assert got["layer"]["file"] == "layers/tag-blind-lab.yml" and got["layer"]["before"] == {}
         assert _head(r2["repo"]) == head, "a plan commits nothing"
         assert not os.path.exists(os.path.join(r2["repo"], "layers"))
@@ -96,6 +97,23 @@ class TestATagLayersChange:
                                      "nothing to send: the device already holds it"}], got
 
 
+    def test_a_replaced_value_names_the_line_left_on_the_device(self, r2):
+        """C2302: r2's golden holds `ntp server 10.255.1.10`, and the network layer supplies it
+        (committed); replacing the layer's server sends the new line, and the old one, which
+        merge-only never removes, is named as left on the device. Before the change it was
+        rendered and held, so nothing was left."""
+        from tests.test_intent_from_column import _commit_layer
+        _commit_layer(r2["repo"], "network.yml", {"ntp_servers": ["10.255.1.10"]})
+        before = F.plan_layer("Lab", "network", [dict(NTP[0], before=["10.255.1.10"],
+                                                     after=["10.255.1.10"])])
+        assert before["ok"] and before["devices"] == [], "nothing changes, nothing left"
+        got = F.plan_layer("Lab", "network", [dict(NTP[0], before=["10.255.1.10"])])
+        [g] = got["groups"]
+        assert g["lines"] == ["ntp server 192.0.2.123"]
+        assert g["left"] == ["ntp server 10.255.1.10"], g
+        assert got["devices"][0]["left"] == g["left"]
+
+
 class TestRefusedBeforeAnyDevice:
     def test_a_before_the_layer_does_not_hold_names_the_path_and_both(self, r2):
         got = F.plan_layer("Lab", "tag-blind-lab", [
@@ -130,6 +148,17 @@ class TestRefusedBeforeAnyDevice:
 
 
 class TestItsGroup:
+    def test_a_controller_managed_switch_in_the_group_is_refused_never_planned(self, r2):
+        """PHASE8_PLAN 17.1 S12: the layer's group can hold an OpenFlow switch, which Mercury
+        configures only through its controller; the plan refuses it in the authority's words."""
+        r2["rows"].append({"hostname": "of1", "platform": "openflow via lab-ctl",
+                           "_tags": ["blind-lab"]})
+        got = F.plan_layer("Lab", "tag-blind-lab", NTP)
+        assert got["ok"], got["error"]
+        [refused] = [r for r in got["refused"] if r["device"] == "of1"]
+        assert "managed by its controller, lab-ctl" in refused["reasons"][0]
+        assert "of1" not in [d["device"] for d in got["devices"]]
+
     def test_an_unreadable_inventory_refuses_by_name(self, r2, monkeypatch):
         def down(list_name):
             raise ConnectionError("NetBox answered 503")

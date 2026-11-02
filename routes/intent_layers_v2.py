@@ -162,11 +162,125 @@ def change_job(job):
              "base": plan["base"], "groups": plan["groups"], "unchanged": plan["unchanged"],
              "refused": plan["refused"], "headline": plan["headline"], "hash": plan["hash"],
              "planned": len(plan["devices"]),
+             # The approval form carries the change as planned, and offers the planned devices
+             # as the canary; what it carries is masked, so a masked value cannot match and the
+             # approval refuses rather than send it.
+             "rows": [{"path": ".".join(map(str, s["path"])), "before": _shown(_held(s, "before")),
+                       "after": _shown(_held(s, "after"))} for s in plan.get("steps") or []],
+             "hosts": [d["device"] for d in plan["devices"]],
              "pending": [{"device": d["device"], "pending": d["pending"]}
                          for d in plan["devices"] if d["pending"]]}
     return _plan_card({"state": "plan", "list": name, "layer": layer, "job": job, "plan": drawn,
                        "elapsed_s": got.get("elapsed_s")})
 
 
+def _held(step: dict, side: str):
+    """A step's *side* as the form's box writes it: None for the absent marker."""
+    from modules.nsot import bulk_intent as B
+    value = step.get(side)
+    return None if B._is_absent(value) else value
+
+
 def _plan_card(p: dict, code: int = 200):
     return _strict(render_template("v2/_fleet_plan.html", p=p), code)
+
+
+# ---------------------------------------------------------------------------
+# (d) The approval and the run (board FC4 and FC5; PHASE8_PLAN 22.2 (3) and (4)).
+# ---------------------------------------------------------------------------
+
+@bp.route("/change/approve", methods=["POST"])
+def change_approve():
+    """Approve the plan as a verified person, with a summary and a reason, and run it: one job
+    recomputes the plan and refuses unless its hash is the one confirmed, commits the layer
+    once, then runs the canary (and every batch when the person chose not to pause), each
+    device through THE deploy, the first failure stopping it. Answers at once with the run's
+    card."""
+    from modules import identity
+    from modules.nsot import fleet_change, listref
+    from routes.bulk_intent_v2 import _rows, steps_of
+
+    name = (request.form.get("list") or "").strip()
+    layer = (request.form.get("layer") or "").strip()
+    if not listref.exists(name):
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": f"no network is named {name}"}, 404)
+    steps, problems = steps_of(_rows())
+    if problems or not steps:
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": "; ".join(problems) or "the change has no setting"}, 400)
+    after = (request.form.get("after_canary") or "pause").strip()
+    try:
+        batch = max(1, int(request.form.get("batch") or 1))
+    except ValueError:
+        batch = 1
+    who = identity.identify(request)
+    job = fleet_change.approve_and_run_start(
+        name, layer, steps, (request.form.get("hash") or "").strip(),
+        summary=request.form.get("summary") or "", reason=request.form.get("reason") or "",
+        canary=(request.form.get("canary") or "").strip(), batch=batch,
+        after_canary=after if after in fleet_change.AFTER_CANARY else "pause",
+        actor=identity.request_actor(), actor_kind=getattr(who, "kind", ""))
+    return _run_card({"state": "running", "list": name, "layer": layer, "job": job})
+
+
+@bp.route("/change/go-on", methods=["POST"])
+def change_go_on():
+    """After the canary, as a verified person: run every batch left, from the paused run's own
+    record (its plan, commit and batches); each device's program is checked again before it is
+    sent. Answers at once with the run's card."""
+    from modules import identity
+    from modules.nsot import capture_job, fleet_change
+
+    paused = (request.form.get("job") or "").strip()
+    name = (request.form.get("list") or "").strip()
+    layer = (request.form.get("layer") or "").strip()
+    got = capture_job.get(paused)
+    run = (got or {}).get("payload") or {}
+    if run.get("state") != "paused":
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": "that run is not paused after its canary (it finished, "
+                                   "stopped, or this server has no record of it); nothing "
+                                   "was sent"}, 409)
+    who = identity.identify(request)
+    job = fleet_change.run_start(name, run["plan"], run["commit"], run["batches"],
+                                 after_canary="go", actor=identity.request_actor(),
+                                 actor_kind=getattr(who, "kind", ""), start_at=run["next"])
+    return _run_card({"state": "running", "list": name, "layer": layer, "job": job})
+
+
+@bp.route("/change/run/<job>", methods=["GET"])
+def change_run(job):
+    """The run's card for its job: running, paused after the canary, stopped, done, refused, or
+    why there is none. Re-read when the run announces `fleet_change` and as each device steps."""
+    from modules.nsot import capture_job
+
+    got = capture_job.get(job)
+    name = (request.args.get("list") or "").strip()
+    layer = (request.args.get("layer") or "").strip()
+    if got is None:
+        return _run_card({"state": "unknown", "list": name, "layer": layer, "job": job})
+    if got["state"] == "running":
+        return _run_card({"state": "running", "list": name, "layer": layer, "job": job})
+    if got["state"] == "failed":
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": f"the run did not finish: {got['error']}"})
+    run = got["payload"] or {}
+    if run.get("state") == "refused":
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": run.get("error", "")})
+    rows = [{"device": r.get("device", ""), "outcome": r.get("outcome", ""),
+             "verified": (r.get("verify") or {}).get("ok"),
+             "reason": r.get("reason") or (r.get("verify") or {}).get("summary") or ""}
+            for r in run.get("results") or []]
+    batch_of = {d: n for n, b in enumerate(run.get("batches") or []) for d in b}
+    return _run_card({"state": run["state"], "list": name, "layer": layer, "job": job,
+                      "label": (run.get("plan") or {}).get("layer", {}).get("label", layer),
+                      "commit": run.get("commit", ""), "stopped": run.get("stopped", ""),
+                      "rows": [dict(r, batch=batch_of.get(r["device"], 0)) for r in rows],
+                      "left": [d for b in (run.get("batches") or [])[run.get("next", 0):]
+                               for d in b] if run["state"] == "paused" else []})
+
+
+def _run_card(r: dict, code: int = 200):
+    return _strict(render_template("v2/_fleet_run.html", r=r), code)

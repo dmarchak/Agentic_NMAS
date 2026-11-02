@@ -41,7 +41,27 @@ returns to the layer.
    refuses, each with its reasons. One hash binds the layer's before and after, the
    repository's commit and every device's program.
 
-Approving the plan, committing the layer and running it on its devices (a canary first, then
-batches, the first failure stopping it) is not built yet: the plan says so. Nothing in it is
-sent or written. **Back to** the layer returns to it; a change that was refused names why and
-offers **Back to the layers**.
+Nothing in the plan is sent or written. **Back to** the layer returns to it; a change that was
+refused names why and offers **Back to the layers**.
+
+## The approval and the run {#run}
+
+Below the plan, choose the **Canary** (one of the planned devices, the first by default), the
+size of the batches after it (**Then batches of**, one by default), and **After the canary**:
+pause for your review (the default) or go on. Give a one-line **Summary** (the commit's
+subject) and **Why**, then **Approve and run: canary first**, as a verified person.
+
+5. **The approval.** Read: everything the plan read, again, under the repository's lock. Sent:
+   nothing. Recorded: one commit of the layer's file (`Source: fleet-change`, who, the summary,
+   the reason, the plan's hash and the devices). The plan is made again; a hash that is not the
+   one you approved refuses the run, naming both, nothing committed or sent.
+6. **The canary.** Read: the canary's program as committed, which must be the one approved.
+   Sent: its program, through the deploy every device takes (held, sent, verified, rolled back
+   on its own if it fails). Recorded: its receipt. The card draws each device's step, outcome
+   and why as it goes.
+7. **The batches.** After a pause, the card names the devices left and offers **Go on: the N
+   left** (a verified person's decision, each device's program checked again before it is
+   sent) or **Leave it paused**, which sends nothing more: the layer stays committed, so those
+   devices show intent unmet until they run. The first device that does not deploy and verify
+   stops the run; the devices after it are not attempted, and the card says which. A finished
+   run offers **Back to the layers**.

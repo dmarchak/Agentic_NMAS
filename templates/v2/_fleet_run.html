@@ -1,0 +1,69 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- A layer change's run (board FC's FC5; PHASE8_PLAN 22.2 (d); C2283): the approval and the
+    canary as one job, then Go on for the rest; each device's row with its batch, its outcome
+    and why. Running, it re-reads on `fleet_change` and as each device steps; paused, it offers
+    Go on (a verified person's decision); stopped, it says what landed, what rolled back and
+    what was not attempted. routes/intent_layers_v2.py over modules/nsot/fleet_change.py. -#}
+{%- macro rows_table(rows) %}
+<table class="table fc-run-rows">
+  <thead><tr><th>Step</th><th>Device</th><th>Outcome</th><th>Why</th></tr></thead>
+  <tbody>
+  {%- for x in rows %}
+  <tr data-outcome="{{ x.outcome }}"><td>{% if x.batch == 0 %}canary{% else %}batch {{ x.batch }}{% endif %}</td><td>{{ x.device }}</td>
+    <td>{% if x.outcome == 'deployed' and x.verified is not false %}<span class="badge badge-ok">deployed, verified</span>{% elif x.outcome == 'unattempted' %}<span class="badge">not attempted</span>{% else %}<span class="badge badge-danger">{{ x.outcome | replace('_', ' ') }}</span>{% endif %}</td>
+    <td class="small">{{ x.reason }}</td></tr>
+  {%- endfor %}
+  </tbody>
+</table>
+{%- endmacro %}
+{%- if r.state == 'running' %}
+<section class="op-card" id="fc-plan" aria-labelledby="fc-run-title" hx-get="{{ url_for('intent_layers_v2.change_run', job=r.job, list=r.list, layer=r.layer) }}" hx-trigger="nmas:fleet_change from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="fc-run-title">Running {{ r.layer }}'s change</h2></div>
+  <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, committing the layer, then each device in turn, held, sent, verified. The card redraws as it goes.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card" id="fc-plan" aria-labelledby="fc-run-title">
+  {%- if r.state in ('paused', 'stopped', 'done') %}
+  {%- set landed = r.rows | selectattr('outcome', 'equalto', 'deployed') | list %}
+  <div class="op-hd"><h2 id="fc-run-title">{{ r.label | capitalize }}'s change · {% if r.state == 'paused' %}paused after the canary{% elif r.state == 'stopped' %}stopped{% else %}done{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('fleet-change', compact=True, op='running a layer change') }}</div></div>
+  <div class="op-part"><h3>What</h3><div>
+    {%- if r.state == 'stopped' %}
+    <div class="notice notice-danger" data-fc-stopped>{{ icon('warn') }}<p><strong>Stopped:</strong> {{ r.stopped }}. Each failed device was rolled back on its own; the devices after it were not attempted.</p></div>
+    {%- elif r.state == 'paused' %}
+    <p data-fc-paused>The canary deployed and verified. {{ r.left | length }} device{{ 's' if r.left | length != 1 }} wait{{ 's' if r.left | length == 1 }} for you: {{ r.left | join(', ') }}.</p>
+    {%- else %}
+    <p data-fc-done>Every device deployed and verified.</p>
+    {%- endif %}
+    <p class="small">{{ landed | length }} deployed · the layer committed as <code title="{{ r.commit }}">{{ (r.commit or '')[:10] }}</code>; each device's receipt is on its History.</p>
+  </div></div>
+  <div class="op-part"><h3>Devices</h3><div>{{ rows_table(r.rows) }}</div></div>
+  {%- if r.state == 'paused' %}
+  <form method="post" action="{{ url_for('intent_layers_v2.change_go_on') }}" hx-post="{{ url_for('intent_layers_v2.change_go_on') }}" hx-target="#fc-plan" hx-swap="outerHTML">
+  <input type="hidden" name="job" value="{{ r.job }}"><input type="hidden" name="list" value="{{ r.list }}"><input type="hidden" name="layer" value="{{ r.layer }}">
+  <div class="op-part"><h3>Next</h3><div>
+    <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Go on: the {{ r.left | length }} left</span><span class="op-busy">Starting…</span></button>{{ how('fleet-change', compact=True, op='running a layer change') }}
+      <a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=r.list, layer=r.layer) }}">Leave it paused</a></p>
+    <p class="small muted">Each device's program is checked again before it is sent. Leaving it paused sends nothing more; the layer stays committed, so the devices not yet run show intent unmet until they are.</p>
+  </div></div>
+  </form>
+  {%- else %}
+  <div class="op-part"><h3>Next</h3><div>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=r.list, layer=r.layer) }}">Back to the layers</a></p>
+  </div></div>
+  {%- endif %}
+  {%- elif r.state == 'refused' %}
+  <div class="op-hd"><h2 id="fc-run-title">Not run</h2></div>
+  <div class="op-part"><h3>Refused</h3><div>
+    <div class="notice notice-danger" data-fc-run-error>{{ icon('warn') }}<p>Not run: {{ r.error }}.</p></div>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=r.list, layer=r.layer) }}">Back to the layers</a></p>
+  </div></div>
+  {%- else %}
+  <div class="op-hd"><h2 id="fc-run-title">No record of that run</h2></div>
+  <div class="op-part"><h3>The run</h3><div>
+    <p>This server has no record of that run: it finished more than 30 minutes ago, or the server restarted. What it did is in each device's History and the layer's commit.</p>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=r.list, layer=r.layer) }}">Back to the layers</a></p>
+  </div></div>
+  {%- endif %}
+</section>
+{%- endif %}

@@ -38,6 +38,18 @@ STAGES = {
     "v2.pair_apply_confirm": Stages(
         "v2.profile_apply_preview", "command_hashes", "modules.nsot.paired_deploy.verify_link",
         "modules.pipeline.roll_back_after", "routes.deploy._write_receipts"),
+    # Board FC's fleet change (PHASE8_PLAN 22.2 (d), C2283): a layer's plan approved by its hash,
+    # the layer committed once, then the canary and the batches through THE apply
+    # (`fleet_change.run_batches` over `routes.deploy.apply_batch`), each device verified and
+    # rolled back by the pipeline, its receipt written by the batch.
+    "intent_layers_v2.change_approve": Stages(
+        "intent_layers_v2.change_plan", "hash", "modules.pipeline._stage_verify",
+        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # Go on: the rest of a run paused after its canary, from the run's own record; each device's
+    # program checked again against the approved one before it is sent.
+    "intent_layers_v2.change_go_on": Stages(
+        "intent_layers_v2.change_run", "job", "modules.pipeline._stage_verify",
+        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
     # The v2 device page's Deploy, with Mode B (7.3): the same plan and apply, as a job.
     "device_v2.deploy_confirm": Stages(
         "device_v2.deploy", "command_hash", "modules.pipeline._stage_verify",
@@ -341,6 +353,8 @@ PROFILE = "n/a: changes the network's monitoring profile, which no device's reco
 HISTORY = {
     # ---- confirm: sends to a device
     "v2.profile_apply_confirm": ("receipts", "golden"),
+    "intent_layers_v2.change_approve": ("receipts", "golden"),
+    "intent_layers_v2.change_go_on": ("receipts", "golden"),
     "v2.pair_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),

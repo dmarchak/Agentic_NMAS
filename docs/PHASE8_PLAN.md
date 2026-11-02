@@ -4615,4 +4615,15 @@ value… and Add a layer… open the change's form above the layers; Plan the ch
 as a job (`fleet_change.plan_start`, announcing `fleet_change`) and draws it in place, the
 deploy card's parts (What, The layer, The program, Next), nothing sent or written
 (routes/intent_layers_v2.py, templates/v2/_fleet_plan.html, tests/test_fleet_plan_v2.py; how it
-works: the manual's Plan a layer's change). Next: (d), the approval and the run.
+works: the manual's Plan a layer's change). (d) and (e), as one commit (a run whose card cannot
+be read breaks "every action ends readable"): the plan card's run choices (the canary, batches
+of, pause after the canary or go on, the stop rule in words) and Approve and run; one job makes
+the plan again under the repository's lock, refuses a moved hash naming both, commits the layer
+once (`Source: fleet-change`, the plan's hash and devices), then runs the canary through THE
+apply, every batch stopping at its first failure (`apply_batch(stop_at_first=True)`), each
+device's program checked against the approved one before it is sent; Go on, a verified
+person's decision, runs the rest from the paused run's record; the run is drawn in place
+(`_fleet_run.html`). The plan also names what a change leaves on each device (C2302, closed).
+Not yet: a stop percentage at 20 devices or more; Plan again for…, Undo on…, Open the record;
+a Needs attention row for a stopped run; the batch deploy's breaker of 2 moved to the one stop
+rule. Next: (f).

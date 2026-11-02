@@ -47,8 +47,12 @@ the change's form above the layers; **Plan the change** plans it for every devic
 reaches and draws the plan in place, sending nothing and writing nothing (see
 [Plan a layer's change](fleet-change)).
 
+Below the plan, **Approve and run: canary first** commits the layer once and runs the change,
+the canary first, then batches, the first failure stopping it (see
+[the approval and the run](fleet-change#run)).
+
 ## Not yet {#not-yet}
 
-Approving a plan, committing the layer and running it on its devices (one approval, a canary,
-then batches) come next; until then Mercury plans a layer's change but cannot make it.
-Removing a value comes after a removal's shape is measured on each platform.
+Removing a value comes after a removal's shape is measured on each platform. A stopped run
+does not yet raise a Needs attention row, and the run's card does not yet offer Plan again,
+Undo or the record: each device's receipt is on its History.

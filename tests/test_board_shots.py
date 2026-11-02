@@ -2815,13 +2815,27 @@ def test_fleet_plan(monkeypatch, tmp_path):
     intent["ntp_servers"] = []
     hostvars.write_committed(lab["repo"], intent)
     assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+    # THE apply recorded (FC5's shot): r2 deployed and verified, nothing reaches a device.
+    from modules.nsot.deploy import DEPLOYED
+    monkeypatch.setattr("routes.deploy.apply_batch", lambda ln, conf, hashes, **kw: {
+        "results": [{"device": d, "outcome": DEPLOYED, "verify": {"ok": True}} for d in conf]})
     card = "document.querySelector('#fc-plan')"
-    fill = ("document.getElementById('fc-path-1').value = 'ntp_servers'; "
-            "document.getElementById('fc-before-1').value = '(absent)'; "
-            "document.getElementById('fc-after-1').value = '[192.0.2.123]'; "
-            "document.querySelector('#fc-plan button[data-op=\"fleet-change\"]').click()")
-    states = [("form", f"{card}.scrollIntoView()", f"!!{card}"),
-              ("plan", fill, "!!document.querySelector('[data-fc-headline]')")]
+    # Each width's run commits the layer, so the next width plans from what it holds.
+    held = {1440: ("(absent)", "[192.0.2.123]"), 1280: ("[192.0.2.123]", "[192.0.2.124]"),
+            390: ("[192.0.2.124]", "[192.0.2.125]")}
+    approve = ("document.getElementById('fc-summary').value = 'Lab NTP server'; "
+               "document.getElementById('fc-reason').value = 'the lab time source'; "
+               "document.querySelector('#fc-plan form button[data-op=\"fleet-change\"]').click()")
+
+    def states(width):
+        before, after = held[width]
+        fill = ("document.getElementById('fc-path-1').value = 'ntp_servers'; "
+                f"document.getElementById('fc-before-1').value = '{before}'; "
+                f"document.getElementById('fc-after-1').value = '{after}'; "
+                "document.querySelector('#fc-plan button[data-op=\"fleet-change\"]').click()")
+        return [("form", f"{card}.scrollIntoView()", f"!!{card}"),
+                ("plan", fill, "!!document.querySelector('[data-fc-headline]')"),
+                ("run", approve, "!!document.querySelector('[data-fc-done]')")]
 
     import app as A
     with browser.Served(A.app) as served:

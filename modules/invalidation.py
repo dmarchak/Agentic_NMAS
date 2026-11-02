@@ -148,6 +148,9 @@ ANNOUNCERS = {
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
+    # modules/nsot/fleet_change.py: a run's end (the approval and canary, or Go on's rest).
+    "fleet-change-run": ("fleet_change", "deploy_job", "device_state", "baselines", "drift",
+                         "rolled_back", "goldens", "remote", "intent", "approvals"),
     "persist-read": ("persist_read",),         # modules/nsot/persist_op.py: the preview read's end
     # modules/nsot/template_coverage.py: a coverage check's end (Templates › Coverage).
     "template-coverage": ("templates",),
@@ -381,6 +384,13 @@ DECLARED = {
     "device_v2.persist_read": Nothing("starts Persist's preview read as a job; the job "
                                       "ANNOUNCES persist_read when it finishes (ANNOUNCERS "
                                       "persist-read)"),
+    "intent_layers_v2.change_approve": Nothing("starts the approval and the run as a job and "
+                                              "answers at once; the run ANNOUNCES fleet_change "
+                                              "and what a deploy moves when it ends, and "
+                                              "device_progress at each step (ANNOUNCERS "
+                                              "fleet-change-run, device-ops)"),
+    "intent_layers_v2.change_go_on": Nothing("starts the rest of the run as a job and answers "
+                                            "at once (ANNOUNCERS fleet-change-run, device-ops)"),
     "intent_layers_v2.change_plan": Nothing("starts a layer change's plan as a job; the job "
                                            "ANNOUNCES fleet_change when it ends (ANNOUNCERS "
                                            "fleet-change)"),

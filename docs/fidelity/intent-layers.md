@@ -31,7 +31,18 @@ Compared 2026-11-02.
 | FC4: the counts | "4 devices, 1 group: the same line on each. 0 refused · 0 drifted · the intent change is one commit to layers/tag-blind-lab.yml, made at the approval" | "1 device, 1 group · 0 refused · 0 unchanged", the commit at the approval, and the plan's hash | **deviation** (log: Board FC built, phase 2 (c) FC4) |
 | FC4: the line | "+ username lab … from tag blind-lab, layer commit 5a1e2f0" | each group's lines, collapsed past the first, with its devices | **same** |
 | FC4: the layer before and after | (not drawn) | the layer now and after, as YAML | **deviation** (log: Board FC built, phase 2 (c) FC4) |
-| FC4: canary, batches, stop rule, the step table, Before it can run, the reason, Approve and run | drawn | not drawn: "Approving this plan and running it … is not built yet" | **later** (phase 2 (d)) |
+| FC4: canary, batches, after the canary, the stop rule | drawn | the canary (a planned device), batches of (1 by default), pause for my review or go on, and the stop rule in words | **same** |
+| FC4: a stop percentage for large selections | offered only for large selections | not drawn: the first failure always stops the run | **later** (offered at 20 devices or more, PHASE8_PLAN 22.2 (4)) |
+| FC4: the step table before the run | each step's device, program, gates and rollback | the plan's groups; each device's gates are the deploy's own at its turn | **deviation** (log: Board FC built, phase 2 (d) and (e)) |
+| FC4: Before it can run (a reference with no value) | named with Set value… (in Credentials) | a device whose reference has no value is refused by the deploy's own check, with its reason, in the plan | **deviation** (log: Board FC built, phase 2 (d) and (e)) |
+| FC4: the reason and Approve and run | a reason, "Approve and run: canary r2, then 3 batches" | a summary (the commit's subject), Why, and "Approve and run: canary first" | **same** |
+| FC4: what is left on the device | (not drawn) | a group's lines the change no longer renders, held by the device, "Left on the device" (C2302) | **deviation** (log: Board FC built, phase 2 (d) and (e)) |
+| FC5: the run's head | the change, "running · step 3 of 4", counts by outcome | the layer, "paused after the canary", "stopped" or "done"; deployed counted | **deviation** (log: Board FC built, phase 2 (d) and (e)) |
+| FC5: the stop | "Stopped at r4: its verify did not pass. r2 and r3 keep the change; r4 is as it was" | "Stopped: <device> did not deploy and verify. Each failed device was rolled back on its own; the devices after it were not attempted" | **same** |
+| FC5: each device's row | step, device, outcome with what was read back and its time | step (canary or batch N), device, outcome, why | **deviation** (log: Board FC built, phase 2 (d) and (e)) |
+| FC5: Plan again for…, Undo on…, Open the record | drawn | not drawn | **later** (phase 2's remaining (e); the receipts are on each device's History) |
+| FC5: a Needs attention row for a stopped run | named | not raised | **later** (phase 2's remaining (e)) |
+| FC5: Go on after the canary | (the canary pauses for review) | Go on: the N left, or Leave it paused | **same** |
 | Precedence | stated once, two of one rank refused naming both | the same words | **same** |
 | A conflict | the refusal stated in words | listed above the layers with both values and the devices | **same** |
 | 1280 and 390 | (the board is drawn at 1440) | the same order; at 390 the list stacks above the chosen layer | **same** |
@@ -44,8 +55,15 @@ the layers (FC2's Edit…, Add a value…, Add a layer…) and draws the plan's 
 (`_fleet_plan.html`, which joins the templates compared), shot `fleet-plan` (form and plan, at
 1440, 1280 and 390) beside FC4 at 1440; the FC4 rows above.
 
-Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html
-Templates sha256: `945d83b53c66076f1f0b01c3d9034d458237e366bcfcc5ed4e4ac7aa2e4a8005`
+**Compared again 2026-11-02 (phase 2 (d) and (e), board FC4's run controls and FC5):** the plan
+card gains the run's choices and Approve and run; the run is drawn in place (`_fleet_run.html`,
+which joins the templates compared), shot `fleet-plan` again with its `run` state (approved,
+the canary deployed and verified, at 1440, 1280 and 390) beside FC4 and FC5 at 1440; the rows
+above.
+
+Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html, templates/v2/_fleet_run.html
+Templates sha256: `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`
+(Before phase 2 (d) and (e): `945d83b53c66076f1f0b01c3d9034d458237e366bcfcc5ed4e4ac7aa2e4a8005`.)
 (The plan's groups keep their open state, `data-keep`, C472's rule.)
 (Before phase 2 (c): `ea0522f84fadc4629a0d40a5ec0aa8cf781a32d6daa6b9d860b8e1a7cb413988`.)
 (The past-twelve devices list keeps its open state through a live redraw, `data-keep`, C472's

@@ -679,12 +679,15 @@ def _fleet_plan(client, _lab, _mp):
                       "file": "layers/tag-blind-lab.yml", "before": {},
                       "after": {"ntp_servers": ["192.0.2.123"]}},
             "base": "5a1e2f0" + "0" * 33,
-            "groups": [{"lines": ["ntp server 192.0.2.123"], "devices": ["r3"]}],
+            "groups": [{"lines": ["ntp server 192.0.2.123"], "left": ["ntp server 192.0.2.9"],
+                        "devices": ["r3"]}],
             "unchanged": [{"device": "r4", "by": "this device"}],
             "refused": [{"device": "r9", "reasons": ["no committed golden"]}],
             "devices": [{"device": "r3", "change": ["ntp server 192.0.2.123"], "pending": 2,
                          "command_hash": "h"}],
-            "headline": "1 device, 1 group", "hash": "x"})
+            "headline": "1 device, 1 group", "hash": "x",
+            "steps": [{"path": ["ntp_servers"], "before": {"__absent__": True},
+                       "after": ["192.0.2.123"]}]})
         r = client.post("/v2/intent/change/plan", data={
             "list": "Lab", "layer": "tag-blind-lab", "path": "ntp_servers",
             "before": "(absent)", "after": "[192.0.2.123]"})
@@ -696,6 +699,40 @@ def _fleet_plan(client, _lab, _mp):
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and "data-fc-refused" in html and "data-fc-pending" in html, \
             html[:400]
+    finally:
+        mp.undo()
+
+
+def _fleet_run(client, _lab, _mp):
+    """A layer change's run card (board FC5, C2283): paused after its canary (the devices left,
+    Go on), and stopped at a failed device (what landed, the failure, the unattempted). THE
+    apply and the plan's programs are planted for this provider alone, then undone; the jobs
+    are the real ones. Nothing reaches a device."""
+    import pytest
+
+    import routes.deploy as rd
+    from modules.nsot import capture_job, fleet_change
+    from modules.nsot.deploy import DEPLOYED
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(rd, "plan_devices", lambda ln, batch: [
+            {"device": d, "capture_hash": f"c-{d}", "command_hash": f"h-{d}"} for d in batch])
+        mp.setattr(rd, "apply_batch", lambda ln, conf, hashes, **kw: {"results": [
+            {"device": d, "outcome": "failed" if d == "r4" else DEPLOYED,
+             "verify": {"ok": d != "r4", "summary": "a sent line was not read back"}}
+            for d in conf]})
+        plan = {"layer": {"label": "tag blind-lab"},
+                "devices": [{"device": d, "command_hash": f"h-{d}"} for d in ("r3", "r4", "r9")]}
+        for after in ("pause", "go"):
+            job = fleet_change.run_start("Lab", plan, "5a1e2f0" + "0" * 33,
+                                         [["r3"], ["r4"], ["r9"]], after_canary=after,
+                                         actor="op@example.com", actor_kind="person")
+            assert capture_job.wait(job, 10)
+            r = client.get(f"/v2/intent/change/run/{job}?list=Lab&layer=tag-blind-lab")
+            html = r.get_data(as_text=True)
+            assert r.status_code == 200 and ("data-fc-paused" if after == "pause"
+                                             else "data-fc-stopped") in html, html[:400]
     finally:
         mp.undo()
 
@@ -2613,6 +2650,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
+                   _fleet_run,
                    _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

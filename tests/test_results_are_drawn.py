@@ -228,6 +228,14 @@ PAGE_RECORD = {
     # again on the device's History (the reloads source, with its window and its restart).
     "device_v2.reload_confirm": ("templates/v2/_reload.html",
                                  ('id="device-op"', "r.steps", "r.reason"), "device_v2.history"),
+    # Board FC5 (C2283): a layer change's run in place, each device's step, outcome and why, the
+    # layer's commit; each device's receipt read again on its History.
+    "intent_layers_v2.change_approve": ("templates/v2/_fleet_run.html",
+                                        ("rows_table(r.rows)", "r.commit", "r.stopped"),
+                                        "device_v2.history"),
+    "intent_layers_v2.change_go_on": ("templates/v2/_fleet_run.html",
+                                      ("rows_table(r.rows)", "r.commit", "r.left"),
+                                      "device_v2.history"),
     # DHCP › Reservations (C529 step 2, board B): the result in place, read back from Kea, and
     # its commit; read again on the network's History (dhcp/reservations.yml).
     "dhcp_v2.reservation_confirm": ("templates/v2/_dhcp_reserve.html",

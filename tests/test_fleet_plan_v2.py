@@ -77,7 +77,7 @@ class TestPlanTheChange:
             .get_data(as_text=True)
         assert "<strong>1 device, 1 group</strong> · 0 refused · 0 unchanged" in html, html
         assert "+ ntp server 192.0.2.123" in html and "layers/tag-blind-lab.yml" in html
-        assert "Nothing was sent and nothing was written" in html
+        assert "Nothing was sent yet" in html
         assert _head(r2["repo"]) == head, "a plan commits nothing"
 
     def test_a_before_the_layer_does_not_hold_is_refused_by_name(self, page, r2):  # noqa: F811

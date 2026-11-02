@@ -918,6 +918,53 @@ class TestBulkIntentCards(_Cards):
         return html
 
 
+# ── A layer change (board FC4 and FC5), on the fleet change tests' lab (r2 tagged) ─────────
+
+class TestFleetChangeCards(_Cards):
+    from tests import (test_fleet_change_plan as _fc, test_fleet_change_run as _fr,
+                       test_fleet_plan_v2 as _fp)
+    lab, r2, page, sent = hosted(_fc.lab), hosted(_fc.r2), hosted(_fp.page), hosted(_fr.sent)
+
+    CASES = {
+        "fleet_approve": ("_fleet_plan.html", "Approve and run: canary first",
+                          r"Approve and run: canary first", "viewer"),
+        "fleet_go_on": ("_fleet_run.html", "Go on: the {{ r.left | length }} left",
+                        r"Go on: the 2 left", "viewer"),
+    }
+
+    def drawn_fleet_approve(self, request):
+        from tests.test_fleet_run_v2 import _planned
+        return _planned(request.getfixturevalue("page"))
+
+    def blocked_fleet_approve(self, request, monkeypatch):
+        from tests.test_fleet_run_v2 import _planned
+        page = request.getfixturevalue("page")
+        as_service(monkeypatch)
+        html = _planned(page)
+        assert "data-fc-headline" in html, "floor: the plan is drawn"
+        return html
+
+    def _paused(self, request, monkeypatch):
+        from modules.nsot import capture_job, fleet_change
+        from tests.test_fleet_change_run import _plan_of
+        page = request.getfixturevalue("page")
+        request.getfixturevalue("sent")
+        plan = _plan_of(["r2", "r3", "r4"], monkeypatch)
+        job = fleet_change.run_start("Lab", plan, "abc123", [["r2"], ["r3"], ["r4"]],
+                                     after_canary="pause", actor="op", actor_kind="person")
+        assert capture_job.wait(job, 10)
+        return _text(page.get(f"/v2/intent/change/run/{job}?list=Lab&layer=tag-blind-lab"))
+
+    def drawn_fleet_go_on(self, request):
+        return self._paused(request, request.getfixturevalue("monkeypatch"))
+
+    def blocked_fleet_go_on(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._paused(request, monkeypatch)
+        assert "data-fc-paused" in html, "floor: the paused run is drawn"
+        return html
+
+
 # ── Decline a section, on test_decline's lab (r2's IP SLA) ──────────────────
 
 class TestDeclineCards(_Cards):
@@ -1863,9 +1910,10 @@ class TestThePopulation:
         Preview; 67 until the intent editor's Commit drawn again by its check, C1693,
         2026-10-27; 68 until feature 7's Commit both devices' intent, C1908,
         2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28; 70 until
-        the Intent tab's Store the value, C235, 2026-11-01)."""
+        the Intent tab's Store the value, C235, 2026-11-01; 71 until board FC's Approve and run
+        and Go on, C2283, 2026-11-02)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 71, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 73, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """
