@@ -180,13 +180,18 @@ class TestTheFallback:
                 and "ipv6_src" not in f["match"]]
 
     def test_l2_flows_fall_back_to_the_port_rate_at_lower_confidence(self):
+        """Board S-HR (C2238): on L2-only flows the port's rate is High packet rate, its own
+        rule, never a scan: a rate alone names no threat."""
         got = collect(T0, flows=self._l2(), second=rx(10000))
         (d,) = D.scan(got, VALUES)["detections"]
         assert (d["rule"], d["port"], d["confidence"], d["basis"]) == \
-            ("scan", 1, "lower", "rate")
+            ("high_rate", 1, "lower", "rate")
+        assert d["title"] == "SDN high packet rate" and "high_rate" in D.WATCH_ONLY
         assert d["measurement"]["value"] == 2000.0 and d["threshold"]["value"] == 100
         assert "cannot show a per-port scan" in d["confidence_why"]
-        assert "a rate alone cannot tell a scan from other heavy traffic" in d["confidence_why"]
+        assert "a rate alone cannot tell a scan from a flood's first seconds or other heavy " \
+            "traffic" in d["confidence_why"]
+        assert "not called a scan or a flood" in d["words"]
         assert d["evidence"][0] == "port:ctl-1:0000000000000001:1"
 
     def test_a_port_under_the_fallback_rate_is_no_scan(self):

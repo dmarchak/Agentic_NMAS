@@ -8,7 +8,8 @@ awaiting a person and 50 cards, and a person confirming one left 49 more for the
 
 **The grouping key** (`group_key`): the rule and the detection's source in its one spelling
 (`loop.canon_source`, C2005's: IPv4 and IPv6 compressed, a MAC address lower-case). Only the
-rules whose subject is a source are grouped (`GROUPED_RULES`: scan, flood). An unauthorised
+rules whose subject is a source are grouped (`GROUPED_RULES`: scan, flood, and High packet
+rate's watching rows within the flood's window, `WINDOW_OF`). An unauthorised
 flow is one flow on one switch, removed on its own, so each is its own incident; a detection
 naming no single source (a flood or a scan's packet-rate fallback whose port's flows name no
 address and whose port the controller's topology cannot resolve to one host, `detect.
@@ -69,7 +70,12 @@ import time
 log = logging.getLogger(__name__)
 
 #: The rules whose subject is a source, each with the setting its window comes from.
-GROUPED_RULES = {"scan": "sdn_scan_window_seconds", "flood": "sdn_flood_window_seconds"}
+GROUPED_RULES = {"scan": "sdn_scan_window_seconds", "flood": "sdn_flood_window_seconds",
+                 "high_rate": "sdn_flood_window_seconds"}
+#: A rule whose window is another rule's, with that rule's name: High packet rate is watched
+#: until the flood rule fires for it (board S-HR, PHASE8_PLAN 17.8), so it groups within the
+#: flood's window.
+WINDOW_OF = {"high_rate": "flood"}
 #: An incident's severity, most urgent first: the classification's, else ``unclassified``.
 SEVERITY_ORDER = ("critical", "high", "unclassified", "medium", "low", "none")
 #: The incident key of a detection grouped by nothing but itself.
@@ -100,8 +106,10 @@ def window(rule: str, values: dict) -> dict:
         return {"seconds": 0, "setting": "",
                 "words": "not grouped: each unauthorised flow is one flow on one switch"}
     seconds = int((values or {}).get(setting) or 0)
+    whose = (f"the {WINDOW_OF[rule]} rule's window, which it joins within" if rule in WINDOW_OF
+             else f"the {rule} rule's own window")
     return {"seconds": seconds, "setting": setting,
-            "words": f"within {seconds} s, the {rule} rule's own window ({setting})"}
+            "words": f"within {seconds} s, {whose} ({setting})"}
 
 
 def group_key(d: dict) -> str:

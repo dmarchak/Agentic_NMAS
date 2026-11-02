@@ -191,6 +191,13 @@ ROW_KINDS = {
                                     "open the incident on SDN › Responses and preview its "
                                     "response at the ingress switch, then confirm it, or "
                                     "dismiss the incident"),
+    # C2238 (board S-HR): a high packet rate is watched, never answered, so nothing awaits a
+    # person's approval; it is still something to look at while it lasts.
+    ("sdn_responses", "watching"): ("a port's high packet rate on a switch whose flows name no "
+                                    "transport ports is watched: not called a scan or a flood, "
+                                    "nothing proposed and no AI call",
+                                    "open it on SDN › Responses to see whether it joins a "
+                                    "flood, or dismiss it with a reason"),
     # C1869's, carried into C1999: a controller that does not answer leaves the network's
     # detections and responses blind, and nothing else said so outside SDN › Controllers.
     ("sdn_controllers", "not_answering"): ("a network's SDN controller does not answer the SDN "
@@ -402,6 +409,10 @@ CLEARS = {
     ("sdn_responses", "awaiting"): (("resolves",), "the incident's response is applied, or the "
                                     "incident is dismissed, on SDN › Responses (escalation "
                                     "never clears it: it only raises it to danger)"),
+    ("sdn_responses", "watching"): (("resolves",), "the flood rule fires for the same port or "
+                                    "source (the row joins that incident's), the rate falls "
+                                    "below the threshold (it ends), or a person dismisses it on "
+                                    "SDN › Responses"),
     ("sdn_controllers", "not_answering"): (("resolves",), "the SDN reader's next read (every "
                                            "30 s) finds each controller named answering, or "
                                            "the connection is removed from the network's "
@@ -3079,7 +3090,7 @@ def _sdn_escalate_after(network: str) -> tuple:
     return got, ""
 
 
-def sdn_responses_source(found=None, now: float = None) -> dict:
+def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
     """The SDN incidents awaiting a person (`loop.awaiting`, one response per incident;
     C1999): one row per incident, never one per detection or per switch, naming its network,
     rule, source, how many switches saw it, its severity, its age and the ingress switch its
@@ -3099,7 +3110,12 @@ def sdn_responses_source(found=None, now: float = None) -> dict:
     configured. A threshold that cannot be read is said on the row, and the row is drawn
     escalated: a threshold not known is never read as not reached. Nothing announces the
     moment an incident crosses it; the SDN reader announces `sdn` at each read (every 30 s),
-    and this source is re-read then."""
+    and this source is re-read then.
+
+    **Watching** (board S-HR, C2238): each High packet rate incident the loop watches
+    (`loop.watching`) is one WARNING row, never escalated (nothing awaits approval), cleared
+    when it joins a flood, ends or is dismissed. *watched* is ``{network: watching rows}``
+    (tests)."""
     from modules.nsot import listref
     from modules.sdn import incidents
     from modules.sdn import loop as LP
@@ -3110,6 +3126,8 @@ def sdn_responses_source(found=None, now: float = None) -> dict:
     try:
         waiting = found if found is not None else {
             n: LP.awaiting(n) for n in listref.names()}
+        watching = watched if watched is not None else (
+            {} if found is not None else {n: LP.watching(n) for n in listref.names()})
     except Exception as exc:                          # noqa: BLE001 (said as the source's error)
         return source_result("sdn_responses", label, read_at=started, took_ms=0,
                              error=f"the responses could not be read: {type(exc).__name__}")
@@ -3182,16 +3200,53 @@ def sdn_responses_source(found=None, now: float = None) -> dict:
                                   "it, or dismiss the incident with a reason"),
                         "href": (f"/v2/sdn/responses?list={network}&incident="
                                  f"{r.get('id')}#sdn-i-{r.get('id')}")}))
+    for network, got in sorted(watching.items()):
+        if got.get("state") == "unreadable":
+            if not any(u.startswith(f"{network} (") for u in unread):
+                unread.append(f"{network} ({got.get('error')})")
+            continue
+        for r in got.get("rows") or []:
+            d = r.get("detection") or {}
+            m, th = d.get("measurement") or {}, d.get("threshold") or {}
+            switches = len(r.get("members") or [d.get("key")])
+            src = d.get("source") or ""
+            where = (d.get("dpid_hex") or "?") + (
+                f" port {d.get('port')}" if d.get("port") is not None else "")
+            rows.append(row(
+                source="sdn_responses", kind="watching", key=f"{network}:{r.get('id')}",
+                level="warning", since=_ts(r.get("at")),
+                what=(f"High packet rate{' from ' + src if src else ''} on {network} at {where}"
+                      + (f", seen on {switches} switches" if switches != 1 else "")
+                      + ": watched, not called a scan or a flood"),
+                cause=(f"Watching row {r.get('id')}, since {r.get('at')} (last seen "
+                       f"{r.get('last_seen') or r.get('at')}): {m.get('value')} packets a "
+                       f"second at or above {th.get('value')} ({th.get('setting')}) on a switch "
+                       "whose flows name no transport ports, so neither a scan nor a flood can "
+                       "be told yet. Nothing is proposed and no AI call is made; it joins the "
+                       "flood rule's incident if that fires for the same port or source, and "
+                       "ends when the rate falls"),
+                operands={"network": network, "incident": r.get("id") or "",
+                          "rule": d.get("rule") or "", "source": src, "switches": switches,
+                          "rate_pps": m.get("value"), "threshold_pps": th.get("value"),
+                          "since": r.get("at") or ""},
+                action={"label": (f"Open it on {network}'s SDN › Responses: see whether it "
+                                  "joins a flood, or dismiss it with a reason"),
+                        "href": (f"/v2/sdn/responses?list={network}&incident="
+                                 f"{r.get('id')}#sdn-i-{r.get('id')}")}))
     took = int((time.time() - started) * 1000)
     if unread:
         return source_result("sdn_responses", label, read_at=started, took_ms=took,
                              rows=rows, error="the responses awaiting could not be read on "
                                               + "; ".join(unread))
     return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
-                         checked=f"{len(waiting)} network(s): {len(rows)} incident(s) "
-                                 f"awaiting a person, {escalated} escalated (unanswered past "
-                                 f"its network's {SDN_ESCALATE_SETTING}); no on-call "
-                                 "integration exists to notify")
+                         checked=f"{len(waiting)} network(s): "
+                                 f"{sum(1 for x in rows if x['kind'] == 'awaiting')} "
+                                 f"incident(s) awaiting a person, {escalated} escalated "
+                                 f"(unanswered past its network's {SDN_ESCALATE_SETTING}); no "
+                                 "on-call integration exists to notify"
+                                 + (f"; {len(rows) - sum(1 for x in rows if x['kind'] == 'awaiting')} "
+                                    "high packet rate(s) watched"
+                                    if any(x["kind"] == "watching" for x in rows) else ""))
 def sdn_mitigation_source(found=None, now: float = None) -> dict:
     """Each response whose flows or meter the SDN reader last read missing from their switch
     while their hard timeout has time left (`modules/sdn/reapply.py` `lost`, C2018): a WARNING

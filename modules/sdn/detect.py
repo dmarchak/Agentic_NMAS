@@ -12,10 +12,16 @@ alert in Mercury's alert stream with an evidence pack, so Explain works on it un
   controller, never counted by the flow. Sightings are kept between collections and dropped
   past the window, so a scan spread over several collections is counted whole, and a scan
   that stopped resolves when its sightings age out. **Confidence high.** Where the flows are
-  not L4 (L3, L2, none, or not read): **the fallback**, each port receiving at least
-  `sdn_scan_fallback_pps` packets a second (100) over the collection's sample, **confidence
-  lower**, saying why (the switch's coverage words: its flows cannot show destination ports,
-  and a rate alone cannot tell a scan from other heavy traffic).
+  not L4 (L3, L2, none, or not read), no scan is judged; the ports' rates are **High packet
+  rate**'s instead.
+- **High packet rate** (`scan`'s other half, rule `high_rate`; board S-HR, C2238): on a switch
+  whose flows are not L4, each port receiving at least `sdn_scan_fallback_pps` packets a
+  second (100) over the collection's sample, **confidence lower**, saying why (the switch's
+  coverage words: its flows cannot show destination ports, and a rate alone cannot tell a scan
+  from a flood's first seconds or other heavy traffic). It names a rate, never a threat
+  (`WATCH_ONLY`): the loop proposes nothing for it and asks no classifier, and watches it until
+  the flood rule fires for it or it ends. Until 2026-11-02 it was the scan rule's fallback, and
+  called a scan.
 - **Flood** (`flood`): a port's received packet rate at or above `sdn_flood_factor` (5) times
   its baseline, held for `sdn_flood_window_seconds` (30): each collection over it since the
   first; one not over clears it. Received (``rx``), the switch's view of what the attached
@@ -109,12 +115,16 @@ log = logging.getLogger(__name__)
 STORE = "sdn"
 STATE_FILE = "sdn_detect.json"
 SCHEMA = 1
-RULES = ("scan", "flood", "unauthorised_flow")
+RULES = ("scan", "flood", "unauthorised_flow", "high_rate")
 #: Each rule's alert, as the Alerts tab and History name it.
 TITLES = {"scan": "SDN scan", "flood": "SDN flood",
-          "unauthorised_flow": "SDN unauthorised flow"}
+          "unauthorised_flow": "SDN unauthorised flow", "high_rate": "SDN high packet rate"}
 RULE_UIDS = {"scan": "sdn-scan", "flood": "sdn-flood",
-             "unauthorised_flow": "sdn-unauthorised-flow"}
+             "unauthorised_flow": "sdn-unauthorised-flow", "high_rate": "sdn-high-rate"}
+#: A rule that names a rate, never a threat (board S-HR, C2238, PHASE8_PLAN 17.8): nothing is
+#: proposed and nothing is asked of the classifier; the loop watches it until the flood rule
+#: fires for it (it joins that incident) or it ends.
+WATCH_ONLY = ("high_rate",)
 #: The thresholds, per network (`modules/settings_schema.py`), each with its default.
 THRESHOLDS = {"sdn_scan_ports": 20, "sdn_scan_window_seconds": 60, "sdn_scan_fallback_pps": 100,
               "sdn_flood_factor": 5, "sdn_flood_window_seconds": 30}
@@ -463,20 +473,23 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
             entering = _entering(sw, p["port_no"])
             source, _sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
                                                              p["port_no"])
+            # High packet rate (board S-HR, C2238): a rate alone names no threat. On these
+            # flows it is a flood's first seconds (F3, F6) as often as anything; it is watched,
+            # never answered, and joins the flood rule's incident when that fires.
             detections.append(_detection(
-                "scan", collected, ctl, sw, subject=("port", p["port_no"]), scope=p["id"],
+                "high_rate", collected, ctl, sw, subject=("port", p["port_no"]), scope=p["id"],
                 port=p["port_no"], source=source,
                 words=(f"port {p['port_no']} of switch {dh} ({conn}) received {p['rx_pps']:g} "
                        f"packets a second over {sw['sample'].get('elapsed_s')} s, at or above "
-                       f"the scan fallback's {pps:g} (sdn_scan_fallback_pps); lower "
-                       "confidence: " + why),
+                       f"the high packet rate threshold of {pps:g} (sdn_scan_fallback_pps); "
+                       "lower confidence, not called a scan or a flood: " + why),
                 measurement={"what": "packets received a second", "value": p["rx_pps"],
                              "unit": "pps", "sample_s": sw["sample"].get("elapsed_s")},
-                threshold={"what": "the scan fallback's rate", "value": pps, "unit": "pps",
-                           "setting": "sdn_scan_fallback_pps"},
+                threshold={"what": "the high packet rate threshold", "value": pps,
+                           "unit": "pps", "setting": "sdn_scan_fallback_pps"},
                 confidence="lower",
-                confidence_why=(why + "; a rate alone cannot tell a scan from other heavy "
-                                "traffic"),
+                confidence_why=(why + "; a rate alone cannot tell a scan from a flood's first "
+                                "seconds or other heavy traffic"),
                 evidence=[p["id"]] + [f["id"] for f in entering],
                 basis="rate", **named))
     # Prune every sighting past the window, then count each source on the switches judged.

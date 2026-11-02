@@ -331,9 +331,11 @@ def test_no_call_is_made_past_the_cap_at_once_or_one_after_the_other(three, monk
 
 def test_the_bound_is_derived_from_the_busiest_pass_measured():
     """`BUSIEST_PASS_MEASURED` is the walk's: the most detections that fired in one collection
-    (each detection's ``at``) among every one the walk's loop classified."""
+    (each detection's ``at``) among every one the walk's loop classified, the retired cases
+    included (the walk's loop classified its scan fallbacks; PHASE8_PLAN 17.8)."""
     with open(os.path.join(CASES, "recorded_walk.json"), encoding="utf-8") as fh:
-        walk = json.load(fh)["cases"]
+        data = json.load(fh)
+    walk = data["cases"] + data["retired"]
     per_pass = collections.Counter(c["detection"]["at"] for c in walk)
     assert len(walk) >= 20, "the floor: the walk's set is read whole"
     assert max(per_pass.values()) == LP.BUSIEST_PASS_MEASURED

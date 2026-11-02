@@ -93,7 +93,9 @@ def h2_link_local_only(hosts):
 
 
 def walk(key):
-    return next(c for c in load_walk()["cases"] if c["key"] == key)
+    """The walk's case *key*, a retired one included (its scan fallbacks, PHASE8_PLAN 17.8)."""
+    data = load_walk()
+    return next(c for c in data["cases"] + data["retired"] if c["key"] == key)
 
 
 def walk_flood(key, topo):
@@ -149,10 +151,11 @@ def test_the_walks_mac_only_flood_names_h2_from_the_topology():
 
 
 def test_the_fallback_scan_on_the_same_port_names_h2_too():
-    """The scan rule's packet-rate fallback judges a port as the flood does (the walk's first
-    false positive, on s1 port 2): its source comes the same way."""
+    """High packet rate (the scan rule's packet-rate fallback until board S-HR, C2238) judges
+    a port as the flood does (the walk's first false positive, on s1 port 2): its source comes
+    the same way."""
     d, _c, _s = walk_fallback("walk-fp-1", stored())
-    assert (d["rule"], d["basis"], d["port"]) == ("scan", "rate", 2)
+    assert (d["rule"], d["basis"], d["port"]) == ("high_rate", "rate", 2)
     assert d["source"] == H2 and d["source_from"]["state"] == "named"
 
 

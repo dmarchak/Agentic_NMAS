@@ -62,7 +62,7 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 | Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
 | Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
 | Expected effects (A2.2) | deterministic effects **built and deployed** (C506; board PS parts 1 and 2, e02b77c8, live 2026-11-02 02:55 UTC: the planned state on the header, Devices and Topology, and the Reload card's Expected effects, tested on B2's replay; C2274 open), not walked (the operator's walk on a planned Reload after session 11); the AI proposal **not built** | 15.12 for the AI part | none | the walk; the AI proposal's board |
-| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; A rows C2237, C2238, C2278 open; C2277 closed 2026-11-01; S-HR drawn, not built | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
+| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; A rows C2237, C2278 open; C2277 closed 2026-11-01; C2238 closed 2026-11-02 by S-HR, built whole (17.8: High packet rate never classified or proposed, joined to its flood or ended, drawn on SDN › Responses and Needs attention; the walk's 17 fallback cases retired, C2309) | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
 | The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
 | Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
 | The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
@@ -3796,6 +3796,45 @@ shadow mode (3), the per-rule policy (4) and the notification (6); then the reli
 which needs the shadow record, and the review (7), which needs the owners. The gate is complete
 when every row above is closed.
 
+### 17.8 S-HR, High packet rate: the build (decided 2026-11-02 ~22:2x UTC, before any code; the agent's, under the Phase 7 mode; board S-HR, `SdnHighRate.dc.html`, canvas version 183; C2238)
+
+Workstream 3 opens with its A rows (0.3): C2238 (a flood's first seconds called a scan) is
+S-HR's; C2278 (a benign transfer called a flood) and C2237 (a victim or receiver named a source)
+follow on the same recorded captures (RC-ICMP, RC-TCP, RC-UDP) and the recorded cases moved
+from the blind set. Fixes are measured on recorded cases; the fresh blind cases are their test.
+
+1. **The rule.** The scan rule's L2-only fallback (a port's packet rate at or above
+   `sdn_scan_fallback_pps`, 100, on a switch whose flows name no L4 ports) is its own rule,
+   `high_rate` ("SDN high packet rate", uid `sdn-high-rate`), confidence lower, basis rate, its
+   source named as the fallback's was (the port's host, `detect.port_source`), its replies
+   marked as before (`mark_replies`). The setting keeps its key; its label becomes High packet
+   rate. The scan rule is ports only.
+2. **Nothing proposed, nothing asked.** A high-rate detection is never classified (no AI call)
+   and never proposed: it is held as one watching row per incident (grouped by source as scan
+   and flood are, `incidents.GROUPED_RULES`), state `watching`, action `none`, no Approve.
+3. **Its end, by the system** (the first response the system closes, C1968's exception, said
+   on the row): joined, when the flood rule fires for the same switch and port or the same
+   source within the flood's window; the flood's row then says "began as High packet rate at
+   <time>" and the watching row closes "joined flood incident <id>"; or ended, when the
+   high-rate detection no longer fires, closing "ended, never more than a rate". A person may
+   still dismiss it with a reason.
+4. **Seen where people look.** SDN › Responses draws the watching row as board S-HR does (the
+   Watching chip, "Why it is not called a scan or a flood", "What happens next", Proposed:
+   nothing) and the flood row's "began as High packet rate"; Needs attention one warning per
+   watching row, clearing when it joins, ends or is dismissed; the Detection rules card lists
+   High packet rate with its threshold.
+5. **The recorded classify cases it retires.** `recorded_walk.json`'s 17 fallback cases (the 12
+   false positives, and the 5 normal cases, which are the fallback at a lowered threshold) are
+   inputs the loop no longer sends: they leave the classify set with a `Test-Weakened` trailer
+   and a register row (C2309), the file kept as the walk's record (``retired``).
+6. **The order:** (a) the rule and the loop's watching row, joined and ended (core, tested on
+   the walk's own sequence and the loop's own tests), with (c), the classify cases retired, in
+   the same commit, since the rule's rename is what moves them (found building (a): the walk
+   cases' rebuild test fails on the rename alone); then (b) the screens and Needs attention.
+   Then C2278 and C2237 on the same captures. **(a), (b) and (c) built 2026-11-02 ~22:4x UTC,
+   in one commit** ((a)'s gate refused on an unrelated flake, C2234, while (b) was being built
+   in the same files; C2238 closed).
+
 ## 18. Phase 8's scope, and AI cost safety (the operator, 2026-10-27)
 
 **Phase 8 is the addition of AI to Mercury.** It is complete when the items of 18.1 meet 15.12's
@@ -4246,8 +4285,12 @@ docs/boards/ holds a drawing for it.
 | 2026-11-01 | The device's Intent tab | H, deviation: the editor's head names the commit, the document's id labelled | C2292 | 2026-11-01, "H's head: one id"; docs/fidelity/tab-intent.md |
 | 2026-11-01 | Devices, Intent (layers), a device's Intent tab, Credentials | FC, `FleetChanges.dc.html`, approved with changes by the operator (revision 2, canvas 189): layers, provenance, one plan and run with one stop rule, Credentials the one home, removal, P5/P7 on top | C2283, C2294 | 2026-11-01, "Board FC approved with changes by the operator" |
 | 2026-11-01 | Needs attention | Landing, deviation: a withheld-lines row's Acknowledge… asks a disposition (true positive, benign or test, false positive) | C2295 | 2026-11-01, "Needs attention: a withheld-lines row acknowledged with a disposition"; docs/fidelity/landing.md |
+| 2026-11-02 | Devices, Intent (layers) | FC built (f1), deviation: a plan no device's program moves on is committed with "Approve and commit: nothing to send", its run sending nothing | C2283 | 2026-11-02, "Board FC built, phase 2 (f1)" |
+| 2026-11-02 | Devices | FC built (f2), deviation: FC1's Change across the N ticked… opens FC4's form with a Where part; Change a setting on N… kept until (f3); Make a group of these N… and the device page's group offer not built | C2283, C2304 | 2026-11-02, "Board FC built, phase 2 (f2)"; docs/fidelity/devices.md |
+| 2026-11-02 | Devices, Intent (layers) | FC built (f3), deviation: Bulk intent's own screen (board D) retired; the change's form gains its Add a setting | C2283, C2307 | 2026-11-02, "Board FC built, phase 2 (f3)"; docs/fidelity/intent-layers.md |
+| 2026-11-02 | SDN › Responses | S-HR built, deviation: six (no transport ports for L2-only; the flood not fired for the hold not passed; no "30 s earlier"; ends for clears; the flood's Began as line; the rules row's Responses allowed) | C2238 | 2026-11-02, "Board S-HR built"; docs/fidelity/sdn.md |
 
-**Count:** 206 rows: 60 drawn, 21 revised, 24 no drawing, 101 deviation (H's head, one id, C2292; board FC, approved with changes by the operator; the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 210 rows: 60 drawn, 21 revised, 24 no drawing, 105 deviation (2026-11-02: FC's three build deviations, (f1) to (f3), added a turn late, and S-HR's build; H's head, one id, C2292; board FC, approved with changes by the operator; the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

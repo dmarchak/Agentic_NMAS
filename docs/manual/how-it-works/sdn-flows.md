@@ -115,7 +115,7 @@ the operation, and the resulting entries as Verify read them back.
 
 ### Where a port's source comes from {#port-source}
 
-A flood, and the scan rule's packet-rate fallback, judge a port, not a source. Their source is
+A flood, and High packet rate, judge a port, not a source. Their source is
 the one address the flows entering that port name. Where those flows name none (they match MAC
 addresses only, as the controller's application installs them after a ping), **the detection
 names the host the controller's topology lists on that port** (the SDN reader's stored read of
@@ -190,7 +190,7 @@ source's flows on each switch it crosses, so each switch's rule fires. Mercury a
    grouped by their rule and their source, the source compared in one spelling (an IPv4 or IPv6
    address compressed, a MAC address in lower case with colons). Only the scan and flood rules
    are grouped: an unauthorised flow is one flow on one switch, and a detection that names no
-   single source (a flood or the scan's packet-rate fallback whose port neither its flows nor
+   single source (a flood or a High packet rate whose port neither its flows nor
    the controller's topology resolve to one host: [Where a port's source comes
    from](#port-source)) has nothing to tie it to another switch, so each is its own incident.
    **One exception, a link port.** A flood over flows that match MAC addresses only is named
@@ -237,6 +237,30 @@ preview and again at the confirm, naming the change and what it covers; nothing 
 removal is refused only for a flow that names control traffic itself. Mercury does not know the
 address each switch reaches the controller from, so a switch's own in-band control address is
 not compared.
+
+### High packet rate {#high-rate}
+
+On a switch whose flows name no transport ports (they match MAC addresses only, or IP addresses
+and no port), no scan can be counted by destination port. There, a port receiving at least the
+**High packet rate** threshold (`sdn_scan_fallback_pps`, 100 packets a second by default) is
+its own rule, at lower confidence. A rate alone cannot tell a scan from a flood's first seconds
+(the flood rule fires only after its 30-second hold) or from other heavy traffic, so Mercury
+does not call it either:
+
+1. **Nothing is proposed and nothing is asked.** No AI call is made and no response is
+   proposed. It is **watched**: one row per incident on SDN › Responses, grouped by source as
+   scan and flood are (within the flood's window), and one warning on Needs attention.
+2. **It joins a flood.** When the flood rule fires for the same switch and port, or the same
+   source, the watching row closes as "joined flood incident <id>", and the flood's incident
+   says it **began as High packet rate** and since when. A rate on traffic whose flood already
+   has a response is not watched apart.
+3. **Or it ends.** When none of its switches shows the rate any longer, the row closes as
+   "ended, never more than a rate".
+4. **Or you dismiss it**, with a reason. It cannot be confirmed: there is nothing to confirm.
+
+These are the one kind of row Mercury closes by itself, and the row says so. Until 2026-11-02
+this rate was the scan rule's fallback and was called a scan; on the Lab 8 walk it fired on a
+flood's first seconds and on ordinary transfers alike.
 
 ## Re-apply a lost response {#reapply}
 

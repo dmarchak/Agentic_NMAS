@@ -259,6 +259,33 @@ def test_sdn(tmp_path, monkeypatch):
             stale(b)
         _shoot("sdn-responses-stale-held", "SdnResponses.dc.html",
                lambda w: opened, served, widths=((1440, 1.0),), act=stale_held)
+        # S-HR (C2238, PHASE8_PLAN 17.8): a High packet rate watched (192.0.2.2 on s2's port 2,
+        # 1,240 packets a second from L2-only flows), opened, and the flood above marked as
+        # begun as one, beside board S-HR.
+        rate = dict(shot_det, key="k-shot-rate", rule="high_rate", title="SDN high packet rate",
+                    source="192.0.2.2", dpid=2, dpid_hex="0000000000000002", port=2,
+                    confidence="lower", targets=[],
+                    confidence_why="flows match only Ethernet fields and the switch port: "
+                                   "they cannot show a per-port scan",
+                    measurement={"what": "packets received a second", "value": 1240.0,
+                                 "unit": "pps", "sample_s": 5.0},
+                    threshold={"what": "the high packet rate threshold", "value": 100,
+                               "unit": "pps", "setting": "sdn_scan_fallback_pps"},
+                    words="port 2 of switch 0000000000000002 (lab-controller) received 1240 "
+                          "packets a second over 5.0 s, at or above the high packet rate "
+                          "threshold of 100 (sdn_scan_fallback_pps); lower confidence, not "
+                          "called a scan or a flood")
+        inc = INC.group([rate], {"sdn_flood_window_seconds": 30})[0]
+        watch = LP.watch("Default", rate, {
+            "key": inc["key"], "rule": "high_rate", "source": "192.0.2.2",
+            "window_s": 30, "window_setting": "sdn_flood_window_seconds",
+            "window_words": inc["window"]["words"], "seen_also": []})
+        flood_row = next(r for r in LP.awaiting("Default")["rows"]
+                         if r["detection"]["key"] == "k-shot-flood")
+        LP.began("Default", flood_row["id"], dict(watch, at=LP._iso(time.time() - 210)))
+        _shoot("sdn-responses-watching", "SdnHighRate.dc.html",
+               lambda w: f"/v2/sdn/responses?list=Default&incident={watch['id']}", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
         # C2009: the shot above is a network not marked (Turn AUTO on drawn disabled with its
         # reason); this one is AUTO turned on while marked lab, then the network marked
         # production: the Mode card says AUTO is suspended. No board draws a stage.

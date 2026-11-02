@@ -107,8 +107,8 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   are missing, and how many meters, with the controllers read and the read's age.
 - **The granularity note**, once per switch where it limits what can be seen: a switch whose
   flows match only Ethernet fields and the switch port (L2), or IP addresses and no transport
-  port (L3), cannot show a port scan as distinct destination ports; a scan there shows only as
-  packet rates, at lower confidence.
+  port (L3), cannot show a port scan as distinct destination ports; a port's high packet rate
+  there is **High packet rate**, at lower confidence, watched and never called a scan.
 - **The filter**: words matched against the switch, a flow's match, its actions or its cookie;
   **Show** applies it. **Hide the controller's own flows** is ticked by default.
 - **The switches**, folded, one row each: its datapath id, its own name, its controller, and
@@ -191,6 +191,17 @@ mode and whether the loop is running.
   **Showing N of M** with **Show all**, and past 50 rows it says how many more a filter would
   show. **Click a row to open it**; everything you do there acts on that incident only, and
   nothing confirms or dismisses several incidents at once.
+- **Watching: High packet rate**, above the incidents: a port receiving at least the High
+  packet rate threshold (100 packets a second by default) on a switch whose flows name no
+  transport ports. A rate alone cannot tell a scan from a flood's first seconds or other heavy
+  traffic, so it is not called either: nothing is proposed and no AI call is made. Its row
+  reads **Watching**, with **not asked** and **nothing: a rate alone names no threat**; opened,
+  it says **Why it is not called a scan or a flood** and **What happens next**. Mercury closes
+  it itself: when the flood rule fires for the same port or source, it joins that incident,
+  whose row then reads **Flood · began as High packet rate** and says since when; when the
+  rate falls below the threshold, it ends as "ended, never more than a rate". The same source
+  on several switches is one row. You may dismiss it with a reason. How it works:
+  [High packet rate](sdn-flows#high-rate).
 - **An incident, opened**: the detection (the rule, the source, the switch, its confidence
   and its words, an alert with its evidence pack; an unauthorised flow's words also say what it
   does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the
@@ -205,8 +216,8 @@ mode and whether the loop is running.
   controller lists the source's host on; when the ingress cannot be told (no source named, the
   topology not read now, no host or several ports listing the source, or the source on a switch
   that has not fired) the line reads **Proposed at:**, says why, and the switch that saw it
-  first is proposed. **Source:** for a drop or a rate limit of a flood (or the scan rule's
-  packet-rate fallback) whose port's flows named no address, where the source came from: the
+  first is proposed. **Source:** for a drop or a rate limit of a flood whose port's flows
+  named no address, where the source came from: the
   one host the controller's topology lists on that port, named; with several hosts there, they
   are named and a **source** picker beside Preview lists exactly them (any other is refused);
   with none to act on (no host, no address to match, or the port a link to another switch),
@@ -266,7 +277,10 @@ mode and whether the loop is running.
   this tab open: one row per incident, never one per switch or per detection, naming its
   network, rule, source, how many switches saw it, its severity, its age and the switch its
   response is proposed at; it is red when classified high or critical, and clears once its
-  response is applied or it is dismissed. **An incident left unanswered is escalated**: once
+  response is applied or it is dismissed. Each **High packet rate** being watched is a warning
+  there too, naming its network, switch, port and source, cleared when it joins a flood, ends
+  or is dismissed; it is never escalated, since nothing awaits your approval. **An incident
+  left unanswered is escalated**: once
   it has awaited you for the network's **SDN: escalate an unanswered incident after (minutes)**
   (15 unless set on the network's Settings, Network tab), its row turns red whatever its
   classification and says "unanswered for N minutes", counted on Mercury's clock from when
@@ -308,8 +322,9 @@ mode and whether the loop is running.
   run, in a file named for the run's job id (for example, a lab's evidence of a 3-minute run). A
   run longer than 2,000 lines is drawn to its newest 2,000, and the box says how many of how
   many; the download has every line.
-- **Detection rules**: each rule's threshold on this network, the responses each rule may take
-  (its default first), and the response timeouts: every response flow expires at its hard
+- **Detection rules**: each rule's threshold on this network (High packet rate's among them,
+  which takes no response), the responses each rule may take (its default first), and the
+  response timeouts: every response flow expires at its hard
   timeout. The responses are set under the table ([Response policy](#response-policy)).
 
 Verify checks installation and counters; testing traffic between the hosts is yours.

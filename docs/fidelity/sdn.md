@@ -31,7 +31,37 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `d1cf77a86b143123c759e1298950c63f7062e87099f461ef066ee25da924ea30`
+Templates sha256: `ad1864d30a8937ad5c5d5cb822852cb9be9958d716ec7d4094a2f152d4967c6b`
+
+**Compared again 2026-11-02 ~22:3x UTC for S-HR (C2238, PHASE8_PLAN 17.8 (b))**, beside
+`SdnHighRate.dc.html` (board S-HR, canvas version 183, approved under the Phase 7 mode
+2026-11-01) at 1440, 1280 and 390, from the new shot `sdn-responses-watching` (a High packet rate
+from 192.0.2.2 on s2's port 2 at 1,240 packets a second, opened, and the IPv6 flood marked as
+begun as one). `_sdn_responses.html` changed, region by region:
+- **The summary line**: "N awaiting approval · N watching · …" **same**.
+- **The counts**: the "1 watching" chip beside the severity counts **same** (a chip, not a
+  filter link: a watching row has no severity to filter by).
+- **The watching row**: Watching, High packet rate, the source, switches, age, "not asked",
+  "nothing: a rate alone names no threat" **same**; above the incidents, as the board draws it.
+- **Opened**: the title, the lower-confidence chip, the Detected line, Why it is not called a
+  scan or a flood, What happens next, Proposed: nothing, Dismiss with this reason, the Needs
+  attention line **same, with deviations**: the words say "flows that name no transport ports"
+  where the board says L2-only or Ethernet-only (the rule fires on L3 flows too); "the flood
+  rule has not fired for this port or source (its 30 s hold)" where the board says the hold
+  "has not yet passed" (a hold can pass with no flood); "began as High packet rate" without
+  "30 s earlier" (the gap is not known before the flood fires); "ends", the store's word, where
+  the board says "clears"; the how-it-works link is the page's compact icon.
+- **The flood row**: "Flood · began as High packet rate" **same**; opened, it adds "Began as High
+  packet rate <time> (watching row <id>, joined into this incident when the flood rule fired)",
+  where the board says only that its history says so.
+- **Detection rules**: the High packet rate row **same**, its "Fires when" as above, and its
+  Responses allowed column (the page's, which the board lacks) "none: watched, never answered";
+  the scan's Needs is "L4 flows" alone **same**. The board's threshold inputs are board S3's
+  form, as before.
+- **Phone width**: the page's rows stack inside the card (390 shot), where the board's table
+  overflows its box; **better than the board**.
+Deviations logged: docs/STANDING_APPROVAL_LOG.md, "Board S-HR built". Templates sha256 before:
+`d1cf77a86b143123c759e1298950c63f7062e87099f461ef066ee25da924ea30`.
 
 **Compared again 2026-10-29 ~10:5x UTC for C2021** (an unauthorised flow's severity floor):
 `_sdn_responses.html`'s AI box, after "severity <s>", says "(raised in code from the model's

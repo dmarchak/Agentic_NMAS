@@ -167,7 +167,8 @@ def log_view(network: str, run: str = "") -> dict:
 
 
 #: Each rule as the rules table names it.
-RULE_LABELS = {"scan": "Scan", "flood": "Flood", "unauthorised_flow": "Unauthorised flow"}
+RULE_LABELS = {"scan": "Scan", "flood": "Flood", "unauthorised_flow": "Unauthorised flow",
+               "high_rate": "High packet rate"}
 #: Where the network's response policy comes from, in words (`list_settings.resolve`'s origin).
 POLICY_ORIGIN = {"set here": "set on this network",
                  "unset everywhere": "the default: every catalogue action that answers the rule",
@@ -260,7 +261,33 @@ def incident_rows(awaiting: dict) -> list:
                          "kept before incidents were grouped (C1999): proposed at the switch "
                          "that saw it"),
                      "window_words": inc.get("window_words") or "",
+                     "began_as": dict(r.get("began_as") or {}),
                      "pick": _pick(d, r.get("action"))})
+    return rows
+
+
+def watch_rows(watching: dict) -> list:
+    """The High packet rate incidents being watched (board S-HR, C2238; `loop.watching`), as
+    the table draws them above the incidents awaiting a person, the oldest first: nothing
+    proposed and no AI call, so no severity, verdict or action; why it is not called a scan or
+    a flood, and what happens next."""
+    rows = []
+    for r in watching["rows"]:
+        d = r.get("detection") or {}
+        inc = r.get("incident") or {}
+        th, m = d.get("threshold") or {}, d.get("measurement") or {}
+        also = [{k: s.get(k) for k in ("dpid_hex", "port", "connection", "at", "words")}
+                for s in r.get("seen_also") or []]
+        rows.append({"id": r.get("id"), "at": r.get("at"), "rule": d.get("rule"),
+                     "rule_label": RULE_LABELS.get(d.get("rule"), d.get("rule") or ""),
+                     "title": d.get("title") or d.get("rule"), "words": d.get("words"),
+                     "source": d.get("source"), "dpid_hex": d.get("dpid_hex"),
+                     "port": d.get("port"), "confidence": d.get("confidence"),
+                     "rate": m.get("value"), "threshold": th.get("value"),
+                     "coverage_words": d.get("confidence_why") or "",
+                     "switches": 1 + len(also), "seen_also": also,
+                     "last_seen": r.get("last_seen") or r.get("at"),
+                     "window_words": inc.get("window_words") or ""})
     return rows
 
 
@@ -301,6 +328,13 @@ def _matches(row: dict, q: str) -> bool:
     return all(word in text for word in q.lower().split())
 
 
+def _watch_matches(row: dict, q: str) -> bool:
+    text = " ".join(str(x or "") for x in (
+        row["rule_label"], row["title"], row["source"], row["dpid_hex"], "watching",
+        *[s.get("dpid_hex") for s in row["seen_also"]])).lower()
+    return all(word in text for word in q.lower().split())
+
+
 def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
                    incident: str = "") -> dict:
     """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
@@ -311,6 +345,8 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
 
     awaiting = loop.awaiting(network)
     every = incident_rows(awaiting)
+    watching = loop.watching(network)
+    watched = watch_rows(watching)
     q, sev = (q or "").strip(), sev if sev in incidents.SEVERITY_ORDER else ""
     shown = [r for r in every if (not sev or r["severity"] == sev) and (not q or _matches(r, q))]
     counts = [{"severity": s, "words": SEVERITY_WORDS[s], "tone": SEVERITY_TONE[s],
@@ -325,6 +361,10 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
                           "switches": sum(r["switches"] for r in every),
                           "counts": [c for c in counts if c["count"]], "q": q, "sev": sev,
                           "open": (incident or "").strip()},
+            # High packet rate, watched (board S-HR): drawn above the incidents, never
+            # filtered by a severity (it has none) and searched by the same words.
+            "watching": [w for w in watched if not sev and (not q or _watch_matches(w, q))],
+            "watching_total": len(watched),
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
             # The mode as drawn (C2082): AUTO or HITL and its words, which carry who, why,
             # until when, the allowed risk, an unreadable record and a lapsed AUTO.

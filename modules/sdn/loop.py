@@ -82,6 +82,16 @@ every switch of its connection (`covering`'s *across*), since the source enters 
 another switch's detection of the same rule and source under it is already mitigated too. A
 response applied where the ingress could not be told holds its own switch only.
 
+**High packet rate is watched, never answered** (board S-HR, C2238; PHASE8_PLAN 17.8). A rate
+alone names no threat (`detect.WATCH_ONLY`): its detection is never classified (no AI call)
+and never proposed. It is kept as one ``watching`` row per incident (`watch`, grouped by
+source as scan and flood are, within the flood's window), action ``none``, no Approve, and
+the system closes it (C1968's one exception, said on the row): ``joined`` when the flood rule
+fires for the same switch and port or the same source (the flood's response then carries
+"began as High packet rate at <time>", `began`), or ``ended`` when none of its switches shows
+it any longer, "ended, never more than a rate". A new one on traffic a flood already answers
+is said and not watched apart (`_watch_pass`).
+
 A detection that resolves (`detect.observe`: a collection that judged its subject no longer
 shows it) never closes its response: the response stays awaiting a person, marked "threat no
 longer active since <time>", its classification kept, until a person approves or dismisses
@@ -123,7 +133,10 @@ then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by 
 ``cleared`` (the detection resolved before anyone acted) is no longer written, and still read
 as closed in an older record. A hold (C2005) is ``mitigated`` (the detection, the response
 holding it, its operation and until when) then ``released`` (why); its id (``mit-…``) is never
-a response's, so `awaiting` passes over both.
+a response's, so `awaiting` passes over both. A watching row (High packet rate) is
+``watching``, any number of ``seen``, then one of ``joined``, ``ended`` or ``dismissed``
+(`watching` reads them); its id (``watch-…``) is never a response's either. A flood response
+it joined carries ``began`` (``began_as`` on `awaiting`'s row).
 """
 
 import calendar
@@ -373,12 +386,16 @@ def resolve(network: str, response_id: str, how: str, *, actor: str, why: str = 
             operation: str = "", now: float = None) -> dict:
     """Close an awaiting response, a person's act: ``confirmed`` (with its operation's id) or
     ``dismissed`` (a reason required). Nothing else closes one: a detection that resolves
-    marks its response inactive (`mark`), never closes it (C1968)."""
+    marks its response inactive (`mark`), never closes it (C1968). A watching row (High packet
+    rate, `watch`) a person may dismiss, never confirm: nothing is proposed on it."""
     if how not in ("confirmed", "dismissed"):
         raise ValueError(f"a response is confirmed or dismissed by a person, not {how!r}")
     if how == "dismissed" and not (why or "").strip():
         raise ValueError("a dismissal names its reason")
-    if not any(r.get("id") == response_id for r in awaiting(network)["rows"]):
+    watched_row = how == "dismissed" and any(
+        r.get("id") == response_id for r in watching(network)["rows"])
+    if not watched_row and not any(r.get("id") == response_id
+                                   for r in awaiting(network)["rows"]):
         raise ValueError(f"no response {response_id!r} is awaiting a person on {network}")
     now = time.time() if now is None else now
     row = {"kind": how, "id": response_id, "at": _iso(now), "actor": actor,
@@ -425,9 +442,170 @@ def awaiting(network: str) -> dict:
         elif kind == "active":
             open_rows[rid] = dict(open_rows[rid], inactive_since="",
                                   last_seen=max(open_rows[rid]["last_seen"], r.get("at") or ""))
+        elif kind == "began":
+            open_rows[rid] = dict(open_rows[rid], began_as={
+                k: r.get(k) for k in ("watch", "since", "words")})
         elif kind in CLOSED:
             open_rows.pop(rid, None)
     return dict(got, rows=list(open_rows.values()))
+
+
+# ─────────────────────────────────────────────── watched, never answered (board S-HR, C2238)
+
+#: The kinds that close a watching row (PHASE8_PLAN 17.8): the system's own, ``joined`` (the
+#: flood rule fired for the same traffic) and ``ended`` (it no longer fires), or a person's
+#: ``dismissed``.
+WATCH_CLOSED = ("joined", "ended", "dismissed")
+
+
+def watch(network: str, detection: dict, incident: dict, *, now: float = None) -> dict:
+    """Keep a High packet rate incident (`detect.WATCH_ONLY`) as watching: nothing proposed,
+    nothing asked of the classifier, its action ``none``. *incident* its key, source, window
+    and the switches seen also, as `incidents.record` keeps a proposed one's."""
+    now = time.time() if now is None else now
+    row = {"kind": "watching", "id": f"watch-{secrets.token_hex(5)}", "at": _iso(now),
+           "action": "none", "detection": detection, "incident": incident}
+    _append(network, PENDING_FILE, row)
+    return row
+
+
+def watched(network: str, watch_id: str, how: str, *, why: str, incident: str = "",
+            now: float = None) -> dict:
+    """Close the watching row *watch_id* by the system (C1968's one exception, said on the
+    row): ``joined`` (the flood incident *incident* answers the same traffic) or ``ended``;
+    *why* its words."""
+    if how not in ("joined", "ended"):
+        raise ValueError(f"the system closes a watching row joined or ended, not {how!r}")
+    now = time.time() if now is None else now
+    row = {"kind": how, "id": watch_id, "at": _iso(now), "why": why, "incident": incident}
+    _append(network, PENDING_FILE, row)
+    return row
+
+
+def began(network: str, response_id: str, row: dict, *, now: float = None) -> dict:
+    """Mark the flood response *response_id* as begun as the watching row *row*: its card
+    says "began as High packet rate at <time>"."""
+    now = time.time() if now is None else now
+    out = {"kind": "began", "id": response_id, "at": _iso(now), "watch": row["id"],
+           "since": row.get("at"), "words": f"began as High packet rate at {row.get('at')}"}
+    _append(network, PENDING_FILE, out)
+    return out
+
+
+def watching(network: str) -> dict:
+    """The watching rows still open, oldest first, each with ``seen_also``, ``members`` and
+    ``last_seen`` as `awaiting` gives a response's."""
+    got = _read(network, PENDING_FILE)
+    open_rows = {}
+    for r in got["rows"]:
+        kind, rid = r.get("kind"), r.get("id")
+        if kind == "watching":
+            d = r.get("detection") or {}
+            also = list((r.get("incident") or {}).get("seen_also") or [])
+            open_rows[rid] = dict(r, seen_also=also,
+                                  members=[d.get("key")] + [s.get("key") for s in also],
+                                  last_seen=max(d.get("at") or "", r.get("at") or ""))
+        elif rid not in open_rows:
+            continue
+        elif kind == "seen":
+            row = open_rows[rid]
+            new = [s for s in r.get("detections") or [] if s.get("key") not in row["members"]]
+            open_rows[rid] = dict(row, seen_also=row["seen_also"] + new,
+                                  members=row["members"] + [s.get("key") for s in new],
+                                  last_seen=max([row["last_seen"], r.get("at") or ""]
+                                                + [s.get("at") or "" for s in new]))
+        elif kind in WATCH_CLOSED:
+            open_rows.pop(rid, None)
+    return dict(got, rows=list(open_rows.values()))
+
+
+def same_traffic(a: dict, b: dict) -> bool:
+    """Whether detections *a* and *b* name the same traffic: the same connection, switch and
+    port, or the same source in one spelling (`canon_source`)."""
+    if a.get("port") is not None and (a.get("connection"), a.get("dpid"), a.get("port")) == (
+            b.get("connection"), b.get("dpid"), b.get("port")):
+        return True
+    src = canon_source(a.get("source"))
+    return bool(src) and src == canon_source(b.get("source"))
+
+
+def _watch_pass(network: str, seen: dict, fired: list, floods: list, now: float,
+                line) -> dict:
+    """High packet rate in one pass (board S-HR, C2238; PHASE8_PLAN 17.8): never classified,
+    never proposed. *fired* this pass's new `detect.WATCH_ONLY` detections; *floods*
+    ``[(detection, id)]``, each flood detection active in this pass with the response that
+    answers it (awaiting a person, applied, or holding its source off). Each open watching row
+    joins the flood naming the same traffic (`same_traffic`: closed ``joined``, the flood's
+    response marked as begun as it, `began`), or ends once none of its switches shows it;
+    then each new incident joins a flood already answering its traffic (said, no row), joins an
+    open watching row of its source within its window (seen also), or opens a watching row.
+    ``{"watching", "joined", "ended", "seen_also"}``, ids and keys."""
+    from modules.sdn import incidents
+
+    res = {"watching": [], "joined": [], "ended": [], "seen_also": []}
+    active = {d["key"] for d in seen.get("detections") or []} | {
+        u.get("key") for u in seen.get("unjudged") or []}
+
+    def members_of(row):
+        src = (row.get("incident") or {}).get("source") or ""
+        return [row.get("detection") or {}] + [dict(s, source=src)
+                                               for s in row.get("seen_also") or []]
+
+    def flood_of(members):
+        return next(((f, fid) for f, fid in floods
+                     if any(same_traffic(m, f) for m in members)), None)
+
+    open_rows = []
+    for row in watching(network)["rows"]:
+        hit = flood_of(members_of(row))
+        if hit is not None:
+            f, fid = hit
+            watched(network, row["id"], "joined", incident=fid, now=now,
+                    why=f"joined flood incident {fid}")
+            began(network, fid, row, now=now)
+            res["joined"].append(row["id"])
+            line("watch", f"High packet rate {row['id']} (since {row.get('at')}) joined flood "
+                          f"incident {fid}: {f.get('words')}", watch=row["id"], incident=fid)
+        elif not set(row["members"]) & active:
+            watched(network, row["id"], "ended", now=now, why="ended, never more than a rate")
+            res["ended"].append(row["id"])
+            line("watch", f"High packet rate {row['id']} (since {row.get('at')}) ended, never "
+                          "more than a rate: none of its switches shows it now",
+                 watch=row["id"])
+        else:
+            open_rows.append(row)
+    new = [d for d in fired if not any(d["key"] in r["members"] for r in open_rows)]
+    for inc in incidents.group(new, seen.get("thresholds") or {}):
+        hit = flood_of(inc["members"])
+        if hit is not None:
+            line("watch", f"{_switches_words(inc['members'])}: a high packet rate on traffic "
+                          f"flood incident {hit[1]} already answers: not watched apart",
+                 incident=hit[1])
+            continue
+        joined = next((r for r in (incidents.joinable(open_rows, m, now)
+                                   for m in inc["members"]) if r is not None), None)
+        if joined is not None:
+            seen_also(network, joined["id"], inc["members"], now=now)
+            res["seen_also"] += [m["key"] for m in inc["members"]]
+            line("watch", f"High packet rate seen also on {_switches_words(inc['members'])}: "
+                          f"joins watching row {joined['id']}", watch=joined["id"])
+            continue
+        d = incidents.first_seen(inc["members"])
+        w = inc["window"]
+        rec = {"key": inc["key"], "rule": inc["rule"], "source": inc.get("source") or "",
+               "window_s": w["seconds"], "window_setting": w["setting"],
+               "window_words": w["words"],
+               "seen_also": [incidents.brief(m) for m in inc["members"]
+                             if m.get("key") != d.get("key")]}
+        row = watch(network, d, rec, now=now)
+        open_rows.append(dict(row, seen_also=rec["seen_also"], last_seen=row["at"],
+                              members=[d["key"]] + [s["key"] for s in rec["seen_also"]]))
+        res["watching"].append(row["id"])
+        line("watch", f"{d.get('words')}: watched as High packet rate ({row['id']}), not "
+                      "called a scan or a flood: nothing proposed, no AI call; it joins the "
+                      "flood rule's incident if that fires for this traffic, and ends when it "
+                      "no longer fires", watch=row["id"])
+    return res
 
 
 # ───────────────────────────────────────────────────────────────────── already mitigated (C2005)
@@ -961,7 +1139,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     awaiting a person whose detection resolved in this pass (C1968: never closed by it);
     *mitigated* each detection recorded as already mitigated (C2005: ``{"key", "by", "until",
     "hold"}``); *released* each held detection answered as new because its response is no
-    longer in force. *job* is the loop's id (`job_id`), what its background AI calls name;
+    longer in force; *watching*, *joined* and *ended* the High packet rate rows opened, joined
+    to a flood and ended in this pass (`_watch_pass`). *job* is the loop's id (`job_id`), what
+    its background AI calls name;
     *send* replaces the AI provider (tests)."""
     from modules.fanout import Failed, read_each
     from modules.sdn import closed_loop, detect, flow_ops, incidents, modes
@@ -969,7 +1149,8 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     job = job or job_id(network)
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "inactive": [],
-           "mitigated": [], "released": [], "incidents": [], "seen_also": [], "lines": []}
+           "mitigated": [], "released": [], "incidents": [], "seen_also": [], "watching": [],
+           "joined": [], "ended": [], "lines": []}
 
     def line(step, words, **extra):
         out["lines"].append(say(network, step, words, now(), **extra))
@@ -1064,6 +1245,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             out["error"] = seen.get("error") or ""
             return out
         fired = [d for d in seen.get("detections") or [] if d["key"] in set(seen["fired"])]
+        # High packet rate (board S-HR, C2238) is watched, never classified or proposed
+        # (`_watch_pass`, after the responses): kept apart from here on.
+        said, rated = fired, [d for d in fired if d.get("rule") in detect.WATCH_ONLY]
+        fired = [d for d in fired if d.get("rule") not in detect.WATCH_ONLY]
         resolved = list(seen.get("resolved") or [])
         # Each detection key an incident awaiting a person holds: its own and each seen also.
         rows_waiting = awaiting(network)["rows"]
@@ -1095,11 +1280,11 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                  + (f": {collected.get('error') or collected.get('words')}"
                     if collected.get("error") or collected.get("words") else "")
                  + "): nothing judged healthy")
-        line("detect", ("; ".join(d["words"] for d in fired) if fired else quiet)
+        line("detect", ("; ".join(d["words"] for d in said) if said else quiet)
              + (f"; {len(resolved)} no longer active (the collection judged its subject and "
                 "no longer shows it)" if resolved else "")
              + (f", {len(held)} of them with a response still awaiting a person" if held
-                else "") + (f" (judged in {judged_s:.1f} s)" if fired else ""),
+                else "") + (f" (judged in {judged_s:.1f} s)" if said else ""),
              took_s=round(judged_s, 2))
         since = seen.get("collected_at") or _iso(now())
         # An incident is no longer active once none of its switches still shows it (C1999):
@@ -1238,6 +1423,18 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             stages["total"] = clock() - detected_at
             line("timing", _timing_words(stages),
                  stages={k: round(v, 3) for k, v in stages.items()})
+        # High packet rate (board S-HR, C2238; PHASE8_PLAN 17.8), after the responses so a
+        # flood answered in this pass is the incident it joins: each flood active now with the
+        # response that answers it (awaiting a person, applied, or holding its source off).
+        answered = {i["key"]: i["id"] for i in out["incidents"]}
+        floods = [(d, fid) for d in seen.get("detections") or [] if d.get("rule") == "flood"
+                  for fid in [(waiting.get(d["key"]) or {}).get("id")
+                              or (holding.get(d["key"]) or {}).get("id")
+                              or answered.get((incident_of.get(d["key"]) or {}).get("key"))]
+                  if fid]
+        watched_now = _watch_pass(network, seen, rated, floods, now(), line)
+        out["seen_also"] += watched_now.pop("seen_also")
+        out.update(watched_now)
         if len(todo) > 1:
             # The pass's total beside each call's own (one detection's line is its total).
             line("classify", f"classified {len(todo)} detections at once, each its own call "
@@ -1254,7 +1451,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # (C1843): `ai_calls`, so the top bar's AI chip and an open spend panel read again.
         keys = (["alerts"] if seen.get("changed") else []) + (
             ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
-            or out["released"] or expired["removed"] else []) + (["ai_calls"] if todo else [])
+            or out["released"] or out["watching"] or out["joined"] or out["ended"]
+            or out["seen_also"] or expired["removed"] else []) + (
+            ["ai_calls"] if todo else [])
         if keys:
             out["announced"] = _announce(network, keys, job)
     except Exception as exc:                          # noqa: BLE001 (said, never raised)

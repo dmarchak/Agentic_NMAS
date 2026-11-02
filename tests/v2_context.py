@@ -2493,15 +2493,33 @@ def _sdn_operations(client, mp, session):
                          "192.0.2.1's host on its port 1",
         "seen_also": [incidents.brief(dict(flood, key="k-ctx-3", dpid=2,
                                            dpid_hex="0000000000000002", port=3))]})
+    # S-HR (C2238): a High packet rate watched, seen also on a second switch, and the flood
+    # above marked as begun as one, so the watching row, its seen-also list and the flood's
+    # "began as" draw.
+    rate = dict(d, key="k-ctx-5", rule="high_rate", title="SDN high packet rate", port=2,
+                confidence="lower", confidence_why="flows match only Ethernet fields",
+                measurement={"what": "packets received a second", "value": 1240.0,
+                             "unit": "pps"},
+                threshold={"what": "the high packet rate threshold", "value": 100,
+                           "unit": "pps", "setting": "sdn_scan_fallback_pps"})
+    watch = LP.watch("Lab", rate, {
+        "key": incidents.group_key(rate), "rule": "high_rate", "source": "192.0.2.1",
+        "window_s": 30, "window_setting": "sdn_flood_window_seconds",
+        "window_words": incidents.window("high_rate", {"sdn_flood_window_seconds": 30})["words"],
+        "seen_also": [incidents.brief(dict(rate, key="k-ctx-6", dpid=2,
+                                           dpid_hex="0000000000000002", port=3))]})
+    LP.began("Lab", other["id"], watch)
     LP.say("Lab", "detect", "a scan from 192.0.2.1 on " + sw)
-    assert "2 awaiting approval" in client.get("/v2/sdn/responses?list=Lab")\
-        .get_data(as_text=True)
+    assert "2 awaiting approval</strong> · 1 watching" in client.get(
+        "/v2/sdn/responses?list=Lab").get_data(as_text=True)
     card = client.post(f"/v2/sdn/response/{row['id']}/preview",
                        data={"list": "Lab", "hard_timeout": "90"}).get_data(as_text=True)
     assert "Done, verified" in client.post("/v2/sdn/response/confirm", data=fields(card))\
         .get_data(as_text=True)
     assert client.post(f"/v2/sdn/response/{other['id']}/dismiss",
                        data={"list": "Lab", "reason": "the lab's own test"}).status_code == 200
+    assert client.post(f"/v2/sdn/response/{watch['id']}/dismiss",
+                       data={"list": "Lab", "reason": "the lab's own iperf"}).status_code == 200
     _sdn_reapply(client, session, d, fields)
     _sdn_picker(client, d)
     # The response policy (objective 3.1): one refused (an action that does not answer its
