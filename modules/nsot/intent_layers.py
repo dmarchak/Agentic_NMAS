@@ -25,7 +25,10 @@ chain that renders reads them through `profile.effective_for` (22.1 (3)); no `la
 is today's render, unchanged.
 """
 
+import contextlib
+import contextvars
 import copy
+import os
 import re
 
 #: Where a network's layers are committed, one file a layer.
@@ -196,13 +199,40 @@ def layer_label(rank: str, slug: str = "") -> str:
     return rank if rank == "network" else f"{rank} {slug}"
 
 
+#: A fleet change's proposed layer, planned before it is committed (PHASE8_PLAN 22.2 (2)):
+#: ``(realpath of the repository, rank, slug, doc)`` or None. Set only by `proposed`, for the
+#: duration of one plan in one thread of control; every reader of the layers (the chain's
+#: render, the plan's attribution) then sees the network's layers with this one in its place.
+_PROPOSED = contextvars.ContextVar("intent_layers_proposed", default=None)
+
+
+@contextlib.contextmanager
+def proposed(repo: str, rank: str, slug: str, doc: dict):
+    """Within the block, `read_layers` for *repo* returns its committed layers with the layer
+    *rank*/*slug* replaced by *doc* (or added, a new layer): the plan renders what the change
+    would commit, through the one chain, without committing it. Nothing is written."""
+    token = _PROPOSED.set((os.path.realpath(repo), rank, slug, doc))
+    try:
+        yield
+    finally:
+        _PROPOSED.reset(token)
+
+
 def read_layers(repo: str, ref: str = "HEAD") -> list:
     """The network's committed layers at *ref*: ``[(rank, slug, label, doc)]``, by file name.
     ``[]`` when there is no `layers/` folder (today's networks). A file whose name is not a
     layer's, or that is not YAML, RAISES `LayersRefused` naming it: a render never quietly
-    drops what a layer says."""
-    import os
+    drops what a layer says. Inside `proposed`, the proposed layer stands in its file's place."""
+    layers = _committed_layers(repo, ref)
+    want = _PROPOSED.get()
+    if want is None or not repo or os.path.realpath(repo) != want[0]:
+        return layers
+    _repo, rank, slug, doc = want
+    kept = [lay for lay in layers if (lay[0], lay[1]) != (rank, slug)]
+    return kept + [(rank, slug, layer_label(rank, slug), doc)]
 
+
+def _committed_layers(repo: str, ref: str) -> list:
     import yaml
 
     from modules.nsot import repo as R

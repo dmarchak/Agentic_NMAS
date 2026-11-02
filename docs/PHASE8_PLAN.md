@@ -4601,3 +4601,13 @@ tests/test_deploy_layer_provenance.py; C2301, a layer's line read as the profile
    controls. (d) The run: canary, batches, pause, the stop rule (one rule for the batch deploy
    too). (e) FC5's run screen and its record. (f) FC1's entry from Devices and the device
    page, retiring Bulk intent's own screen.
+
+**Built 2026-11-02:** (a), C2299 (`secret_refs._intent` reads the merged document); (b), the plan
+core (`modules/nsot/fleet_change.plan_layer`): bulk intent's compare-and-set on a layer, its
+authoring gates and the secret guard keyed by each reached device, the group read from the
+inventory, the deploy's own `plan_devices` twice (as committed, and inside
+`intent_layers.proposed`, which stands the proposed layer in its file's place for every reader
+of the layers), each device's change the lines its program gains, grouped, unchanged devices
+naming who holds the value, one hash (tests/test_fleet_change_plan.py). Found while building: a
+layer entry the template cannot render raised out of `plan_devices`, so the plan refuses it by
+name; `plan_devices` is per device, so (c) runs the plan as a job. Next: (c).
