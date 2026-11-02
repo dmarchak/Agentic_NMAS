@@ -271,3 +271,74 @@ def for_device(repo: str, row_of, intent: dict, ref: str = "HEAD") -> dict:
     if why:
         raise LayersRefused("the intent layers cannot be merged: " + "; ".join(why))
     return got["doc"]
+
+
+def layer_file(rank: str, slug: str = "") -> str:
+    """The committed file a layer lives in: ``layers/network.yml``, ``layers/tag-<slug>.yml``."""
+    return f"{LAYERS_DIR}/network.yml" if rank == "network" else f"{LAYERS_DIR}/{rank}-{slug}.yml"
+
+
+def last_change(repo: str, rel: str, ref: str) -> dict:
+    from modules.nsot import repo as R
+
+    rc, out, _err = R.git(repo, "log", "-1", "--format=%H%x09%s", ref, "--", rel)
+    sha, _, subject = (out or "").partition("\t") if rc == 0 else ("", "", "")
+    return {"sha": sha, "subject": subject}
+
+
+def shown_path(path: str) -> str:
+    """``users[lab]`` as ``users › lab``, ``snmp.settings[location]`` as ``snmp › settings ›
+    location``: how the Intent tab names a value (FC3)."""
+    return " › ".join(p for p in re.split(r"[.\[\]]+", path) if p)
+
+
+def shown_value(path: str, value) -> str:
+    if isinstance(value, dict):
+        key = path.rsplit("[", 1)[-1].rstrip("]") if path.endswith("]") else None
+        return " · ".join(f"{k} {v}" for k, v in value.items() if str(v) != key)
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value)
+    return str(value)
+
+
+def provenance(repo: str, row_of, intent: dict, ref: str = "HEAD") -> dict:
+    """Where the device's values come from, for its Intent tab (FC3): ``{"layers": [{"label",
+    "file", "sha", "subject"}], "rows": [{"path", "value", "from", "over"}], "own": [section],
+    "error"}``. *rows* are the values a layer supplies and the device's own values that override
+    a layer's (*over*: ``{"from", "value"}``, the layer's); *own* names the sections only the
+    device sets. No layer applies: every list empty, and *row_of* is not called when the network
+    has none. A layer that cannot be read or merged is *error*, its words, never a guess."""
+    out = {"layers": [], "rows": [], "own": [], "error": ""}
+    try:
+        layers = read_layers(repo, ref)
+        if not layers:
+            return out
+        row = row_of() or {}
+        chosen = applicable(layers, row)
+        if not chosen:
+            return out
+        got = merge(chosen, intent)
+        base = merge(chosen, {})
+    except LayersRefused as exc:
+        out["error"] = str(exc)
+        return out
+    why = got["problems"] + [c["path"] for c in got["conflicts"]]
+    if why:
+        out["error"] = "the intent layers cannot be merged: " + "; ".join(why)
+        return out
+    files = {label: layer_file(rank, slug) for rank, slug, label, _doc in layers}
+    out["layers"] = [{"label": label, "file": files[label], **last_change(repo, files[label], ref)}
+                     for _rank, label, _doc in sorted(chosen, key=lambda c: RANKS.index(c[0]))]
+    merged, mine, theirs = leaves(got["doc"]), leaves(intent or {}), leaves(base["doc"])
+    for p, value in merged.items():
+        frm = got["from"].get(p, DEVICE)
+        if frm != DEVICE:
+            out["rows"].append({"path": shown_path(p), "value": shown_value(p, value),
+                                "from": frm, "over": None})
+        elif p in theirs:
+            out["rows"].append({"path": shown_path(p), "value": shown_value(p, value),
+                                "from": DEVICE, "over": {"from": base["from"][p],
+                                                         "value": shown_value(p, theirs[p])}})
+    touched = {p.split(".", 1)[0].split("[", 1)[0] for p in theirs}
+    out["own"] = sorted({p.split(".", 1)[0].split("[", 1)[0] for p in mine} - touched)
+    return out

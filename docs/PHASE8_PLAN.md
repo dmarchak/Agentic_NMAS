@@ -4541,4 +4541,9 @@ before the profile (`intent_layers.for_device`; the NetBox row now carries its t
 `_tags`, never sent to a device); no `layers/` folder, or no repository, is the intent unchanged
 and reads no inventory; a layer that cannot be merged refuses as a `ProfileRefused`, which the
 chain's callers already refuse by (tests/test_intent_layers_chain.py; the render, deploy and
-restore families pass unchanged, 623 tests). Next: (c), the screens.
+restore families pass unchanged, 623 tests). (c)'s FC3, the same day: the device's Intent tab
+names the layers it takes, each with its file's last commit, and a Path, Value, From table of
+every value a layer supplies and each of the device's own that overrides one
+(`intent_layers.provenance`, tests/test_intent_from_column.py); its row actions wait for phase
+2, its links for FC2 (STANDING_APPROVAL_LOG); found while comparing: the Secret references card
+reads only the device's own document (C2299). Next: FC2, Source of Truth › Intent.

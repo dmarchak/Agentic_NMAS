@@ -663,6 +663,33 @@ def _reload_effects(client, _lab, _mp):
         mp.undo()
 
 
+def _intent_layers_from(client, _lab, _mp):
+    """r3's Intent tab with two committed layers it takes (board FC3, C2283): the network layer
+    and a tag layer its row names, read by the real merge and provenance; the layer files, the
+    row's tags and the layer commit are planted for this provider alone, then undone."""
+    import pytest
+
+    from modules.nsot import intent_layers as L
+    from modules.nsot import profile
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(L, "read_layers", lambda repo, ref="HEAD": [
+            ("network", "", "network", {"domain_name": "corp.example"}),
+            ("tag", "blind-lab", "tag blind-lab",
+             {"users": [{"name": "lab", "privilege": 15, "secret_ref": "user_lab_secret"}]})])
+        mp.setattr(L, "last_change", lambda repo, rel, ref: {"sha": "5a1e2f0" + "0" * 33,
+                                                             "subject": f"layer {rel}"})
+        mp.setattr(profile, "_row_of", lambda list_name, host: {"hostname": host,
+                                                                 "_tags": ["blind-lab"]})
+        r = client.get("/v2/device/r3/intent", headers={"HX-Request": "true"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and '<tr data-from="tag blind-lab"><td>users › lab</td>' \
+            in html, html[:400]
+    finally:
+        mp.undo()
+
+
 def _attention_expected(client, _lab, _mp):
     """Needs attention while r3's Reload runs (board NA-R's decision 4): a source holding two
     of its effects, so the summary links them to the Reload's card. The window and the source
@@ -2482,6 +2509,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
+                   _intent_layers_from,
                    _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

@@ -105,6 +105,18 @@ commit with your reason. Nothing is sent to the device until you plan a deploy. 
 intent is only onboarding's bootstrap has no Edit: seed it first. See
 [Edit a device's intent](edit-intent).
 
+**Where each value comes from.** When the network has committed intent layers the device
+takes (a network layer, and each site, role and tag layer its inventory gives it, merged in
+that order with the device's own last, which wins), the tab names those layers, each with the
+commit that last changed its file, and a table of every value a layer supplies (**From**
+"tag blind-lab") and each of the device's own values that overrides one ("this device
+(overrides network: …)"). Every other value is the device's own, in the document below; Edit
+writes there, never in a layer. What a template renders and a deploy sends is the layers
+merged with the device's own. Two layers of one rank that set one value differently cannot be
+merged: the tab says so, naming the value, and nothing renders for the device until one of
+them changes. With no layer, the tab is as it was. The **Secret references** card does not
+yet list a reference a layer supplies (C2299).
+
 A document laid out by hand cannot be patched, so the tab says "This document is
 hand-formatted" above it and offers **Normalise the formatting…**: the editor opens on
 Mercury's own formatting of it, nothing written, and its check proves the change is formatting

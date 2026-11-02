@@ -27,7 +27,25 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `c646b63fb30256202c2c6899fbd0836d40711adb229a65d7885991dac8eb4944`
+Templates sha256: `c36b3cb09386ce20d22e3a387ca6a6b30623eb0e7ba1833fa6e4b6b4c6a099cf`
+
+**Compared again 2026-11-02 (C2283, board FC's FC3, `FleetChanges.dc.html`, approved with
+changes 2026-11-01):** `_intent.html` draws, when the network has committed intent layers the
+device takes, the layers by name with the commit that last changed each file (the file and its
+subject on hover), and a Path, Value, From table of every value a layer supplies and each of
+the device's own that overrides one ("this device (overrides network: corp.example)"); every
+other section is named as the device's own in one line; a merge that cannot be made says so,
+naming the path, in place of the table. With no layer the tab is unchanged. Shot
+`tab-intent-layers` (1440, 1280, 390) beside FC3 at 1440: the table's three columns, its rows
+(a tag layer's account, the device's own value over the network's) and "this device
+(overrides …)" **same**. **Deviations**, logged in STANDING_APPROVAL_LOG: the head names each
+layer's commit rather than one commit for one value ("Last changed by 5a1e2f0 … (the layer
+commit that supplied users › lab)"); the From cell is text, not a link, until FC2's layer page
+exists; the rows carry no Override here…, Use the layer's… or Edit… (phase 2's writes; Edit
+stays the card's); the device's own sections are one line, not a row each; the network layer
+reads "network", not "network default". Found while comparing: the Secret references card
+lists only the device's own document's references (C2299). Templates sha256 before:
+`c646b63fb30256202c2c6899fbd0836d40711adb229a65d7885991dac8eb4944`.
 
 **Compared again 2026-11-01 (C2292), by the template:** the editor's head reads "opened at
 commit <sha, 10> (its subject, its time), document <blob, 7>", the commit the committed view

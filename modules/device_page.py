@@ -1168,7 +1168,8 @@ def history(ref, dev: dict, limit: int = None, kinds=None, before=None) -> dict:
 # ---------------------------------------------------------------------------
 
 def intent_view(ref, dev: dict) -> dict:
-    """``{"state", "text", "commit", "note", "bootstrap", "normalise", "profile"}``. *state*
+    """``{"state", "text", "commit", "note", "bootstrap", "normalise", "profile", "layers"}``.
+    *layers* is `intent_layers.provenance` (FC3), masked. *state*
     is ``committed``, ``never_committed`` or ``unreadable`` (said, never an
     empty document); *normalise*, whether the committed document is hand-formatted (C1693)."""
     from modules.nsot import hostvars
@@ -1178,7 +1179,7 @@ def intent_view(ref, dev: dict) -> dict:
 
     host = dev.get("hostname", "")
     out = {"state": "", "text": "", "commit": {}, "note": "", "bootstrap": False,
-           "normalise": False,
+           "normalise": False, "layers": {"layers": [], "rows": [], "own": [], "error": ""},
            "profile": {"committed": False, "applies": [], "excluded": {}, "error": ""}}
     try:
         text, state = hostvars.committed_at_head(ref.repo_dir, host)
@@ -1209,4 +1210,18 @@ def intent_view(ref, dev: dict) -> dict:
         out["profile"]["excluded"] = _p.excluded(doc)
     except Exception as exc:                          # noqa: BLE001
         out["profile"]["error"] = f"{type(exc).__name__}: {exc}"
+    # Where each value comes from (board FC3): the committed layers this device takes, the
+    # values they supply and the device's own that override one; the inventory is read only
+    # when the network has a layer. Masked on the way out as the document is.
+    from modules.nsot import intent_layers
+    try:
+        doc = hostvars.read_committed(ref.repo_dir, host) or {}
+        lay = intent_layers.provenance(ref.repo_dir, lambda: _p._row_of(ref.name, host), doc)
+    except Exception as exc:                          # noqa: BLE001
+        lay = {"layers": [], "rows": [], "own": [], "error": f"{type(exc).__name__}: {exc}"}
+    for r in lay["rows"]:
+        r["value"] = redact_text(r["value"])
+        if r["over"]:
+            r["over"]["value"] = redact_text(r["over"]["value"])
+    out["layers"] = lay
     return out
