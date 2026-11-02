@@ -321,6 +321,7 @@ GATES = {
     "device_v2.persist_read": _g(N, "starts Persist's preview read: the device's running and "
                                     "startup configurations, and `dir nvram:` when startup "
                                     "keeps a certificate there; sends nothing that changes it"),
+    "intent_layers_v2.change_plan": _g(N, "starts a layer change's plan as a job (board FC4, fleet_change.plan_layer): renders each device the layer reaches with the change in memory and without it, through the deploy's own plan; sends nothing and writes nothing"),
     "device_v2.reload_start": _g(N, "starts Reload's preview: reads the device's running and "
                                     "startup configurations, image and boot variable; sends "
                                     "nothing that changes it"),

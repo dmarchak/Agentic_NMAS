@@ -114,6 +114,8 @@ VOCABULARY = {
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
+    "fleet_change": "a layer change's plan (board FC4, modules/nsot/fleet_change.py): finished, "
+                    "ready to read by id",
     "persist_read": "Persist's preview read of what a device runs against what it boots (C886): "
                     "finished, ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
@@ -145,6 +147,7 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
+    "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
     "persist-read": ("persist_read",),         # modules/nsot/persist_op.py: the preview read's end
     # modules/nsot/template_coverage.py: a coverage check's end (Templates › Coverage).
     "template-coverage": ("templates",),
@@ -378,6 +381,9 @@ DECLARED = {
     "device_v2.persist_read": Nothing("starts Persist's preview read as a job; the job "
                                       "ANNOUNCES persist_read when it finishes (ANNOUNCERS "
                                       "persist-read)"),
+    "intent_layers_v2.change_plan": Nothing("starts a layer change's plan as a job; the job "
+                                           "ANNOUNCES fleet_change when it ends (ANNOUNCERS "
+                                           "fleet-change)"),
     "device_v2.reload_start": Nothing("starts the preview's read as a job; the job ANNOUNCES "
                                       "reload when it finishes (ANNOUNCERS reload)"),
     "device_v2.reload_verify": Nothing("starts Verify again as a job and answers at once; the "

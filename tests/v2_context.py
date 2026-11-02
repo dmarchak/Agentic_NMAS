@@ -663,6 +663,43 @@ def _reload_effects(client, _lab, _mp):
         mp.undo()
 
 
+def _fleet_plan(client, _lab, _mp):
+    """A layer change's plan card (board FC4, C2283) with every part drawn: a group, a device
+    carrying pending lines, an unchanged device and a refused one. The plan is `plan_layer`'s
+    shape, planted for this provider alone, then undone; the job is the real one."""
+    import pytest
+
+    from modules.nsot import capture_job, fleet_change
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(fleet_change, "plan_layer", lambda list_name, key, steps: {
+            "ok": True, "error": "",
+            "layer": {"key": key, "rank": "tag", "slug": "blind-lab", "label": "tag blind-lab",
+                      "file": "layers/tag-blind-lab.yml", "before": {},
+                      "after": {"ntp_servers": ["192.0.2.123"]}},
+            "base": "5a1e2f0" + "0" * 33,
+            "groups": [{"lines": ["ntp server 192.0.2.123"], "devices": ["r3"]}],
+            "unchanged": [{"device": "r4", "by": "this device"}],
+            "refused": [{"device": "r9", "reasons": ["no committed golden"]}],
+            "devices": [{"device": "r3", "change": ["ntp server 192.0.2.123"], "pending": 2,
+                         "command_hash": "h"}],
+            "headline": "1 device, 1 group", "hash": "x"})
+        r = client.post("/v2/intent/change/plan", data={
+            "list": "Lab", "layer": "tag-blind-lab", "path": "ntp_servers",
+            "before": "(absent)", "after": "[192.0.2.123]"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:300]
+        job = html.split("/v2/intent/change/job/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 10)
+        r = client.get(f"/v2/intent/change/job/{job}?list=Lab&layer=tag-blind-lab")
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "data-fc-refused" in html and "data-fc-pending" in html, \
+            html[:400]
+    finally:
+        mp.undo()
+
+
 def _deploy_layer_lines(client, _lab, _mp):
     """r3's Deploy… card with an inherited line a committed intent layer supplies (board FC,
     22.1 (6), C2283): the preview the card is built from is given an attribution note carrying
@@ -2575,7 +2612,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
-                   _intent_layers_from, _intent_layers_page, _deploy_layer_lines,
+                   _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

@@ -40,8 +40,15 @@ group is taken from an earlier read. The page re-reads when intent is committed.
 Each device's own Intent tab shows the other side: which layers it takes and where each of its
 values comes from (see [the device page](device-page#intent)).
 
+## Changing a layer {#change}
+
+**Edit…** beside a value, **Add a value…** below them and **Add a layer…** under the list open
+the change's form above the layers; **Plan the change** plans it for every device the layer
+reaches and draws the plan in place, sending nothing and writing nothing (see
+[Plan a layer's change](fleet-change)).
+
 ## Not yet {#not-yet}
 
-Adding a layer, editing or removing a value and planning a layer's change for its devices come
-with fleet changes' plan (one change, each device's preview, one approval, a canary). Until
-then Mercury cannot add or change a layer: this page shows the layers a network has.
+Approving a plan, committing the layer and running it on its devices (one approval, a canary,
+then batches) come next; until then Mercury plans a layer's change but cannot make it.
+Removing a value comes after a removal's shape is measured on each platform.

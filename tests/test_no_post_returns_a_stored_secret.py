@@ -91,6 +91,14 @@ def _bodies(v):
                                                   "path": "hostname", "before": "r1",
                                                   "after": "r1x"}),
                                    "a bulk intent change's render delta"),
+        # Board FC4 (C2283): a layer change's plan starts a job; the plan comes back on the
+        # job's GET, masked (`fleet_change.plan_start`). Driven here as a network that does not
+        # exist: refused before anything is read, so no job outlives the sweep.
+        "intent_layers_v2.change_plan": (404, ("form", {"list": "no-such-network",
+                                                        "layer": "network", "path": "hostname",
+                                                        "before": "(absent)", "after": "x"}),
+                                         "a network that does not exist: refused, nothing "
+                                         "planned"),
         "adopt_v2.preview": (400,("form", {"hostname": "r9"}),
                              "no network named: refused before the device is read"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),

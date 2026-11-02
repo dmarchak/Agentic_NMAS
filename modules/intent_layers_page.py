@@ -83,6 +83,7 @@ def view(ref, chosen: str = "") -> dict:
         hosts = pick["devices"]
         over = {h: origin[h].get(p, L.DEVICE) for h in hosts if origin[h].get(p) != label}
         values.append({"path": L.shown_path(p), "value": redact_text(L.shown_value(p, v)),
+                       "edit": p.split("[", 1)[0],
                        "takes": [h for h in hosts if h not in over],
                        "over": sorted(over.items())})
     out["chosen"] = dict(pick, rows=values,

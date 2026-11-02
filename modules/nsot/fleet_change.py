@@ -86,6 +86,9 @@ def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
     if not steps:
         out["error"] = "the change has no steps"
         return out
+    # A form's path is dotted text ("users", "snmp.settings"); the core's is a list.
+    steps = [dict(s, path=s["path"].split(".") if isinstance(s["path"], str) else list(s["path"]))
+             for s in steps]
     bad = B.unknown_paths(steps)
     if bad:
         out["error"] = ("the change names path(s) the schema does not know: "
@@ -194,3 +197,22 @@ def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
         sort_keys=True, default=str).encode()).hexdigest()
     out["ok"] = True
     return out
+
+
+#: What a fleet change's plan job announces when it ends (`invalidation.ANNOUNCERS`).
+ANNOUNCE_KEYS = ("fleet_change",)
+ANNOUNCER = "fleet-change"
+
+
+def plan_start(list_name: str, layer_key: str, steps: list, actor: str) -> str:
+    """Start `plan_layer` as a job (a plan reads every reached device's program, so it is a job,
+    never a request's work: the scale rule) and return its id at once. Its payload is the plan,
+    masked on the way out; the job announces `fleet_change` when it ends."""
+    from modules.nsot import capture_job
+    from modules.outbound import mask_payload
+
+    def work(_job):
+        return mask_payload(plan_layer(list_name, layer_key, steps))
+    return capture_job.start(list_name, f"Plan {layer_key}'s change", actor, work,
+                             kind="fleet change plan", announce_keys=ANNOUNCE_KEYS,
+                             announcer=ANNOUNCER)

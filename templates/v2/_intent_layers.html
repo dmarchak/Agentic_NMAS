@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info -%}
+{%- from "v2/_macros.html" import icon, info, how -%}
 {#- FC2's region (C2283): the layers on the left, the chosen one's values on the right, every
     same-rank conflict above both. Re-read when intent is committed. Read-only in phase 1:
     Add a layer…, Edit…, Remove…, Add a value… and Plan this layer's change… are phase 2's. -#}
@@ -12,7 +12,8 @@
 {%- elif not v.layers %}
 <div class="card il-empty" data-layers-none>
   <p><strong>{{ list_name }} has no intent layers:</strong> every device's intent is its own.</p>
-  <p class="muted">A layer holds values several devices share (an account, an NTP server, a banner), for the whole network or for a NetBox site, role or tag. It is one file in the intent repository (<code>layers/network.yml</code>, <code>layers/tag-&lt;slug&gt;.yml</code>), committed as intent is. Adding one from here comes with fleet changes' plan.</p>
+  <p class="muted">A layer holds values several devices share (an account, an NTP server, a banner), for the whole network or for a NetBox site, role or tag. It is one file in the intent repository (<code>layers/network.yml</code>, <code>layers/tag-&lt;slug&gt;.yml</code>), committed as intent is.</p>
+  <p class="op-act"><a class="btn btn-small" data-op="fleet-change" href="{{ url_for('intent_layers_v2.change', list=list_name) }}">Add a layer…</a>{{ how('fleet-change', compact=True, op='planning a layer change') }}</p>
 </div>
 {%- else %}
 {%- if v.inventory_error %}
@@ -34,6 +35,7 @@
       <span><span class="muted">{{ l.rank | capitalize }}</span> {{ l.slug or 'default' }}</span>
       <span class="muted">{{ l.devices | length }} device{{ 's' if l.devices | length != 1 }} · {{ l.count }} value{{ 's' if l.count != 1 }}</span></a>
     {%- endfor %}
+    <p class="op-act il-note"><a class="btn btn-small" data-op="fleet-change" href="{{ url_for('intent_layers_v2.change', list=list_name) }}">Add a layer…</a>{{ how('fleet-change', compact=True, op='planning a layer change') }}</p>
     <p class="muted il-note">Groups come from the inventory (NetBox's sites, roles and tags), read with it. Values live in the intent repository, one file a layer, committed as intent is.</p>
   </nav>
   {%- if chosen %}
@@ -47,17 +49,19 @@
     {%- endif %}
     {%- if chosen.rows %}
     <table class="table il-values">
-      <thead><tr><th>Path</th><th>Value</th><th>Devices it reaches</th></tr></thead>
+      <thead><tr><th>Path</th><th>Value</th><th>Devices it reaches</th><th><span class="sr">Change</span></th></tr></thead>
       <tbody>
       {%- for r in chosen.rows %}
       <tr><td>{{ r.path }}</td><td><code>{{ r.value }}</code></td>
-        <td>{{ r.takes | length }}{% if not r.over %} <span class="muted">(none overrides it)</span>{% else %} <span class="muted">({% for host, by in r.over %}{{ host }}: {{ by }}{% if not loop.last %}, {% endif %}{% endfor %} override{{ 's' if r.over | length == 1 }} it)</span>{% endif %}</td></tr>
+        <td>{{ r.takes | length }}{% if not r.over %} <span class="muted">(none overrides it)</span>{% else %} <span class="muted">({% for host, by in r.over %}{{ host }}: {{ by }}{% if not loop.last %}, {% endif %}{% endfor %} override{{ 's' if r.over | length == 1 }} it)</span>{% endif %}</td>
+        <td><a class="btn btn-small" data-op="fleet-change" href="{{ url_for('intent_layers_v2.change', list=list_name, layer=chosen.key, path=r.edit) }}">Edit…</a>{{ how('fleet-change', compact=True, op='planning a layer change') }}</td></tr>
       {%- endfor %}
       </tbody>
     </table>
     {%- else %}
     <p class="muted">This layer sets no value.</p>
     {%- endif %}
+    <p class="op-act"><a class="btn btn-small" data-op="fleet-change" href="{{ url_for('intent_layers_v2.change', list=list_name, layer=chosen.key) }}">Add a value…</a>{{ how('fleet-change', compact=True, op='planning a layer change') }}</p>
     {%- if chosen.refs %}
     <p class="il-refs">Secret references this layer names: {% for ref, why in chosen.refs %}<code>{{ ref }}</code> <span class="muted">({{ why }})</span>{% if not loop.last %} · {% endif %}{% endfor %}. A layer names references only, never a value: a value is held per device, set on each device's Intent tab, under Secret references.</p>
     {%- endif %}

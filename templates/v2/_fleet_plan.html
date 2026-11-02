@@ -1,0 +1,111 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- A layer's change, planned (board FC's FC4; PHASE8_PLAN 22.2 (c); C2283): the form (FC2's
+    Edit…, Add a value…, Add a layer…), the plan as a job, and the plan: counts first, the
+    layer's before and after, each group of devices with the same lines collapsed, the devices
+    left unchanged with who holds the value, those refused with the deploy's reasons. Nothing is
+    sent or written; approving and running the plan is (d). routes/intent_layers_v2.py over
+    modules/nsot/fleet_change.py. *f* is the form, *p* a planned card. The parts are the deploy
+    card's (`op-part`). -#}
+{%- if f is defined and f %}
+<section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title">
+  <div class="op-hd"><h2 id="fc-plan-title">{% if f.new %}Add a layer to {{ f.list }}{% else %}Change {{ f.label }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('fleet-change', compact=True, op='planning a layer change') }}</div></div>
+  <form method="post" action="{{ url_for('intent_layers_v2.change_plan') }}" hx-post="{{ url_for('intent_layers_v2.change_plan') }}" hx-target="#fc-plan" hx-swap="outerHTML" autocomplete="off">
+  <input type="hidden" name="list" value="{{ f.list }}">
+  {%- if f.new %}
+  <div class="op-part"><h3>The layer</h3><div>
+    <fieldset class="bi-row"><legend class="sr">The new layer</legend>
+      <div><label for="fc-rank">Rank</label>
+      <select id="fc-rank" name="rank">{% for r in f.ranks %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></div>
+      <div><label for="fc-slug">Its group's slug</label>
+      <input id="fc-slug" name="slug" type="text" class="mono" placeholder="blind-lab" autocomplete="off"></div>
+    </fieldset>
+    <p class="small muted">The inventory's own site, role or tag slug; none for the network layer.</p>
+  </div></div>
+  {%- else %}
+  <input type="hidden" name="layer" value="{{ f.layer }}">
+  {%- endif %}
+  <div class="op-part"><h3>The change</h3><div>
+    <p class="small">Each setting is a path into the layer (dots between keys, as <span class="mono">users</span> or <span class="mono">snmp.settings</span>), the value it holds now and the value it becomes, written as in an intent file; type <span class="mono">{{ f.absent }}</span> for a setting not there.</p>
+    {%- for r in f.rows %}
+    <fieldset class="bi-row">
+      <legend class="sr">Setting {{ loop.index }}</legend>
+      <div><label for="fc-path-{{ loop.index }}">Path</label>
+      <input id="fc-path-{{ loop.index }}" name="path" type="text" class="mono" value="{{ r.path }}" placeholder="users" autocomplete="off"></div>
+      <div><label for="fc-before-{{ loop.index }}">Holds now</label>
+      <input id="fc-before-{{ loop.index }}" name="before" type="text" class="mono" value="{{ r.before }}" placeholder="{{ f.absent }}" autocomplete="off"></div>
+      <div><label for="fc-after-{{ loop.index }}">Becomes</label>
+      <input id="fc-after-{{ loop.index }}" name="after" type="text" class="mono" value="{{ r.after }}" placeholder="[{name: lab, privilege: 15, secret_kind: secret, secret_ref: user_lab_secret}]" autocomplete="off"></div>
+    </fieldset>
+    {%- endfor %}
+  </div></div>
+  <div class="op-part"><h3>The plan</h3><div>
+    <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"><span class="op-idle">Plan the change</span><span class="op-busy">Starting the plan…</span></button>{{ how('fleet-change', compact=True, op='planning a layer change') }}
+      <a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=f.list, layer=f.layer) }}">Cancel</a></p>
+    <p class="small muted">The plan renders every device the layer reaches with the change and without it, from each device's committed configuration. It sends nothing and writes nothing.</p>
+  </div></div>
+  </form>
+</section>
+{%- elif p is defined and p %}
+{%- if p.state == 'planning' %}
+<section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title" hx-get="{{ url_for('intent_layers_v2.change_job', job=p.job, list=p.list, layer=p.layer) }}" hx-trigger="nmas:fleet_change from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="fc-plan-title">Planning {{ p.layer }}'s change</h2></div>
+  <div class="op-part"><h3>The plan</h3><div><p class="op-wait">Rendering each device the layer reaches with the change and without it. Nothing is sent.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title">
+  {%- if p.state == 'plan' %}
+  {%- set pl = p.plan %}
+  {%- set total = pl.planned + pl.unchanged | length + pl.refused | length %}
+  <div class="op-hd"><h2 id="fc-plan-title">{{ pl.layer.label | capitalize }}'s change · {{ total }} device{{ 's' if total != 1 }}</h2>
+    <div class="op-hd-actions"><span class="badge">plan · nothing sent</span>{{ how('fleet-change', compact=True, op='planning a layer change') }}</div></div>
+  <div class="op-part"><h3>What</h3><div>
+    <p data-fc-headline><strong>{{ pl.headline }}</strong> · {{ pl.refused | length }} refused · {{ pl.unchanged | length }} unchanged</p>
+    <p class="small">The change is one commit to <code>{{ pl.layer.file }}</code>, made at the approval. Plan <code title="{{ pl.hash }}">{{ pl.hash[:10] }}</code>, from the repository at <code title="{{ pl.base }}">{{ (pl.base or '')[:10] }}</code>.</p>
+  </div></div>
+  <div class="op-part"><h3>The layer</h3><div class="fc-layer">
+    <div><p class="small muted">Now</p><pre class="op-diff">{{ pl.layer.before }}</pre></div>
+    <div><p class="small muted">After</p><pre class="op-diff">{{ pl.layer.after }}</pre></div>
+  </div></div>
+  <div class="op-part"><h3>The program</h3><div>
+    {%- for g in pl.groups %}
+    <details class="fc-group" data-keep="fc-group-{{ loop.index }}"{% if loop.first %} open{% endif %}><summary>{{ g.devices | length }} device{{ 's' if g.devices | length != 1 }}: {{ g.lines | length }} line{{ 's' if g.lines | length != 1 }} each{% if g.devices | length <= 8 %} ({{ g.devices | join(', ') }}){% endif %}</summary>
+      <pre class="op-diff">{% for l in g.lines %}<span class="op-add">+ {{ l }}</span>
+{% endfor %}</pre>
+      {%- if g.devices | length > 8 %}<p class="small">{{ g.devices | join(', ') }}</p>{% endif %}
+    </details>
+    {%- else %}
+    <p>No device's program changes.</p>
+    {%- endfor %}
+    {%- if pl.pending %}
+    <p class="small" data-fc-pending>Lines already pending ride along on each device's run: {% for d in pl.pending %}{{ d.device }} {{ d.pending }}{% if not loop.last %}, {% endif %}{% endfor %}. The device's own plan names them.</p>
+    {%- endif %}
+    {%- if pl.unchanged %}
+    <details class="fc-group" data-keep="fc-unchanged" data-fc-unchanged><summary>{{ pl.unchanged | length }} unchanged</summary><ul>
+      {%- for u in pl.unchanged %}<li>{{ u.device }}: {{ u.by }}</li>{% endfor %}</ul></details>
+    {%- endif %}
+    {%- if pl.refused %}
+    <div class="notice notice-danger" data-fc-refused>{{ icon('warn') }}<div><p><strong>{{ pl.refused | length }} refused</strong>, each by the deploy's own check:</p><ul>
+      {%- for r in pl.refused %}<li>{{ r.device }}: {{ r.reasons | join('; ') }}</li>{% endfor %}</ul></div></div>
+    {%- endif %}
+  </div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    <p class="small muted">Nothing was sent and nothing was written (planned in {{ p.elapsed_s }} s). Approving this plan and running it on its devices, a canary first, is not built yet.</p>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) }}">Back to {{ pl.layer.label }}</a></p>
+  </div></div>
+  {%- elif p.state == 'refused' %}
+  <div class="op-hd"><h2 id="fc-plan-title">{{ p.layer or 'The change' }} was not planned</h2></div>
+  <div class="op-part"><h3>Refused</h3><div>
+    <div class="notice notice-danger" data-fc-error>{{ icon('warn') }}<p>Not planned: {{ p.error }}. Nothing was sent or written.</p></div>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=p.layer) }}">Back to the layers</a></p>
+  </div></div>
+  {%- else %}
+  <div class="op-hd"><h2 id="fc-plan-title">No record of that plan</h2></div>
+  <div class="op-part"><h3>The plan</h3><div>
+    <p>This server has no record of that plan: it finished more than 30 minutes ago, or the server restarted. Nothing was sent or written.</p>
+    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=p.layer) }}">Back to the layers</a></p>
+  </div></div>
+  {%- endif %}
+</section>
+{%- endif %}
+{%- endif %}

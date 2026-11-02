@@ -11,5 +11,6 @@
     <p class="sub">Network, then site, role and tag, then the device: a later layer wins, the device last.</p>
   </div>
 </div>
+{%- if f is defined and f %}{% include "v2/_fleet_plan.html" %}{% endif %}
 {% include "v2/_intent_layers.html" %}
 {% endblock %}

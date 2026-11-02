@@ -2791,6 +2791,44 @@ def test_intent_layers(monkeypatch, tmp_path):
                 boards=(("FleetChanges.dc.html", 1440),))
 
 
+def test_fleet_plan(monkeypatch, tmp_path):
+    """Board FC's FC4 (`FleetChanges.dc.html`, 1440; approved with changes 2026-11-01, C2283)
+    beside a layer change's plan on Source of Truth › Intent, on the browser layout test's lab:
+    r2's own NTP server taken out (committed), r2's row tagged blind-lab, and tag blind-lab given
+    an NTP server through the form, planned as a person does: the form filled, Plan the change,
+    then the plan."""
+    from tests import browser
+    from tests import test_profile_apply as P
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab = P.lab.__wrapped__(monkeypatch, tmp_path)
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(L.R2), dict(L.R6)])
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [
+        dict(L.R2, _tags=["blind-lab"]), dict(L.R6)])
+    from modules.nsot import hostvars
+    from modules.nsot.repo import save_host_vars
+    intent = hostvars.read_committed(lab["repo"], "r2")
+    intent["ntp_servers"] = []
+    hostvars.write_committed(lab["repo"], intent)
+    assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+    card = "document.querySelector('#fc-plan')"
+    fill = ("document.getElementById('fc-path-1').value = 'ntp_servers'; "
+            "document.getElementById('fc-before-1').value = '(absent)'; "
+            "document.getElementById('fc-after-1').value = '[192.0.2.123]'; "
+            "document.querySelector('#fc-plan button[data-op=\"fleet-change\"]').click()")
+    states = [("form", f"{card}.scrollIntoView()", f"!!{card}"),
+              ("plan", fill, "!!document.querySelector('[data-fc-headline]')")]
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _d_walk("fleet-plan", served, "/v2/intent/change?list=Lab&layer=tag-blind-lab", states,
+                boards=(("FleetChanges.dc.html", 1440),))
+
+
 def test_tab_intent_words(tmp_path, monkeypatch):
     """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
     tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row

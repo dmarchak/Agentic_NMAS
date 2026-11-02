@@ -318,6 +318,11 @@ NOT_AN_OPERATION = {
     ("_ai_feedback_review.html", "Older…"): "draws the review's next page of rows, a read",
     ("_ai_feedback_detail.html", "Copy the draft"): ("copies the accepted case draft to the "
                                                      "clipboard, writing nothing"),
+    # Board FC4 (PHASE8_PLAN 22.2 (c)): a layer change's plan card.
+    ("_fleet_plan.html", "Cancel"): "returns to the layer, planning nothing, a read",
+    ("_fleet_plan.html", "Back to the layers"): "returns to Source of Truth › Intent, a read",
+    ("_fleet_plan.html", "Back to"): "returns to the planned layer on Source of Truth › Intent, "
+                                     "a read",
     # PHASE8_PLAN 16.11 item 3 (board CR): a drafted change record, as text.
     ("_change_record.html", "Copy as text"): ("copies the drafted change record to the "
                                               "clipboard, writing nothing"),

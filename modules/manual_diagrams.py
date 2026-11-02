@@ -311,6 +311,41 @@ def bulk_intent():
     ])
 
 
+def fleet_change():
+    return svg(470, (
+        "Planning a layer's change sends nothing and writes nothing. You name the layer and each "
+        "setting's path, its value now and after; the layer as committed must hold the before. "
+        "The devices the layer reaches come from the inventory. Each is planned twice through "
+        "the deploy's own plan, as committed and with the change in memory, and the lines its "
+        "program gains are its change; devices with the same change form one group, a device "
+        "whose own value wins is unchanged, and one hash binds the plan. Approving and running "
+        "it comes later."), [
+        lanes(20, 464, mid=284, right="DEVICES"),
+        band(20, 64, "The change"),
+        doc("box", 14, 40, 256, 38, "A layer's settings", "path · holds now · becomes"),
+        num(14, 40, 1),
+        band(90, 150, "The plan · a job, per device"),
+        repo(14, 112, 120, 40, "Repository", "the layer at HEAD"),
+        arrow("rec", 136, 132, 160, 132),
+        doc("intent", 162, 112, 108, 40, "Its devices", "from the inventory now"),
+        num(162, 112, 2),
+        t(14, 178, "Each device planned as committed and", "sm"),
+        t(14, 191, "with the change in memory, through the", "sm"),
+        t(14, 204, "deploy's own plan: the lines its program", "sm"),
+        t(14, 217, "gains are its change.", "sm"),
+        band(246, 210, "The plan"),
+        doc("box", 14, 270, 256, 40, "Groups · unchanged · refused", "one hash over them all"),
+        num(14, 270, 3),
+        t(14, 336, "A device whose own value wins is", "sm"),
+        t(14, 349, "unchanged, and says who holds it. A", "sm"),
+        t(14, 362, "device the deploy refuses carries its", "sm"),
+        t(14, 375, "reasons. Nothing is committed.", "sm"),
+        t(14, 410, "Approving and running the plan,", "sm"),
+        t(14, 423, "a canary first, comes later.", "sm"),
+        nosend(342, 250, ("nothing is", "sent")),
+    ])
+
+
 def drift():
     return svg(430, (
         "Three things the tool compares. Intent is what the device should run, committed by a "
@@ -1745,6 +1780,7 @@ DIAGRAMS = {
     "onboard": onboard,
     "revert-retry": revert_retry,
     "bulk-intent": bulk_intent,
+    "fleet-change": fleet_change,
     "drift": drift,
     "drift-check": drift_check,
     "netbox-import": netbox_import,

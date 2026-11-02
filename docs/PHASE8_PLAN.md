@@ -4610,4 +4610,9 @@ inventory, the deploy's own `plan_devices` twice (as committed, and inside
 of the layers), each device's change the lines its program gains, grouped, unchanged devices
 naming who holds the value, one hash (tests/test_fleet_change_plan.py). Found while building: a
 layer entry the template cannot render raised out of `plan_devices`, so the plan refuses it by
-name; `plan_devices` is per device, so (c) runs the plan as a job. Next: (c).
+name; `plan_devices` is per device, so (c) runs the plan as a job. (c), FC4: FC2's Edit…, Add a
+value… and Add a layer… open the change's form above the layers; Plan the change starts the plan
+as a job (`fleet_change.plan_start`, announcing `fleet_change`) and draws it in place, the
+deploy card's parts (What, The layer, The program, Next), nothing sent or written
+(routes/intent_layers_v2.py, templates/v2/_fleet_plan.html, tests/test_fleet_plan_v2.py; how it
+works: the manual's Plan a layer's change). Next: (d), the approval and the run.

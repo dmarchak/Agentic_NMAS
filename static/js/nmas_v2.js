@@ -667,6 +667,7 @@
   function relayPrivileged() { relay('privileged'); }
   function relayReload() { relay('reload'); }
   function relayPersistRead() { relay('persist_read'); }
+  function relayFleetChange() { relay('fleet_change'); }
   function relayDeviceProgress() { relay('device_progress'); }
   function relayTemplates() { relay('templates'); }
   function relaySave() { relay('save'); }
@@ -882,6 +883,7 @@
     NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
     NMAS.subscribe('reload', 'v2Reload', relayReload);
     NMAS.subscribe('persist_read', 'v2PersistRead', relayPersistRead);
+    NMAS.subscribe('fleet_change', 'v2FleetChange', relayFleetChange);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
     NMAS.subscribe('save', 'v2Save', relaySave);

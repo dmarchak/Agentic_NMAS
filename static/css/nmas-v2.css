@@ -1335,6 +1335,12 @@ button.menu-item[disabled]:hover { background: none; }
 .il-values td:first-child { white-space: nowrap; }
 .il-refs { font-size: 13px; }
 @media (max-width: 760px) { .il-grid { grid-template-columns: 1fr; } }
+/* A layer change's plan (board FC4, C2283): the layer now and after side by side. */
+.fc-layer { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fc-layer pre { margin: 0; }
+.fc-group { margin: 0 0 8px; }
+.fc-group > summary { cursor: pointer; }
+@media (max-width: 760px) { .fc-layer { grid-template-columns: 1fr; } }
 .intent-doc { max-height: 520px; }
 /* Board H-S (C235): the Secret references card below the document, and Set value…'s form in
    it, its fields two to a row as the board draws them; the third column hidden on a phone. */
