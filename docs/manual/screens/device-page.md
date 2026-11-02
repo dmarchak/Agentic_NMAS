@@ -114,8 +114,8 @@ commit that last changed its file, and a table of every value a layer supplies (
 writes there, never in a layer. What a template renders and a deploy sends is the layers
 merged with the device's own. Two layers of one rank that set one value differently cannot be
 merged: the tab says so, naming the value, and nothing renders for the device until one of
-them changes. With no layer, the tab is as it was. The **Secret references** card does not
-yet list a reference a layer supplies (C2299).
+them changes. With no layer, the tab is as it was. The **Secret references** card lists a
+reference a layer supplies beside the device's own, and **Set value…** sets it for this device.
 
 A document laid out by hand cannot be patched, so the tab says "This document is
 hand-formatted" above it and offers **Normalise the formatting…**: the editor opens on

@@ -3380,3 +3380,23 @@ adc24bbf7f, its log kept). Baseline: both files pass.
 | M10 `cache=marked` → `cache=False` | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
 | M11 `cache=marked` → `cache=None` | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
 **The result: 11 mutants with the canary; every one killed; the file restored byte for byte.**
+
+## 2026-11-02: a secret reference a committed intent layer names, settable on its device (C2299, board FC phase 2 (a)), by hand
+**What touches the tier.** Code that stores a secret value: `secret_refs.set_value` accepts a
+reference only when the device's intent names it, and that intent is now its committed intent
+with the committed intent layers it takes merged under it (`_intent`, through
+`intent_layers.for_device`, the chain's own merge), so a reference a tag layer names is listed
+and stored for the device as its own are. A layer merge that cannot be made refuses the set by
+name, nothing stored. What is stored, its kind and its record are unchanged (C235's check above).
+**The method:** as C235's, on the working tree over f8227dda: each mutant one exact text
+replacement, required to match once, in its own `scripts/nmas-control` throwaway worktree, then
+tests/test_secret_refs_layers.py and tests/test_secret_refs.py run whole in CI's interpreter
+(`scratchpad/mut_c2299.py`). Baseline: 13 passed. No device was asked.
+| mutant | result | killed by |
+| C0 canary: `_intent` raises | killed | all 5 of test_secret_refs_layers.py, and test_secret_refs.py's that read the real intent |
+| M1 the layers not merged (the device's own alone) | killed | `test_a_tag_layers_reference_is_listed_and_set_for_the_device`, `test_two_tags_disagreeing_refuse_the_set_by_name_and_store_nothing` |
+| M2 the row never read (no group reached) | killed | the same two |
+| M3 no committed intent merged as an empty one | killed | `test_a_device_with_no_committed_intent_takes_no_layers_reference` |
+| M4 a merge refused not turned into a refusal | killed | `test_two_tags_disagreeing_refuse_the_set_by_name_and_store_nothing` |
+| M5 the refusal not naming the merge | killed | the same |
+**The result: 5 mutants with the canary; every one killed; the file restored byte for byte.**

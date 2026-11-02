@@ -31,8 +31,8 @@ or a count that opens to them past twelve), its file and the commit that last ch
 table of its values. **Devices it reaches** counts the devices whose render takes each value,
 and names each device that overrides it, by its own value ("this device") or a later layer.
 The secret references the layer names are listed with what each is for; a value is held per
-device and set on the device's Intent tab, which does not yet offer a reference only a layer
-names.
+device and set on each device's Intent tab, under Secret references, which lists a layer's
+references beside the device's own.
 
 When the inventory cannot be read, the page says so and counts no device in any layer: no
 group is taken from an earlier read. The page re-reads when intent is committed.

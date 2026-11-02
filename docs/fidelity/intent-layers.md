@@ -33,6 +33,9 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 **later** (a later step of the plan).
 
 Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html
-Templates sha256: `5c23996f9a068ec27b99cc193d6acd2cab640306c2148d6175f842091d4d167e`
+Templates sha256: `ea0522f84fadc4629a0d40a5ec0aa8cf781a32d6daa6b9d860b8e1a7cb413988`
 (The past-twelve devices list keeps its open state through a live redraw, `data-keep`, C472's
 rule; nothing drawn moved.)
+(2026-11-02, C2299: the secret references' note says a value is set on each device's Intent
+tab, under Secret references, which now lists a layer's references; the words only, the
+region's verdict stands. Before: `5c23996f9a068ec27b99cc193d6acd2cab640306c2148d6175f842091d4d167e`.)

@@ -4555,3 +4555,49 @@ told apart by the render, each committed layer's group (the first cumulative ren
 a line) with its commit, then the profile's (routes/deploy.py `_split_profile`,
 tests/test_deploy_layer_provenance.py; C2301, a layer's line read as the profile's, closed).
 **Phase 1 is built.** Next: phase 2, the plan and the run.
+
+### 22.2 Phase 2's design (decided 2026-11-02, before any code; the agent's, under the Phase 7 mode)
+
+1. **The change.** A fleet change is compare-and-set steps (bulk intent's core,
+   `bulk_intent.plan`'s `(path, before, after)`) applied to ONE target: a layer's document
+   (FC2's Edit…, Add a value…, or a new layer's file) or each ticked device's own document (FC1's
+   Change across the N ticked…, today's Bulk intent). A step whose before does not match is
+   refused by name, never applied around. A layer's after-document passes `intent_layers.problems`
+   and the secret guard before anything is planned.
+2. **The plan, nothing sent.** For every device the target reaches (a layer: the devices the
+   inventory gives its group, read now; an unreadable inventory refuses the plan by name): the
+   chain's render with the change applied in memory (`intent_layers.merge` over the proposed
+   layer, the device's own on top, then the profile), against the device's committed golden,
+   is the device's program, through the same `plan_devices` path a deploy takes (gates, Mode B
+   untouched, dangerous lines, authorisations). Devices are grouped by identical program
+   (bulk intent's grouping); a device whose own value overrides the change is drawn "unchanged,
+   overridden on r3: its own value", never a failure; a device that cannot be planned (no
+   golden, drift, a conflict, a render refused, a reference with no value) is refused with its
+   reason, and the plan says "Before it can run" for references (C2299 first). One plan hash
+   binds the target's before and after, the base commit, and every device's program hash.
+3. **One approval, one record.** A verified person confirms the hash with a reason. At the
+   approval the change is ONE commit (`repo.commit()`, `Source: fleet-change`): the layer's
+   file, or every ticked device's file (bulk intent's one commit). The plan is recomputed at
+   the approval and refused, naming what moved, if any device's program or the target moved.
+   The record is one change: the commit, the plan hash, each device's receipt, one History
+   entry.
+4. **The run: a canary, then batches, the first failure stops it.** One job: the canary
+   device (default the first planned device; the person may choose), then batches of N
+   (default 1; the person may set it), each device through `apply_batch`'s one path (preview
+   bound by its program hash, apply holding the device, verify, rollback on failure, record).
+   After the canary the run pauses for the person's review (default) or goes on. The stop rule
+   replaces the batch deploy's breaker of 2 for every fleet change and every batch deploy: the
+   first failed device stops the run (default); a failure percentage is offered only for 20 or
+   more devices. A stopped or paused run says what landed, what rolled back and what was not
+   attempted, with Plan again for the rest.
+5. **Where it starts.** FC2's Edit…, Add a value… and Plan this layer's change… (a layer);
+   FC1's Change across the N ticked… on Devices (a layer the person picks, or each device's own
+   document), replacing Change a setting on N… (bulk intent), whose core it reuses; Plan a
+   deploy for the ticked devices… stays, the same run with no intent change. The device page's
+   Actions menu offers Change across… for its device's groups.
+6. **The order of the build, each its own commit.** (a) C2299: a device's Secret references
+   read the merged document, so a layer's reference is listed and settable. (b) The plan core
+   for a layer's change, tested alone (nothing drawn). (c) FC4's plan screen from FC2's
+   controls. (d) The run: canary, batches, pause, the stop rule (one rule for the batch deploy
+   too). (e) FC5's run screen and its record. (f) FC1's entry from Devices and the device
+   page, retiring Bulk intent's own screen.

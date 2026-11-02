@@ -65,9 +65,17 @@ def _repo(list_name: str) -> str:
 
 
 def _intent(list_name: str, host: str) -> dict:
-    from modules.nsot import hostvars
+    """*host*'s committed intent with the committed intent layers it takes merged under it
+    (C2299; `intent_layers.for_device`, the chain's own merge), so a reference a layer names
+    is listed, settable and resolved as the device's own are. RAISES `LayersRefused` when its
+    layers cannot be merged. No committed intent is ``{}``."""
+    from modules.nsot import hostvars, intent_layers
+    from modules.nsot.profile import _row_of
     raw, _state = hostvars.committed_at_head(_repo(list_name), host)
-    return hostvars.from_yaml(raw) if raw is not None else {}
+    if raw is None:
+        return {}
+    return intent_layers.for_device(_repo(list_name), lambda: _row_of(list_name, host),
+                                    hostvars.from_yaml(raw))
 
 
 def intent_for_names(list_name: str, host: str) -> dict:
@@ -219,7 +227,7 @@ def check(list_name: str, host: str, ref: str, value: str, again: str, reason: s
          else "it holds a space, a character a device's CLI does not take, or is too long"},
         {"name": "named in intent", "ok": ref in uses,
          "detail": f"{ref} is {uses[ref]}" if ref in uses
-         else f"{ref} is not named in {host}'s committed intent"},
+         else f"{ref} is not named in {host}'s committed intent or a layer it takes"},
         {"name": "not Mercury's own account", "ok": ref != managed_ref(signs_in_as),
          "detail": "it is not the account Mercury signs in with"
          if ref != managed_ref(signs_in_as) else managed_words(ref)},
@@ -236,8 +244,12 @@ def set_value(list_name: str, host: str, ref: str, value: str, again: str, reaso
     record the set (committed): ``{"ok", "record", "checks"}``. Raises `Refused` naming each
     check that failed, nothing stored. Never returns or logs the value."""
     from modules import credentials
+    from modules.nsot.intent_layers import LayersRefused
 
-    intent = _intent(list_name, host)
+    try:
+        intent = _intent(list_name, host)
+    except LayersRefused as exc:
+        raise Refused(f"Not stored: {exc}. Nothing was written.") from exc
     checks = check(list_name, host, ref, value, again, reason, signs_in_as=signs_in_as,
                    intent=intent)
     failed = [c for c in checks if not c["ok"]]

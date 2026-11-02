@@ -59,7 +59,7 @@
     <p class="muted">This layer sets no value.</p>
     {%- endif %}
     {%- if chosen.refs %}
-    <p class="il-refs">Secret references this layer names: {% for ref, why in chosen.refs %}<code>{{ ref }}</code> <span class="muted">({{ why }})</span>{% if not loop.last %} · {% endif %}{% endfor %}. A layer names references only, never a value: a value is held per device, set on its Intent tab's Secret references, which does not yet offer a reference only a layer names.</p>
+    <p class="il-refs">Secret references this layer names: {% for ref, why in chosen.refs %}<code>{{ ref }}</code> <span class="muted">({{ why }})</span>{% if not loop.last %} · {% endif %}{% endfor %}. A layer names references only, never a value: a value is held per device, set on each device's Intent tab, under Secret references.</p>
     {%- endif %}
     <p class="muted">Precedence: network, site, role, tag, then the device. Two layers of one rank setting one value differently are refused, naming both; nothing picks between them.</p>
   </div>

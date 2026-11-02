@@ -27,7 +27,14 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `c36b3cb09386ce20d22e3a387ca6a6b30623eb0e7ba1833fa6e4b6b4c6a099cf`
+Templates sha256: `4fd84f62f46f581f4c698ace3230b52a4a3a32b7db6c3638e8cfd8153ab9d942`
+
+**Compared again 2026-11-02 (C2299, board FC phase 2 (a)), by the template:** the Secret
+references card reads the device's intent with its committed layers merged under it, so a
+reference a layer names is a row like the device's own, and Set value… sets it for the device;
+its empty state reads "…'s committed intent, and every intent layer it takes, name no secret
+reference". With no layer nothing drawn changed; no region's verdict moved. Templates sha256
+before: `c36b3cb09386ce20d22e3a387ca6a6b30623eb0e7ba1833fa6e4b6b4c6a099cf`.
 
 **Compared again 2026-11-02 (C2283, board FC's FC3, `FleetChanges.dc.html`, approved with
 changes 2026-11-01):** `_intent.html` draws, when the network has committed intent layers the
