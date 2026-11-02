@@ -32,12 +32,16 @@
     <div class="notice notice-danger" data-fc-stopped>{{ icon('warn') }}<p><strong>Stopped:</strong> {{ r.stopped }}. Each failed device was rolled back on its own; the devices after it were not attempted.</p></div>
     {%- elif r.state == 'paused' %}
     <p data-fc-paused>The canary deployed and verified. {{ r.left | length }} device{{ 's' if r.left | length != 1 }} wait{{ 's' if r.left | length == 1 }} for you: {{ r.left | join(', ') }}.</p>
+    {%- elif not r.rows %}
+    <p data-fc-done data-fc-nothing-sent>Committed, and nothing was sent: no device's program changed.</p>
     {%- else %}
     <p data-fc-done>Every device deployed and verified.</p>
     {%- endif %}
     <p class="small">{{ landed | length }} deployed · the layer committed as <code title="{{ r.commit }}">{{ (r.commit or '')[:10] }}</code>; each device's receipt is on its History.</p>
   </div></div>
+  {%- if r.rows %}
   <div class="op-part"><h3>Devices</h3><div>{{ rows_table(r.rows) }}</div></div>
+  {%- endif %}
   {%- if r.state == 'paused' %}
   <form method="post" action="{{ url_for('intent_layers_v2.change_go_on') }}" hx-post="{{ url_for('intent_layers_v2.change_go_on') }}" hx-target="#fc-plan" hx-swap="outerHTML">
   <input type="hidden" name="job" value="{{ r.job }}"><input type="hidden" name="list" value="{{ r.list }}"><input type="hidden" name="layer" value="{{ r.layer }}">

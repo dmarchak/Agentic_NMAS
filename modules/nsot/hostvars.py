@@ -26,6 +26,8 @@ verbatim. Storing plaintext there would make those lines fail every round trip,
 permanently.
 """
 
+import contextlib
+import contextvars
 import copy
 import logging
 import os
@@ -617,6 +619,27 @@ NEVER_COMMITTED = "never_committed"
 COMMITTED = "committed"
 
 
+#: Proposed documents standing in for committed ones, ``{(repo's real path, hostname):
+#: text}``, inside `proposed` only.
+_PROPOSED = contextvars.ContextVar("hostvars_proposed", default=None)
+
+
+@contextlib.contextmanager
+def proposed(repo: str, texts: dict):
+    """Inside the block, `committed_at_head` (and so every committed-intent reader, the deploy's
+    plan among them) reads each of *texts* (``{hostname: text}``) as *repo*'s committed intent
+    for that device: a fleet change's plan for each ticked device's own document (board FC phase
+    2 (f); `intent_layers.proposed` is its twin for a layer). Writes nothing; the context
+    variable keeps it to the caller's own thread and request."""
+    real = os.path.realpath(repo)
+    token = _PROPOSED.set({**(_PROPOSED.get() or {}),
+                           **{(real, h): t for h, t in texts.items()}})
+    try:
+        yield
+    finally:
+        _PROPOSED.reset(token)
+
+
 def committed_at_head(repo: str, hostname: str) -> tuple:
     """``(text | None, state)`` — committed intent read from **git**, not disk.
 
@@ -642,6 +665,9 @@ def committed_at_head(repo: str, hostname: str) -> tuple:
     """
     from modules.nsot.repo import RefSource
 
+    stood = (_PROPOSED.get() or {}).get((os.path.realpath(repo), hostname))
+    if stood is not None:
+        return stood, COMMITTED
     source = RefSource(repo, "HEAD", allow=("host_vars/",))
     raw = source.read(f"{COMMITTED_REL}/{_safe_hostname(hostname)}.yml")
     if raw is None:

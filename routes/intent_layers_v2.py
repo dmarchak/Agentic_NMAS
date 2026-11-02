@@ -168,6 +168,9 @@ def change_job(job):
              "rows": [{"path": ".".join(map(str, s["path"])), "before": _shown(_held(s, "before")),
                        "after": _shown(_held(s, "after"))} for s in plan.get("steps") or []],
              "hosts": [d["device"] for d in plan["devices"]],
+             # The approval still commits a change no program moves on (a value each device's
+             # own document holds); a layer left as it is commits nothing.
+             "commits": plan["layer"]["before"] != plan["layer"]["after"],
              "pending": [{"device": d["device"], "pending": d["pending"]}
                          for d in plan["devices"] if d["pending"]]}
     return _plan_card({"state": "plan", "list": name, "layer": layer, "job": job, "plan": drawn,

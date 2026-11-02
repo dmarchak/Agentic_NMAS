@@ -90,6 +90,42 @@ class TestPlanTheChange:
             .get_data(as_text=True)
         assert "data-fc-error" in html and "ntp_servers holds nothing" in html, html
 
+    def test_a_change_no_program_moves_on_offers_its_commit_and_sends_nothing(
+            self, page, r2, monkeypatch):  # noqa: F811
+        """The operator's first fleet change, step 1: a layer value every device's own document
+        already holds. The card says nothing is sent and its button names the work it still
+        does; approving commits the layer once and the run card says nothing was sent."""
+        import routes.deploy as rd
+        from modules.nsot import capture_job, hostvars
+        from modules.nsot.repo import save_host_vars
+        from tests.test_monitoring_profile_plan import _intent
+        intent = _intent(r2["repo"])
+        intent["ntp_servers"] = ["192.0.2.123"]
+        hostvars.write_committed(r2["repo"], intent)
+        assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+        sent = []
+        monkeypatch.setattr(rd, "apply_batch", lambda *a, **k: sent.append(a) or {"results": []})
+        html = _plan(page, "tag-blind-lab", "ntp_servers", "(absent)", "[192.0.2.123]") \
+            .get_data(as_text=True)
+        job = html.split("/v2/intent/change/job/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 30)
+        html = page.get(f"/v2/intent/change/job/{job}?list=Lab&layer=tag-blind-lab") \
+            .get_data(as_text=True)
+        assert "data-fc-nothing-to-send" in html and "Approve and commit: nothing to send" in html
+        assert 'name="canary"' not in html, "no run to choose"
+        plan_hash = html.split('name="hash" value="', 1)[1].split('"', 1)[0]
+        head = _head(r2["repo"])
+        html = page.post("/v2/intent/change/approve", data={
+            "list": "Lab", "layer": "tag-blind-lab", "hash": plan_hash, "path": "ntp_servers",
+            "before": "(absent)", "after": "[192.0.2.123]", "summary": "one home for r2's server",
+            "reason": "the layer holds it"}).get_data(as_text=True)
+        run = html.split("/v2/intent/change/run/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(run, 30)
+        html = page.get(f"/v2/intent/change/run/{run}?list=Lab&layer=tag-blind-lab") \
+            .get_data(as_text=True)
+        assert "data-fc-nothing-sent" in html and 'class="table fc-run-rows"' not in html, html
+        assert sent == [] and _head(r2["repo"]) != head
+
     def test_a_form_with_no_setting_is_refused(self, page):
         r = _plan(page, "tag-blind-lab", "", "", "")
         assert r.status_code == 400 and "the change has no setting" in r.get_data(as_text=True)

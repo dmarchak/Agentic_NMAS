@@ -930,7 +930,31 @@ class TestFleetChangeCards(_Cards):
                           r"Approve and run: canary first", "viewer"),
         "fleet_go_on": ("_fleet_run.html", "Go on: the {{ r.left | length }} left",
                         r"Go on: the 2 left", "viewer"),
+        "fleet_commit": ("_fleet_plan.html", "Approve and commit: nothing to send",
+                         r"Approve and commit: nothing to send", "viewer"),
     }
+
+    def _held(self, request):
+        """The plan of a layer value r2's own document already holds: nothing to send."""
+        from modules.nsot import hostvars
+        from modules.nsot.repo import save_host_vars
+        from tests.test_fleet_run_v2 import _planned
+        from tests.test_monitoring_profile_plan import _intent
+        page, r2 = request.getfixturevalue("page"), request.getfixturevalue("r2")
+        intent = _intent(r2["repo"])
+        intent["ntp_servers"] = ["192.0.2.123"]
+        hostvars.write_committed(r2["repo"], intent)
+        assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+        return _planned(page)
+
+    def drawn_fleet_commit(self, request):
+        return self._held(request)
+
+    def blocked_fleet_commit(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._held(request)
+        assert "data-fc-nothing-to-send" in html, "floor: the plan is drawn"
+        return html
 
     def drawn_fleet_approve(self, request):
         from tests.test_fleet_run_v2 import _planned
@@ -1911,9 +1935,10 @@ class TestThePopulation:
         2026-10-27; 68 until feature 7's Commit both devices' intent, C1908,
         2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28; 70 until
         the Intent tab's Store the value, C235, 2026-11-01; 71 until board FC's Approve and run
-        and Go on, C2283, 2026-11-02)."""
+        and Go on, C2283, 2026-11-02; 73 until its Approve and commit: nothing to send, the
+        same day)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 73, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 74, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -51,6 +51,12 @@ size of the batches after it (**Then batches of**, one by default), and **After 
 pause for your review (the default) or go on. Give a one-line **Summary** (the commit's
 subject) and **Why**, then **Approve and run: canary first**, as a verified person.
 
+When no device's program changes (each device already holds the value, as when a value moves
+from each device's own intent into a layer), the plan says **Nothing to send** and offers
+**Approve and commit: nothing to send** instead: the approval commits the layer once and the
+run sends nothing, its card reading "Committed, and nothing was sent". A layer the change would
+leave as it is has nothing to commit, and the plan offers no approval.
+
 5. **The approval.** Read: everything the plan read, again, under the repository's lock. Sent:
    nothing. Recorded: one commit of the layer's file (`Source: fleet-change`, who, the summary,
    the reason, the plan's hash and the devices). The plan is made again; a hash that is not the

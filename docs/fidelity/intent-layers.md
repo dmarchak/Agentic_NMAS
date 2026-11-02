@@ -61,8 +61,16 @@ which joins the templates compared), shot `fleet-plan` again with its `run` stat
 the canary deployed and verified, at 1440, 1280 and 390) beside FC4 and FC5 at 1440; the rows
 above.
 
+**Compared again 2026-11-02 (phase 2 (f1)):** the plan card gains a branch the boards do not
+draw, a plan no device's program moves on (Nothing to send, and Approve and commit: nothing to
+send in place of the run's choices), and the run card's done state for it ("Committed, and
+nothing was sent", no devices table): a deviation, its line in docs/STANDING_APPROVAL_LOG.md.
+Shot `fleet-plan` again (form, plan, run at 1440, 1280 and 390): the states the boards draw are
+unchanged.
+
 Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html, templates/v2/_fleet_run.html
-Templates sha256: `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`
+Templates sha256: `08b91ca542f1d40056aaf29ef5d1ac94ebcd39b5e57f9b0b63ef60e8dd1ab31e`
+(Before phase 2 (f1): `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`.)
 (Before phase 2 (d) and (e): `945d83b53c66076f1f0b01c3d9034d458237e366bcfcc5ed4e4ac7aa2e4a8005`.)
 (The plan's groups keep their open state, `data-keep`, C472's rule.)
 (Before phase 2 (c): `ea0522f84fadc4629a0d40a5ec0aa8cf781a32d6daa6b9d860b8e1a7cb413988`.)

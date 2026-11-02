@@ -21,6 +21,7 @@ before the change ride along on its run, so each device says how many.
 device's program hash: the approval (c) is refused if any of them moved.
 """
 
+import contextlib
 import copy
 import hashlib
 import json
@@ -93,6 +94,53 @@ def apply_steps(doc: dict, steps: list) -> tuple:
     return (doc, refused) if refused else (after, [])
 
 
+def _plan_programs(list_name: str, hosts: list, proposing, out: dict) -> str:
+    """Each of *hosts*' program as committed and inside *proposing* (a context manager standing
+    the change in place, yielding ``held(host)``: who holds the value where nothing moves),
+    through the deploy's own `plan_devices`; fills *out*'s ``devices``, ``unchanged``,
+    ``refused``, ``groups`` and ``headline``. The one comparison both targets share (a layer,
+    each ticked device's own document). Returns an error's words, or ``""``."""
+    from routes.deploy import plan_devices
+
+    try:
+        now = {e["device"]: e for e in plan_devices(list_name, hosts)}
+        was = {h: _rendered(list_name, h) for h in hosts}
+        with proposing() as held:
+            new = {e["device"]: e for e in plan_devices(list_name, hosts)}
+            then = {h: _rendered(list_name, h)[0] for h in hosts}
+            holders = {h: held(h) for h in hosts}
+    except Exception as exc:                          # noqa: BLE001 (refused, by its words)
+        return f"the change does not render: {type(exc).__name__}: {exc}"
+    groups = {}
+    for host in hosts:
+        n, o = new.get(host) or {}, now.get(host) or {}
+        reasons = list(n.get("blocking_reasons") or [])
+        if not n.get("deployable", True) or reasons:
+            out["refused"].append({"device": host, "reasons": reasons or ["not deployable"]})
+            continue
+        had = set(o.get("to_add") or [])
+        change = [line for line in n.get("to_add") or [] if line not in had]
+        if not change:
+            out["unchanged"].append({"device": host, "by": holders[host] or
+                                     "nothing to send: the device already holds it"})
+            continue
+        # What the change leaves on the device (C2302): lines the device holds that its render
+        # had before the change and no longer has. Merge-only never removes them, so the plan
+        # names them, as a device's own Deploy… names what is left on the device.
+        left = left_on_device(was[host][0], then[host], was[host][1])
+        out["devices"].append({"device": host, "change": change, "left": left,
+                               "pending": len(n.get("to_add") or []) - len(change),
+                               "command_hash": n.get("command_hash", "")})
+        groups.setdefault((tuple(change), tuple(left)), []).append(host)
+    out["groups"] = [{"lines": list(lines), "left": list(left), "devices": hs}
+                     for (lines, left), hs in sorted(groups.items(),
+                                                     key=lambda g: (-len(g[1]), g[0]))]
+    n_dev, n_grp = len(out["devices"]), len(out["groups"])
+    out["headline"] = (f"{n_dev} device{'s' if n_dev != 1 else ''}, {n_grp} group"
+                       f"{'s' if n_grp != 1 else ''}")
+    return ""
+
+
 def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
     """The plan for *steps* on the layer *layer_key* (its file's stem: ``network``,
     ``tag-blind-lab``) of *list_name*: ``{"ok", "error", "layer": {"key", "rank", "slug",
@@ -105,7 +153,6 @@ def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
     from modules.nsot import bulk_intent as B
     from modules.nsot import hostvars, intent_layers as L, listref
     from modules.nsot import repo as R
-    from routes.deploy import plan_devices
 
     out = {"ok": False, "error": "", "layer": {}, "base": "", "groups": [], "unchanged": [],
            "refused": [], "devices": [], "headline": "", "hash": "", "steps": []}
@@ -196,54 +243,129 @@ def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
 
     from modules import neighbours
     docs, _why = neighbours.committed_intents(repo)        # every device's own, in two reads
-    try:
-        now = {e["device"]: e for e in plan_devices(list_name, reached)}
-        was = {h: _rendered(list_name, h) for h in reached}
-        with L.proposed(repo, rank, slug, after):
-            new = {e["device"]: e for e in plan_devices(list_name, reached)}
-            then = {h: _rendered(list_name, h)[0] for h in reached}
-            layers = L.read_layers(repo)
-    except Exception as exc:                          # noqa: BLE001 (refused, by its words)
-        log.warning("fleet change: %s on %s did not plan: %s", label, list_name, exc)
-        out["error"] = f"the change does not render: {type(exc).__name__}: {exc}"
-        return out
     by_row = {r["hostname"]: r for r in rows}
-    origins = {host: L.merge(L.applicable(layers, by_row[host]), docs.get(host) or {})["from"]
-               for host in reached}
-
     paths = [".".join(map(str, s["path"])) for s in steps]
-    groups = {}
-    for host in reached:
-        n, o = new.get(host) or {}, now.get(host) or {}
-        reasons = list(n.get("blocking_reasons") or [])
-        if not n.get("deployable", True) or reasons:
-            out["refused"].append({"device": host, "reasons": reasons or ["not deployable"]})
-            continue
-        had = set(o.get("to_add") or [])
-        change = [line for line in n.get("to_add") or [] if line not in had]
-        if not change:
-            held = sorted({origins[host][p] for p in origins[host]
-                           if any(p == q or p.startswith(q + ".") or p.startswith(q + "[")
-                                  for q in paths) and origins[host][p] != label})
-            out["unchanged"].append({"device": host, "by": ", ".join(held) or
-                                     "nothing to send: the device already holds it"})
-            continue
-        # What the change leaves on the device (C2302): lines the device holds that its render
-        # had before the change and no longer has. Merge-only never removes them, so the plan
-        # names them, as a device's own Deploy… names what is left on the device.
-        left = left_on_device(was[host][0], then[host], was[host][1])
-        out["devices"].append({"device": host, "change": change, "left": left,
-                               "pending": len(n.get("to_add") or []) - len(change),
-                               "command_hash": n.get("command_hash", "")})
-        groups.setdefault((tuple(change), tuple(left)), []).append(host)
-    out["groups"] = [{"lines": list(lines), "left": list(left), "devices": hosts}
-                     for (lines, left), hosts in sorted(groups.items(),
-                                                        key=lambda g: (-len(g[1]), g[0]))]
-    n_dev, n_grp = len(out["devices"]), len(out["groups"])
-    out["headline"] = (f"{n_dev} device{'s' if n_dev != 1 else ''}, {n_grp} group"
-                       f"{'s' if n_grp != 1 else ''}")
+
+    @contextlib.contextmanager
+    def proposing():
+        with L.proposed(repo, rank, slug, after):
+            layers = L.read_layers(repo)
+            origins = {host: L.merge(L.applicable(layers, by_row[host]),
+                                     docs.get(host) or {})["from"] for host in reached}
+
+            def held(host):
+                return ", ".join(sorted({
+                    origins[host][p] for p in origins[host]
+                    if any(p == q or p.startswith(q + ".") or p.startswith(q + "[")
+                           for q in paths) and origins[host][p] != label}))
+            yield held
+
+    error = _plan_programs(list_name, reached, proposing, out)
+    if error:
+        log.warning("fleet change: %s on %s did not plan: %s", label, list_name, error)
+        out["error"] = error
+        return out
     out["hash"] = hashlib.sha256(json.dumps({
         "layer": layer_key, "before": before, "after": after, "base": out["base"],
+        "devices": sorted((d["device"], d["command_hash"]) for d in out["devices"]),
+        "unchanged": sorted(u["device"] for u in out["unchanged"]),
+        "refused": sorted(r["device"] for r in out["refused"])},
+        sort_keys=True, default=str).encode()).hexdigest()
+    out["ok"] = True
+    return out
+
+
+def plan_selection(list_name: str, devices: list, steps: list) -> dict:
+    """The plan for *steps* on each of *devices*' OWN committed document (board FC1's Change
+    across the N ticked…, 22.2 (1); phase 2 (f)): bulk intent's compare-and-set and every gate it
+    asks (`bulk_intent.plan`: the before each device holds, the hand-formatted file, the schema,
+    the secret guard, the sign-in account's reference, VLAN capability), then each accepted
+    device's program as committed and with its new document in place (`hostvars.proposed`),
+    through the same comparison a layer's change takes (`_plan_programs`). ``plan_layer``'s
+    shape, its ``target`` naming the devices (``layer`` empty) and ``texts`` each accepted
+    device's new document. Reads only; contacts no device; writes nothing."""
+    from modules.nsot import bulk_intent as B
+    from modules.nsot import hostvars, listref
+    from modules.nsot import repo as R
+
+    hosts = sorted({d for d in devices or [] if d})
+    n = len(hosts)
+    out = {"ok": False, "error": "", "layer": {}, "base": "", "groups": [], "unchanged": [],
+           "refused": [], "devices": [], "headline": "", "hash": "", "steps": [],
+           "target": {"kind": "devices", "devices": hosts,
+                      "label": f"{n} device{'s' if n != 1 else ''}' own intent"},
+           "texts": {}}
+    if not hosts:
+        out["error"] = "no device is ticked"
+        return out
+    if not steps:
+        out["error"] = "the change has no steps"
+        return out
+    steps = [dict(s, path=s["path"].split(".") if isinstance(s["path"], str) else list(s["path"]))
+             for s in steps]
+    out["steps"] = steps
+    repo = listref.resolve(list_name).repo_dir
+    from modules.nsot import manifest
+    from modules.nsot.restore import _devices_of
+    from modules.sdn import authority
+    try:
+        rows = {r.get("hostname"): r for r in _devices_of(list_name) if r.get("hostname")}
+    except Exception as exc:                          # noqa: BLE001 (said, never guessed)
+        out["error"] = (f"the inventory could not be read ({type(exc).__name__}: {exc}): "
+                        "nothing is planned on an earlier read")
+        return out
+    pending = {p.get("name") for p in manifest.pending_devices(repo)}
+
+    def eligible(host):
+        # Bulk intent's words (`routes.templatize._bulk_render_and_eligible`), on this plan's
+        # one inventory read.
+        if host in pending:
+            return "pending onboarding -- not reached yet"
+        if host not in rows:
+            return "not in this list's inventory (stale, or a typo)"
+        return ""
+
+    # Bulk intent's own render draws its intent-side delta, which this plan does not show: each
+    # device's program is rendered below, the deploy's way, and a render that fails refuses it
+    # there by the deploy's words.
+    def render(_host, _doc):
+        return "", True, []
+
+    report = B.plan(repo, hosts, steps, render=render, eligible=eligible, list_name=list_name)
+    if not report["ok"]:
+        out["error"] = report.get("error") or "the change cannot be planned"
+        return out
+    out["refused"] = [{"device": r["device"], "reasons": [r["reason"]]}
+                      for r in report["refused"]]
+    accepted = {a["device"]: a for a in report["accepted"]}
+    # A controller-managed switch is configured only through its controller (17.1 S12): the
+    # route's gate checks the names the request carries; the plan refuses it too, in the
+    # authority's words, so no path reaches one.
+    for host in list(accepted):
+        auth = authority.of(rows.get(host) or {"hostname": host}, list_name)
+        if auth["kind"] == "controller":
+            out["refused"].append({"device": host, "reasons": [auth["words"]]})
+            del accepted[host]
+    rc, head, _err = R.git(repo, "rev-parse", "HEAD")
+    out["base"] = head if rc == 0 else ""
+    texts = {h: a["text"] for h, a in accepted.items()}
+    out["texts"] = texts
+
+    @contextlib.contextmanager
+    def proposing():
+        with hostvars.proposed(repo, texts):
+            yield lambda host: ""
+
+    error = _plan_programs(list_name, sorted(accepted), proposing, out)
+    if error:
+        log.warning("fleet change: %s on %s did not plan: %s", out["target"]["label"],
+                    list_name, error)
+        out["error"] = error
+        return out
+    out["refused"].sort(key=lambda r: r["device"])
+    out["hash"] = hashlib.sha256(json.dumps({
+        "target": hosts, "steps": steps, "base": out["base"],
+        "texts": {h: (accepted[h]["blob"], t) for h, t in sorted(texts.items())},
         "devices": sorted((d["device"], d["command_hash"]) for d in out["devices"]),
         "unchanged": sorted(u["device"] for u in out["unchanged"]),
         "refused": sorted(r["device"] for r in out["refused"])},
@@ -257,16 +379,25 @@ ANNOUNCE_KEYS = ("fleet_change",)
 ANNOUNCER = "fleet-change"
 
 
-def plan_start(list_name: str, layer_key: str, steps: list, actor: str) -> str:
-    """Start `plan_layer` as a job (a plan reads every reached device's program, so it is a job,
+def _named(target) -> str:
+    """A job's name for *target*: the layer's key, or how many devices' own documents."""
+    if isinstance(target, dict):
+        n = len(target.get("devices") or [])
+        return f"{n} device{'s' if n != 1 else ''}' own intent"
+    return target
+
+
+def plan_start(list_name: str, target, steps: list, actor: str) -> str:
+    """Start `plan_target` as a job (a plan reads every reached device's program, so it is a job,
     never a request's work: the scale rule) and return its id at once. Its payload is the plan,
-    masked on the way out; the job announces `fleet_change` when it ends."""
+    masked on the way out; the job announces `fleet_change` when it ends. *target* is a layer's
+    key or ``{"devices": [...]}``."""
     from modules.nsot import capture_job
     from modules.outbound import mask_payload
 
     def work(_job):
-        return mask_payload(plan_layer(list_name, layer_key, steps))
-    return capture_job.start(list_name, f"Plan {layer_key}'s change", actor, work,
+        return mask_payload(plan_target(list_name, target, steps))
+    return capture_job.start(list_name, f"Plan {_named(target)}'s change", actor, work,
                              kind="fleet change plan", announce_keys=ANNOUNCE_KEYS,
                              announcer=ANNOUNCER)
 
@@ -312,9 +443,11 @@ def approve(list_name: str, layer_key: str, steps: list, confirmed_hash: str, *,
                 f"the plan moved since you read it (confirmed {confirmed_hash[:10]}, now "
                 f"{plan['hash'][:10]}): a device, its intent, a layer or the repository changed. "
                 "Nothing was committed or sent; plan again and read the new plan")}
-        if not plan["devices"]:
-            return {"ok": False, "plan": plan, "error": "no device's program changes: there is "
-                                                         "nothing to run"}
+        if _canon(plan["layer"]["before"]) == _canon(plan["layer"]["after"]):
+            return {"ok": False, "plan": plan, "error": "the change leaves the layer as it is: "
+                                                         "there is nothing to commit"}
+        # A change no device's program moves on (a value its own document already holds) is
+        # still committed: the record is the change; the run then sends nothing.
         rel = plan["layer"]["file"]
         path = os.path.join(repo, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -342,6 +475,81 @@ def approve(list_name: str, layer_key: str, steps: list, confirmed_hash: str, *,
             return {"ok": False, "plan": plan,
                     "error": f"the layer could not be committed: {err or rc}. Nothing was sent"}
     return {"ok": True, "error": "", "commit": sha, "plan": plan}
+
+
+def approve_selection(list_name: str, devices: list, steps: list, confirmed_hash: str, *,
+                      summary: str, reason: str, actor: str) -> dict:
+    """`approve` for each ticked device's own document (phase 2 (f)): under the repository's
+    lock, `plan_selection` again, refused unless its hash is the one confirmed; then every
+    accepted device's new document written and ONE commit (`repo.save_host_vars`, Source
+    `fleet-change`, the plan's hash and devices as trailers), bulk intent's commit; a failed
+    commit puts every file back as committed. Sends nothing."""
+    from modules.nsot import bulk_intent as B
+    from modules.nsot import hostvars, listref
+    from modules.nsot import repo as R
+
+    if not (summary or "").strip():
+        return {"ok": False, "error": "a one-line summary is needed: it becomes the commit's "
+                                      "subject"}
+    if not (reason or "").strip():
+        return {"ok": False, "error": "a reason is needed: it is recorded with the commit"}
+    repo = listref.resolve(list_name).repo_dir
+    with R.repo_lock(repo):
+        plan = plan_selection(list_name, devices, steps)
+        if not plan["ok"]:
+            return {"ok": False, "error": f"the plan cannot be made now: {plan['error']}"}
+        if plan["hash"] != confirmed_hash:
+            return {"ok": False, "plan": plan, "error": (
+                f"the plan moved since you read it (confirmed {confirmed_hash[:10]}, now "
+                f"{plan['hash'][:10]}): a device, its intent or the repository changed. Nothing "
+                "was committed or sent; plan again and read the new plan")}
+        written = sorted(plan["texts"])
+        if not written:
+            return {"ok": False, "plan": plan, "error": "no ticked device takes the change: "
+                                                         "there is nothing to commit"}
+        rc, dirty, _err = R.git(repo, "status", "--porcelain", "--", "host_vars")
+        if rc != 0 or dirty.strip():
+            return {"ok": False, "plan": plan, "error": (
+                "host_vars/ has uncommitted changes, which this commit would carry under its "
+                "own name: " + (dirty.strip() or "status failed") + ". Nothing was committed "
+                "or sent")}
+        for host in written:
+            hostvars.write_committed_text(repo, host, plan["texts"][host])
+        sent = ", ".join(d["device"] for d in plan["devices"]) or "none"
+        result = R.save_host_vars(
+            list_name, written, actor=actor, source="fleet-change",
+            message=f"{summary.strip()}\n\n{plan['target']['label']}: {reason.strip()}",
+            extra_trailers=[f"Plan: {plan['hash']}", f"Devices: {sent}"])
+        if not result.get("ok"):
+            left = B._put_back(repo, written)
+            return {"ok": False, "plan": plan, "error": (
+                f"the change could not be committed: {result.get('error') or 'the commit did '
+                'not complete'}. Nothing was sent"
+                + (f"; LEFT UNCOMMITTED: {', '.join(left)}" if left else
+                   "; every file was put back as committed"))}
+    return {"ok": True, "error": "", "commit": result.get("commit", ""), "plan": plan}
+
+
+def plan_target(list_name: str, target, steps: list) -> dict:
+    """The plan for a fleet change's *target*: a layer's key (``tag-blind-lab``) or
+    ``{"devices": [...]}``, each ticked device's own document."""
+    if isinstance(target, dict):
+        return plan_selection(list_name, target.get("devices") or [], steps)
+    return plan_layer(list_name, target, steps)
+
+
+def approve_target(list_name: str, target, steps: list, confirmed_hash: str, **kw) -> dict:
+    """The approval for *target* (`plan_target`'s): `approve_selection` or `approve`."""
+    if isinstance(target, dict):
+        return approve_selection(list_name, target.get("devices") or [], steps, confirmed_hash,
+                                 **kw)
+    return approve(list_name, target, steps, confirmed_hash, **kw)
+
+
+def label_of(plan: dict) -> str:
+    """What a plan's change is called on its cards: the layer's label, or the selection's."""
+    return (plan.get("layer") or {}).get("label") or (plan.get("target") or {}).get("label") \
+        or "the change"
 
 
 def batches_of(devices: list, canary: str, size: int) -> list:
@@ -390,28 +598,33 @@ def run_batches(list_name: str, plan: dict, batches: list, *, actor: str, actor_
     return out
 
 
-def approve_and_run_start(list_name: str, layer_key: str, steps: list, confirmed_hash: str, *,
+def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: str, *,
                           summary: str, reason: str, canary: str, batch: int,
                           after_canary: str, actor: str, actor_kind: str) -> str:
     """The approval and the run's first part as ONE job (the approval recomputes the plan, which
-    reads every reached device, so it is never a request's work): `approve`, then the canary
-    alone (and every batch after it when *after_canary* is ``go``). A refused approval is the
-    job's ``refused`` payload, naming why, nothing committed or sent."""
+    reads every reached device, so it is never a request's work): `approve_target`, then the
+    canary alone (and every batch after it when *after_canary* is ``go``). A refused approval
+    is the job's ``refused`` payload, naming why, nothing committed or sent. A change no
+    device's program moves on is committed and its run sends nothing (``done``, no batch)."""
     from modules.nsot import capture_job
     from modules.outbound import mask_payload
 
     def work(_job):
-        got = approve(list_name, layer_key, steps, confirmed_hash, summary=summary,
-                      reason=reason, actor=actor)
+        got = approve_target(list_name, target, steps, confirmed_hash, summary=summary,
+                             reason=reason, actor=actor)
         if not got["ok"]:
             return mask_payload({"state": "refused", "error": got["error"]})
         plan = got["plan"]
         hosts = [d["device"] for d in plan["devices"]]
+        if not hosts:
+            return mask_payload({"state": "done", "commit": got["commit"], "plan": plan,
+                                 "batches": [], "next": 0, "results": [], "stopped": "",
+                                 "actor": actor})
         first = canary if canary in hosts else hosts[0]
         batches = batches_of(hosts, first, batch)
         return _run(list_name, plan, got["commit"], batches, after_canary=after_canary,
                     actor=actor, actor_kind=actor_kind, start_at=0)
-    return capture_job.start(list_name, f"Approve and run {layer_key}'s change", actor, work,
+    return capture_job.start(list_name, f"Approve and run {_named(target)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
                              announcer=RUN_ANNOUNCER)
 
@@ -445,6 +658,6 @@ def run_start(list_name: str, plan: dict, commit: str, batches: list, *, after_c
     def work(_job):
         return _run(list_name, plan, commit, batches, after_canary=after_canary, actor=actor,
                     actor_kind=actor_kind, start_at=start_at)
-    return capture_job.start(list_name, f"Run {plan['layer']['label']}'s change", actor, work,
+    return capture_job.start(list_name, f"Run {label_of(plan)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
                              announcer=RUN_ANNOUNCER)

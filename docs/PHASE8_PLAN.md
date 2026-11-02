@@ -55,7 +55,7 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 |---|---|---|---|---|
 | P7, the toolbar assistant (A1, 16.10) | **not built**, grounding started: board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 70 pages, 514 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
 | P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
-| Explain (P1) | **measured, below its bar**: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
+| Explain (P1) | **measured: the recorded set at its bar, the blind set not scored**: the 10-run round on 2026-11-02 (v4, the new pack, two batches of 5 runs, `msgbatch_012bhmoR8GKwYkaxk1Zj7jVC` and `msgbatch_01RHHqsvaErD5siGPUjJny5d`, $4.83, $0.0221 a successful answer): **20 of 22 recorded cases reliable (90.9%, the bar 90%)**, 209 of 220 runs pass, not reliable case 8 (9 of 10) and case 19 (0 of 10, C2141); the held-out case 10 of 10; none confidently wrong as Mercury keeps it. Before it: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
 | Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
 | Ask in words, metrics (feature 1) | **measured, below its bar**: v10 live; main 23 of 23 reliable, held-out set 4 27 of 30 (90.0%) | 95% | 2026-10-27, 10 runs (run m10cmp-202610270145) | a held-out round after C1887 (closed) |
 | Ask in words, logs | **measured, near its bar**: v4 live; 20 of 20, blind sets 10 of 10 and 10 of 10 at 5 runs | 95% at 10 runs, about 30 held-out | 2026-10-26, 5 runs | the 10-run round and a held-out set of about 30 |
@@ -4638,3 +4638,21 @@ person's decision, runs the rest from the paused run's record; the run is drawn 
 Not yet: a stop percentage at 20 devices or more; Plan again for…, Undo on…, Open the record;
 a Needs attention row for a stopped run; the batch deploy's breaker of 2 moved to the one stop
 rule. Next: (f).
+
+**(f), in three commits (decided 2026-11-02 ~19:2x UTC, the agent's under the Phase 7 mode):**
+(f1) the core for the second target, each ticked device's own document
+(`fleet_change.plan_selection`, `approve_selection`): bulk intent's own `plan` for the
+compare-and-set and every gate it asks (the before, the hand-formatted file, the schema, the
+secret guard, the sign-in account's reference, VLAN capability), on the plan's one inventory
+read; each accepted device's program as committed and with its new document stood in place
+(`hostvars.proposed`, the twin of `intent_layers.proposed`), through the comparison the layer's
+plan uses (`_plan_programs`, moved out of `plan_layer` unchanged); one hash over the target,
+the steps, the base, each device's document and program; the approval bulk intent's one commit
+(`Source: fleet-change`); the run the layer's (`plan_target`, `approve_target`, the jobs taking
+either target). **A change no device's program moves on is committed and its run sends
+nothing** (both targets; the operator's first fleet change, step 1, is one), where (d)
+refused it; a layer left as it is commits nothing. (f2) the screens: FC1's Change across the N
+ticked… on Devices (a layer the ticked devices share, or each one's own document) and the
+device page's Actions for its groups, the plan and run cards drawing either target, the
+confirm saying "nothing to send" when nothing moves. (f3) Bulk intent's own screen retired, its
+route and manual page with it.
