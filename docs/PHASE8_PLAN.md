@@ -4655,4 +4655,10 @@ refused it; a layer left as it is commits nothing. (f2) the screens: FC1's Chang
 ticked… on Devices (a layer the ticked devices share, or each one's own document) and the
 device page's Actions for its groups, the plan and run cards drawing either target, the
 confirm saying "nothing to send" when nothing moves. (f3) Bulk intent's own screen retired, its
-route and manual page with it.
+route and manual page with it. **(f1) and (f2) built 2026-11-02:** Devices' Actions offer
+Change across the N ticked… (FC1), opening the change's form on Source of Truth › Intent for the
+ticked devices (or ALL MATCHING, resolved from the list's search), its **Where** each device's
+own intent or a layer every ticked device takes (with how many it reaches beyond them); the plan
+card draws the change across the ticked (each step, each device's file that takes it) and its
+approval carries the selection; the run card is titled for it. Not yet: the device page's
+Actions offer for its groups; FC1's Make a group of these N… (a NetBox tag write, C2304).

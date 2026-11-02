@@ -69,8 +69,20 @@ Shot `fleet-plan` again (form, plan, run at 1440, 1280 and 390): the states the 
 unchanged.
 
 Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html, templates/v2/_fleet_run.html
-Templates sha256: `08b91ca542f1d40056aaf29ef5d1ac94ebcd39b5e57f9b0b63ef60e8dd1ab31e`
+Templates sha256: `7540837172c158189161550fded88dd939fe891484fa6f32a118a126ddc631e1`
+(Before phase 2 (f2): `08b91ca542f1d40056aaf29ef5d1ac94ebcd39b5e57f9b0b63ef60e8dd1ab31e`.)
 (Before phase 2 (f1): `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`.)
+
+**Compared again 2026-11-02 (phase 2 (f2), board FC1's Change across the N ticked…):** the
+form and the plan card draw a second target, the ticked devices: the form a **Where** part (each
+device's own intent, the default, or each layer every ticked device takes, with how many it
+reaches beyond them) and the ticked devices carried; the plan "Change across the N ticked", its
+What naming each ticked device's file that takes the change, a **The change** part (each step's
+path, what each device holds now and what it becomes) in place of The layer; the run card
+titled the same. FC1 draws the entry, not its cards: the cards are FC4's and FC5's parts, a
+deviation logged. The layer's states, shot `fleet-plan` again at 1440, 1280 and 390, are
+unchanged but for the approval's sentence, which now says "the change is committed once" (it
+names either target).
 (Before phase 2 (d) and (e): `945d83b53c66076f1f0b01c3d9034d458237e366bcfcc5ed4e4ac7aa2e4a8005`.)
 (The plan's groups keep their open state, `data-keep`, C472's rule.)
 (Before phase 2 (c): `ea0522f84fadc4629a0d40a5ec0aa8cf781a32d6daa6b9d860b8e1a7cb413988`.)

@@ -18,14 +18,14 @@
 {%- endmacro %}
 {%- if r.state == 'running' %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-run-title" hx-get="{{ url_for('intent_layers_v2.change_run', job=r.job, list=r.list, layer=r.layer) }}" hx-trigger="nmas:fleet_change from:body, nmas:device_progress from:body" hx-swap="outerHTML">
-  <div class="op-hd"><h2 id="fc-run-title">Running {{ r.layer }}'s change</h2></div>
+  <div class="op-hd"><h2 id="fc-run-title">Running {{ (r.layer ~ "'s change") if r.layer else 'the change' }}</h2></div>
   <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, committing the layer, then each device in turn, held, sent, verified. The card redraws as it goes.</p></div></div>
 </section>
 {%- else %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-run-title">
   {%- if r.state in ('paused', 'stopped', 'done') %}
   {%- set landed = r.rows | selectattr('outcome', 'equalto', 'deployed') | list %}
-  <div class="op-hd"><h2 id="fc-run-title">{{ r.label | capitalize }}'s change · {% if r.state == 'paused' %}paused after the canary{% elif r.state == 'stopped' %}stopped{% else %}done{% endif %}</h2>
+  <div class="op-hd"><h2 id="fc-run-title">{{ r.title }} · {% if r.state == 'paused' %}paused after the canary{% elif r.state == 'stopped' %}stopped{% else %}done{% endif %}</h2>
     <div class="op-hd-actions">{{ how('fleet-change', compact=True, op='running a layer change') }}</div></div>
   <div class="op-part"><h3>What</h3><div>
     {%- if r.state == 'stopped' %}

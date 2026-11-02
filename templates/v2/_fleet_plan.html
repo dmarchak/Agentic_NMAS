@@ -8,11 +8,25 @@
     card's (`op-part`). -#}
 {%- if f is defined and f %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title">
-  <div class="op-hd"><h2 id="fc-plan-title">{% if f.new %}Add a layer to {{ f.list }}{% else %}Change {{ f.label }}{% endif %}</h2>
+  <div class="op-hd"><h2 id="fc-plan-title">{% if f.new %}Add a layer to {{ f.list }}{% elif f.selection %}Change across {{ f.label }}{% else %}Change {{ f.label }}{% endif %}</h2>
     <div class="op-hd-actions">{{ how('fleet-change', compact=True, op='planning a layer change') }}</div></div>
   <form method="post" action="{{ url_for('intent_layers_v2.change_plan') }}" hx-post="{{ url_for('intent_layers_v2.change_plan') }}" hx-target="#fc-plan" hx-swap="outerHTML" autocomplete="off">
   <input type="hidden" name="list" value="{{ f.list }}">
-  {%- if f.new %}
+  {%- if f.selection %}
+  {%- for d in f.devices %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}
+  <div class="op-part"><h3>Where</h3><div data-fc-where>
+    <p class="small">{{ f.devices | length }} ticked: {{ f.devices[:8] | join(', ') }}{% if f.devices | length > 8 %} and {{ f.devices | length - 8 }} more{% endif %}.</p>
+    <fieldset class="fc-where"><legend class="sr">Where the change goes</legend>
+      <label><input type="radio" name="target" value="devices" checked> Each device's own intent <span class="muted small">(one commit of each ticked device's file)</span></label>
+      {%- for l in f.shared %}
+      <label><input type="radio" name="target" value="layer:{{ l.key }}"> {{ l.label | capitalize }} <span class="muted small">(reaches {{ l.count }} device{{ 's' if l.count != 1 }}{% if l.beyond %}, {{ l.beyond }} beyond the ticked: the plan names them{% endif %})</span></label>
+      {%- endfor %}
+    </fieldset>
+    {%- if not f.shared %}
+    <p class="small muted">No layer reaches every ticked device. A layer is added from <a href="{{ url_for('intent_layers_v2.change', list=f.list) }}">Add a layer…</a>, for a NetBox site, role or tag the devices share.</p>
+    {%- endif %}
+  </div></div>
+  {%- elif f.new %}
   <div class="op-part"><h3>The layer</h3><div>
     <fieldset class="bi-row"><legend class="sr">The new layer</legend>
       <div><label for="fc-rank">Rank</label>
@@ -26,7 +40,7 @@
   <input type="hidden" name="layer" value="{{ f.layer }}">
   {%- endif %}
   <div class="op-part"><h3>The change</h3><div>
-    <p class="small">Each setting is a path into the layer (dots between keys, as <span class="mono">users</span> or <span class="mono">snmp.settings</span>), the value it holds now and the value it becomes, written as in an intent file; type <span class="mono">{{ f.absent }}</span> for a setting not there.</p>
+    <p class="small">Each setting is a path into {% if f.selection %}each device's intent, or the layer chosen,{% else %}the layer{% endif %} (dots between keys, as <span class="mono">users</span> or <span class="mono">snmp.settings</span>), the value it holds now and the value it becomes, written as in an intent file; type <span class="mono">{{ f.absent }}</span> for a setting not there.</p>
     {%- for r in f.rows %}
     <fieldset class="bi-row">
       <legend class="sr">Setting {{ loop.index }}</legend>
@@ -41,32 +55,44 @@
   </div></div>
   <div class="op-part"><h3>The plan</h3><div>
     <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"><span class="op-idle">Plan the change</span><span class="op-busy">Starting the plan…</span></button>{{ how('fleet-change', compact=True, op='planning a layer change') }}
-      <a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=f.list, layer=f.layer) }}">Cancel</a></p>
-    <p class="small muted">The plan renders every device the layer reaches with the change and without it, from each device's committed configuration. It sends nothing and writes nothing.</p>
+      <a class="btn btn-small" href="{{ url_for('v2.devices', list=f.list) if f.selection else url_for('intent_layers_v2.page', list=f.list, layer=f.layer) }}">Cancel</a></p>
+    <p class="small muted">The plan renders every device the change reaches with it and without it, from each device's committed configuration. It sends nothing and writes nothing.</p>
   </div></div>
   </form>
 </section>
 {%- elif p is defined and p %}
 {%- if p.state == 'planning' %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title" hx-get="{{ url_for('intent_layers_v2.change_job', job=p.job, list=p.list, layer=p.layer) }}" hx-trigger="nmas:fleet_change from:body" hx-swap="outerHTML">
-  <div class="op-hd"><h2 id="fc-plan-title">Planning {{ p.layer }}'s change</h2></div>
-  <div class="op-part"><h3>The plan</h3><div><p class="op-wait">Rendering each device the layer reaches with the change and without it. Nothing is sent.</p></div></div>
+  <div class="op-hd"><h2 id="fc-plan-title">Planning {{ p.label or p.layer }}'s change</h2></div>
+  <div class="op-part"><h3>The plan</h3><div><p class="op-wait">Rendering each device the change reaches with the change and without it. Nothing is sent.</p></div></div>
 </section>
 {%- else %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-plan-title">
   {%- if p.state == 'plan' %}
   {%- set pl = p.plan %}
+  {%- set sel = pl.selection %}
+  {%- set back = url_for('v2.devices', list=p.list) if sel else url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) %}
+  {%- set back_to = 'Devices' if sel else pl.layer.label %}
   {%- set total = pl.planned + pl.unchanged | length + pl.refused | length %}
-  <div class="op-hd"><h2 id="fc-plan-title">{{ pl.layer.label | capitalize }}'s change · {{ total }} device{{ 's' if total != 1 }}</h2>
+  <div class="op-hd"><h2 id="fc-plan-title">{% if sel %}Change across the {{ sel.devices | length }} ticked{% else %}{{ pl.layer.label | capitalize }}'s change{% endif %} · {{ total }} device{{ 's' if total != 1 }}</h2>
     <div class="op-hd-actions"><span class="badge">plan · nothing sent</span>{{ how('fleet-change', compact=True, op='planning a layer change') }}</div></div>
   <div class="op-part"><h3>What</h3><div>
     <p data-fc-headline><strong>{{ pl.headline }}</strong> · {{ pl.refused | length }} refused · {{ pl.unchanged | length }} unchanged</p>
-    <p class="small">The change is one commit to <code>{{ pl.layer.file }}</code>, made at the approval. Plan <code title="{{ pl.hash }}">{{ pl.hash[:10] }}</code>, from the repository at <code title="{{ pl.base }}">{{ (pl.base or '')[:10] }}</code>.</p>
+    <p class="small">The change is one commit {% if sel %}of each ticked device's intent file that takes it ({{ sel.taking | length }}: {{ sel.taking | join(', ') or 'none' }}){% else %}to <code>{{ pl.layer.file }}</code>{% endif %}, made at the approval. Plan <code title="{{ pl.hash }}">{{ pl.hash[:10] }}</code>, from the repository at <code title="{{ pl.base }}">{{ (pl.base or '')[:10] }}</code>.</p>
   </div></div>
+  {%- if sel %}
+  <div class="op-part"><h3>The change</h3><div data-fc-steps>
+    <table class="table"><thead><tr><th>Path</th><th>Each device holds now</th><th>Becomes</th></tr></thead><tbody>
+    {%- for r in pl.rows %}<tr><td class="mono">{{ r.path }}</td><td class="mono">{{ r.before }}</td><td class="mono">{{ r.after }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="small muted">On each of the {{ sel.devices | length }} ticked: {{ sel.devices[:8] | join(', ') }}{% if sel.devices | length > 8 %} and {{ sel.devices | length - 8 }} more{% endif %}. A device that holds something else is refused by name.</p>
+  </div></div>
+  {%- else %}
   <div class="op-part"><h3>The layer</h3><div class="fc-layer">
     <div><p class="small muted">Now</p><pre class="op-diff">{{ pl.layer.before }}</pre></div>
     <div><p class="small muted">After</p><pre class="op-diff">{{ pl.layer.after }}</pre></div>
   </div></div>
+  {%- endif %}
   <div class="op-part"><h3>The program</h3><div>
     {%- for g in pl.groups %}
     <details class="fc-group" data-keep="fc-group-{{ loop.index }}"{% if loop.first %} open{% endif %}><summary>{{ g.devices | length }} device{{ 's' if g.devices | length != 1 }}: {{ g.lines | length }} line{{ 's' if g.lines | length != 1 }} each{% if g.devices | length <= 8 %} ({{ g.devices | join(', ') }}){% endif %}</summary>
@@ -96,7 +122,8 @@
   </div></div>
   {%- if pl.hosts or pl.commits %}
   <form method="post" action="{{ url_for('intent_layers_v2.change_approve') }}" hx-post="{{ url_for('intent_layers_v2.change_approve') }}" hx-target="#fc-plan" hx-swap="outerHTML" autocomplete="off">
-  <input type="hidden" name="list" value="{{ p.list }}"><input type="hidden" name="layer" value="{{ pl.layer.key }}"><input type="hidden" name="hash" value="{{ pl.hash }}">
+  <input type="hidden" name="list" value="{{ p.list }}"><input type="hidden" name="hash" value="{{ pl.hash }}">
+  {%- if sel %}<input type="hidden" name="target" value="devices">{% for d in sel.devices %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}{% else %}<input type="hidden" name="layer" value="{{ pl.layer.key }}">{% endif %}
   {%- for r in pl.rows %}<input type="hidden" name="path" value="{{ r.path }}"><input type="hidden" name="before" value="{{ r.before }}"><input type="hidden" name="after" value="{{ r.after }}">{% endfor %}
   {%- if pl.hosts %}
   <div class="op-part"><h3>The run</h3><div class="fc-run-form">
@@ -116,20 +143,20 @@
     </div>
     {%- if pl.hosts %}
     <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Approve and run: canary first</span><span class="op-busy">Starting the run…</span></button>{{ how('fleet-change', compact=True, op='running a layer change') }}
-      <a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) }}">Back to {{ pl.layer.label }}</a></p>
-    <p class="small muted">One approval, by its hash: the plan is made again and refused if anything moved, the layer is committed once with your summary and reason, then the run starts. Nothing was sent yet (planned in {{ p.elapsed_s }} s).</p>
+      <a class="btn btn-small" href="{{ back }}">Back to {{ back_to }}</a></p>
+    <p class="small muted">One approval, by its hash: the plan is made again and refused if anything moved, the change is committed once with your summary and reason, then the run starts. Nothing was sent yet (planned in {{ p.elapsed_s }} s).</p>
     {%- else %}
-    <p class="small" data-fc-nothing-to-send><strong>Nothing to send:</strong> no device's program changes (each holds the value already), so the approval commits the layer and runs nothing.</p>
+    <p class="small" data-fc-nothing-to-send><strong>Nothing to send:</strong> no device's program changes (each holds the value already), so the approval commits the change and runs nothing.</p>
     <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Approve and commit: nothing to send</span><span class="op-busy">Committing…</span></button>{{ how('fleet-change', compact=True, op='running a layer change') }}
-      <a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) }}">Back to {{ pl.layer.label }}</a></p>
-    <p class="small muted">One approval, by its hash: the plan is made again and refused if anything moved, then the layer is committed once with your summary and reason. Nothing is sent (planned in {{ p.elapsed_s }} s).</p>
+      <a class="btn btn-small" href="{{ back }}">Back to {{ back_to }}</a></p>
+    <p class="small muted">One approval, by its hash: the plan is made again and refused if anything moved, then the change is committed once with your summary and reason. Nothing is sent (planned in {{ p.elapsed_s }} s).</p>
     {%- endif %}
   </div></div>
   </form>
   {%- else %}
   <div class="op-part"><h3>Next</h3><div>
-    <p class="small muted">The layer already holds this, so there is nothing to commit or run. Nothing was sent and nothing was written (planned in {{ p.elapsed_s }} s).</p>
-    <p><a class="btn btn-small" href="{{ url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) }}">Back to {{ pl.layer.label }}</a></p>
+    <p class="small muted">{% if sel %}No ticked device takes the change (each is refused above){% else %}The layer already holds this{% endif %}, so there is nothing to commit or run. Nothing was sent and nothing was written (planned in {{ p.elapsed_s }} s).</p>
+    <p><a class="btn btn-small" href="{{ back }}">Back to {{ back_to }}</a></p>
   </div></div>
   {%- endif %}
   {%- elif p.state == 'refused' %}

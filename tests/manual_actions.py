@@ -322,7 +322,9 @@ NOT_AN_OPERATION = {
     ("_fleet_plan.html", "Cancel"): "returns to the layer, planning nothing, a read",
     ("_fleet_plan.html", "Back to the layers"): "returns to Source of Truth › Intent, a read",
     ("_fleet_plan.html", "Back to"): "returns to the planned layer on Source of Truth › Intent, "
-                                     "a read",
+                                     "or to Devices for a selection, a read",
+    ("_fleet_plan.html", "Add a layer…"): "opens the new layer's form (FC2's Add a layer…), "
+                                          "planning nothing, a read",
     ("_fleet_run.html", "Leave it paused"): "returns to the layer, sending nothing more, a read",
     ("_fleet_run.html", "Back to the layers"): "returns to Source of Truth › Intent, a read",
     # PHASE8_PLAN 16.11 item 3 (board CR): a drafted change record, as text.

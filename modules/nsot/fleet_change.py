@@ -289,11 +289,9 @@ def plan_selection(list_name: str, devices: list, steps: list) -> dict:
     from modules.nsot import repo as R
 
     hosts = sorted({d for d in devices or [] if d})
-    n = len(hosts)
     out = {"ok": False, "error": "", "layer": {}, "base": "", "groups": [], "unchanged": [],
            "refused": [], "devices": [], "headline": "", "hash": "", "steps": [],
-           "target": {"kind": "devices", "devices": hosts,
-                      "label": f"{n} device{'s' if n != 1 else ''}' own intent"},
+           "target": {"kind": "devices", "devices": hosts, "label": named({"devices": hosts})},
            "texts": {}}
     if not hosts:
         out["error"] = "no device is ticked"
@@ -379,11 +377,11 @@ ANNOUNCE_KEYS = ("fleet_change",)
 ANNOUNCER = "fleet-change"
 
 
-def _named(target) -> str:
+def named(target) -> str:
     """A job's name for *target*: the layer's key, or how many devices' own documents."""
     if isinstance(target, dict):
         n = len(target.get("devices") or [])
-        return f"{n} device{'s' if n != 1 else ''}' own intent"
+        return f"{n} devices' own intent" if n != 1 else "1 device's own intent"
     return target
 
 
@@ -397,7 +395,7 @@ def plan_start(list_name: str, target, steps: list, actor: str) -> str:
 
     def work(_job):
         return mask_payload(plan_target(list_name, target, steps))
-    return capture_job.start(list_name, f"Plan {_named(target)}'s change", actor, work,
+    return capture_job.start(list_name, f"Plan {named(target)}'s change", actor, work,
                              kind="fleet change plan", announce_keys=ANNOUNCE_KEYS,
                              announcer=ANNOUNCER)
 
@@ -624,7 +622,7 @@ def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: s
         batches = batches_of(hosts, first, batch)
         return _run(list_name, plan, got["commit"], batches, after_canary=after_canary,
                     actor=actor, actor_kind=actor_kind, start_at=0)
-    return capture_job.start(list_name, f"Approve and run {_named(target)}'s change", actor, work,
+    return capture_job.start(list_name, f"Approve and run {named(target)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
                              announcer=RUN_ANNOUNCER)
 

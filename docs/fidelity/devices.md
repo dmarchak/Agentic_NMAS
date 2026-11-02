@@ -26,7 +26,16 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
-Templates sha256: `064befed489ff6fdedd7b085d4b7002d832ed1b005aff9603444275176df2829`
+Templates sha256: `3b4b571f4ee3ae4a7e9511673dd6523218018c970a064aa0c629b6f1666fbece`
+(Before board FC1's entry, 2026-11-02: `064befed489ff6fdedd7b085d4b7002d832ed1b005aff9603444275176df2829`.)
+
+Compared again 2026-11-02 (board FC1, `FleetChanges.dc.html`, the selection bar's Actions; FC
+phase 2 (f2)): the menu gains **Change across the N ticked…** with FC1's sub-line, opening the
+change's form for the ticked devices (`routes/intent_layers_v2.py`); every other row unchanged.
+Two deviations, logged: Change a setting on N… stays below it until (f3) retires Bulk intent's
+own screen; FC1's Make a group of these N… is not built (a NetBox tag write, which needs the
+network's NetBox inventory: C2304, C556). Plan a deploy for the ticked devices… and Save (N)…
+are as before.
 
 Compared again 2026-11-02 (board PS, C2274, part 1) after `_devices.html` drew a device under a
 planned operation in its Status cell (`modules/planned_state.py`, one read of the network's holds

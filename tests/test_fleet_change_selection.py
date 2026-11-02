@@ -74,7 +74,7 @@ class TestThePlan:
         assert got["groups"] == [{"lines": ["ntp server 192.0.2.123"], "left": [],
                                   "devices": ["r2"]}]
         assert got["target"] == {"kind": "devices", "devices": ["r2"],
-                                 "label": "1 device' own intent"}
+                                 "label": "1 device's own intent"}
         assert "192.0.2.123" in got["texts"]["r2"] and got["layer"] == {}
         assert _head(own["repo"]) == head, "a plan commits nothing"
         assert hostvars.committed_at_head(own["repo"], "r2")[0] != got["texts"]["r2"]

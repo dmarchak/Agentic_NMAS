@@ -703,6 +703,50 @@ def _fleet_plan(client, _lab, _mp):
         mp.undo()
 
 
+def _fleet_selection(client, _lab, _mp):
+    """Devices' Change across the N ticked… (board FC1, phase 2 (f2)): its form for the ticked
+    r3 and r4 with a layer both take, and its plan, each ticked device's own document, its steps
+    and the approval carrying the selection. The layers' view and the plan are planted for this
+    provider alone, then undone; the job is the real one."""
+    import pytest
+
+    from modules import intent_layers_page
+    from modules.nsot import capture_job, fleet_change
+
+    real = intent_layers_page.view
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(intent_layers_page, "view", lambda ref, chosen="": dict(
+            real(ref, chosen), layers=[{"key": "tag-blind-lab", "rank": "tag",
+                                        "slug": "blind-lab", "label": "tag blind-lab",
+                                        "file": "layers/tag-blind-lab.yml",
+                                        "devices": ["r3", "r4", "r9"], "count": 3}]))
+        html = client.get("/v2/intent/change?list=Lab&device=r3&device=r4").get_data(as_text=True)
+        assert "data-fc-where" in html and 'value="layer:tag-blind-lab"' in html, html[:400]
+        mp.setattr(fleet_change, "plan_selection", lambda list_name, devices, steps: {
+            "ok": True, "error": "", "layer": {},
+            "target": {"kind": "devices", "devices": ["r3", "r4"],
+                       "label": "2 devices' own intent"},
+            "texts": {"r3": "hostname: r3\n"}, "base": "5a1e2f0" + "0" * 33,
+            "groups": [{"lines": ["ntp server 192.0.2.123"], "left": [], "devices": ["r3"]}],
+            "unchanged": [], "refused": [{"device": "r4", "reasons": ["its current intent is "
+                                                                       "not what the change expects"]}],
+            "devices": [{"device": "r3", "change": ["ntp server 192.0.2.123"], "pending": 0,
+                         "command_hash": "h"}],
+            "headline": "1 device, 1 group", "hash": "x",
+            "steps": [{"path": ["ntp_servers"], "before": [], "after": ["192.0.2.123"]}]})
+        r = client.post("/v2/intent/change/plan", data={
+            "list": "Lab", "target": "devices", "device": ["r3", "r4"], "path": "ntp_servers",
+            "before": "[]", "after": "[192.0.2.123]"})
+        html = r.get_data(as_text=True)
+        job = html.split("/v2/intent/change/job/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 10)
+        html = client.get(f"/v2/intent/change/job/{job}?list=Lab").get_data(as_text=True)
+        assert "data-fc-steps" in html and 'name="target" value="devices"' in html, html[:400]
+    finally:
+        mp.undo()
+
+
 def _fleet_run(client, _lab, _mp):
     """A layer change's run card (board FC5, C2283): paused after its canary (the devices left,
     Go on), and stopped at a failed device (what landed, the failure, the unattempted). THE
@@ -2650,7 +2694,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
-                   _fleet_run,
+                   _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

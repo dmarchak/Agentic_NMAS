@@ -104,6 +104,12 @@ The Actions menu:
 - **Save (<count>)…** opens Devices › Save for the ticked devices: each saves its running
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.
   See [Save to startup and as golden](save).
+- **Change across the (<count>) ticked…** opens the change's form on Source of Truth › Intent
+  for the ticked devices. Under **Where**, the change goes to each device's own intent (the
+  default) or to a layer every ticked device takes, which may reach devices beyond them; the
+  plan names each. It is the same plan, one approval and run as a layer's change: each device's
+  program, previewed, approved once by its hash, committed once, then a canary and batches,
+  the first failure stopping the run. See [Plan a layer's change](fleet-change).
 - **Change a setting on (<count>)…** opens a page for one change to the ticked devices' committed
   intent: each setting's path, the value it holds now and the value it becomes. Its preview
   refuses, by name, any device holding something else, groups the rest by what changes, and
