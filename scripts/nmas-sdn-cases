@@ -9,6 +9,10 @@ tests/fixtures/ai_cases/sdn_classify/).
     nmas-host nmas -- <checkout>/scripts/nmas-sdn-cases --list <network> \\
         --cases tests/fixtures/ai_cases/sdn_classify/held_out.json --runs 10 \\
         --out /tmp/sdn-held-out.json
+    # the same round as one batch, at the batch rate, stopped at a stated cost
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-cases --list <network> --batch \\
+        --cases tests/fixtures/blind_sets/sdn_classify/blind_cases.json --runs 10 \\
+        --stop-usd 2 --out /tmp/sdn-blind.json
 
 Each run asks every case through `closed_loop.classify_pack`, the screen's and the loop's own
 path (the classification marking, the topology class and the response limits of *--list*,
@@ -66,34 +70,46 @@ def pack_of(case: dict, network: str) -> dict:
 
 
 def check(checkout: str, case_file: str = CASES) -> list:
-    """The expectations each case's own evidence does not bear out, in words, with no call."""
-    import ipaddress
-
+    """The expectations each case's own evidence does not bear out, in words, with no call
+    (each of an ``any_of``'s alternatives on its own)."""
     from modules.ai import cases
     from modules.sdn import closed_loop
 
     out = []
     data = cases.load(os.path.join(checkout, case_file))
     for c in data["cases"]:
-        e, sent = c["expect"], closed_loop.sent_evidence(c["section"])
+        sent = closed_loop.sent_evidence(c["section"])
         if not sent["detection"]:
             out.append(f"case {c['n']}: its section holds no detection")
             continue
-        if e.get("source"):
-            want = ipaddress.ip_address(e["source"]).compressed
-            if want not in sent["names"] or want != closed_loop._canon(c["detection"].get("source")):
-                out.append(f"case {c['n']}: the expected source {want} is not the detection's "
-                           f"({c['detection'].get('source')})")
-        stray = [r for r in e.get("cites_any") or [] if r not in sent["ids"]]
-        if stray or not e.get("cites_any"):
-            out.append(f"case {c['n']}: cites_any holds {stray[:2] or 'nothing'}, not ids the "
-                       "evidence sends")
-        if e.get("flow") and e["flow"] != (c["detection"].get("subject") or {}).get("value"):
-            out.append(f"case {c['n']}: the expected flow is not the one the detection names")
-        bad = [a for a in e["action_id"] if a != closed_loop.NO_ACTION and c["detection"]["rule"]
-               not in closed_loop.CATALOGUE.get(a, {}).get("rules", ())]
-        if bad:
-            out.append(f"case {c['n']}: {bad} cannot answer the rule {c['detection']['rule']}")
+        for e in c["expect"].get("any_of") or [c["expect"]]:
+            out.extend(_stale(c, e, sent))
+    return out
+
+
+def _stale(c: dict, e: dict, sent: dict) -> list:
+    """One expectation (a case's, or one of its ``any_of`` alternatives) against the case's own
+    evidence, in words."""
+    import ipaddress
+
+    from modules.sdn import closed_loop
+
+    out = []
+    if e.get("source"):
+        want = ipaddress.ip_address(e["source"]).compressed
+        if want not in sent["names"] or want != closed_loop._canon(c["detection"].get("source")):
+            out.append(f"case {c['n']}: the expected source {want} is not the detection's "
+                       f"({c['detection'].get('source')})")
+    stray = [r for r in e.get("cites_any") or [] if r not in sent["ids"]]
+    if stray or not e.get("cites_any"):
+        out.append(f"case {c['n']}: cites_any holds {stray[:2] or 'nothing'}, not ids the "
+                   "evidence sends")
+    if e.get("flow") and e["flow"] != (c["detection"].get("subject") or {}).get("value"):
+        out.append(f"case {c['n']}: the expected flow is not the one the detection names")
+    bad = [a for a in e["action_id"] if a != closed_loop.NO_ACTION and c["detection"]["rule"]
+           not in closed_loop.CATALOGUE.get(a, {}).get("rules", ())]
+    if bad:
+        out.append(f"case {c['n']}: {bad} cannot answer the rule {c['detection']['rule']}")
     return out
 
 
@@ -166,20 +182,100 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
                       "run is void (C1756)", file=sys.stderr)
                 status = 4
                 break
-            c = got.get("classification") or {}
-            rec = {"run": run, "outcome": cases.sdn_outcome(got), "action": got.get("action"),
-                   "params": got.get("params") or {}, "answer": c,
-                   "misses": cases.sdn_classify_misses(case["expect"], got),
-                   "compared": cases.sdn_compared(got),
-                   "cost_usd": float(got.get("cost_usd") or 0), "latency_s": round(took, 2),
-                   "call_id": got.get("call_id", ""), "error": got.get("error", ""),
-                   "detail": (got.get("detail") or "")[:240]}
+            rec = recorded(case, run, got, took)
             by_case[case["n"]].append(rec)
             verdict = "pass" if not rec["misses"] else "MISS: " + "; ".join(rec["misses"])
             print(f"run {run} case {case['n']:2d} ({rec['outcome']}, {rec['action']}, "
                   f"{took:.1f} s): {verdict}", flush=True)
         if status:
             break
+    return written(data, prompt, case_file, actor, runs, spent, by_case, out, status)
+
+
+def recorded(case: dict, run: int, got: dict, took: float) -> dict:
+    """One run of one case as the recording keeps it: the outcome, the action, the judge's
+    misses (`cases.sdn_classify_misses`), the compared fields, the cost and the latency."""
+    from modules.ai import cases
+
+    c = got.get("classification") or {}
+    return {"run": run, "outcome": cases.sdn_outcome(got), "action": got.get("action"),
+            "params": got.get("params") or {}, "answer": c,
+            "misses": cases.sdn_classify_misses(case["expect"], got),
+            "compared": cases.sdn_compared(got),
+            "cost_usd": float(got.get("cost_usd") or 0), "latency_s": round(took, 2),
+            "call_id": got.get("call_id", ""), "error": got.get("error", ""),
+            "detail": (got.get("detail") or "")[:240]}
+
+
+def record_batch(checkout: str, list_name: str, actor: str, out: str, case_file: str,
+                 runs: int, model: str = "", prompt: tuple = None,
+                 stop_usd: float = None) -> int:
+    """`record`'s round as one batch (`closed_loop.classify_packs_batch`, through
+    `gateway.ask_batch`): the same cases, request path, check, judge and report, at the batch
+    rate; *stop_usd* the most the batch may cost. A run's latency is the batch's wait, not a
+    call's, so it is kept as 0 and the report says so."""
+    from modules.ai import cases, profiles, triggers
+    from modules.sdn import closed_loop
+
+    prompt = tuple(prompt or closed_loop.CLASSIFY_PROMPT)
+    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-sdn-cases: --out {out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    actor, refusal = cases.evaluation_actor(actor, "sdn-cases")
+    refusal = refusal or cases.measure_on(closed_loop.CLASSIFY_FEATURE, model)
+    if refusal:
+        print(f"nmas-sdn-cases: {refusal}", file=sys.stderr)
+        return 2
+    problems = check(checkout, case_file)
+    if problems:
+        for p in problems:
+            print(f"nmas-sdn-cases: stale expectation: {p}", file=sys.stderr)
+        print(f"nmas-sdn-cases: {len(problems)} stale expectation(s); nothing asked, nothing "
+              "spent", file=sys.stderr)
+        return 5
+    data = cases.load(os.path.join(checkout, case_file))
+    pin = profiles.TASKS[closed_loop.CLASSIFY_FEATURE]["model"]
+    if model:
+        data = dict(data, model=model)
+    if data["model"] != pin:
+        print(f"nmas-sdn-cases: the case file is for {data['model']}, the task is pinned to "
+              f"{pin}", file=sys.stderr)
+        return 2
+    print(f"nmas-sdn-cases: one batch, {len(data['cases'])} cases x {runs} runs, recorded as "
+          f"{actor}" + (f", on {model} (the pin file unchanged)" if model else "")
+          + f", prompt {prompt[0]}.v{prompt[1]}"
+          + (f", stopped at ${stop_usd:.2f}" if stop_usd is not None else ""), flush=True)
+    items = [{"n": c["n"], "detection": c["detection"], "pack": pack_of(c, list_name)}
+             for c in data["cases"]]
+    got = closed_loop.classify_packs_batch(list_name, items, runs, actor=actor,
+                                           trigger=triggers.evaluation(actor), prompt=prompt,
+                                           intact=False, stop_usd=stop_usd)
+    print(f"nmas-sdn-cases: batch {got['batch_id'] or '(none)'}: "
+          + ("ended" if got["ok"] else f"{got['error']}: {got['detail']}")
+          + f"; worst case ${got['worst_usd']:.4f}", flush=True)
+    by_case, status = {c["n"]: [] for c in data["cases"]}, 0 if got["ok"] else 3
+    for case in data["cases"]:
+        for run in range(runs):
+            one = got["results"].get(closed_loop.batch_custom_id(case["n"], prompt, run))
+            if one is None:
+                continue
+            if one.get("error") == "max_tokens":
+                print(f"nmas-sdn-cases: run {run + 1} case {case['n']} stopped at max_tokens: "
+                      "the run is void (C1756)", file=sys.stderr)
+                status = status or 4
+            rec = recorded(case, run + 1, one, 0.0)
+            by_case[case["n"]].append(rec)
+            verdict = "pass" if not rec["misses"] else "MISS: " + "; ".join(rec["misses"])
+            print(f"run {run + 1} case {case['n']:2d} ({rec['outcome']}, {rec['action']}): "
+                  f"{verdict}", flush=True)
+    return written(data, prompt, case_file, actor, runs, float(got["cost_usd"]), by_case, out,
+                   status, batch_id=got["batch_id"])
+
+
+def written(data: dict, prompt: tuple, case_file: str, actor: str, runs: int, spent: float,
+            by_case: dict, out: str, status: int, batch_id: str = "") -> int:
+    """The round's report, written to *out* and summed up on one line."""
     report = [summary(c, by_case[c["n"]]) for c in data["cases"] if by_case[c["n"]]]
     total = sum(s["runs"] for s in report)
     passed = sum(s["passed"] for s in report)
@@ -194,11 +290,15 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
                    "consistency": {"consistent": consistent, "cases": len(report)},
                    "usd_per_call": round(spent / total, 6) if total else None,
                    "usd_per_success": round(spent / answered, 6) if answered else None,
+                   **({"batch_id": batch_id, "latency": "not measured: one batch"}
+                      if batch_id else {}),
                    "report": report, "recordings": by_case}, fh, indent=2)
     lat = [r["latency_s"] for rs in by_case.values() for r in rs]
     print(f"{reliable} of {len(report)} cases reliable ({total} runs); {passed} of {total} runs "
           f"pass; {consistent} of {len(report)} consistent (reported, deciding nothing); "
-          f"latency p50 {statistics.median(lat) if lat else 0:.1f} s; ${spent:.4f} spent"
+          + ("latency not measured (one batch)" if batch_id else
+             f"latency p50 {statistics.median(lat) if lat else 0:.1f} s")
+          + f"; ${spent:.4f} spent"
           + (f", ${spent / answered:.6f} a successful answer" if answered else "")
           + f"; written {out}")
     return status
@@ -220,6 +320,10 @@ def main(argv=None) -> int:
     ap.add_argument("--prompt", type=int, default=0,
                     help="ask with this version of the classifier's prompt in place of the "
                          "adopted one (a comparison before adoption, C1988)")
+    ap.add_argument("--batch", action="store_true",
+                    help="ask the whole round as one batch (the batch path, PHASE8_PLAN 15.12)")
+    ap.add_argument("--stop-usd", type=float, default=None,
+                    help="with --batch: the most the batch may cost; refused whole above it")
     args = ap.parse_args(argv)
     checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
     sys.path.insert(0, checkout)
@@ -242,6 +346,9 @@ def main(argv=None) -> int:
         return 2
     from modules.sdn import closed_loop
     prompt = (closed_loop.CLASSIFY_PROMPT[0], args.prompt) if args.prompt else None
+    if args.batch:
+        return record_batch(checkout, args.list, args.actor, args.out, args.cases, args.runs,
+                            args.model, prompt, args.stop_usd)
     return record(checkout, args.list, args.actor, args.out, args.cases, args.runs, args.model,
                   prompt)
 

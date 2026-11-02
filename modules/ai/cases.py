@@ -861,9 +861,18 @@ def sdn_classify_misses(expect: dict, got: dict) -> list:
     not allow: ``[]`` is a pass. The answer must pass Mercury's check; then whether it finds a
     threat, its kind, its severity and its action must each be one the case allows; a source
     the action acts on must be the expected one (compared in canonical form), and a removed
-    flow the expected one; at least one id it cites must be one the detection rests on."""
+    flow the expected one; at least one id it cites must be one the detection rests on.
+
+    *expect* may instead be ``{"any_of": [<expect>, ...]}``: a key whose cell lists whole
+    alternative answers (the operator's rule: any listed alternative counts as correct, e.g. a
+    threat found and answered, or no threat), each alternative judged whole, never field by
+    field, so a mix of two (no threat with one's action) is not passed. A pass is any one
+    alternative passing; a miss names the alternative that came nearest."""
     import ipaddress
 
+    if expect.get("any_of"):
+        # A passing alternative's misses are [], the shortest; else the nearest one's.
+        return min((sdn_classify_misses(alt, got) for alt in expect["any_of"]), key=len)
     outcome = sdn_outcome(got)
     if outcome != "answer":
         why = got.get("detail") or ""

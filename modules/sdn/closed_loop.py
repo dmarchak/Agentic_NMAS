@@ -686,7 +686,7 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     the request's blocks), ``gateway`` (`gateway.ask` whole: its gates, the provider's token
     count, the caps' reservation, the send and the record) and ``check`` (the answer checked in
     code and its use recorded); a stage the step did not reach is absent."""
-    from modules.ai import calls, gateway, profiles
+    from modules.ai import gateway
 
     began = clock()
     took = {}
@@ -694,7 +694,7 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if "refused" in prep:
         return dict(prep["refused"], took=took)
     out = dict(prep["out"], took=took)
-    sent, v, pol, subject = prep["sent"], prep["limits"], prep["pol"], prep["subject"]
+    subject = prep["subject"]
     asking = clock()
     took["prepare"] = round(asking - began, 3)
     got = gateway.ask(CLASSIFY_FEATURE, tuple(prompt), prep["schema"], prep["parts"],
@@ -702,6 +702,22 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
                       today=today, subject=subject, network=network)
     checking = clock()
     took["gateway"] = round(checking - asking, 3)
+    done = checked_answer(network, detection, prep, got, out, actor=actor, trigger=trigger)
+    if got["ok"]:
+        took["check"] = round(clock() - checking, 3)
+    return done
+
+
+def checked_answer(network: str, detection: dict, prep: dict, got: dict, out: dict, *,
+                   actor: str, trigger: dict) -> dict:
+    """`classify_pack`'s steps after its call, the one code path a call and an evaluation's
+    batched answer share (`classify_packs_batch`): *got* is `gateway.ask`'s result (or a
+    batch's for one request, the same shape), *prep* `prepare_classify`'s, *out* the result
+    being built. The answer is checked in code (`check_classification`) and its use recorded
+    on the call; the result is `classify_pack`'s."""
+    from modules.ai import calls, profiles
+
+    sent, v, pol, subject = prep["sent"], prep["limits"], prep["pol"], prep["subject"]
     out.update(call_id=got.get("call_id", ""), cost_usd=got.get("cost_usd", 0.0))
     if not got["ok"]:
         return dict(out, error=got["error"], detail=got.get("detail", ""))
@@ -711,18 +727,76 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
                          links=links)
-        took["check"] = round(clock() - checking, 3)
         return dict(out, error="couldnt_classify", why=why,
                     detail=f"couldn't classify: {why}; nothing of the answer is used")
     action = answer.action_id.value
     calls.record_use(got["call_id"], f"proposed: {action}" if action != NO_ACTION
                      else "shown: no catalogue action", actor=actor, links=links)
-    took["check"] = round(clock() - checking, 3)
     shown = apply_floor(answer.model_dump(mode="json"), sent["detection"])
     shown.update(call_id=got["call_id"], cost_usd=got.get("cost_usd", 0.0),
                  model=profiles.TASKS[CLASSIFY_FEATURE]["model"],
                  trigger=(trigger or {}).get("kind", ""), params=params)
     return dict(out, ok=True, classification=shown, action=action, params=params)
+
+
+def batch_custom_id(case_n, prompt: tuple, run: int) -> str:
+    """A batched classify request's custom_id: the case, the prompt's version and the run
+    (``c3-sdn_classify-v3-r0``), in the provider's shape (letters, digits, _ and -, at most
+    64)."""
+    return f"c{case_n}-{prompt[0]}-v{int(prompt[1])}-r{int(run)}"
+
+
+def classify_packs_batch(network: str, items: list, runs: int, *, actor: str, trigger: dict,
+                         prompt: tuple = CLASSIFY_PROMPT, intact: bool = True,
+                         pol: dict = None, stop_usd: float = None, today: str = None,
+                         provider=None, sleep=None, clock=None) -> dict:
+    """An evaluation round of the classifier as one batch (PHASE8_PLAN 15.12, the batch path;
+    `gateway.ask_batch`, which refuses any trigger but an evaluation's): each of *items*
+    (``{"n", "detection", "pack"}``) asked *runs* times with *prompt*. Each request is what
+    `classify_pack` would send (`prepare_classify`, the one request path), and each answer is
+    checked as `classify_pack` checks it (`checked_answer`). *pol* (`policy_of` of a policy
+    value) asks under that policy in place of the network's, C2023's replay; never a call's.
+
+    ``{"ok", "error", "detail", "batch_id", "cost_usd", "worst_usd", "results": {custom_id:
+    classify_pack's result with "n" and "run"}}``. An item refused before any call (its pack
+    changed, the network marked, no limits) is its result in every run, with nothing sent."""
+    from modules.ai import gateway
+
+    batch_requests, preps, results = [], {}, {}
+    for item in items:
+        prep = prepare_classify(network, item["detection"], item["pack"], intact=intact,
+                                pol=pol)
+        for run in range(int(runs)):
+            cid = batch_custom_id(item["n"], prompt, run)
+            meta = {"n": item["n"], "run": run}
+            if "refused" in prep:
+                results[cid] = dict(prep["refused"], **meta)
+                continue
+            preps[cid] = (item, prep, meta)
+            batch_requests.append({"custom_id": cid, "feature": CLASSIFY_FEATURE,
+                                   "prompt": tuple(prompt), "schema": prep["schema"],
+                                   "parts": prep["parts"], "context": prep["context"],
+                                   "subject": prep["subject"]})
+    if not batch_requests:
+        return {"ok": False, "error": "nothing_sent", "detail": "every case was refused "
+                "before a batch was built (each result names why); nothing was sent",
+                "batch_id": "", "cost_usd": 0.0, "worst_usd": 0.0, "results": results}
+    got = gateway.ask_batch(batch_requests, actor=actor, trigger=trigger, today=today,
+                            stop_usd=stop_usd, provider=provider, sleep=sleep, clock=clock)
+    for cid, (item, prep, meta) in preps.items():
+        one = got["results"].get(cid)
+        if one is None:
+            results[cid] = dict(prep["out"], error=got["error"] or "no_result",
+                                detail=got["detail"] or "the batch returned no result for it",
+                                **meta)
+            continue
+        results[cid] = dict(checked_answer(network, item["detection"], prep, one,
+                                           dict(prep["out"]), actor=actor, trigger=trigger),
+                            **meta)
+    return {"ok": got["ok"], "error": got["error"], "detail": got["detail"],
+            "batch_id": got["batch_id"], "worst_usd": got["worst_usd"],
+            "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in results.values()), 6),
+            "results": results}
 
 
 def prepare_classify(network: str, detection: dict, pack: dict, *, intact: bool = True,

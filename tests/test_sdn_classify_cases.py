@@ -24,7 +24,7 @@ import os
 
 import pytest
 
-from modules.ai import cases, profiles, triggers
+from modules.ai import calls, cases, profiles, triggers
 from modules.sdn import closed_loop as CL
 from tests.test_sdn_classify import world  # noqa: F401 - the fixture
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
@@ -145,6 +145,31 @@ def test_each_file_is_on_the_pin_and_its_expectations_hold_against_its_evidence(
     assert data["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT) == "sdn_classify.v3"
     assert data["task"] == "sdn_classify"
     assert _script().check(ROOT, os.path.join(DIR, f"{name}.json")) == []
+
+
+BLIND = os.path.join("tests", "fixtures", "blind_sets", "sdn_classify")
+
+
+def test_the_blind_set_is_on_the_pin_its_key_locked_and_its_expectations_hold():
+    """The blind held-out set (C1939), built 2026-11-02 by a fresh context that never saw the
+    prompt, from the locked key and Mercury's kept packs: the key's bytes are the ones the
+    operator confirmed (any edit would unlock it), the cases are on the pin and the adopted
+    prompt, every expectation (each `any_of` alternative too) is borne out by its own
+    evidence, and each case is one of the draw's scenarios."""
+    import hashlib
+    with open(os.path.join(ROOT, BLIND, "blind_answer_key.md"), "rb") as fh:
+        assert hashlib.sha256(fh.read()).hexdigest() == \
+            "11a6ccee4457525106f3fd72fd209021c618faf5f06f9519f496bd0d1c5a851a"
+    data = cases.load(os.path.join(ROOT, BLIND, "blind_cases.json"))
+    assert data["model"] == profiles.TASKS["sdn_classify"]["model"]
+    assert data["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT)
+    assert data["task"] == "sdn_classify" and data["network"] == "sdn_lab"
+    assert _script().check(ROOT, os.path.join(BLIND, "blind_cases.json")) == []
+    with open(os.path.join(ROOT, BLIND, "blind_draw.json"), encoding="utf-8") as fh:
+        drawn = json.dumps(json.load(fh))
+    scenarios = {c["key"].split("-")[1] for c in data["cases"]}
+    assert len(data["cases"]) >= 37 and len(scenarios) >= 18
+    assert all(f'"{s}"' in drawn for s in scenarios), scenarios
 
 
 def test_a_stale_expectation_is_found(tmp_path):
@@ -348,3 +373,170 @@ def test_a_stale_expectation_stops_the_recording_before_any_call(monkeypatch, tm
     out = tmp_path / "a.json"
     assert mod.record(ROOT, "default", "evaluation:a", str(out), str(path), 5) == 5
     assert asked == [] and not out.exists()
+
+
+# ── a key cell listing whole alternatives (`any_of`) ───────────────────────────────────────────
+
+def _answered(threat, kind, action, refs, severity="low"):
+    return {"ok": True, "action": action, "params": {},
+            "classification": {"threat_detected": threat, "threat_type": kind,
+                               "severity": severity, "evidence_refs": refs,
+                               "parameters": {}}}
+
+
+def _either():
+    """A case whose key allows a threat answered by a rate limit, or no threat at all."""
+    scan = load("recorded")["cases"][0]["expect"]
+    refs = scan["cites_any"]
+    return {"any_of": [
+        {"threat_detected": True, "threat_type": ["port_scan"], "severity": ["low", "medium"],
+         "action_id": ["rate_limit_source"], "cites_any": refs},
+        {"threat_detected": False, "threat_type": ["none"], "severity": ["low"],
+         "action_id": [CL.NO_ACTION], "cites_any": refs}]}, refs
+
+
+def test_an_answer_either_alternative_allows_passes():
+    expect, refs = _either()
+    assert cases.sdn_classify_misses(
+        expect, _answered(True, "port_scan", "rate_limit_source", refs[:1])) == []
+    assert cases.sdn_classify_misses(
+        expect, _answered(False, "none", CL.NO_ACTION, refs[:1])) == []
+
+
+def test_a_mix_of_two_alternatives_misses_naming_the_nearer():
+    """Judged whole, never field by field: no threat with the first alternative's action is
+    neither answer the key allows."""
+    expect, refs = _either()
+    got = cases.sdn_classify_misses(
+        expect, _answered(False, "none", "rate_limit_source", refs[:1]))
+    assert got == [f"action rate_limit_source, expected one of ['{CL.NO_ACTION}']"], got
+
+
+def test_the_checker_checks_each_alternative_against_the_evidence():
+    mod = _script()
+    case = load("recorded")["cases"][0]
+    expect, refs = _either()
+    sent = CL.sent_evidence(case["section"])
+    assert [p for e in expect["any_of"] for p in mod._stale(case, e, sent)] == []
+    expect["any_of"][1]["cites_any"] = ["flow:not-sent"]
+    assert [p for e in expect["any_of"] for p in mod._stale(case, e, sent)] == [
+        f"case {case['n']}: cites_any holds ['flow:not-sent'], not ids the evidence sends"]
+
+
+def test_the_check_reads_every_alternative_of_a_case_file(tmp_path):
+    """`check` (the recorder's first step and `--check`) reads each `any_of` alternative, so a
+    stale second alternative stops a recording before anything is asked."""
+    data = load("recorded")
+    expect, _refs = _either()
+    expect["any_of"][1]["cites_any"] = ["flow:not-sent"]
+    data["cases"] = [dict(data["cases"][0], expect=expect)]
+    path = tmp_path / "either.json"
+    path.write_text(json.dumps(data))
+    assert _script().check(ROOT, str(path)) == [
+        f"case {data['cases'][0]['n']}: cites_any holds ['flow:not-sent'], not ids the evidence "
+        "sends"]
+
+
+# ── the batch path (`closed_loop.classify_packs_batch`, `--batch`) ─────────────────────────────
+
+def _fake_batches(by_cid):
+    """The provider's batch calls, faked (tests/test_ai_batch.py's): *by_cid(custom_id)* is the
+    answer each request gets, as JSON text."""
+    from tests.test_ai_batch import FakeBatches, _message
+    return FakeBatches(answer=lambda cid, params: {
+        "type": "succeeded", "message": _message(json.dumps(by_cid(cid)))}, states=("ended",))
+
+
+def _case_of(cid):
+    return int(cid.split("-")[0][1:])
+
+
+def test_a_batched_round_sends_what_a_call_sends_and_checks_each_answer_the_same(world):  # noqa: F811
+    """Each batched request's messages are the live call's for the same case, byte for byte
+    (one request path, `prepare_classify`), and each answer goes through the same check and
+    judge (`checked_answer`): an answer a case allows passes; one the check refuses (it cites
+    nothing) is refused in the same words."""
+    data = load("recorded")
+    by_n = {c["n"]: c for c in data["cases"]}
+    live = {}
+    for c in data["cases"]:
+        world.answer = allowed_answer(c)
+        live[c["n"]] = (_classify(world, c), world.sent[-1])
+    refuse = data["cases"][0]["n"]
+
+    def answer(cid):
+        n = _case_of(cid)
+        a = allowed_answer(by_n[n])
+        return dict(a, evidence_refs=[]) if n == refuse and cid.endswith("-r1") else a
+    fake = _fake_batches(answer)
+    actor = "evaluation:sdn-batch-test"
+    items = [{"n": c["n"], "detection": c["detection"], "pack": _script().pack_of(c, "Default")}
+             for c in data["cases"]]
+    got = CL.classify_packs_batch("Default", items, 2, actor=actor,
+                                  trigger=triggers.evaluation(actor), intact=False,
+                                  provider=fake, sleep=lambda s: None)
+    assert got["ok"] and got["batch_id"] == "msgbatch_0test", got["detail"]
+    (sent,) = fake.created
+    assert len(sent) == 2 * len(data["cases"])
+    for r in sent:
+        assert r["params"]["messages"] == live[_case_of(r["custom_id"])][1]["messages"]
+    for cid, one in got["results"].items():
+        n, case = _case_of(cid), by_n[_case_of(cid)]
+        if n == refuse and one["run"] == 1:
+            assert one["error"] == "couldnt_classify" and "cites no evidence id" in one["why"]
+            assert cases.sdn_classify_misses(case["expect"], one)
+            continue
+        assert one["ok"] and one["action"] == live[n][0]["action"], (cid, one)
+        assert cases.sdn_classify_misses(case["expect"], one) == [], cid
+
+
+def test_a_case_refused_before_any_call_is_its_result_in_every_run_and_not_sent(world):  # noqa: F811
+    """A pack whose hash does not match (*intact*, a stored pack changed since it was kept) is
+    refused by the request path before the batch is built: its result in each run, never a
+    request."""
+    c = load("recorded")["cases"][0]
+    fake = _fake_batches(lambda cid: allowed_answer(c))
+    actor = "evaluation:sdn-batch-test"
+    pack = dict(_script().pack_of(c, "Default"), hash="0" * 64)
+    got = CL.classify_packs_batch("Default", [{"n": 1, "detection": c["detection"],
+                                               "pack": pack}], 3, actor=actor,
+                                  trigger=triggers.evaluation(actor), provider=fake)
+    assert fake.created == [] and got["error"] == "nothing_sent"
+    assert [r["error"] for r in got["results"].values()] == ["changed"] * 3
+
+
+def test_the_batch_recorder_reports_as_the_recorder_does(world, monkeypatch, tmp_path):  # noqa: F811
+    """`--batch`: one batch for the whole round, recorded as `evaluation:<run>`, the same
+    report (reliability apart from consistency), the batch's id kept and its latency said not
+    measured; a stale expectation stops it before anything is sent (5)."""
+    from modules.ai import gateway
+    mod = _script()
+    data = load("recorded")
+    by_n = {c["n"]: c for c in data["cases"]}
+
+    def answer(cid):
+        a = allowed_answer(by_n[_case_of(cid)])
+        return dict(a, action_id="remove_flow") if cid.startswith("c1-") and \
+            cid.endswith("-r1") else a
+    fake = _fake_batches(answer)
+    monkeypatch.setattr(gateway, "_Batches", lambda: fake)
+    out = tmp_path / "batch.json"
+    status = mod.record_batch(ROOT, "Default", "evaluation:batch-run", str(out),
+                              os.path.join(DIR, "recorded.json"), 2)
+    rec = json.loads(out.read_text())
+    assert status == 0, rec
+    assert len(fake.created) == 1 and len(fake.created[0]) == 2 * len(data["cases"])
+    assert rec["batch_id"] == "msgbatch_0test" and rec["latency"] == "not measured: one batch"
+    assert rec["actor"] == "evaluation:batch-run" and rec["runs"] == 2
+    assert rec["reliability"] == {"reliable": len(data["cases"]) - 1,
+                                  "cases": len(data["cases"]), "runs": 2 * len(data["cases"])}
+    assert rec["report"][0]["passed"] == 1 and rec["report"][0]["reliable"] is False
+    rows = calls.read()["rows"]
+    assert {r["actor"] for r in rows} == {"evaluation:batch-run"} and \
+        all(r.get("batch") for r in rows)
+    data["cases"][0]["expect"]["source"] = "192.0.2.2"
+    stale = tmp_path / "stale.json"
+    stale.write_text(json.dumps(data))
+    assert mod.record_batch(ROOT, "Default", "evaluation:b", str(tmp_path / "b.json"),
+                            str(stale), 2) == 5
+    assert len(fake.created) == 1

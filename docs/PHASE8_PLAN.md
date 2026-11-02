@@ -22,7 +22,9 @@ binding AI engineering standards (its section 10).
 
 This section is the standing queue until Phase 8 is done; the sections beneath it are the
 detail. Each report opens with 0.4 ("Needs the operator") and states where 0.3 stands. Statuses come
-from evidence: a measurement, a commit, or a register row, as of 2026-11-01 ~23:0x UTC.
+from evidence: a measurement, a commit, or a register row, as of 2026-11-01 ~23:0x UTC; 0.2
+kept current as each feature's status changes (the operator, 2026-11-02), last 2026-11-02
+~19:0x UTC.
 
 ### 0.1 Done means
 
@@ -52,15 +54,15 @@ from evidence: a measurement, a commit, or a register row, as of 2026-11-01 ~23:
 | Feature | Status (evidence) | Bar | Last measurement | Depends on |
 |---|---|---|---|---|
 | P7, the toolbar assistant (A1, 16.10) | **not built**, grounding started: board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 70 pages, 514 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
-| P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phases 1 and 2; PS (C2274); expected effects |
+| P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
 | Explain (P1) | **measured, below its bar**: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
-| Explain in Needs attention (20.6) | **not built**: board NA-R approved 2026-11-01 | built, tested, walked | none | PS (C2274), 20.5's one row per cause |
+| Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
 | Ask in words, metrics (feature 1) | **measured, below its bar**: v10 live; main 23 of 23 reliable, held-out set 4 27 of 30 (90.0%) | 95% | 2026-10-27, 10 runs (run m10cmp-202610270145) | a held-out round after C1887 (closed) |
 | Ask in words, logs | **measured, near its bar**: v4 live; 20 of 20, blind sets 10 of 10 and 10 of 10 at 5 runs | 95% at 10 runs, about 30 held-out | 2026-10-26, 5 runs | the 10-run round and a held-out set of about 30 |
 | Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
 | Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
-| Expected effects (A2.2) | deterministic effects **built** (C506; PS drawn, C2274 open); the AI proposal **not built** | 15.12 for the AI part | none | PS's build |
-| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; A rows C2237, C2238, C2278 open; C2277 closed 2026-11-01; S-HR drawn, not built | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
+| Expected effects (A2.2) | deterministic effects **built and deployed** (C506; board PS parts 1 and 2, e02b77c8, live 2026-11-02 02:55 UTC: the planned state on the header, Devices and Topology, and the Reload card's Expected effects, tested on B2's replay; C2274 open), not walked (the operator's walk on a planned Reload after session 11); the AI proposal **not built** | 15.12 for the AI part | none | the walk; the AI proposal's board |
+| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; A rows C2237, C2238, C2278 open; C2277 closed 2026-11-01; S-HR drawn, not built | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
 | The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
 | Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
 | The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
@@ -130,7 +132,10 @@ A workstream waiting on the operator does not stop the queue: the next item is w
 estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
 2026-11-01 and 2026-10-27), shown before its round:
 - 2, evaluation: sdn_classify's 20 blind × 10 runs (its cost per call measured on the first
-  run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**;
+  run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**. **Re-estimated
+  2026-11-02 from its first run:** sdn_classify's blind round cost $0.1173 for 360 calls on the
+  batch path ($0.000326 a call), so the set's rounds are about $0.15 each and the line about
+  $2;
 - 4, Explain: a 10-run round on 22 recorded and 5 blind (about $7); one candidate screen if
   asked (about $2): **about $9**;
 - 5, P7: about 30 recorded and a blind set at 10 runs: **about $8**;
@@ -4496,6 +4501,12 @@ Board FC's five phases, each gated and reported apart: (1) layers, provenance an
 render; (2) the plan and the run; (3) Credentials as the one home (C2294); (4) removal, after
 C2228's measurement; (5) P5 and P7 on top. FC replaces Bulk intent and the batch deploy, reusing
 their cores.
+
+**Revision 2 (canvas version 189) approved by the operator, 2026-11-02 ~18:3x UTC, with two
+changes phase 3 builds to:** (a) `snmp_community_ro`'s kind is **generated and rotated**, never
+typed (the operator's secure-monitoring requirement; SNMPv3 later); (b) FC8's default reads "an
+account **Mercury signs in with** defaults to a unique generated value per device": a human's
+account (the lab account) is typed, never generated.
 
 ### 22.1 Phase 1's design (decided 2026-11-02, before any code)
 

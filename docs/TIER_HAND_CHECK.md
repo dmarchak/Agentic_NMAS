@@ -3400,3 +3400,31 @@ tests/test_secret_refs_layers.py and tests/test_secret_refs.py run whole in CI's
 | M4 a merge refused not turned into a refusal | killed | `test_two_tags_disagreeing_refuse_the_set_by_name_and_store_nothing` |
 | M5 the refusal not naming the merge | killed | the same |
 **The result: 5 mutants with the canary; every one killed; the file restored byte for byte.**
+
+## 2026-11-02: the classifier's evaluation round as one batch (C1939's blind set), by hand
+**What touches the tier.** A new path that sends data off the host for an evaluation:
+`closed_loop.classify_packs_batch` builds each request with `prepare_classify` (the one request
+path a call takes, unchanged: the pack's hash, the classification marking, the topology class,
+the limits and the policy, then the parts) and sends them through `gateway.ask_batch` (unchanged:
+evaluation triggers only, the egress mask, the caps and the record); each answer goes through
+`checked_answer`, `classify_pack`'s own steps after its call moved into one function the call
+and the batch share. `scripts/nmas-sdn-cases --batch` is its recorder. No mask, part or prompt
+text moves.
+**The method:** each mutant one exact text replacement, required to match once, in a
+`scripts/nmas-control` throwaway worktree, the file restored and compared byte for byte after
+each, then tests/test_sdn_classify_cases.py (and tests/test_sdn_classify.py for the first
+five) run in CI's interpreter (`scratchpad/control_sdn_batch.py` and `control_sdn_batch2.py`,
+2026-11-02 ~18:4x to 19:0x UTC). Baseline: both files pass.
+| mutant | result | killed by |
+| C0 canary: `classify_packs_batch` raises | killed | the three batch tests |
+| M1 a batched answer not checked as a call's (`checked_answer` skipped) | killed | `test_a_batched_round_sends_what_a_call_sends_and_checks_each_answer_the_same`, `test_the_batch_recorder_reports_as_the_recorder_does` |
+| M2 a batched request's parts not the call's (a part added) | killed | `test_a_batched_round_sends_what_a_call_sends_and_checks_each_answer_the_same` |
+| M3 a case refused by the request path sent anyway | killed | `test_a_case_refused_before_any_call_is_its_result_in_every_run_and_not_sent` |
+| M4 the batch recorder not checking expectations before it sends | killed | `test_the_batch_recorder_reports_as_the_recorder_does` |
+| M5 the batch's id not kept | killed | the same |
+| M6 to M9 the judge's `any_of` (not read; the farther alternative named; only the first judged; the checker reading only the first) | killed | `test_an_answer_either_alternative_allows_passes`, `test_a_mix_of_two_alternatives_misses_naming_the_nearer`, `test_the_check_reads_every_alternative_of_a_case_file` |
+A first run had two survivors: `any()` → `all()` in the judge, an equivalent mutant (the
+shortest of the alternatives' misses is `[]` whenever one passes), removed by writing the line
+as that `min` alone; and the checker reading only the first alternative, which a test calling
+`_stale` directly could not see, now killed by a test through `check`.
+**The result: 9 mutants with the canary; every one killed; the files restored byte for byte.**
