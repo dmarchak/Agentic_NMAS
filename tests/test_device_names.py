@@ -218,7 +218,7 @@ INVENTORY = {
     "scripts/nmas-capture-output": (3, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1, r3, s1"),
     "scripts/nmas-check-credential": (2, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1"),
     "scripts/nmas-config-read": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: s1"),
-    "scripts/nmas-heartbeat-rules": (14, PROVENANCE, "a measurement names the device it was taken on: r1, r10, s1, s3, s4"),
+    "scripts/nmas-heartbeat-rules": (13, PROVENANCE, "a measurement names the device it was taken on: r1, r10, s1, s3, s4"),
     "scripts/nmas-netbox-deletions": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r3"),
     "scripts/nmas-netbox-ip-provenance": (2, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r3"),
     "scripts/nmas-netbox-mask-context": (3, PROVENANCE, "a measurement names the device it was taken on: r5"),

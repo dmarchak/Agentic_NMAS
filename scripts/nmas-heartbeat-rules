@@ -628,6 +628,51 @@ def _loki_url(arg: str) -> str:
         return ""
 
 
+#: A check line that means a device has no working liveness alert: the run fails (C1791).
+NO_LIVENESS = ("MISSING ",)
+
+
+def detection_words(line: str, installed_now: dict) -> str:
+    """What a finding's device's installed rule still catches: its window, as "dead caught
+    within about N min" (C1791's measured detection time), or nothing where the line names
+    no device with an installed rule."""
+    host = line.split(":", 1)[0].split()[-1]
+    rule = installed_now.get(host)
+    if not rule:
+        return ""
+    window = int(rule[0])
+    return (f"; its rule still fires on {window} s of silence, so {host} dead is caught "
+            f"within about {math.ceil(window / 60)} min")
+
+
+def reported(code: int, lines: list, installed_now: dict) -> tuple:
+    """``(exit status, lines to print)`` for a check's *code* and *lines* (`check`'s).
+
+    C1791 (the operator's design, 2026-10-26 and 2026-10-28): the job's health is whether it
+    ran; what it found is a finding. A device told to heartbeat with no rule has no liveness
+    alert at all, so the run FAILS (CRITICAL, job health's failing state). Any other finding (a
+    band or rate moved, jitter, inseparable, provisional ready, a rule for a device no longer
+    told, a quiet device) is a FINDING: the run ends ok, and job health reads each FINDING line
+    as a warning, with the device's measured detection time (its rule still firing on its
+    silence)."""
+    bad = [l for l in lines if l.split()[0].isupper()]
+    failing = [l for l in bad if l.startswith(NO_LIVENESS)]
+    if failing:
+        # The HEADLINE first, stating the failure plainly: job_health reports a failing run's
+        # first line that names a failure, and "current r1" ahead of "MISSING s3" would bury
+        # the one that matters.
+        head = (f"FAILED: {len(failing)} of {len(lines)} device(s) have no heartbeat rule: "
+                + "; ".join(l.split(":")[0] for l in failing))
+    elif bad:
+        head = (f"FOUND: {len(bad)} of {len(lines)} device(s) need a person: "
+                + "; ".join(l.split(":")[0] for l in bad))
+    else:
+        head = f"heartbeat windows current for {len(lines)} device(s)"
+    body = [f"FINDING {l}{detection_words(l, installed_now)}" if l in bad and not failing else l
+            for l in lines]
+    return (code if failing else EXIT_OK), [head] + body
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -686,17 +731,12 @@ def main() -> int:
         except FileNotFoundError:
             print(f"STALE: {args.out} does not exist")
             return EXIT_STALE
-        code, lines = check(installed(committed), fresh, expected)
-        # The HEADLINE first, stating the failure plainly: job_health reports
-        # a failing run's first line that names a failure, and "current r1"
-        # ahead of "STALE RATE s3" would bury the one that matters.
-        bad = [l for l in lines if l.split()[0].isupper()]
-        print(f"FAILED: {len(bad)} of {len(lines)} device(s) need attention: "
-              + "; ".join(l.split(":")[0] for l in bad) if bad else
-              f"heartbeat windows current for {len(lines)} device(s)")
-        print("\n".join(lines))
+        now_installed = installed(committed)
+        code, lines = check(now_installed, fresh, expected)
+        status, said = reported(code, lines, now_installed)
+        print("\n".join(said))
         print(restart_words(restarts, restart_note))
-        return code
+        return status
 
     try:
         doc = build(fresh, args.datasource_uid, heartbeat, job)

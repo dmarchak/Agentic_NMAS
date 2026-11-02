@@ -653,6 +653,9 @@ _JOB_STATES = {
     "never_succeeded": ("has never succeeded", "danger"),
     "not_installed": ("is not installed", "danger"),
     "stale": ("has not succeeded recently", "warning"),
+    # A run that ended ok and found something for a person (C1791): never "failing", which
+    # is the job not running; its findings are in the detail.
+    "found": ("ran and found something to look at", "warning"),
     "unknown": ("could not be checked", "unknown"),
     "unset_guard": ("is an empty setting that switches off a guard", "warning"),
     "contradiction": ("is declared not applicable and is also set", "warning"),

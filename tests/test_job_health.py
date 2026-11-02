@@ -156,6 +156,55 @@ def test_could_not_ask_is_unknown_not_ok(show_rc, journal_rc):
     assert s["state"] == "unknown"
 
 
+HEARTBEAT = next(j for j in J.JOBS if j["unit"] == "nmas-heartbeat-check")
+
+
+def _found_run(ts, findings):
+    """A heartbeat check that ran, found something and ended ok (C1791): its own lines, as
+    `scripts/nmas-heartbeat-rules --check` prints them, then systemd's success."""
+    unit = "nmas-heartbeat-check"
+    return "\n".join(
+        [_line(ts - 13, f"systemd[1]: Starting {unit}.service - NMAS: heartbeat windows ...")]
+        + [_line(ts - 1, f"nmas-heartbeat-rules[779606]: {l}") for l in
+           [f"FOUND: {len(findings)} of 12 device(s) need a person: "
+            + "; ".join(f.split(":")[0] for f in findings),
+            "current    r1: window 750 s inside (601, 899)"]
+           + [f"FINDING {f}" for f in findings]]
+        + [_line(ts, f"systemd[1]: {unit}.service: Deactivated successfully.")])
+
+
+class TestAFindingIsNotAFailure:
+    """C1791 (the operator's design): a check that ran and found something is its own warning,
+    never the job failing; its action matches its cause (C1684)."""
+
+    BAND = ("STALE BAND s3: window 1571 s, but gaps are now 404.6-481.5 s, needing (963, 1214); "
+            "its rule still fires on 1571 s of silence, so s3 dead is caught within about 27 min")
+    JITTER = ("JITTER s3: window 1571 s, but gaps are now 403.1-532.0 s; its rule still fires on "
+              "1571 s of silence, so s3 dead is caught within about 27 min")
+
+    def test_a_run_that_found_a_stale_band_reads_found_naming_it_with_re_measure(self):
+        s = J.job_status(HEARTBEAT, NOW, _runner(LOADED, _found_run(NOW - 60, [self.BAND])))
+        assert s["state"] == "found" and s["findings"] == [self.BAND]
+        assert "it found: STALE BAND s3" in s["detail"] and "within about 27 min" in s["detail"]
+        assert s["action"]["label"].startswith("Re-measure the heartbeat windows")
+        assert s["consecutive_failures"] == 0 and s["last_error"] == ""
+
+    def test_jitter_alone_is_left_as_it_is_never_re_measured(self):
+        s = J.job_status(HEARTBEAT, NOW, _runner(LOADED, _found_run(NOW - 60, [self.JITTER])))
+        assert s["state"] == "found"
+        assert s["action"]["label"].startswith("Leave the window as it is")
+
+    def test_a_clean_run_after_a_finding_is_ok(self):
+        journal = "\n".join([_found_run(NOW - 3600, [self.BAND]), _found_run(NOW - 60, [])])
+        s = J.job_status(HEARTBEAT, NOW, _runner(LOADED, journal))
+        assert s["state"] == "ok" and "findings" not in s
+
+    def test_a_finding_is_a_warning_on_needs_attention_never_critical(self):
+        from modules import attention
+        assert attention._JOB_STATES["found"][1] == "warning"
+        assert "found" not in J.OK_STATES
+
+
 def test_a_recovery_clears_the_streak():
     journal = "\n".join([_fail(NOW - 1200), _fail(NOW - 900), _ok(NOW - 300)])
     s = J.job_status(JOB, NOW, _runner(LOADED, journal))

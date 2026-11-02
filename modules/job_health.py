@@ -50,7 +50,16 @@ JOBS = (
      "remedy": {"label": "Re-measure the heartbeat windows: each device's installed and new "
                          "window previewed, confirmed, then the one host step that installs them",
                 "href": "/v2/monitoring/heartbeat",
-                "reference": "NSOT_PLAN P.7"}},
+                "reference": "NSOT_PLAN P.7"},
+     # C1791: a finding re-measuring answers (a band or rate moved, a provisional device now
+     # measurable, a rule for a device no longer told) takes the remedy above; jitter, an
+     # inseparable device and a quiet one are a spread or a silence re-measuring cannot fix.
+     "remedy_finds": ("STALE RATE", "STALE BAND", "PROVISIONAL READY", "EXTRA"),
+     "finding_remedy": {"label": "Leave the window as it is: the device's own clock spreads "
+                                 "its heartbeats, and its rule still catches it dead in the "
+                                 "time the finding names; find what loads the device, or "
+                                 "re-measure once its gaps settle",
+                        "href": "/v2/monitoring/heartbeat", "reference": "C1791"}},
     {"unit": "nmas-telemetry-check", "max_age_minutes": 180,
      "what": "every streaming device's telemetry alert rule is installed in Grafana, hourly (C304)",
      # A missing or extra rule is fixed by regenerating the file and installing
@@ -77,6 +86,10 @@ _NAMES_A_FAILURE = _re.compile(
 #: systemd's own record of how the main process ended:
 #: "Main process exited, code=exited, status=2/INVALIDARGUMENT".
 _EXIT_STATUS = _re.compile(r"Main process exited, code=\w+, status=(\S+)")
+
+#: How a run that ended ok names what it found for a person (C1791: the job's health is that
+#: it ran; a finding is its own warning). Anchored and case-sensitive, a line's own prefix.
+FINDING = "FINDING "
 
 
 def _run(cmd: list) -> tuple:
@@ -147,6 +160,7 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     last_ok, last_fail, streak, last_error = None, None, 0, ""
     streak_start = None
     run_lines: list = []
+    ok_lines: list = []
     exit_status = ""
     for ts, text in rows:
         if "systemd[" in text:
@@ -159,6 +173,9 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
             run_lines.append(text.split(": ", 1)[-1].strip())
         if "Deactivated successfully" in text:
             last_ok, streak, streak_start = ts, 0, None
+            # A run that ended ok and FOUND something (C1791): the job's health is that it
+            # ran; what it found is the finding, read from that run's own lines.
+            ok_lines = list(run_lines)
         elif "Failed with result" in text:
             if streak == 0:
                 streak_start = ts
@@ -183,6 +200,10 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
         state = "stale"
     else:
         state = "ok"
+    findings = [l[len(FINDING):].strip() for l in ok_lines if l.startswith(FINDING)] \
+        if state == "ok" else []
+    if findings:
+        state = "found"
     # The row states its own window: "last success 1104 min ago" was read as
     # a missed run on a DAILY timer, and the reader had nothing on the row to
     # judge it against (2026-09-26). A true "ok" must say why it is ok.
@@ -191,7 +212,8 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     detail = (f"last success {ago(last_ok)} (stale after {window_text})"
               + (f"; {streak} consecutive failure(s), last {ago(last_fail)}"
                  if failed_last else "")
-              + (f"; last error: {last_error}" if failed_last and last_error else ""))
+              + (f"; last error: {last_error}" if failed_last and last_error else "")
+              + (f"; it found: {'; '.join(findings)}" if findings else ""))
     # SINCE WHEN the state has held (7.2: a Needs attention row says since
     # when). Failing: the streak's first failure in the journal window. Stale:
     # the moment the last success aged past the window. Otherwise not known,
@@ -202,7 +224,15 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     elif state == "stale" and last_ok is not None:
         since = last_ok + max_age
     remedy = job.get("remedy") if state in ("failing", "never_succeeded") else None
+    if state == "found":
+        # Its action matches its cause (C1684): a finding the job's remedy acts on takes it;
+        # one it does not (a spread the device's own clock causes) takes the job's words for
+        # leaving it.
+        acts = job.get("remedy_finds") or ()
+        remedy = (job.get("remedy") if any(f.startswith(acts) for f in findings)
+                  else job.get("finding_remedy") or job.get("remedy"))
     return {**out, "state": state, "detail": detail, "since": since,
+            **({"findings": findings} if findings else {}),
             **({"action": dict(remedy)} if remedy else {}),
             "last_success": last_ok, "last_failure": last_fail,
             "consecutive_failures": streak if failed_last else 0,

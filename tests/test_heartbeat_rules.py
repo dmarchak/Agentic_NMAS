@@ -165,6 +165,36 @@ class TestAMovedRateIsANamedState:
         assert any(l.startswith("MISSING    s1") for l in lines)
         assert any(l.startswith("EXTRA      r5") for l in lines)
 
+    def test_a_finding_ends_ok_naming_it_with_its_detection_time(self):
+        """C1791: s3's stale band is a finding, not the job failing: the run ends ok, its
+        headline FOUND, the finding's own line FINDING with what its rule still catches."""
+        fresh = H.windows({"s3": _gaps(404.6, 481.5)}, INTERVAL)
+        installed = {"s3": (1571, "measured", "uid")}
+        code, lines = H.check(installed, fresh, {"s3"})
+        status, said = H.reported(code, lines, installed)
+        assert code == H.EXIT_STALE and status == H.EXIT_OK
+        assert said[0] == "FOUND: 1 of 1 device(s) need a person: STALE BAND s3"
+        assert said[1].startswith("FINDING STALE BAND s3")
+        assert said[1].endswith("its rule still fires on 1571 s of silence, so s3 dead is "
+                                "caught within about 27 min")
+
+    def test_a_device_with_no_rule_still_fails_the_run(self):
+        """No rule is no liveness alert at all: the run fails (CRITICAL), and the other
+        findings are said plainly, never as FINDING lines the job would read as a warning."""
+        fresh = H.windows({"s1": _gaps(*MEASURED["s1"])}, INTERVAL)
+        installed = self._installed(r5=(750, "measured"))
+        code, lines = H.check(installed, fresh, {"s1"})
+        status, said = H.reported(code, lines, installed)
+        assert status == H.EXIT_STALE
+        assert said[0] == "FAILED: 1 of 2 device(s) have no heartbeat rule: MISSING    s1"
+        assert not any(l.startswith("FINDING") for l in said)
+
+    def test_current_ends_ok_with_nothing_found(self):
+        fresh = H.windows({"s1": _gaps(*MEASURED["s1"])}, INTERVAL)
+        installed = self._installed(s1=(fresh["s1"]["window"], "measured"))
+        status, said = H.reported(*H.check(installed, fresh, {"s1"}), installed)
+        assert status == H.EXIT_OK and said[0] == "heartbeat windows current for 1 device(s)"
+
     def test_installed_reads_back_what_build_wrote(self):
         import yaml
         infos = H.windows({h: _gaps(*MEASURED[h]) for h in MEASURED}, INTERVAL)
