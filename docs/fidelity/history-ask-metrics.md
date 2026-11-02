@@ -17,7 +17,10 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `9b1448aa55855c13669659cd1e792b18a846bc5788302a4c2e71a9b0e1a44687`
+Templates sha256: `1764e1558dda7af726c72b61ea22b6469642e3d018c5a785c8106fced6697c97`
+(2026-11-02, C2268: `_history_body.html` draws a hidden answer slot under History's remote
+header, where Verify and Push say their answer; nothing on this page moved. Before:
+`9b1448aa55855c13669659cd1e792b18a846bc5788302a4c2e71a9b0e1a44687`.)
 
 Compared again 2026-11-01 (the overnight brief, item 6), by the template: `_history_body.html`'s identity line is not drawn when the kinds chosen show no commit; no region of this record changed. Templates sha256 before: `ea277ec171408f7ea05b8dff19cfb67695dcc53cc0ca3949dbddd8c9e7fb6f80`.
 

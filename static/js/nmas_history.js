@@ -30,6 +30,18 @@
     return {ok: false, words: 'Not pushed: ' + (body.error || body.reason || ('HTTP ' + status))};
   }
 
+  /* The answer goes OUTSIDE the live header when the page has the slot (#hist-remote-answer,
+     C2268): the push's own `remote` announcement redraws the header, and an answer beside the
+     button went with it. Without the slot (the header drawn alone), beside the button. */
+  function answer(self, ok, words) {
+    var slot = root.document && root.document.getElementById('hist-remote-answer');
+    if (!slot) { self.good = ok; self.said = words; return; }
+    slot.textContent = words;
+    slot.className = 'remote-said ' + (ok ? 'ok' : 'bad');
+    slot.hidden = false;
+    self.said = '';
+  }
+
   function register() {
     root.Alpine.data('remotePost', function () {
       return {
@@ -51,12 +63,10 @@
                                  function () { return remoteOutcome(el.getAttribute('data-kind'), r.status, null); });
           }).then(function (o) {
             self.busy = false;
-            self.good = o.ok;
-            self.said = o.words;
+            answer(self, o.ok, o.words);
           }, function (e) {
             self.busy = false;
-            self.good = false;
-            self.said = 'The request did not reach the server (' + e + ')';
+            answer(self, false, 'The request did not reach the server (' + e + ')');
           });
         }
       };

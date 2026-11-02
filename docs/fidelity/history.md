@@ -32,7 +32,14 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `02da4d7d15a7e22855741baeac32c6f4ccc7562555039e508788d267cbcec518`
+Templates sha256: `8bdfcb069539fad0d6c111eeba65cf3591ed89e50af0cef68e93f270acbc4e9b`
+
+Compared again 2026-11-02 (C2268, PHASE8_PLAN 21.2 (4)), by the template and a real browser
+(tests/test_live_refresh_history.py): Verify and Push now say their answer in a slot under the
+remote header instead of beside the button inside it, so the header's own redraw (the push's
+`remote` announcement) leaves it; the words, colour and place under the header are as before.
+No region's verdict moved. Templates sha256 before:
+`02da4d7d15a7e22855741baeac32c6f4ccc7562555039e508788d267cbcec518`.
 
 Compared again 2026-11-02 (C2003, the operator's decision: the stall captures itself), by the
 template diff: `_timeline.html`'s kind table gains `stall` ("page stall", danger), and the Kind

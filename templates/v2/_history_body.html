@@ -7,6 +7,10 @@
   </div>
 </div>
 {% include "v2/_history_remote.html" %}
+{#- A person's own Verify or Push answer, OUTSIDE the live header (C2268, PHASE8_PLAN 21.2 (4)):
+    a push's own `remote` announcement redraws the header and wiped the answer beside its
+    button. nmas_history.js `remotePost` writes it here; no redraw touches it. -#}
+<p class="remote-said" id="hist-remote-answer" role="status" hidden></p>
 <div id="remote-setup"></div>
 <nav class="tabs" aria-label="History">
   {%- for key, label in tabs %}
