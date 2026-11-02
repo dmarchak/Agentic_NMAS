@@ -268,11 +268,12 @@ def test_a_question_with_nothing_to_mask_is_sent_byte_identical_and_nothing_said
     assert "typed_masked" not in _row()
     body = gw.sent[0]["body"]
     assert _data(body, "word") == word
-    # Exactly the request the gateway built before typed text had a mask of its own.
+    # Exactly the request the gateway built before typed text had a mask of its own, a
+    # person's press sent without the cache mark (C2261, the operator, 2026-11-01).
     pin = profiles.TASKS["connection_check"]
     assert body == redact.egress_payload(gateway.build_request(
         prompts.load("ping", 1), connection.Ping, {"word": word}, pin,
-        profile=profiles.profile(pin["model"])))
+        profile=profiles.profile(pin["model"]), cache=False))
 
 
 def test_other_parts_are_the_objects_given(gw):
@@ -303,9 +304,10 @@ def test_an_explain_pack_is_sent_as_the_request_s_one_mask_makes_it_and_nothing_
         handed.append(a[3])
         return real_ask(*a, **k)
 
-    def build(prompt, schema_model, parts, pin, context=None, profile=None):
+    def build(prompt, schema_model, parts, pin, context=None, profile=None, **kw):
         built.append((prompt, schema_model, parts, pin, context, profile))
-        return real_build(prompt, schema_model, parts, pin, context=context, profile=profile)
+        return real_build(prompt, schema_model, parts, pin, context=context, profile=profile,
+                          **kw)
     monkeypatch.setattr(gateway, "ask", ask)
     monkeypatch.setattr(gateway, "build_request", build)
     world.answer = _explained(world.pack)
@@ -325,7 +327,9 @@ def test_an_explain_pack_is_sent_as_the_request_s_one_mask_makes_it_and_nothing_
     assert all(b[2][k] is parts[k] for k in parts
                if not any(w["where"].startswith(k) for w in held["withheld"]))
     body = world.sent[0]["body"]
-    assert body == redact.egress_payload(real_build(*b[:4], context=b[4], profile=b[5]))
+    # A person's press: no cache mark (C2261, the operator, 2026-11-01).
+    assert body == redact.egress_payload(real_build(*b[:4], context=b[4], profile=b[5],
+                                                    cache=False))
     assert redact.egress_payload(body) == body, "a second mask changes nothing"
     assert "<redacted:snmp_community>" in world.sent[0]["bytes"], "the pack's planted line"
     assert all("typed_masked" not in r for r in calls.read()["rows"])

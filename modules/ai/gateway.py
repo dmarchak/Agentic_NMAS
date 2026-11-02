@@ -285,7 +285,7 @@ def _delimited(tag: str, parts: dict) -> str:
 
 
 def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: dict = None,
-                  profile: dict = None, cache_ttl: str = None) -> dict:
+                  profile: dict = None, cache_ttl: str = None, cache: bool = True) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
     prompt, then the *context* (what every call of a feature shares, as 8.1's builder
     vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
@@ -298,12 +298,15 @@ def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: d
     `temperature` sent when it names one, null sending none. `ask` checks the pin's settings
     against the model before this is built. *cache_ttl* (`BATCH_CACHE_TTL`, a batched
     request's: `ask_batch`) is the one cache mark's TTL; none is the 5-minute default, the mark
-    sent as it always was."""
+    sent as it always was. *cache* False sends no mark at all (C2261, the operator's decision
+    of 2026-11-01: a person's single press, more than five minutes from the next, wrote a
+    prefix nothing read); the prompt's bytes are the same either way, only the mark differs."""
     system = [{"type": "text", "text": prompt["text"]}]
     if context:
         system.append({"type": "text", "text": _delimited("context", context)})
-    system[-1]["cache_control"] = ({"type": "ephemeral", "ttl": cache_ttl} if cache_ttl
-                                   else {"type": "ephemeral"})
+    if cache:
+        system[-1]["cache_control"] = ({"type": "ephemeral", "ttl": cache_ttl} if cache_ttl
+                                       else {"type": "ephemeral"})
     body = {
         "model": pin["model"],
         "max_tokens": int(pin["max_tokens"]),
@@ -650,10 +653,15 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
     if held["withheld"]:
         row["withheld"] = held["withheld"]
         told["withheld"] = held["withheld"]
-    # A call's request is built as it always was; only a batched one names its TTL.
+    # A call's request is built as it always was; only a batched one names its TTL. A person's
+    # single press is sent without the cache mark (C2261, the operator, 2026-11-01): presses
+    # come minutes apart, so the prefix each wrote went unread; a batch, an evaluation and a
+    # background feature's calls share their prefix and keep it.
     ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
+    marked = bool(cache_ttl) or named["trigger"]["kind"] != triggers.PERSON
     body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"], asked,
-                                               context=context, profile=profile, **ttl),
+                                               context=context, profile=profile,
+                                               cache=marked, **ttl),
                                  values)
     leaked = redact.contains_known_secret(body)
     if leaked:

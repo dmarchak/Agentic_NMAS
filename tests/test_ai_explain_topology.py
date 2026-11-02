@@ -96,7 +96,8 @@ def test_stable_context_first_and_the_alert_last(topo):
     assert body["system"][0]["text"] == prompts.load("explain", 4)["text"]
     assert explain.PROMPT == ("explain", 4)
     assert _blocks(ctx, "context") == ["network", "pack_format", "topology_format"]
-    assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    # A person's press carries no cache mark (C2261, the operator, 2026-11-01).
+    assert "cache_control" not in body["system"][-1]
     assert _blocks(user, "data") == ["fact_sheet", "network_topology", "pack", "the_alert"]
     assert got["topology"]["sent"] is True and got["topology"]["subject"] == "r1"
     # r1's four, and s1, LLDP's neighbour on its Gi3, which this inventory does not manage.

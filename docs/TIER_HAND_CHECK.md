@@ -3353,3 +3353,30 @@ was added for them, and both were killed on the second.
 | M14 a pattern matched only at a line's start | killed | 9 |
 | M15 a part that is not a string not read | killed | 1 (second run) |
 **The result: 15 mutants with the canary; every one killed.**
+
+## 2026-11-01: a person's press sent without the cache mark (C2261), by hand
+**What touches the tier.** `gateway.build_request` (egress: the body sent) gains `cache`, False
+sending no `cache_control` on the last system block; `gateway._prepared` sets it from the call's
+trigger, a person's single press unmarked, a batch (its TTL), an evaluation and a background
+feature's calls marked. The bytes sent change only by the mark: no part, no prompt text, no
+mask moves (the operator's decision of 2026-11-01, "provided the prompt bytes are unchanged").
+**The method:** as C2271's, over 7579a1e4 with the change: each mutant one exact text
+replacement, required to match once, in one `scripts/nmas-control` throwaway worktree, the file
+restored and compared byte for byte after each, then tests/test_ai_gateway.py and
+tests/test_ai_typed_text.py run with `-x` in CI's interpreter
+(`scratchpad/hand_check_c2261.py`, run 2026-11-01 ~23:4x UTC on nmas-control's snapshot
+adc24bbf7f, its log kept). Baseline: both files pass.
+| mutant | result | killed by |
+| C0 canary: `build_request` raises before it builds | killed | `test_an_answer_is_validated_strictly_and_recorded_with_its_cost` |
+| M1 `if cache:` → `if not cache:` | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M2 `if cache:` → `if True:` (every call marked) | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M3 `if cache:` → `if False:` (no call marked) | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| M4 a person's trigger marked, the others not (`!=` → `==`) | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M5 `or` → `and` (only a batch marked) | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| M6 `bool(cache_ttl)` → `not bool(cache_ttl)` | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M7 `marked = True` | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M8 `marked = False` | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| M9 `cache=marked` → `cache=True` | killed | `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| M10 `cache=marked` → `cache=False` | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| M11 `cache=marked` → `cache=None` | killed | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+**The result: 11 mutants with the canary; every one killed; the file restored byte for byte.**

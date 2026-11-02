@@ -164,7 +164,9 @@ def test_the_vocabulary_is_the_cached_prefix_and_the_question_rides_uncached(wor
     _ask(world, "errors in on each interface, top 5")
     a, b = (s["body"] for s in world.sent)
     assert a["system"] == b["system"], "the cached prefix moved between calls"
-    assert a["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    # A person's press carries no cache mark (C2261, the operator, 2026-11-01); the prefix is
+    # the same bytes, which is what a batch or evaluation run's mark caches.
+    assert "cache_control" not in a["system"][-1]
     assert "rate per second" in a["system"][-1]["text"]
     assert "input errors per interface" in a["messages"][0]["content"]
     assert "input errors per interface" not in json.dumps(a["system"])

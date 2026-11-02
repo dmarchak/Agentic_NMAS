@@ -367,9 +367,11 @@ def test_the_sheet_is_the_first_data_block_and_the_cached_prefix_is_unchanged(wo
     without = {k: v for k, v in data.items() if k != fact_sheet.PART}
     pin = profiles.TASKS["explain"]
     loaded = prompts.load(*explain.PROMPT)
-    a = gateway.build_request(loaded, explain.ExplanationV2, data, pin, explain.context(topo))
+    # Built as a person's press is sent: no cache mark (C2261, the operator, 2026-11-01).
+    a = gateway.build_request(loaded, explain.ExplanationV2, data, pin, explain.context(topo),
+                              cache=False)
     b = gateway.build_request(loaded, explain.ExplanationV2, without, pin,
-                              explain.context(topo))
+                              explain.context(topo), cache=False)
     assert a["system"] == b["system"] == body["system"]
     assert a["messages"] != b["messages"]
 

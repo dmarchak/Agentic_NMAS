@@ -91,7 +91,8 @@ def test_the_request_holds_its_prompt_vocabulary_network_and_fourteen_data_block
     _ask(world)
     _ask(world, "OSPF neighbours changing on s1")
     a, b = (s["body"] for s in world.sent)
-    assert a["system"] == b["system"] and a["system"][-1]["cache_control"]
+    # The same prefix both times; a person's press carries no cache mark (C2261).
+    assert a["system"] == b["system"] and "cache_control" not in a["system"][-1]
     assert a["system"][0]["text"] == prompts.load(*nl_query.PROMPT_LOGS)["text"]
     assert "Severity (severity)" in a["system"][1]["text"]
     # v3 (adopted 2026-10-26): the network's summary in the cached prefix too.

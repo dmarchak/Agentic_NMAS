@@ -139,7 +139,9 @@ def test_the_request_holds_the_detection_its_evidence_and_the_catalogue(world):
     # The adopted prompt's text, whole (C1988: v3 since 2026-10-27).
     assert body["system"][0]["text"] == prompts.load(*CL.CLASSIFY_PROMPT)["text"]
     assert 'name="catalogue"' in body["system"][1]["text"]
-    assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    # A person's press carries no cache mark (C2261, the operator, 2026-11-01); the loop's
+    # background calls keep it (tests/test_ai_gateway.py).
+    assert "cache_control" not in body["system"][-1]
     data = body["messages"][0]["content"]
     blocks = [line.split('"')[1] for line in data.splitlines() if line.startswith("<data name=")]
     assert blocks == ["detection", "evidence", "limits", "names"]
