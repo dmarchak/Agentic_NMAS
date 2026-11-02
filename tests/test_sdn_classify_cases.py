@@ -161,15 +161,24 @@ def test_the_blind_set_is_on_the_pin_its_key_locked_and_its_expectations_hold():
         assert hashlib.sha256(fh.read()).hexdigest() == \
             "11a6ccee4457525106f3fd72fd209021c618faf5f06f9519f496bd0d1c5a851a"
     data = cases.load(os.path.join(ROOT, BLIND, "blind_cases.json"))
-    assert data["model"] == profiles.TASKS["sdn_classify"]["model"]
-    assert data["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT)
-    assert data["task"] == "sdn_classify" and data["network"] == "sdn_lab"
-    assert _script().check(ROOT, os.path.join(BLIND, "blind_cases.json")) == []
+    moved = cases.load(os.path.join(ROOT, DIR, "recorded_from_blind.json"))
+    for d, rel in ((data, os.path.join(BLIND, "blind_cases.json")),
+                   (moved, os.path.join(DIR, "recorded_from_blind.json"))):
+        assert d["model"] == profiles.TASKS["sdn_classify"]["model"]
+        assert d["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT)
+        assert d["task"] == "sdn_classify" and d["network"] == "sdn_lab"
+        assert _script().check(ROOT, rel) == [], rel
     with open(os.path.join(ROOT, BLIND, "blind_draw.json"), encoding="utf-8") as fh:
         drawn = json.dumps(json.load(fh))
-    scenarios = {c["key"].split("-")[1] for c in data["cases"]}
-    assert len(data["cases"]) >= 37 and len(scenarios) >= 18
-    assert all(f'"{s}"' in drawn for s in scenarios), scenarios
+    # The operator's blind discipline (2026-11-02): a blind case whose failures the prompt's
+    # author read beyond their categories moved to the recorded set. The 37 built are all in
+    # one of the two, none in both, each a drawn scenario.
+    keys = [c["key"] for c in data["cases"]], [c["key"] for c in moved["cases"]]
+    assert len(keys[0]) + len(keys[1]) == 37 and not set(keys[0]) & set(keys[1])
+    assert len(set(keys[0]) | set(keys[1])) == 37
+    scenarios = {k.split("-")[1] for k in keys[0] + keys[1]}
+    assert len(scenarios) == 18 and all(f'"{s}"' in drawn for s in scenarios), scenarios
+    assert "the operator's rule" in moved["about"]
 
 
 def test_a_stale_expectation_is_found(tmp_path):

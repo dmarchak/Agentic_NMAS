@@ -58,7 +58,7 @@ def _shown(value) -> str:
     import yaml
 
     from modules.redact import redact_text
-    from routes.bulk_intent_v2 import ABSENT_WORD
+    from routes.change_form import ABSENT_WORD
 
     if value is None:
         return ABSENT_WORD
@@ -72,7 +72,7 @@ def _change_form(name: str, chosen: str, path: str) -> dict:
     from modules.nsot import bulk_intent as B
     from modules.nsot import intent_layers as L
     from modules.nsot import listref
-    from routes.bulk_intent_v2 import ABSENT_WORD
+    from routes.change_form import ABSENT_WORD
 
     row = {"path": "", "before": ABSENT_WORD, "after": ""}
     if chosen and path:
@@ -98,7 +98,7 @@ def _ticked(name: str) -> list:
     (`device_list.matching`), never the names sent."""
     from modules import device_list
     from modules.nsot import listref
-    from routes.bulk_intent_v2 import _devices
+    from routes.change_form import devices_sent as _devices
 
     every = device_list.matching(listref.resolve(name), request.values) \
         if request.values.get("match") else None
@@ -109,7 +109,7 @@ def _selection_form(name: str, devices: list, layers: list) -> dict:
     """FC1's Change across the N ticked… (phase 2 (f2)): the form for each ticked device's own
     document, or a layer every ticked device takes (*layers*, `intent_layers_page.view`'s, each
     with the devices it reaches)."""
-    from routes.bulk_intent_v2 import ABSENT_WORD
+    from routes.change_form import ABSENT_WORD
 
     n = len(devices)
     shared = [{"key": l["key"], "label": l["label"], "count": l["count"],
@@ -125,15 +125,30 @@ def change():
     """FC2's Edit… (``path``), Add a value… and Add a layer… (no ``layer``): the page with the
     change's form open above the layers. With ticked devices (Devices' Change across the N
     ticked…, ``device`` or ``match``), the form for those devices. Reads only."""
+    from routes.change_form import ABSENT_WORD, MAX_ROWS, rows_sent as _rows
     from routes.v2 import _page
 
     ctx = _ctx()
     chosen = (request.args.get("layer") or "").strip()
     if ctx["known"]:
         ticked = _ticked(ctx["list_name"])
-        ctx["f"] = (_selection_form(ctx["list_name"], ticked, (ctx["v"] or {}).get("layers") or [])
-                    if ticked else
-                    _change_form(ctx["list_name"], chosen, (request.args.get("path") or "").strip()))
+        more = bool(request.args.get("more"))
+        f = (_selection_form(ctx["list_name"], ticked, (ctx["v"] or {}).get("layers") or [])
+             if ticked else
+             _change_form(ctx["list_name"], chosen,
+                          "" if more else (request.args.get("path") or "").strip()))
+        if more:
+            # Add a setting: the rows as typed, and one more (bulk intent's form, at most its
+            # rows); a new layer's rank and slug, and the chosen Where, kept as typed.
+            rows = _rows()[:MAX_ROWS - 1]
+            f["rows"] = rows + [{"path": "", "before": ABSENT_WORD, "after": ""}]
+            f["rank"] = (request.args.get("rank") or "").strip()
+            f["slug"] = (request.args.get("slug") or "").strip()
+            f["target"] = (request.args.get("target") or "").strip()
+        f["max_rows"] = MAX_ROWS
+        ctx["f"] = f
+        if more and request.headers.get("HX-Request"):
+            return _strict(render_template("v2/_fleet_plan.html", f=f))
     return _page("v2/intent_layers.html", active_nav="intent", **ctx)
 
 
@@ -141,7 +156,7 @@ def _target_of(form) -> tuple:
     """``(target, layer key or "")`` from a posted form: ``target=devices`` with each
     ``device`` (each ticked device's own document), ``target=layer:<key>``, or the layer form's
     ``layer`` (or a new layer's rank and slug)."""
-    from routes.bulk_intent_v2 import _devices
+    from routes.change_form import devices_sent as _devices
 
     target = (form.get("target") or "").strip()
     if target == "devices":
@@ -163,7 +178,7 @@ def change_plan():
     card at once; the card re-reads when the job announces `fleet_change`. Writes nothing."""
     from modules import identity
     from modules.nsot import fleet_change, listref
-    from routes.bulk_intent_v2 import _rows, steps_of
+    from routes.change_form import rows_sent as _rows, steps_of
 
     name = (request.form.get("list") or "").strip()
     if not listref.exists(name):
@@ -258,7 +273,7 @@ def change_approve():
     card."""
     from modules import identity
     from modules.nsot import fleet_change, listref
-    from routes.bulk_intent_v2 import _rows, steps_of
+    from routes.change_form import rows_sent as _rows, steps_of
 
     name = (request.form.get("list") or "").strip()
     target, layer = _target_of(request.form)

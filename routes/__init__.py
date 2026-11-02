@@ -118,7 +118,6 @@ def register_blueprints(app) -> list:
     from routes.netbox_v2 import bp as netbox_v2_bp
     from routes.onboard_v2 import bp as onboard_v2_bp
     from routes.adopt_v2 import bp as adopt_v2_bp
-    from routes.bulk_intent_v2 import bp as bulk_intent_v2_bp
     from routes.credential_profiles_v2 import bp as credential_profiles_v2_bp
     from routes.topology_v2 import bp as topology_v2_bp
     from routes.logs_v2 import bp as logs_v2_bp
@@ -137,7 +136,7 @@ def register_blueprints(app) -> list:
                restarts_bp,
                settings_v2_bp, intent_v2_bp, templates_v2_bp, reads_v2_bp, privileged_v2_bp,
                remote_v2_bp, network_v2_bp, netbox_v2_bp, onboard_v2_bp, adopt_v2_bp,
-               bulk_intent_v2_bp, credential_profiles_v2_bp, topology_v2_bp, logs_v2_bp,
+               credential_profiles_v2_bp, topology_v2_bp, logs_v2_bp,
                dhcp_v2_bp, console_ztp_v2_bp, console_servers_v2_bp, oob_onboard_v2_bp,
                sdn_v2_bp, ai_feedback_v2_bp, intent_layers_v2_bp):
         try:

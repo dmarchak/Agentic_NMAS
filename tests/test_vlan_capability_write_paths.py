@@ -465,40 +465,63 @@ class TestBulkIntent:
         assert got["ok"] is False and f"you gave {shown['hash']}" in got["error"]
         assert _head(repo) == before
 
-    def test_change_a_setting_draws_the_refused_device_with_its_reason(self, lab,  # noqa: F811
-                                                                       tmp_path, monkeypatch):
-        """Devices › Change a setting: the preview names s2 refused with the check's words, and
-        its confirm commits s1 alone."""
+    def test_change_across_the_ticked_draws_the_refused_device_with_its_reason(
+            self, lab, tmp_path, monkeypatch):  # noqa: F811
+        """Devices › Change across the N ticked… (board FC1, which replaced Change a setting,
+        C2307): the plan names s2 refused with the check's words, and its approval commits s1
+        alone. Each device's program and THE deploy are stood in for (this lab renders no
+        deploy): the VLAN check is bulk intent's own plan, which the change's plan asks."""
         import html as _h
+        import routes.deploy as rd
+        from modules.nsot import capture_job
+        from modules.nsot import fleet_change
         repo, hostvars, _R = lab
         monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
         monkeypatch.setattr("modules.device.get_device_lists",
                             lambda: [{"name": "Lab", "filename": "lab"}])
         monkeypatch.setattr("modules.nsot.listref.exists", lambda name: str(name) == "Lab")
-        monkeypatch.setattr("routes.templatize._bulk_render_and_eligible",
-                            lambda list_name, repo: (_render, None))
+        monkeypatch.setattr("modules.nsot.restore._devices_of", lambda name: [
+            dict(PLAIN_SWITCH, hostname="s1"), dict(PLAIN_SWITCH, hostname="s2")])
         _inventory(monkeypatch, dict(PLAIN_SWITCH, hostname="s1"),
                    dict(PLAIN_SWITCH, hostname="s2"))
         held, _steps = _switches(lab)
         measure("Lab", "s1", SWITCH_ANSWERS[0])
+
+        def programs(list_name, hosts, proposing, out):
+            out["devices"] = [{"device": h, "change": ["vlan 40"], "left": [], "pending": 0,
+                               "command_hash": f"h-{h}"} for h in hosts]
+            out["groups"] = [{"lines": ["vlan 40"], "left": [], "devices": list(hosts)}]
+            out["headline"] = f"{len(hosts)} device, 1 group"
+            return ""
+        monkeypatch.setattr(fleet_change, "_plan_programs", programs)
+        monkeypatch.setattr(rd, "plan_devices", lambda ln, batch: [
+            {"device": d, "capture_hash": f"c-{d}", "command_hash": f"h-{d}"} for d in batch])
+        monkeypatch.setattr(rd, "apply_batch", lambda ln, conf, hashes, **kw: {"results": [
+            {"device": d, "outcome": "deployed", "verify": {"ok": True}} for d in conf]})
         import yaml
 
         import app as A
         flow = yaml.safe_dump(held, default_flow_style=True, width=4096).strip()
-        form = {"list": "Lab", "device": ["s1", "s2"], "summary": "guests",
+        form = {"list": "Lab", "target": "devices", "device": ["s1", "s2"],
                 "path": ["vlans"], "before": [flow],
                 "after": [yaml.safe_dump(held + [GUESTS], default_flow_style=True,
                                          width=4096).strip()]}
         client = A.app.test_client()
-        html = client.post("/v2/devices/change/preview", data=form).get_data(as_text=True)
-        assert "1 device(s), 1 group(s), 1 refused" in html, html[:600]
-        refused = re.search(r'data-keep="bi-refused".*?</details>', html, re.S).group(0)
+        html = client.post("/v2/intent/change/plan", data=form).get_data(as_text=True)
+        job = html.split("/v2/intent/change/job/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 30)
+        html = client.get(f"/v2/intent/change/job/{job}?list=Lab").get_data(as_text=True)
+        refused = re.search(r'data-fc-refused.*?</ul>', html, re.S).group(0)
         words = " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", refused)).split())
-        assert "s2 the result would be refused: the change adds VLAN 40, and whether s2 " \
+        assert "s2: the result would be refused: the change adds VLAN 40, and whether s2 " \
                "(cisco_ios, device type not named) has a VLAN database is not declared" in words
-        h = re.search(r'name="hash" value="([0-9a-f]{16})"', html).group(1)
-        r = client.post("/v2/devices/change/apply", data=dict(form, hash=h))
-        assert r.status_code == 200, r.get_data(as_text=True)[:600]
+        h = re.search(r'name="hash" value="([0-9a-f]{64})"', html).group(1)
+        r = client.post("/v2/intent/change/approve", data=dict(
+            form, hash=h, summary="guests", reason="the guest VLAN", canary="s1", batch="1",
+            after_canary="pause"))
+        run = r.get_data(as_text=True).split("/v2/intent/change/run/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(run, 30)
+        assert capture_job.get(run)["payload"]["state"] == "done", capture_job.get(run)
         assert GUESTS in _vlans(hostvars, repo, "s1")
         assert GUESTS not in _vlans(hostvars, repo, "s2")
 

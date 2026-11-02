@@ -104,8 +104,8 @@ class TestTheServerResolvesAllMatching:
         assert r.status_code == 200
         assert sorted(seen["order"]) == _names(q="cor01")
 
-    def test_change_a_setting_names_exactly_the_matching_devices(self, scale):
-        html = scale["client"].get("/v2/devices/change?list=Lab&match=1&platform=cisco_iosxe"
+    def test_change_across_the_ticked_names_exactly_the_matching_devices(self, scale):
+        html = scale["client"].get("/v2/intent/change?list=Lab&match=1&platform=cisco_iosxe"
                                    "&device=edg0001").get_data(as_text=True)
         assert sorted(HIDDEN_DEVICES.findall(html)) == _names(platform="cisco_iosxe")
 

@@ -22,10 +22,6 @@ SIGNED_OFF = {
                                     "an island, a SPOF and a path trace), B (phone, list first) "
                                     "and C (the wall), signed off 2026-10-04 (NSOT_TOPOLOGY_BRIEF); "
                                     "step 2 builds A and B, server SVG; the wall is a later step"),
-    "bulk_intent.html": ("2026-10-04", "7.4's board D (BulkIntent, 'change a setting on N "
-                                       "devices', not an editor), approved 2026-10-04 on canvas "
-                                       "v32: each device's diff and program grouped and "
-                                       "collapsible, a refused group drawn; built 2026-10-10"),
     "save.html": ("2026-10-04","7.4's board C (SaveAll, 'one Save does both'), approved "
                                 "2026-10-04 (C593): the plan from stored records, the run in "
                                 "place, the result with Retry the failed. Its first count is "

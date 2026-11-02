@@ -892,32 +892,6 @@ class TestIntentWordsPairCards(_Cards):
         return html
 
 
-# ── Bulk intent, on test_bulk_intent's lab (s1, s2, r1 with logging intent) ─
-
-class TestBulkIntentCards(_Cards):
-    from tests import test_bulk_intent as _bi, test_bulk_intent_v2 as _bv
-    lab, web = hosted(_bi.lab), hosted(_bv.web)
-
-    CASES = {
-        "bulk_intent": ("_bulk_intent.html", "Commit the change to {{ c.accepted }} device"
-                        "{{ 's' if c.accepted != 1 }}' intent",
-                        r"Commit the change to 3 devices' intent", "viewer"),
-    }
-
-    def drawn_bulk_intent(self, request):
-        from tests.test_bulk_intent_v2 import _form
-        web = request.getfixturevalue("web")
-        return _text(web["client"].post("/v2/devices/change/preview", data=_form()))
-
-    def blocked_bulk_intent(self, request, monkeypatch):
-        from tests.test_bulk_intent_v2 import _form
-        web = request.getfixturevalue("web")
-        as_service(monkeypatch)
-        html = _text(web["client"].post("/v2/devices/change/preview", data=_form()))
-        assert 'data-keep="bi-group-1"' in html, "floor: the preview's group is drawn"
-        return html
-
-
 # ── A layer change (board FC4 and FC5), on the fleet change tests' lab (r2 tagged) ─────────
 
 class TestFleetChangeCards(_Cards):
@@ -1936,9 +1910,10 @@ class TestThePopulation:
         2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28; 70 until
         the Intent tab's Store the value, C235, 2026-11-01; 71 until board FC's Approve and run
         and Go on, C2283, 2026-11-02; 73 until its Approve and commit: nothing to send, the
-        same day)."""
+        same day; 74 until Bulk intent's own screen, and its Commit the change to N devices'
+        intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 74, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 73, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

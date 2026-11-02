@@ -1239,7 +1239,7 @@ def test_decline(tmp_path, monkeypatch):
 # 2026-09-29/30 sign-offs) is read from the boards folder's `redesign/` (its Main, Logs and
 # MonitoringQuery share names with the second canvas's).
 
-# --- C650 group A: devices, bulk_intent ---
+# --- C650 group A: devices ---
 
 def _group_a_boards(name, board_file, widths):
     """A board alone at each width (the page is shot by `_group_a_page`)."""
@@ -1391,84 +1391,6 @@ def test_planned_state_topology(tmp_path, monkeypatch):
             D.note(step)
         _group_a_page("planned-topology", served, "/v2/topology?list=Lab",
                       ((1440, 1.0), (1280, 1.0), (390, 2.0)))
-
-
-def test_bulk_intent(tmp_path, monkeypatch):
-    """Devices › Change a setting beside `BulkIntent.dc.html` (board D, 1440), on
-    test_bulk_intent's lab (four devices' real fleet intent, the real render with a stub secret
-    lookup; its fixture's own lines, inline here because Save's `lab` holds the name): the
-    change as the Actions menu opens it for s1, s2 and r1 with tests/test_bulk_intent_v2.py's
-    setting, its preview (s2 drifted, so refused naming both values), and the commit's result,
-    each reached by its own button."""
-    import subprocess
-
-    from tests import browser
-    from tests import test_bulk_intent as T
-    from tests.test_bulk_intent_v2 import FLOW, KEPT
-
-    if not browser.available()[0]:
-        pytest.skip(browser.available()[1])
-    from urllib.parse import urlencode
-
-    from modules.nsot import hostvars, repo as R
-
-    monkeypatch.setattr("modules.settings_schema.get_setting",
-                        lambda key, default=None: {
-                            "nsot_git_author_name": "NMAS",
-                            "nsot_git_author_email": "nmas@localhost",
-                            "nsot_device_tag_retention": 50}.get(key, default))
-    list_dir = tmp_path / "lab"
-    list_dir.mkdir()
-    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
-    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda c: None)
-    repo = str(list_dir / "config_repo")
-    R.init_repo(repo)
-    for name in ("s1", "s2", "r1", "r3"):
-        hostvars.write_committed(repo, T._old_shape_intent(name))
-    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed", source="test")
-    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
-    monkeypatch.setattr("modules.device.get_device_lists",
-                        lambda: [{"name": "Lab", "filename": "lab"}])
-    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: str(name) == "Lab")
-    monkeypatch.setattr("routes.templatize._bulk_render_and_eligible",
-                        lambda list_name, repo: (T._render, None))
-    doc = hostvars.read_committed(repo, "s2")
-    doc["logging"]["settings"] = ["trap errors"] + T.OLD_SETTINGS[1:]
-    hostvars.write_committed(repo, doc)
-    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift", source="test")
-    before = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True,
-                            text=True).stdout.strip()
-    path = "/v2/devices/change?" + urlencode(
-        [("list", "Lab"), ("device", "s1"), ("device", "s2"), ("device", "r1"),
-         ("summary", "drop the source interface"), ("path", "logging.settings"),
-         ("before", FLOW), ("after", KEPT)])
-    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
-    _group_a_boards("bulk-intent", "BulkIntent.dc.html", ((1440, 1.0),))
-
-    def preview(b):
-        b.click('#bulk-card button[data-op="bulk-intent"][type="submit"]')
-        b.wait_for("var c=document.getElementById('bulk-card'); "
-                   "return c && c.querySelector('[data-keep=bi-refused]')", 15)
-
-    def opened(b):
-        preview(b)
-        b.js("document.querySelectorAll('#bulk-card details').forEach("
-             "function (d) { d.open = true; }); return 1")
-
-    def committed(b):
-        preview(b)
-        b.click('#bulk-card form[action$="/apply"] button[data-op="bulk-intent"]')
-        b.wait_for("var c=document.getElementById('bulk-card'); "
-                   "return c && c.textContent.indexOf('Committed') >= 0", 15)
-        subprocess.run(["git", "-C", repo, "reset", "-q", "--hard", before], check=True)
-
-    import app as A
-    with browser.Served(A.app) as served:
-        _group_a_page("bulk-intent-change", served, path, widths)
-        _group_a_page("bulk-intent-preview", served, path, widths, act=preview)
-        _group_a_page("bulk-intent-opened", served, path, ((1440, 1.0), (390, 2.0)), act=opened)
-        _group_a_page("bulk-intent-result", served, path, ((1440, 1.0), (390, 2.0)),
-                      act=committed)
 
 
 # --- C650 group B: device ---

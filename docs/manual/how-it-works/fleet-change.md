@@ -14,8 +14,16 @@ layer holds there, now and after; **Add a value…** opens it with one empty set
 layer…** asks the new layer's rank (network, site, role or tag) and its group's slug, the
 inventory's own. Each setting is a path into the layer (`users`, `ntp_servers`,
 `snmp.settings`), the value it holds now and the value it becomes, written as in an intent
-file, or `(absent)` for a setting not there. **Plan the change** starts the plan; **Cancel**
-returns to the layer.
+file, or `(absent)` for a setting not there. **Add a setting** adds another row, keeping what
+you typed (up to twelve). **Plan the change** starts the plan; **Cancel** returns to the layer.
+
+From **Devices**, tick the devices and choose, under Actions, **Change across the (<count>) ticked…**: the same
+form opens for those devices. Under **Where**, choose each device's own intent (the default:
+the change is made in each ticked device's own intent file, and a device holding something
+other than the value now is refused by name) or a layer every ticked device takes (the layer's
+change, which may reach devices beyond the ticked; the plan names each). The plan, the approval
+and the run are the same as a layer's; for each device's own intent, the commit is one commit of
+every ticked device's file that takes the change. **Cancel** returns to Devices.
 
 ## The plan {#plan}
 

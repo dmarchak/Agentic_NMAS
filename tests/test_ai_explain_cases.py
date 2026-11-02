@@ -108,6 +108,40 @@ def test_the_set_is_c1547_and_healthy_baselines_on_the_pin():
         assert c["expect"]["figures_from_pack"] is True and c["flag"], c["n"]
 
 
+BLIND = os.path.join(ROOT, "tests", "fixtures", "blind_sets", "explain")
+
+
+def test_the_blind_set_is_on_the_pin_its_key_locked_and_outside_the_backup():
+    """Explain's blind held-out set (C2121), built 2026-11-02 by a fresh context that never saw
+    the prompt, from the locked key and Mercury's kept episodes and packs: the key's bytes are
+    the ones the operator confirmed, the cases are on the pin and the adopted prompt, numbered
+    in order, each a scenario of the draw (drawn, or the backup it names), each rebuilt from an
+    episode and its kept pack, its window outside the nightly backup."""
+    import hashlib
+    import json
+    with open(os.path.join(BLIND, "blind_answer_key.md"), "rb") as fh:
+        assert hashlib.sha256(fh.read()).hexdigest() == \
+            "ab0816a085747b43dde2a065e4961dd54adf9a83e32a9b93911dc7e87a114185"
+    data = cases.load(os.path.join(BLIND, "blind_cases.json"))
+    assert data["task"] == explain.FEATURE
+    assert data["model"] == profiles.TASKS[explain.FEATURE]["model"]
+    assert tuple(data["prompt"]) == explain.PROMPT
+    assert [c["n"] for c in data["cases"]] == list(range(1, len(data["cases"]) + 1))
+    assert len(data["cases"]) >= 7
+    with open(os.path.join(BLIND, "blind_draw.json"), encoding="utf-8") as fh:
+        drawn = json.dumps(json.load(fh))
+    for c in data["cases"]:
+        # Drawn: the scenario is in the draw. A backup: it names the drawn scenario it stands
+        # for ("R6's backup (…)"), and that one is in the draw.
+        stands_for = c["scenario"] if c["drawn_as"] == "drawn" else \
+            re.match(r"^([A-Z]+\d+)'s backup \(", c["drawn_as"]).group(1)
+        assert f'"{stands_for}"' in drawn, (c["n"], stands_for)
+        r = c["rebuilt"]
+        assert r["episode"] and r["pack"].startswith("ep-"), c["n"]
+        hhmm = (r["onset"][11:16], r["at"][11:16])
+        assert not any("08:30" <= t <= "09:10" for t in hhmm), c["n"]
+
+
 def test_every_window_is_outside_the_nightly_backup():
     """A replay of a window the backup loaded measures the backup (CLAUDE.md's standing
     facts: 08:30 to 09:10 UTC). Case 1 ends at 08:20, before it. A pack rebuilt from the alert

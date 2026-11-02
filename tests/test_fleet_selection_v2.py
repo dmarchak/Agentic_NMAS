@@ -53,6 +53,25 @@ class TestTheForm:
         assert 'name="target" value="devices" checked' in html
         assert "No layer reaches every ticked device" in html
 
+    def test_add_a_setting_keeps_what_was_typed_and_draws_one_more(self, page):  # noqa: F811
+        """Bulk intent's Add a setting, on the change's own form: the rows typed are kept, one
+        empty row follows, and the ticked devices and the Where chosen ride along."""
+        r = page.get("/v2/intent/change?list=Lab&device=r2&target=devices&more=1"
+                     "&path=ntp_servers&before=%5B%5D&after=%5B192.0.2.123%5D",
+                     headers={"HX-Request": "true"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and html.lstrip().startswith("<section"), html[:200]
+        assert html.count('name="path"') == 2 and 'value="ntp_servers"' in html
+        assert 'value="[192.0.2.123]"' in html
+        assert '<input type="hidden" name="device" value="r2">' in html
+        assert 'name="target" value="devices" checked' in html
+        assert ">Add a setting</button>" in html
+
+    def test_add_a_setting_on_a_new_layer_keeps_its_rank_and_slug(self, page):  # noqa: F811
+        html = page.get("/v2/intent/change?list=Lab&more=1&rank=tag&slug=blind-lab&path=x",
+                        headers={"HX-Request": "true"}).get_data(as_text=True)
+        assert '<option value="tag" selected>' in html and 'value="blind-lab"' in html, html
+
     def test_a_layer_every_ticked_device_takes_is_offered(self, page, r2):  # noqa: F811
         _commit_layer(r2["repo"], "tag-blind-lab.yml", "domain_name: corp.example\n")
         html = page.get("/v2/intent/change?list=Lab&device=r2").get_data(as_text=True)

@@ -69,7 +69,8 @@ Shot `fleet-plan` again (form, plan, run at 1440, 1280 and 390): the states the 
 unchanged.
 
 Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html, templates/v2/_fleet_run.html
-Templates sha256: `7540837172c158189161550fded88dd939fe891484fa6f32a118a126ddc631e1`
+Templates sha256: `6ba8bbd42ad7147e0d0df8e642c34bb7281a970907cdda0c8fc5089772d4e69f`
+(Before phase 2 (f3): `7540837172c158189161550fded88dd939fe891484fa6f32a118a126ddc631e1`; the form gains Add a setting, Bulk intent's own, redrawing the form with one more row and keeping what was typed, a new layer's rank and slug and the Where chosen; FC4 draws one setting, so a deviation, logged with (f3).)
 (Before phase 2 (f2): `08b91ca542f1d40056aaf29ef5d1ac94ebcd39b5e57f9b0b63ef60e8dd1ab31e`.)
 (Before phase 2 (f1): `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`.)
 

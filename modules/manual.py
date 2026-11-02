@@ -50,7 +50,6 @@ PAGES = (
     ("persist", "Persist", H, "how-it-works/persist.md"),
     ("save", "Save to startup and as golden", H, "how-it-works/save.md"),
     ("seed", "Seed intent", H, "how-it-works/seed.md"),
-    ("bulk-intent", "Edit intent in bulk", H, "how-it-works/bulk-intent.md"),
     ("fleet-change", "Plan a layer's change", H, "how-it-works/fleet-change.md"),
     ("onboard", "Onboard a device", H, "how-it-works/onboard.md"),
     ("adopt", "Adopt a device", H, "how-it-works/adopt.md"),

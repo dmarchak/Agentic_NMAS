@@ -20,8 +20,9 @@ committed to intent for the devices you tick (see
 [Monitoring templates](monitoring-templates)). The monitoring profile's lines alone are
 planned by **Apply monitoring profile…** on a device's Monitoring tab, or Needs attention's
 **Preview the apply…**. A deploy of one device's intent also opens from Needs attention's
-**Deploy intent to <device>…**, from onboarding's **Deploy its intent…**, and from a bulk
-intent change's **Plan a deploy for these <count>…**. The page asks the server for the plan
+**Deploy intent to <device>…**, and from onboarding's **Deploy its intent…**; a change across
+ticked devices runs its own deploys, a canary then batches ([Plan a layer's change](fleet-change)).
+The page asks the server for the plan
 (`/v2/device/<device>/deploy` for one device, `/v2/monitoring/apply/preview` for several), and
 the server answers from git and the credential store. Planning opens no device session:
 

@@ -432,7 +432,7 @@ Python file for calls to `modules/identity.py`'s functions (44 files; `app.py` i
 | `modules/host_keys.py` (`who`), `modules/nsot/device_ops.py` (`hold_device`) | `request_actor`: who kept a key, who holds a device |
 | `modules/installation_settings.py` (`access_view`), `routes/identity.py` (`status`) | `posture`, `may`, `is_configured`, `trusted_peers`: the Access and identity tab and the status route |
 | `modules/network_choice.py` (`for_request`), `routes/operations.py` (`viewer_key`), `routes/network_v2.py`, `routes/update.py` | `viewer`: the per-person network choice and who is looking |
-| Recorded actors in routes: `routes/attention.py`, `breakglass.py`, `bulk_intent_v2.py`, `deploy.py`, `dhcp_v2.py`, `golden.py`, `intent_v2.py`, `netbox_safety.py`, `netbox_v2.py`, `onboard.py`, `onboard_v2.py`, `persist.py`, `privileged_v2.py`, `reads_v2.py`, `remote.py`, `remote_v2.py`, `restarts.py`, `retire.py`, `settings_v2.py`, `templates.py`, `templates_v2.py`, `templatize.py`, `topology_v2.py` | `request_actor`, `identify` or `require`: the verified actor written into receipts, records and commits |
+| Recorded actors in routes: `routes/attention.py`, `breakglass.py`, `deploy.py`, `dhcp_v2.py`, `golden.py`, `intent_v2.py`, `netbox_safety.py`, `netbox_v2.py`, `onboard.py`, `onboard_v2.py`, `persist.py`, `privileged_v2.py`, `reads_v2.py`, `remote.py`, `remote_v2.py`, `restarts.py`, `retire.py`, `settings_v2.py`, `templates.py`, `templates_v2.py`, `templatize.py`, `topology_v2.py` | `request_actor`, `identify` or `require`: the verified actor written into receipts, records and commits |
 
 ### 10.2 Signature verification of approvals
 

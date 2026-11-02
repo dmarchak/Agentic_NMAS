@@ -47,7 +47,6 @@ DIRECT = {
     "v2.decline_confirm": ("form", "device"),
     # Batches over named devices.
     "v2.save_confirm": ("form_list", "device"),
-    "bulk_intent_v2.apply": ("form_list", "device"),
     "v2.profile_apply_confirm": ("json_keys", "confirmations"),
     "v2.pair_apply_confirm": ("json_keys", "confirmations"),
     "v2.history_reapply_confirm": ("json_keys", "confirmations"),

@@ -252,7 +252,6 @@ DECLARED = {
     # Today's device-action JSON routes (retire, persist and rotate's preview and apply,
     # templatize's seed, revert and retry) left the same day (P7-24): the device_v2 entries.
     "v2.profile_propose_commit": ("intent", "remote"),
-    "bulk_intent_v2.apply": ("intent", "remote"),
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
@@ -430,8 +429,6 @@ DECLARED = {
                             "when it finishes"),
     "jobs.job_finished": Nothing("starts the job-health reader, which announces job_health "
                                  "itself when it finishes"),
-    "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
-                                      "commits"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.sdn_test": Nothing("tests an SDN controller with the values as typed and answers beside Test; saves nothing"),
     "settings_v2.sdn_saved_test": Nothing("tests a saved SDN controller and answers on its row; changes nothing"),

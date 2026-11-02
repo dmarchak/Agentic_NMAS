@@ -415,8 +415,6 @@ UNREACHED = {
     "v2/_apply_job.html": _A_JOB,
     "v2/_breakglass_done.html": _A_POST + " (a recovery record confirmed intact)",
     "v2/_breakglass_refused.html": _A_STATE + "an export, check or drill refused",
-    "v2/_bulk_intent.html": _A_STATE + "devices ticked for a bulk intent change (a form)",
-    "v2/bulk_intent.html": _A_STATE + "devices ticked for a bulk intent change (a form)",
     "v2/_coverage_deploy_preview.html": _A_STATE + "Coverage's combined deploy, devices ticked",
     "v2/coverage_deploy.html": _A_STATE + "Coverage's combined deploy, devices ticked",
     "v2/_history_reveal.html": _A_POST + " (a log line revealed on History's logs question)",
@@ -435,7 +433,8 @@ UNREACHED = {
     "v2/_topology_result.html": _A_JOB + " (a topology read)",
 }
 #: -2 2026-10-17: the pending page and _onboard_pending.html, reached by C1193's provider.
-UNREACHED_CEILING = 21
+#: -2 2026-11-02: bulk_intent.html and _bulk_intent.html, retired with their screen (C2307).
+UNREACHED_CEILING = 19
 
 # ── C1274: the loops no fixture reaches ─────────────────────────────────────────────────────
 #: Reasons shared by many loops. Each names the state the walk and the providers do not hold;

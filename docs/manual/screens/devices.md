@@ -110,10 +110,6 @@ The Actions menu:
   plan names each. It is the same plan, one approval and run as a layer's change: each device's
   program, previewed, approved once by its hash, committed once, then a canary and batches,
   the first failure stopping the run. See [Plan a layer's change](fleet-change).
-- **Change a setting on (<count>)…** opens a page for one change to the ticked devices' committed
-  intent: each setting's path, the value it holds now and the value it becomes. Its preview
-  refuses, by name, any device holding something else, groups the rest by what changes, and
-  commits once; nothing is sent until you deploy. See [Edit intent in bulk](bulk-intent).
 - **Save every device of <network> (<count>)…** opens the same Save for every device in the inventory;
   it is Save All: it asks for a baseline, earned when every device was saved and recorded at
   its committed intent, and the result says which, or why not.

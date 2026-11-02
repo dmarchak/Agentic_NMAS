@@ -192,11 +192,8 @@ NOT_AN_OPERATION = {
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",
     ("_credential_profiles.html", "Close"): "puts the profiles table back after a scheduled "
                                             "rotation run, a read",
-    ("_bulk_intent.html", "Back to Devices"):"returns to Devices, a read",
-    ("_bulk_intent.html", "Change the settings"): "puts the change's form back with what was "
-                                                  "typed, computing nothing",
-    ("_bulk_intent.html", "Add a setting"): "redraws the form with one more row, computing "
-                                            "nothing",
+    ("_fleet_plan.html", "Add a setting"): "redraws the change's form with one more row, "
+                                           "computing nothing",
     ("_adopt.html", "Close"):"returns to Devices, a read; nothing was sent",
     ("_adopt.html", "Open 's page"): "opens the adopted device's page, a read",
     ("_onboard_add.html", "Close"): "returns to Devices, a read; nothing was created",

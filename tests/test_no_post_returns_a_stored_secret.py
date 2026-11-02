@@ -85,12 +85,6 @@ def _bodies(v):
         "templates_v2.coverage_check": (404, ("form", {"list": "no-such-network"}),
                                         "a network that does not exist: refused, nothing "
                                         "measured"),
-        # Bulk intent's render delta, through v2's Change a setting since its JSON route left
-        # at 7.8 (2026-10-15): the same core, `bulk_plan_of`.
-        "bulk_intent_v2.preview": (200, ("form", {"list": LIST, "device": "r1",
-                                                  "path": "hostname", "before": "r1",
-                                                  "after": "r1x"}),
-                                   "a bulk intent change's render delta"),
         # Board FC4 (C2283): a layer change's plan starts a job; the plan comes back on the
         # job's GET, masked (`fleet_change.plan_start`). Driven here as a network that does not
         # exist: refused before anything is read, so no job outlives the sweep.

@@ -221,11 +221,6 @@ STAGES = {
         "device_v2.capture_start", "hash",
         "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
         FORWARD, "modules.nsot.repo.save_golden"),
-    # Devices › Change a setting on the ticked devices (7.4's board D): the same core.
-    "bulk_intent_v2.apply": Stages(
-        "bulk_intent_v2.preview", "hash", NO_DEVICE,
-        "n/a: a failed commit puts every file back; one device reverts alone",
-        "modules.nsot.bulk_intent.apply"),
     # Today's intent editor (templatize.edit_committed, its preview
     # templatize.preview_committed_edit) left at 7.8 (2026-10-17, P7-23) with its hash gap: the
     # Intent tab's commit below binds the base.
@@ -390,7 +385,6 @@ HISTORY = {
     "intent_v2.commit": ("intent",),
     "intent_v2.words_commit": ("intent", "ai_calls"),
     "intent_v2.secrets_set": ("secret_values",),
-    "bulk_intent_v2.apply": ("intent",),
     "device_v2.revert_confirm": ("intent",),
     "device_v2.retry_confirm": ("retries",),
     "device_v2.seed_confirm": ("intent",),

@@ -55,7 +55,7 @@ throw away an unrelated edit made since.
    `vlans` entry the intent committed now does not hold, as reverting a commit that took one
    off does), whether the device has a VLAN database, from what {{product}} holds; never the
    device. Sent: nothing. Recorded: nothing. It is the same check [Edit intent](edit-intent),
-   [Change it in words](intent-in-words#vlan-database) and [Bulk intent](bulk-intent) run: the
+   [Change it in words](intent-in-words#vlan-database) and [a change across ticked devices](fleet-change) run: the
    VLAN is put back only where the device's VLAN database is declared or measured. Otherwise
    the revert is refused, its own check failing with the words naming the reverted commit, the
    VLAN, the device, its platform and device type, and where the answer came from, or what

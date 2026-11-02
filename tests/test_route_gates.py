@@ -101,7 +101,6 @@ class TestEveryMutatingEndpointIsDeclared:
         ("device_v2.deploy_confirm", "confirm"),    # today's deploy.apply until 7.8 (P7-25)
         ("device_v2.restore_confirm", "confirm"),   # today's golden.restore_apply until 7.8
         ("device_v2.capture_confirm", "approve"),   # today's golden.capture_apply until 7.8 (P7-27)
-        ("bulk_intent_v2.apply", "approve"),
         ("settings_v2.install_save", "configure"),     # today's /settings save until 7.8
         ("settings_v2.install_ratify", "configure"),   # today's ratify until 7.8
         ("reads_v2.ask_run", "reveal"),
@@ -199,7 +198,7 @@ REFUSED_WITHOUT_IDENTITY = [
     "/v2/device/r2/capture/confirm",  # today's /golden/capture/apply until 7.8 (P7-27)
     "/v2/show-commands/run",        # many devices' reads: today's /bulk_execute left at 7.8
     "/v2/settings/installation/card/netbox/save",   # today's /settings until 7.8
-    "/v2/devices/change/apply",
+    "/v2/intent/change/approve",   # the change across the ticked (board FC), its approval
 ]
 
 
@@ -299,7 +298,7 @@ class TestAPersonPasses:
 class TestAServiceIsNotAPerson:
     @pytest.mark.parametrize("path", ["/v2/device/s1/deploy/confirm",
                                       "/v2/settings/installation/card/netbox/save",
-                                      "/v2/devices/change/apply"])
+                                      "/v2/intent/change/approve"])
     def test_a_service_is_refused(self, monkeypatch, path):
         from modules import identity
         svc = identity.Identity(actor="service:abc.access", kind="service",

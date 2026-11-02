@@ -17,9 +17,9 @@
   <div class="op-part"><h3>Where</h3><div data-fc-where>
     <p class="small">{{ f.devices | length }} ticked: {{ f.devices[:8] | join(', ') }}{% if f.devices | length > 8 %} and {{ f.devices | length - 8 }} more{% endif %}.</p>
     <fieldset class="fc-where"><legend class="sr">Where the change goes</legend>
-      <label><input type="radio" name="target" value="devices" checked> Each device's own intent <span class="muted small">(one commit of each ticked device's file)</span></label>
+      <label><input type="radio" name="target" value="devices"{% if not f.target or f.target == 'devices' %} checked{% endif %}> Each device's own intent <span class="muted small">(one commit of each ticked device's file)</span></label>
       {%- for l in f.shared %}
-      <label><input type="radio" name="target" value="layer:{{ l.key }}"> {{ l.label | capitalize }} <span class="muted small">(reaches {{ l.count }} device{{ 's' if l.count != 1 }}{% if l.beyond %}, {{ l.beyond }} beyond the ticked: the plan names them{% endif %})</span></label>
+      <label><input type="radio" name="target" value="layer:{{ l.key }}"{% if f.target == 'layer:' ~ l.key %} checked{% endif %}> {{ l.label | capitalize }} <span class="muted small">(reaches {{ l.count }} device{{ 's' if l.count != 1 }}{% if l.beyond %}, {{ l.beyond }} beyond the ticked: the plan names them{% endif %})</span></label>
       {%- endfor %}
     </fieldset>
     {%- if not f.shared %}
@@ -30,9 +30,9 @@
   <div class="op-part"><h3>The layer</h3><div>
     <fieldset class="bi-row"><legend class="sr">The new layer</legend>
       <div><label for="fc-rank">Rank</label>
-      <select id="fc-rank" name="rank">{% for r in f.ranks %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></div>
+      <select id="fc-rank" name="rank">{% for r in f.ranks %}<option value="{{ r }}"{% if f.rank == r %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
       <div><label for="fc-slug">Its group's slug</label>
-      <input id="fc-slug" name="slug" type="text" class="mono" placeholder="blind-lab" autocomplete="off"></div>
+      <input id="fc-slug" name="slug" type="text" class="mono" value="{{ f.slug or '' }}" placeholder="blind-lab" autocomplete="off"></div>
     </fieldset>
     <p class="small muted">The inventory's own site, role or tag slug; none for the network layer.</p>
   </div></div>
@@ -55,6 +55,9 @@
   </div></div>
   <div class="op-part"><h3>The plan</h3><div>
     <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="fleet-change" hx-disabled-elt="this"><span class="op-idle">Plan the change</span><span class="op-busy">Starting the plan…</span></button>{{ how('fleet-change', compact=True, op='planning a layer change') }}
+      {%- if f.rows | length < (f.max_rows or 1) %}
+      <button type="button" class="btn btn-small" hx-get="{{ url_for('intent_layers_v2.change', more=1) }}" hx-include="closest form" hx-target="#fc-plan" hx-swap="outerHTML">Add a setting</button>
+      {%- endif %}
       <a class="btn btn-small" href="{{ url_for('v2.devices', list=f.list) if f.selection else url_for('intent_layers_v2.page', list=f.list, layer=f.layer) }}">Cancel</a></p>
     <p class="small muted">The plan renders every device the change reaches with it and without it, from each device's committed configuration. It sends nothing and writes nothing.</p>
   </div></div>

@@ -122,6 +122,17 @@ def _alerts(address=V4, extra_labels=None, active=ACTIVE, heartbeat=False, kind=
     return GR.G.parse(GR.load("ruler"), view, am, NOW)
 
 
+@pytest.fixture(autouse=True)
+def own_rule_changes(tmp_path, monkeypatch):
+    """The alert rule changes this file's planted reader values record (the alerts reader's
+    after-store step, `alert_rule_changes`) kept in the test's own folder: in the session's
+    store they reached every later test in the worker, History drawing the planted rules'
+    versions (C2308: tests/test_v2_brand.py's page test then found their titles)."""
+    from modules import alert_rule_changes
+    monkeypatch.setattr(alert_rule_changes, "_path",
+                        lambda: str(tmp_path / "alert_rule_changes.jsonl"))
+
+
 @pytest.fixture
 def pack_lab(lab, tmp_path, monkeypatch):  # noqa: F811
     """test_device_v2's lab with the captures' devices, r1's golden, the pack store its own,

@@ -1,0 +1,223 @@
+{
+  "task": "explain",
+  "model": "claude-sonnet-5-5",
+  "prompt": ["explain", 4],
+  "network": "default",
+  "about": "Explain's blind held-out set (C2121; PHASE8_PLAN 15.12), its cases built 2026-11-02 by a fresh context that never saw Explain's prompt, any earlier case's expectation or any result. Each expectation is translated from the locked answer key, tests/fixtures/blind_sets/explain/blind_answer_key.md (sha256 ab0816a085747b43dde2a065e4961dd54adf9a83e32a9b93911dc7e87a114185; any listed alternative in a cell counts as correct, the operator's rule), read with its amendments (tests/fixtures/blind_sets/explain/blind_answer_key_amendments.md; A1 governs case 8 alone), into cases.explain_misses's fields, and never edited to match an answer. Each case is one alert episode the operator's attended run raised (sessions 4 and 5, 2026-10-30), named by its alert-history episode and the pack Mercury kept when it fired (C2174), both read read-only from the NMAS host's stores (evidence_packs.jsonl, network Default; alert_history.jsonl): R5 (R6's backup) episode 959d7d9579600b85a2d8, pack ep-adf142043f6fad6fd136; D1 (D3's backup) episodes 069cd0ca5218f0a4b4a7 and 538f76d73e89881ebf1e, packs ep-3107f895510008165572 and ep-a2bfc3713dd1f72561dc; B2 (drawn) episodes 6cd44c7679138168967f and, under amendment A1, 8416da101061fd0cbafa, packs ep-a79395dc3e222757a2ee and ep-ca009aeb9525c744bb9c; M5 (drawn) episodes ee6bed6441e802578e59 and 9734161de98b816ed329, packs ep-83ed2e35c52bf28b60ac and ep-abbf932700c401dd0c13; M1 (M7's backup: no s4 heartbeat episode in the seven days to the 2026-10-29 23:49 UTC watch, so M7 was not reproduced) episode e8f1b72d0cbd55e7ab7f, pack ep-3246ec33c83a8494430d. A screen rebuilds each case's pack from its episode (evidence_pack.build_for_episode; the operator's decision 8 of 2026-10-29), so a case's `needs` are checked again on the pack the round builds (cases.explain_unready) and a case whose rebuilt pack lacks them is reported unready, never judged. The selectors were checked against the kept packs only (no pack was built for this file). The judge's selectors name a section (`history:*`, `logs:*`), a device's figure, another device's alerts or an observer job, never one log line or one record, so a `lead_cites` group is the finest structural floor the judge can hold; the exact record and line the key names are the case's `flag`, a person's to read. `figures_from_pack` is the operator's standing rule for every case (never state a figure the pack does not hold), not a key column. Still to capture, sessions 6 to 11 (device CLI through the temporary lab account): R3 (R7's backup), R8, C1 (C2's backup), I1, C4, I2, I5, B1 (B4's backup), B3, C3, M6, M4; D stays two short (D2 and D5 unrunnable, accepted by the operator 2026-10-29); session 6's N1 and N2 are not in this draw. Left out, each with its reason: R5's other alerts (s1 Device unreachable (SNMP), s2 IP SLA probe failing, s1 NMAS heartbeat missing): the change and its receipt are r1's, and only r1's pack holds the receipt the key's row rests on (the operator's decision of 2026-10-29 for R5); D1's two telemetry-stream-lost alerts and its Critical syslog received: D1's row names heartbeat missing and unreachable only; B2's s5 Device unreachable (SNMP): its pack holds neither r8's window nor a receipt, so the key's must-cite is not in it and its row does not say what an answer on that pack should be; B2's later r8 telemetry-stream and Critical syslog alerts: the run's notes name r8's SNMP alert as the case's, and the key's row was not ruled for them (r8's heartbeat alert, left out of the first build for the same reason with its pack's 'Reload: unverified' record against the key's 'Person? No', is case 8, added 2026-11-02 under the operator's amendment A1, tests/fixtures/blind_sets/explain/blind_answer_key_amendments.md, written and added before any run of it; A1 changes no other case); M5's s1 episode (623d57c050114bd8ac9b): an accidental Explain was asked on its pack during the session, so it is not unseen (the operator's proposal in the run notes); M5's r1, r2, r3, r4, r6, r8 and s2 episodes: one incident, one router case and one switch case as the operator proposed; M1's other eleven SNMP episodes: one incident, the notes name r1's as the case's pack. No case is recorded until a version is measured on this set; none has been.",
+  "cases": [
+    {
+      "n": 1,
+      "name": "Blind R5: r1's link to s1 shut through Mercury's deploy, planned, with its receipt; the IP SLA probe across it fails",
+      "kind": "incident",
+      "scenario": "R5",
+      "drawn_as": "R6's backup (R6 not runnable: no BGP alert rule, C2175)",
+      "rebuilt": {
+        "device": "r1",
+        "rule": "IP SLA probe failing",
+        "onset": "2026-10-30T00:08:50Z",
+        "at": "2026-10-30T00:10:50Z",
+        "episode": "959d7d9579600b85a2d8",
+        "pack": "ep-adf142043f6fad6fd136",
+        "how": "The pack Mercury kept when the alert fired (C2174; schema 7, built 2026-10-30T00:12:36Z, hash prefix 086dccb98235, the run notes' id), on network Default; the episode is the alert history's (onset its first pending state, at when it fired). A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): the history holds Mercury's deploy receipt at 00:08:02Z beside the intent commit at 00:05:42Z and the golden at 00:08:10Z, each with who; the logs hold r1's CONFIG_I, LINK-5-CHANGED and LINEPROTO-5-UPDOWN at 00:07:17 to 00:07:19 (the device's clock) among login lines; the other alerts: s1 Device unreachable (SNMP) and s2 IP SLA probe failing firing from 00:08:50Z, and two earlier r1 probe blips resolved before 00:05Z; r1's scrapes and heartbeat healthy; every observer job healthy but one failing target each on cisco_vios_l2 and lldp.",
+      "needs": ["history:*", "logs:*", "health:r1:scrapes", "health:r1:heartbeat"],
+      "expect": {
+        "outcome": ["answer"],
+        "figures_from_pack": true,
+        "lead_cites": [["history:*"], ["logs:*"]]
+      },
+      "why": "The key's R5 row: the lead cause is a planned change by its person, with Mercury's receipt (outcome answer, a cause hypothesised); the lead must rest on the receipt and the LINEPROTO down line (lead_cites: the history section, which holds the receipt, and the logs section, which holds the line). Person? is No, and the row also accepts Yes when the answer notes the expected effect, so needs_human is not judged structurally: either value can pass, and the condition on Yes is the flag's. The row's alert is an OSPF adjacency drop; on r1 Gi3 (the operator's choice before the run) the alert Mercury raised is the IP SLA probe across the link, which changes no expectation. Confidently wrong if it calls it an unexplained fault.",
+      "flag": "A person reads the recording: the leading hypothesis says the link was shut by a planned change made through Mercury, rests on the deploy receipt (not only on the golden or intent records) and on the line-protocol-down line, and names who made it (the model's words or Mercury's who); it never calls the probe failure an unexplained fault, a link failure or s1's fault. If needs_human is true, the answer must say why in terms of the change's expected effect (confirming the outage was intended); a needs_human true with no word of the expected effect fails."
+    },
+    {
+      "n": 2,
+      "name": "Blind D1, the unreachable alert: r7 reloaded through Mercury in its declared window; SNMP unreachable while it boots",
+      "kind": "incident",
+      "scenario": "D1",
+      "drawn_as": "D3's backup (D3 not runnable: no CPU alert rule, C2175)",
+      "rebuilt": {
+        "device": "r7",
+        "rule": "Device unreachable (SNMP)",
+        "onset": "2026-10-30T00:38:50Z",
+        "at": "2026-10-30T00:40:50Z",
+        "episode": "069cd0ca5218f0a4b4a7",
+        "pack": "ep-3107f895510008165572",
+        "how": "The pack Mercury kept when the alert fired (C2174; schema 7, built 2026-10-30T00:41:22Z, hash prefix add5804d9757, the run notes' id), on network Default; the episode is the alert history's. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): the history holds 'Planned-restart window declared' at 00:37:20Z with who (the reload's own record lands at 00:47:18Z, after this alert fired, so it is not in this pack); the logs hold %SYS-5-RELOAD at 00:37:28Z after login lines; the alert carries two Grafana silences (the window's); r7 failed 10 of 46 scrapes, its heartbeat 269 s since the last beat; its neighbours r6 and r4 healthy; one other alert, s3's SNMP blip resolved at 00:29:50Z.",
+      "needs": ["history:*", "logs:*", "health:r7:scrapes", "health:r6:scrapes"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": false,
+        "figures_from_pack": true,
+        "lead_cites": [["history:*"], ["logs:*"]]
+      },
+      "why": "The key's D1 row: the lead cause is a planned reload by its person, with Mercury's record (outcome answer); Person? is No with no alternative (needs_human false); the lead must rest on Mercury's record and the reload line (lead_cites: the history section and the logs section). The key says 'receipt'; when this alert fired the reload's receipt had not landed, and the pack's Mercury record of the planned reload is the planned-restart window its Reload declared, by the person, before it acted: that record is what the history group holds here (a disagreement between the key's word and the capture, reported, the expectation unchanged). Confidently wrong if it calls it an unexplained crash.",
+      "flag": "A person reads the recording: the leading hypothesis says r7 is reloading as planned through Mercury, rests on the declared planned-restart window and the RELOAD line, and names who declared it; it never calls it an unexplained crash or an outage, and does not ask for a person."
+    },
+    {
+      "n": 3,
+      "name": "Blind D1, the heartbeat alert: r7's heartbeat missing across its planned reload, the reload's receipt in the pack",
+      "kind": "incident",
+      "scenario": "D1",
+      "drawn_as": "D3's backup (D3 not runnable: no CPU alert rule, C2175)",
+      "rebuilt": {
+        "device": "r7",
+        "rule": "NMAS heartbeat missing: r7",
+        "onset": "2026-10-30T00:37:30Z",
+        "at": "2026-10-30T00:50:00Z",
+        "episode": "538f76d73e89881ebf1e",
+        "pack": "ep-a2bfc3713dd1f72561dc",
+        "how": "The pack Mercury kept when the no-data alert fired (C2174; schema 7, built 2026-10-30T00:50:24Z, hash prefix ff96b976ffae), on network Default; onset is the pack's (r7's last heartbeat basis), at is the episode's firing. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): the history holds 'Planned-restart window declared' (00:37:20Z), 'Restarted as planned' (00:45:11Z) and 'Reload: back, verified' (00:47:18Z), each with who; the logs (66 lines, a subset sent) hold %SYS-5-RELOAD at 00:37:28Z and the boot's link, line-protocol and crypto lines from 00:46:24Z; r7's heartbeat 811 s since the last beat, 27 of 83 scrapes failed; r6 and r4 healthy; the other alerts: r7's SNMP unreachable, two telemetry streams lost and Critical syslog received, all inside the window.",
+      "needs": ["history:*", "logs:*", "health:r7:heartbeat", "health:r6:heartbeat"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": false,
+        "figures_from_pack": true,
+        "lead_cites": [["history:*"], ["logs:*"]]
+      },
+      "why": "The key's D1 row names heartbeat missing as this scenario's alert beside unreachable, so this episode is the scenario's too. Lead cause a planned reload by its person with Mercury's receipt (outcome answer); Person? No, no alternative (needs_human false); the lead rests on the receipt and the reload/boot lines (lead_cites: the history section, which here holds the reload's receipt, and the logs section). Confidently wrong if it calls it an unexplained crash.",
+      "flag": "A person reads the recording: the leading hypothesis says r7's heartbeat stopped because r7 was reloaded as planned through Mercury, rests on the reload's record (the window, the planned restart, the verified reload) and the reload and boot lines, and names who made it; it never calls it an unexplained crash, and does not ask for a person."
+    },
+    {
+      "n": 4,
+      "name": "Blind B2: r8 unreachable during the maintenance window its own Mercury Reload declared",
+      "kind": "incident",
+      "scenario": "B2",
+      "drawn_as": "drawn",
+      "rebuilt": {
+        "device": "r8",
+        "rule": "Device unreachable (SNMP)",
+        "onset": "2026-10-30T01:05:50Z",
+        "at": "2026-10-30T01:07:50Z",
+        "episode": "6cd44c7679138168967f",
+        "pack": "ep-a79395dc3e222757a2ee",
+        "how": "The pack Mercury kept when the alert fired (C2174; schema 7, built 2026-10-30T01:07:57Z, hash prefix 63e300f05330, the run notes' id), on network Default; the episode is the alert history's. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): the history holds 'Planned-restart window declared' at 01:04:34Z with who (the reload's own record, 'Reload: unverified' at 01:12:28Z, lands after this alert fired and is not in this pack); the logs hold %SYS-5-RELOAD at 01:04:45Z after login lines; the alert carries two Grafana silences (the window's); r8 failed 18 of 90 scrapes, its heartbeat 486 s since the last beat; one other alert, s5 Device unreachable (SNMP), firing from 01:05:50Z (s5 is reached through r8, as the Reload's preview said); r1 to r4 and s2 to s4 healthy.",
+      "needs": ["history:*", "health:r8:scrapes", "health:r2:scrapes"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": false,
+        "figures_from_pack": true,
+        "lead_cites": [["history:*"]]
+      },
+      "why": "The key's B2 row: any alert inside a declared maintenance window; the lead cause is the expected effect of the planned maintenance (outcome answer); Person? No, no alternative (needs_human false); the lead rests on the window and the receipt (lead_cites: the history section, which holds the window). The run raised several alerts inside the window; the run notes name this one as the case's alert, and it is the one whose pack holds the window (s5's does not). When it fired the reload's receipt had not landed, so the window is the pack's record of the maintenance (a disagreement between the key's word and the capture, reported, the expectation unchanged). Confidently wrong if it treats it as an incident.",
+      "flag": "A person reads the recording: the leading hypothesis says r8 is unreachable as the expected effect of the planned maintenance (its reload, inside the declared window), rests on the window record and names who declared it; it does not treat the alert, or s5's alert beside it, as an incident to investigate, and does not ask for a person."
+    },
+    {
+      "n": 5,
+      "name": "Blind M5, the router case: the log collector stopped on the NMAS host; r7's heartbeat missing with every neighbour's at once",
+      "kind": "incident",
+      "scenario": "M5",
+      "drawn_as": "drawn",
+      "rebuilt": {
+        "device": "r7",
+        "rule": "NMAS heartbeat missing: r7",
+        "onset": "2026-10-30T01:36:30Z",
+        "at": "2026-10-30T01:49:00Z",
+        "episode": "ee6bed6441e802578e59",
+        "pack": "ep-83ed2e35c52bf28b60ac",
+        "how": "The pack Mercury kept when the no-data alert fired (C2174; schema 7, built 2026-10-30T01:49:17Z, hash prefix 66d85a1a945b; the run notes write 66d05a1a945b), on network Default; onset is the pack's (r7's last heartbeat basis), at is the episode's firing. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): r7's heartbeat 796 s since the last beat, r6's 754 s, r4's 734 s (the last beats within about a minute of each other, around the collector's stop at 01:37:27Z); every device's scrapes 0 failed; every observer job healthy; one other alert, s5's heartbeat missing, firing from 01:49:00Z; the history still holds D1's planned reload of r7 (00:37 to 00:47Z), an hour before; the logs hold r7's login lines up to 01:26Z and nothing after.",
+      "needs": ["health:r7:heartbeat", "health:r6:heartbeat", "health:r4:heartbeat", "health:r7:scrapes", "concurrent:s5"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "figures_from_pack": true,
+        "common": {"figures": ["heartbeat"], "min_devices": 3},
+        "lead_cites": [["health:r6:heartbeat", "health:r4:heartbeat", "concurrent:s5"]],
+        "cites_or_checked": [["health:r7:scrapes", "health:r6:scrapes", "health:r4:scrapes"]]
+      },
+      "why": "The key's M5 row: the lead cause is a collector outage, shared, the devices fine (outcome answer); Person? Yes (needs_human true); the lead rests on the heartbeats missing on all at the same moment (common: one hypothesis citing heartbeat figures or other alerts of at least three devices, the alert's and two more; lead_cites: the leading hypothesis cites another device's missing heartbeat, r6's, r4's or s5's alert) and on scrapes fine (cites_or_checked: the scrape figures, cited or listed as checked, since the judge reads healthy evidence in either place). Confidently wrong if it blames each device, which the lead's group and common catch: a lead resting on r7's own evidence alone cites no other device. The pack's history holds D1's reload an hour earlier, which no answer may make the cause.",
+      "flag": "A person reads the recording: the leading hypothesis places the cause beneath the devices (the heartbeat or syslog delivery path to Mercury, the collector), not on r7; it says the devices are up (scrapes succeeding everywhere), never that r7 is down or reloading, and does not blame r7's earlier planned reload."
+    },
+    {
+      "n": 6,
+      "name": "Blind M5, the switch case: the log collector stopped on the NMAS host; s5's heartbeat missing with its neighbours' at once",
+      "kind": "incident",
+      "scenario": "M5",
+      "drawn_as": "drawn",
+      "rebuilt": {
+        "device": "s5",
+        "rule": "NMAS heartbeat missing: s5",
+        "onset": "2026-10-30T01:35:32Z",
+        "at": "2026-10-30T01:49:00Z",
+        "episode": "9734161de98b816ed329",
+        "pack": "ep-abbf932700c401dd0c13",
+        "how": "The pack Mercury kept when the no-data alert fired (C2174; schema 7, built 2026-10-30T01:49:23Z, hash prefix 161b9a1698cc, the run notes' id), on network Default; onset is the pack's (s5's last heartbeat basis), at is the episode's firing. A round rebuilds the pack from the episode with evidence_pack.build_for_episode. Chosen over s1's switch episode, on whose pack an Explain was asked by accident during the session (the operator's proposal in the run notes)."
+      },
+      "found": "The kept pack, read locally (no call): s5's heartbeat 871 s since the last beat, r8's 759 s, r2's 748 s; every device's scrapes 0 failed; every observer job healthy; one other alert, r7's heartbeat missing, firing from 01:49:00Z; no log line (logs empty); s5's history holds only records of 2026-10-23 to 2026-10-27.",
+      "needs": ["health:s5:heartbeat", "health:r8:heartbeat", "health:r2:heartbeat", "health:s5:scrapes", "concurrent:r7"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "figures_from_pack": true,
+        "common": {"figures": ["heartbeat"], "min_devices": 3},
+        "lead_cites": [["health:r8:heartbeat", "health:r2:heartbeat", "concurrent:r7"]],
+        "cites_or_checked": [["health:s5:scrapes", "health:r8:scrapes", "health:r2:scrapes"]]
+      },
+      "why": "The key's M5 row, as case 5: a collector outage, shared, the devices fine (outcome answer); Person? Yes (needs_human true); the lead rests on the heartbeats missing on all at the same moment (common, three devices; lead_cites: another device's missing heartbeat or alert) and on scrapes fine (cites_or_checked). Confidently wrong if it blames each device (here, s5 alone).",
+      "flag": "A person reads the recording: the leading hypothesis places the cause beneath the devices (the heartbeat or syslog delivery path to Mercury, the collector), not on s5; it says the devices are up (scrapes succeeding everywhere), and never that s5 is down."
+    },
+    {
+      "n": 7,
+      "name": "Blind M1: the SNMP exporter on the NMAS host stopped; r1 unreachable by SNMP with every scrape job failing on every target",
+      "kind": "incident",
+      "scenario": "M1",
+      "drawn_as": "M7's backup (M7 not reproduced: no s4 heartbeat episode in the seven days to the 2026-10-29 23:49 UTC watch)",
+      "rebuilt": {
+        "device": "r1",
+        "rule": "Device unreachable (SNMP)",
+        "onset": "2026-10-30T02:06:50Z",
+        "at": "2026-10-30T02:08:50Z",
+        "episode": "e8f1b72d0cbd55e7ab7f",
+        "pack": "ep-3246ec33c83a8494430d",
+        "how": "The pack Mercury kept when the alert fired (C2174; schema 7, built 2026-10-30T02:09:20Z, hash prefix eb1ae1cc12d1, the run notes' id), on network Default; the episode is the alert history's. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): every observer scrape job failing on every target (bgp 2 of 2, cisco_8000v 7 of 7, cisco_ipsla 6 of 6, cisco_vios_l2 5 of 5, lldp 12 of 12, ospf 8 of 8, ospfv3 6 of 6); every device in the health section failed scrapes (r1 23 of 110, r2 22, r3 28, r4 29, r6 18, r8 18, s1 7, s2 9, s3 13, s4 9) while each one's heartbeats kept arriving (85 to 328 s since the last); the other alerts: Device unreachable (SNMP) firing on ten other polled addresses and pending on one from 02:06:50Z, and, inside the 15-minute window, M5's ten heartbeat-missing alerts resolved at 01:54:00Z; r1's logs hold login lines only; r1's history ends with R5's deploys at 00:08 and 00:17Z.",
+      "needs": ["observer:job:cisco_8000v", "health:r1:scrapes", "health:r1:heartbeat", "health:r2:heartbeat"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "figures_from_pack": true,
+        "common": {"figures": ["scrapes"], "min_devices": 3},
+        "lead_cites": [["observer:job"]],
+        "cites_or_checked": [["health:r1:heartbeat", "health:r2:heartbeat", "health:r3:heartbeat", "health:r4:heartbeat", "health:r6:heartbeat", "health:r8:heartbeat", "health:s1:heartbeat", "health:s2:heartbeat", "health:s3:heartbeat", "health:s4:heartbeat"]]
+      },
+      "why": "The key's M1 row: the lead cause is a monitoring-side outage, the observer's job failing on all targets, the devices fine (outcome answer); Person? Yes (needs_human true); the lead rests on the observer job failing on all targets (lead_cites: an observer job's piece), the other alerts (common: one hypothesis citing scrape figures, other alerts or a failing observer job of at least three devices) and syslog or heartbeats still arriving (cites_or_checked: the heartbeat figures, cited or listed as checked). Confidently wrong if it blames the alerting device. The pack also holds M5's ten heartbeat alerts, resolved two minutes before this window's onset; the key's 'other alerts' are the SNMP ones, and an answer making the earlier heartbeat outage this alert's cause is not the key's.",
+      "flag": "A person reads the recording: the leading hypothesis places the cause on the monitoring side (the SNMP polling, its exporter or scrape jobs failing on every target at once), says the devices are up (heartbeats still arriving), never blames r1, and does not make the earlier, resolved heartbeat alerts this alert's cause."
+    },
+    {
+      "n": 8,
+      "name": "Blind B2, the heartbeat alert (amendment A1): r8's heartbeat missing across its planned reload in the declared window, the reload ended unverified",
+      "kind": "incident",
+      "scenario": "B2",
+      "drawn_as": "drawn",
+      "amendment": "A1",
+      "rebuilt": {
+        "device": "r8",
+        "rule": "NMAS heartbeat missing: r8",
+        "onset": "2026-10-30T01:00:23Z",
+        "at": "2026-10-30T01:13:00Z",
+        "episode": "8416da101061fd0cbafa",
+        "pack": "ep-ca009aeb9525c744bb9c",
+        "how": "The pack Mercury kept when the no-data alert fired (C2174; schema 7, built 2026-10-30T01:14:34Z, hash prefix 213bb97c1f3c, the run notes' 'r8 heartbeat missing 160'), on network Default; onset is the pack's (r8's last heartbeat basis, before the reload at 01:04Z), at is the episode's firing. A round rebuilds the pack from the episode with evidence_pack.build_for_episode."
+      },
+      "found": "The kept pack, read locally (no call): the history holds 'Planned-restart window declared' (01:04:34Z), 'Restarted as planned' (01:11:02Z) and 'Reload: unverified' (01:12:28Z, outcome failed), each with who; the logs (44 lines) hold %SYS-5-RELOAD at 01:04:45Z and the boot's link, line-protocol and crypto key lines from 01:12:24Z; r8's heartbeat 883 s since the last beat, 46 of 175 scrapes failed; r2 to r4, r1 and s2 to s4 healthy, s5 (reached through r8) with failed scrapes and a 647 s heartbeat gap; the alert carries one Grafana silence (the window's); the other alerts: r8's and s5's SNMP unreachable (resolved), r8's two telemetry streams lost and Critical syslog received (firing), and D1's r7 alerts of half an hour before (resolved).",
+      "needs": ["history:*", "health:r8:heartbeat", "health:r2:heartbeat"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "figures_from_pack": true,
+        "lead_cites": [["history:*"], ["health:r8:heartbeat", "alert:*"]]
+      },
+      "why": "Amendment A1 (the operator, 2026-11-02, tests/fixtures/blind_sets/explain/blind_answer_key_amendments.md), read with the key's B2 row: for this alert the outcome needs a person (needs_human true; an answer saying no person is needed fails), because the planned action's side effect did not recover as expected (the reload ended unverified, the operator's rule of 2026-10-30). A correct answer attributes the heartbeat gap to the planned reload (outcome answer, a cause hypothesised) and cites the unverified reload record: lead_cites, the leading hypothesis citing the history section, which holds the window, the planned restart and the unverified reload record, and the heartbeat gap it explains (r8's heartbeat figure or the alert itself). B2's row stands for the rest: the expected effect of the planned maintenance is the cause, and treating it as an unexplained incident is wrong. The judge cannot name one record within the history section, so citing the unverified record itself is the flag's.",
+      "flag": "A person reads the recording: the leading hypothesis attributes r8's heartbeat gap to its planned reload inside the declared window (names who declared it), and says the reload ended unverified, citing that record, as the reason a person is needed (to verify r8 now that it is back); it never calls the gap an unexplained outage or crash, and an answer that cites only the window or the planned restart, ignoring the unverified record, fails on reading."
+    }
+  ]
+}

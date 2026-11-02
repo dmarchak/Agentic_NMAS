@@ -228,5 +228,6 @@ def bulk_apply_of(data: dict, actor: str) -> tuple:
 
 
 # The JSON routes (POST /bulk/preview and /bulk/apply) left at 7.8 on 2026-10-15: no page
-# called them. Their home is v2's Devices › Change a setting (`routes/bulk_intent_v2.py`),
-# which calls the two functions above.
+# called them. v2's Devices › Change a setting, which called the two functions above, retired
+# on 2026-11-02 for Change across the N ticked… (board FC phase 2 (f3)); they serve
+# scripts/nmas-bulk-intent.

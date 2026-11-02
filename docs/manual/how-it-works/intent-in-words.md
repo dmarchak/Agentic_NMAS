@@ -203,7 +203,7 @@ gets no VLAN without a declaration or a measurement. The answer is read from wha
 when you draft and once when you commit; no device is asked by the draft. Removing a VLAN
 needs none of this: it takes the line out of intent, and a merge-only deploy sends nothing for
 it. The same check, in the same words, holds wherever intent is written: the
-[intent editor](edit-intent)'s commit and [Bulk intent](bulk-intent) refuse a VLAN they would
+[intent editor](edit-intent)'s commit and [a change across ticked devices](fleet-change) refuse a VLAN they would
 add on such a device too.
 
 ## The steps {#steps}

@@ -32,7 +32,7 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            # C650: the screens the operator walked in W1 (2026-10-16), compared with their
            # boards, the walk's captures and the shots.
            "landing.html": "landing.md", "devices.html": "devices.md",
-           "bulk_intent.html": "bulk-intent.md", "device.html": "device.md",
+           "device.html": "device.md",
            "history.html": "history.md", "credentials.html": "credentials.md",
            "show_commands.html": "show-commands.md",
            "show_commands_run.html": "show-commands-run.md",

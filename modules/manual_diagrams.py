@@ -282,35 +282,6 @@ def revert_retry():
     ])
 
 
-def bulk_intent():
-    return svg(470, (
-        "Editing intent in bulk sends nothing. A change file names each setting's path, its "
-        "value before and after; each device's intent at HEAD is checked against the before "
-        "value, and a device that differs is refused by name with both values. The rest are "
-        "rendered before and after through the template and the monitoring profile and grouped "
-        "by identical change; you confirm the preview's hash; one commit records every device "
-        "changed, and names those refused."), [
-        lanes(20, 464, mid=284, right="DEVICES"),
-        band(20, 64, "The change"),
-        doc("box", 14, 40, 256, 38, "Change file", "summary, then path · before · after"), num(14, 40, 1),
-        band(90, 150, "Compare and set · per device"),
-        repo(14, 112, 120, 40, "Repository", "intent at HEAD"),
-        arrow("rec", 136, 132, 160, 132),
-        doc("intent", 162, 112, 108, 40, "Intent", "before matches?"), num(162, 112, 2),
-        t(14, 178, "Matches: rendered before and after,", "sm"),
-        t(14, 191, "template and profile, then grouped by", "sm"),
-        t(14, 204, "identical change. Differs: refused by", "sm"),
-        t(14, 217, "name, with both values.", "sm"),
-        band(246, 210, "Confirm and commit"),
-        doc("box", 14, 270, 256, 40, "Preview", "groups · refused · one hash"), num(14, 270, 3),
-        person(14, 322, 256, 30, "You confirm the summary and hash"), num(14, 322, 4),
-        _down(142, 354, 374),
-        repo(14, 376, 256, 46, "One commit", "Source: bulk-intent · Refused: …"), num(14, 382, 5),
-        t(14, 444, "A failed commit puts every file back as committed.", "sm"),
-        nosend(342, 250, ("nothing is", "sent")),
-    ])
-
-
 def fleet_change():
     return svg(470, (
         "Planning a layer's change sends nothing and writes nothing. You name the layer and each "
@@ -1779,7 +1750,6 @@ DIAGRAMS = {
     "deploy": deploy,
     "onboard": onboard,
     "revert-retry": revert_retry,
-    "bulk-intent": bulk_intent,
     "fleet-change": fleet_change,
     "drift": drift,
     "drift-check": drift_check,
