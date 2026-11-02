@@ -53,7 +53,7 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 
 | Feature | Status (evidence) | Bar | Last measurement | Depends on |
 |---|---|---|---|---|
-| P7, the toolbar assistant (A1, 16.10) | **not built**, grounding started: board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 70 pages, 514 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
+| P7, the toolbar assistant (A1, 16.10) | **not built**, its retrieval built 2026-11-02 (16.10, stage 1's retrieval: BM25 with aliases and the screen boost over the manual's passages, a floor answering "the manual doesn't cover this"; recall@5 22 of 24 on the recorded cases, 4 of 4 off-manual questions gapped); board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 71 pages, 519 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
 | P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
 | Explain (P1) | **measured: the recorded set at its bar, the blind set below it** (8 cases from 5 of 19 scenarios captured): **blind, 2026-11-02** (v4, 10 runs, `msgbatch_01Cp4TFwAUEYxUqa297vr9EU` for cases 1 to 7, $1.35, and `msgbatch_01LRfmXnPGcCBMuH42vgX3ti` for case 8, added under the operator's key amendment A1, $0.22): **4 of 8 cases reliable (50%, the blind bar 85%: criterion 2 of Explain's done criteria)**, 65 of 80 runs pass, none confidently wrong raw or guarded; the failed runs by category only (the operator's blind discipline): wrong lead 14 (case 3: 5, case 4: 1, case 6: 1, case 8: 7), other 1 (case 6), none refused by validation or declined; the other scenarios come from sessions 6 to 11, and they are the test of any fix (fixes are made on the recorded cases). **Recorded (its bar 90%):** the 10-run round on 2026-11-02 (v4, the new pack, two batches of 5 runs, `msgbatch_012bhmoR8GKwYkaxk1Zj7jVC` and `msgbatch_01RHHqsvaErD5siGPUjJny5d`, $4.83, $0.0221 a successful answer): **20 of 22 recorded cases reliable (90.9%, the bar 90%)**, 209 of 220 runs pass, not reliable case 8 (9 of 10) and case 19 (0 of 10, C2141); the held-out case 10 of 10; none confidently wrong as Mercury keeps it. Before it: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
 | Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
@@ -128,8 +128,22 @@ A workstream waiting on the operator does not stop the queue: the next item is w
 
 ### 0.5 Spend: the rest of the budget
 
-**$150, about $111.7 spent** (2026-11-01 ~22:4x UTC), so about $38 left. By workstream, each an
-estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
+**$190 against the $200 credit (the operator, 2026-11-02 ~22:5x UTC), replacing the $150 budget
+of section 18 (and the operator's $280); about $10 of the credit held in reserve; the day cap
+stays $15.** **Spent since the credit, from the ledger by UTC day** (the host's
+`data/ai_calls.jsonl`, `cost_usd` summed, read 2026-11-02 ~22:5x UTC): 10-29 $15.3843, 10-30
+$0.1069, 11-01 $6.7922, 11-02 $6.5238 so far, **$28.81 in all**; the console read $28.59 used
+of the credit at the operator's reading (the $0.22 between them is unexplained: calls after the
+reading, the credit starting partway through 10-29, or the price table against the bill). **So
+about $161 is left to spend.** Lifetime Phase 8 spend before the credit, from the same ledger,
+went to the paid balance: 10-25 $0.2882, 10-26 $17.5531, 10-27 $27.7538, 10-28 $83.7209,
+**$129.32**; none is recorded for 10-24 (the record's first row is 2026-10-25 07:37 UTC).
+**Corrected 2026-11-02:** from 2026-11-01 the reports carried the 10-29 overnight report's
+"$104.93 left" forward as if it were spend, so "$111.6", "$111.7" and "$118" spent were wrong
+(C2310). **A report's running total is computed from the ledger each time it is stated, never
+carried forward by hand, and checked against the console when the operator gives a reading.**
+
+By workstream, each an estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
 2026-11-01 and 2026-10-27), shown before its round:
 - 2, evaluation: sdn_classify's 20 blind × 10 runs (its cost per call measured on the first
   run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**. **Re-estimated
@@ -148,7 +162,7 @@ estimate from a measured cost per answer where one exists (Explain $0.0257, feat
 (the operator, 2026-11-01). If a line will overrun by more than half, a budget request goes into
 0.4 and work continues on the items that spend nothing; spend is never a reason to stop the
 whole road map. A round that would pass the day cap ($15) is reported first with its estimate;
-a raise of the $150 is the operator's (0.4).
+a raise of the $190 is the operator's (0.4).
 
 ## 1. The goal
 
@@ -2213,10 +2227,12 @@ label. The defect class it prevents: a confidently wrong explanation shipped bec
 average looked good, or a useful one held back by a floor it nearly meets.
 
 **The measurement budget and screening (the operator's decisions, 2026-10-29 ~00:4x UTC).** A
-new $200 credit, expiring 2026-11-29 (every earlier credit expired), of which **$150 is Phase 8's
-measurement budget** (raised from $120 by the operator, 2026-11-01, at about $111.6 spent; the
+new $200 credit, expiring 2026-11-29 (every earlier credit expired), of which **$190 is Phase 8's
+measurement budget** (the operator, 2026-11-02, replacing $150, raised from $120 on 2026-11-01
+at what was then reported as about $111.6 spent, a figure wrong by the carried-forward balance:
+0.5, C2310; the
 next spend: sdn_classify's 20 blind cases built and scored, then Explain's 5; new Explain
-variants held); every report states spend against it. Mercury's day cap is back to $80,
+variants held); every report states spend against it. Mercury's day cap is back to $80 (since $15: 0.5),
 and a round that would pass it is asked for first. **Screen before adopting:** a candidate (a
 prompt version, a fact sheet, a model) gets a 3-run screen first, and only one that passes the
 screen gets a 10-run adoption round. Evaluation rounds (never a live feature) go through the
@@ -3452,6 +3468,45 @@ implementation.**
   - a two-ended request missing its far end;
   - a request involving a secret.
 
+**Stage 1's retrieval (the operator's order of 2026-11-02 ~22:5x UTC, before stage 1's prompt
+work; built the same night in `modules/ai/manual_index.py`).**
+- **What was built before** (measured on 5 sample questions): an IDF-weighted word score per
+  section (each word counted in the text, damped, and 3 times in the heading), a screen boost,
+  at most 4 sections within 12,000 characters. That was about 2,250 to 3,000 tokens a question
+  (estimated at 4 characters a token). Recall@5 on the recorded cases was 15 of 24 (0.62), and 3
+  of 4 off-manual questions came back with unrelated sections. "Reboot" found nothing of Reload,
+  and the screen boost was keyed by the screen's name alone.
+- **The target, as ordered:** keyword ranking (BM25) over the manual's sections; a maintained
+  alias list (host key → re-key, password → secret reference, reboot → reload); a boost for the
+  sections of the page the question is asked from; the top 5 to 8 sections, about 3 to 5k
+  tokens; fully offline, no embedding model in stage 1.
+- **Below a floor,** "the manual doesn't cover this", and a manual gap logged; never padded
+  with weaker sections.
+- **Retrieval measured apart from answers:** each recorded case names its expected sections,
+  and recall@5 is reported for the retriever alone, so a wrong answer shows whether retrieval
+  or the model failed.
+- **The prompt:** the stable instructions first and cached, the chosen sections after.
+- **Built:** BM25 (k1 1.2, b 0.75) with the heading's words 3 times more; a plural's s dropped;
+  `ALIASES`; the screen boost by the screen's name or its page's slug; at most 8 passages within
+  20,000 characters (about 5,000 tokens). Three gap rules, calibrated on the recorded set: the
+  best passage scores at least 9; it meets at least a quarter of the question's words (by
+  weight); a passage under 35% of the best is not sent.
+- **One deviation:** the manual's 519 sections are indexed as passages of at most 3,000
+  characters (each keeping its section's link). The longest section is about 17,000
+  characters, so 5 to 8 whole sections cannot fit 3 to 5k tokens.
+- **Measured** on the recorded set (`tests/fixtures/ai_cases/assistant/retrieval.json`, 24
+  covered and 4 off-manual questions): recall@5 22 of 24 (0.92), 4 of 4 off-manual questions
+  answered with no passage. The 5 sample questions get 7 or 8 passages, about 2,250 to 4,550
+  tokens. The misses: "a fresh copy of the running config" (Capture ranks below Rekey's and
+  Onboard's passages) and Retire's apply (its lead and preview found instead).
+- **Recorded, not blind:** the cases and the aliases were written by the retriever's author, so
+  0.92 is a recorded figure. The blind set (a fresh context's cases) is its test.
+- **Not built yet, each the ask route's, with stage 1's prompt:**
+  - the gap's record (a write: the route's, never the read that ranks);
+  - the prompt's order (stable instructions cached, then the passages);
+  - tokens and cost per question from the first run (the provider's count against this
+    estimate).
+
 Registered: C1798 (its open design questions).
 
 ### 16.11 AI opportunities, by one rule (a roadmap; register only; the operator, 2026-10-26)
@@ -3834,6 +3889,47 @@ from the blind set. Fixes are measured on recorded cases; the fresh blind cases 
    Then C2278 and C2237 on the same captures. **(a), (b) and (c) built 2026-11-02 ~22:4x UTC,
    in one commit** ((a)'s gate refused on an unrelated flake, C2234, while (b) was being built
    in the same files; C2238 closed).
+
+### 17.9 C2278, a transfer is not a flood: the design (decided 2026-11-02 ~22:5x UTC, before any code; the agent's, under the Phase 7 mode)
+
+**Measured first, on the recorded captures** (`~/Documents/nmas-reports/recorded-runs/`,
+replayed by `tests/sdn_series.py`, not blind):
+- RC-TCP (one iperf session, h2 to h4) fires the flood rule at pass 13 on four ports. Two carry
+  the data: s1 port 2 and s2 port 3, one L4 flow, TCP to port 5002, mean packet about 44.7 kB
+  (Mininet's offloaded segments). Two carry its ACKs: s1 port 3 and s2 port 2, an L2 flow from
+  h4's MAC to h2's, mean 66 B, about two-thirds of the data's packets.
+- RC-UDP (three sources to h2): 1,512 B datagrams, one-way, no return flow.
+- RC-ICMP (h1 to h3): 42 B packets both ways (requests and replies), on L2 flows. High packet
+  rate from pass 11, the flood from pass 14, on the same ports: S-HR's join on a real capture.
+
+**The rule.** A flood candidate whose port's entering traffic has a **transfer's shape** is
+not called a flood. It is High packet rate (17.8: watched, never classified or proposed),
+basis `transfer`, its words saying why: "one TCP session from <src> to <dst>:<port> with its
+ACKs returning: a transfer's shape, not a flood's". A transfer's shape:
+1. **the data side:** the TCP flows entering the port carry at least 90% of its entering
+   packets, at most 4 sessions (source, destination, destination port), with a mean packet of
+   at least 500 B;
+2. **the return side:** on the same switch, a flow of the reverse pair (by IP address, or by
+   the hosts' MAC addresses as the controller's topology lists them), mean at most 100 B, with
+   at least 30% of the data side's packets.
+
+The ACKs' own detections (a port whose entering flows are the return side of a transfer on
+the same switch) are the transfer's too, said so. A shape the flows cannot show (L2-only data
+flows, or no return flow read) is judged as today. Thresholds in code, each named with its
+measurement (RC-TCP's sizes and ratio), never a setting until a second network measures
+otherwise.
+
+**Why not suppressed.** A transfer can still be abuse (a session that saturates a link).
+Watched, it stays on SDN › Responses and Needs attention as a warning, with no response proposed.
+
+**Tests:** the three captures as fixtures, trimmed to the passes around each firing, and their
+connection names and addresses checked against the publication rules first. RC-TCP's four
+detections are High packet rate, basis transfer. RC-UDP's and RC-ICMP's floods stay floods.
+RC-ICMP through the loop: watched from pass 11, joined at pass 14 (17.8 on a real capture).
+
+**Then C2237's open part** on the same fixtures: RC-ICMP names the victim (192.0.2.3, s2
+port 1) a flood source, not marked replying, because its flows are L2-only and the topology
+names the port's host. The measurement comes before the design.
 
 ## 18. Phase 8's scope, and AI cost safety (the operator, 2026-10-27)
 

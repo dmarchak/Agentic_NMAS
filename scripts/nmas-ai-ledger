@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""The AI spend ledger by UTC day (C2310): every figure a report states about AI spend is
+printed from here, computed from the record of AI calls each time, never carried forward by
+hand (the operator, 2026-11-02; PHASE8_PLAN 0.5). Read-only.
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter)
+    nmas-host nmas -- <checkout>/scripts/nmas-ai-ledger --since 2026-10-29 \\
+        --budget 190 --reading 28.59
+
+For each UTC day the record holds: the calls (its rows with a cost, never a use of a call's
+answer), the calls that cost something, their dollars
+(`cost_usd` summed) and the running total, and of those dollars how much was an evaluation's
+(an ``evaluation:`` actor), a person's and a background job's. Then the total of every day, the
+total since *--since* (its first day included), and with *--budget* what is left of it. With
+*--reading* (the provider console's figure for the same span) it prints the gap between the two,
+since the ledger holds Mercury's price table's costs and the console holds the bill.
+
+The record is read line by line (it is large), never loaded whole; a line that does not parse is
+counted, never guessed. It prints dates, counts and dollars only: no prompt, answer or actor.
+Exit 0; 2 for an unreadable record or a bad argument.
+"""
+import argparse
+import collections
+import json
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def kind_of(row: dict) -> str:
+    """Whose spend a call is: ``evaluation`` (an evaluation run's actor or trigger), else its
+    trigger's kind (``person``, ``background``), else ``other`` (a call recorded before
+    triggers were, 2026-10-25 to 10-27)."""
+    trig = row.get("trigger")
+    kind = trig.get("kind") if isinstance(trig, dict) else ""
+    if kind == "evaluation" or str(row.get("actor") or "").startswith("evaluation:"):
+        return "evaluation"
+    return kind if kind in ("person", "background") else "other"
+
+
+def by_day(lines) -> dict:
+    """``{"days": {day: {"calls", "costing", "usd", "kinds": {kind: usd}}}, "unparsed"}`` over
+    the record's *lines*, each day the row's ``at`` (UTC, its first ten characters)."""
+    days = collections.defaultdict(lambda: {"calls": 0, "costing": 0, "usd": 0.0,
+                                            "kinds": collections.defaultdict(float)})
+    bad = 0
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            bad += 1
+            continue
+        if not isinstance(row, dict) or "cost_usd" not in row:
+            continue                  # a use of a call (``use_of``), not a call: it costs nothing
+        day = str(row.get("at") or "")[:10] or "no date"
+        cost = float(row.get("cost_usd") or 0)
+        d = days[day]
+        d["calls"] += 1
+        d["costing"] += cost > 0
+        d["usd"] += cost
+        d["kinds"][kind_of(row)] += cost
+    return {"days": dict(days), "unparsed": bad}
+
+
+def report(got: dict, since: str = "", budget: float = None, reading: float = None) -> list:
+    """The lines printed: one a day, oldest first, then the totals."""
+    out, running = [], 0.0
+    for day in sorted(got["days"]):
+        d = got["days"][day]
+        running += d["usd"]
+        split = ", ".join(f"{k} ${v:.4f}" for k, v in sorted(d["kinds"].items()) if v)
+        out.append(f"{day}  calls {d['calls']:6d}  costing {d['costing']:6d}  "
+                   f"${d['usd']:10.4f}  running ${running:10.4f}" + (f"  ({split})" if split
+                                                                     else ""))
+    out.append(f"every day: ${running:.4f}; lines that did not parse: {got['unparsed']}")
+    if since:
+        spent = sum(d["usd"] for day, d in got["days"].items() if day >= since)
+        before = running - spent
+        out.append(f"since {since} (its day included): ${spent:.4f}; before it: ${before:.4f}")
+        if budget is not None:
+            out.append(f"of the ${budget:.2f} budget: ${budget - spent:.4f} left")
+        if reading is not None:
+            out.append(f"the console's reading ${reading:.2f}; the ledger's ${spent:.4f}; the "
+                       f"gap ${spent - reading:+.4f} (the ledger holds Mercury's price table's "
+                       "costs, the console the bill, each to its own moment)")
+    return out
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--since", default="", help="a UTC day, YYYY-MM-DD: total from it")
+    p.add_argument("--budget", type=float, help="dollars budgeted since --since")
+    p.add_argument("--reading", type=float, help="the console's dollars for the same span")
+    p.add_argument("--ledger", default="", help="the record's path (default: the app's)")
+    a = p.parse_args(argv)
+    if (a.budget is not None or a.reading is not None) and not a.since:
+        print("--budget and --reading need --since: the span they are for", file=sys.stderr)
+        return 2
+    path = a.ledger
+    if not path:
+        from modules.ai import calls
+        path = calls._path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            got = by_day(fh)
+    except OSError as exc:
+        print(f"the record of AI calls cannot be read at {path}: {exc.strerror}",
+              file=sys.stderr)
+        return 2
+    print("\n".join(report(got, a.since, a.budget, a.reading)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

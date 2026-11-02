@@ -15,6 +15,11 @@
   // A control whose click needs a deferred script: Alpine's click handler, or an htmx request
   // on an element with nowhere to go without script.
   var NEEDS = '[x-on\\:click], [hx-get]:not([href]), [hx-post]:not([href])';
+  // What this did, in order, for a test that finds an early click lost (C2234): each click
+  // kept, Alpine's start, the load, each replay and what its control then said. Read only by
+  // tests; nothing acts on it.
+  var steps = root.__nmasEarly = [];
+  function step(words) { if (steps.length < 50) { steps.push(words); } }
 
   function ready() { return alpine && loaded && !!root.htmx; }
 
@@ -24,9 +29,14 @@
     root.setTimeout(function () {
       var el = pending;
       pending = null;
-      if (!el || !doc.contains(el)) { return; }
+      if (!el) { step('replay: nothing kept'); return; }
+      if (!doc.contains(el)) { step('replay: the control left the page'); return; }
       el.removeAttribute('aria-busy');
       el.click();
+      step('replayed');
+      root.setTimeout(function () {
+        step('after the replay: aria-expanded ' + el.getAttribute('aria-expanded'));
+      }, 50);
     }, 0);
   }
 
@@ -38,7 +48,12 @@
     e.stopPropagation();
     pending = el;
     el.setAttribute('aria-busy', 'true');
+    step('kept');
   }, true);
-  doc.addEventListener('alpine:initialized', function () { alpine = true; replay(); });
-  doc.addEventListener('DOMContentLoaded', function () { loaded = true; replay(); });
+  doc.addEventListener('alpine:initialized', function () {
+    alpine = true; step('alpine started'); replay();
+  });
+  doc.addEventListener('DOMContentLoaded', function () {
+    loaded = true; step('loaded'); replay();
+  });
 }(window));

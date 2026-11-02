@@ -133,8 +133,13 @@ class TestC399:
                             "expanded: el ? el.getAttribute('aria-expanded') : null, "
                             "menu: m ? (m.offsetParent !== null ? 'shown' : 'hidden') : 'absent', "
                             "ready: document.readyState, htmx: !!window.htmx, "
-                            "in_flight: document.querySelectorAll('.htmx-request').length}")
+                            "in_flight: document.querySelectorAll('.htmx-request').length, "
+                            # C2234's next measurement: what nmas_early.js did, in order.
+                            "early: (window.__nmasEarly || []).join('; ')}")
                         raise AssertionError(f"{exc}; attempt {attempt}, the page held {state}")
+                    # Opened by the replay of the kept click, not by a click Alpine took itself.
+                    early = b.js("return (window.__nmasEarly || []).slice()")
+                    assert early[:1] == ["kept"] and "replayed" in early, (attempt, early)
             finally:
                 release.set()
                 b.go("about:blank")
