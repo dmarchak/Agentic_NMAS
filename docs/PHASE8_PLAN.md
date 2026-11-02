@@ -4481,5 +4481,56 @@ clearing until a refresh, the stale "Firing · N" count (C2251), C2003, C2217, C
 busiest first (Actions menu, Monitoring › Alerts, History's timeline, SDN, DHCP). Built: (5)'s
 error path, 2026-11-01 (C2267: an error answering a live redraw keeps the region, says
 "Couldn't load" and keeps its listener); a store that cannot be read is still drawn in place of
-its rows. Built 2026-11-02: the device page's Actions menu holds a redraw while open
-(tests/test_live_refresh_holds.py). The rest is not built.
+its rows. Built 2026-11-02: the device page's Actions menu holds a redraw while open and the
+AI spend panel's re-read is a live redraw the hold applies to (tests/test_live_refresh_holds.py);
+History's Verify and Push answer outside the live header (test_live_refresh_history.py, (4));
+DHCP's change cards hold a redraw as SDN's do (test_live_refresh_dhcp.py); Monitoring's Firing
+count sent out of band with its list (C2251). Learned: holding is for what a redraw cannot draw
+again (a card, a typed text, an open menu); a select or a ticked box is kept THROUGH the redraw
+((2), as Devices and Coverage already do), never by holding it, since those regions must show
+the new data. The rest is not built.
+
+## 22. Fleet changes: shared intent layers (board FC, approved with changes 2026-11-01; C2283)
+
+Board FC's five phases, each gated and reported apart: (1) layers, provenance and the merged
+render; (2) the plan and the run; (3) Credentials as the one home (C2294); (4) removal, after
+C2228's measurement; (5) P5 and P7 on top. FC replaces Bulk intent and the batch deploy, reusing
+their cores.
+
+### 22.1 Phase 1's design (decided 2026-11-02, before any code)
+
+1. **Where layers live.** In the network's intent repository, one file a layer:
+   `layers/network.yml`, `layers/site-<slug>.yml`, `layers/role-<slug>.yml`,
+   `layers/tag-<slug>.yml`, committed as intent is (`repo.commit()`, its own Source). A
+   device's own file (`host_vars/<device>.yml`) keeps only what is its own.
+2. **Which apply.** The network layer to every device; a site, role or tag layer to the devices
+   NetBox (or the network's inventory) gives that site, role or tag, read with the inventory.
+   An unreadable NetBox refuses the plan by name; no group is taken from an earlier read.
+3. **The merge, one function.** In rank order network, site, role, tag, then the device: a later
+   value wins. Dicts merge recursively; a KEYED list merges entry by entry by its key; any other
+   value of a later layer replaces an earlier one, unless it is empty. The merged document is
+   then the profile's input (`profile.effective`), so the profile still sits under all of it,
+   and every reader that renders or compares calls the one chain (`profile.effective_for`, its
+   seven callers): nothing else merges. No layer: byte for byte today's render.
+4. **What a layer may carry (phase 1).** The shared sections, each list keyed: `users` (name),
+   `snmp.communities` (ref), `snmp.hosts` (address), `snmp.settings` (the profile's own key),
+   `vlans` (id), `static_routes` (family and spec), `prefix_lists` (name), `acls` (type and
+   name), `ip_sla` (id), `telemetry` (subscription), `tracks` (id), `lines` (spec), and the
+   scalar sections (ntp, syslog, banners, domain and the like). Not `interfaces` or `routing`:
+   they describe one device's cabling and adjacencies, and a layer carrying them is refused when
+   it is written, naming the section. A list of entries the table does not key is refused in a
+   layer, never merged by replacement; a list of plain values (NTP servers) is one value, a
+   later layer's replacing it whole.
+5. **Two layers of one rank** (two tags, two roles) setting one path differently are refused at
+   the plan and at the render, naming both layers and both values; nothing picks between them.
+6. **Provenance.** The merge returns, for every leaf and keyed entry, the layer it came from
+   (`network default`, `tag blind-lab`, or `this device`), and the commit that last changed that
+   layer's file: FC3's From column and "Last changed by" (C2292's one id, labelled), and every
+   deploy preview names it for each sent line it supplied.
+7. **Secrets.** A layer names references only (`secret_ref`), never a value; the secret guard
+   (`assert_no_secret_values`) runs on a layer as on a device's file. Values stay in the store
+   (phase 3 makes Credentials their one home).
+8. **The order of the build.** (a) The pure merge with its provenance, the key table and the
+   same-rank refusal, tested alone, changing nothing that renders. (b) The chain's read of the
+   layers, proven byte-identical with no layer on every recorded fixture. (c) Source of Truth ›
+   Intent (FC2) and the device's From column (FC3). Each its own commit.
