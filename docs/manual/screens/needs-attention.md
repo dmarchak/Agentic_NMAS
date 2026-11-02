@@ -14,8 +14,12 @@ The landing page answers one question: does anything need you?
 - **One line per item:** its severity, what it is, how long ago it began, and its first action
   (**Open <device>**, or its own page), which works without opening the item. Press the line to
   open it: **What to do** comes first (every action with its How does this work?, how it
-  clears, and **Acknowledge…** for an event), then the **Details**: the cause, the alerts, the
-  devices with their networks, since when and which source.
+  clears, and **Acknowledge…** for an event), then why: for an item a Grafana alert raised,
+  **Explain**, the same answer Monitoring › Alerts keeps for that alert's evidence (opening the
+  item asks the model nothing; with no answer kept, Explain is offered behind its cost); for
+  anything Mercury found itself, **Why this happened**, written by Mercury from its own record
+  with no AI. Then the **Details**: the alerts, the devices with their networks, since when and
+  which source.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the action that deals with it. Most rows have one; a drifted
   device's row has two, which mean opposite things (below), and so has a rollback's

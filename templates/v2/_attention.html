@@ -110,9 +110,24 @@
       </div>
       {%- endif %}
       </div>
+      {#- Board NA-R: an item an alert backs offers the SAME kept Explain answer Monitoring
+          shows, read when the item opens (never a call; Explain itself is a press, behind its
+          cost); Mercury's own findings say why from the record, written by code. -#}
+      {%- if r.packs %}
+      <div class="att-why">
+        <h3>Explain</h3>
+        <div hx-get="{{ url_for('v2.attention_explain', pack_id=r.packs[0]) }}" hx-trigger="toggle once from:closest details.att" hx-swap="innerHTML"><p class="small muted">Drawn when this item is open: the answer kept with its alert's evidence, if one was asked for.</p></div>
+      </div>
+      {%- else %}
+      <div class="att-why">
+        <h3>Why this happened</h3>
+        <p class="att-cause">{{ r.cause }}</p>
+        <p class="small muted">Written by Mercury from its own record: no AI.</p>
+      </div>
+      {%- endif %}
       <div class="att-det">
       <h3>Details</h3>
-      <p class="att-cause">{{ r.cause }}</p>
+      {%- if r.packs %}<p class="att-cause">{{ r.cause }}</p>{% endif %}
       {%- set ops = (r.operands or {}) %}
       {%- if ops %}
       <dl class="att-ops">

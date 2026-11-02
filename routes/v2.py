@@ -1598,6 +1598,24 @@ def _explained(pack):
     return explain_answers.as_drawn(have["answer"], have["earlier"]) if have["answer"] else None
 
 
+@bp.route("/attention/explain/<pack_id>", methods=["GET"])
+def attention_explain(pack_id):
+    """Board NA-R: an alert-backed item's Explain, drawn when the item is opened: the answer
+    kept with its alert's evidence pack, the SAME block Monitoring › Alerts draws (`_explained`,
+    a read of the answers store, never a call); with none, Explain offered, click only, behind
+    its cost. A pack not built yet says so and links Monitoring › Alerts."""
+    from modules import evidence_pack
+
+    pid = pack_id[:64]
+    got = (evidence_pack.read() if re.match(evidence_pack.PACK_ID, pid)
+           else {"state": "ok", "error": "", "rows": []})
+    match = [r for r in got["rows"] if r.get("id") == pid]
+    pack = match[-1] if match else None
+    return _strict(render_template("v2/_attention_explain.html", pack=pack, pid=pid,
+                                   state=got["state"], error=got["error"],
+                                   x=_explained(pack), explain_model=_explain_model()))
+
+
 @bp.route("/monitoring/alerts/pack/<pack_id>/explain", methods=["POST"])
 def monitoring_alert_explain(pack_id):
     """Explain (PHASE8_PLAN 15.9, P1's one AI step; modules/ai/explain.py): the pack's

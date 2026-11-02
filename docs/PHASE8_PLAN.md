@@ -4385,9 +4385,11 @@ can act on.**
 **Built 2026-11-02, part 1 (board NA-R):** a section per severity with its count, Critical
 always open and the others as the viewer left them; each item one line (severity, title, age,
 its first action), opened to What to do and then the Details; Acknowledged its own section; the
-summary's counts and its one link to an operation's expected effects. Part 2: Explain's kept
-answer and code-written Why this happened, and the sidebar badge counting unacknowledged
-Critical and Warning only.
+summary's counts and its one link to an operation's expected effects. **Part 2, built the
+same day:** an alert's item loads Monitoring's kept Explain answer for its evidence pack when
+opened (never a call by opening); Mercury's own findings say Why this happened from their
+record, no AI. The sidebar badge still counts Unknown items (an unreadable source is never a
+quiet gap; logged as a deviation).
 
 A collapsible section per severity with its count ("Critical · 2"; Critical open by default,
 the others remembered per viewer); each item ONE line (severity, title naming devices never

@@ -2056,6 +2056,11 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
             what, cause, action, level, devices=devices, since=first["onset"],
             operands=operands)
+        # Board NA-R: the evidence packs of its alerts (`evidence_pack.alert_key`), so the
+        # opened item draws the SAME kept Explain answer Monitoring shows (one cause, one
+        # Explain: the first alert's pack).
+        from modules import evidence_pack as _EP
+        rows[-1]["packs"] = [_EP.pack_id(_EP.alert_key(i)) for i in group][:5]
 
     # A rule that cannot see its data, or cannot evaluate, with no alerting
     # instance saying so (C166, C168: rules sat in no-data for days).

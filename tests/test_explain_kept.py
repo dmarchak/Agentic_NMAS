@@ -86,6 +86,19 @@ class TestKeptWithThePack:
             "explain") in card
         assert len(world.sent) == 1, "opening the card sends nothing"
 
+    def test_needs_attention_s_item_draws_the_same_kept_answer_and_sends_nothing(self, world):
+        # Board NA-R part 2: an alert-backed item's Explain, loaded when the item opens.
+        url = f"/v2/attention/explain/{world.pack['id']}"
+        before = unescape(world.lab["client"].get(url).get_data(as_text=True))
+        assert CLAIM not in before and "Explain" in before and len(world.sent) == 0, \
+            "with none kept, Explain is offered, and opening the item asks nothing"
+        world.answer = _answer(world.pack)
+        _post(world)
+        html = unescape(world.lab["client"].get(url).get_data(as_text=True))
+        assert CLAIM in html and "kept with the pack" in html and "Explain again" in html
+        assert "The same answer Monitoring › Alerts shows" in html
+        assert len(world.sent) == 1, "the item's open sent nothing"
+
     def test_explain_on_a_pack_that_has_an_answer_sends_nothing(self, world):
         world.answer = _answer(world.pack)
         _post(world)

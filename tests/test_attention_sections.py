@@ -19,6 +19,7 @@ import pytest
 
 from modules import attention as A
 from modules import restarts as R
+from tests.test_attribution_b2 import b2  # noqa: F401 - the fixture
 from tests.test_needs_attention import _panel
 
 NOW = time.time()
@@ -75,10 +76,15 @@ class TestTheLine:
         assert '<a class="btn btn-small btn-outline" href="/v2/devices">Open…</a>' in html
 
     def test_what_to_do_comes_before_the_details(self, monkeypatch):
+        # Part 2: Mercury's own finding says why from its record (no alert, so no Explain).
         html = _panel(_page(monkeypatch, [_src(_rows())]))
-        body = html.split('data-attention-row="drift:drifted:edge1"')[1]
+        body = html.split('data-attention-row="drift:drifted:edge1"')[1].split("</details>")[0]
         assert body.index("<h3>What to do</h3>") < body.index("Capture it, or put it back") \
-            < body.index("<h3>Details</h3>") < body.index("differs by 3 lines")
+            < body.index("<h3>Why this happened</h3>") < body.index("differs by 3 lines") \
+            < body.index("<h3>Details</h3>")
+        assert "Written by Mercury from its own record: no AI." in body
+        assert body.count("differs by 3 lines") == 1, "the cause said once"
+        assert "<h3>Explain</h3>" not in body
 
 
 class TestTheSummary:
@@ -111,6 +117,48 @@ class TestTheSummary:
 
     def test_nothing_held_says_nothing(self, monkeypatch):
         assert _page(monkeypatch, [_src(_rows())])["expected"] == []
+
+
+class TestPartTwo:
+    def test_an_alert_s_item_carries_its_pack_and_loads_explain_when_opened(self, b2):
+        # B2's real Grafana capture with no window: its alerts are rows, each knowing the
+        # evidence pack Monitoring builds for it (`evidence_pack.alert_key`).
+        from tests import test_attribution_b2 as B
+        b2["planned"] = []
+        res = B._grafana()
+        rows = [r for r in res["rows"] if r["kind"] == "incident"]
+        assert rows and all(r.get("packs") for r in rows), rows
+        html = _panel(A.needs_attention(sources=[lambda: res]))
+        pid = rows[0]["packs"][0]
+        assert pid.startswith("ep-") and f'hx-get="/v2/attention/explain/{pid}"' in html
+        assert 'hx-trigger="toggle once from:closest details.att"' in html
+        body = html.split(f'data-attention-row="{rows[0]["id"]}"')[1].split("</details>")[0]
+        assert body.index("<h3>Explain</h3>") < body.index("<h3>Details</h3>")
+        assert "<h3>Why this happened</h3>" not in body, "an alert's item is explained, not"
+
+
+def test_opening_an_alert_s_item_loads_its_explain_in_a_real_browser(b2, monkeypatch):
+    from tests import browser
+    from tests import test_attribution_b2 as B
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tests above still run")
+    import app as nmas
+    b2["planned"] = []
+    monkeypatch.setattr(A, "SOURCES", (B._grafana,))
+    row = "document.querySelector('details.att')"
+    with browser.Served(nmas.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url("/v2/"))
+            b.wait_for(f"return !!window.htmx && !!{row}", 15)
+            closed = b.js(f"return {row}.querySelector('.att-why').textContent")
+            b.click("details.att > summary.att-line")
+            b.wait_for(f"return {row}.querySelector('.att-why').textContent"
+                       ".indexOf('No evidence pack is built') >= 0", 10)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert "No evidence pack is built" not in closed, "nothing asked before it opens"
 
 
 def test_a_closed_warning_section_stays_closed_across_a_redraw(monkeypatch):

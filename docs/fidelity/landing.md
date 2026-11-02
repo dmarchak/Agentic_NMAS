@@ -35,7 +35,10 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `e2f39caecee390c1c5bdd3cac33910682d347eec95247ca7fe5b68c45412361f`
+Templates sha256: `10aa2b6726730fcd537fdf48ec07d48dfe073805ae3906229d6a155b51af9942`
+(2026-11-02, NA-R part 2: an opened item says Explain, loaded from its alert's evidence pack,
+or Why this happened, its cause written by code; compared from `nar-opened-page-1440` and the
+real-browser test. Before: `e2f39caecee390c1c5bdd3cac33910682d347eec95247ca7fe5b68c45412361f`.)
 (2026-11-02: the spend panel's control on a row's line carries its operation and How does this
 work?, as its twin under What to do does; nothing else drawn changed.)
 
@@ -149,9 +152,9 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | An empty section | "· 0" only when it was open last, else left out | left out | **deviation** (log: Board NA-R built, part 1) |
 | The item's line | severity, title naming devices, its age, the primary action | the same four; the title cut with an ellipsis on desktop, wrapped on a phone, whole on hover | **same** |
 | Opened: What to do | the action, its button, Acknowledge…, How does this work?, "Clears when …" | the row's controls as they were, then Clears when, then Acknowledge… | **same** |
-| Opened: Explain or Why this happened | the kept Explain answer for an alert-backed row; code-written Why this happened for Mercury's own findings | not built | **later** NA-R part 2 |
+| Opened: Explain or Why this happened | the kept Explain answer for an alert-backed row; code-written Why this happened for Mercury's own findings | an alert's item loads, when opened, the same block Monitoring › Alerts draws for its first alert's pack (the kept answer, or Explain offered behind its cost; no call by opening); every other item, its cause under Why this happened, "Written by Mercury from its own record: no AI" | **same** |
 | Opened: Details | alerts, since, source, the pack, under a divider | the cause, operands, alert members, Also, devices with their networks, since, read, source, under a divider | **same** |
 | Acknowledged | its own section, each with who, when, the reason, Remove acknowledgement | its own section with who, when and the reason; no Remove acknowledgement (no route removes one yet) | **deviation** (log: Board NA-R built, part 1) |
 | Nothing to act on | one line and What was checked, collapsed | "Every source answered and none reports anything a person must do." and What was checked, collapsed | **same** |
-| The sidebar's badge | unacknowledged Critical and Warning items | as it was (attention.badge_of) | **later** NA-R part 2 |
+| The sidebar's badge | unacknowledged Critical and Warning items | unacknowledged items of every level, Unknown included (attention.badge_of) | **deviation** (log: Board NA-R built, part 2) |
 | Phone | the severity above the title, the action under it | the same (`nar-phone-page-390`) | **same** |

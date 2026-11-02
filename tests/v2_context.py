@@ -693,6 +693,14 @@ def _attention_expected(client, _lab, _mp):
         mp.undo()
 
 
+def _attention_explain(client, _lab, _mp):
+    """An alert-backed Needs attention item's Explain (board NA-R part 2), as its item loads it
+    when opened: a pack id no pack is built for says so and links Monitoring › Alerts."""
+    r = client.get("/v2/attention/explain/ep-" + "0" * 20)
+    assert r.status_code == 200, r.status_code
+    assert "No evidence pack is built for this alert yet" in r.get_data(as_text=True)
+
+
 def _attention_withheld(client, _lab, _mp):
     """Needs attention with a withheld-lines row (C2295): its Acknowledge… form draws the
     disposition choice. The record of AI calls planted for this provider alone, then undone."""
@@ -2474,7 +2482,7 @@ def _sdn_evidence(client, _lab, _mp):
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
-                   _attention_expected, _attention_withheld,
+                   _attention_expected, _attention_explain, _attention_withheld,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,

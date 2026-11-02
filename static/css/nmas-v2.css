@@ -666,7 +666,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-line .att-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .att-age { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .att-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 14px 108px; }
-.att-todo, .att-det { display: flex; flex-direction: column; gap: 4px; }
+.att-todo, .att-det, .att-why { display: flex; flex-direction: column; gap: 4px; }
+.att-why { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.att-why h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; }
 .att-det { border-top: 1px solid var(--line-2); padding-top: 8px; }
 .att-todo h3, .att-det h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-3); font-weight: 600; }

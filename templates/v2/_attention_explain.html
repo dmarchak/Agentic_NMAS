@@ -1,0 +1,13 @@
+{#- Board NA-R: an alert-backed Needs attention item's Explain (routes/v2.attention_explain),
+    loaded when the item opens: the answer kept with its alert's evidence pack, the same block
+    Monitoring › Alerts draws (_explain_block.html; nothing is sent by opening), or Explain
+    offered, click only, behind its cost. A pack that is not built yet, or a pack store that
+    cannot be read, is said, with Monitoring › Alerts one click away. -#}
+{%- if pack %}
+{%- include "v2/_explain_block.html" %}
+<p class="small muted">The same answer Monitoring › Alerts shows for this alert, with its evidence pack: <a href="{{ url_for('v2.monitoring_alerts') }}">Monitoring › Alerts</a>.</p>
+{%- elif state == 'unreadable' %}
+<p class="small warn-text">The evidence packs cannot be read ({{ error }}), so this alert's Explain cannot be shown. <a href="{{ url_for('v2.monitoring_alerts') }}">Monitoring › Alerts</a></p>
+{%- else %}
+<p class="small muted">No evidence pack is built for this alert yet, so it has no Explain here; Monitoring › Alerts builds one for each firing alert. <a href="{{ url_for('v2.monitoring_alerts') }}">Monitoring › Alerts</a></p>
+{%- endif %}
