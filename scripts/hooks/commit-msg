@@ -8,12 +8,17 @@
 # - A commit that weakens a test (deletes one, adds a skip, xfail or 'pragma: no cover', raises
 #   a ceiling or adds to a known-gap list) names each in a 'Test-Weakened: <test or list> —
 #   C<n>: <reason>' trailer, C<n> a register row (CLAUDE.md, Measurement and testing).
+# - Each new or changed test function fails or errors on the commit's parent, the commit's
+#   tests/ over the parent's code (board TI item 1, docs/TEST_INTEGRITY.md); 'Guards-Existing:
+#   <test> — <reason>' excuses one that passes there, 'Red-By-Collection: <file> — <reason>' a
+#   file that cannot be collected there.
 #
-# Both run whatever the first answers, so one commit hears every refusal at once.
+# All run whatever the others answer, so one commit hears every refusal at once.
 #
 # Install:  ln -sf ../../scripts/hooks/commit-msg .git/hooks/commit-msg
 ROOT="$(git rev-parse --show-toplevel)"
 status=0
 python3 "$ROOT/scripts/nmas-host-step-check" --message "$1" || status=1
 python3 "$ROOT/scripts/nmas-test-weakening-check" --message "$1" || status=1
+python3 "$ROOT/scripts/nmas-red-green" --repo "$ROOT" --message "$1" || status=1
 exit $status

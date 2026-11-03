@@ -325,6 +325,24 @@ jobs:
           echo "checking $RANGE"
           python scripts/nmas-test-weakening-check --range "$RANGE"
 
+      # Board TI item 1 (docs/TEST_INTEGRITY.md): each new or changed test function fails or
+      # errors on its commit's parent, or the commit names why not (Guards-Existing,
+      # Red-By-Collection). Shard a only: a docs-only range changes no test.
+      - name: Every new or changed test is red on its parent
+        if: matrix.shard == 'a'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          NMAS_REQUIRE_PG: "1"
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-red-green --range "$RANGE"
+
   # Lab 7 (2026-10-14): every shard's per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function
   # report in the job summary, the HTML report as an artifact, and the ratchet against

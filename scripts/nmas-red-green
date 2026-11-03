@@ -1,0 +1,720 @@
+#!/usr/bin/env python3
+"""Red, then green (board TI, item 1; docs/TEST_INTEGRITY.md): each test function a commit adds,
+or whose body it changes, is run against the commit's PARENT, the commit's tests in place and
+the parent's code, and must not pass there. A test that never failed cannot be shown to detect
+its fault.
+
+    scripts/nmas-red-green [--repo DIR] [--commit SHA]          # one commit (default HEAD)
+    scripts/nmas-red-green [--repo DIR] --message FILE          # the commit being made: the
+                                                                # index against HEAD
+    scripts/nmas-red-green [--repo DIR] --commit SHA --message FILE   # that commit, the
+                                                                # trailers read from FILE
+    scripts/nmas-red-green [--repo DIR] --range A..B            # each commit in the range (CI)
+        [--plan-only] [--allow-unconfined] [--python PY]
+
+**Which tests.** Each changed `tests/**/test_*.py` (the commit's pytest.ini's `python_files`,
+`python_classes`, `python_functions`, or pytest's defaults) is PARSED at the commit and at its
+parent (`ast`), never read from a diff's text. A test function is identified as its pytest node
+id, `path::name` or `path::Class::name` (nested classes too). One is selected when it is new at
+the commit, or when its shape changed: its `ast.dump` (no positions), its decorators and
+arguments included, its leading docstring left out (words about a test assert nothing), so a
+comment, a docstring or a move within the file selects nothing. A function new at its id whose
+shape is that of a function the commit took away from another id (a move to another file or
+class, a file renamed) is a MOVE and is not selected. Not seen: a test whose own text is
+unchanged while a helper, fixture, conftest or class-level mark it uses changed; a test defined
+inside an `if` at module level.
+
+**The parent.** A throwaway worktree of the parent (`git worktree add --detach`, as
+scripts/nmas-control makes one), in a fresh temporary folder outside the checkout, removed
+afterwards (`git worktree remove --force`, then `git worktree prune`) whatever happened,
+SIGTERM and SIGHUP included. Its `tests/` is removed and the COMMIT's whole `tests/` put in its
+place (each file of `git ls-tree -r`, or of the index's `git ls-files -s`, read by one
+`git cat-file --batch`; a path or a link reaching outside the folder refused), and staged in
+the worktree's own index, so a scan
+through `tests.source_index.tracked()` lists the commit's tests: the test side new, the code
+side old. Nothing is written to the checkout.
+
+**The run.** Through scripts/nmas-test (confined to loopback, CI's interpreter or PYTHON; with
+`--allow-unconfined` where no namespace can be made, which nmas-test says), in the worktree,
+`-p no:randomly -p no:cacheprovider`, serial (no `-n`: scripts/nmas-test turns `-n 0` into its
+memory's worker count, because scripts/nmas-workers takes `--cap 0` as no cap, and xdist given
+no `-n` does not distribute), and the outcomes read from pytest's JUnit XML (xunit2), parsed:
+1. a collection (`--collect-only -q --continue-on-collection-errors`) of the changed files: the
+   files that do not collect on the parent, and the node ids that do;
+2. a run of exactly the selected functions' node ids that collected (pytest expands a
+   parametrized function's cases).
+
+**The rules** (D1). A test is RED on the parent when it failed or errored there (setup and
+teardown errors included). **A parametrized function is red when at least one of its cases
+failed or errored**; otherwise it passed if any case passed. Then:
+- red: passes the check;
+- passed, skipped, xfailed, or not collected (in a file that collected): REFUSED, unless the
+  message carries `Guards-Existing: <test id> — <reason>` (a test written to hold behaviour
+  that already works, such as a regression net before a refactor);
+- in a file that does not collect on the parent at all (it imports a module the commit adds),
+  or behind a conftest that does not load: reported APART, since it shows nothing about any
+  one test, and REFUSED unless the message carries `Red-By-Collection: <tests/file.py> —
+  <reason>` naming that file (or that conftest).
+A trailer is an em dash, en dash or hyphen between the name and the reason, spaced; one without
+its reason excuses nothing and is refused. Each refusal names the test, its outcome on the
+parent against the red it needed, the parent's sha, and the trailer that would excuse it.
+
+**Limit** (the board's): red on the parent says the test CAN fail; whether it failed for the
+right reason (a renamed function, a missing fixture file) is the reviewer's. Each red test's
+first failure line is printed for that reading.
+
+**The index** (`--message` without `--commit`): the default index, read without taking its
+lock or writing an object (`git diff-index --cached`, `git show :<path>`, `git ls-files -s`;
+`git write-tree` takes the lock, and fails while another git holds it); a `git commit -a` or
+`git commit <path>` builds a temporary index (GIT_INDEX_FILE), which this refuses to guess at
+(exit 2). The gate stages with `git add -A` before it commits.
+
+Output: per commit, one line per selected test and a summary: `N selected, R red, E excused,
+F refused`, with how many of them are in files that do not collect. A commit with no test
+function added or changed passes and says so; a root commit is said and passed (no parent).
+Exit 0 every selected test red or excused; 1 refused; 2 could not ask (git, or a run that gave
+no report), which is never a pass.
+"""
+import argparse
+import ast
+import collections
+import configparser
+import fnmatch
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+NMAS_TEST = os.path.join(REPO, "scripts", "nmas-test")
+#: pytest's defaults where the commit has no pytest.ini or the ini does not set one.
+DEFAULT_PATTERNS = {"python_files": "test_*.py *_test.py", "python_classes": "Test",
+                    "python_functions": "test"}
+RED = ("failed", "error")
+#: The commit being made: the default index, its own side.
+INDEX = ":"
+#: One git read's bound (repo.run_git's own default). The reads here are a `git show` of one
+#: file or a `diff-tree` of one commit; the whole selection of the last three commits took
+#: under 0.5 s (2026-11-03, --plan-only). A call that hits it names itself (exit 2).
+GIT_TIMEOUT = 30
+#: The worktree's add and the read of tests/ (measured 2026-11-03 on the laptop, this
+#: repository: 0.33 s, and 0.11 s for `git archive` of tests/, which one `cat-file --batch`
+#: of the same blobs matches). A CI runner's were not measured, so the bound is generous
+#: rather than 2.5 times, and a call that hits it names itself (exit 2), never a pass.
+WORKTREE_TIMEOUT = 60
+#: scripts/nmas-test bounds each of its runs itself (NMAS_TEST_TIMEOUT, 300 s by default, the
+#: suite's per-process bound) and needs up to 15 s more to end what it started and report:
+#: this is the backstop beyond that, never the bound that is meant to fire.
+RUNNER_SLACK = 60
+#: Variables that would carry the calling run's pytest or coverage configuration into the run.
+DROP_ENV = ("PYTEST_ADDOPTS", "PYTEST_CURRENT_TEST", "PYTEST_XDIST_WORKER",
+            "PYTEST_XDIST_WORKER_COUNT", "PYTEST_XDIST_TESTRUNUID", "PYTEST_PLUGINS")
+TRAILER_KEYS = ("Guards-Existing", "Red-By-Collection")
+ANY_KEY = re.compile(r"^[A-Za-z]+(?:-[A-Za-z]+)*:\s")
+TRAILER_VALUE = re.compile(r"^(?P<subject>\S+)\s+(?:—|–|-{1,2})\s+(?P<reason>\S.*)$", re.S)
+SCISSORS = re.compile(r"^# -+ >8 -+$", re.M)
+#: pytest's own line when a conftest does not import (it then writes no report at all).
+CONFTEST_FAILED = re.compile(r"^ImportError while loading conftest '(?P<path>[^']+)'\.$", re.M)
+
+
+class CannotAsk(Exception):
+    pass
+
+
+def _exit_on_signal(signum, _frame):
+    """SIGTERM and SIGHUP end the run as an exit does, so its `finally` removes the worktree."""
+    raise SystemExit(128 + signum)
+
+
+def git(root, *args, text=True, timeout=GIT_TIMEOUT, ok_missing=False, input=None):
+    """git in *root*, through the one runner pinned to it (C931, `repo.run_git`)."""
+    from modules.nsot.repo import run_git
+    try:
+        r = run_git(root, *args, text=text, timeout=timeout, input=input)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CannotAsk(f"git {' '.join(args)}: {exc}") from exc
+    if r.returncode != 0:
+        if ok_missing:
+            return None
+        err = r.stderr if text else r.stderr.decode(errors="replace")
+        raise CannotAsk(f"git {' '.join(args)} exited {r.returncode}: {err.strip()[:300]}")
+    return r.stdout
+
+
+# --- which tests ----------------------------------------------------------------------------
+
+def patterns(ini_text):
+    """`{option: [pattern]}` for python_files, python_classes and python_functions, from a
+    pytest.ini's text (or pytest's defaults)."""
+    got = dict(DEFAULT_PATTERNS)
+    if ini_text:
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read_string(ini_text)
+        except configparser.Error:
+            cp = None
+        if cp is not None and cp.has_section("pytest"):
+            for key in got:
+                if cp.has_option("pytest", key):
+                    got[key] = cp.get("pytest", key)
+    return {k: v.split() for k, v in got.items()}
+
+
+def _matches(name, pats, glob_only=False):
+    """pytest's matching: a pattern holding a glob character is matched with fnmatch, any other
+    as a prefix (python_files is always a glob)."""
+    for p in pats:
+        if glob_only or any(c in p for c in "*?["):
+            if fnmatch.fnmatchcase(name, p):
+                return True
+        elif name.startswith(p):
+            return True
+    return False
+
+
+def is_test_file(path, pats):
+    return bool(path) and path.startswith("tests/") and path.endswith(".py") and \
+        _matches(path.rsplit("/", 1)[-1], pats["python_files"], glob_only=True)
+
+
+def _is_docstring(stmt):
+    return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str))
+
+
+def shape(node):
+    """A function's shape: its kind, arguments, decorators, return annotation and body, each
+    `ast.dump`ed (no positions), its leading docstring left out."""
+    body = node.body[1:] if node.body and _is_docstring(node.body[0]) else node.body
+    return (type(node).__name__, ast.dump(node.args),
+            tuple(ast.dump(d) for d in node.decorator_list),
+            ast.dump(node.returns) if node.returns is not None else "",
+            tuple(ast.dump(s) for s in body))
+
+
+def test_functions(source, pats):
+    """`{qualified id: shape}` for what pytest collects in *source* (module-level functions and
+    the methods of matching classes, nested classes included, joined by `::`), or None when
+    *source* does not parse."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    out = {}
+
+    def walk(body, prefix):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
+                    _matches(node.name, pats["python_functions"]):
+                out[prefix + node.name] = shape(node)
+            elif isinstance(node, ast.ClassDef) and _matches(node.name, pats["python_classes"]):
+                walk(node.body, f"{prefix}{node.name}::")
+
+    walk(tree.body, "")
+    return out
+
+
+def show(root, side, path):
+    """*path*'s text at *side* (a commit, or INDEX), or None where it holds none."""
+    return git(root, "show", f"{'' if side == INDEX else side}:{path}", ok_missing=True)
+
+
+def changes_between(root, parent, commit):
+    """`[(old path or None, new path or None)]` from `git diff-tree -r -M --name-status -z`
+    (or `git diff-index --cached`, the same format, for the index)."""
+    if commit == INDEX:
+        text = git(root, "diff-index", "--cached", "-M", "--name-status", "-z", parent)
+    else:
+        text = git(root, "diff-tree", "-r", "-M", "--name-status", "-z", parent, commit)
+    parts = text.split("\0")
+    out, i = [], 0
+    while i < len(parts) and parts[i]:
+        status = parts[i]
+        if status[0] in "RC":
+            old, new = parts[i + 1], parts[i + 2]
+            out.append((old if status[0] == "R" else None, new))
+            i += 3
+        else:
+            path = parts[i + 1]
+            out.append((None if status[0] == "A" else path, None if status[0] == "D" else path))
+            i += 2
+    return out
+
+
+def select(changes, read_parent, read_commit, pats):
+    """`(selected, notes)`: selected is `[(id, "added" | "changed")]` in file order, notes the
+    changed test files that do not parse at the commit (nothing in them can be judged)."""
+    before, after, notes = {}, {}, []
+    for old, new in changes:
+        if is_test_file(old, pats):
+            funcs = test_functions(read_parent(old) or "", pats) or {}
+            before.update({f"{old}::{q}": s for q, s in funcs.items()})
+        if is_test_file(new, pats):
+            funcs = test_functions(read_commit(new) or "", pats)
+            if funcs is None:
+                notes.append(f"{new} does not parse at the commit: none of its tests is judged")
+                continue
+            after.update({f"{new}::{q}": s for q, s in funcs.items()})
+    gone = collections.Counter(s for k, s in before.items() if k not in after)
+    selected = []
+    for k, s in after.items():
+        if k in before:
+            if before[k] != s:
+                selected.append((k, "changed"))
+        elif gone[s] > 0:
+            gone[s] -= 1          # a move: the same shape the commit took from another id
+        else:
+            selected.append((k, "added"))
+    return selected, notes
+
+
+# --- trailers -------------------------------------------------------------------------------
+
+def message_body(message):
+    cut = SCISSORS.search(message)
+    if cut:
+        message = message[:cut.start()]
+    return "\n".join(line for line in message.splitlines() if not line.startswith("#"))
+
+
+def trailer_values(message, key):
+    """Each `key:` trailer's value, a wrapped value joined: it runs to a blank line or the next
+    `Key:` line."""
+    head = re.compile(rf"^{re.escape(key)}:[ \t]*", re.I)
+    out, cur = [], None
+    for line in message_body(message).splitlines():
+        if head.match(line):
+            if cur is not None:
+                out.append(cur)
+            cur = head.sub("", line).strip()
+        elif cur is not None:
+            if not line.strip() or ANY_KEY.match(line):
+                out.append(cur)
+                cur = None
+            else:
+                cur += " " + line.strip()
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
+def excuses(message):
+    """`({key: {name: reason}}, [malformed trailer])`."""
+    got, bad = {k: {} for k in TRAILER_KEYS}, []
+    for key in TRAILER_KEYS:
+        for value in trailer_values(message, key):
+            m = TRAILER_VALUE.match(value)
+            if not m:
+                bad.append(f"a {key} trailer without its ' — <reason>' (\"{value[:100]}\")")
+                continue
+            got[key][m.group("subject")] = m.group("reason")
+    return got, bad
+
+
+# --- the parent's run -----------------------------------------------------------------------
+
+def _dotted(path):
+    """pytest's JUnit name for a test file: the path without `.py`, `/` made `.`."""
+    return re.sub(r"\.py$", "", path).replace("/", ".")
+
+
+def junit_cases(xml_path):
+    """`[(classname, name, outcome, message)]` from a JUnit XML file, outcome one of passed,
+    failed, error, skipped, xfailed; None when the file is absent or does not parse."""
+    try:
+        tree = ET.parse(xml_path)
+    except (OSError, ET.ParseError):
+        return None
+    out = []
+    for case in tree.iter("testcase"):
+        outcome, message = "passed", ""
+        for child in case:
+            if child.tag in ("failure", "error"):
+                outcome = "failed" if child.tag == "failure" else "error"
+                message = child.get("message") or ""
+                break
+            if child.tag == "skipped":
+                outcome = "xfailed" if child.get("type") == "pytest.xfail" else "skipped"
+                message = child.get("message") or ""
+        out.append((case.get("classname") or "", case.get("name") or "", outcome, message))
+    return out
+
+
+def child_env(python):
+    env = {k: v for k, v in os.environ.items()
+           if k not in DROP_ENV and not k.startswith("COV_CORE_")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    if python:
+        env["PYTHON"] = python
+    return env
+
+
+def runner_timeout():
+    try:
+        return float(os.environ.get("NMAS_TEST_TIMEOUT") or 300) + RUNNER_SLACK
+    except ValueError:
+        return 300 + RUNNER_SLACK
+
+
+def nmas_test(tree, args, allow_unconfined, python):
+    cmd = [NMAS_TEST, *(["--allow-unconfined"] if allow_unconfined else []), *args]
+    try:
+        return subprocess.run(cmd, cwd=tree, env=child_env(python), stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=runner_timeout())
+    except subprocess.TimeoutExpired as exc:
+        raise CannotAsk(f"scripts/nmas-test ran past {runner_timeout():.0f} s "
+                        f"(NMAS_TEST_TIMEOUT plus {RUNNER_SLACK} s): {' '.join(args[-3:])}") \
+            from exc
+
+
+def _tail(proc, n=6):
+    lines = [x for x in (proc.stdout + proc.stderr).splitlines() if x.strip()]
+    return " | ".join(lines[-n:])[-600:]
+
+
+def tests_entries(root, side):
+    """`[(mode, blob, path)]` for every file under tests/ at *side*: `git ls-tree -r` of a
+    commit, `git ls-files -s` of the index (neither takes the index's lock)."""
+    out = []
+    if side == INDEX:
+        for rec in filter(None, git(root, "ls-files", "-s", "-z", "--", "tests").split("\0")):
+            meta, path = rec.split("\t", 1)
+            mode, blob, stage = meta.split()
+            if stage != "0":
+                raise CannotAsk(f"{path} is unmerged in the index (stage {stage})")
+            out.append((mode, blob, path))
+    else:
+        for rec in filter(None, git(root, "ls-tree", "-r", "-z", side, "--", "tests")
+                          .split("\0")):
+            meta, path = rec.split("\t", 1)
+            mode, _kind, blob = meta.split()
+            out.append((mode, blob, path))
+    return [e for e in out if e[0] != "160000"]          # a submodule holds no file here
+
+
+def write_tests(root, side, tree):
+    """*side*'s tests/ written into *tree*, each blob read by one `git cat-file --batch`; a
+    path or a link reaching outside *tree* is refused, never written."""
+    entries = tests_entries(root, side)
+    if not entries:
+        return 0
+    data = git(root, "cat-file", "--batch", text=False, timeout=WORKTREE_TIMEOUT,
+               input=("\n".join(b for _m, b, _p in entries) + "\n").encode())
+    base = os.path.realpath(tree)
+
+    def within(p):
+        p = os.path.realpath(p)
+        return p == base or p.startswith(base + os.sep)
+
+    pos = 0
+    for mode, blob, path in entries:
+        nl = data.index(b"\n", pos)
+        head = data[pos:nl].split()
+        if len(head) != 3 or head[0].decode() != blob:
+            raise CannotAsk(f"git cat-file gave {data[pos:nl][:80]!r} for {path}'s {blob}")
+        size = int(head[2])
+        body = data[nl + 1:nl + 1 + size]
+        pos = nl + 1 + size + 1
+        dest = os.path.join(tree, *path.split("/"))
+        if not within(os.path.dirname(dest)):
+            raise CannotAsk(f"{path} reaches outside the worktree")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        if mode == "120000":
+            target = body.decode("utf-8", errors="surrogateescape")
+            if os.path.isabs(target) or not within(os.path.join(os.path.dirname(dest), target)):
+                raise CannotAsk(f"{path} links outside the worktree ({target})")
+            os.symlink(target, dest)
+        else:
+            with open(dest, "wb") as fh:
+                fh.write(body)
+            os.chmod(dest, 0o755 if mode == "100755" else 0o644)
+    return len(entries)
+
+
+def make_parent_tree(root, parent, commit, tmp):
+    """The parent's worktree with the commit's whole tests/ in place, staged in its index."""
+    tree = os.path.join(tmp, "tree")
+    git(root, "worktree", "add", "--detach", "--quiet", tree, parent, timeout=WORKTREE_TIMEOUT)
+    shutil.rmtree(os.path.join(tree, "tests"), ignore_errors=True)
+    write_tests(root, commit, tree)
+    git(tree, "add", "-A", "--", "tests")
+    return tree
+
+
+def remove_tree(root, tmp):
+    tree = os.path.join(tmp, "tree")
+    if os.path.exists(tree):
+        git(root, "worktree", "remove", "--force", tree, ok_missing=True,
+            timeout=WORKTREE_TIMEOUT)
+    shutil.rmtree(tmp, ignore_errors=True)
+    git(root, "worktree", "prune", ok_missing=True)
+
+
+def _relative(path, tree):
+    """*path* (pytest's, absolute) relative to the worktree, whichever spelling of it pytest
+    used (the temporary folder may sit behind a link)."""
+    if not os.path.isabs(path):
+        return path
+    for base in (tree, os.path.realpath(tree)):
+        rel = os.path.relpath(path, base)
+        if not rel.startswith(".."):
+            return rel
+    return path
+
+
+def run_on_parent(root, parent, commit, ids, allow_unconfined=False, python=None):
+    """`{"collection": {file: message}, "conftest": path or None, "outcomes": {id: (outcome,
+    [case lines])}}` for the function ids *ids*, run in the parent's worktree with the commit's
+    tests."""
+    files = sorted({i.split("::", 1)[0] for i in ids})
+    tmp = tempfile.mkdtemp(prefix="nmas-red-green-")
+    try:
+        tree = make_parent_tree(root, parent, commit, tmp)
+
+        def clean(msg):
+            """A failure's words with the throwaway folder's path read as `<parent>`."""
+            for base in sorted({os.path.realpath(tree), tree}, key=len, reverse=True):
+                msg = msg.replace(base, "<parent>")
+            return msg
+
+        collect_xml = os.path.join(tmp, "collect.xml")
+        common = ["-p", "no:randomly", "-p", "no:cacheprovider", "-o", "junit_family=xunit2"]
+        c = nmas_test(tree, ["--collect-only", "-q", *common, "--continue-on-collection-errors",
+                             f"--junitxml={collect_xml}", *files], allow_unconfined, python)
+        cases = junit_cases(collect_xml)
+        if cases is None:
+            m = CONFTEST_FAILED.search(c.stdout + c.stderr)
+            if m:
+                conftest = _relative(m.group("path"), tree)
+                why = f"{conftest} does not load on the parent"
+                return {"collection": {f: why for f in files}, "conftest": conftest,
+                        "outcomes": {}}
+            raise CannotAsk(f"the parent's collection gave no report (scripts/nmas-test exit "
+                            f"{c.returncode}): {_tail(c)}")
+        by_dotted = {_dotted(f): f for f in files}
+        collection = {}
+        for classname, name, outcome, message in cases:
+            if not classname and name in by_dotted and outcome in RED:
+                collection[by_dotted[name]] = clean(message) or "collection failure"
+        prefixes = tuple(f + "::" for f in files)
+        collected = [line.strip() for line in c.stdout.splitlines()
+                     if line.strip().startswith(prefixes)]
+        runnable = [i for i in ids if i.split("::", 1)[0] not in collection and any(
+            x == i or x.startswith(i + "[") for x in collected)]
+        outcomes = {i: ("not collected", []) for i in ids
+                    if i.split("::", 1)[0] not in collection and i not in runnable}
+        if runnable:
+            run_xml = os.path.join(tmp, "run.xml")
+            r = nmas_test(tree, ["-q", *common, f"--junitxml={run_xml}", *runnable],
+                          allow_unconfined, python)
+            got = junit_cases(run_xml)
+            if got is None:
+                raise CannotAsk(f"the parent's run gave no report (scripts/nmas-test exit "
+                                f"{r.returncode}): {_tail(r)}")
+            for i in runnable:
+                path, rest = i.split("::", 1)
+                parts = rest.split("::")
+                classname = ".".join([_dotted(path), *parts[:-1]])
+                mine = [(n, o, msg) for cn, n, o, msg in got if cn == classname and
+                        (n == parts[-1] or n.startswith(parts[-1] + "["))]
+                outcomes[i] = (verdict([o for _n, o, _m in mine]),
+                               [f"{n}: {o}" + (f" ({clean(msg).splitlines()[0][:120]})"
+                                               if msg.strip() else "") for n, o, msg in mine])
+        return {"collection": collection, "outcomes": outcomes, "conftest": None}
+    finally:
+        remove_tree(root, tmp)
+
+
+def verdict(case_outcomes):
+    """One function's outcome from its cases': red (failed or error) if ANY case is red; else
+    passed if any passed; else xfailed, skipped, or "no outcome" when no case was reported."""
+    for o in ("failed", "error", "passed", "xfailed", "skipped"):
+        if o in case_outcomes:
+            return o
+    return "no outcome"
+
+
+# --- the judgement --------------------------------------------------------------------------
+
+def judge(selected, run, message, parent):
+    """`(lines, counts, refused)` for one commit."""
+    ex, bad = excuses(message)
+    guards, by_collection = ex["Guards-Existing"], ex["Red-By-Collection"]
+    lines, refused = [], list(bad)
+    counts = collections.Counter()
+    p = parent[:12]
+    for tid, why in selected:
+        counts["selected"] += 1
+        path = tid.split("::", 1)[0]
+        if path in run["collection"]:
+            counts["collection"] += 1
+            name = run.get("conftest") or path
+            msg = run["collection"][path].splitlines()[0][:160]
+            if name in by_collection:
+                counts["excused"] += 1
+                lines.append(f"  excused  {tid} ({why}): {name} does not collect on the parent "
+                             f"{p}; Red-By-Collection: {by_collection[name]}")
+            else:
+                counts["refused"] += 1
+                lines.append(f"  REFUSED  {tid} ({why}): {name} does not collect on the parent "
+                             f"{p} ({msg}), which shows nothing about this test")
+                refused.append(f"{tid}: {name} does not collect on the parent {p}; excuse "
+                               f"with: Red-By-Collection: {name} — <reason>")
+            continue
+        outcome, cases = run["outcomes"].get(tid, ("no outcome", []))
+        shown = "; ".join(cases[:4]) + (f"; and {len(cases) - 4} more" if len(cases) > 4 else "")
+        if outcome in RED:
+            counts["red"] += 1
+            lines.append(f"  red      {tid} ({why}): {outcome} on the parent {p}"
+                         + (f": {shown}" if shown else ""))
+            if tid in guards:
+                lines.append("           (Guards-Existing names it, and it is red: the trailer "
+                             "is not needed)")
+        elif tid in guards:
+            counts["excused"] += 1
+            lines.append(f"  excused  {tid} ({why}): {outcome} on the parent {p}; "
+                         f"Guards-Existing: {guards[tid]}")
+        else:
+            counts["refused"] += 1
+            lines.append(f"  REFUSED  {tid} ({why}): {outcome} on the parent {p}, where red "
+                         f"(failed or error) was required" + (f": {shown}" if shown else ""))
+            refused.append(f"{tid}: {outcome} on the parent {p}, red (failed or error) "
+                           f"required; excuse with: Guards-Existing: {tid} — <reason>")
+    return lines, counts, refused
+
+
+def summary(counts):
+    s = (f"{counts['selected']} selected, {counts['red']} red, {counts['excused']} excused, "
+         f"{counts['refused']} refused")
+    if counts["collection"]:
+        s += f" ({counts['collection']} of them in files that do not collect on the parent)"
+    return s
+
+
+def check(root, parent, commit, message, label, plan_only=False, allow_unconfined=False,
+          python=None):
+    """`(lines, refused)` for one commit: *commit* a commit or tree, *parent* its parent."""
+    t0 = time.monotonic()
+    pats = patterns(show(root, commit, "pytest.ini"))
+    changes = changes_between(root, parent, commit)
+    selected, notes = select(changes, lambda p: show(root, parent, p),
+                             lambda p: show(root, commit, p), pats)
+    lines = [f"nmas-red-green: {label}"] + [f"  note: {n}" for n in notes]
+    if not selected:
+        lines.append("  no test function added or changed: nothing to run, passes")
+        return lines, []
+    if plan_only:
+        lines += [f"  selected {tid} ({why})" for tid, why in selected]
+        lines.append(f"  {len(selected)} selected (--plan-only: nothing run)")
+        return lines, []
+    run = run_on_parent(root, parent, commit, [t for t, _w in selected], allow_unconfined,
+                        python)
+    more, counts, refused = judge(selected, run, message, parent)
+    lines += more
+    lines.append(f"  {summary(counts)}; {time.monotonic() - t0:.1f} s")
+    return lines, refused
+
+
+def _staged_index_ok(root):
+    """The default index is the one this reads; a temporary one (GIT_INDEX_FILE) is refused."""
+    given = os.environ.get("GIT_INDEX_FILE")
+    if not given:
+        return
+    gitdir = git(root, "rev-parse", "--absolute-git-dir").strip()
+    if os.path.realpath(os.path.join(root, given)) != os.path.realpath(
+            os.path.join(gitdir, "index")):
+        raise CannotAsk(f"GIT_INDEX_FILE is {given}, not {os.path.join(gitdir, 'index')}: the "
+                        "commit being made is not the default index (a `git commit -a` or "
+                        "`git commit <path>`), which this does not read")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--repo", default=os.getcwd(), help="the checkout (default: here)")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--commit", help="the commit to check (default HEAD)")
+    g.add_argument("--range", help="A..B: each commit in it (CI)")
+    ap.add_argument("--message", help="read the trailers from this file; without --commit, "
+                    "the commit being made (the index against HEAD)")
+    ap.add_argument("--plan-only", action="store_true", help="list the selected tests only")
+    ap.add_argument("--allow-unconfined", action="store_true",
+                    help="passed to scripts/nmas-test where no namespace can be made")
+    ap.add_argument("--python", help="the interpreter scripts/nmas-test runs (PYTHON)")
+    a = ap.parse_args(argv)
+    if a.range and a.message:
+        ap.error("--message reads one commit's trailers: not with --range")
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit_on_signal)
+    root = os.path.abspath(a.repo)
+    kw = {"plan_only": a.plan_only, "allow_unconfined": a.allow_unconfined, "python": a.python}
+    out, refused = [], []
+    try:
+        if a.range:
+            shas = git(root, "rev-list", "--no-merges", "--reverse", a.range).split()
+            if not shas:
+                out.append(f"nmas-red-green: {a.range} holds no commit to check")
+            todo = [(s, None) for s in shas]
+        elif a.message and not a.commit:
+            _staged_index_ok(root)
+            with open(a.message, encoding="utf-8") as fh:
+                message = fh.read()
+            head = git(root, "rev-parse", "--verify", "-q", "HEAD", ok_missing=True)
+            if head is None:
+                out.append("nmas-red-green: the commit being made is the first: no parent, "
+                           "nothing to compare, passes")
+                todo = []
+            else:
+                head = head.strip()
+                lines, why = check(root, head, INDEX, message, f"the commit being made (the "
+                                   f"index on {head[:12]})", **kw)
+                out += lines
+                refused += [("the commit being made", w) for w in why]
+                todo = []
+        else:
+            sha = git(root, "rev-parse", "--verify", (a.commit or "HEAD") + "^{commit}").strip()
+            todo = [(sha, a.message)]
+        for sha, message_file in todo:
+            parents = git(root, "log", "-1", "--format=%P", sha).split()
+            subject = git(root, "log", "-1", "--format=%s", sha).strip()
+            label = f"{sha[:12]} {subject[:80]}"
+            if not parents:
+                out.append(f"nmas-red-green: {label}: a root commit, no parent to compare, "
+                           "passes")
+                continue
+            if message_file:
+                with open(message_file, encoding="utf-8") as fh:
+                    message = fh.read()
+            else:
+                message = git(root, "log", "-1", "--format=%B", sha)
+            lines, why = check(root, parents[0], sha, message, label, **kw)
+            out += lines
+            refused += [(sha[:12], w) for w in why]
+    except (CannotAsk, OSError) as exc:
+        print("\n".join(out), flush=True)
+        print(f"nmas-red-green: COULD NOT ASK: {exc}", file=sys.stderr)
+        return 2
+    print("\n".join(out), flush=True)
+    for where, why in refused:
+        print(f"nmas-red-green: REFUSED: {where} {why}", file=sys.stderr)
+    if refused:
+        print("nmas-red-green: each new or changed test must fail or error on the commit's "
+              "parent (docs/TEST_INTEGRITY.md, item 1); one written to hold behaviour that "
+              "already works says so: 'Guards-Existing: <test id> — <reason>'; a file that "
+              "cannot collect on the parent: 'Red-By-Collection: <file> — <reason>'",
+              file=sys.stderr)
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

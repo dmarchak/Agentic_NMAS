@@ -40,6 +40,18 @@ operator.
 - **Limit:** a test can be red on the parent for a reason other than the fault (a renamed
   function). The check says the test can fail; whether it fails for the right reason is the
   reviewer's.
+- **Built 2026-11-03:** `scripts/nmas-red-green`, in `scripts/hooks/commit-msg` (so the gate's
+  commit in its snapshot runs it) and in CI job a over every pushed range. Its tests are
+  tests/test_red_green.py.
+  - **Its first real runs:** 42643c72 and 99380401 red throughout, on a tool missing from the
+    parent (this item's Limit). ec8a7cf8 refused, 9 of 28 passing on the parent (C2356).
+- **What it does not see:**
+  - a test whose own text is unchanged while a helper, fixture, conftest or class mark it uses
+    changed;
+  - a test defined under a module-level `if`.
+- **A test skipped on the parent for its environment** (no libpq for the records tests on a
+  laptop, no browser) is refused as skipped. It errs toward refusing, and it is excused by
+  `Guards-Existing` with that reason.
 
 ### 2. Protected guards
 
