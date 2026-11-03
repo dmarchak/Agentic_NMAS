@@ -78,12 +78,14 @@ WHERE = ("import json, os\n\n"
          "                   'inflight': os.environ['NMAS_TEST_INFLIGHT']}, fh)\n")
 
 
-def _nmas_test(tmp_path, n, *extra):
+def _nmas_test(tmp_path, n, *extra, probe_text=WHERE, tmpdir=None):
     """Start the real scripts/nmas-test over the WHERE probe (as test_suite_bound runs it)."""
     probe =tmp_path / f"test_probe_where_{n}.py"
-    probe.write_text(WHERE)
+    probe.write_text(probe_text)
     env = dict(os.environ, PYTHON=sys.executable, NMAS_PROBE_RUN="1",
                PROBE_OUT=str(tmp_path / f"where-{n}.json"))
+    if tmpdir is not None:
+        env["TMPDIR"] = str(tmpdir)
     env.pop("PYTEST_XDIST_WORKER", None)
     env.pop("NMAS_TEST_INFLIGHT", None)
     return subprocess.Popen(
@@ -122,3 +124,66 @@ def test_a_base_folder_asked_for_is_honoured(tmp_path):
     out, err = p.communicate(timeout=120)
     assert p.returncode == 0, out[-800:] + err[-800:]
     assert json.loads((tmp_path / "where-9.json").read_text())["base"] == str(asked)
+
+
+def _started(pid: int) -> str:
+    """A process's start time, /proc/<pid>/stat field 22 (read past the name's parentheses)."""
+    with open(f"/proc/{pid}/stat", encoding="utf-8") as fh:
+        return fh.read().rsplit(") ", 1)[1].split()[19]
+
+
+def _inflight(parent, name, owner=None):
+    path = parent / name
+    path.mkdir()
+    (path / "made-by-a-run").write_text("x")
+    if owner is not None:
+        (path / ".owner").write_text(owner + "\n")
+    return path
+
+
+#: A probe that writes its run's in-flight folder's owner record.
+OWNER = ("import json, os\n\n"
+         "def test_owner():\n"
+         "    with open(os.path.join(os.environ['NMAS_TEST_INFLIGHT'], '.owner'), encoding='utf-8') as fh:\n"
+         "        owner = fh.read()\n"
+         "    with open(os.environ['PROBE_OUT'], 'w', encoding='utf-8') as fh:\n"
+         "        json.dump({'owner': owner}, fh)\n")
+
+
+def test_a_run_removes_only_the_in_flight_folders_whose_owner_is_gone(tmp_path):
+    """C2381 (2026-11-03): an rm -rf of five in-flight folders chosen by name removed a running
+    gate's, and 4109 of its shard's tests errored at setup. A run's start now removes an in-flight
+    folder only when the owner it records is gone: a dead pid, or a live pid whose start time
+    differs (reused). A live owner's, one from another pid namespace and one with no record are
+    left."""
+    tmpd = tmp_path / "tmp"
+    tmpd.mkdir()
+    ns = os.readlink("/proc/self/ns/pid")
+    me = os.getpid()
+    dead = _inflight(tmpd, "nmas-test-inflight.dead01", f"{_dead_pid()} 1 {ns}")
+    reused = _inflight(tmpd, "nmas-test-inflight.reus01", f"{me} 1 {ns}")
+    live = _inflight(tmpd, "nmas-test-inflight.live01", f"{me} {_started(me)} {ns}")
+    other_ns = _inflight(tmpd, "nmas-test-inflight.othe01", f"{_dead_pid()} 1 pid:[1]")
+    bare = _inflight(tmpd, "nmas-test-inflight.bare01")
+    p = _nmas_test(tmp_path, 7, tmpdir=tmpd)
+    out, err = p.communicate(timeout=120)
+    assert p.returncode == 0, out[-800:] + err[-800:]
+    assert not dead.exists(), "a dead owner's folder was left"
+    assert not reused.exists(), "a reused pid was taken for the owner"
+    for kept in (live, other_ns, bare):
+        assert (kept / "made-by-a-run").exists(), f"{kept.name} was removed"
+
+
+def test_a_run_records_its_owner_in_its_folder(tmp_path):
+    """The record the sweep judges by: the owning nmas-test shell's pid, its start time and its
+    pid namespace, read while the run is live."""
+    p = _nmas_test(tmp_path, 8, probe_text=OWNER, tmpdir=tmp_path)
+    out, err = p.communicate(timeout=120)
+    assert p.returncode == 0, out[-800:] + err[-800:]
+    pid, started, ns = json.loads((tmp_path / "where-8.json").read_text())["owner"].split()
+    assert ns == os.readlink("/proc/self/ns/pid")
+    # The owner was the run's own shell, so it is gone now and its start time is the one recorded
+    # while it lived: the probe's run is over, so check the shape and that it named a process
+    # that existed during the run (a pid above zero, a start time in clock ticks).
+    assert int(pid) > 0 and int(started) > 0, (pid, started)
+    assert not list(tmp_path.glob("nmas-test-inflight.*")), "the run's own folder was left"

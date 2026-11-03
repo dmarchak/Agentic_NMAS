@@ -33,6 +33,14 @@ lab topology. Here "Lab 9" always means the final SDN lab.
 **About the estimates:**
 - They are in **agent-days**: one agent's focused day of building, gated and pushed, including
   its tests. The operator's sittings are not included.
+- **Read them through the measured ratio** (C2380, the operator, 2026-11-03).
+  - One agent-day is about 1.3 wall-clock hours for one agent (0.7 to 2.6) and about 4M
+    weighted tokens (2.5M to 9M), measured on eight items finished on 2026-11-03.
+  - So the 46 agent-days left after the cuts are about 30 to 40 hours with two agents, the gates
+    alone about 17 hours, and 185M to 225M weighted tokens (about 15 to 18% of a week's usage at
+    that day's rate).
+  - The binding limits are usage, the gates run one at a time, and the operator's hardware
+    sittings, not calendar days.
 - They are inferred. The only finished stage of the same kind is Lab 8's SDN slice (17.1). It
   was planned at about 69 focused hours to land between Oct 26 and Oct 30. Its build continued
   to Nov 2 (S-HR, C2279, 0.2), so it ran about 75% long. Read every figure here with that in
@@ -398,6 +406,20 @@ Candidate 2 is the strongest fallback if the TA wants retrieval. Candidate 3 is 
 ---
 
 ## 5. Decisions for the operator (only what practice does not decide)
+
+**Decided by the operator, 2026-11-03 ~20:3x UTC, on the summary table in the ratio:**
+- **No cuts for time.** Trace ports, the DNS block page and the full B2 are restored (about 4.5
+  agent-days: about 6 h and 18M weighted tokens). Section 3's cut list is withdrawn.
+- **The usage-cut order** applies only if usage tightens:
+  1. B5 as two CSV routes;
+  2. B4 as candidate 1;
+  3. reroute through fast-failover only where supported;
+  4. the analyst reusing Explain;
+  5. last, the model tier per installation.
+- **Order:** Lab 10 stays first. Lab 9's items that need no hardware (2, 3, 4, 5, 7, 8, 9, 10)
+  take agent slots as they free. Items 1 and 6 wait on the hardware checklist's readings at the
+  operator's first lab-room visit (~/Documents/nmas-reports/lab9-hardware-checklist.md).
+- **B4:** the operator proposes one of section 4's candidates to a TA this week.
 
 1. **Identity on the laptop** (a standing rule: no localhost exemption). There are three
    options:

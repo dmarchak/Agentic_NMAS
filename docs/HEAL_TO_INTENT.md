@@ -778,6 +778,15 @@ History).
 
 Agent-days, each part's tests written with it, red then green.
 
+**Through the measured ratio** (C2380, the operator, 2026-11-03): one agent-day is about 1.3
+wall-clock hours for one agent (0.7 to 2.6) and about 4M weighted tokens (2.5M to 9M).
+- **The 16.25 days:**
+  - stream A (9.25) is about 12 hours, and stream B (7.0) about 9;
+  - with about 13 parts × 1.5 gates × 17 minutes, the critical path is 14 to 18 hours (8 to 28
+    across the range);
+  - about 65M weighted tokens (40M to 150M), roughly 5% of a week's usage (3 to 12%).
+- The ten-day window below is therefore not the limit.
+
 | Part | What | Days |
 |---|---|---|
 | H1 | The policy store and settings (OWN_ONLY), the mode with C2009's guard and its expiry, the change previewed and confirmed by hash, the kill switch | 1.0 |

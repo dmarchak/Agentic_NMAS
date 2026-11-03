@@ -47,7 +47,33 @@ TIMEOUT="${NMAS_TEST_TIMEOUT:-300}"
 # and clears it when the test finishes (tests/conftest.py), and dumps every
 # thread's stack here when the bound's SIGTERM arrives. A bare "timed out"
 # names nothing; the test and its stack are the start of a diagnosis.
+#
+# THE FOLDER NAMES ITS OWNER, AND ONLY A GONE OWNER'S FOLDER IS REMOVED (C2381, C2300). It
+# records the run that owns it: this shell's pid, its start time (/proc/<pid>/stat field 22, so
+# a reused pid is not taken for the owner) and its pid namespace. A run's start removes each
+# in-flight folder whose owner is gone, by that identity, never by name or age (2026-11-03: an
+# rm -rf of five such folders chosen by name removed a running gate's, and 4109 of its tests
+# errored). A folder with no owner record, an unreadable one, or one from another pid namespace
+# is left.
+owner_of() {
+  local s
+  s="$(cat "/proc/$1/stat" 2>/dev/null)" || return 0
+  s="${s##*) }"
+  # shellcheck disable=SC2086
+  set -- $s
+  echo "${20:-}"
+}
+PIDNS="$(readlink /proc/self/ns/pid 2>/dev/null)"
+for d in "${TMPDIR:-/tmp}"/nmas-test-inflight.*; do
+  [ -f "$d/.owner" ] || continue
+  read -r pid started ns < "$d/.owner" 2>/dev/null || continue
+  case "$pid$started" in *[!0-9]*|'') continue ;; esac
+  [ -n "$PIDNS" ] && [ "$ns" = "$PIDNS" ] || continue
+  [ "$(owner_of "$pid")" = "$started" ] && continue
+  rm -rf "$d"
+done
 INFLIGHT="$(mktemp -d "${TMPDIR:-/tmp}/nmas-test-inflight.XXXXXX")"
+printf '%s %s %s\n' "$$" "$(owner_of $$)" "$PIDNS" > "$INFLIGHT/.owner"
 export NMAS_TEST_INFLIGHT="$INFLIGHT"
 trap 'rm -rf "$INFLIGHT"' EXIT
 

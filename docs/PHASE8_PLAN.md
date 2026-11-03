@@ -122,6 +122,30 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 - **Chat reports are "Needs the operator" plus what changed;** the detail is in the report
   file.
 
+**Cost and estimates (the operator, 2026-11-03, after the calibration of C2380):**
+- **The main thread stays lean.**
+  - It keeps a written handoff (state, open items, next steps), and a fresh session starts
+    from it at each natural break: at least daily, or when the context passes about 200k
+    tokens.
+  - Code reading and surveys go to agents, and their summaries are kept short.
+  - Every report gives the main thread's weighted tokens.
+  - Cost: the handoff's upkeep and a session start at each break.
+  - Prevents: the main thread's re-read context being most of the usage (88% of Nov 1–3's).
+- **Gates are batched.** When both agents have commits ready and their files don't conflict,
+  they go through one gate run.
+  - Cost: one refusal sends both back.
+  - Prevents: gates run one at a time becoming two streams' bottleneck (about 17 minutes each).
+- **Every estimate uses the measured ratio and shows it.** One agent-day is about 1.3
+  wall-clock hours for one agent (0.7 to 2.6) and about 4M weighted tokens (2.5M to 9M).
+  Weighted tokens are input + 1.25 × cache write + 0.1 × cache read + 5 × output. The ratio is
+  measured again as items finish.
+  - Cost: one conversion per estimate.
+  - Prevents: plans read in engineer-days that overstate wall time about six times (C2380).
+- **Each test run's temporary folders are its own,** and only a run whose recorded owner is
+  gone has its folder removed, never one chosen by name or age (C2381).
+  - Cost: none.
+  - Prevents: a live gate's folder removed by someone tidying up.
+
 The operator's proposal, kept, with three changes where the evidence disagrees (each said):
 
 0. **A rows and today's fixes:** C2003 (the only A row tagged blocking; its A part closed
