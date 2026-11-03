@@ -812,7 +812,10 @@ fits only as **two code agents in parallel** (the standing limit, at most two):
 - **stream B:** H7, H8, H9, H10, H13.
 
 They share H4's apply and H6's step log, so B starts with H7 (independent), and H8 takes the
-step log after H6 lands. **The cut list, in order, if the build runs behind** (each said where
+step log after H6 lands. **Applied only when an item is actually behind, and said in the report
+when it is** (the operator, 2026-11-03). The build is on track, so H7's Slack, Teams and
+PagerDuty formats are deferred to after Lab 10, not cut (C2387), and built early if H8 or H9
+finish early. **The cut list, in order, if the build runs behind** (each said where
 it is cut):
 1. the webhook formats: Teams', PagerDuty's, Slack's, then the generic one (email alone meets
    the lab);

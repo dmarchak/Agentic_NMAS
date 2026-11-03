@@ -117,6 +117,13 @@ def _stage_refusal(network: str) -> str:
     return f"{GATE_WORDS}; {got['words']}{tail}"
 
 
+def auto_refusal(network: str) -> str:
+    """C2009's guard, for every AUTO in Mercury (SDN responses' here; heal to intent's,
+    `modules/heal/policy.py`): why AUTO may not be turned on, or run, on *network* now, naming
+    the gate and the network's stage, or "" when it is marked lab."""
+    return _stage_refusal(network)
+
+
 def _stage_words(value: str) -> str:
     return value if value else "not marked"
 

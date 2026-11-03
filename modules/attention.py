@@ -187,6 +187,11 @@ ROW_KINDS = {
                                   "them; acknowledge once known"),
     ("reloads", "unverified"): ("a device came back from its reload and was not verified",
                                 "press Verify again on its page"),
+    # Board H, H7 (docs/HEAL_TO_INTENT.md sections 9 and 10): "Healed, but its notice not
+    # delivered" made visible.
+    ("notify", "failed"): ("a notification could not be delivered",
+                           "read the delivery log's error, fix the relay or the webhook, then "
+                           "Test send"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -454,6 +459,11 @@ CLEARS = {
                                   "a day after the last AI call that withheld a line (by "
                                   "time), or acknowledged with a reason once the lines are "
                                   "read and their writer found"),
+    ("notify", "failed"): (("resolves", "acknowledge"),
+                           "the next delivery to that destination succeeds (an incident's "
+                           "notice or a Test send), or the destination is turned off or "
+                           "removed, or a person acknowledges this failure with a reason; a "
+                           "later failure raises it again"),
     ("host_keys", "changed"): (("resolves",), "a session finds the device answering with the "
                                "key Mercury holds: after a re-key on its page keeps the new "
                                "one, or when the device answers with the held key again"),
@@ -517,6 +527,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # The newest call that withheld a line (C2272): a later one
                                # raises the row again.
                                ("ai_withheld", "withheld"),
+                               # One delivery's last failure (board H, H7): a later failure
+                               # raises the row again.
+                               ("notify", "failed"),
                                # One deploy's lines verify could not read back, the device
                                # printing them in another form (C1542): that deploy only.
                                ("deploys", "read_back"),
@@ -4593,6 +4606,45 @@ def ai_withheld_source(rows=None, now=None) -> dict:
                                   f"{sum(len(v) for v in by.values())} withheld a line"))
 
 
+def notify_source(got=None) -> dict:
+    """Notifications that could not be delivered (board H, H7; docs/HEAL_TO_INTENT.md section
+    9's `notify`/`failed`): ONE row per destination that is on and whose last delivery, after
+    its retries, failed or was refused, naming the team, the recipient masked to its domain,
+    the event and the error. Read from each destination's last outcome in the teams store
+    (`teams.failing`), never the whole delivery log, so the read is bounded by the
+    destinations and a failure stays raised however old it is."""
+    from modules.notify import delivery, teams
+
+    started = time.time()
+    label = "Notifications: deliveries"
+    got = teams.failing() if got is None else got
+    if got["state"] == "unreadable":
+        return source_result("notify", label, read_at=started, took_ms=0,
+                             error=f"the notification teams could not be read: {got['error']}")
+    out = []
+    for r in got["rows"]:
+        last, dest = r["last"], r["dest"]
+        who = delivery.recipient(dest)
+        out.append(row(
+            source="notify", kind="failed", key=f"{r['team']}/{r['destination']}",
+            level="danger", since=_ts(last.get("at")), event=last.get("delivery"),
+            what=(f"A {last.get('event') or 'notification'} notice to {who} ({dest.get('channel')}"
+                  f", team {r['team_name']}) could not be delivered"),
+            cause=(f"Its last delivery, {last.get('delivery')} at {last.get('at')}, was "
+                   f"{last.get('outcome')}: {last.get('error') or 'no error recorded'}. Until "
+                   "a delivery to it succeeds, the team's other destinations are the only way "
+                   "it hears of an incident."),
+            action={"label": ("Read the delivery's row in History, fix the relay or the "
+                              "webhook its error names, then Test send to the destination"),
+                    "href": "/v2/history?kind=notifications"},
+            operands={"team": r["team"], "destination": r["destination"],
+                      "delivery": last.get("delivery"), "outcome": last.get("outcome")}))
+    return source_result("notify", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=out,
+                         checked=(f"{len(out)} destination(s) on whose last delivery failed"
+                                  if got["state"] == "ok" else "no notification team is set"))
+
+
 def reload_unverified_source(found=None) -> dict:
     """Each device whose newest reload record ended NOT VERIFIED (C2240): it answered on
     SSH's port after the reload and could not be signed in to within the verify's bound, so
@@ -5145,7 +5197,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reload_unverified_source, host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
-           sdn_mitigation_source, sdn_controllers_source)
+           sdn_mitigation_source, sdn_controllers_source, notify_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -5220,6 +5272,8 @@ SOURCE_KEYS = {
     "ai_spend_source": ("ai_calls", "settings"),
     # Every AI call's route announces its record (C2272).
     "ai_withheld_source": ("ai_calls",),
+    # Every delivery announces its record (modules/notify/delivery.py, board H's H7).
+    "notify_source": ("notifications",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.
@@ -5540,7 +5594,9 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 "console_ztp": "console_ztp_source",
                 # Lines withheld as instructions (C2272): its row drew Acknowledge… from the
                 # start, and this map lacked it, so every acknowledgement was refused (C2295).
-                "ai_withheld": "ai_withheld_source"}
+                "ai_withheld": "ai_withheld_source",
+                # A destination's last failed delivery (board H, H7).
+                "notify": "notify_source"}
 
 #: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
 #: instructions are a true positive (someone aimed them at the model: investigate), benign or

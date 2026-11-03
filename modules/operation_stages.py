@@ -530,6 +530,9 @@ HISTORY = {
 #: and the break-glass export's reveal route. Each says which.
 WRITTEN_ELSEWHERE = {
     "interrupted": "a process that ended while it held the device (device_ops)",
+    "notifications": "each attempt to deliver a notification, written by the sender "
+                     "(modules/notify/delivery.py) whoever asked: a heal's incident event, a "
+                     "Test send or a verification code (board H, H7)",
     "grafana_writes": "every write Mercury sends to Grafana, recorded by the integration that "
                       "sends it (modules/integrations/grafana.py: a silence set, moved or "
                       "expired), whoever it was for",

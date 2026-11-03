@@ -118,6 +118,20 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 - **The fast checks run before every full gate:** the changed tests, the doc, register and
   lab-name and publication scans, and the commit-msg checks on the staged commit. This cuts
   refused gates. There is no linter yet (C2362).
+  - **Also, before every gate, the three whole-repo scans that refused H1 and H7's first gate**
+    (the operator, 2026-11-03):
+    - tests/test_no_get_returns_a_stored_secret.py: every file written under data/ is in a
+      data class;
+    - tests/test_url_userinfo_masked.py: every masking function is tested with a planted URL;
+    - tests/test_network_settings_read_for_a_list.py: settings are read by name.
+  - Cost: about 15 seconds. Prevents: a 20-minute gate refused by a scan the changed tests
+    don't reach.
+- **A cut is applied only when an item is actually behind, and the report says so when it is**
+  (the operator, 2026-11-03).
+  - A cut list says what goes first if the build runs behind, never what to leave out while it
+    is on track.
+  - Cost: none. Prevents: scope dropped from a build that has time for it (H7's webhook formats,
+    now deferred instead, C2387).
 - **Parallel agents only for road-map build work.**
 - **Chat reports are "Needs the operator" plus what changed;** the detail is in the report
   file.

@@ -96,6 +96,9 @@ VOCABULARY = {
     "ai_feedback": "what people said of AI answers (Was this right?) and the review of each one "
                    "said wrong (modules/ai/feedback.py): the control under an answer and "
                    "Settings › Installation › AI's Answers said wrong draw it",
+    "notifications": "the notifications' delivery log and each destination's last outcome "
+                     "(modules/notify/delivery.py): History draws the log, Needs attention a "
+                     "destination whose last delivery failed (board H, H7)",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -179,6 +182,9 @@ ANNOUNCERS = {
     "drift-check": ("drift",),
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
                    "goldens", "remote", "intent", "approvals"),
+    # modules/notify/delivery.py (board H, H7): each delivery's end, an event's, a Test
+    # send's or a code's; and a destination verified.
+    "notify": ("notifications",),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

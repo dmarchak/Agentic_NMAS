@@ -121,7 +121,9 @@ class TestEveryKindSaysHowItClears:
                                      # One console survey's or kick-start's run (O6a).
                                      ("console_ztp", "not_blank"), ("console_ztp", "failed"),
                                      # The newest AI call that withheld a line (C2272).
-                                     ("ai_withheld", "withheld")}
+                                     ("ai_withheld", "withheld"),
+                                     # A destination's last failed delivery (board H, H7).
+                                     ("notify", "failed")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

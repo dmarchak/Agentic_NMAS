@@ -76,6 +76,17 @@ SCOPES: dict = {
     # makes its group the network's own (`list_settings.write`), and setting the policy must not
     # stop the network inheriting Default's timeouts. Drawn and set on SDN › Responses' rules.
     **_group(NETWORK, "sdn_response_policy", "sdn_response_policy"),
+    # Heal to intent (board H, H1; docs/HEAL_TO_INTENT.md section 6): a network's heal policy,
+    # its mode, AUTO's expiry, who confirmed it, the kinds and the hard stops, one group. Each
+    # network's own, never inherited from Default (`OWN_ONLY`): enabling healing on Default
+    # must not enable it on every network that inherits. Written only by
+    # `modules/heal/policy.py` (`CARDLESS`); H9 draws it on the network's Self-healing tab.
+    **_group(NETWORK, "heal_policy", "heal_mode", "heal_mode_until", "heal_policy_confirmed",
+             "heal_kinds_auto", "heal_kinds_propose", "heal_topology_hold_minutes",
+             "heal_max_devices_drifting", "heal_person_working_changes",
+             "heal_person_working_minutes", "heal_grace_seconds", "heal_max_per_device_hour",
+             "heal_max_per_network_hour", "heal_repeat_halts_hours", "heal_max_removed_units",
+             "heal_max_units"),
     # ── Per network: each a group of one ─────────────────────────────────────────────────
     **{k: (NETWORK, k) for k in (
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
@@ -102,8 +113,15 @@ SCOPES: dict = {
     **_group(HOST, "credential_rotation", "credential_rotation_policies"),
     # C1317: the installation's (a nightly backup or a freeze is the host's, not a network's).
     **_group(HOST, "no_change_windows", "no_change_windows"),
+    # Heal to intent's kill switch (board H, guard 1): one for the installation, stopping every
+    # network's healing at once.
+    **_group(HOST, "heal_kill_switch", "heal_stopped"),
     **_group(HOST, "web_server", "flask_host", "flask_port"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
+    # Notifications' email relay (board H, H7): one for the installation, as the records
+    # database is; who receives a network's notices is its heal policy's, not this group.
+    **_group(HOST, "notify_relay", "notify_smtp_host", "notify_smtp_port", "notify_smtp_tls",
+             "notify_smtp_username", "notify_smtp_from", "notify_link_base"),
     # Mercury's records database: one for the installation (P4-2), never a network's.
     **_group(HOST, "records_db", "records_db_host", "records_db_port", "records_db_name",
              "records_db_user", "records_db_password", "records_store_receipts",
@@ -194,6 +212,7 @@ GROUP_LABELS: dict = {
     "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
     "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
     "sdn_response_policy": "SDN response policy", "network_stage": "Network stage",
+    "heal_policy": "Self-healing",
 }
 
 #: Network groups no generic Settings card draws or saves, each with the one module that
@@ -207,9 +226,12 @@ GROUP_LABELS: dict = {
 #: `modules/sdn/closed_loop.py` (`save_policy`, which checks each action answers its rule) from
 #: SDN › Responses' rules, and read by its `policy`. `network_stage`: written by
 #: `modules/sdn/modes.py` (`set_stage`, a verified person and a reason) from the network's SDN
-#: controllers card, and read by its `stage` (C2009).
+#: controllers card, and read by its `stage` (C2009). `heal_policy`: written by
+#: `modules/heal/policy.py` (`apply`, previewed and confirmed by hash as a verified person;
+#: `turn_off`), read by its `current`; a generic card would save a mode past C2009's guard and
+#: the confirmation (board H, H1).
 CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_policy",
-            "network_stage")
+            "network_stage", "heal_policy")
 
 #: Network groups that are each network's own and never inherited from Default, whatever the
 #: network's mode or choice: a network that sets none has none (the operator's decision of
@@ -218,8 +240,9 @@ CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_p
 #: OWN for them unless the network declared them not applicable, so the resolver and
 #: `integration_groups.group_id` agree. `network_stage` (C2009): a network marked lab is a
 #: person's declaration about that one network; inherited, Default's lab would let AUTO be
-#: turned on for a network nobody marked.
-OWN_ONLY = ("sdn_controllers", "network_stage")
+#: turned on for a network nobody marked. `heal_policy` (board H, section 6): a network's
+#: heal policy is its own; inherited, Default's would heal every network that inherits.
+OWN_ONLY = ("sdn_controllers", "network_stage", "heal_policy")
 
 #: The key whose value says a group's outside service is configured at all: with it empty
 #: nothing can be asked, so a reader skips the configuration and says "not configured"

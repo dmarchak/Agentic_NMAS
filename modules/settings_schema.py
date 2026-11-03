@@ -311,6 +311,12 @@ DEFAULTS: dict = {
     #: change starts (`modules/change_windows.py`). None by default: nothing is held. What an
     #: installation sets is its own; nothing in the product names one.
     "no_change_windows": [],
+    # Heal to intent's kill switch (board H, guard 1; IBN_DESIGN section 3's global kill
+    # switch): self-healing stopped everywhere. Off, as every release before it (nothing
+    # healed). Written only by `modules/heal/policy.py` (`stop`, one press, no confirm;
+    # `resume`, previewed and confirmed by hash as a verified person), each recorded with who,
+    # when and why in the installation's settings record. An unreadable value is stopped.
+    "heal_stopped": False,
     #: All three default ON. Reveal exposes a secret; approve and confirm are
     #: the two actions that put configuration **on a device**. An audit entry
     #: for any of them is worthless without a name attached to it, and the two
@@ -448,6 +454,21 @@ DEFAULTS: dict = {
     "s3_region":     "",
     "s3_prefix":     "",
     "s3_verify_tls": True,
+
+    # ── Notifications' email relay (board H, H7; docs/HEAL_TO_INTENT.md section 10) ──
+    # The installation's one relay. Host empty: no email is sent, today's behaviour. TLS is
+    # required (STARTTLS or implicit); plain only to a relay on this host's loopback. The
+    # password is the credential store's (`credentials.set_notify_secret("relay", …)`), never a
+    # setting. No measurement can find a relay, its sender address or the address people
+    # reach Mercury by (the access proxy's, not the host's), so each is said here.
+    "notify_smtp_host":     "",
+    "notify_smtp_port":     587,
+    "notify_smtp_tls":      "starttls",
+    "notify_smtp_username": "",
+    "notify_smtp_from":     "",
+    # The address a message's link starts with (https://mercury.example); empty: the link is
+    # the page's path alone, and the message says so.
+    "notify_link_base":     "",
 
     # ── Mercury's records database (Phase 4, P4-1, P4-2: the installation's) ──
     # Host empty: every store stays on files, today's behaviour. The name, role and port are
@@ -646,6 +667,38 @@ DEFAULTS: dict = {
     "sdn_response_policy": {"scan": ["drop_source", "rate_limit_source"],
                             "flood": ["rate_limit_source", "drop_source"],
                             "unauthorised_flow": ["remove_flow"]},
+    # Heal to intent (board H, part H1; docs/HEAL_TO_INTENT.md sections 6, 7 and 18), per
+    # network and each network's own, never inherited from Default (`settings_scope.OWN_ONLY`):
+    # enabling healing on Default must not enable it on every network that inherits. Written
+    # only by `modules/heal/policy.py` (a change previewed and confirmed by hash as a verified
+    # person with a reason; the one-click Turn off), so no generic card draws them (`CARDLESS`).
+    # **The defaults reproduce every release before them: healing off everywhere, never AUTO.**
+    # The mode: off, dry run or AUTO; AUTO's expiry (UTC, at most 7 days away, N8; empty when
+    # not AUTO); who confirmed the values in force (by, how verified, when, the reason, the
+    # values' fingerprint and the expiry; empty: nobody, so nothing is in force).
+    "heal_mode": "off",
+    "heal_mode_until": "",
+    "heal_policy_confirmed": {},
+    # The tier (section 5, guard 13): no Tier 1 kind AUTO; every Tier 2 kind proposed.
+    "heal_kinds_auto": [],
+    "heal_kinds_propose": ["process_reset", "qos_policy", "secret_added_back"],
+    # The hard stops (section 6), each the operator's figure; no measurement can say how much
+    # change a network tolerates unattended. The grace period (N1: 900 s; 120 s on a network
+    # marked lab) and the topology hold (N3: 4 hours, the risk register's figure; 60 minutes on
+    # a network marked lab) hold their production values here; the lab values are
+    # `heal.policy.LAB_DEFAULTS`, read where the network sets none and is marked lab. The rails
+    # are PHASE8_PLAN section 7's (N6). A heal is one removal unit and one section at most
+    # (guard 12; N13: a unit is one feature on one interface), a ceiling the schema holds.
+    "heal_topology_hold_minutes": 240,
+    "heal_max_devices_drifting": 3,
+    "heal_person_working_changes": 3,
+    "heal_person_working_minutes": 10,
+    "heal_grace_seconds": 900,
+    "heal_max_per_device_hour": 1,
+    "heal_max_per_network_hour": 6,
+    "heal_repeat_halts_hours": 24,
+    "heal_max_removed_units": 1,
+    "heal_max_units": 1,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -980,6 +1033,13 @@ SCHEMA: dict = {
         "s3_prefix": _STR,
         "s3_verify_tls": _BOOL,
 
+        "notify_smtp_host": _STR,
+        "notify_smtp_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "notify_smtp_tls": {"type": "string", "enum": ["starttls", "implicit", "none"]},
+        "notify_smtp_username": _STR,
+        "notify_smtp_from": _STR,
+        "notify_link_base": {"type": "string", "pattern": r"^$|^https?://[^\s/?#]+/?$"},
+
         "records_db_host": _STR,
         "records_db_port": {"type": "integer", "minimum": 1, "maximum": 65535},
         "records_db_name": _STR,
@@ -1078,6 +1138,31 @@ SCHEMA: dict = {
             "properties": {"scan": _SDN_ACTIONS, "flood": _SDN_ACTIONS,
                            "unauthorised_flow": _SDN_ACTIONS},
         },
+        # Heal to intent (board H, H1): `modules/heal/policy.py` holds the kinds' tiers
+        # (TIER1_KINDS, TIER2_KINDS; tests/test_heal_policy.py holds them equal to these).
+        "heal_mode": {"enum": ["off", "dry_run", "auto"]},
+        "heal_mode_until": {"type": "string",
+                            "pattern": r"^(|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$"},
+        "heal_policy_confirmed": {
+            "type": "object", "additionalProperties": False,
+            "properties": {"by": _STR, "actor_verified": _STR, "at": _STR, "reason": _STR,
+                           "fingerprint": _STR, "until": _STR},
+        },
+        "heal_kinds_auto": {"type": "array", "uniqueItems": True, "items": {
+            "enum": ["missing_line", "changed_line", "added_line", "admin_down"]}},
+        "heal_kinds_propose": {"type": "array", "uniqueItems": True, "items": {
+            "enum": ["process_reset", "qos_policy", "secret_added_back"]}},
+        "heal_topology_hold_minutes": {"type": "integer", "minimum": 0, "maximum": 10080},
+        "heal_max_devices_drifting": {"type": "integer", "minimum": 1},
+        "heal_person_working_changes": {"type": "integer", "minimum": 1},
+        "heal_person_working_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+        "heal_grace_seconds": {"type": "integer", "minimum": 60, "maximum": 86400},
+        "heal_max_per_device_hour": {"type": "integer", "minimum": 0},
+        "heal_max_per_network_hour": {"type": "integer", "minimum": 0},
+        "heal_repeat_halts_hours": {"type": "integer", "minimum": 1, "maximum": 720},
+        "heal_max_removed_units": {"type": "integer", "minimum": 0, "maximum": 1},
+        "heal_max_units": {"type": "integer", "minimum": 0, "maximum": 1},
+        "heal_stopped": _BOOL,
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

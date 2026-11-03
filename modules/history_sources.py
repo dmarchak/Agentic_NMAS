@@ -1910,6 +1910,48 @@ def secret_values(ctx):
     return _out(events)
 
 
+#: A delivery's outcome, as History says it (modules/notify/delivery.py).
+NOTIFY_OUTCOMES = {"sent": "sent", "failed": "failed", "refused": "refused: not sent"}
+
+
+def notifications(ctx):
+    """Each attempt to deliver a notification (board H, H7; modules/notify/delivery.py): the
+    channel, the recipient masked to its domain (a webhook its host), the event, the outcome
+    and its error. Never a message's text, a code or a secret: the record holds none. A row
+    about an incident is its network's (its `network`, this list's name), and its device's;
+    a test send or a verification code is the installation's, drawn on every network's
+    History and never on a device's."""
+    from modules.notify import delivery, message
+    got = delivery.read_log()
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the delivery log could not be read: {got['error']}"])
+    events = []
+    for r in got["rows"]:
+        network, host = r.get("network", ""), r.get("device", "")
+        if network and network != ctx["ref"].name:
+            continue
+        if ctx["device"] and (host != ctx["device"] or not network):
+            continue
+        if not _recent(ctx, r.get("at")):
+            continue
+        outcome = r.get("outcome", "")
+        words = message.EVENTS.get(r.get("event", ""), r.get("event", "a notice"))
+        events.append(_event(
+            r.get("at", ""), "notification",
+            f"Notification ({words}) to {r.get('recipient', '?')} by {r.get('channel', '?')}: "
+            f"{NOTIFY_OUTCOMES.get(outcome, outcome)}", [host], who=r.get("by", ""),
+            detail=r.get("error") or f"attempt {r.get('attempt')} of {r.get('of')}",
+            outcome=outcome, marks=[] if outcome == "sent" else ["not delivered"],
+            record=[("Delivery", r.get("id")), ("Team", r.get("team_name")),
+                    ("Channel", r.get("channel")), ("Recipient", r.get("recipient")),
+                    ("Incident", r.get("incident")), ("Attempt", f"{r.get('attempt')} of "
+                                                                 f"{r.get('of')}"),
+                    ("Took", f"{r.get('duration_s')} s"), ("Error", r.get("error"))]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events)
+
+
 #: A console run's outcome, as History says it (modules/nsot/console_ztp.py's outcomes).
 CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in",
                     "done": "done, verified", "unverified": "done, not verified",
@@ -2137,7 +2179,7 @@ SOURCES = {
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
-    "page_stalls": page_stalls,
+    "page_stalls": page_stalls, "notifications": notifications,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2177,7 +2219,9 @@ KIND_GROUPS = (
                                ("alert_rules", "Alert rule changes in Grafana",
                                 ("alert_rule",)),
                                ("show_commands", "Show commands", ("show_commands",)),
-                               ("stalls", "Page stalls (live updates)", ("stall",)))),
+                               ("stalls", "Page stalls (live updates)", ("stall",)),
+                               ("notifications", "Notifications delivered and failed",
+                                ("notification",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}
 #: The kinds one click away, above the timeline on the History page and on a device's History
@@ -2284,7 +2328,7 @@ SOURCE_KINDS = {
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
-    "page_stalls": ("stall",),
+    "page_stalls": ("stall",), "notifications": ("notification",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

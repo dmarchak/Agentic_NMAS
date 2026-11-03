@@ -3514,3 +3514,56 @@ interpreter (`scratchpad/mut_c2340.py`, 2026-11-03 ~06:3x UTC). Baseline: 241 pa
 their cases were added; the worktree removed each time.** M7 dies only to the test reading its
 source. The ranking's text stays in the process (it chooses passages and is neither sent nor
 kept), and the gap record that is kept has its own behaviour test.
+
+## 2026-11-03: notifications, board H's H7 (C2377), by hand
+
+**What changed in the tier:** data off the host, new. `modules/notify/` sends an incident's
+events by email (`relay`, Python's `smtplib`) and by a generic signed webhook (`webhook`), each
+through the egress mask at its sender (`relay.build` masks the subject and the text,
+`webhook.request` the whole JSON; `message.mask` is `redact.egress_payload`), then a backstop
+that refuses a send whose bytes, or an email's decoded text, carry the send's own secret
+(`message.carries_secret`). The secrets are stored by reference in the credential store
+(`credentials.set_notify_secret`, encrypted, and added to the redaction table by value in
+`device_credential_values`). The danger the hand check guards: a secret or a configuration's
+secret leaving the host in a message, a header or the delivery log, plain transport off
+loopback, or a signature a replay or a changed body passes.
+**The method:** each mutant one exact replacement of a changed line, required to match once,
+in a `scripts/nmas-control` throwaway worktree (snapshot f8b7c91f1b over 79546113), then
+tests/test_notify.py, test_redact_egress.py and test_acknowledge.py with `-x`, two workers, in
+CI's interpreter, confined (`scratchpad/mut_h7.py`, 2026-11-03 ~20:3x UTC), the file restored
+and compared byte for byte after each. Baseline: 138 passed. The control's exit was 3, naming
+docs/TESTING.md: the author's own edit to the checkout during the run, after the snapshot, never
+the run's (the worktree held every mutant).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `message.mask` returns its input | killed | `test_nothing_an_email_carries_holds_a_secret` |
+| M1 the email's subject unmasked | killed | `test_the_subject_is_masked_too` |
+| M2 the email's text unmasked | killed | `test_nothing_an_email_carries_holds_a_secret` |
+| M3 the webhook's body unmasked | killed | `test_nothing_a_webhook_carries_holds_a_secret` |
+| M4 the backstop never finds a secret | killed | `test_with_the_redaction_table_unreadable_a_send_carrying_its_secret_is_refused` |
+| M5 the email's backstop skipped | killed | the same |
+| M6 the webhook's backstop skipped | killed | the same |
+| M7 the email's backstop on the raw bytes only (quoted-printable splits a value) | killed | `test_a_secret_split_by_the_body_s_encoding_is_still_found` |
+| M8 notification secrets left out of the redaction table | killed | `test_a_relay_error_quoting_its_password_is_masked_in_the_log` |
+| M9 a notification secret stored in clear | killed | `test_the_secrets_are_stored_by_reference_and_never_in_clear` |
+| M10 a delivery's error logged unmasked | killed | `test_a_relay_error_quoting_its_password_is_masked_in_the_log` |
+| M11 the signature without the timestamp | killed | `test_a_receiver_refuses_a_changed_body_another_timestamp_or_an_old_one` |
+| M12 a future timestamp accepted | killed | the same |
+| M13 redirects followed | killed | `test_the_post_is_signed_over_the_timestamp_and_the_exact_body` |
+| M14 plain SMTP off loopback | killed | `test_plain_smtp_off_loopback_is_refused_naming_the_host[192.0.2.25]` |
+| M15 every host loopback | killed | the same, and `test_a_webhook_url_refused_names_why[http://192.0.2.10/x…]` |
+| M16 plain http off loopback | killed | `test_a_webhook_url_refused_names_why` (a name, IPv4) |
+| M17 a user and password in a webhook URL | killed | `test_a_webhook_url_refused_names_why[https://user:pw@…]` |
+| M18 the log keeps the whole address | killed | `test_a_failed_attempt_is_retried_and_each_attempt_is_a_row` |
+| M19 the log keeps the whole URL | killed | `test_the_log_keeps_the_webhook_s_host_never_its_path` |
+| M20 an event's unknown field carried | killed | `test_configuration_lines_under_another_name_are_refused` |
+| M21 the code kept in clear (as its own hash) | killed | `test_with_no_link_base_the_link_is_the_path_and_says_so`, the verification helpers |
+| M22 STARTTLS skipped | killed | `test_starttls_is_required_and_the_login_uses_the_stored_password` |
+| M23 the relay's certificate not verified | killed | `test_the_tls_context_verifies_the_relay_s_certificate` |
+| M24 the log mask (`redact_payload`) for the egress mask | killed | `test_nothing_an_email_carries_holds_a_secret` (a mid-line `$9$` hash) |
+
+**The result: 24 mutants with the canary; every one killed; the file identical after each; the
+worktree removed.** M1, M7 and M23 died only after their cases were added (the subject's own
+test, the quoted-printable split, the context's verification), each found by writing the
+mutant list before the run.

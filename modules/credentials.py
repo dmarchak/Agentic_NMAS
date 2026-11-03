@@ -388,6 +388,12 @@ def device_credential_values() -> dict:
         for key, entry in (data.get("controller_credentials") or {}).items():
             _add(decrypt_value(entry.get("password", "")), "controller-password")
             _add(decrypt_value(entry.get("token", "")), "controller-token")
+        # Notifications' secrets (board H, H7): the relay's password and each webhook's
+        # signing secret, so a relay's or a receiver's error that echoes one back is masked by
+        # value wherever it is logged or sent.
+        for ref, entry in (data.get("notify_secrets") or {}).items():
+            _add(decrypt_value(entry.get("value", "")), NOTIFY_LABELS.get(
+                ref.split("/", 1)[0], "notify-secret"))
     except Exception as exc:                  # noqa: BLE001
         log.error("credentials: could not read profiles for redaction: %s", exc)
 
@@ -750,6 +756,71 @@ def _controller_auth(entry: dict) -> str:
     if entry.get("username") or entry.get("password"):
         return "basic"
     return "none"
+
+
+# ---------------------------------------------------------------------------
+# Notifications' secrets (board H, H7; docs/HEAL_TO_INTENT.md section 10)
+# ---------------------------------------------------------------------------
+
+#: A notification secret's reference: ``relay`` (the SMTP relay's password, the
+#: installation's one) or ``webhook/<id>`` (one webhook's signing secret). The teams store
+#: holds the reference; the value lives here alone, encrypted as every credential here is.
+NOTIFY_REF = re.compile(r"relay|webhook/[a-f0-9]{8,32}")
+#: Each reference kind's label in the redaction table (`device_credential_values`).
+NOTIFY_LABELS = {"relay": "notify-relay-password", "webhook": "notify-webhook-secret"}
+
+
+def check_notify_ref(ref) -> str:
+    if not isinstance(ref, str) or not NOTIFY_REF.fullmatch(ref):
+        raise ValueError(f"notification secret reference {ref!r} is not relay or "
+                         "webhook/<id>")
+    return ref
+
+
+def set_notify_secret(ref: str, value: str) -> dict:
+    """Store the secret a person typed for *ref*, encrypted at rest. A blank is refused, never
+    an erase (erasing is `clear_notify_secret`, said by name), so a form that draws no value
+    back cannot clear one by being saved. Logs the reference, never the value."""
+    check_notify_ref(ref)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"a value for {ref} is text and not empty: clearing it is said by name")
+    if any(c in value for c in "\r\n\x00"):
+        raise ValueError(f"a value for {ref} is one line")
+    with _lock:
+        data = _load()
+        data.setdefault("notify_secrets", {})[ref] = {"value": encrypt_value(value),
+                                                      "set_at": time.time()}
+        _save(data)
+    from modules import redact
+    redact.invalidate_cache()       # masked by value from the next read, not in 30 s
+    log.info("credentials: stored notification secret '%s'", ref)
+    return {"ok": True}
+
+
+def get_notify_secret(ref: str) -> str:
+    """*ref*'s secret DECRYPTED, for the one caller that uses it (the relay's login, a
+    webhook's signature, at each send). Never returned to a page, printed, logged or sent."""
+    entry = (_load().get("notify_secrets") or {}).get(check_notify_ref(ref)) or {}
+    return decrypt_value(entry.get("value", "")) if entry else ""
+
+
+def notify_secret_set(ref: str) -> bool:
+    """Whether *ref* holds a secret, without decrypting it."""
+    return bool(((_load().get("notify_secrets") or {}).get(check_notify_ref(ref)) or {})
+                .get("value"))
+
+
+def clear_notify_secret(ref: str) -> bool:
+    """Remove *ref*'s secret; whether one was stored."""
+    check_notify_ref(ref)
+    with _lock:
+        data = _load()
+        had = (data.get("notify_secrets") or {}).pop(ref, None) is not None
+        if had:
+            _save(data)
+    if had:
+        log.info("credentials: cleared notification secret '%s'", ref)
+    return had
 
 
 def resolve(mgmt_ip: str, role: str = "", site: str = "",

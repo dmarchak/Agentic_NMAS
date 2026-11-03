@@ -4290,3 +4290,63 @@ def breakglass_result(out: dict, list_name: str, actor: str = "") -> dict:
         titles=BREAKGLASS_RESULT_TITLES,
         next_step=({"text": "Optional, and worth doing where you keep it: "
                             + _breakglass_verify_command(list_name)} if ok else None))
+
+
+# ── Heal to intent: a network's heal policy (board H, H1) ─────────────────────────────────────
+
+def _heal_value(key: str, value) -> str:
+    from modules.heal import policy as H
+
+    if isinstance(value, list):
+        return ", ".join(value) if value else "none"
+    if key == H.MODE_KEY:
+        return H.MODE_WORDS.get(value, str(value))
+    return "none" if value in ("", None) else str(value)
+
+
+def heal_policy_preview(p: dict, confirm: dict) -> dict:
+    """The six parts for a change to one network's heal policy (`heal.policy.plan`): what
+    changes, value by value; what it does not do; that nothing is sent to a device; the
+    operands the confirm is bound to (the preview's fingerprint); each gate (C2009's, AUTO's
+    expiry and kinds, one Tier 1 kind at a time); and who is confirming."""
+    from modules.heal import policy as H
+
+    name = p["network"]
+    after = p["after"]
+    mode = H.MODE_WORDS[after[H.MODE_KEY]]
+    rows = [f"{k}: {_heal_value(k, b)} -> {_heal_value(k, a)}" for k, b, a in p["changes"]]
+    summary = (f"{name}'s self-healing policy: {mode}"
+               + (f" until {after[H.UNTIL_KEY]}, then dry run" if after[H.UNTIL_KEY] else "")
+               + (f"; {len(rows)} value(s) change" if rows else
+                  "; the values stay, and confirming puts them in force"))
+    what_not = [{"target": name, "kind": "scope",
+                 "text": (f"Only {name}: a heal policy is each network's own and never "
+                          "inherited, so no other network's healing changes")},
+                {"target": name, "kind": "device",
+                 "text": "Nothing is sent to any device by this change"}]
+    if p["stopped"]["stopped"]:
+        what_not.append({"target": name, "kind": "kill_switch",
+                         "text": (f"Nothing heals yet: {p['stopped']['words']}. The policy is "
+                                  "saved and takes effect once a person resumes self-healing")})
+    if after[H.MODE_KEY] == "auto":
+        what_not.append({"target": name, "kind": "production",
+                         "text": ("Lab drills never count as production evidence: production "
+                                  "keeps PHASE8_PLAN section 7's bar and 17.7's gate")})
+    target = {
+        "name": name, "state": mode, "selectable": p["confirmable"],
+        "why_not": "; ".join(f"{g['name']}: {g['why']}" for g in p["gates"]
+                             if g["state"] == "fail"),
+        "select_data": {"list": name, "fingerprint": p["fingerprint"]},
+        "program": {"lines": rows, "caption": "Values that change", "unit": "value",
+                    "none": "No value changes: confirming puts the values shown in force"},
+        "operands": [{"name": "network", "value": name},
+                     {"name": "stage", "value": p["stage"].get("words", "")},
+                     {"name": "values now", "value": H.policy_fingerprint(p["before"])},
+                     {"name": "confirmed now", "value": p["confirmed"].get("fingerprint")
+                      or "nothing confirmed"},
+                     {"name": "values after", "value": p["policy_fingerprint"]},
+                     {"name": "preview", "value": p["fingerprint"]}],
+        "gates": [gate(g["name"], g["state"], g["why"]) for g in p["gates"]],
+    }
+    return build(action="heal_policy", summary=summary, targets=[target], what_not=what_not,
+                 nothing_left_out="", confirm=confirm)
