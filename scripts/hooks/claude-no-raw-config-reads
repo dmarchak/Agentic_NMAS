@@ -25,8 +25,10 @@ broken hook must not stop every command.
 - A local segment naming a script outside this checkout (a scratch script) whose text
   names a config store.
 
-**Allowed:** a segment that runs `nmas-config-read`, directly or as the file redirected
-into a host's `python3 -`. Its output is masked, so piping it on is fine.
+**Allowed:** a segment that runs an allowed reader (`READERS`), directly or as the file
+redirected into a host's `python3 -`: `nmas-config-read`, and `nmas-git-text-audit` (C2340,
+the operator's approval of 2026-11-03, for that tool only). Each masks every line it prints,
+so piping its output on is fine. A reader is added only by the operator's approval.
 """
 
 import json
@@ -37,6 +39,12 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 READER = "nmas-config-read"
+#: The readers allowed by name, each masking every line it prints:
+#: - `nmas-config-read` (C536): goldens, configs and backups, masked;
+#: - `nmas-git-text-audit` (C2340; the operator's approval of 2026-11-03, for this tool only,
+#:   docs/STANDING_APPROVAL_LOG.md): every network repository's commit messages and `.nsot/`
+#:   records, each line printed through `redact.redact_typed`; it takes no path.
+READERS = (READER, "nmas-git-text-audit")
 SEPARATORS = {";", "&&", "||", "&", ";;"}
 
 #: A path inside a store holding device configuration, on any machine. Each store is a
@@ -96,9 +104,10 @@ def _base(tok):
 
 
 def _runs_reader(seg):
-    """The segment runs nmas-config-read: as its program, or redirected into one."""
+    """The segment runs an allowed reader (`READERS`): as its program, or redirected into
+    one."""
     for i, tok in enumerate(seg):
-        if _base(tok) == READER:
+        if _base(tok) in READERS:
             prev = seg[i - 1] if i else ""
             if i == 0 or prev in ("<", "|") or _base(prev) in ("python3", "python", "env"):
                 return True
@@ -120,7 +129,7 @@ def _local_files(seg):
     """Existing local files the segment names (a script redirected or piped to a host)."""
     out = []
     for tok in seg:
-        if tok in ("<", ">", "|") or _base(tok) in ("nmas-host", READER):
+        if tok in ("<", ">", "|") or _base(tok) in ("nmas-host",) + READERS:
             continue
         path = os.path.expanduser(tok)
         if os.path.isfile(path) and os.path.getsize(path) < 1_000_000:

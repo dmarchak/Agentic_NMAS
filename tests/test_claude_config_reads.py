@@ -211,6 +211,8 @@ def refused_bash(scripts):
         "ls data/config_cache/ && cat data/config_cache/r1.txt",
         # A separator does not carry the reader's allowance to the next command.
         "scripts/nmas-config-read golden/s1.cfg; cat /x/lists/default/golden_configs/s1.cfg",
+        # Nor the git audit's (C2340): an allowed reader's name allows its own segment only.
+        "scripts/nmas-git-text-audit; cat /x/lists/default/config_repo/golden/s1.cfg",
         f"python3 {s['local']}",
         # C1685: the stores of sealed secrets. The slip: a host grep of the settings file
         # ran past the window it wanted and printed the sealed key.
@@ -232,6 +234,10 @@ def allowed_bash(scripts):
         "scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - --checkout "
         "/srv/app --settings --grep no_change < scripts/nmas-config-read",
         "grep -n USER_SETTINGS_FILE modules/config.py",
+        # C2340's git audit, allowed by name (the operator's approval of 2026-11-03, this tool
+        # only): it prints every line through the typed mask and takes no path.
+        "scripts/nmas-host nmas -- /srv/app/scripts/nmas-git-text-audit",
+        "scripts/nmas-git-text-audit | head -40",
         f"scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - < {scripts['loki']}",
         "scripts/nmas-host nmas -- git -C /srv/app log -1 --format=%h",
         "scripts/nmas-host nmas -- bash -c 'cd /srv/app && git status --porcelain | wc -l'",

@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""C2340's git audit, read-only: the free text Mercury and people wrote into every network's
+repository, re-read with the typed-text mask, to find a secret the old mask let through.
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter)
+    nmas-host nmas -- <checkout>/scripts/nmas-git-text-audit
+
+**What it reads** (and nothing else): every network's repository, found through the product's
+own resolver (`listref.names`, `listref.resolve(...).repo_dir`), never a path given:
+- every commit message in every branch (`git log --all`);
+- every line under `.nsot/` (Mercury's committed records: reasons, notes, receipts) in any
+  revision, that names a secret word (`git grep` over `git rev-list --all`).
+It never reads a golden, an intent file or a template, and takes no path argument.
+
+**What it prints:** for each repository its counts; then each line where the typed-text mask
+(`redact.redact_typed`) masks more than the old egress mask did (`redact.redact_egress`): its
+date, repository, where (a message, or the record's path), the commit, whether that commit is
+on a remote-tracking branch (pushed, as of the last fetch or push), how many words the new
+mask removed and whether any is credential-shaped (letters with digits, or a symbol; a plain
+word removed is over-masking, no leak), and **the line as the new mask leaves it**. Every line
+it prints passes `redact_typed`, which runs `redact_text` (by position and by the values
+Mercury holds) first: never a value, never a raw line.
+
+Allowed by the config-read hook by name (scripts/hooks/claude-no-raw-config-reads, `READERS`;
+the operator's approval of 2026-11-03, for this tool only). Exit 0; 2 for a bad argument.
+"""
+import argparse
+import collections
+import os
+import re
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: A line worth reading: it names a secret word (the typed mask's own words).
+WORDS = r"password|passwd|passphrase|pwd|secret|community|api.?key|token"
+WORDS_RE = re.compile(r"(?i)" + WORDS + r"|\bpw\b")
+
+
+def _git(repo: str, *args) -> str:
+    """git on a network's repository, through the one runner pinned to it (C931)."""
+    from modules.nsot.repo import run_git
+    r = run_git(repo, *args)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def masked_more(line: str, values: dict):
+    """``(removed, shaped, shown)`` when the typed mask masks more of *line* than the egress
+    mask did, else None; *shown* is the line as the typed mask leaves it."""
+    from modules import redact
+    old = redact.redact_egress(line, values)
+    new = redact.redact_typed(line, values)
+    if new == old:
+        return None
+    gone = [w for w in old.split() if w not in new.split() and "<redacted" not in w]
+    shaped = any(redact._credential_shaped(w.strip(".,;:!?\"'")) for w in gone)
+    return len(gone), shaped, new
+
+
+def _pushed(repo: str, sha: str, remotes: list) -> bool:
+    from modules.nsot.repo import run_git
+    return any(run_git(repo, "merge-base", "--is-ancestor", sha, r).returncode == 0
+               for r in remotes)
+
+
+def audit(names: list, repo_of, values: dict) -> dict:
+    """``{"repos": [{name, commits, message_lines, record_lines, remotes, missing}],
+    "matches": [{day, repo, where, sha, pushed, removed, shaped, shown}]}`` for the networks
+    *names*, each repository from *repo_of(name)*."""
+    repos, matches = [], []
+    for name in names:
+        repo = repo_of(name)
+        if not os.path.isdir(os.path.join(repo, ".git")):
+            repos.append({"name": name, "missing": True})
+            continue
+        remotes = [r for r in _git(repo, "for-each-ref", "--format=%(refname:short)",
+                                   "refs/remotes").split() if not r.endswith("/HEAD")]
+        log = _git(repo, "log", "--all", "--format=%H%x00%ad%x00%B%x1e",
+                   "--date=format:%Y-%m-%d")
+        commits = [c for c in log.split("\x1e") if c.strip()]
+        n_msg = 0
+        for c in commits:
+            sha, day, body = c.strip("\n").split("\x00", 2)
+            for line in body.split("\n"):
+                if not WORDS_RE.search(line):
+                    continue
+                n_msg += 1
+                got = masked_more(line, values)
+                if got:
+                    matches.append({"day": day, "repo": name, "where": "message",
+                                    "sha": sha[:10], "pushed": _pushed(repo, sha, remotes),
+                                    "removed": got[0], "shaped": got[1], "shown": got[2]})
+        revs = _git(repo, "rev-list", "--all").split()
+        seen, n_rec = set(), 0
+        for i in range(0, len(revs), 200):
+            out = _git(repo, "grep", "-I", "-i", "-E", WORDS + r"|\bpw\b", *revs[i:i + 200],
+                       "--", ".nsot")
+            for hit in out.splitlines():
+                parts = hit.split(":", 2)
+                if len(parts) != 3 or (parts[1], parts[2]) in seen:
+                    continue
+                rev, fpath, line = parts
+                seen.add((fpath, line))
+                n_rec += 1
+                got = masked_more(line, values)
+                if got:
+                    day = _git(repo, "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d",
+                               rev).strip()
+                    matches.append({"day": day, "repo": name, "where": f"record {fpath}",
+                                    "sha": rev[:10], "pushed": _pushed(repo, rev, remotes),
+                                    "removed": got[0], "shaped": got[1],
+                                    "shown": got[2].strip()})
+        repos.append({"name": name, "commits": len(commits), "message_lines": n_msg,
+                      "record_lines": n_rec, "remotes": remotes, "missing": False})
+    return {"repos": repos, "matches": matches}
+
+
+def report(got: dict) -> list:
+    out = [f"repositories: {len(got['repos'])}"]
+    for r in got["repos"]:
+        if r["missing"]:
+            out.append(f"  {r['name']}: no repository")
+            continue
+        out.append(f"  {r['name']}: {r['commits']} commits, {r['message_lines']} message "
+                   f"lines naming a secret word, {r['record_lines']} distinct record lines; "
+                   f"remotes {', '.join(r['remotes']) or 'none'}")
+    ms = got["matches"]
+    shaped = sum(1 for m in ms if m["shaped"])
+    out.append(f"lines the typed mask masks more: {len(ms)} ({shaped} credential-shaped, "
+               f"{len(ms) - shaped} plain words only)")
+    counts = collections.Counter((m["day"], m["repo"], m["where"].split()[0], m["shaped"])
+                                 for m in ms)
+    for (day, repo, kind, sh), n in sorted(counts.items()):
+        out.append(f"  {day}  {repo:20s} {kind:8s} {'shaped' if sh else 'plain':6s} {n}")
+    for m in ms:
+        out.append(f"- {m['day']} {m['repo']} {m['where']} {m['sha']} "
+                   f"{'pushed' if m['pushed'] else 'local only'} "
+                   f"[{m['removed']} word(s) removed, "
+                   f"{'CREDENTIAL-SHAPED' if m['shaped'] else 'plain'}]: {m['shown'][:240]!r}")
+    return out
+
+
+def main(argv=None, values=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.parse_args(argv)
+    from modules import redact
+    from modules.nsot import listref
+    values = redact.known_secret_values() if values is None else values
+    got = audit(listref.names(), lambda n: listref.resolve(n).repo_dir, values)
+    print("\n".join(report(got)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
