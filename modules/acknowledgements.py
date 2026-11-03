@@ -33,6 +33,59 @@ log = logging.getLogger(__name__)
 #: The store's name on the records database (`records_db.STORES`).
 STORE = "acknowledgements"
 
+#: When a down/up cycle has settled (C2316): no event for this long after its last. About 2.5x
+#: the outage-to-recovery times measured in blind session 6 (R3: the first ADJCHG DOWN at
+#: 00:44:36 to the revert's recovery at 00:51:14, 6.6 min; R8: 01:22:36 to FULL at 01:28:26,
+#: 5.8 min; 2026-11-03).
+STABLE_SECONDS = 15 * 60
+
+#: The longest planned quiet period one acknowledgement may name (C2316's "acknowledge for N
+#: hours"): a day, the adjacency log's own window for a row.
+MAX_HOURS = 24
+
+
+def _epoch(text):
+    import calendar
+    try:
+        return float(calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return None
+
+
+def covers(ack: dict, events, now: float = None) -> dict:
+    """Whether *ack* covers a band row's *events* (their epochs), by the operator's rule
+    (C2316, 2026-11-03): an acknowledgement covers the events up to its own time, and the
+    down/up cycle under way then until it settles (no event for `STABLE_SECONDS`); any later
+    event raises the row again. One given for N hours (*until*) covers every event to its
+    expiry, a planned quiet period, and none after it.
+
+    ``{"covered", "after", "until", "expired"}``: *after* the first event it does not cover,
+    or None. An acknowledgement with no readable time covers nothing."""
+    now = time.time() if now is None else now
+    at = _epoch(ack.get("at"))
+    until = _epoch(ack.get("until")) if ack.get("until") else None
+    out = {"covered": False, "after": None, "until": ack.get("until") or "",
+           "expired": bool(until is not None and now > until)}
+    if at is None:
+        return out
+    events = sorted(float(e) for e in events or [])
+    edge = until if until is not None else at
+    before = [e for e in events if e <= edge]
+    # The cycle under way at the acknowledgement: its last event within STABLE_SECONDS of it.
+    # A planned quiet period ends at its expiry, so it carries no cycle past it.
+    chain = before[-1] if (until is None and before and at - before[-1] < STABLE_SECONDS) \
+        else None
+    for e in events:
+        if e <= edge:
+            continue
+        if chain is not None and e - chain < STABLE_SECONDS:
+            chain = e
+            continue
+        out["after"] = e
+        return out
+    out["covered"] = True
+    return out
+
 
 def _path() -> str:
     from modules.config import DATA_DIR
@@ -170,7 +223,7 @@ def standing_bands(rows: list) -> list:
 
 def record(row_id: str, event: str, *, why: str, by: str, verified: str,
            kind: str, what: str, band: float = None, value: float = None,
-           devices: list = None, disposition: str = "") -> dict:
+           devices: list = None, disposition: str = "", hours: float = None) -> dict:
     """Append one acknowledgement. The caller has checked the row exists now and the
     reason's shape (`attention.acknowledge`, the one caller). *band* and *value* are a chronic
     alert's measured band and its value then (C433): it holds only within the band. *devices*
@@ -191,6 +244,10 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
     if disposition:
         # What the person found (C2295): kept on the entry History draws.
         entry["disposition"] = disposition
+    if hours:
+        # A planned quiet period (C2316): every event to its expiry is covered, none after.
+        entry["until"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                       time.gmtime(time.time() + float(hours) * 3600))
     line = json.dumps(entry, sort_keys=True)
     if _on_database():
         from modules import records_migrate

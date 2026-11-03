@@ -188,7 +188,8 @@ def test_the_control_is_under_an_answer_drawn_never_under_a_refused_one(fb):
 #: and the variable its answer's call id is read from.
 ANSWER_TEMPLATES = {"_explain.html": "x.call_id", "_history_ask_words.html": "w.call_id",
                     "_intent_words.html": "w.call_id", "_sdn_responses.html": "a.call_id",
-                    "_change_record.html": "v.call_id"}
+                    "_change_record.html": "v.call_id",
+                    "_assistant_answer.html": "got.call_id"}
 
 
 @pytest.mark.parametrize("name, var", sorted(ANSWER_TEMPLATES.items()))
@@ -208,9 +209,15 @@ def test_the_answers_templates_are_every_ai_answer():
              if k != "ai_card_test" and c.get("template")}
     # Explain's control is drawn by _explain_ask.html, which the answer card, _explain.html,
     # includes at its foot (board AlertsExplain revised 2026-10-29), and the block above it.
-    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html"}) | {"_explain_ask.html"}
+    # The assistant's control is its panel, _assistant_panel.html, whose answer region the
+    # route fills with _assistant_answer.html (card P7, stage 1).
+    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html", "_assistant_answer.html"}) | {
+        "_explain_ask.html", "_assistant_panel.html"}
     assert "_explain_ask.html" in open(os.path.join(ROOT, "templates", "v2", "_explain.html"),
                                        encoding="utf-8").read()
+    assert 'id="asst-answer"' in open(os.path.join(ROOT, "templates", "v2",
+                                                   "_assistant_panel.html"),
+                                      encoding="utf-8").read()
 
 
 def test_accept_is_bound_to_the_draft_and_the_draft_names_no_person(fb):

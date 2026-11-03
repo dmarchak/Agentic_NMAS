@@ -153,6 +153,9 @@ def _pages(world):
         "ask_in_words": ["/v2/history/query/ask/metrics?list=Lab",
                          "/v2/history/query/ask/logs?list=Lab"],
         "ai_card_test": ["/v2/settings/installation?tab=ai"],
+        # The toolbar assistant's panel, as the top bar's Assistant asks for it on a page the
+        # first time it opens (card P7, stage 1; routes/assistant_v2.panel).
+        "assistant": ["/v2/assistant/panel?nav=attention", "/v2/assistant/panel?nav=devices"],
     }
 
 

@@ -51,6 +51,51 @@ FOLDER = "NMAS"
 #: Three scrapes of the telemetry_mdt job (30 s, measured 2026-10-01).
 WINDOW_SECONDS = 90
 SUBSCRIPTION = re.compile(r"^telemetry ietf subscription (\d+)\s*$", re.M)
+
+#: Where Telegraf reads its configuration (its own defaults), and its prometheus_client
+#: output's `expiration_interval` when the key is absent (Telegraf's documented "60s").
+TELEGRAF_CONF = ("/etc/telegraf/telegraf.conf", "/etc/telegraf/telegraf.d")
+TELEGRAF_DEFAULT_EXPIRATION = 60
+
+
+def _seconds(text: str):
+    m = re.fullmatch(r"\s*(\d+)\s*(ms|s|m|h)?\s*", text or "")
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2) or "s"
+    return {"ms": n // 1000, "s": n, "m": n * 60, "h": n * 3600}[unit]
+
+
+def exporter_expiration(paths=TELEGRAF_CONF) -> tuple:
+    """``(seconds, where)``: how long Telegraf's Prometheus exporter keeps a stopped stream's
+    series (C2323: 300 s on the lab's host, so the rule's 90 s window saw a stopped stream about
+    6.5 min after it stopped). Read from the first uncommented ``[[outputs.prometheus_client]]``
+    section of Telegraf's own files; its default when the section names none; ``(None, why)``
+    when no file holds the output, so the rule says it was not read."""
+    files = []
+    for p in paths:
+        if os.path.isdir(p):
+            files += sorted(os.path.join(p, f) for f in os.listdir(p) if f.endswith(".conf"))
+        elif os.path.isfile(p):
+            files.append(p)
+    for path in files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        section = re.search(r"^\s*\[\[outputs\.prometheus_client\]\]\s*$(.*?)(?=^\s*\[|\Z)",
+                            text, re.M | re.S)
+        if not section:
+            continue
+        got = re.search(r'^\s*expiration_interval\s*=\s*"([^"]*)"', section.group(1), re.M)
+        if not got:
+            return TELEGRAF_DEFAULT_EXPIRATION, f"{path} (Telegraf's default)"
+        secs = _seconds(got.group(1))
+        if secs is None:
+            return None, f"{path}: expiration_interval {got.group(1)!r} is not a duration"
+        return secs, path
+    return None, "no Telegraf file holds an [[outputs.prometheus_client]] section"
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
 
 
@@ -79,7 +124,19 @@ def expected(population=None, golden=None) -> tuple:
     return out, sorted(quiet), errors
 
 
-def rule_for(host: str, sub: str, datasource_uid: str) -> dict:
+def detection_words(expiry) -> str:
+    """When a stopped stream is seen (C2323): Telegraf's exporter keeps its series *expiry*
+    seconds after its last sample, then the rule's window must pass, then one evaluation."""
+    if expiry is None:
+        return ("How long Telegraf's exporter keeps a stopped stream's series was not read, so "
+                "how long after a stream stops this rule fires is not known")
+    return (f"Telegraf's exporter keeps a stopped stream's series for {expiry} s "
+            f"(expiration_interval), so a stopped stream is seen about {expiry + WINDOW_SECONDS} s "
+            f"after it stops ({expiry} s, then this rule's {WINDOW_SECONDS} s), within one "
+            "evaluation (1 min)")
+
+
+def rule_for(host: str, sub: str, datasource_uid: str, expiry=None) -> dict:
     if not _NAME.match(host):
         raise ValueError(f"{host!r} is not a usable device name")
     expr = (f'count(last_over_time({{device="{host}", subscription="{sub}"}}'
@@ -102,19 +159,24 @@ def rule_for(host: str, sub: str, datasource_uid: str) -> dict:
         "noDataState": "Alerting",
         "execErrState": "Alerting",
         "for": "0s",
-        "labels": {"nmas": "telemetry", "device": host, "subscription": sub},
+        # The real detection time (C2323), read from Telegraf's own configuration, for Needs
+        # attention's words (`grafana_alerts.absence_words`); absent when it was not read.
+        "labels": {"nmas": "telemetry", "device": host, "subscription": sub,
+                   **({"detect_seconds": str(expiry + WINDOW_SECONDS)}
+                      if expiry is not None else {})},
         "annotations": {
             "summary": f"{host} has stopped streaming telemetry subscription {sub}",
             "description": (
                 f"{host}'s committed configuration declares `telemetry ietf subscription {sub}`, "
                 f"and Prometheus holds no sample of it in the last {WINDOW_SECONDS} s (three "
-                "scrapes of telemetry_mdt). The device, its subscription, the gRPC path to "
-                "Telegraf, Telegraf or the scrape has stopped; the rule cannot say which."),
+                "scrapes of telemetry_mdt). " + detection_words(expiry) + ". The device, its "
+                "subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; "
+                "the rule cannot say which."),
         },
     }
 
 
-def build(subs_by_host: dict, datasource_uid: str) -> dict:
+def build(subs_by_host: dict, datasource_uid: str, expiry=None) -> dict:
     if not subs_by_host:
         raise ValueError("the population is empty -- a rule file with no rules alerts on "
                          "nothing and reads like every stream is up")
@@ -122,7 +184,7 @@ def build(subs_by_host: dict, datasource_uid: str) -> dict:
         raise ValueError("no Prometheus datasource UID")
     return {"apiVersion": 1, "groups": [{
         "orgId": 1, "name": GROUP, "folder": FOLDER, "interval": "1m",
-        "rules": [rule_for(h, s, datasource_uid)
+        "rules": [rule_for(h, s, datasource_uid, expiry)
                   for h in sorted(subs_by_host) for s in subs_by_host[h]]}]}
 
 
@@ -222,7 +284,10 @@ def main(argv=None) -> int:
         if not uid:
             uid, said = grafana_datasource()
             print(said)
-        doc = build(want, uid)
+        expiry, where = exporter_expiration()
+        print(f"Telegraf's exporter keeps a stopped stream {expiry} s ({where})"
+              if expiry is not None else f"Telegraf's exporter expiration not read: {where}")
+        doc = build(want, uid, expiry)
     except ValueError as exc:
         print(f"UNPROVEN: {exc}")
         return EXIT_UNPROVEN

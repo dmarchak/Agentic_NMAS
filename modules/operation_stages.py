@@ -488,6 +488,8 @@ HISTORY = {
                                         "record; reaches no device",
     "v2.history_ask_metrics_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                     "never one device's record",
+    "assistant_v2.ask": "n/a: one AI call (or none: a manual gap), kept in the fleet's ai_calls "
+                        "record, the gap in the manual's gaps record; reaches no device",
     "v2.history_ask_logs_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                  "never one device's record",
     # PHASE8_PLAN 16.11 item 3: the call's subject is the device, so its History draws it.

@@ -1,0 +1,22 @@
+{%- from "v2/_macros.html" import badge -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- The toolbar assistant's answer (card P7, stage 1; board P7; routes/assistant_v2.ask): drawn in
+    the panel in place of the last one. An answer drawn is one Mercury's check passed: every
+    citation a passage it was sent, each a link into the manual. A question the manual does not
+    cover is said, never padded; a refusal says why; what was masked before sending is said,
+    never its value; Was this right? under every answer a call made. -#}
+<div class="asst-answer" role="region" aria-live="polite" aria-label="The assistant's answer">
+  {{ ai.typed_masked(got.typed_masked) }}
+  {%- if got.state == 'answered' %}
+  <p class="small faint">{{ badge('AI', 'info', title='Answered by AI from the manual; every citation checked in code') }} From the manual</p>
+  <div class="asst-said">{{ got.answer }}</div>
+  <p class="small"><strong>From:</strong> {% for c in got.cites %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}</p>
+  {%- elif got.state == 'not_covered' %}
+  <p class="small"><strong>{{ got.detail }}</strong> It is recorded as a gap in the manual.{% if got.passages %} The nearest it holds: {% for c in got.passages[:3] %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
+  {%- else %}
+  <p class="small notice notice-warn" role="alert">Couldn't answer: {{ got.detail | replace("Couldn't answer: ", "") }}</p>
+  {%- endif %}
+  {%- if got.call_id and got.state != 'refused' %}
+  {% with fb=ai_feedback(got.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+  {%- endif %}
+</div>

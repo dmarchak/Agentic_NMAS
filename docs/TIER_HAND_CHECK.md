@@ -3428,3 +3428,28 @@ shortest of the alternatives' misses is `[]` whenever one passes), removed by wr
 as that `min` alone; and the checker reading only the first alternative, which a test calling
 `_stale` directly could not see, now killed by a test through `check`.
 **The result: 9 mutants with the canary; every one killed; the files restored byte for byte.**
+
+## 2026-11-03: the toolbar assistant's question, a typed part (card P7, stage 1), by hand
+
+**What changed in the tier:** a new task, `assistant`, declares its typed part in
+`gateway.TYPED_PARTS` (`("question",)`), so the question a person types or pastes is masked by
+position and by known value as it leaves, and said back in words (the gateway's own mask, board
+P7's answer 4: no second mask). Two writes of the person's words, each masked:
+- the manual's gap record (`assistant.record_gap`, the question through `redact.redact_egress`);
+- the retriever's own read, which ranks the manual from the question masked and its
+  placeholders taken out, so a pasted value never ranks the manual.
+
+No mask rule changes.
+**The method:** each mutant one exact text replacement, required to match once, in a
+`scripts/nmas-control` throwaway worktree, then tests/test_ai_assistant.py run in CI's
+interpreter (`scratchpad/ctl_shr.py` t1 to t4, 2026-11-03 ~01:0x UTC). Baseline: the file passes
+(9).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: an answered question returned with `ok` False | killed (its first run survived: no test asserted `ok` on an answer; the assertion was added, and it then died) | `test_the_passages_chosen_are_sent_after_the_cached_screens` |
+| T1 the question not declared a typed part (`()`) | killed | `test_a_pasted_secret_is_masked_before_it_leaves_and_said` |
+| T2 the gap's record holding the question unmasked | killed | `test_the_route_draws_the_answer_and_records_a_gap_masked` |
+| T3 the retriever ranking the question unmasked | killed | `test_a_pasted_secret_is_masked_before_it_leaves_and_said` |
+
+**The result: 3 mutants with the canary; every one killed; the worktree removed each time.**

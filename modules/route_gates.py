@@ -224,6 +224,7 @@ GATES = {
     "console_servers_v2.key_generate": _g(K, "generates a console server's SSH key pair: the private half stored encrypted under its reference in the credential store, only the public key shown"),
     "settings_v2.install_save": _g(K,"saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
     "v2.history_ask_logs_words": _g(K, "Ask in words on the logs builder: one recorded, capped AI call as the person who asked, turning a question into the logs builder's choices (modules/ai/nl_query.py); reads Loki, changes nothing else"),
+    "assistant_v2.ask": _g(K, "the toolbar assistant's question (card P7, stage 1; modules/ai/assistant.py): one recorded, capped AI call as the person who asked, answered from the manual's passages code chose, its citations checked; a question the manual does not cover recorded as a manual gap; changes nothing else"),
     "v2.history_ask_metrics_words": _g(K, "Ask in words: one recorded, capped AI call as the person who asked, turning a question into the metrics builder's choices (modules/ai/nl_query.py); reads Prometheus, changes nothing else"),
     "intent_v2.words": _g(K, "Change it in words on a device's Intent tab: one recorded, capped AI call as the person who asked, drafting a patch to that device's intent and previewing it (modules/ai/intent_words.py); writes nothing, reaches no device"),
     # PHASE8_PLAN 16.11 item 1 (board FB): the routes refuse anyone but a verified person too,

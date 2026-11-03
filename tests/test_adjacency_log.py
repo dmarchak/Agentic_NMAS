@@ -163,6 +163,13 @@ class TestNeedsAttention:
                                      receipts=lambda ln, dev: [])
         assert res["rows"] == [] and res["state"] == "read"
 
+    def test_the_row_carries_its_unexplained_drops_times(self):
+        """C2316: the events an acknowledgement is judged against, oldest first."""
+        res = A.adjacency_log_source(cached=_cached(_read()), planned=[],
+                                     receipts=lambda ln, dev: [])
+        r = next(x for x in res["rows"] if "|r1|" in x["id"])
+        assert r["operands"]["events"] == pytest.approx([NOW - 7200, NOW - 3600, NOW - 600])
+
     def test_an_unread_reader_is_a_source_that_says_so(self):
         res = A.adjacency_log_source(cached={"state": "absent", "why": "never run", "doc": None},
                                      planned=[], receipts=lambda ln, dev: [])
@@ -201,3 +208,63 @@ class TestAcknowledgedWithinItsBand:
         world["value"], world["at"] = _read(more), time.time() + 2
         row = next(r for r in self._page()["rows"] if r["id"] == rid)
         assert "above it" in row["cause"]
+
+    K = AL.key("Lab", "r1", "OSPF", "192.0.2.24")
+
+    def _acknowledged(self, hours=""):
+        """r1's row acknowledged now; the acknowledgement's own time, by its record."""
+        from modules import acknowledgements as ACK
+        got = A.acknowledge(f"adjacency_log:{self.K}", self.K, "the R3 walk, done on purpose",
+                            by="op@example.invalid", verified="access", hours=hours)
+        assert got["ok"] and got["hides_now"], got
+        return ACK._epoch(got["acknowledged"]["at"]), got
+
+    def _then(self, world, drops, clock):
+        """The reader's next read at *clock*: the week's lines and *drops* more."""
+        lines = _lines() + [(_ns(t), OSPF_DOWN) for t in drops]
+        world["value"] = AL.read(clock=lambda: clock, population=[("Lab", "r1"), ("Lab", "r2")],
+                                 job='job="syslog"', ask=lambda q, s, e: lines)
+        world["at"] = time.time() + 2
+        return {r["id"]: r for r in self._page()["rows"]}
+
+    def test_one_new_drop_inside_the_band_raises_the_row(self, world):
+        """C2316, the operator's case (blind session 6, 2026-11-03: R8's drop 20 min after "R3
+        walk done on purpose" was caught only because the count passed the band): after the
+        acknowledgement, and after its cycle settled, one drop inside the band raises the row,
+        naming the acknowledgement and the drop's time."""
+        t, _got = self._acknowledged()
+        rows = self._then(world, [t + 1200], t + 1300)
+        row = rows[f"adjacency_log:{self.K}"]
+        assert row["what"].endswith("went down 4 times in the last day"), row["what"]
+        assert row["operands"]["band_reading"]["value"] <= row["operands"]["band"], "in band"
+        assert "Acknowledged by op@example.invalid on " in row["cause"]
+        assert ("it covers what came before it and the cycle then under way until it "
+                "settled, and this came after, at ") in row["cause"], row["cause"]
+
+    def test_the_cycle_under_way_is_covered_until_it_settles(self, world):
+        """A drop a minute before the acknowledgement, and another five minutes after it: the
+        same down/up cycle, inside the band, still covered; 20 min after that one, raised."""
+        t, _got = self._acknowledged()
+        rows = self._then(world, [t - 60, t + 300], t + 400)
+        assert f"adjacency_log:{self.K}" not in rows
+        rows = self._then(world, [t - 60, t + 300, t + 300 + 1200], t + 1600)
+        assert f"adjacency_log:{self.K}" in rows
+
+    def test_a_planned_quiet_period_covers_everything_to_its_expiry_and_nothing_after(
+            self, world):
+        t, got = self._acknowledged(hours="2")
+        assert got["acknowledged"]["until"] and "a quiet period until " in got["words"]
+        burst = [t + 600 + 60 * i for i in range(6)]            # past the band of five
+        rows = self._then(world, burst, t + 1000)
+        assert f"adjacency_log:{self.K}" not in rows, "inside the quiet period, band or not"
+        page = A.needs_attention(sources=[A.adjacency_log_source])
+        assert any(k.get("until") for k in page["acknowledged"]), "its expiry is drawn"
+        rows = self._then(world, [t + 2 * 3600 + 60], t + 2 * 3600 + 120)
+        row = rows[f"adjacency_log:{self.K}"]
+        assert "for a quiet period until " in row["cause"], row["cause"]
+
+    def test_a_quiet_period_is_whole_hours_up_to_a_day(self, world):
+        for bad in ("0", "25", "1.5", "an hour"):
+            got = A.acknowledge(f"adjacency_log:{self.K}", self.K, "the R3 walk, done on purpose",
+                                by="op@example.invalid", verified="access", hours=bad)
+            assert got["ok"] is False and "1 to 24 whole hours" in got["error"], (bad, got)

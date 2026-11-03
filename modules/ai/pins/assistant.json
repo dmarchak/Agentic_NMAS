@@ -1,0 +1,14 @@
+{
+  "words": "Answer a question from the manual (the toolbar assistant)",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 12000,
+  "max_tokens": 1536,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "Haiku 5.5, board P7's approved answer 1 and PHASE8_PLAN 15.12 (b): an answer drawn from passages code chose and checks cite; a larger model only if Haiku misses the floor on the recorded cases.",
+    "max_prompt_tokens": "Stated, not yet measured by the provider: the passages are at most manual_index.BUDGET_CHARS (12,000 characters), with the prompt, the screens and a question of at most assistant.MAX_QUESTION (600), about 13,500 characters: about 3,400 tokens at 4 characters a token, 5,200 at C1798's 2.585, 7,500 at the gateway's 1.8 fallback; 12,000 is past each. Re-derived from the provider's counts once the cases are run (C1898's rule).",
+    "max_tokens": "Stated, not yet measured: an answer of at most assistant.MAX_ANSWER (2,400 characters) and up to 8 links, about 900 tokens; 1,536 is about 1.7x that, with thinking off. Re-derived as 2.5x the largest output once the cases are run (C1757's rule).",
+    "thinking": "Off: steps from passages already chosen, checked by citation; nothing to reason through that a check does not hold."
+  }
+}

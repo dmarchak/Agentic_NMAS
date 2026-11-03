@@ -11,7 +11,7 @@ anchor. Diagrams are left out: their words are the alt text, kept beside the tex
 
 **Stage 1's retriever (the operator's order of 2026-11-02; fully offline, no embedding
 model).** `passages` indexes each section whole, or a long one split at its paragraphs (5 to 8
-must fit about 5,000 tokens, and the longest section is about 17,000 characters), each keeping
+must fit 3 to 5k tokens, and the longest section is about 17,000 characters), each keeping
 its section's link. `ranked` scores them by BM25 (`K1`, `B`) over each passage's words, a
 heading's words `HEADING_WEIGHT` more; the question's words, each plural's ``s`` dropped
 (`stem`), with the manual's words for what people call otherwise (`ALIASES`, a maintained list:
@@ -37,14 +37,16 @@ HEADING_WEIGHT = 3.0
 SCREEN_BOOST = 2.0
 #: BM25's term saturation and length normalisation, the method's usual values (not tuned).
 K1, B = 1.2, 0.75
-#: Passages returned at most, and the characters they may hold in all: about 5,000 tokens at
-#: about 4 characters a token (the operator's 3 to 5k, 2026-11-02); a long section is split
-#: into passages of at most PASSAGE_CHARS so 5 to 8 fit.
+#: Passages returned at most, and the characters they may hold in all: within the operator's 3
+#: to 5k tokens (2026-11-02) at either rate on record, about 3,000 tokens at 4 characters a
+#: token and about 4,600 at the 2.585 C1798 states (no call has measured the manual's own; the
+#: first run's provider count does); a long section is split into passages of at most
+#: PASSAGE_CHARS so 5 to 8 fit.
 LIMIT = 8
-BUDGET_CHARS = 20000
-PASSAGE_CHARS = 3000
+BUDGET_CHARS = 12000
+PASSAGE_CHARS = 1800
 #: The gap rules (`select`), calibrated on the recorded retrieval cases
-#: (tests/fixtures/ai_cases/assistant/retrieval.json, `evaluate`): the share of the question's
+#: (tests/fixtures/manual_retrieval/cases.json, `evaluate`): the share of the question's
 #: own words the best passage must meet, the best's least score, and the share of the best's
 #: score a further passage must reach to be sent rather than pad.
 COVER = 0.25

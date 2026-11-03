@@ -38,6 +38,10 @@ MARKUP = {
                         "input": r'<input\b[^>]*\bid="iw-words"[^>]*>'},
     "sdn_classify": {"button": r'<button\b[^>]*\bid="sdn-classify-[^"]*"[^>]*>', "input": None},
     "change_record": {"button": r'<button\b[^>]*\bdata-op="change-record"[^>]*>', "input": None},
+    # The toolbar assistant (card P7, stage 1): its panel, drawn the first time it opens on a
+    # page (routes/assistant_v2.panel).
+    "assistant": {"button": r'<button\b[^>]*\bdata-op="assistant"[^>]*>',
+                  "input": r'<textarea\b[^>]*\bid="asst-q"[^>]*>'},
 }
 
 #: Each state that cannot answer, and words its reason must hold.
@@ -171,9 +175,11 @@ CONTROL_TAG = re.compile(r"<(?:button|input|select|textarea)\b[^>]*>")
 
 
 def disabled_elsewhere(html: str, name: str) -> list:
-    """Every disabled control on the page but *name*'s own button and input."""
-    spec = MARKUP[name]
-    own = {t for p in (spec["button"], spec["input"]) if p for t in re.findall(p, html)}
+    """Every disabled control on the page but an AI control's own button and input: *name*'s,
+    and any other registered AI control the page draws (the toolbar assistant's panel is on
+    every page, card P7), whose disabling when hosted AI cannot answer is its own check's."""
+    own = {t for spec in MARKUP.values() for p in (spec["button"], spec["input"]) if p
+           for t in re.findall(p, html)}
     return sorted(t for t in CONTROL_TAG.findall(html) if t not in own and _disabled(t))
 
 

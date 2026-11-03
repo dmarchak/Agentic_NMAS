@@ -43,8 +43,13 @@ def _ctx(tab: str) -> dict:
     else:
         g = (sdn_page.flows_view(network, request.args) if tab == "flows"
              else sdn_page.controllers_view(network))
+    # C2325: a network with no controller names the networks that have one, a click away.
+    from modules.sdn import connections as SC
+    mine = SC.connections(network)
+    other = SC.elsewhere(network) if mine["state"] == "none" else []
     # C2003: when this drawing stops being current with no redraw (the reader's page promise).
-    return {"g": g, "tabs": TABS, "fresh": sdn_page.redraw_promise()}
+    return {"g": g, "tabs": TABS, "fresh": sdn_page.redraw_promise(),
+            "no_controller": mine["state"] == "none", "elsewhere": other}
 
 
 @bp.route("", methods=["GET"])

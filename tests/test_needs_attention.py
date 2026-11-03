@@ -305,7 +305,10 @@ class TestThePageAndThePanel:
         assert f"journalctl -u {U}.service" in html
         assert re.search(r'since <time class="stamp" datetime="20', html), html
         # Board NA-R (2026-11-02): the level on the row's one line, in its severity's section.
-        assert '<span class="att-level">Unknown</span>' in html and "since not recorded" in html
+        # The operator, 2026-11-03: "not recorded" read as missing data; a row whose source keeps
+        # no start says that, in the corner and the meta line.
+        assert '<span class="att-level">Unknown</span>' in html
+        assert "start not tracked" in html and "its source does not track when it began" in html
         # Worst first, as drawn.
         assert html.index('<span class="att-level">Critical</span>') < \
             html.index('<span class="att-level">Unknown</span>')
@@ -366,7 +369,61 @@ def _status(**kw):
     return lambda: base
 
 
+class TestAGroupedAlertRowsTitle:
+    """C2326 (blind session 6's R8, 2026-11-03: r7's two telemetry streams lost drew "2 alerts
+    began together"): the title names where and what."""
+
+    def test_r7_s_two_streams(self):
+        members = [{"rule": f"NMAS telemetry stream lost: r7 subscription {s}", "device": "r7"}
+                   for s in ("102", "101")]
+        assert A.group_title(members) == "r7: 2 telemetry streams lost (101, 102)"
+
+    def test_several_devices_and_rules(self):
+        members = [{"rule": "Interface down", "device": "r2"},
+                   {"rule": "IP SLA probe failing", "device": "r2"},
+                   {"rule": "Device unreachable (SNMP)", "device": "r1"},
+                   {"rule": "Interface down", "device": "r4"},
+                   {"rule": "Interface down", "device": "s1"}]
+        assert A.group_title(members) == (
+            "4 devices (r1, r2, r4 and 1 more): 5 alerts: Device unreachable (SNMP), "
+            "IP SLA probe failing, Interface down")
+
+    def test_no_device_named(self):
+        assert A.group_title([{"rule": "Interface down", "device": ""},
+                              {"rule": "Interface down", "device": None}]) == \
+            "2 alerts: Interface down"
+
+
 class TestDriftAsASource:
+    def test_the_row_counts_the_lines_that_differ_and_says_when_the_device_was_read(
+            self, monkeypatch, tmp_path):
+        """C2319 (blind session 6's R3: one added line read as "11 diff line(s)", and the row
+        stood after the device was put back): through run_drift_check(), r2's row counts its
+        diff's +/- lines, never its headers or context, and names when r2 itself was read."""
+        import difflib
+
+        from modules import drift_check as D
+        golden = [f"line {i}" for i in range(12)]
+        one_more = golden[:6] + [" ip ospf authentication"] + golden[6:]
+        diff = list(difflib.unified_diff(golden, one_more, "golden", "running", lineterm=""))
+        assert (len(diff), D.changed_lines(diff)) == (10, 1), diff
+
+        P._drift_run(monkeypatch, tmp_path)
+        res = A.drift_source()
+        drifted = {r["id"].split(":", 2)[2]: r for r in res["rows"]}["drifted:r2"]
+        import re
+        got = re.search(r"by (\d+) changed line\(s\), read at \d{4}-\d\d-\d\dT", drifted["cause"])
+        assert got, drifted["cause"]
+        assert 0 < int(got.group(1)) < drifted["operands"]["diff_lines"], drifted["operands"]
+        assert "it stands until the next drift check reads the device again" in drifted["cause"]
+
+    def test_a_run_recorded_before_says_its_diff_s_length_and_the_run_s_time(self):
+        last = {"ok": True, "checked": 1, "inventory": 1,
+                "drifted_devices": [{"hostname": "r2", "diff_lines": 11}]}
+        res = A.drift_source(_status(last_run=last, last_ts=NOW - 600), now=NOW)
+        r = next(x for x in res["rows"] if x["id"].endswith("drifted:r2"))
+        assert "by 11 diff line(s), seen by the drift check at " in r["cause"], r["cause"]
+
     def test_a_real_run_gives_a_row_per_device_it_did_not_clear(self, monkeypatch, tmp_path):
         """Through run_drift_check(): r1 clean, r2 drifted, r3 no golden, r4
         unreachable. Every device but the clean one is a row, each naming it."""

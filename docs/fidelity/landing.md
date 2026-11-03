@@ -35,7 +35,25 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `10aa2b6726730fcd537fdf48ec07d48dfe073805ae3906229d6a155b51af9942`
+Templates sha256: `4befa3244b1c2b8057d53182059c8f99649351766efd702aeff0b7fc8553ce4d`
+
+**Compared again 2026-11-03 ~02:0x UTC for C2316** (the operator's rule for acknowledgements):
+a band row's Acknowledge… form (an adjacency logged down, a chronic alert's series) gains one
+choice beside the reason, "Until something new happens" or "A planned quiet period: N hours" (1,
+2, 4, 8 or 24), and the acknowledged list draws a quiet period's expiry after the entry's band.
+Every other row's form is unchanged. Compared by reading the template against board NA-R's row
+and its acknowledgement (the board draws the reason alone), held by the v2 walk
+(`_attention_quiet_period`) and tests/test_adjacency_log.py. One deviation, logged in
+docs/STANDING_APPROVAL_LOG.md ("C2316's quiet period on the Acknowledge… form") and PHASE8_PLAN
+19.1. Templates sha256 before: `1bcf40900190f3394b9572f8f4e214a3b52f54b08c1b17edd8ab89e28bfa5ab0`.
+
+**Compared again 2026-11-03 ~00:5x UTC for C2315** (the operator's walk: "not recorded" read
+as missing data): a row whose source records no start reads "start not tracked" in its corner
+(its hover saying the source does not record when the condition began) and "its source does not
+track when it began" in its meta line, where it read "not recorded" and "since not recorded";
+a row with a start is unchanged. Compared by reading the template against board NA-R's row (its
+corner holds the row's age), words only, no new shot; held by tests/test_needs_attention.py.
+Templates sha256 before: `10aa2b6726730fcd537fdf48ec07d48dfe073805ae3906229d6a155b51af9942`.
 (2026-11-02, NA-R part 2: an opened item says Explain, loaded from its alert's evidence pack,
 or Why this happened, its cause written by code; compared from `nar-opened-page-1440` and the
 real-browser test. Before: `e2f39caecee390c1c5bdd3cac33910682d347eec95247ca7fe5b68c45412361f`.)

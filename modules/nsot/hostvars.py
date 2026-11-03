@@ -97,9 +97,17 @@ def to_yaml(host_vars: dict) -> str:
                           allow_unicode=True, width=10000)
 
 
+#: The safe loader parsing intent: libyaml's where PyYAML was built with it (C2330: the same
+#: values, about 8x faster on the repository's own YAML; every Needs attention read parsed
+#: each device's intent with the pure-Python one, half the computation), else PyYAML's own.
+def _safe_loader():
+    import yaml
+    return getattr(yaml, "CSafeLoader", None) or yaml.SafeLoader
+
+
 def from_yaml(text: str) -> dict:
     import yaml
-    return yaml.safe_load(text) or {}
+    return yaml.load(text, Loader=_safe_loader()) or {}  # noqa: S506 (a safe loader, always)
 
 
 # ---------------------------------------------------------------------------

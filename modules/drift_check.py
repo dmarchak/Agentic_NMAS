@@ -322,6 +322,13 @@ class _OneRun:
         return False
 
 
+def changed_lines(diff: list) -> int:
+    """How many lines differ in a unified diff (C2319): its ``+`` and ``-`` lines, never the
+    ``---``/``+++`` headers, the ``@@`` hunk lines, the context or a note appended to it."""
+    return sum(1 for line in diff
+               if line[:1] in ("+", "-") and not line.startswith(("+++", "---")))
+
+
 def _clean(text: str) -> list[str]:
     """Strip volatile/boilerplate lines before diffing."""
     return [
@@ -487,6 +494,7 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
     _pool_lock = threading.Lock()
 
     drifted_list: list[tuple[str, int]] = []
+    differing: dict = {}
     clean_list:   list[str]             = []
     error_list:   list[tuple[str, str]] = []
     skip_list:    list[tuple[str, str]] = []
@@ -531,6 +539,9 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
             # would be drift that never happened, or hide drift that did.
             current = config_read.check(run_device_command(conn, "show running-config"),
                                         hostname, previous=golden_text)
+            # When THIS device was read (C2319): its row says when the read was taken, never
+            # only the run's time.
+            read_at = time.time()
         except config_read.UnreliableRead as exc:
             # The session may still carry the rest of the output: never
             # reused, or the next command on it reads this one's tail.
@@ -584,6 +595,9 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
         diff_text = "\n".join(diff[:200]) + ("\n[...truncated]" if len(diff) > 200 else "")
         log.info("drift_check: drift on %s (%d diff lines)", hostname, len(diff))
         drifted_list.append((hostname, len(diff)))
+        # The lines that differ (C2319): a unified diff's +/- lines, never its two headers, its
+        # hunk lines or its context (one changed line read as "11 diff lines").
+        differing[hostname] = {"changed_lines": changed_lines(diff), "read_at": read_at}
 
         try:
             add_approval(
@@ -659,7 +673,8 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
         clean           = len(clean_list),
         skipped         = [{"hostname": h, "reason": r} for h, r in skip_list],
         errors          = [{"hostname": h, "reason": r} for h, r in error_list],
-        drifted_devices = [{"hostname": h, "diff_lines": n} for h, n in drifted_list],
+        drifted_devices = [{"hostname": h, "diff_lines": n, **differing.get(h, {})}
+                           for h, n in drifted_list],
         summary         = summary,
     )
 

@@ -1615,6 +1615,32 @@ def change_record():
     ])
 
 
+def assistant():
+    return svg(470, (
+        "The toolbar assistant's answer. You ask how to do something; Mercury chooses the "
+        "manual's passages for the question by code (keyword ranking with the aliases and the "
+        "boost for the screen you are on; below the floor, the manual's gap, and no call); it "
+        "sends one recorded, capped call through the AI gateway, the instructions and the "
+        "screens cached, then your question masked and the passages; it checks that every "
+        "citation is a passage it sent and every screen named exists; and it draws the answer "
+        "with its passages' links, or says the manual does not cover it and records the gap. "
+        "Nothing changes anywhere."), [
+        lanes(20, 464, right="THE SERVICES"),
+        person(14, 40, 186, 30, "You ask"), num(14, 40, 1),
+        doc("box", 14, 84, 186, 40, "The passages, chosen", "by code; none: a gap"),
+        num(14, 84, 2),
+        doc("box", 14, 138, 186, 36, "Your question, masked", "secrets never leave"),
+        num(14, 138, 3),
+        svc(250, 138, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 156, 248, 156), num(14, 188, 4),
+        doc("box", 14, 202, 186, 36, "Checked", "cites only what it sent"),
+        num(14, 250, 5),
+        doc("box", 14, 264, 186, 40, "The answer, drawn", "or the gap, recorded"),
+        t(14, 330, "It never changes, deploys or saves.", "sm"),
+        nosend(310, 420, ("nothing is sent", "to a device")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1776,6 +1802,7 @@ DIAGRAMS = {
     "ai-background": ai_background,
     "ai-feedback": ai_feedback,
     "change-record": change_record,
+    "assistant": assistant,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

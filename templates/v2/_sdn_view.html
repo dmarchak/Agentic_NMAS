@@ -25,12 +25,21 @@
 {%- set reload_url = url_for('sdn_v2.flows', q=g.s.q or None, own=g.s.own or None) if g.tab == 'flows' else (url_for('sdn_v2.responses', q=g.incidents.q or None, sev=g.incidents.sev or None) if g.tab == 'responses' else url_for('sdn_v2.page')) %}
 <div class="notice notice-warn stale-note" role="status" data-stale-at="{{ fresh.stale_at }}" data-promise="{{ fresh.seconds }}" hidden>{{ icon('warn', 16) }}<p>Last updated {{ stamp(fresh.drawn_at) }}<span class="stale-why"></span> <a class="btn btn-small stale-reload" href="{{ reload_url }}" title="Loads this page again as it is now">Reload</a></p></div>
 
+{#- C2325: a network with no controller names the networks that have one, a click away to
+    the same tab there; drawn above the Responses loop too, which is empty here. -#}
+{%- set here_tab = 'sdn_v2.flows' if g.tab == 'flows' else ('sdn_v2.responses' if g.tab == 'responses' else 'sdn_v2.page') %}
+{%- macro elsewhere_links(names, endpoint) -%}
+{%- if names %} {{ names | length }} other network{{ 's' if names | length != 1 }} {{ 'have' if names | length != 1 else 'has' }} one: {% for n in names %}<a class="sdn-elsewhere" href="{{ url_for(endpoint, list=n) }}">Open {{ n }}'s SDN</a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+{%- endmacro %}
 {%- if g.tab == 'responses' %}
+{%- if no_controller %}
+<div class="notice notice-muted sdn-empty" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to {{ g.network }}, so its loop has nothing to watch.{{ elsewhere_links(elsewhere, here_tab) }} <a href="{{ settings_url }}">Add one in Settings › Integrations</a>.</p></div>
+{%- endif %}
 {% include "v2/_sdn_responses.html" %}
 {%- elif g.listed == 'unreadable' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ g.network }}'s controller connections could not be read: {{ g.listed_error }}. Nothing is drawn as known.</p></div>
 {%- elif not g.controllers %}
-<div class="notice notice-muted sdn-empty" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to this network. <a href="{{ settings_url }}">Add one in Settings › Integrations</a>.</p></div>
+<div class="notice notice-muted sdn-empty" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to this network.{{ elsewhere_links(elsewhere, here_tab) }} <a href="{{ settings_url }}">Add one in Settings › Integrations</a>.</p></div>
 {%- else %}
 {%- set rd = g.read %}
 {%- if rd.state == 'unreadable' %}

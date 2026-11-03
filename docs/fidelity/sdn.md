@@ -31,7 +31,15 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `500b13123b9af7f70a3bc510a958cafb9e469e63fa8594189de1b70dfcd72f26`
+Templates sha256: `bc0cb2fef244dde93643d613ad4acee2afc3c3528f79059082d5c034f5c33ec1`
+
+**Compared again 2026-11-03 ~02:3x UTC for C2325** (SDN on a network with no controller): the
+empty state's notice (board SdnControllers' "No SDN controller is connected to this network")
+gains, where another network has a controller, "N other network(s) has one: Open <network>'s
+SDN", a link to the same tab there; the Responses tab draws the same notice above its empty
+loop. Compared by reading against the board's empty state: words and links in its one notice,
+no new control, nothing else moves. Held by tests/test_sdn_v2.py and the v2 walk. Templates
+sha256 before: `500b13123b9af7f70a3bc510a958cafb9e469e63fa8594189de1b70dfcd72f26`.
 
 **Compared again 2026-11-02 ~23:5x UTC for C2279** (one attack on one target, PHASE8_PLAN
 17.10): an opened incident that is a member of an attack draws "Part of the attack on <target>

@@ -104,6 +104,8 @@ PAGES = (
      "how-it-works/ai-feedback.md"),
     ("change-record", "A change record drafted from the deploy preview", H,
      "how-it-works/change-record.md"),
+    ("assistant", "The assistant: how to do something, from the manual", H,
+     "how-it-works/assistant.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -236,6 +238,8 @@ OPERATIONS = {
     "ai-feedback": ("modules.ai.feedback", "STEPS"),
     # PHASE8_PLAN 16.11 item 3 (board CR): a change record drafted in the deploy preview.
     "change-record": ("modules.ai.change_record", "STEPS"),
+    # Card P7, stage 1 (board P7): the toolbar assistant's answer from the manual.
+    "assistant": ("modules.ai.assistant", "STEPS"),
     # C1909: both ends of a link deployed as one change, on the deploy page.
     "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
     # C235 (board H-S): a value typed for a secret reference, on the Intent tab.

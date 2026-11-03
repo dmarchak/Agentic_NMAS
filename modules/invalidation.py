@@ -453,6 +453,7 @@ DECLARED = {
     "v2.monitoring_alert_explain": ("ai_calls",),
     "v2.monitoring_alert_history_evidence": ("alerts",),
     "v2.monitoring_alert_pack_rebuild": ("alerts",),
+    "assistant_v2.ask": ("ai_calls",),   # P7 stage 1: one recorded AI call (or none: a gap)
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
     "intent_v2.words": ("ai_calls",),

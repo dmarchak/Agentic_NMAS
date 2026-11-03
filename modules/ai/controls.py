@@ -76,6 +76,15 @@ CONTROLS = {
         "screen": "a device's Intent tab, Change it in words (board F7)",
         "beside": "the intent editor: Edit",
     },
+    "assistant": {
+        "task": "assistant",
+        "words": "Ask (the toolbar assistant)",
+        "endpoints": ("assistant_v2.ask",),
+        # Drawn in the assistant's panel, opened from the top bar's Assistant (board P7).
+        "template": "v2/_assistant_panel.html",
+        "screen": "the toolbar assistant's panel, on every page (board P7)",
+        "beside": "the page, unchanged beside the panel",
+    },
     "change_record": {
         "task": "change_record",
         "words": "Draft a change record",

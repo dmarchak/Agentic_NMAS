@@ -53,7 +53,7 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 
 | Feature | Status (evidence) | Bar | Last measurement | Depends on |
 |---|---|---|---|---|
-| P7, the toolbar assistant (A1, 16.10) | **not built**, its retrieval built 2026-11-02 (16.10, stage 1's retrieval: BM25 with aliases and the screen boost over the manual's passages, a floor answering "the manual doesn't cover this"; recall@5 22 of 24 on the recorded cases, 4 of 4 off-manual questions gapped); board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 71 pages, 519 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
+| P7, the toolbar assistant (A1, 16.10) | **stage 1 part built** 2026-11-03 (16.10, stage 1's build: the task, its checks, the ask route and gap record, the top bar's AI Assistant and its panel, how-to from the manual; Explain this screen, the gaps list, the per-person cap and its recorded cases next); its retrieval built 2026-11-02 (16.10, stage 1's retrieval: BM25 with aliases and the screen boost over the manual's passages, a floor answering "the manual doesn't cover this"; recall@5 22 of 24 on the recorded cases, 4 of 4 off-manual questions gapped); board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 71 pages, 519 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
 | P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
 | Explain (P1) | **measured: the recorded set at its bar, the blind set below it** (8 cases from 5 of 19 scenarios captured): **blind, 2026-11-02** (v4, 10 runs, `msgbatch_01Cp4TFwAUEYxUqa297vr9EU` for cases 1 to 7, $1.35, and `msgbatch_01LRfmXnPGcCBMuH42vgX3ti` for case 8, added under the operator's key amendment A1, $0.22): **4 of 8 cases reliable (50%, the blind bar 85%: criterion 2 of Explain's done criteria)**, 65 of 80 runs pass, none confidently wrong raw or guarded; the failed runs by category only (the operator's blind discipline): wrong lead 14 (case 3: 5, case 4: 1, case 6: 1, case 8: 7), other 1 (case 6), none refused by validation or declined; the other scenarios come from sessions 6 to 11, and they are the test of any fix (fixes are made on the recorded cases). **Recorded (its bar 90%):** the 10-run round on 2026-11-02 (v4, the new pack, two batches of 5 runs, `msgbatch_012bhmoR8GKwYkaxk1Zj7jVC` and `msgbatch_01RHHqsvaErD5siGPUjJny5d`, $4.83, $0.0221 a successful answer): **20 of 22 recorded cases reliable (90.9%, the bar 90%)**, 209 of 220 runs pass, not reliable case 8 (9 of 10) and case 19 (0 of 10, C2141); the held-out case 10 of 10; none confidently wrong as Mercury keeps it. Before it: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
 | Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
@@ -3488,16 +3488,22 @@ work; built the same night in `modules/ai/manual_index.py`).**
 - **The prompt:** the stable instructions first and cached, the chosen sections after.
 - **Built:** BM25 (k1 1.2, b 0.75) with the heading's words 3 times more; a plural's s dropped;
   `ALIASES`; the screen boost by the screen's name or its page's slug; at most 8 passages within
-  20,000 characters (about 5,000 tokens). Three gap rules, calibrated on the recorded set: the
+  12,000 characters (about 3,000 tokens at 4 characters a token, about 4,600 at C1798's 2.585;
+  first built at 20,000, corrected 2026-11-03 ~00:0x UTC, below). Three gap rules, calibrated on the recorded set: the
   best passage scores at least 9; it meets at least a quarter of the question's words (by
   weight); a passage under 35% of the best is not sent.
-- **One deviation:** the manual's 519 sections are indexed as passages of at most 3,000
-  characters (each keeping its section's link). The longest section is about 17,000
+- **One deviation:** the manual's 519 sections are indexed as passages of at most 1,800
+  characters (each keeping its section's link; a single line longer than that is its own). The longest section is about 17,000
   characters, so 5 to 8 whole sections cannot fit 3 to 5k tokens.
-- **Measured** on the recorded set (`tests/fixtures/ai_cases/assistant/retrieval.json`, 24
+- **Measured** on the recorded set (`tests/fixtures/manual_retrieval/cases.json`, 24
   covered and 4 off-manual questions): recall@5 22 of 24 (0.92), 4 of 4 off-manual questions
-  answered with no passage. The 5 sample questions get 7 or 8 passages, about 2,250 to 4,550
-  tokens. The misses: "a fresh copy of the running config" (Capture ranks below Rekey's and
+  answered with no passage. The 5 sample questions get 7 or 8 passages of 8,475 to 11,525
+  characters (about 2,100 to 2,900 tokens at 4 characters a token, 3,300 to 4,460 at 2.585).
+  **Corrected 2026-11-03:** the first figures were estimated at 4 characters a token and sized
+  at 20,000 characters, which at C1798's 2.585 is about 7,700 tokens, past the 3 to 5k asked.
+  No measurement backs either rate for the manual's markdown: the ledger's ratios (Explain
+  3.43, sdn_classify 4.04) count JSON-escaped requests and cached prompts, so the budget is
+  sized inside 3 to 5k at both, and the first run's provider count settles it. The misses: "a fresh copy of the running config" (Capture ranks below Rekey's and
   Onboard's passages) and Retire's apply (its lead and preview found instead).
 - **Recorded, not blind:** the cases and the aliases were written by the retriever's author, so
   0.92 is a recorded figure. The blind set (a fresh context's cases) is its test.
@@ -3506,6 +3512,50 @@ work; built the same night in `modules/ai/manual_index.py`).**
   - the prompt's order (stable instructions cached, then the passages);
   - tokens and cost per question from the first run (the provider's count against this
     estimate).
+
+**Stage 1's build (decided 2026-11-03 ~00:0x UTC, before its code; the agent's under the Phase
+7 mode, within board P7's 17 approved answers).**
+- **The task** `assistant` (`modules/ai/assistant.py`), its pin on Haiku 5.5, its prompt
+  `prompts/assistant.v1.md`, and its schema:
+  - an `answer` in steps;
+  - `cites`, the passage links it rests on, each one it was sent;
+  - `covered`, false when the passages do not answer it;
+  - `screens`, the screens it names, each one the manual names.
+- **The request:** the instructions are the prompt, cached. The `context` is stable and
+  cached: the product's screen list from `manual.SCREENS` and what the assistant never does.
+  The `parts` are the question (a typed part, `TYPED_PARTS`, masked on its way out and the
+  person told) and the chosen passages, after.
+- **Mercury's checks before anything is drawn:**
+  - every citation is a passage sent;
+  - every screen named exists;
+  - an answer with no citation, or `covered` false, is drawn as "the manual doesn't cover
+    this";
+  - a refused answer is never drawn, its call kept in History.
+- **A gap** (`select`'s `[]`, `covered` false, or an answer the checks refuse) is recorded by
+  the ask route, a write of its own: the question masked, the screen, the best score, when and
+  who. It is counted and listed on Settings › AI, never Needs attention (answer 11).
+- **Explain this screen:** the screen's name and its subject, as structured data Mercury holds.
+  It is a link per row on Needs attention and Alerts only (answer 12), and its passages are
+  chosen with the screen's boost.
+- **The panel** on the right, in the help panel's place (answer 7), per tab (8), named
+  Assistant (16), greyed with its reason when AI is off.
+- **The caps:** $1 a person a day and 12 turns, shown as unmeasured until the cases run (5).
+- **Who:** viewers may ask (13).
+- **The build's order:**
+  - (a) the task, its checks and the ask route, tested with no provider call;
+  - (b) the panel and the How it works page (17);
+  - (c) recorded cases, at least 8 a class (how-to, explain-this-screen, a gap, a pasted
+    secret, an injection), 10 runs on the batch path, reported against 15.12's bars with the
+    tokens and cost per question.
+- **Built 2026-11-03 ~01:0x UTC: (a) whole, (b) its first part.**
+  - **(a):** the task, its pin, prompt and schema, Mercury's checks, the ask route and the gap
+    record. The question is masked as it leaves and as it is kept (the tier's hand check,
+    docs/TIER_HAND_CHECK.md); the retriever ranks it masked.
+  - **(b), first part:** the top bar's AI Assistant, its panel in the help panel's place, the
+    answer with its sections' links and Was this right?, the gap said, and the How it works page
+    with its diagram.
+  - **Not built yet:** Explain this screen (part 2), the gaps list on Help (3c), the per-person
+    day cap (5), the cost before sending, and (c).
 
 Registered: C1798 (its open design questions).
 
@@ -4423,7 +4473,13 @@ docs/boards/ holds a drawing for it.
 | 2026-11-02 | Devices, Intent (layers) | FC built (f3), deviation: Bulk intent's own screen (board D) retired; the change's form gains its Add a setting | C2283, C2307 | 2026-11-02, "Board FC built, phase 2 (f3)"; docs/fidelity/intent-layers.md |
 | 2026-11-02 | SDN › Responses | S-HR built, deviation: six (no transport ports for L2-only; the flood not fired for the hold not passed; no "30 s earlier"; ends for clears; the flood's Began as line; the rules row's Responses allowed) | C2238 | 2026-11-02, "Board S-HR built"; docs/fidelity/sdn.md |
 
-**Count:** 210 rows: 60 drawn, 21 revised, 24 no drawing, 105 deviation (2026-11-02: FC's three build deviations, (f1) to (f3), added a turn late, and S-HR's build; H's head, one id, C2292; board FC, approved with changes by the operator; the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+| 2026-11-02 | SDN › Responses | S-HR, deviation: a transfer's watching row says "Why it is not called a flood" with the session, where the board's rate-only reason stands | C2278 | 2026-11-02, "C2278 built"; docs/fidelity/sdn.md |
+| 2026-11-02 | SDN › Responses, Needs attention | SdnResponses, deviation: an attack's member incident says "Part of the attack on <target> with N other incidents"; the rows not regrouped | C2279 | 2026-11-02, "C2279's design and build"; docs/fidelity/sdn.md |
+| 2026-11-03 | The top bar, every page | P7 built, stage 1's first part, deviation: the top bar's AI Assistant always opens its panel, whose Ask draws the reason; the Advisory line unmeasured; Explain this screen, the gaps list, the per-person cap and the cost before sending not built yet | C1798 | 2026-11-03, "Board P7 built, stage 1's first part"; docs/fidelity/in-progress.md |
+| 2026-11-03 | Needs attention, a band row's Acknowledge… | C2316's quiet period, deviation: the form gains "Until something new happens" or "A planned quiet period: N hours" (1 to 24), its expiry on the acknowledged list; the board draws the reason alone | C2316 | 2026-11-03, "C2316's quiet period on the Acknowledge… form"; docs/fidelity/landing.md |
+| 2026-11-03 | The top bar, every page | P7's Assistant at laptop width, deviation: below 1366 px the AI mark alone (the board draws the word at 1a's desktop width and the mark at 1f's phone width, nothing between), laptops' gaps 12 px; measured by the top bar's fit test | C1798 | 2026-11-03, "P7's Assistant at laptop width"; docs/fidelity/in-progress.md |
+
+**Count:** 215 rows: 60 drawn, 21 revised, 24 no drawing, 110 deviation (2026-11-02 and 03: C2278's and C2279's build deviations, P7 stage 1's first part, P7's Assistant at laptop width and C2316's quiet period, added the turn they were logged; 2026-11-02: FC's three build deviations, (f1) to (f3), added a turn late, and S-HR's build; H's head, one id, C2292; board FC, approved with changes by the operator; the withheld row's disposition, C2295; H's committed result, C2288; 2026-11-01: H-S, S-HR, NA-R and PS drawn, P7 approved, H-S's build and the Actions menu's Re-key… deviations, P1's three for C2176, C2198 and C2271, H-S's fifth state, C2287, and the Actions menu's Verify again…, C2280). The six rows for C2158's Profiles column and board CR's five deviations were added a commit late (2026-10-29 ~11:1x UTC; logged ~07:5x to 10:1x), so the same-turn rule slipped for them. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

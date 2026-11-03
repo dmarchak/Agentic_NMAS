@@ -79,6 +79,31 @@ class TestTheFixtures:
         assert hostvars.round_trips(real)
 
 
+class TestTheLoader:
+    """C2330: intent is parsed by libyaml's safe loader where PyYAML has it (every Needs
+    attention read parsed each device's intent with the pure-Python one, half the
+    computation), and it reads every intent fixture to the same values as PyYAML's own."""
+
+    def test_it_is_libyaml_s_where_present_and_a_safe_one_always(self):
+        from modules.nsot import hostvars
+        assert issubclass(hostvars._safe_loader(), yaml.SafeLoader) or \
+            hostvars._safe_loader() is getattr(yaml, "CSafeLoader", None)
+        if getattr(yaml, "__with_libyaml__", False):
+            assert hostvars._safe_loader() is yaml.CSafeLoader
+
+    def test_every_intent_fixture_reads_the_same_as_pyyaml_s_own(self):
+        from modules.nsot import hostvars
+        docs = intent_documents(FIXTURES)
+        assert len(docs) >= 3, sorted(docs)          # the floor, as above
+        for path, text in docs.items():
+            assert hostvars.from_yaml(text) == yaml.load(text, Loader=yaml.SafeLoader), path
+
+    def test_it_refuses_what_a_safe_loader_refuses(self):
+        from modules.nsot import hostvars
+        with pytest.raises(yaml.YAMLError):
+            hostvars.from_yaml("hostname: !!python/object/apply:os.system ['true']\n")
+
+
 # ── part 2: the reader and its Needs attention row ─────────────────────────────
 
 def _git(repo, *args):

@@ -344,7 +344,9 @@ CLEARS = {
                               "keeps it a row, saying who silenced it)"),
     ("grafana", "series"): (("resolves", "acknowledge"), "the alert stops firing, or a person "
                             "acknowledges it within its measured 7-day band; it comes back, "
-                            "naming the band and the value, when the value leaves the band"),
+                            "naming the band and the value, when the value leaves the band, "
+                            "and when the series fires again after the acknowledgement, "
+                            "unless it named a planned quiet period not yet over (C2316)"),
     ("grafana", "rule"): (("resolves",), "the rule reads data and evaluates again"),
     ("grafana", "heartbeat-floor"): (("resolves",), "Grafana shows a heartbeat rule for the "
                                      "device"),
@@ -398,7 +400,9 @@ CLEARS = {
                                 "a day with no unexplained drop logged (by time, a day after the "
                                 "last), or acknowledged within its band: the highest daily count "
                                 "of the last 7 days, holding while the day's count stays at or "
-                                "under it"),
+                                "under it, covering the drops up to the acknowledgement and the "
+                                "cycle then under way until it settles (any later drop raises "
+                                "it again), or a planned quiet period to its expiry"),
     ("adjacencies", "error"): (("resolves",), "the intent file can be read"),
     ("operations", "interrupted"): (("acknowledge",), "a person acknowledges it with a reason, "
                                     "after reading the devices; the record stays in the list's "
@@ -969,11 +973,16 @@ def drift_source(status=None, now=None) -> dict:
             since=last_ts + DRIFT_STALE_INTERVALS * interval)
     coverage = f"checked {last.get('checked', 0)} of {last.get('inventory', 0)}"
     for d in last.get("drifted_devices") or []:
+        # C2319: the lines that differ and when THIS device was read, where the run recorded
+        # them; a run from before says its diff's length and the run's time, as it did.
+        n_lines = (f"{d['changed_lines']} changed line(s)" if "changed_lines" in d
+                   else f"{d.get('diff_lines', '?')} diff line(s)")
+        read = (f"read at {_iso(d['read_at'])}" if d.get("read_at")
+                else f"seen by the drift check at {_iso(last_ts) or 'an unrecorded time'}")
         add(f"drifted:{d['hostname']}", f"{d['hostname']} has drifted from its golden",
-            f"the running config differs from the committed golden by "
-            f"{d.get('diff_lines', '?')} diff line(s), seen by the drift check at "
-            f"{_iso(last_ts) or 'an unrecorded time'}; since when it has differed "
-            "is not recorded",
+            f"the running config differs from the committed golden by {n_lines}, {read}; it "
+            "stands until the next drift check reads the device again (Check now reads it "
+            "at once); since when it has differed is not recorded",
             # Both answers on the row, each opening its card on the device page (the operator's
             # overnight list, item 7: before the AI family and its approval queue go, a drift
             # is answered here): Capture accepts what the device holds, Deploy puts intent back.
@@ -1809,6 +1818,32 @@ def _onset(inst: dict):
     return None, "not recorded"
 
 
+#: A telemetry rule's own title names its subscription (scripts/nmas-telemetry-rules).
+_TELEMETRY_RULE = re.compile(r"telemetry stream lost: \S+ subscription (\S+)$")
+
+
+def group_title(members: list) -> str:
+    """A grouped alert row's title, naming what and where (C2326, the operator's walk of R8:
+    "2 alerts began together" said neither): "edge1: 2 telemetry streams lost (101, 102)", or
+    "edge2: 2 alerts: Interface down, IP SLA probe failing"; the devices first, the rules after,
+    their own titles (a rule names its subscription in its title)."""
+    devices = sorted({m["device"] for m in members if m.get("device")})
+    where = (devices[0] if len(devices) == 1 else
+             f"{len(devices)} devices ({', '.join(devices[:3])}"
+             + (f" and {len(devices) - 3} more" if len(devices) > 3 else "") + ")"
+             if devices else "")
+    subs = [_TELEMETRY_RULE.search(str(m.get("rule") or "")) for m in members]
+    if all(subs):
+        what = (f"{len(members)} telemetry streams lost "
+                f"({', '.join(sorted({s.group(1) for s in subs}))})")
+    else:
+        rules = sorted({str(m.get("rule") or "an unnamed rule").split(": ", 1)[0]
+                        for m in members})
+        what = (f"{len(members)} alerts: {', '.join(rules[:3])}"
+                + (f" and {len(rules) - 3} more" if len(rules) > 3 else ""))
+    return f"{where}: {what}" if where else what
+
+
 def _incidents(instances: list) -> list:
     """Groups of instances, each group one incident, by onset; an instance
     with no onset is an incident of its own (never merged on a guess)."""
@@ -2015,7 +2050,7 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                                 "it fired and where its device came from, not why",
                        "known": False})
         else:
-            what = f"{len(members)} alerts began together"
+            what = group_title(members)
             cause = ("; ".join(f"{m['rule']}" + (f" on {m['device']}" if m["device"] else "")
                                + f" ({m['kind']})" for m in members)
                      + f". Grouped because their onsets fall within {INCIDENT_GAP_SECONDS} s "
@@ -2063,7 +2098,10 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
             add(f"series:{series}", what, cause, action, level, devices=devices,
                 since=first["onset"], event=series,
                 operands={**operands, "value_expr": vexpr, "labels": first.get("labels") or {},
-                          "band_reading": (v.get("bands") or {}).get(series)})
+                          "band_reading": (v.get("bands") or {}).get(series),
+                          # This firing's onset, the event an acknowledgement is judged
+                          # against (C2316): a firing that began after it raises the row.
+                          "events": [first["onset"]]})
             continue
         if evidence:
             action = dict(action, href=evidence)
@@ -4317,8 +4355,12 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                 source="adjacency_log", kind="flap", key=k, level="warning", what=what,
                 devices=[a["device"]], since=last["epoch"], cause=cause, event=k,
                 clears_at=last["epoch"] + 86400, read_at=value_at,
+                # The drops an acknowledgement is judged against (C2316,
+                # `acknowledgements.covers`): one after it, outside the cycle under way then,
+                # raises the row again.
                 operands={"list": a.get("list"), "band": a.get("band"),
-                          "band_reading": {"value": n, "at": good.get("value_at")}},
+                          "band_reading": {"value": n, "at": good.get("value_at")},
+                          "events": sorted(d["epoch"] for d in kept)},
                 action={"label": (f"Read {a['device']}'s Logs around {last['at'][11:16]} UTC "
                                   "and its Neighbours; if the cause is known, acknowledge it "
                                   "within its measured band"),
@@ -5326,6 +5368,22 @@ def band_words(ack: dict, judged: dict) -> str:
             + f", {side}")
 
 
+def coverage_words(ack: dict, cover: dict) -> str:
+    """Why an acknowledgement does not hold (C2316): an event came after what it covers. Who
+    acknowledged and when, its expiry if it named one, and the event's time."""
+    at = ack.get("at") or ""
+    if not at:
+        return (f"Acknowledged by {ack.get('by')} at an unrecorded time, so what it covers "
+                "cannot be told and the row is shown")
+    who = f"Acknowledged by {ack.get('by')} on {at[:10]} at {at[11:16]} UTC"
+    if ack.get("until"):
+        who += f" for a quiet period until {ack['until'][11:16]} UTC on {ack['until'][:10]}"
+    when = _iso(float(cover["after"]))[:16].replace("T", " ")
+    return (f"{who}; it covers what came before it"
+            + ("" if ack.get("until") else " and the cycle then under way until it settled")
+            + f", and this came after, at {when} UTC, so it is shown")
+
+
 def _without_acknowledged(rows: list):
     """``(rows, acknowledged, problem)``: the rows a person has not acknowledged, the ones
     they have (each with who, why and when, for the page's evidence), and a source result
@@ -5349,6 +5407,21 @@ def _without_acknowledged(rows: list):
     acks = ACK.current(got["rows"])
     for r in rows:
         a = ACK.covering(r["id"], r.get("event"), acks) if r.get("acknowledge") else None
+        events = (r.get("operands") or {}).get("events")
+        cover = ACK.covers(a, events) if a and events is not None else None
+        if cover is not None and not cover["covered"]:
+            # UP TO ITS OWN TIME (C2316, the operator's rule): the events to the
+            # acknowledgement, the cycle under way then until it settles, or a quiet period
+            # to its expiry; an event after that raises the row, naming the acknowledgement.
+            r = dict(r)
+            r["cause"] = f"{r['cause']}. {coverage_words(a, cover)}"
+            kept.append(r)
+            continue
+        if cover is not None and a.get("until") and not cover["expired"]:
+            # A planned quiet period holds every event to its expiry, inside the band or not.
+            gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
+                         "why": a.get("why"), "at": a.get("at"), "until": a["until"]})
+            continue
         if a and a.get("band") is not None:
             # WITHIN ITS BAND ONLY (C433): hidden while the reader's reading is inside the
             # band recorded with the acknowledgement; outside it, or unread, the row stays and
@@ -5396,7 +5469,7 @@ DISPOSITIONS = {("ai_withheld", "withheld"): (
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
-                disposition: str = "") -> dict:
+                disposition: str = "", hours: str = "") -> dict:
     """A person acknowledges ONE event row. Refused unless the row is on the page now, of a
     kind acknowledged here, about this same event, and the reason has the shape of one; a kind
     in DISPOSITIONS also needs one of its dispositions, recorded with it."""
@@ -5462,6 +5535,20 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                                           "of the last week) was not read, and an "
                                           "acknowledgement here holds only within one"}
         extra = {"band": ops["band"], "value": (ops.get("band_reading") or {}).get("value")}
+    if str(hours or "").strip():
+        # A planned quiet period (C2316): only on a band row, whose events it covers to its
+        # expiry; a whole number of hours, at most a day.
+        if "events" not in (found.get("operands") or {}):
+            return {"ok": False, "error": "Not acknowledged: a quiet period is given only on a "
+                                          "row a person acknowledges within a band"}
+        try:
+            n = int(str(hours).strip())
+        except ValueError:
+            n = 0
+        if not 1 <= n <= ACK.MAX_HOURS:
+            return {"ok": False, "error": (f"Not acknowledged: a quiet period is 1 to "
+                                           f"{ACK.MAX_HOURS} whole hours, not {hours!r}")}
+        extra["hours"] = n
     asked = DISPOSITIONS.get((found["source"].split("@", 1)[0], found["kind"]))
     if asked:
         if disposition not in {v for v, _w in asked}:
@@ -5481,7 +5568,11 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                                       f"recorded ({type(exc).__name__}: {first}); the row "
                                       "stays"}
     out = {"ok": True, "acknowledged": entry, "hides_now": True, "words": ""}
-    if "band" in extra:
+    if entry.get("until"):
+        # A quiet period hides the row whatever its band, and says when it ends (C2316).
+        out["words"] = (f"Recorded: a quiet period until {entry['until'][11:16]} UTC on "
+                        f"{entry['until'][:10]}; anything after it raises the row again.")
+    elif "band" in extra:
         # An acknowledgement within a band that cannot hide its row NOW says so (C533, the
         # operator, 2026-10-06: three acknowledgements recorded, each above its band, and the
         # button stayed "Acknowledging…" saying nothing).

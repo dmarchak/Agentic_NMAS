@@ -228,7 +228,15 @@ def absence_words(labels: dict, who: str, window) -> str:
     if labels.get("subscription"):
         what += f" on subscription {labels['subscription']}"
     span = f" for {int(window)} s" if window else " over the rule's window (not recorded)"
-    return what + span + (f" from {who}" if who else "")
+    out = what + span + (f" from {who}" if who else "")
+    # The real detection time (C2323): a telemetry rule labelled with it by
+    # scripts/nmas-telemetry-rules, from Telegraf's own expiration_interval.
+    detect = str(labels.get("detect_seconds") or "")
+    if detect.isdigit():
+        out += (f"; a stopped stream is seen about {int(detect)} s after it stops, as Telegraf "
+                "keeps its last values that long, so it stopped about that long before this "
+                "alert began")
+    return out
 
 
 def _kind(state: str, no_data_state=None) -> str:

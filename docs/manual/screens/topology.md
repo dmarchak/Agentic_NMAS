@@ -146,7 +146,7 @@ A routing adjacency that drops and comes back between two of the reader's reads 
 map, which draws what was scraped. The sidebar's Needs attention lists it all the same when a
 device logged it going down outside any planned restart or deploy: one row per adjacency,
 clearing a day after its last drop, or acknowledged while its daily count stays within its
-measured band.
+measured band, covering only the drops up to the acknowledgement (or a planned quiet period).
 
 ## A path {#path}
 

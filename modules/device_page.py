@@ -271,6 +271,25 @@ def _drift_last(ref) -> dict:
 SINCE_CAPTURE = "Since last capture"
 
 
+def intent_beside(intent: dict, drift: dict) -> dict:
+    """The Intent row beside Since last capture (C2320, blind session 6's R3: the Intent row
+    read "matches" while the device held a line its golden did not). The Intent row compares
+    the committed golden with intent, never the device: its words name the golden, and a match
+    while the drift check says the device has changed since that golden is a warning, since
+    whether the device itself matches is not known until it is read again."""
+    if intent.get("state") != "ok":
+        return intent
+    commit = intent.get("commit") or ""
+    text = (f"{intent.get('text')}, read in its committed golden"
+            + (f" ({commit})" if commit else ""))
+    if drift.get("state") == "warn" and drift.get("open"):
+        return dict(intent, state="warn", text=(
+            f"{text}; but the device has changed since that golden ({drift.get('text')}, at the "
+            f"drift check of {drift.get('at') or 'an unrecorded time'}), so whether the device "
+            "itself matches is not known until the drift check reads it again"))
+    return dict(intent, text=text)
+
+
 def drift_row(ref, host: str, taken_in: str = "") -> dict:
     """The Overview's Since last capture row: the network's last drift run's word on *host*,
     the device against its golden. A changed row carries ``open``: the row opens onto its
@@ -289,11 +308,15 @@ def drift_row(ref, host: str, taken_in: str = "") -> dict:
         return {"name": name, "state": "unknown",
                 "text": "no drift run recorded for this list" + (f"; {taken_in}" if taken_in
                                                                  else "")}
-    drifted = {d.get("hostname"): d.get("diff_lines") for d in last.get("drifted_devices") or []}
+    # C2319: the lines that differ where the run counted them, else its diff's length.
+    drifted = {d.get("hostname"): (f"{d['changed_lines']} changed line(s)"
+                                   if "changed_lines" in d
+                                   else f"{d.get('diff_lines')} line(s)")
+               for d in last.get("drifted_devices") or []}
     skipped = [s if isinstance(s, str) else (s or {}).get("hostname") for s in last.get("skipped") or []]
     if host in drifted:
         return {"name": name, "state": "warn", "at": last.get("timestamp"), "open": True,
-                "text": f"changed: differs from its golden by {drifted[host]} line(s)"}
+                "text": f"changed: differs from its golden by {drifted[host]}"}
     if host in skipped:
         return {"name": name, "state": "unknown", "at": last.get("timestamp"),
                 "text": "skipped by the last run" + (f"; {taken_in}" if taken_in else "")}
@@ -458,8 +481,9 @@ def checks(ref, dev: dict) -> list:
     # (C342), never "no run" and never clean: `_load_state` answers ``{UNREADABLE: why}`` for a
     # file it cannot read. A last capture that took in an out-of-band change departing from
     # intent is said on it, and it is never a pass (C1819).
-    out.append(drift_row(ref, host, capture_taken_in(ref, host, intent_result)))
-    out.append(intent_row)
+    drift = drift_row(ref, host, capture_taken_in(ref, host, intent_result))
+    out.append(drift)
+    out.append(intent_beside(intent_row, drift))
 
     # Reboot-safe: the startup check's last run.
     try:

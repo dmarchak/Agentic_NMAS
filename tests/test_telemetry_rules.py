@@ -200,3 +200,48 @@ class TestRefusalsAndTheCheck:
         r = subprocess.run(["git", "check-ignore", "-q",
                             "deploy/grafana/provisioning/alerting/nmas-telemetry.yaml"])
         assert r.returncode == 0
+
+
+class TestTheRealDetectionTime:
+    """C2323 (blind session 6's R3 and R8, 2026-11-03): r7's streams stayed in Prometheus about
+    5 min into each outage, as the host's Telegraf exporter keeps a series for
+    `expiration_interval = "300s"`, so the rule saw a stopped stream about 6.5 min after it
+    stopped, not 90 s. The rule says so, read from Telegraf's own configuration."""
+
+    def _conf(self, tmp_path, body, name="outputs.conf"):
+        d = tmp_path / "telegraf.d"
+        d.mkdir(exist_ok=True)
+        (d / name).write_text(body)
+        return (str(tmp_path / "telegraf.conf"), str(d))
+
+    def test_the_expiration_is_read_from_its_prometheus_client_output(self, tmp_path):
+        # The host's drop-in's shape (read by key, 2026-11-03): its listen line and the key.
+        paths = self._conf(tmp_path, '[[inputs.cisco_telemetry_mdt]]\n  service_address = ":57000"\n'
+                                     '[[outputs.prometheus_client]]\n  listen = ":9273"\n'
+                                     '  expiration_interval = "300s"\n')
+        assert T.exporter_expiration(paths)[0] == 300
+
+    def test_a_commented_section_is_not_read_and_its_default_is_telegraf_s(self, tmp_path):
+        paths = self._conf(tmp_path, '# [[outputs.prometheus_client]]\n#   expiration_interval = "5m"\n')
+        assert T.exporter_expiration(paths)[0] is None
+        paths = self._conf(tmp_path, '[[outputs.prometheus_client]]\n  listen = ":9273"\n',
+                           name="z.conf")
+        assert T.exporter_expiration(paths)[0] == T.TELEGRAF_DEFAULT_EXPIRATION
+        assert T._seconds("5m") == 300 and T._seconds("1h") == 3600 and T._seconds("x") is None
+
+    def test_the_rule_carries_it_and_says_it(self):
+        rule = T.rule_for("r7", "101", "prom-uid", 300)
+        assert rule["labels"]["detect_seconds"] == "390"
+        assert "a stopped stream is seen about 390 s after it stops" in \
+            rule["annotations"]["description"]
+        unread = T.rule_for("r7", "101", "prom-uid")
+        assert "detect_seconds" not in unread["labels"]
+        assert "was not read" in unread["annotations"]["description"]
+
+    def test_needs_attention_s_words_say_it(self):
+        from modules.readers.grafana_alerts import absence_words
+        words = absence_words({"nmas": "telemetry", "subscription": "101",
+                               "detect_seconds": "390"}, "r7", 90)
+        assert words.startswith("no telemetry sample received on subscription 101 for 90 s "
+                                "from r7; a stopped stream is seen about 390 s after it stops")
+        assert "seen about" not in absence_words({"nmas": "telemetry"}, "r7", 90)

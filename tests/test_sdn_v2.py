@@ -235,6 +235,21 @@ class TestControllers:
         assert ">Add one in Settings › Integrations</a>." in html
         assert "sdn-sum" not in html and "sdn-ctl" not in html, "and nothing else drawn"
 
+    def test_a_network_with_none_names_the_network_that_has_one(self, lab):
+        """C2325 (the operator's walk, 2026-11-03: SDN opened on a network with no controller
+        drew an empty loop): Branch has none and Default has one, a click away, on the same
+        tab; the Responses tab says so above its empty loop too."""
+        _r, html = get(lab, "/v2/sdn?list=Branch")
+        assert ("No SDN controller is connected to this network. 1 other network has one: "
+                '<a class="sdn-elsewhere" href="/v2/sdn?list=Default">Open Default\'s SDN</a>.'
+                ) in html, html[html.find("No SDN"):][:400]
+        _r, html = get(lab, "/v2/sdn/responses?list=Branch")
+        assert "No SDN controller is connected to Branch, so its loop has nothing to watch." \
+            in html
+        assert 'href="/v2/sdn/responses?list=Default">Open Default\'s SDN</a>' in html
+        _r, html = get(lab, "/v2/sdn?list=Default")
+        assert "sdn-elsewhere" not in html, "a network with its own names no other"
+
     def test_test_connection_answers_in_place(self, lab):
         r = lab["client"].post("/v2/sdn/controller/lab-controller/test?list=Default")
         html = r.get_data(as_text=True)

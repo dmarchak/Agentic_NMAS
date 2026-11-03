@@ -42,7 +42,30 @@ Compared again 2026-10-28 ~11:2x UTC, for base.html alone: the AI chip's mark re
 and its details given `data-keep="ai-spend"` (C472's rule). The shots taken again
 (in-progress-*, ai-chip-*), nothing in In progress moved.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `7d57f40dc4dbcf397013bd1b2ee46dc711ac9bc57cc8718daa376d4b0d8f005d`
+Templates sha256: `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4`
+
+**Compared again 2026-11-03 ~01:3x UTC, P7's top bar measured** (test_v2_layout_in_a_browser's
+top bar at 320 to 1280 px, every item at its widest): with the word, Assistant ran the bar 64 px
+past 1280, 52 past 1024 and 17 to 24 past 768, and the mark alone 21 past 430 and 33 past 320.
+Now below 1366 px it is the AI mark alone, its name on hover and to a reader, as board P7's 1f
+draws it at phone width and as Update available is "Update" there; laptops (861 to 1366 px)
+take 12 px gaps for 16; phones 6 px (640 and under) and 2 px (360 and under), nothing hidden.
+At 1440 the bar is unchanged and the word is drawn, as 1a draws it. One deviation, logged in
+docs/STANDING_APPROVAL_LOG.md ("P7's Assistant at laptop width") and PHASE8_PLAN 19.1: the
+board draws laptops with nothing; the built bar shows the mark alone there. The panel's shell
+is all base.html carries; its head and body are drawn when it first opens
+(routes/assistant_v2.panel), unchanged as drawn. The in-progress slot is untouched.
+Templates sha256 before: `b85ecf999bebf4284fa4bc921b523fe3cd18a5072309c3fcf29081ce80cabada`.
+
+**Compared again 2026-11-03 ~00:5x UTC for card P7's stage 1** (board P7, part 1a): the top bar
+gains **AI Assistant** after the AI chip and before Live, as board P7 draws it, and the frame its
+panel, in the help panel's place (one of the two at a time; Esc closes either). The in-progress
+slot this record compares is untouched. Compared by reading against board P7's 1a. One
+deviation, logged in docs/STANDING_APPROVAL_LOG.md ("P7 stage 1 built"): the board greys the
+button with its reason when the assistant cannot answer (1b to 1e); the built button always
+opens the panel, whose Ask is the AI control and draws the reason in full. That is the AI
+controls' rule, a control's state drawn by its own template. Templates sha256 before:
+`7d57f40dc4dbcf397013bd1b2ee46dc711ac9bc57cc8718daa376d4b0d8f005d`.
 (2026-11-02, C2283, board FC's FC2: the sidebar gains Intent, first under SOURCE OF TRUTH as
 the board draws it (tests/test_v2_pages.py pins the order); read against the regions below,
 nothing in the top bar, the chip or its list moves, every verdict stands. Before:

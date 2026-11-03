@@ -369,6 +369,12 @@ def TYPED(task, part):
 #: what it is. A field a person types into is TYPED, naming the part it lands in; every other
 #: is a choice Mercury offered, a token, or a secret that never becomes a part.
 FIELDS = {
+    # The toolbar assistant (card P7, stage 1): the question as typed; the screen asked from is
+    # one of manual.SCREENS' names, which only boosts the passages chosen and is sent as such.
+    "assistant_v2.ask": {
+        "form.question": TYPED("assistant", "question"),
+        "form.screen": "the screen asked from (manual.SCREENS' name), boosting its page's "
+                       "passages, sent as the call's screen"},
     "v2.history_ask_metrics_words": {
         "form.words": TYPED("nl_query", "question"),
         "form.tz": "the browser's timezone name (nl_query.zone), never sent",

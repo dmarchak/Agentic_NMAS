@@ -709,3 +709,41 @@ class TestOneIntentState:
         assert _after(dict(a, at=99), b, {}) is False
         assert _after(dict(a, at=101), b, {}) is True
         assert _after(a, b, {}) is True                  # a tie nothing orders: said as moved
+
+
+class TestTheIntentRowBesideADriftedDevice:
+    """C2320 (blind session 6's R3, 2026-11-03): r6 held `ip ospf authentication`, a line its
+    golden did not, and its Intent row read "matches": the row compares the committed golden
+    with intent, never the device. It names the golden it read, and while Since last capture
+    says the device has changed since that golden, a match is a warning naming why."""
+
+    MATCH = {"name": "Intent", "state": "ok", "text": "matches its committed intent",
+             "on_device": [], "in_intent": [], "commit": "956e515"}
+
+    def test_a_match_names_the_golden_it_read(self):
+        from modules.device_page import intent_beside
+        got = intent_beside(dict(self.MATCH), {"state": "ok", "text": "unchanged at the last run",
+                                               "at": "2026-11-03 01:14:31"})
+        assert got["state"] == "ok"
+        assert got["text"] == ("matches its committed intent, read in its committed golden "
+                               "(956e515)")
+
+    def test_a_match_while_the_device_has_changed_is_a_warning_naming_why(self):
+        from modules.device_page import intent_beside
+        drift = {"name": "Since last capture", "state": "warn", "open": True,
+                 "at": "2026-11-03 00:43:42",
+                 "text": "changed: differs from its golden by 11 line(s)"}
+        got = intent_beside(dict(self.MATCH), drift)
+        assert got["state"] == "warn", got
+        assert "but the device has changed since that golden (changed: differs from its golden "\
+               "by 11 line(s), at the drift check of 2026-11-03 00:43:42)" in got["text"]
+        assert got["text"].endswith("so whether the device itself matches is not known until "
+                                    "the drift check reads it again")
+
+    def test_a_departure_or_an_unknown_is_unchanged(self):
+        from modules.device_page import intent_beside
+        drift = {"state": "warn", "open": True, "text": "changed", "at": "x"}
+        for row in ({"name": "Intent", "state": "warn", "text": "departs from its committed "
+                     "intent: 1 line(s)"}, {"name": "Intent", "state": "unknown",
+                                            "text": "no committed golden"}):
+            assert intent_beside(dict(row), drift) == row

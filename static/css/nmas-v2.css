@@ -910,6 +910,45 @@ a.pack-cite { color: var(--accent); margin-right: 2px; }
 .help-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
   font-weight: 600; }
 .help-panel-body { padding: 14px 18px 24px; overflow-y: auto; }
+/* The toolbar assistant (board P7, card P7 stage 1): the top bar's Assistant, after the AI chip
+   and before Live; its panel in the help panel's place; its answer in place. */
+.asb { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font: inherit;
+  font-size: 12.5px; padding: 3px 10px 3px 6px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); cursor: pointer; }
+.asb-mark { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: .04em;
+  border-radius: 4px; padding: 0 4px; text-decoration: none; background: var(--ai-soft);
+  color: var(--ai); }
+.asb[aria-disabled="true"] { background: var(--surface-2); color: var(--ink-3); }
+.asb[aria-disabled="true"] .asb-mark { background: var(--muted-soft); color: var(--ink-3); }
+.asst-panel .help-panel-body { display: flex; flex-direction: column; gap: 10px; }
+.asst-ask { display: flex; flex-direction: column; gap: 6px; }
+.asst-ask textarea { font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--surface); color: var(--ink); min-height: 58px; resize: vertical; }
+.asst-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.asst-answer { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 10px 12px; background: var(--surface-2); }
+.asst-said { white-space: pre-wrap; font-size: 13.5px; }
+/* The shell base.html carries, its head and body drawn on the first opening. */
+.asst-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* Board P7's 1f: at phone width the AI mark alone, its name on hover and to a reader. Below
+   1366 px too, as Update available is "Update" there: measured by test_v2_layout_in_a_browser
+   with every item of the bar at its widest, the word ran the bar 64 px past 1280 and 52 past
+   1024, so laptops also take 12 px gaps. Phones tighten the bar's gaps to fit it without hiding
+   anything (the mark ran 21 px past 430 and 33 past 320). */
+@media (max-width: 1366px) {
+  .asb-word { display: none; }
+  .asb { padding: 3px 6px; }
+}
+@media (min-width: 861px) and (max-width: 1366px) {
+  .topbar { gap: 12px; }
+}
+@media (max-width: 640px) {
+  .topbar { gap: 6px; padding: 0 10px; }
+}
+@media (max-width: 360px) {
+  .topbar { gap: 2px; padding: 0 4px; }
+  .asb { padding: 2px 3px; border-color: transparent; }
+}
 .help-panel-page { font-size: 12px; color: var(--ink-2); margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
 .help-panel-more { font-size: 13px; margin-top: 14px; }
 .tab-help { grid-column: 1 / -1; margin: 0 0 -4px; text-align: right; }

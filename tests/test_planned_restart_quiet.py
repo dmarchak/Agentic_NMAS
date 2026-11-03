@@ -394,7 +394,9 @@ class TestTheSettlePeriodIsQuiet:
     def test_the_control_with_no_window_they_are_one_group(self, grafana, fire):
         res = fire((*self.snmp("10.255.1.12"), []), (*self.snmp("10.255.1.11"), []))
         (row,) = res["rows"]
-        assert row["what"] == "2 alerts began together" and row["devices"] == ["r1", "r2"]
+        # The title names what and where (C2326), its devices and its rule.
+        assert row["what"] == "2 devices (r1, r2): 2 alerts: Device unreachable (SNMP)" and \
+            row["devices"] == ["r1", "r2"], row["what"]
 
     def test_a_silenced_alert_is_never_grouped_with_a_live_one(self, grafana, fire):
         res = fire((*self.snmp("10.255.1.12"), []), (*self.snmp("10.255.1.11"), [SILENCE]))
@@ -408,7 +410,8 @@ class TestTheSettlePeriodIsQuiet:
         res = fire((*self.snmp("10.255.1.11"), [SILENCE]),
                    (*self.snmp("10.255.1.12"), [SILENCE]))
         (row,) = res["rows"]
-        assert row["what"] == "2 alerts began together (silenced in Grafana)", row["what"]
+        assert row["what"] == ("2 devices (r1, r2): 2 alerts: Device unreachable (SNMP) "
+                               "(silenced in Grafana)"), row["what"]
         assert row["cause"].count(SILENCE["id"]) + row["cause"].count(
             f"by {OPERATOR} until {SILENCE['ends_at']}") == 1, row["cause"]
 

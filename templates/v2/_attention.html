@@ -48,7 +48,7 @@
       <summary class="att-line">
         <span class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
         <h2 class="att-what" title="{{ r.what }}">{{ r.what }}</h2>
-        <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted">not recorded</span>{% endif %}</span>
+        <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted" title="Its source does not record when the condition began; the row stands while the condition holds, and its reading's age is below.">start not tracked</span>{% endif %}</span>
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>
       <div class="att-body">
@@ -100,6 +100,12 @@
           {%- if r.dispositions %}
           <label class="sr-only" for="ackd-{{ r.id }}">What it was</label>
           <select id="ackd-{{ r.id }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
+          {%- endif %}
+          {#- C2316: a band row's acknowledgement covers what came before it and the cycle then
+              under way; a planned quiet period names its hours, its expiry drawn. -#}
+          {%- if 'events' in (r.operands or {}) %}
+          <label class="sr-only" for="ackh-{{ r.id }}">How long it covers</label>
+          <select id="ackh-{{ r.id }}" name="hours"><option value="">Until something new happens</option>{% for h in (1, 2, 4, 8, 24) %}<option value="{{ h }}">A planned quiet period: {{ h }} hour{{ '' if h == 1 else 's' }}</option>{% endfor %}</select>
           {%- endif %}
           <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
           <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
@@ -160,7 +166,7 @@
         {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
         {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
         {%- endif %} · {% endif -%}
-        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %}
+        {% if r.since %}since {{ stamp(r.since) }}{% else %}its source does not track when it began{% endif %}
         {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
       </p>
@@ -180,7 +186,7 @@
     <summary class="att-grp-sum">Acknowledged · {{ a.acknowledged|length }}</summary>
     <p class="att-acked">Acknowledged, so not listed:</p>
     <ul class="att-members">
-      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}</li>{% endfor %}
+      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}</li>{% endfor %}
     </ul>
   </details>
   {%- endif %}

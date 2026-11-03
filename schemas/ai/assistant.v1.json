@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "description": "The model's answer: the steps, the passages they rest on (their links, as sent), whether\nthe passages cover the question, and every screen the answer names.",
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "cites": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cites",
+      "type": "array"
+    },
+    "covered": {
+      "title": "Covered",
+      "type": "boolean"
+    },
+    "screens": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Screens",
+      "type": "array"
+    }
+  },
+  "required": [
+    "answer",
+    "cites",
+    "covered",
+    "screens"
+  ],
+  "title": "AssistantAnswer",
+  "type": "object"
+}

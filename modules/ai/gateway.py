@@ -111,6 +111,8 @@ TYPED_PARTS = {
     "change_record": (),              # a deploy preview's shape: Mercury's own data (the
                                       # stated reasons a person typed are never sent)
     "connection_check": (),           # a word Mercury chose
+    "assistant": ("question",),       # the toolbar assistant (P7): the question as typed; the
+                                      # passages are the manual's, published with the product
 }
 
 #: What each mask's label is, in a person's words: the label is the redact rule's

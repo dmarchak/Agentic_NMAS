@@ -38,7 +38,7 @@
 <script defer src="{{ url_for('static', filename='js/nmas_logq.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
 </head>
-<body class="v2" x-data="frame" x-on:keydown.escape="closeHelp">
+<body class="v2" x-data="frame" x-on:keydown.escape="closeSides">
 <a class="skip" href="#main">Skip to the content</a>
 <div class="scrim" x-show="drawer" x-on:click="close" x-cloak></div>
 <nav class="sidebar" aria-label="Main" x-bind:class="drawerClass">
@@ -109,6 +109,10 @@
       <summary id="nmas-ai" aria-haspopup="dialog" hx-get="{{ url_for('v2.ai_chip') }}" hx-trigger="load, nmas:ai_calls from:body, nmas:settings from:body" hx-swap="innerHTML"><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">reading spend…</span><span class="ai-short" aria-hidden="true">…</span></span></summary>
       <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open, nmas:ai_spend" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
     </details>
+    {#- Board P7 (card P7, stage 1): the Assistant after the AI chip and before Live, one button
+        opening its panel; never hidden. The panel draws the control itself, and when it cannot
+        answer, says why in full (`ai.reason`, the control's own template's). -#}
+    <button type="button" class="asb" id="nmas-assistant" aria-label="Assistant" aria-controls="asst-panel" x-bind:aria-expanded="asst ? 'true' : 'false'" x-on:click="openAssistant" title="Ask Mercury how to do something. Answers cite the manual. Each question is one recorded AI call."><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="icon-btn" aria-haspopup="true" x-bind:aria-expanded="expanded" x-bind:aria-label="label" x-bind:title="label" x-on:click="toggle">{{ icon('theme', 18) }}</button>
@@ -131,6 +135,14 @@
     <button type="button" class="icon-btn" aria-label="Close the help" x-on:click="closeHelp">{{ icon('x', 18) }}</button>
   </div>
   <div id="help-panel-body" class="help-panel-body" aria-live="polite"></div>
+</aside>
+{#- The toolbar assistant's panel: its shell here, its head and body asked the first time it
+    opens on the page (routes/assistant_v2.panel), so every page carries only this. -#}
+<aside class="help-panel asst-panel" id="asst-panel" aria-label="Assistant" x-show="asst" x-cloak>
+  <div class="asst-body" id="asst-body" hx-get="{{ url_for('assistant_v2.panel', nav=active_nav or '') }}" hx-trigger="nmas-asst-open once" hx-swap="innerHTML">
+    <div class="help-panel-head"><span class="grow">Assistant</span><button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button></div>
+    <p class="help-panel-body small faint">Opening the assistant…</p>
+  </div>
 </aside>
 </body>
 </html>

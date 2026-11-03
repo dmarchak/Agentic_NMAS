@@ -100,6 +100,13 @@ last day, the last time and the reason the device gave.
 - An adjacency that flaps for a known reason can be acknowledged within its band: the highest
   daily count of the last week. It stays quiet while the day's count stays at or under that,
   and returns, saying so, when it goes above.
+- An acknowledgement covers the drops up to its own time, and the down/up cycle under way then
+  until it settles (15 minutes with no drop). Any drop after that brings the row back, naming
+  who acknowledged it and when, and the drop's time, even inside the band.
+- For a planned quiet period, choose its length in the form's second choice, "A planned quiet
+  period", 1 to 24 hours.
+  Every drop to its expiry is covered, inside the band or not. The acknowledged list shows the
+  expiry, and a drop after it brings the row back.
 - With no drop for a day, the row clears.
 
 Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares
@@ -352,7 +359,9 @@ as usual. Only a Reload records what it predicts today; a window declared by han
 devices alone.
 
 Each alert is judged by its own device, never by what began beside it. Alerts whose onsets fall
-within six minutes of each other are grouped into one row ("3 alerts began together"), but an
+within six minutes of each other are grouped into one row, its title naming where and what
+("edge1: 2 telemetry streams lost (101, 102)", or "2 devices (edge1, edge2): 2 alerts: Device
+unreachable (SNMP)"), but an
 alert on a device restarting as planned (or drained) is taken out of the group first and said
 under *What was checked*, so another device's live alert that began at the same moment is a row
 of its own. A silenced alert is never grouped with a live one either: it keeps its level in a
@@ -378,5 +387,9 @@ within the series' measured band.
   acknowledged list beside the table says "within its band", with the value and the band.
 - **When the value rises above the band**, the row comes back. It names who acknowledged it,
   the band and the value now, so a change on a chronic port is still seen.
+- **When the alert stops firing and fires again after the acknowledgement,** the row comes
+  back, naming who acknowledged it and when this firing began. An acknowledgement covers the
+  firing under way when it was given, never a later one, unless it named a planned quiet period
+  (1 to 24 hours) that has not yet ended.
 - Only an alert on one series, whose rule is a Prometheus query ending in a threshold, can be
   acknowledged this way. Any other alert clears when it stops firing.

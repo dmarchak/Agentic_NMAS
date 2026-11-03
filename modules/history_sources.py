@@ -1080,6 +1080,7 @@ SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the 
                  "intent": "an intent change on", "sdn_detection": "the SDN detection",
                  "sdn_collection": "an SDN collection no rule fired on",
                  "deploy_preview": "a change record for the deploy to",
+                 "manual_question": "a question on the manual, asked from",
                  "": "the installation"}
 
 

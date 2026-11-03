@@ -15,6 +15,7 @@ is a fake answering the two queries the band and the reading make.
 
 import json
 import re
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -130,6 +131,17 @@ class TestAcknowledgingWithinTheBand:
                          r"band of 3\.7 \(its 7-day 95th percentile when acknowledged\), the "
                          r"band that governs; its value is 5 \(read by the reader at \d\d:\d\d "
                          r"UTC\), above it, so it is shown", r["cause"]), r["cause"]
+
+
+    def test_a_firing_that_began_after_it_is_shown_naming_both_times(self, store, inventory,
+                                                                      monkeypatch):
+        """C2316: an acknowledgement covers the firing under way when it was given. The series
+        stopped and fired again after it, inside its band: shown."""
+        self._acknowledge(monkeypatch, _firing(), _Prom(p95=3.7, now=0.8))
+        again = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))
+        (r,), gone, _p = A._without_acknowledged(_rows(_firing(again)))
+        assert gone == [] and r["operands"]["events"][0] > time.time()
+        assert ", and this came after, at " in r["cause"], r["cause"]
 
 
 class TestTheStuckAcknowledgeC533:

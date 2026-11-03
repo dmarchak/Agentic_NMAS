@@ -135,6 +135,22 @@ def connections(network: str) -> dict:
     return out
 
 
+def elsewhere(network: str) -> list:
+    """The OTHER networks that have a controller connected, by name (C2325: SDN opened on a
+    network with none drew an empty loop and said nothing of the network that has one). A
+    network whose store cannot be read is left out: this only points the way."""
+    from modules.integration_groups import network_names
+
+    out = []
+    for name in network_names():
+        if name == network:
+            continue
+        got = connections(name)
+        if got["state"] == "ok" and got["connections"]:
+            out.append(name)
+    return out
+
+
 def _find(network: str, name: str):
     """``(stored connection or None, owner)``."""
     owner = _owner(network)

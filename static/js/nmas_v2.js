@@ -414,6 +414,15 @@
     if (panel && root.htmx) root.htmx.trigger(panel, live ? 'nmas:ai_spend' : 'nmas-ai-open');
     return !!panel;
   }
+  /* Board P7 (card P7, stage 1): the assistant's box takes the focus when its panel opens, and
+     on the first opening once its head and body are drawn. */
+  function focusAssistant() {
+    var box = root.document.getElementById('asst-q');
+    if (box && !box.disabled && box.offsetParent) box.focus();
+  }
+  function assistantDrawn(e) {
+    if (e.target && e.target.id === 'asst-body') focusAssistant();
+  }
   function aiSpendToggled(e) {
     if (e.target && e.target.id === 'ai-spend') aiSpendPanel();
   }
@@ -1179,15 +1188,33 @@
         // The side help panel (NSOT_GUI_BRIEF 10a): an info link loads its
         // manual section into it (htmx) and opens it here.
         help: false,
+        // The toolbar assistant's panel (board P7, card P7 stage 1), in the help panel's place:
+        // one of the two side panels at a time.
+        asst: false,
         // At phone width the go-to box is its button (board B, C537): open or not.
         jumpOpen: false,
         get drawerClass() { return this.drawer ? 'open' : ''; },
         get jumpClass() { return this.jumpOpen ? 'open' : ''; },
         get jumpExpanded() { return this.jumpOpen ? 'true' : 'false'; },
         open: function () { this.drawer = true; },
-        close: function () { this.drawer = false; this.help = false; },
-        openHelp: function () { this.help = true; },
+        close: function () { this.drawer = false; this.help = false; this.asst = false; },
+        openHelp: function () { this.asst = false; this.help = true; },
         closeHelp: function () { this.help = false; this.jumpOpen = false; },
+        // Esc closes whichever side panel is open (one handler: the CSP build of Alpine runs a
+        // method by name, never two calls in one expression).
+        closeSides: function () { this.closeHelp(); this.asst = false; },
+        // The panel's head and body are asked the first time it opens on a page (`once` on
+        // #asst-body); its box takes the focus once drawn (assistantDrawn, below).
+        openAssistant: function () {
+          this.help = false;
+          this.asst = true;
+          this.$nextTick(function () {
+            var body = root.document.getElementById('asst-body');
+            if (body && root.htmx) root.htmx.trigger(body, 'nmas-asst-open');
+            focusAssistant();
+          });
+        },
+        closeAssistant: function () { this.asst = false; },
         toggleJump: function () {
           var self = this;
           this.jumpOpen = !this.jumpOpen;
@@ -1279,6 +1306,8 @@
           var self = this, el = this.$root, box = el.querySelector('input[name="why"]');
           // A disposition, where the row asks one (C2295: lines withheld as instructions).
           var pick = el.querySelector('select[name="disposition"]');
+          // A planned quiet period's hours, where a band row offers one (C2316).
+          var hours = el.querySelector('select[name="hours"]');
           var ctl = root.AbortController ? new root.AbortController() : null;
           var timer = root.setTimeout(function () {
             if (ctl) ctl.abort();
@@ -1298,7 +1327,8 @@
           root.fetch(el.getAttribute('data-url'), {
             method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: JSON.stringify({row: el.getAttribute('data-row'), event: el.getAttribute('data-event'),
-                                  why: box ? box.value : '', disposition: pick ? pick.value : ''}),
+                                  why: box ? box.value : '', disposition: pick ? pick.value : '',
+                                  hours: hours ? hours.value : ''}),
             signal: ctl ? ctl.signal : undefined
           }).then(function (r) {
             return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
@@ -1609,6 +1639,7 @@
     root.document.addEventListener('keydown', aiSpendClose);
     root.document.addEventListener('click', aiSpendClose);
     root.document.addEventListener('click', aiSpendOpenClicked);
+    root.document.addEventListener('htmx:afterSettle', assistantDrawn);
     root.document.addEventListener('htmx:beforeSend', holdSubmitter);
     root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);

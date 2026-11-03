@@ -938,6 +938,39 @@ def _attention_withheld(client, _lab, _mp):
         mp.undo()
 
 
+def _attention_quiet_period(client, _lab, _mp):
+    """Needs attention with an adjacency-log row, a band row (C2316): its Acknowledge… form
+    draws the planned quiet period's hours. The reader's value planted for this provider
+    alone, then undone."""
+    import time as _time
+
+    import pytest
+
+    from modules import attention
+
+    mp = pytest.MonkeyPatch()
+    try:
+        now = _time.time()
+        at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(now - 300))
+        k = "Lab|r2|OSPF|192.0.2.3"
+        value = {"configured": True, "lines": 1, "devices": 1, "window_days": 7,
+                 "adjacencies": {k: {"list": "Lab", "device": "r2", "protocol": "OSPF",
+                                     "neighbor": "192.0.2.3", "interface": "GigabitEthernet2",
+                                     "drops": [{"at": at, "epoch": now - 300,
+                                                "reason": "Dead timer expired"}],
+                                     "by_day": {at[:10]: 1}, "band": 1}}}
+        cached = {"state": "ok", "doc": {"last_good": {"value": value, "value_at": at},
+                                         "stale_after_seconds": 300}}
+        real = attention.adjacency_log_source
+        mp.setattr(attention, "SOURCES", [lambda: real(cached=cached, planned=[],
+                                                       receipts=lambda ln, dev: [])])
+        r = client.get("/v2/attention")
+        assert r.status_code == 200, r.status_code
+        assert 'name="hours"' in r.get_data(as_text=True), "no quiet period drawn"
+    finally:
+        mp.undo()
+
+
 def _intent_words(client, lab, _mp):
     """Change it in words on r3's Intent tab (feature 7, 15.16): hosted AI allowed and the
     adapter answering as planted, a draft that sets the description of r3's first committed
@@ -2150,6 +2183,38 @@ def _ai_feedback(client, _lab, _mp):
         mp.undo()
 
 
+def _assistant(client, _lab, mp):
+    """The toolbar assistant's answer (card P7, stage 1): a question the manual does not cover,
+    which is answered with no call (no passage chosen) and recorded as a gap, its record in the
+    walk's own folder."""
+    import html
+    from modules.ai import assistant
+    gaps = []
+    mp.setattr(assistant, "record_gap", lambda *a, **k: gaps.append((a, k)) or {})
+    r = client.post("/v2/assistant/ask", data={"question": "What is the capital of France?",
+                                               "screen": "Devices"})
+    assert r.status_code == 200 and "The manual doesn't cover this." in html.unescape(
+        r.get_data(as_text=True)), r.get_data(as_text=True)[:300]
+    assert len(gaps) == 1
+    # An answer Mercury's check passed, with its citations, and one the passages did not
+    # cover, with the nearest they hold: planted, as the model's answers are (no provider).
+    link = {"link": "/v2/help/reload#the-run", "page": "Reload a device", "heading": "The run"}
+    states = {
+        "answered": {"ok": True, "state": "answered", "error": "", "detail": "",
+                     "answer": "Open the device page, then Actions › Reload…",
+                     "cites": [link], "passages": [link], "call_id": "ai-0123456789abcdef",
+                     "gap": False, "typed_masked": ""},
+        "not_covered": {"ok": True, "state": "not_covered", "error": "",
+                        "detail": assistant.NOT_COVERED, "passages": [link],
+                        "call_id": "ai-0123456789abcdef", "gap": True, "typed_masked": ""}}
+    for state, got in states.items():
+        mp.setattr(assistant, "answer", lambda *a, got=got, **k: dict(got))
+        r = client.post("/v2/assistant/ask", data={"question": "How do I reload?",
+                                                   "screen": "Devices"})
+        assert r.status_code == 200 and 'href="/v2/help/reload#the-run"' in r.get_data(
+            as_text=True), state
+
+
 def _ai_spend(client, _lab, _mp):
     """The top bar's AI chip and its spend panel (boards AI1 and AI2, C1843) with spend to draw:
     a key, hosted AI allowed, a planted background feature on for Lab (and one for a network
@@ -2631,6 +2696,17 @@ def _sdn_no_topology(client, _lab, _mp):
         store_read("Lab", clock=lambda: T0 + 100)
         html = client.get("/v2/sdn?list=Lab").get_data(as_text=True)
         assert "read topology: not offered by this driver" in html
+        # C2325: a network with none names the networks that have one. The walk's lab is one
+        # network, so for this one request Lab is read as having none and `elsewhere` names it
+        # (its link then resolves); tests/test_sdn_v2.py holds the two real networks' case.
+        real_conns, real_else = C.connections, C.elsewhere
+        mp.setattr(C, "connections", lambda n: dict(real_conns(n), state="none",
+                                                    connections=[]))
+        mp.setattr(C, "elsewhere", lambda n: ["Lab"])
+        other = client.get("/v2/sdn?list=Lab").get_data(as_text=True)
+        mp.setattr(C, "connections", real_conns)
+        mp.setattr(C, "elsewhere", real_else)
+        assert "Open Lab's SDN" in other, "the network with a controller is not named"
         assert client.post("/v2/settings/network/Lab/sdn/lab-controller/remove").status_code \
             == 200
     finally:
@@ -2714,13 +2790,14 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_withheld,
+                   _attention_quiet_period,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
-                   _ai_spend, _oob_onboard, _sdn,
+                   _ai_spend, _assistant, _oob_onboard, _sdn,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).

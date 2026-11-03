@@ -180,9 +180,13 @@ class TestTheRow:
 
     def test_drifted_the_row_is_closed_and_asks_for_its_lines_once(self, lab, monkeypatch):  # noqa: F811
         result = _drift(monkeypatch)
-        n = result["drifted_devices"][0]["diff_lines"]
+        # The lines that differ, never the diff's length with its headers and context (C2319).
+        d = result["drifted_devices"][0]
+        n = d["changed_lines"]
+        assert 0 < n < d["diff_lines"], d
         row = _drift_row(_overview(lab))
-        assert f"changed: differs from its golden by {n} line(s)" in row and "check-warn" in row
+        assert f"changed: differs from its golden by {n} changed line(s)" in row and \
+            "check-warn" in row
         details = re.search(r"<details [^>]*>", row)
         assert details, "a drifted row draws nothing to open"
         details = details.group(0)
