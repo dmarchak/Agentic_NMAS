@@ -340,6 +340,39 @@ def test_as_a_commit_msg_hook_it_refuses_the_commit_and_passes_it_with_its_trail
     assert _git(repo, "rev-parse", "HEAD") != head
 
 
+def test_as_a_hook_in_a_worktree_the_tests_it_runs_never_reach_the_repository(repo, scratch):
+    """C2357 (2026-11-03): the gate commits in a linked worktree, and git gives the commit-msg
+    hook its GIT_DIR and GIT_INDEX_FILE. A selected test's own `git -C <its folder> init` then
+    reinitialised the repository those name, writing `core.bare = true` into the checkout's
+    config, so the gate's next git command failed ("must be run in a work tree"). The tests run
+    on the parent now get none of git's repository-local variables."""
+    hook = repo / ".git" / "hooks" / "commit-msg"
+    hook.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{SCRIPT}" --repo "$(pwd)" --python '
+                    f'"{sys.executable}" --allow-unconfined --message "$1"\n')
+    hook.chmod(0o755)
+    wt = scratch.parent / "wt"
+    _git(repo, "worktree", "add", "-q", "--detach", str(wt), "HEAD")
+    _write(wt, {"pkg/calc.py": CALC_FIXED, "tests/test_calc.py": with_test(
+        "def test_triple_after_its_own_git_init(tmp_path):\n"
+        "    import subprocess\n"
+        "    inner = tmp_path / 'inner'\n"
+        "    inner.mkdir()\n"
+        "    subprocess.run(['git', '-C', str(inner), 'init', '-q'], check=True)\n"
+        "    assert calc.triple(2) == 6\n")})
+    _git(wt, "add", "-A")
+    msg = scratch.parent / "wt-message.txt"
+    msg.write_text("Add triple\n")
+    r = subprocess.run(["git", "-C", str(wt), "commit", "-q", "-F", str(msg)],
+                       capture_output=True, text=True, timeout=RUN_TIMEOUT,
+                       env=_env(TMPDIR=str(scratch)))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 selected, 1 red, 0 excused, 0 refused" in r.stderr + r.stdout
+    bare = subprocess.run(["git", "--git-dir", str(repo / ".git"), "config", "--get",
+                           "core.bare"], capture_output=True, text=True, env=_env()).stdout
+    assert bare.strip() == "false", f"the repository's core.bare is now {bare.strip()!r}"
+    assert _git(repo, "status", "--short") == ""
+
+
 def test_a_temporary_index_is_refused_never_guessed_at(repo, scratch):
     _write(repo, {"tests/test_calc.py": with_test("def test_more():\n    assert True\n")})
     r = run(repo, scratch, message="commit -a\n", GIT_INDEX_FILE=".git/index.tmp")

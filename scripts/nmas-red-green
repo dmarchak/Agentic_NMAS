@@ -352,8 +352,14 @@ def junit_cases(xml_path):
 
 
 def child_env(python):
+    """The run's environment: the calling run's pytest and coverage settings dropped, and git's
+    repository-local variables too (`repo.REPO_LOCAL_ENV`). As a commit-msg hook this runs with
+    git's GIT_DIR and GIT_INDEX_FILE set, and a test's own `git init` in its temporary folder
+    then reinitialised the repository they name, writing `core.bare = true` into the
+    checkout's config (C2357, 2026-11-03)."""
+    from modules.nsot.repo import REPO_LOCAL_ENV
     env = {k: v for k, v in os.environ.items()
-           if k not in DROP_ENV and not k.startswith("COV_CORE_")}
+           if k not in DROP_ENV and k not in REPO_LOCAL_ENV and not k.startswith("COV_CORE_")}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     if python:
         env["PYTHON"] = python

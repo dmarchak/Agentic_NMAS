@@ -116,6 +116,15 @@ class TestNmasTest:
                       "tests/test_nmas_workers.py")
         assert "lowered" not in r.stderr, "a -n the memory allows is kept"
 
+    def test_a_n_0_stays_one_process(self, tmp_path):
+        """C2355: `-n 0` read as no cap gave 4 workers ("created: 4/4 workers", 2026-11-03).
+        A real run of one test, so xdist's own words say whether it distributed."""
+        r = self._run(tmp_path, 30.0, "-n", "0", "-p", "no:cacheprovider",
+                      "tests/test_nmas_workers.py::test_memavailable_is_read_from_the_file")
+        assert "1 passed" in r.stdout, r.stdout[-800:]
+        assert "created:" not in r.stdout and " workers [" not in r.stdout, r.stdout[-800:]
+        assert "lowered" not in r.stderr, r.stderr[-800:]
+
     def test_a_full_run_refuses_while_another_holds_the_lock(self, tmp_path):
         lock = str(tmp_path / "full.lock")
         held = W.hold_full("nmas-gate (pid 7)", lock)

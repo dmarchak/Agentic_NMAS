@@ -220,6 +220,9 @@ browsers=0
 [ "$allow" -eq 1 ] && browsers=1
 cap_workers() {
   local req="$1" ask got
+  # -n 0 is one process, xdist's own meaning: never raised. nmas-workers reads --cap 0 as no
+  # cap, and a serial run asked for got 4 workers (C2355).
+  if [ "$req" = "0" ]; then echo 0; return; fi
   ask="$req"; [ "$req" = "auto" ] && ask=4
   got="$("$PY" "$here/scripts/nmas-workers" --browsers "$browsers" --cap "$ask" 2>/dev/null)" || got="$ask"
   if [ "$req" = "auto" ] || [ "$got" -lt "$ask" ]; then
