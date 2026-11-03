@@ -121,11 +121,12 @@ RECENT_RECEIPTS = 5
 
 
 def _attention() -> dict:
-    from modules.attention import needs_attention
+    from modules.attention import needs_attention_shared
     from modules.outbound import mask_payload
 
-    # Rows quote their sources' own words: masked on the way out.
-    return mask_payload(needs_attention())
+    # Rows quote their sources' own words: masked on the way out. One computation serves every
+    # tab until a change is announced (C1262).
+    return mask_payload(needs_attention_shared())
 
 
 def _recent() -> dict:

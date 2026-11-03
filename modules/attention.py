@@ -32,6 +32,7 @@ cache, rather than a guess.
 
 import logging
 import re
+import threading
 import time
 from urllib.parse import urlencode
 
@@ -5703,6 +5704,39 @@ def _expected_on_cards(results: list) -> list:
                                  + f" {'are' if n != 1 else 'is'} held, said under What was "
                                    "checked"})
     return out
+
+
+#: How long one computation serves every tab with no change announced (C1262): rows that move
+#: by time alone (a row clearing by time, a source past its promise) are at most this late. The
+#: badge's reads come in bursts, one per open tab per announcement (C1262: 620 reads in 136
+#: bursts, about 4.6 a burst, one every ~13 s), and the host's log of 2026-11-01 to 03 measured
+#: a computation at 0.9 to 2.5 s; 10 s is about 4x the slower.
+SHARED_SECONDS = 10.0
+_shared: dict = {}
+_shared_lock = threading.Lock()
+
+
+def needs_attention_shared(clock=time.time) -> dict:
+    """`needs_attention()`, computed ONCE for every tab and request asking for the same network
+    until a change is announced (`invalidation.generation`: an announcement, or a mutating
+    route's declared invalidation) or `SHARED_SECONDS` pass (C1262: each open tab recomputed
+    every source on every announcement, the badge at p50 2.5 s and p90 7.7 s on the host,
+    3.9 h of server time in 31 h). One computes while the others wait for its answer, so a
+    burst is one computation. Each caller gets its own copy. The value a computation stores is
+    keyed by the generation read BEFORE it began, so one begun before a change is never
+    served after it."""
+    import copy
+
+    from modules import invalidation
+
+    key = _page_network()
+    with _shared_lock:
+        gen = invalidation.generation()
+        got = _shared.get(key)
+        if got is None or got["gen"] != gen or clock() - got["at"] >= SHARED_SECONDS:
+            got = {"gen": gen, "at": clock(), "value": needs_attention()}
+            _shared[key] = got
+        return copy.deepcopy(got["value"])
 
 
 def needs_attention(sources=None) -> dict:

@@ -130,6 +130,27 @@ def _no_test_writes_into_the_checkout_data(request):
 SOCKETIO_PATCHED = ("_send_packet", "_send_eio_packet")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _needs_attention_computed_per_request():
+    """Needs attention computed for every request, as before C1262: a test patches a source and
+    reads the page again with nothing announced, which the shared value (10 s, keyed on the
+    announcements) would serve unchanged. For the whole session, so module-scoped fixtures (the
+    v2 walk's providers) read fresh too; the sharing's own tests set it back
+    (tests/test_attention_shared.py)."""
+    from modules import attention
+    attention.SHARED_SECONDS = 0.0
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _needs_attention_shared_value_cleared():
+    """No test is served another test's shared Needs attention value (C1262)."""
+    from modules import attention
+    attention._shared.clear()
+    yield
+    attention._shared.clear()
+
+
 @pytest.fixture(autouse=True)
 def _socketio_server_sends_to_real_clients():
     """After each test, the app's Socket.IO server sends through its own methods again.

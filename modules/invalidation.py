@@ -530,6 +530,15 @@ _last = {"server_last_heartbeat_at": "", "server_last_announce_at": "",
          "server_last_announce_keys": []}
 
 
+#: How many announcements this process has sent (C1262): a value computed for every tab, Needs
+#: attention's, stands until the next one (`attention.needs_attention_shared`). Process memory.
+_generation = [0]
+
+
+def generation() -> int:
+    return _generation[0]
+
+
 def last_emits() -> dict:
     """A copy of when this process last sent a heartbeat and an announcement ("" for never)."""
     return {k: (list(v) if isinstance(v, list) else v) for k, v in _last.items()}
@@ -586,6 +595,9 @@ def announce(keys, by: str, ok: bool = True) -> dict:
                            "has none")
     msg = {"keys": keys, "by": by, "ok": bool(ok),
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    # Counted before it is sent, so a page that re-reads on hearing it never gets a value
+    # computed before the change.
+    _generation[0] += 1
     _emitter(ANNOUNCE_EVENT, msg)
     _last.update(server_last_announce_at=msg["at"], server_last_announce_keys=keys)
     # C539: a job that changed a store re-reads, at once, each reader that reports on it, so a
@@ -624,6 +636,9 @@ def install(app) -> None:
         if not keys:
             return response
         response.headers[HEADER] = ",".join(keys)
+        # C1262: a write this route made stands as a change, as an announcement does, so a
+        # value computed for every tab before it is never served after it.
+        _generation[0] += 1
         # C539: the readers whose answer this route's write changes are read again at once.
         from modules import reader_wakes
         reader_wakes.wake(keys, request.endpoint or "")

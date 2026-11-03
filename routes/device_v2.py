@@ -634,7 +634,8 @@ def attention_count():
     the page loaded and never again (the operator, 2026-10-02)."""
     try:
         from modules import attention
-        b = attention.needs_attention()["badge"]
+        # One computation for every tab's badge until a change is announced (C1262).
+        b = attention.needs_attention_shared()["badge"]
         return _strict(render_template("v2/_count.html", badge=b, ok=True))
     except Exception as exc:                            # noqa: BLE001
         log.warning("v2 attention count failed: %s", exc)
