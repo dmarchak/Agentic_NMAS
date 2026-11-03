@@ -982,8 +982,9 @@ def drift_source(status=None, now=None) -> dict:
                 else f"seen by the drift check at {_iso(last_ts) or 'an unrecorded time'}")
         add(f"drifted:{d['hostname']}", f"{d['hostname']} has drifted from its golden",
             f"the running config differs from the committed golden by {n_lines}, {read}; it "
-            "stands until the next drift check reads the device again (Check now reads it "
-            "at once); since when it has differed is not recorded",
+            "stands until the next drift check reads the device again (Check drift now, on "
+            "its page's Actions and its drift card, reads it at once); since when it has "
+            "differed is not recorded",
             # Both answers on the row, each opening its card on the device page (the operator's
             # overnight list, item 7: before the AI family and its approval queue go, a drift
             # is answered here): Capture accepts what the device holds, Deploy puts intent back.

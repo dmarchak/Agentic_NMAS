@@ -443,8 +443,83 @@ def run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> dic
     return result
 
 
-def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> dict:
-    """Check every device in the inventory for config drift.
+def _bucket(run: dict, hostname: str) -> str:
+    """Which of a run's buckets *hostname* is in: drifted, error, skipped, or clean (checked and
+    unchanged, or absent from the run)."""
+    for key, bucket in (("drifted_devices", "drifted"), ("errors", "error"),
+                        ("skipped", "skipped")):
+        if any((d.get("hostname") if isinstance(d, dict) else d) == hostname
+               for d in run.get(key) or []):
+            return bucket
+    return "clean"
+
+
+def merged(previous: dict, one: dict, hostname: str, by: str) -> dict:
+    """*previous* (the network's stored last run) with *hostname*'s entries replaced by *one*'s
+    (C2336: a person's Check drift now on one device): its drifted, error or skipped entry, the
+    counts recomputed from the buckets, and when and by whom it was read
+    (``device_checks[hostname]``). The run's own time and trigger stay the run's, so the
+    schedule does not move."""
+    out = dict(previous or {})
+    was, now = _bucket(out, hostname), _bucket(one, hostname)
+    for key in ("drifted_devices", "errors", "skipped"):
+        keep = [d for d in out.get(key) or []
+                if (d.get("hostname") if isinstance(d, dict) else d) != hostname]
+        out[key] = keep + [d for d in one.get(key) or []
+                           if (d.get("hostname") if isinstance(d, dict) else d) == hostname]
+    counted = {"drifted", "clean"}
+    out["checked"] = int(out.get("checked") or 0) - (was in counted) + (now in counted)
+    out["drifted"] = len(out["drifted_devices"])
+    out["clean"] = max(0, out["checked"] - out["drifted"])
+    checks = dict(out.get("device_checks") or {})
+    entry = next((d for d in one.get("drifted_devices") or [] if d.get("hostname") == hostname),
+                 {})
+    checks[hostname] = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "by": by,
+                        "state": now, "read_at": entry.get("read_at")}
+    out["device_checks"] = checks
+    return out
+
+
+def check_device(list_name: str, hostname: str, by: str) -> dict:
+    """Check drift now on ONE device (C2336, the operator, 2026-11-03: the read-only way to
+    confirm a revert, on the device's own page and its drift row): the same fresh read and
+    comparison a run makes, of *hostname* alone, under the network's one-run lock (a run in
+    progress refuses it by name, `DriftRunning`), merged into the network's stored last run
+    (`merged`), so the device's drift row says what this read found. ``{"ok", "state",
+    "hostname", "changed_lines", "summary", "error"}``. Writes nothing to the device."""
+    with _OneRun(_run_lock_path(list_name), f"check drift now ({by})"):
+        one = _run_drift_check(f"device:{by}", list_name, only=hostname)
+        if not one.get("ok") and not one.get("errors"):
+            return {"ok": False, "hostname": hostname, "state": "unknown",
+                    "error": one.get("summary") or "the check could not run"}
+        # Read, merged and written in ONE hold of the state lock: a scheduled run's record
+        # landing between a read and a write would otherwise be replaced by an older merge.
+        with _state_lock(list_name):
+            state = _load_state(list_name)
+            if UNREADABLE in state:
+                raise DriftStateUnreadable(
+                    f"{state[UNREADABLE]}, so {hostname}'s check was not recorded")
+            state["last_result"] = merged(state.get("last_result") or {}, one, hostname, by)
+            _write_state(state, list_name)
+    try:
+        from modules import invalidation
+        invalidation.announce(invalidation.ANNOUNCERS["drift-check"], by="drift-check")
+    except Exception as exc:                          # noqa: BLE001
+        log.info("drift_check: %s's check recorded, not announced: %s", hostname, exc)
+    state = _bucket(one, hostname)
+    entry = next((d for d in one.get("drifted_devices") or []), {})
+    error = next((e.get("reason") for e in one.get("errors") or []
+                  if e.get("hostname") == hostname), "")
+    skipped = next((e.get("reason") for e in one.get("skipped") or []
+                    if e.get("hostname") == hostname), "")
+    return {"ok": state in ("clean", "drifted"), "hostname": hostname, "state": state,
+            "changed_lines": entry.get("changed_lines"), "summary": one.get("summary", ""),
+            "error": error or skipped}
+
+
+def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
+                     only: str = "") -> dict:
+    """Check every device in the inventory for config drift (*only*: that one device).
 
     **The population is the inventory, not the golden store.** It used to
     iterate `_list_golden_configs()`, which listed the deprecated
@@ -483,6 +558,11 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
     else:
         _, list_file = get_current_device_list()
     devices = load_saved_devices(list_file)
+    if only:
+        # One device's check (C2336, `check_device`): the same read and comparison, of it alone.
+        devices = [d for d in devices if d.get("hostname") == only]
+        if not devices:
+            return _result(ok=False, summary=f"{only} is not in {list_name}'s inventory")
     if not devices:
         log.info("drift_check: inventory is empty — nothing to check")
         return _result(summary="Inventory is empty — nothing to check")

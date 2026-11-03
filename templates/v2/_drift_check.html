@@ -1,0 +1,31 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Check drift now on one device (C2336, the operator, 2026-11-03: the read-only way to confirm
+    a revert, on the device's own page): the card in place of the tab, opened by the Actions
+    menu's row and by the drift card's own "Check again". It reads the device's running
+    configuration and compares it with its committed golden, as the drift run does, and records
+    what it found on the device's drift row (`drift_check.check_device`); nothing reaches the
+    device but the read. The result replaces the card's foot. Close puts back the tab. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+<section class="op-card" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Check drift now on {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('drift-check') }}<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What</h3><div>
+    <p>Reads {{ c.host }}'s running configuration now and compares it with its committed golden, the same read and comparison {{ c.list }}'s scheduled drift check makes, of {{ c.host }} alone. Its drift row then says what this read found, and when.</p></div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    <p>Nothing is sent to {{ c.host }} but the read. Its golden and its intent are not changed, and {{ c.list }}'s schedule does not move.</p></div></div>
+  <div class="op-part" id="drift-check-result"><h3>The result</h3><div>
+    {%- set g = c.got %}
+    {%- if not g %}
+    <form hx-post="{{ url_for('device_v2.drift_check_now', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="drift-check" hx-disabled-elt="this"><span class="op-idle">Check drift now</span><span class="op-busy">Reading {{ c.host }}…</span></button>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}</span>
+    </form>
+    {%- elif g.state == 'clean' %}
+    <p class="notice notice-ok">{{ icon('check', 16) }}<span>{{ c.host }} is at its golden: its running configuration, read {{ stamp(g.at) }}, differs in no line.</span></p>
+    {%- elif g.state == 'drifted' %}
+    <p class="notice notice-warn">{{ icon('warn', 16) }}<span>{{ c.host }} differs from its golden by {{ g.changed_lines if g.changed_lines is not none else 'some' }} changed line{{ '' if g.changed_lines == 1 else 's' }}, read {{ stamp(g.at) }}. Its drift row says so; open it to read the lines and choose.</span></p>
+    {%- else %}
+    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't check {{ c.host }}: {{ g.error or g.summary or 'no reason recorded' }}.</span></p>
+    {%- endif %}
+  </div></div>
+</section>

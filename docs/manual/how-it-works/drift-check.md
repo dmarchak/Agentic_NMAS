@@ -126,6 +126,21 @@ the device page (see [Two ways to resolve drift](drift#resolve)).
 
 No page reads a device to draw a drift row: every row comes from the stored run.
 
+## Check drift now, one device {#one-device}
+
+The device page's **Actions › Check drift now…** opens a card that reads that one device now,
+the same read and comparison the scheduled run makes, of it alone: the read-only way to
+confirm a revert from the device itself. Its **Check drift now** is busy until the read
+answers, and the card says what it found: at its golden, differing by some changed lines, or
+why it could not check.
+
+- What it found is merged into the network's stored run: the device's drift row clears, or
+  says the lines that differ and when the device was read. The other devices' entries and the
+  network's schedule are left as they were.
+- A run of the same network already in progress refuses it by name; the run reads the device
+  too.
+- It sends nothing to the device but the read, and changes neither its golden nor its intent.
+
 ## What the check does not do {#not}
 
 - It sends nothing that changes a device, and writes nothing to the repository.

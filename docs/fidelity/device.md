@@ -71,7 +71,18 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `835af3d490d19c0f3fad66a24769261a067892ff9224cdb6148d21e1430f81b5`
+Templates sha256: `49fac3323a4ab8c9875d0401423029cd5f35973e1d8df21c400cf316f9ec42b9`
+
+**Compared again 2026-11-03 ~05:3x UTC for C2336** (the operator's sessions 7 and 8: "Check drift
+now" on the device's Actions menu and the drift row's Open…): the Actions menu gains **Check drift
+now…** after Verify again, always offered, opening its card in place of the tab as every row's
+card opens (`_drift_check.html`, op `drift_check`: what it reads, what will not happen, its
+**Check drift now** busy on itself, the result in place); the drift card's What to do gains "Read
+it again" first, opening the same card. Compared by reading against the device-actions boards'
+menu and op-card pattern: one row, one card in the pattern, no other region moved. A deviation,
+logged in docs/STANDING_APPROVAL_LOG.md ("C2336's Check drift now") and PHASE8_PLAN 19.1: no
+board draws this row or card; built in the boards' own op-card pattern. Templates sha256
+before: `835af3d490d19c0f3fad66a24769261a067892ff9224cdb6148d21e1430f81b5`.
 
 Compared again 2026-11-02 (C2283, board FC's 22.1 (6)), by the template: the deploy preview's
 "Where the added lines come from" (`_attribution.html`, C867's, which no deploy board draws)

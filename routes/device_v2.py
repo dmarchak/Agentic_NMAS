@@ -402,6 +402,7 @@ def device(name):
                       {"state": "starting", "op": "reload", "host": dev.get("hostname", ""),
                        "list": ref.name, "back": tab} if op == "reload" else
                       _reload_verify_card(ref, dev, tab) if op == "reload_verify" else
+                      _drift_check_card(ref, dev, tab) if op == "drift_check" else
                       # C537 (3), board C: no card asked for, and this device has an operation
                       # running, or one finished this person has not opened: THAT card.
                       _reopened(ref, dev, tab) if not op else None)
@@ -1268,6 +1269,50 @@ def _reload_verify_card(ref, dev, back) -> dict:
     c["detail"] = next((s.get("detail", "") for s in (c["rec"] or {}).get("steps") or []
                         if s.get("step") == "verify"), "")
     return c
+
+
+def _drift_check_card(ref, dev, back, got=None) -> dict:
+    """Check drift now's card (C2336): offered, or with what its read found."""
+    return {"op": "drift_check", "host": dev.get("hostname", ""), "list": ref.name,
+            "back": back, "got": got}
+
+
+@bp.route("/device/<name>/drift/check", methods=["GET"])
+def drift_check_card(name):
+    """Check drift now's card (C2336), as the Actions menu's row and the drift card ask it in
+    place; the device page draws the same card with ``op=drift_check``. Reads nothing."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_drift_check.html",
+                                   c=_drift_check_card(ref, dev, _back(request.args))))
+
+
+@bp.route("/device/<name>/drift/check/now", methods=["POST"])
+def drift_check_now(name):
+    """Check drift now on one device (C2336): its running configuration read and compared with
+    its committed golden, as the drift run does, and recorded on its drift row
+    (`drift_check.check_device`); a run of its network in progress refuses it by name. Sends
+    nothing to the device but the read."""
+    from modules import drift_check as D
+    from modules import identity
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_drift_check.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    try:
+        got = D.check_device(ref.name, host, by=identity.viewer().actor or "unauthenticated")
+    except D.DriftRunning as exc:
+        got = {"ok": False, "state": "refused",
+               "error": f"a drift check of {ref.name} is running ({exc}); it reads {host} too"}
+    except D.DriftStateUnreadable as exc:
+        got = {"ok": False, "state": "unreadable", "error": str(exc)}
+    import time as _time
+    got["at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    return _strict(render_template("v2/_drift_check.html",
+                                   c=_drift_check_card(ref, dev, _back(request.form), got)))
 
 
 @bp.route("/device/<name>/reload/verify/offer", methods=["GET"])

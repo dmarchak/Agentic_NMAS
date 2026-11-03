@@ -25,7 +25,14 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `b2ae0b37214556e6c23a59cdd6055bbca4e471bd4d7c13c13b3db74d8297ddb0`
+Templates sha256: `8e326ef91146d143edd05f4376c6e9fb7a3b8df5f2f512c4b1043f1d0177381d`
+
+**Compared again 2026-11-03 ~05:3x UTC for C2336:** the drift card's What to do (board
+C342Drift) gains "Read it again", Check drift now…, first, opening Check drift now's card; the
+other three choices, the lines and the log part are as they were. Compared by reading against
+the board's three choices: one more in their own pattern. The deviation is logged with
+docs/fidelity/device.md's ("C2336's Check drift now"). Templates sha256 before:
+`b2ae0b37214556e6c23a59cdd6055bbca4e471bd4d7c13c13b3db74d8297ddb0`.
 
 Compared again 2026-11-02 (board PS, C2274) after the Answering row dropped "· last probe …" when
 the reader recorded none (a device under a planned operation with no reachability row read

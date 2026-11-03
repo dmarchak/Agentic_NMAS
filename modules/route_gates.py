@@ -244,6 +244,7 @@ GATES = {
     "settings_v2.diag_drift_interval": _g(K, "sets the drift schedule for every network, recorded (board F4, Diagnostics)"),
     "settings_v2.diag_drift_switch": _g(K, "turns a network's drift checks off or on, with who and when, recorded (board F4)"),
     "settings_v2.diag_drift_check": _g(N, "the schedule does this anyway; it only happens earlier (board F4's Check now)"),
+    "device_v2.drift_check_now": _g(N, "Check drift now (C2336): one device's drift read, as the schedule's run makes it, of that device alone, recorded on its drift row; reads the device and sends nothing"),
     "settings_v2.network_source_preview": _g(N, "reads NetBox once with proposed filters for a source change's preview; writes nothing"),
     "settings_v2.network_source_refresh": _g(N, "reads NetBox for a NetBox network now; the schedule does this anyway"),
     "settings_v2.network_create_preview": _g(N, "checks a new network's name and the folder it derives; writes nothing"),

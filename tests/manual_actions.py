@@ -109,6 +109,8 @@ NOT_AN_OPERATION = {
     ("_intent_secrets.html", "Cancel"): "draws the Secret references card again without Set "
                                         "value…: nothing was stored",
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
+    # C2336: Check drift now's card.
+    ("_drift_check.html", "Close"): "puts the tab back that the card replaced, a read",
     ("_dhcp_subnet.html", "Cancel"): "puts the Subnets tab back, writing nothing",
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",
     ("_dhcp_exclusion.html", "Cancel"): "puts the Exclusions tab back, writing nothing",

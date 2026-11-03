@@ -306,6 +306,7 @@ DECLARED = {
     "settings_v2.diag_drift_switch": ("drift",),
     # The third measured case, a drift run's state (today's /drift/check/sync until 7.8).
     "settings_v2.diag_drift_check": ("drift",),
+    "device_v2.drift_check_now": ("drift",),
     # A device and its files.
     "device_v2.persist_confirm": ("device_state",),   # persist_op.apply
     # C906: the key Mercury holds for the device, read by Needs attention and History.

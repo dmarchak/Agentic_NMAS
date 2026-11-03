@@ -347,7 +347,8 @@ class TestTheChoices:
             assert f'data-manual="{op}"' in a.group(1)
         # C503: "How does this work?" in words once in the card, the others the (i) alone.
         assert html.count("How does capture work?</span>") == 1
-        assert html.count('class="how-link compact"') == 2
+        # Three: C2336 added "Read it again" (Check drift now…) beside deploy and removal.
+        assert html.count('class="how-link compact"') == 3
         assert "capture first, or the apply refuses with nothing sent" in html
 
     def test_a_detail_that_cannot_be_read_says_couldnt_load_in_place(self, lab, monkeypatch):  # noqa: F811

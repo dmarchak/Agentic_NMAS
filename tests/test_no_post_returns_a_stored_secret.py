@@ -74,6 +74,11 @@ def _bodies(v):
                                    "no network named: refused before any job starts"),
         "device_v2.persist_read": (400, ("form", {}),
                                    "no network named: refused before any job starts"),
+        # C2336's Check drift now: the one-device read is the drift run's own
+        # (`_run_drift_check(only=...)`), whose result TestTheDriftRun sweeps; driven here to
+        # its refusal, so the sweep's stores see no write.
+        "device_v2.drift_check_now": (400, ("form", {}),
+                                      "no network named: refused before the device is read"),
         "templates_v2.bindings_preview": (400, ("form", {"list": LIST, "add_device": "zz",
                                                          "add_template": "cisco_iosxe/base.j2"}),
                                          "a device the network does not have: refused naming "

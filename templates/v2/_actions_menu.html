@@ -44,6 +44,9 @@
       {%- else %}
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ verify_again.why if verify_again else 'not read' }}">Verify again…<span class="sr-only"> (not offered: {{ verify_again.why if verify_again else 'not read' }})</span></span></div>
       {%- endif %}
+      {#- Check drift now (C2336): one device's drift read, read-only, its result on its drift
+          row; always offered. -#}
+      <div class="menu-row"><a role="menuitem" class="menu-item" data-op="drift-check" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='drift_check') }}" hx-get="{{ url_for('device_v2.drift_check_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Check drift now…</a>{{ how('drift-check', compact=True, op='Check drift now') }}</div>
       {#- Re-key (C2239): offered only while Mercury holds a refused SSH host key for the device;
           else it says why, as Revert and Retry do. -#}
       {%- if rekey.held %}
