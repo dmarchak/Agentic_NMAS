@@ -86,12 +86,17 @@ operator.
     `| File | Covers |` table, on its own side of the diff.
   - **Its first real runs:** f49c147b, 8d698270 and 3bf87049 change guards with no approval.
     They came before the rule, so history stands.
-  - **Not guards, so changeable without approval:**
+  - **Added 2026-11-03 (C2358, the operator's decision: "all four; the runners are the
+    gates"):**
     - `.github/workflows/ci.yml`, whose steps run these checks;
     - `scripts/nmas-test` and `scripts/nmas-control`;
-    - the checks' own tests.
+    - the checks' own tests: tests/test_guard_check.py, test_red_green.py,
+      test_test_weakening_check.py, test_bypass_scan.py, test_premise_check.py,
+      test_host_step_check.py, test_stage_guard.py and test_nmas_gate.py.
 
-    Whether to add them is the operator's call (C2358).
+    The Claude Code hooks' tests (tests/test_claude_*_hook.py and the like) are not on the
+    list. Those hooks guard the agent's session, not a commit. Adding them is the operator's
+    call.
 
 ### 3. The bypass scanner, in the gate
 
@@ -121,8 +126,10 @@ operator.
     module under test, 3 raised bounds and 2 broad excepts, and no guarded word built from
     pieces.
   - **The volume:** the noqa are mostly the interpreter adoption's `# noqa: E402` in each new
-    script. No linter runs in CI, so they excuse nothing today. Whether they need a reason is
-    the operator's call (C2360).
+    script. No linter runs in CI, so they excuse nothing today.
+  - **noqa dropped while no linter runs** (C2360, the operator's decision, 2026-11-03): the
+    scanner names a noqa only when `NMAS_BYPASS_COUNT_NOQA=1`. That becomes the default once a
+    linter runs (C2362).
 - **What it does not see:**
   - a skip held in a helper, fixture or conftest that already existed;
   - a mock through a module loaded by path;

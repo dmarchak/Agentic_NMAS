@@ -50,7 +50,13 @@ GUARD_PATHS = ["scripts/hooks/commit-msg", "scripts/hooks/a-new-hook", "scripts/
                "scripts/nmas-host-step-check", "scripts/nmas-red-green",
                "scripts/nmas-guard-check", "scripts/nmas-bypass-scan",
                "scripts/nmas-premise-check", "tests/ratchet_lists.py",
-               "tests/coverage_baseline.json", "CLAUDE.md"]
+               "tests/coverage_baseline.json", "CLAUDE.md",
+               # C2358: what runs the checks, and the checks' own tests.
+               ".github/workflows/ci.yml", "scripts/nmas-test", "scripts/nmas-control",
+               "tests/test_guard_check.py", "tests/test_red_green.py",
+               "tests/test_test_weakening_check.py", "tests/test_bypass_scan.py",
+               "tests/test_premise_check.py", "tests/test_host_step_check.py",
+               "tests/test_stage_guard.py", "tests/test_nmas_gate.py"]
 
 TESTING = """# What the test suite checks
 

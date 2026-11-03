@@ -862,7 +862,15 @@ def prepare_classify(network: str, detection: dict, pack: dict, *, intact: bool 
 #: 2026-10-28: a floor in code, the model may raise it, never lower it). A flow that undoes a
 #: Mercury mitigation (lifts), overrides Mercury's flow (shadows), sends traffic elsewhere
 #: (diverts) or silently drops it (drops) is at least high; forwards and unknown have none.
-SEVERITY_FLOOR = {"lifts": "high", "shadows": "high", "diverts": "high", "drops": "high"}
+#: C2367 (the operator's decision, 2026-11-03): a flow that still delivers the traffic and
+#: copies it out a port the controller would not use (mirrors) is at least high, for
+#: confidentiality; one that still delivers it and copies it only to the controller
+#: (copies_to_controller) is low to medium, control-plane load and visibility, so its floor is
+#: that range's least, low (a floor is a minimum: medium would raise the decided low).
+SEVERITY_FLOOR = {"lifts": "high", "shadows": "high", "diverts": "high", "drops": "high",
+                  "mirrors": "high", "copies_to_controller": "low"}
+#: How a floor's words name an effect whose class is not itself a verb.
+EFFECT_WORDS = {"copies_to_controller": "copies its traffic to the controller"}
 SEVERITIES = ("none", "low", "medium", "high", "critical")
 
 
@@ -873,7 +881,9 @@ def severity_floor(detection: dict) -> dict:
     if not floor:
         return {}
     return {"severity": floor,
-            "words": f"at least {floor}: the flow {eff.get('class')} (its effect, decided in "
+            "words": f"at least {floor}: the flow "
+                     f"{EFFECT_WORDS.get(eff.get('class'), eff.get('class'))} (its "
+                     "effect, decided in "
                      "code from the switch's table)"}
 
 

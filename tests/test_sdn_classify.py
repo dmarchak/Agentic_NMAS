@@ -294,6 +294,7 @@ def test_an_unauthorised_flow_s_effect_floors_its_severity(world, model, shown, 
 
 @pytest.mark.parametrize("cls,floor", [("lifts", "high"), ("shadows", "high"),
                                        ("diverts", "high"), ("drops", "high"),
+                                       ("mirrors", "high"), ("copies_to_controller", "low"),
                                        ("forwards", None), ("unknown", None), (None, None)])
 def test_each_effect_s_floor(cls, floor):
     det = {"effect": {"class": cls}} if cls else {}

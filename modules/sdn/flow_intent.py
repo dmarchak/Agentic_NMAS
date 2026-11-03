@@ -50,8 +50,17 @@ switch's table as read, never the model's inference):
   below it that would take each part of its traffic without it (the highest flow below whose
   match overlaps its own, no single flow above that one covering the overlap), where that flow
   is the controller application's own or Mercury's as recorded: ``drops`` when it has no
-  output; ``diverts`` when any such flow outputs elsewhere; ``forwards`` when every such flow
-  outputs where it does, rewriting the same. ``unknown`` when the table cannot tell: a flow above
+  output; ``diverts`` when any such flow outputs elsewhere and it does not keep that output
+  (redirected, or sent to the controller only); else, where it keeps every such flow's output
+  and adds ports beside it, rewriting the same (C2367, the operator's decision of 2026-11-03: a
+  copy to the controller is not a diversion when the original is still delivered): ``mirrors``
+  when an added port is not the reserved port CONTROLLER (a copy leaves by a port the controller
+  would not use), ``copies_to_controller`` when the only port added is CONTROLLER;
+  ``forwards`` when every such flow outputs where it does, rewriting the same. Where some such
+  flows' output it keeps and others' it does not (its destination host not bound, so it is
+  compared with flows to other hosts), it ``diverts`` as before, its words saying the kept
+  part is delivered and that whether its traffic is that part alone is not decided.
+  ``unknown`` when the table cannot tell: a flow above
   it takes all its traffic first; it continues to another table, a group, or an action Mercury
   could not read; it rewrites the packet where the controller's flow does not; or no flow below
   it decides its traffic but the table-miss (which asks the controller), a flow at its own
@@ -665,7 +674,8 @@ def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=
 # ─────────────────────────────────────────── what an unauthorised flow displaced and does
 
 #: An unauthorised flow's effect on the traffic it takes (`effect`; C2021).
-EFFECTS = ("forwards", "diverts", "drops", "shadows", "lifts", "unknown")
+EFFECTS = ("forwards", "copies_to_controller", "mirrors", "diverts", "drops", "shadows",
+           "lifts", "unknown")
 #: The most flows an effect's words name (and its evidence holds) per list; the rest counted.
 EFFECT_NAMED = 3
 #: A field matched with no mask: every bit, wider than any OpenFlow 1.3 field (IPv6's 128).
@@ -877,6 +887,37 @@ def _bound_destination(match: dict, bindings: dict) -> tuple:
     return None, None
 
 
+def _unbound_destination(match: dict, bindings: dict):
+    """The one host address *match* sends to by IP alone when *bindings* does not list it (so
+    which of the controller's L2 flows would carry its traffic is not known), else None."""
+    if any(k in (match or {}) for k in ("eth_dst", "dl_dst")):
+        return None
+    for key in ("ipv4_dst", "ipv6_dst", "nw_dst"):
+        raw = str((match or {}).get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            net = ipaddress.ip_network(raw, strict=False)
+        except ValueError:
+            return None
+        addr = net.network_address.compressed
+        return addr if net.num_addresses == 1 and addr not in (bindings or {}) else None
+    return None
+
+
+def _delivers(below: dict, does: dict) -> bool:
+    """Whether a flow doing *does* still delivers what the flow below it doing *below* would
+    (C2367): every port *below* sends out, and the packet changed no differently, with more
+    ports beside them. A flow below that drops is never kept."""
+    return bool(below["out"]) and below["out"] < does["out"] and \
+        below["rewrites"] == does["rewrites"]
+
+
+def _extra(below_flow: dict, does: dict) -> set:
+    """The ports a flow doing *does* adds to *below_flow*'s."""
+    return does["out"] - _does(below_flow.get("actions"))["out"]
+
+
 def effect(flow: dict, table: list, displaced_flows: list = (), bindings: dict = None) -> dict:
     """Unauthorised *flow*'s effect on the traffic it takes (C2021), from its switch's table as
     read: *flow* a row of `classify`'s ``flows``, *table* every row of them for its switch
@@ -1031,16 +1072,48 @@ def effect(flow: dict, table: list, displaced_flows: list = (), bindings: dict =
         return answer("drops", f"drops the traffic it takes; without it, its traffic would "
                       f"reach {said}", [ref(f) for f, _w in cannot[:EFFECT_NAMED]] + rest_ids)
     elsewhere = [f for f in decided if _does(f.get("actions"))["out"] != does["out"]]
-    if elsewhere:
+    # C2367 (the operator's decision, 2026-11-03): a flow that keeps the controller's delivery
+    # and only adds ports copies the traffic, it does not divert it.
+    kept = [f for f in elsewhere if _delivers(_does(f.get("actions")), does)]
+    diverted = [f for f in elsewhere if f not in kept]
+    if diverted:
         said, shown = named(elsewhere, their)
+        undecided, kept_ids = "", []
+        if kept:
+            said_k, shown_k = named(kept, ref)
+            kept_ids = [ref(f) for f in shown_k]
+            unbound = _unbound_destination(flow.get("match"), bindings) if not mac else None
+            undecided = (f"; it keeps the output of {said_k}, so the part of its traffic that "
+                         "flow would take is still delivered, with a copy out "
+                         f"{_ports_words(_extra(kept[0], does))}; whether its traffic is that "
+                         "part alone is not decided"
+                         + (f" ({unbound} is not a host the controller's topology lists, so its "
+                            "destination MAC is not known)" if unbound else ""))
         return answer("diverts", f"diverts the traffic it takes: it {_send_words(does)}, where "
-                      f"without it {said}{rest}", [ref(f) for f in shown] + rest_ids)
+                      f"without it {said}{undecided}{rest}",
+                      [ref(f) for f in shown] + kept_ids + rest_ids)
     rewritten = [f for f in decided if _does(f.get("actions"))["rewrites"] != does["rewrites"]]
     if rewritten:
         said, shown = named(rewritten, their)
         return unknown(f"it {_send_words(does)} as {said}, but changes the packet otherwise "
                        f"({action_words(flow.get('actions'))}), and what that change does is "
                        "not judged", [ref(f) for f in shown])
+    mirrored = [f for f in kept if _extra(f, does) - {"CONTROLLER"}]
+    if mirrored:
+        said, shown = named(mirrored, their)
+        extra = set().union(*(_extra(f, does) for f in mirrored))
+        return answer("mirrors", f"mirrors the traffic it takes: it {_send_words(does)}, so it "
+                      f"still sends it where without it {said}, and adds a copy out "
+                      f"{_ports_words(extra)} (confidentiality: the copy leaves where the "
+                      f"controller would not send it){rest}",
+                      [ref(f) for f in shown] + rest_ids)
+    if kept:
+        said, shown = named(kept, their)
+        return answer("copies_to_controller",
+                      f"copies the traffic it takes to the controller: it {_send_words(does)}, "
+                      f"so it still sends it where without it {said}, and adds the reserved port "
+                      f"CONTROLLER (control-plane load and visibility){rest}",
+                      [ref(f) for f in shown] + rest_ids)
     if decided:
         said, shown = named(decided, their)
         return answer("forwards", f"forwards as the controller would: it {_send_words(does)}, "

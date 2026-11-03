@@ -19,7 +19,8 @@ it can, matches text where it cannot, and says which for each finding):
    `expectedFailure` and `skipTest(`; by the AST, names resolved through the file's imports;
 2. **pragma: no cover**, in any Python file: a COMMENT token (tokenize) matching coverage's own
    pattern, never text inside a string;
-3. **noqa**, in any Python file: a COMMENT token holding the word `noqa`;
+3. **noqa**, in any Python file: a COMMENT token holding the word `noqa`, named only while a
+   linter runs (`COUNT_NOQA`, C2360: none runs today, C2362);
 4. **broad except**, in a test file: `except:`, `except Exception`, `except BaseException`
    (alone or in a tuple), by the AST;
 5. **mock of the module under test**, in `tests/**/test_<name>.py`: a `<x>.setattr(`,
@@ -116,6 +117,11 @@ GUARDED_EXTRA = (("a test path (tests/)", r"tests/"),)
 K_SKIP = "skip"
 K_PRAGMA = "pragma: no cover"
 K_NOQA = "noqa"
+#: noqa is named only while a linter runs (C2360, the operator's decision of 2026-11-03): no linter
+#: runs in CI or the gate (C2362), so a noqa excuses nothing, and naming every one (596 in 150
+#: commits, against 58 other findings) buried the skips and mocks the report exists to show.
+#: NMAS_BYPASS_COUNT_NOQA=1 names it; it becomes the default when a linter runs.
+COUNT_NOQA = os.environ.get("NMAS_BYPASS_COUNT_NOQA") == "1"
 K_EXCEPT = "broad except"
 K_MOCK = "mock of the module under test"
 K_BOUND = "raised bound"
@@ -589,7 +595,7 @@ def scan(path, text, guarded):
             if PRAGMA.search(tok.string):
                 occs.append(Occ(K_PRAGMA, (K_PRAGMA, scope, said), line,
                                 f"{said!r} (in {scope})", M_COMMENT))
-            if NOQA.search(tok.string):
+            if COUNT_NOQA and NOQA.search(tok.string):
                 occs.append(Occ(K_NOQA, (K_NOQA, scope, said), line,
                                 f"{said!r} (in {scope})", M_COMMENT))
             continue
@@ -683,7 +689,7 @@ def text_occurrences(path, text, lines):
             hits.append(K_SKIP)
         if PRAGMA.search(row):
             hits.append(K_PRAGMA)
-        if "#" in row and NOQA.search(row[row.index("#"):]):
+        if COUNT_NOQA and "#" in row and NOQA.search(row[row.index("#"):]):
             hits.append(K_NOQA)
         if in_tests(path) and TEXT_EXCEPT.search(row):
             hits.append(K_EXCEPT)

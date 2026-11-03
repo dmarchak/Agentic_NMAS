@@ -227,7 +227,8 @@ mode and whether the loop is running.
   called a flood. How it works: [High packet rate](sdn-flows#high-rate).
 - **An incident, opened**: the detection (the rule, the source, the switch, its confidence
   and its words, an alert with its evidence pack; an unauthorised flow's words also say what it
-  does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the
+  does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, mirrors, copies
+  to the controller (still delivering the traffic), forwards as the
   controller would, or has an effect the table cannot tell, naming why:
   [What an unauthorised flow does](sdn-flows#classify)), the AI's classification when there is one
   (marked AI: threat or not, its kind and severity, a severity the flow's effect raised in code

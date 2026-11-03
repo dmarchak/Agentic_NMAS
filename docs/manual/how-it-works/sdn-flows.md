@@ -412,7 +412,17 @@ that would take that traffic without it:
 - **shadows**: the same, over a Mercury flow it replaces with other actions;
 - **drops**: it has no output;
 - **diverts**: it sends traffic out another port than the controller's own flow for that
-  traffic does;
+  traffic does, without also sending it where that flow does (redirected, or sent to the
+  controller only);
+- **mirrors**: it still sends the traffic where the controller's own flow does, and adds a copy
+  out another port, one the controller would not send it to (a confidentiality concern);
+- **copies_to_controller**: it still sends the traffic where the controller's own flow does, and
+  adds only the reserved port CONTROLLER (control-plane load and visibility: a copy to the
+  controller is not a diversion while the original is still delivered). Where the flow keeps
+  one controller flow's output but not others' (its destination is not a host the controller's
+  topology lists, so it is compared with the flows to other hosts too), it reads **diverts** and
+  its words say which part is still delivered and that whether its traffic is that part alone is
+  not decided;
 - **forwards**: it sends it where the controller's own flow does, changing it no more;
 - **unknown**, naming why: a flow above it takes all its traffic first; it continues to another
   table or a group; it changes the packet where the controller's flow does not; or below it only
@@ -423,7 +433,8 @@ decide. A Mercury flow it displaced goes into the evidence as a piece of its own
 (`intent:<connection>:<switch>:<cookie>`), what it was (its cookie, match, actions and timeouts)
 and the response that installed it, so the model can cite it; the controller's flows the effect
 names are sent beside the unauthorised flow. How severe it is is the model's to say, above a
-floor the effect sets in code: a flow that lifts, shadows, diverts or drops is at least **high**.
+floor the effect sets in code: a flow that lifts, shadows, diverts, drops or mirrors is at least
+**high**, and one that copies to the controller at least **low** (its range is low to medium).
 A lower rating is raised, and the classification shows the model's own rating beside it and
 why; forwards and unknown set no floor.
 

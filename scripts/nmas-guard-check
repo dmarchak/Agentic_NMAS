@@ -85,6 +85,18 @@ GUARDS = {
     "scripts/nmas-bypass-scan": WHOLE,   # board TI item 3, a gate script (2026-11-03)
     "scripts/nmas-premise-check": WHOLE,  # board TI item 5, a gate script (2026-11-03)
     "scripts/nmas-guard-check": WHOLE,
+    # C2358 (the operator, 2026-11-03): what runs the checks, and the checks' own tests.
+    ".github/workflows/ci.yml": WHOLE,
+    "scripts/nmas-test": WHOLE,
+    "scripts/nmas-control": WHOLE,
+    "tests/test_guard_check.py": WHOLE,
+    "tests/test_red_green.py": WHOLE,
+    "tests/test_test_weakening_check.py": WHOLE,
+    "tests/test_bypass_scan.py": WHOLE,
+    "tests/test_premise_check.py": WHOLE,
+    "tests/test_host_step_check.py": WHOLE,
+    "tests/test_stage_guard.py": WHOLE,
+    "tests/test_nmas_gate.py": WHOLE,
     "tests/ratchet_lists.py": WHOLE,
     "tests/coverage_baseline.json": WHOLE,
     "CLAUDE.md": WHOLE,

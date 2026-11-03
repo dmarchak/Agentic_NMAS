@@ -22,6 +22,13 @@ test_sdn_ryu's IPv6 drop.
   or drop displaced, or an installed drop taken from above), shadows (Mercury's rate limit
   displaced by one keeping the meter and sending elsewhere), unknown (a table holding only the
   table-miss below it; a flow above taking all its traffic; a flow continuing to another table).
+- **A copy is not a diversion while the original is delivered** (C2367, the operator's decision
+  of 2026-11-03), from BU2's kept evidence section (tests/fixtures/ai_cases/sdn_classify/
+  recorded_from_blind.json, its flow pieces read as the switch's table, the one edit each test
+  names): copies_to_controller (BU2 as kept, floor low), mirrors (a host port added beside the
+  delivery, high), diverts (the controller only; another port without the delivery), drops,
+  forwards; unbound (no host binding) keeps today's diverts and says delivery is not decided;
+  only the table-miss below keeps unknown.
 - **The displaced flow** is a piece of its own, cited by its own id, sent, and accepted by the
   classifier's check; an expired record is never displaced.
 - **The effect** is in the detection's words and fields and in what the classifier is sent, its
@@ -154,15 +161,166 @@ def test_bu1_a_flow_forwarding_to_h3_as_the_controller_does_forwards(family):
 @pytest.mark.parametrize("family", FAMILIES)
 def test_bu2_a_sampling_flow_differs_only_by_its_copy_to_the_controller(family):
     """BU2: the same, plus a copy to the controller: compared with the controller's flow to
-    h3 alone, whose one port it keeps."""
+    h3 alone, whose one port it keeps, so it copies to the controller (C2367, the operator's
+    decision of 2026-11-03: not a diversion while the original is still delivered)."""
     e, table = _bound_effect(edited(lab8(REDIRECT), 2, family,
                                     _redirect_out(["OUTPUT:1", "OUTPUT:CONTROLLER"])))
     to_h3 = id_of(table, in_port=3, eth_dst="00:00:00:00:00:03")
-    assert e["class"] == "diverts"
-    assert e["words"].startswith("diverts the traffic it takes: it sends it out port 1 and the "
-                                 "reserved port CONTROLLER, where without it the controller's "
-                                 f"own flow {to_h3} sends it out port 1")
+    assert e["class"] == "copies_to_controller", e
+    assert e["words"].startswith("copies the traffic it takes to the controller: it sends it "
+                                 "out port 1 and the reserved port CONTROLLER, so it still sends "
+                                 f"it where without it the controller's own flow {to_h3} sends "
+                                 "it out port 1, and adds the reserved port CONTROLLER "
+                                 "(control-plane load and visibility)")
     assert "00:00:00:00:00:01" not in e["words"]
+
+
+# ── C2367: a copy to the controller, a mirror and a diversion, from BU2's kept section ────────
+
+#: The blind round's recorded cases (C2305): BU2's kept evidence section is the capture.
+BLIND_CASES = "tests/fixtures/ai_cases/sdn_classify/recorded_from_blind.json"
+BU2_FLOW = "flow:lab-ryu:0000000000000002:t0:p10:89d181012c"
+BU2_TO_H3 = "flow:lab-ryu:0000000000000002:t0:p1:3605883d95"
+BU2_TO_H1 = "flow:lab-ryu:0000000000000002:t0:p1:959d239b24"
+BU2_MISS = "flow:lab-ryu:0000000000000002:t0:p0:44136fa355"
+
+
+def bu2_case() -> dict:
+    with open(BLIND_CASES, encoding="utf-8") as fh:
+        (case,) = [c for c in json.load(fh)["cases"] if c["name"].startswith("BU2:")]
+    return case
+
+
+def bu2_table(family="v4", actions=None):
+    """BU2's switch table as its kept section holds it (s2: cookie 0xb002, IPv4 to h3, OUTPUT:1
+    and OUTPUT:CONTROLLER, beside the controller's L2 flows and its table-miss), each flow
+    piece with its edits: the cookie and switch read as integers (the pieces carry them as
+    hex), and when given, the unauthorised flow's *actions*; for v6, its match made the IPv6
+    twin (192.0.2.3 to 2001:db8:8::3, eth_type 0x86dd). Then `classify`'s rows, the
+    controller's cookie 0 declared its own as on lab-ryu."""
+    flows = []
+    for p in bu2_case()["section"]["pieces"]:
+        if p["kind"] != "flow":
+            continue
+        f = dict(p, cookie=int(p["cookie"], 16), dpid=2)
+        if p["id"] == BU2_FLOW:
+            if actions is not None:
+                f["actions"] = actions
+            if family == "v6":
+                f["match"] = {"eth_type": 0x86DD, "ipv6_dst": "2001:db8:8::3"}
+        flows.append(f)
+    return F.classify(flows, {"name": "lab-ryu", "own_cookies": [0]},
+                      {"state": "ok", "flows": [], "withdrawn": {}}, read_switches=[2],
+                      now=D._epoch(AT))["flows"]
+
+
+def bu2_effect(family="v4", actions=None, bindings=BOUND):
+    table = bu2_table(family, actions)
+    (f,) = [x for x in table if x["id"] == BU2_FLOW]
+    assert f["owner"] == "unauthorised", f
+    return F.effect(f, table, [], bindings=bindings)
+
+
+def out(*ports):
+    return [{"type": "OUTPUT", "port": p} for p in ports]
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_bu2_as_kept_copies_to_the_controller_with_its_floor_low(family):
+    """BU2's own flows, as its kept section holds them: the controller's flow to h3's MAC sends
+    OUTPUT:1 and BU2 sends OUTPUT:1 and OUTPUT:CONTROLLER, so the original is still delivered and
+    the one thing added is a copy to the controller: low to medium, its floor low."""
+    case = bu2_case()
+    assert case["detection"]["effect"]["class"] == "diverts", "the premise: kept as diverts"
+    assert case["expect"]["severity"] == ["low"], "the premise: the key's low"
+    e = bu2_effect(family)
+    assert e["class"] == "copies_to_controller", e
+    assert e["evidence"] == [BU2_TO_H3, BU2_MISS]
+    assert e["words"].startswith(
+        "copies the traffic it takes to the controller: it sends it out port 1 and the reserved "
+        f"port CONTROLLER, so it still sends it where without it the controller's own flow "
+        f"{BU2_TO_H3} sends it out port 1, and adds the reserved port CONTROLLER (control-plane "
+        f"load and visibility); the rest of its traffic would reach {BU2_MISS}, which sends it "
+        "to the controller, so the controller decides it")
+    floor = CL.severity_floor({"effect": e})
+    assert floor == {"severity": "low",
+                     "words": "at least low: the flow copies its traffic to the controller (its "
+                              "effect, decided in code from the switch's table)"}
+    low = {"threat_detected": True, "severity": "low"}
+    assert CL.apply_floor(low, {"effect": e}) == low, "the key's low is not raised"
+    assert CL.apply_floor(dict(low, severity="none"), {"effect": e})["severity"] == "low"
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("name,actions,cls,floor", [
+    ("to the controller only", out("CONTROLLER"), "diverts", "high"),
+    ("a copy out h4's port beside the delivery", out(1, 2), "mirrors", "high"),
+    ("a copy out h4's port and to the controller", out(1, 2, "CONTROLLER"), "mirrors", "high"),
+    ("redirected out h4's port, copied to the controller", out(2, "CONTROLLER"), "diverts",
+     "high"),
+    ("redirected out h4's port", out(2), "diverts", "high"),
+    ("dropped", [], "drops", "high"),
+    ("as the controller", out(1), "forwards", None)])
+def test_bu2_s_flow_edited_reads_each_class_with_its_floor(family, name, actions, cls, floor):
+    """BU2's flow with its actions edited: only a flow that keeps the controller's delivery and
+    adds CONTROLLER alone copies to the controller; a host port added beside it mirrors (high,
+    confidentiality); the controller only, or another port without the delivery, diverts; no
+    output drops (high, as diverts)."""
+    e = bu2_effect(family, actions)
+    assert e["class"] == cls, (name, e)
+    assert CL.severity_floor({"effect": e}).get("severity") == floor, name
+    assert BU2_TO_H3 in e["evidence"] and BU2_TO_H1 not in e["evidence"], name
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_bu2_s_mirror_says_its_copy_port(family):
+    e = bu2_effect(family, out(1, 2))
+    assert e["words"].startswith(
+        "mirrors the traffic it takes: it sends it out port 1 and port 2, so it still sends it "
+        f"where without it the controller's own flow {BU2_TO_H3} sends it out port 1, and adds "
+        "a copy out port 2 (confidentiality: the copy leaves where the controller would not "
+        "send it)")
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("bindings", [None, {"192.0.2.99": "00:00:00:00:00:99"}])
+def test_bu2_unbound_keeps_today_s_diverts_and_says_delivery_is_not_decided(family, bindings):
+    """Without h3's MAC bound, BU2 is compared with the controller's flows to h1 and h4 too
+    (C2245's case): whether its traffic is only what the flow to h3 would take is not decided,
+    so it reads diverts as before, never guessed a copy, and its words say so."""
+    e = bu2_effect(family, bindings=bindings)
+    addr = "2001:db8:8::3" if family == "v6" else "192.0.2.3"
+    assert e["class"] == "diverts", e
+    assert e["words"].startswith(
+        "diverts the traffic it takes: it sends it out port 1 and the reserved port CONTROLLER, "
+        f"where without it the controller's own flow {BU2_TO_H1} sends it out port 3; ")
+    assert (f"; it keeps the output of {BU2_TO_H3}, so the part of its traffic that flow would "
+            "take is still delivered, with a copy out the reserved port CONTROLLER; whether its "
+            f"traffic is that part alone is not decided ({addr} is not a host the controller's "
+            "topology lists, so its destination MAC is not known)") in e["words"]
+    assert BU2_TO_H3 in e["evidence"] and BU2_TO_H1 in e["evidence"]
+    assert CL.severity_floor({"effect": e})["severity"] == "high"
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_bu2_changing_the_packet_it_delivers_keeps_today_s_diverts(family):
+    """BU2's flow rewriting the destination MAC before its outputs (S1's captured SET_FIELD):
+    the packet delivered is not the one the controller's flow delivers, so it is not called a
+    copy: diverts, as before."""
+    rewrite = [{"type": "SET_FIELD", "field": "eth_dst", "value": "00:00:00:00:00:04"}]
+    e = bu2_effect(family, rewrite + out(1, "CONTROLLER"))
+    assert e["class"] == "diverts", e
+    assert "it keeps the output of" not in e["words"]
+
+
+def test_bu2_with_only_the_table_miss_below_keeps_today_s_unknown():
+    """BU2's table with the controller's L2 flows gone: no controller flow says where its
+    traffic would go, so whether it is delivered is not decided: unknown, as before."""
+    table = [f for f in bu2_table() if f["priority"] != 1]
+    (f,) = [x for x in table if x["id"] == BU2_FLOW]
+    e = F.effect(f, table, [], bindings=BOUND)
+    assert e["class"] == "unknown" and e["evidence"] == [BU2_MISS]
+    assert CL.severity_floor({"effect": e}) == {}
 
 
 @pytest.mark.parametrize("family", FAMILIES)

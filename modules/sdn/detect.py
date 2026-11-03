@@ -79,8 +79,9 @@ and the evidence ids it rests on (`closed_loop.flow_ref`, `port_ref`): what the 
 (S7) cites. An unauthorised flow's also carries, in code (C2004, C2021): each Mercury flow it
 displaced (``displaced``, `flow_intent.displaced`: recorded, not installed, at its table,
 priority and match), each a citable piece with its own id (`displaced_piece`) among the
-evidence; and its ``effect`` (`flow_intent.effect`: forwards, diverts, drops, shadows, lifts or
-unknown, in words, with the flows it rests on), said in its words too. Its severity is the
+evidence; and its ``effect`` (`flow_intent.effect`: forwards, copies_to_controller, mirrors,
+diverts, drops, shadows, lifts or unknown, in words, with the flows it rests on), said in its
+words too. Its severity is the
 classifier's above the floor its effect sets in code (`closed_loop.SEVERITY_FLOOR`, the
 operator's ruling of 2026-10-28): a lower rating is raised, the model's own kept beside it.
 

@@ -94,8 +94,13 @@ def test_guarded(monkeypatch):
 
 def _env(**more):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    # noqa is named only while a linter runs (C2360, C2362). These tests name it, as the
+    # scanner will once one does; `test_noqa_is_not_named_while_no_linter_runs` holds the
+    # default.
     env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
-               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com", **more)
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com",
+               NMAS_BYPASS_COUNT_NOQA="1")
+    env.update(more)
     return env
 
 
@@ -370,6 +375,16 @@ def test_a_skip_moved_to_another_file_with_its_test_is_credited(tmp_path):
     r = run(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "moved from another file (credited)" in r.stdout
+
+
+def test_noqa_is_not_named_while_no_linter_runs(repo):
+    """C2360, the operator's decision (2026-11-03): no linter runs in CI (C2362), so a noqa
+    excuses nothing and is not named; NMAS_BYPASS_COUNT_NOQA=1 names it, for when one does."""
+    line = _plant_noqa(repo)
+    r = run(repo, NMAS_BYPASS_COUNT_NOQA="")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"pkg/calc.py:{line}" not in r.stdout
+    assert "no bypass added: passes" in r.stdout
 
 
 def test_noqa_and_pragma_inside_strings_are_not_comments(repo):
