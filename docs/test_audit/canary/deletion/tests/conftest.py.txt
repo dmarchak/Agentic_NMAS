@@ -1,0 +1,10 @@
+"""The canary's own fixture: every test runs `harness()` in its setup, as the suite's logging
+hook runs for every test of the repository."""
+import pytest
+
+from canarypkg import calc
+
+
+@pytest.fixture(autouse=True)
+def _ready():
+    assert calc.harness() == "ready"

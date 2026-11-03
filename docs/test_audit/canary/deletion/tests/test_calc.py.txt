@@ -1,0 +1,38 @@
+"""The deletion canary's plants (docs/TEST_AUDIT.md, tool (a)). Each test's expected result
+with its functions stubbed is in its name and docstring."""
+from canarypkg import calc
+
+
+def test_plant_double_value_fails_when_stubbed():
+    """Asserts the result: fails when `double` is stubbed, so it is not listed."""
+    assert calc.double(2) == 4
+
+
+def test_plant_double_asserts_nothing_still_passes():
+    """Calls `double` and asserts nothing about what it gave: still passes, so it is listed."""
+    calc.double(2)
+    assert True
+
+
+def test_plant_double_caught_broadly_still_passes():
+    """Catches the stub's exception broadly: still passes, so it is listed."""
+    try:
+        calc.double(2)
+    except Exception:
+        pass
+
+
+def test_plant_label_value_is_stale():
+    """Reaches `label`, whose text moved since the map: stale, never stubbed blind."""
+    assert calc.label(1) == "one"
+
+
+def test_plant_pick_is_not_stubbable():
+    """Reaches `pick`, defined in both arms of an `if`: not stubbable."""
+    assert calc.pick() == "first"
+
+
+class TestPlantCounter:
+    def test_plant_bump_value_fails_when_stubbed(self):
+        """Asserts a method's result: fails when `Counter.bump` is stubbed by its qualname."""
+        assert calc.Counter().bump(1) == 2

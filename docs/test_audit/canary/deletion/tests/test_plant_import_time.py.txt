@@ -1,0 +1,11 @@
+"""A deletion canary plant (docs/TEST_AUDIT.md, tool (a)): the test's own module calls `double` at
+its import, so with `double` stubbed the file does not collect, and the test fails in
+collection."""
+from canarypkg import calc
+
+TWICE_THREE = calc.double(3)
+
+
+def test_plant_fails_in_collection_when_stubbed():
+    """Reads what the module computed at its import."""
+    assert TWICE_THREE == 6

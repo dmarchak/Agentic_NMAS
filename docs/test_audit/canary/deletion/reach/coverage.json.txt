@@ -1,0 +1,43 @@
+{
+  "data": "per test",
+  "modules": {
+    "canarypkg/calc.py": {
+      "path": "canarypkg/calc.py",
+      "test_files": ["tests/test_calc.py"],
+      "function_list": [
+        {"name": "harness", "line": 6, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_calc.py::test_plant_double_value_fails_when_stubbed",
+                        "tests/test_calc.py::test_plant_double_asserts_nothing_still_passes",
+                        "tests/test_calc.py::test_plant_double_caught_broadly_still_passes",
+                        "tests/test_calc.py::test_plant_label_value_is_stale",
+                        "tests/test_calc.py::test_plant_pick_is_not_stubbable",
+                        "tests/test_calc.py::TestPlantCounter::test_plant_bump_value_fails_when_stubbed",
+                        "tests/test_calc.py::test_plant_removed_since_the_map",
+                        "tests/test_plant_file_removed.py::test_plant_in_a_file_removed_since_the_map",
+                        "tests/test_plant_import_time.py::test_plant_fails_in_collection_when_stubbed"],
+         "other_tests": []},
+        {"name": "double", "line": 11, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_calc.py::test_plant_double_value_fails_when_stubbed",
+                        "tests/test_calc.py::test_plant_double_asserts_nothing_still_passes",
+                        "tests/test_calc.py::test_plant_double_caught_broadly_still_passes",
+                        "tests/test_calc.py::test_plant_removed_since_the_map",
+                        "tests/test_plant_file_removed.py::test_plant_in_a_file_removed_since_the_map",
+                        "tests/test_plant_import_time.py::test_plant_fails_in_collection_when_stubbed"],
+         "other_tests": []},
+        {"name": "label", "line": 16, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_calc.py::test_plant_label_value_is_stale"],
+         "other_tests": []},
+        {"name": "pick", "line": 23, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_calc.py::test_plant_pick_is_not_stubbable"],
+         "other_tests": []},
+        {"name": "Counter.bump", "line": 33, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_calc.py::TestPlantCounter::test_plant_bump_value_fails_when_stubbed"],
+         "other_tests": []}
+      ]
+    }
+  },
+  "tiers": {"unit": 9},
+  "unclassified": [],
+  "stale_exceptions": [],
+  "assertion_free": []
+}

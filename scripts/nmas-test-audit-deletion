@@ -1,0 +1,697 @@
+#!/usr/bin/env python3
+"""The existing-test audit's tool (a), the deletion test (docs/TEST_AUDIT.md): for each test, every
+product function the coverage nightly measured it to run is replaced by a stub raising
+`NotImplementedError("deletion audit")`, in a throwaway copy, and the test is run alone. Every test
+that still passes is listed. It lists suspects only: it never says whether a finding is real.
+
+    scripts/nmas-test-audit-deletion --reach DIR (--commit SHA | --then DIR) [--root DIR]
+        [--scope PATH ...] [--python PY] [--jobs N] [--offset N] [--limit N] [--baseline]
+        [--timeout S] [--stub-harness] [--plan-only] [--workdir DIR] [--out FILE]
+
+**The reach map.** `--reach` is the coverage nightly's `coverage-drilldown` artifact, unpacked
+(its `coverage.json`), read by `scripts/nmas_mutation.py`'s `load_reach`: `{path::qualname: [test
+id]}`, each function's tests those whose per-test contexts ran a line of its body, any phase
+(setup and teardown too), in the test's own process. It is inverted to test → functions.
+
+**The scope.** `--scope` names modules (a path, or a folder ending in `/`); the tests run are those
+the map says reach a function in one of them (the default: the operator's named modules,
+DEFAULT_SCOPE). Every function such a test reaches is stubbed, in scope or not: the deletion test
+asks whether the test needs any of the code it runs.
+
+**The harness.** A function the map says EVERY test in it reaches is reached by the run's own
+machinery, never by one test's subject (in run #36's map: `redact.guard_new_handlers`, whose
+`addHandler` closure pytest's logging plugin calls for every test, and the
+`install_log_redaction` it calls). It is not stubbed, it does not put a test in scope, and it
+is named in the output; `--stub-harness` stubs it too. Measured on run #36's map: with it, every
+one of the map's 20,879 tests is in scope (redact.py is), and a test reaching no product code
+of its own is listed as still passing; without it, 11,493.
+
+**Staleness.** The map is one commit's. Each function's text hash (`nmas_mutation.function_hash`:
+its own lines) is taken from the map's commit (`--commit`, read by `git show` in `--root`) or from
+the sources as the map measured them (`--then DIR`, the same paths under it), and from `--root`
+now. A function whose hash moved, or that either side lacks, is stale; a test reaching a stale
+function is `stale` and is not run (its stub set is not known: a stale function is never stubbed
+blind).
+
+**The stubs.** Each module is parsed (`ast`); a function's body (after its docstring, which is
+kept) is replaced by the stub at the same byte position (from its first statement's first
+decorator, if it has one), so its signature, decorators and the rest of the file stay as they
+are; a method by its qualname. Two stubs run in turn (`--stubs`, STUBS): `raise` (`raise
+NotImplementedError("deletion audit")`, the operator's) and, when the test did not pass under
+it, `none` (the body deleted: `return None`). The raising stub fails any test that calls the
+function directly, asserting or not, so on its own it can never list a test that asserts
+nothing (the canary's first run); a test passing under either stub is listed, the detail naming
+which. A qualname defined more than once in its module (two arms of an `if`), or found nowhere,
+or a stubbed module that does not compile or does not hold exactly one more stub body per
+function chosen, makes the test `not stubbable`, and it is not run. A generator so stubbed is a
+plain function, raising (or giving None) on call rather than on its first item.
+
+**The copy and the run.** `--root`'s files as `tests.source_index.tracked()` lists them are
+copied into one throwaway folder per job (`--jobs`, default 2), outside `--root`, removed at the
+end. Each test, in an order fixed by the sha256 of its id (`--offset`, `--limit` take a shard of
+it), has its stubbed modules written into its job's copy, is run alone as `<python> -m pytest -q
+-p no:cacheprovider --tb=line -rfEs <id>` there (no bytecode, `NMAS_COPY_OF=<root>`, so a scan
+through `tracked()` in the copy reads `--root`'s index), and the copy's files are put back. A
+test id the map names that the copy's own collection (`--collect-only`, of the test files the
+copy holds: pytest given a missing path collects nothing at all) does not list is `not
+collected`, its file gone or not, and is not run. `--baseline` first runs each test unstubbed in
+the copy; one that does not pass so is `fails unstubbed`, its stubbed runs not made.
+
+**Results:** `still passes` (passed, or xpassed, under a stub), `fails` (failed or errored
+under every stub run; the detail says in which phase, and whether the raising stub's message
+was reached), `skipped` (skipped or xfailed: no verdict), `no outcome` (pytest reported no test
+outcome: its exit code and last line are given), `timed out` (past `--timeout`, default 300 s:
+the suite's own per-process bound, scripts/nmas-test), `fails unstubbed`, `stale`, `not
+collected`, `not stubbable`.
+
+**Output:** a TSV `test_id<TAB>modules<TAB>functions stubbed<TAB>result<TAB>detail`: the modules
+are the test's in-scope modules it reaches; the functions are all of them for a `still passes`
+row and the in-scope ones with a count of the rest for every other row; the detail holds the
+test's tier (the map's tier records), pytest's own outcome words and the run's seconds. Then `#`
+lines: the scope, the counts by result, the harness, the stale functions, the timing, and any
+tool error by test. Exit 0; 1 when the copy's collection did not run or a test hit a tool
+error; 2 for a bad argument.
+"""
+import argparse
+import ast
+import collections
+import functools
+import hashlib
+import importlib.machinery
+import importlib.util
+import os
+import queue
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def _load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+nm = _load("nmas_mutation", os.path.join(REPO, "scripts", "nmas_mutation.py"))
+pydefs = nm.pydefs
+# `function_hash` parses its source once per function asked: thousands of functions in a few
+# hundred modules took 2 minutes. One parse per source text, in this process's own copy of
+# pydefs (the lists it returns are only read).
+pydefs.definitions = functools.lru_cache(maxsize=None)(pydefs.definitions)
+
+#: The operator's named modules (docs/TEST_AUDIT.md, tool (b)'s full scope): deploy; credentials
+#: and secrets; drift; Needs attention; SDN detect and respond; egress; every Phase 8 module.
+DEFAULT_SCOPE = (
+    "modules/nsot/deploy.py", "modules/pipeline.py", "modules/deploy_job.py",
+    "modules/credentials.py", "modules/secrets_store.py", "modules/nsot/credential_rotation.py",
+    "modules/redact.py", "modules/drift_check.py", "modules/attention.py",
+    "modules/ai/", "modules/sdn/")
+
+STUB = 'raise NotImplementedError("deletion audit")'
+STUB_MESSAGE = "deletion audit"
+#: The two stubs, run in this order (`--stubs`): the operator's, which raises, and the body
+#: deleted, which returns None. The raising stub fails a test that calls the function directly
+#: and asserts nothing about what it gave, so on its own it can never list one (the canary's
+#: first run, 2026-11-03); the deleted body lets that test pass, and fails one that reads the
+#: result. A test passing under either is listed, naming the stub.
+STUBS = {"raise": STUB, "none": "return None"}
+RESULTS = ("still passes", "fails", "skipped", "no outcome", "timed out", "fails unstubbed",
+           "stale", "not collected", "not stubbable")
+#: The suite's own per-process bound (scripts/nmas-test, NMAS_TEST_TIMEOUT's default).
+TIMEOUT_S = 300
+#: The copy's collection: measured about 40 s for the whole suite (tool (d), 2026-11-03); the
+#: bound is about 2.5 times a loaded run of it.
+COLLECT_TIMEOUT_S = 240
+#: Variables that would carry the calling run's pytest or coverage configuration into a child.
+_DROP_ENV = ("PYTEST_ADDOPTS", "PYTEST_CURRENT_TEST", "PYTEST_XDIST_WORKER",
+             "PYTEST_XDIST_WORKER_COUNT", "PYTEST_XDIST_TESTRUNUID", "PYTEST_PLUGINS")
+OUTCOME_RE = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed|deselected)")
+
+
+# --- the map --------------------------------------------------------------------------------
+
+def in_scope(path, scope):
+    return any(path == s or (s.endswith("/") and path.startswith(s)) for s in scope)
+
+
+def by_test(functions):
+    """`{test id: {path::qualname}}` from the map's `{path::qualname: [test id]}`."""
+    out = collections.defaultdict(set)
+    for k, tests in functions.items():
+        for t in tests:
+            out[t].add(k)
+    return dict(out)
+
+
+def harness(functions, tests):
+    """The functions every test in the map reaches (see the module's docstring)."""
+    n = len(tests)
+    return sorted(k for k, t in functions.items() if n and len(set(t)) == n)
+
+
+def order(tests):
+    """A fixed order no file or class groups: the sha256 of each id."""
+    return sorted(tests, key=lambda t: hashlib.sha256(t.encode("utf-8")).hexdigest())
+
+
+# --- staleness ------------------------------------------------------------------------------
+
+def reader_then(root, commit=None, then=None):
+    """A function giving a path's text as the map measured it, or None where it held none."""
+    cache = {}
+
+    def read(path):
+        if path not in cache:
+            if then:
+                full = os.path.join(then, *path.split("/"))
+                cache[path] = (open(full, encoding="utf-8").read()
+                               if os.path.isfile(full) else None)
+            else:
+                # git pinned to the checkout it reads (C931's one runner), never climbing above.
+                from modules.nsot.repo import run_git
+                r = run_git(root, "show", f"{commit}:{path}", timeout=30)
+                cache[path] = r.stdout if r.returncode == 0 else None
+        return cache[path]
+    return read
+
+
+def read_now(root, path):
+    full = os.path.join(root, *path.split("/"))
+    if not os.path.isfile(full):
+        return None
+    with open(full, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def stale_functions(keys, root, read_then):
+    """`{key: why}` for each function whose text moved since the map, or that a side lacks."""
+    now_cache, out = {}, {}
+    for k in sorted(keys):
+        path, qualname = k.split("::", 1)
+        if path not in now_cache:
+            now_cache[path] = read_now(root, path)
+        then = nm.function_hash(read_then(path), qualname)
+        now = nm.function_hash(now_cache[path], qualname)
+        if not now:
+            out[k] = "not defined now"
+        elif not then:
+            out[k] = "not defined in the map's sources"
+        elif then != now:
+            out[k] = f"its text moved ({then[:12]} in the map, {now[:12]} now)"
+    return out
+
+
+# --- the stub -------------------------------------------------------------------------------
+
+def _offsets(data):
+    """Byte offset of each line's start (1-based line numbers; ast's columns are UTF-8 bytes)."""
+    starts, pos = [0, 0], 0
+    for line in data.splitlines(keepends=True):
+        pos += len(line)
+        starts.append(pos)
+    return starts
+
+
+def _is_docstring(stmt):
+    return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str))
+
+
+def body_spans(source):
+    """`{qualname: [(start, end)]}`: the byte span of each counted function's body after its
+    docstring, as pydefs finds the definitions (one walker, scripts/pydefs.py)."""
+    data = source.encode("utf-8")
+    starts = _offsets(data)
+    nodes = {(n.lineno, n.name): n for n in ast.walk(ast.parse(source))
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    out = collections.defaultdict(list)
+    for d in pydefs.definitions(source):
+        if d.kind == "class":
+            continue
+        node = nodes.get((d.lineno, d.name))
+        if node is None:
+            continue
+        body = node.body[1:] if (_is_docstring(node.body[0]) and len(node.body) > 1) \
+            else node.body
+        first, last = body[0], body[-1]
+        # A decorated statement's lineno is its `def` or `class` line: its `@` lines come first,
+        # each at the statement's own column.
+        line = min([first.lineno] + [x.lineno for x in getattr(first, "decorator_list", [])])
+        out[d.qualname].append((starts[line] + first.col_offset,
+                                starts[last.end_lineno] + last.end_col_offset))
+    return dict(out)
+
+
+def stub_source(source, qualnames, spans=None, stub=STUB):
+    """`(new source or None, {qualname: why not})`: *source* with each named function's body
+    replaced by *stub*. A qualname found nowhere, or defined more than once, is refused by name;
+    a result that does not compile refuses every name."""
+    spans = body_spans(source) if spans is None else spans
+    refused, chosen = {}, []
+    for q in sorted(qualnames):
+        found = spans.get(q, [])
+        if not found:
+            refused[q] = "no counted definition of it in the module"
+        elif len(found) > 1:
+            refused[q] = f"defined {len(found)} times in the module"
+        else:
+            chosen.append(found[0])
+    if refused:
+        return None, refused
+    data = source.encode("utf-8")
+    for start, end in sorted(chosen, reverse=True):
+        data = data[:start] + stub.encode("utf-8") + data[end:]
+    new = data.decode("utf-8")
+    try:
+        tree = ast.parse(new)
+        compile(tree, "<stubbed>", "exec", dont_inherit=True)
+    except SyntaxError as e:
+        return None, {q: f"the stubbed module does not compile: {e.msg}, line {e.lineno}"
+                      for q in qualnames}
+    # It compiling is not enough: exactly the chosen functions more must now be the stub.
+    if stub_bodies(tree, stub) - _stub_bodies_of(source, stub) != len(chosen):
+        return None, {q: "the stubbed module does not hold exactly one stub per function"
+                      for q in qualnames}
+    return new, {}
+
+
+@functools.lru_cache(maxsize=1024)
+def _stub_bodies_of(source, stub):
+    """`stub_bodies` of an original module (a few hundred texts, each asked many times)."""
+    return stub_bodies(ast.parse(source), stub)
+
+
+def stub_bodies(tree, stub):
+    """How many functions in *tree* have *stub* as their whole body after a docstring."""
+    want = ast.dump(ast.parse(stub).body[0])
+    n = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body[1:] if (_is_docstring(node.body[0]) and len(node.body) > 1) \
+                else node.body
+            n += len(body) == 1 and ast.dump(body[0]) == want
+    return n
+
+
+# --- the copy and the run -------------------------------------------------------------------
+
+def tracked_files(root):
+    """`--root`'s files as its git index lists them (tests/source_index.py, C585)."""
+    from tests.source_index import tracked
+    return tracked(root=root)
+
+
+def make_copy(root, files, dest):
+    for src in files:
+        dst = os.path.join(dest, os.path.relpath(src, root))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+    return dest
+
+
+def child_env(root):
+    env = {k: v for k, v in os.environ.items()
+           if k not in _DROP_ENV and not k.startswith("COV_CORE_")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["NMAS_COPY_OF"] = os.path.abspath(root)
+    return env
+
+
+def collect(copy, python, files, env):
+    """The ids pytest collects in *copy* for *files*, or None when the collection did not run."""
+    cmd = [python, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+           "--continue-on-collection-errors", *files]
+    r = subprocess.run(cmd, cwd=copy, env=env, capture_output=True, text=True,
+                       timeout=COLLECT_TIMEOUT_S)
+    text = r.stdout + r.stderr
+    if (not re.search(r"\d+ tests? collected|no tests collected|collected \d+ items?", text)
+            or "ERROR: file or directory not found" in text):
+        return None
+    return {line.strip() for line in r.stdout.splitlines() if "::" in line and
+            not line.startswith(("ERROR", "FAILED"))}
+
+
+def run_one(copy, python, test_id, env, timeout):
+    """`{"outcome": passed|failed|error|skipped|xfailed|xpassed|none, "words", "phase",
+    "reached", "seconds"}` for *test_id* run alone in *copy*."""
+    cmd = [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--tb=line", "-rfEs",
+           test_id]
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(cmd, cwd=copy, env=env, capture_output=True, text=True,
+                           timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"outcome": "timeout", "words": f"past {timeout} s", "phase": "",
+                "reached": False, "seconds": time.monotonic() - t0}
+    out = r.stdout + r.stderr
+    counts = collections.Counter()
+    for line in out.splitlines()[-5:]:
+        for n, word in OUTCOME_RE.findall(line):
+            counts["error" if word.startswith("error") else word] += int(n)
+    if counts["failed"]:
+        outcome = "failed"
+    elif counts["error"]:
+        outcome = "error"
+    elif counts["passed"] or counts["xpassed"]:
+        outcome = "xpassed" if counts["xpassed"] and not counts["passed"] else "passed"
+    elif counts["xfailed"]:
+        outcome = "xfailed"
+    elif counts["skipped"]:
+        outcome = "skipped"
+    else:
+        outcome = "none"
+    phase = ""
+    m = re.search(r"ERROR at (setup|teardown) of", out)
+    if m:
+        phase = m.group(1)
+    elif re.search(r"ERROR collecting ", out):
+        # The test's own file did not import: a stubbed function runs at its import.
+        phase = "collection"
+    elif outcome == "failed":
+        phase = "call"
+    words = ", ".join(f"{n} {w}" for w, n in sorted(counts.items()))
+    if not words:
+        last = [x for x in out.replace(copy, "<copy>").splitlines() if x.strip()][-1:] or [""]
+        words = f"exit {r.returncode}: {' '.join(last[0].split())[:160]}"
+    return {"outcome": outcome, "words": words, "phase": phase,
+            "reached": STUB_MESSAGE in out, "seconds": time.monotonic() - t0}
+
+
+def functions_column(result, funcs, scope):
+    """Every function stubbed, for a listed test (what the reviewer reads); the counts in and
+    outside the scope for any other row (the full sets are the map's; listing them for 11,000
+    rows made a 15 MB file)."""
+    if result == "still passes":
+        return ", ".join(sorted(funcs))
+    ins = sum(1 for f in funcs if in_scope(f.split("::", 1)[0], scope))
+    return f"{ins} in the scope, {len(funcs) - ins} outside it"
+
+
+# The output is committed: an address literal, an email and a home path in any column (a
+# parametrize id can carry one) are replaced as tools (c) and (d) replace them, one home.
+def _load_script(name, path):
+    """A script without `.py`, loaded as a module (its `adopt` does nothing under a name that
+    is not `__main__`)."""
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+public = _load_script("nmas_test_audit_dead",
+                      os.path.join(REPO, "scripts", "nmas-test-audit-dead")).public
+
+
+def result_of(run):
+    if run["outcome"] in ("passed", "xpassed"):
+        return "still passes"
+    if run["outcome"] in ("skipped", "xfailed"):
+        return "skipped"
+    if run["outcome"] == "timeout":
+        return "timed out"
+    if run["outcome"] == "none":
+        return "no outcome"
+    return "fails"
+
+
+# --- the audit ------------------------------------------------------------------------------
+
+def plan(reach, root, scope, read_then, stub_harness=False):
+    """Which tests run and which do not, before anything runs."""
+    functions = reach["functions"]
+    tests = by_test(functions)
+    held = [] if stub_harness else harness(functions, tests)
+    held_set = set(held)
+    scoped = [t for t, fs in tests.items()
+              if any(in_scope(f.split("::", 1)[0], scope) for f in fs - held_set)]
+    stub_keys = set().union(*(tests[t] for t in scoped)) - held_set if scoped else set()
+    stale = stale_functions(stub_keys, root, read_then)
+    return {"tests": tests, "harness": held, "scoped": order(scoped), "stale": stale,
+            "map_tests": len(tests), "map_functions": len(functions)}
+
+
+def audit(root, reach_folder, commit=None, then=None, scope=DEFAULT_SCOPE, python=None,
+          jobs=2, offset=0, limit=None, baseline=False, timeout=TIMEOUT_S,
+          stub_harness=False, plan_only=False, workdir=None, progress=None,
+          stubs=tuple(STUBS)):
+    root = os.path.abspath(root)
+    if not stubs or any(s not in STUBS for s in stubs):
+        raise ValueError(f"stubs must be among {', '.join(STUBS)}: {stubs!r}")
+    python = python or sys.executable
+    reach = nm.load_reach(reach_folder)
+    if reach is None:
+        raise SystemExit(f"no coverage.json in {reach_folder}")
+    tiers = reach.get("tiers") or {}
+    p = plan(reach, root, scope, reader_then(root, commit, then), stub_harness)
+    chosen = p["scoped"][offset:offset + limit if limit is not None else None]
+    rows = []
+    out = {"plan": p, "chosen": len(chosen), "rows": rows, "collected": None,
+           "wall": 0.0, "run_seconds": [], "runs": 0, "jobs": jobs, "stubs": tuple(stubs),
+           "errors": []}
+    if plan_only:
+        return out
+    files = tracked_files(root)
+    env = child_env(root)
+    base = tempfile.mkdtemp(prefix="nmas-deletion-", dir=workdir)
+    lock = threading.Lock()
+    try:
+        copies = [make_copy(root, files, os.path.join(base, f"copy-{i}")) for i in range(jobs)]
+        # Only files the copy holds: pytest given one it cannot find collects nothing at all.
+        test_files = sorted(f for f in {t.split("::", 1)[0] for t in chosen}
+                            if os.path.isfile(os.path.join(copies[0], *f.split("/"))))
+        collected = collect(copies[0], python, test_files, env) if test_files else set()
+        if collected is None:
+            out["collected"] = None
+            return out
+        out["collected"] = len(collected)
+        spans_cache, source_cache = {}, {}
+
+        def original(path):
+            if path not in source_cache:
+                source_cache[path] = read_now(copies[0], path)
+            return source_cache[path]
+
+        def spans(path):
+            if path not in spans_cache:
+                try:
+                    spans_cache[path] = body_spans(original(path))
+                except SyntaxError:
+                    spans_cache[path] = {}
+            return spans_cache[path]
+
+        def row(t, result, detail, funcs):
+            mods = sorted({f.split("::", 1)[0] for f in funcs if in_scope(f.split("::", 1)[0],
+                                                                          scope)})
+            shown = functions_column(result, funcs, scope)
+            tier = (tiers.get(t) or {}).get("tier", "")
+            detail = "; ".join(x for x in (f"tier {tier}" if tier else "", detail) if x)
+            with lock:
+                rows.append(tuple(public(x) for x in (t, ", ".join(mods), shown, result,
+                                                      detail)))
+                if progress:
+                    progress(len(rows), len(chosen))
+
+        # Every module's original text and spans, read before any job writes a stub: a job
+        # writing its copy while another first reads one would take a stub for the original.
+        for t in chosen:
+            for f in p["tests"][t]:
+                path = f.split("::", 1)[0]
+                if original(path) is not None:
+                    spans(path)
+        work = queue.Queue()
+        for t in chosen:
+            funcs = p["tests"][t] - set(p["harness"])
+            stale = sorted(f for f in funcs if f in p["stale"])
+            if t not in collected:
+                gone = t.split("::", 1)[0] not in test_files
+                row(t, "not collected", "its file is not in the copy" if gone
+                    else "the copy's collection does not list it", funcs)
+            elif stale:
+                # Why each moved is said once, in the `#` lines.
+                row(t, "stale", "moved since the map: " + ", ".join(stale), funcs)
+            else:
+                work.put((t, funcs))
+
+        def stubbed(funcs, stub):
+            """`({path: stubbed text}, {key: why not})` for one test's functions."""
+            by_path = collections.defaultdict(set)
+            for f in funcs:
+                path, q = f.split("::", 1)
+                by_path[path].add(q)
+            new, refused = {}, {}
+            for path, qs in sorted(by_path.items()):
+                src = original(path)
+                if src is None:
+                    refused.update({f"{path}::{q}": "the module is not in the copy" for q in qs})
+                    continue
+                text, why = stub_source(src, qs, spans(path), STUBS[stub])
+                refused.update({f"{path}::{q}": w for q, w in why.items()})
+                new[path] = text
+            return new, refused
+
+        def run_stubbed(copy, t, new):
+            try:
+                for path, text in new.items():
+                    with open(os.path.join(copy, *path.split("/")), "w", encoding="utf-8") as fh:
+                        fh.write(text)
+                return run_one(copy, python, t, env, timeout)
+            finally:
+                for path in new:
+                    with open(os.path.join(copy, *path.split("/")), "w", encoding="utf-8") as fh:
+                        fh.write(original(path))
+
+        def one(copy, t, funcs):
+            new, refused = stubbed(funcs, stubs[0])
+            if refused:
+                row(t, "not stubbable",
+                    "; ".join(f"{k}: {w}" for k, w in sorted(refused.items())), funcs)
+                return
+            if baseline:
+                b = run_one(copy, python, t, env, timeout)
+                if b["outcome"] not in ("passed", "xpassed"):
+                    row(t, "fails unstubbed", f"unstubbed: {b['outcome']} ({b['words']})", funcs)
+                    return
+            parts, results, seconds = [], [], 0.0
+            for i, stub in enumerate(stubs):
+                if i:
+                    new, _ = stubbed(funcs, stub)
+                r = run_stubbed(copy, t, new)
+                seconds += r["seconds"]
+                part = f"{stub}: {r['outcome']} ({r['words']})"
+                if r["phase"]:
+                    part += f" in {r['phase']}"
+                if stub == "raise" and r["outcome"] in ("failed", "error"):
+                    part += (", the stub's NotImplementedError reached" if r["reached"]
+                             else ", the stub's message not in its output")
+                parts.append(part)
+                results.append(result_of(r))
+                if results[-1] == "still passes":
+                    break
+            with lock:
+                out["run_seconds"].append(seconds)
+                out["runs"] += len(results)
+            if "still passes" in results:
+                result = "still passes"
+            elif "fails" in results:
+                result = "fails"
+            elif "skipped" in results:
+                result = "skipped"
+            elif "no outcome" in results:
+                result = "no outcome"
+            else:
+                result = "timed out"
+            files_n = len({f.split("::", 1)[0] for f in funcs})
+            row(t, result, "; ".join(parts) + f"; {seconds:.1f} s; {len(funcs)} functions in "
+                f"{files_n} modules stubbed", funcs)
+
+        def worker(copy):
+            while True:
+                try:
+                    t, funcs = work.get_nowait()
+                except queue.Empty:
+                    return
+                try:
+                    one(copy, t, funcs)
+                except Exception as e:  # noqa: BLE001 - said in the output, and exit 1
+                    with lock:
+                        out["errors"].append((t, repr(e)))
+
+        t0 = time.monotonic()
+        threads = [threading.Thread(target=worker, args=(c,)) for c in copies]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        out["wall"] = time.monotonic() - t0
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+    rows.sort()
+    return out
+
+
+def report_lines(out, scope, commit):
+    p = out["plan"]
+    counts = collections.Counter(r[3] for r in out["rows"])
+    secs = out["run_seconds"]
+    lines = [f"# scope: {', '.join(scope)}",
+             f"# map: {p['map_tests']} tests, {p['map_functions']} functions; its sources: "
+             + (f"commit {commit}" if commit else "the folder given as --then"),
+             f"# in scope: {len(p['scoped'])} tests; this run: {out['chosen']} "
+             f"(the sha256 order, --offset and --limit); stubs in turn: "
+             + ", ".join(f"{s} ({STUBS[s]})" for s in out["stubs"]),
+             "# harness (every test in the map reaches it, not stubbed): "
+             + (", ".join(p["harness"]) or "none"),
+             f"# stale functions among the in-scope tests' functions: {len(p['stale'])}"]
+    lines += [f"#   {k}: {w}" for k, w in sorted(p["stale"].items())]
+    lines += ["# results: " + ", ".join(f"{r} {counts.get(r, 0)}" for r in RESULTS)]
+    if secs:
+        lines += [f"# tests run: {len(secs)}, pytest runs {out['runs']}, {sum(secs):.0f} s of "
+                  f"runs, mean {sum(secs)/len(secs):.2f} s a test, wall {out['wall']:.0f} s at "
+                  f"--jobs {out['jobs']}, {out['wall']/len(secs):.2f} s of wall a test"]
+    lines += [f"# TOOL ERROR {t}: {e}" for t, e in out["errors"]]
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="The test audit's deletion test, tool (a).")
+    ap.add_argument("--reach", required=True, help="the coverage-drilldown folder")
+    ap.add_argument("--root", default=REPO, help="the tree whose tests run (default: this "
+                    "checkout)")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--commit", help="the map's commit, read in --root by git show")
+    src.add_argument("--then", help="a folder holding the sources as the map measured them")
+    ap.add_argument("--scope", nargs="+", default=list(DEFAULT_SCOPE))
+    ap.add_argument("--python", default=sys.executable)
+    ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--offset", type=int, default=0)
+    ap.add_argument("--limit", type=int)
+    ap.add_argument("--baseline", action="store_true")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_S)
+    ap.add_argument("--stub-harness", action="store_true")
+    ap.add_argument("--stubs", default=",".join(STUBS),
+                    help=f"the stubs to run in turn, comma-separated (default {','.join(STUBS)})")
+    ap.add_argument("--plan-only", action="store_true")
+    ap.add_argument("--workdir", help="where the copies are made (default: the system's "
+                    "temporary folder)")
+    ap.add_argument("--out", help="write the output here as well as to stdout")
+    a = ap.parse_args(argv)
+    if a.jobs < 1 or a.offset < 0 or (a.limit is not None and a.limit < 0):
+        ap.error("--jobs must be at least 1, --offset and --limit not negative")
+    stubs = tuple(s for s in a.stubs.split(",") if s)
+    if not stubs or any(s not in STUBS for s in stubs):
+        ap.error(f"--stubs takes {', '.join(STUBS)}: {a.stubs!r}")
+
+    def progress(done, total):
+        if done % 25 == 0 or done == total:
+            print(f"nmas-test-audit-deletion: {done}/{total}", file=sys.stderr, flush=True)
+
+    out = audit(a.root, a.reach, a.commit, a.then, tuple(a.scope), a.python, a.jobs,
+                a.offset, a.limit, a.baseline, a.timeout, a.stub_harness, a.plan_only,
+                a.workdir, progress, stubs)
+    if not a.plan_only and out["collected"] is None:
+        print("nmas-test-audit-deletion: the copy's collection did not run", file=sys.stderr)
+        return 1
+    text = "\n".join(["test_id\tmodules\tfunctions stubbed\tresult\tdetail"]
+                     + ["\t".join(r) for r in out["rows"]]
+                     + report_lines(out, a.scope, a.commit)) + "\n"
+    sys.stdout.write(text)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    return 1 if out["errors"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
