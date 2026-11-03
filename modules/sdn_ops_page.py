@@ -268,13 +268,34 @@ def incident_rows(awaiting: dict) -> list:
     return rows
 
 
-def watch_rows(watching: dict) -> list:
+def _person_proposal(network: str, d: dict, pol: dict) -> dict:
+    """A watching row's "Rate-limit this source…" (C2313's condition): ``{"offered",
+    "refusal"}``. Offered on a large-packet stream only; *refusal* why it is drawn disabled
+    (`closed_loop.person_proposal_refusal`: no source to act on, or the network's response
+    policy, *pol*, forbidding the flood rule's rate limit), "" when it may be pressed."""
+    from modules.sdn import closed_loop
+
+    if (d.get("rule"), d.get("basis")) not in closed_loop.PERSON_ANSWERED:
+        return {"offered": False, "refusal": ""}
+    return {"offered": True,
+            "refusal": closed_loop.person_proposal_refusal(network, d, pol=pol)}
+
+
+def watch_rows(watching: dict, network: str = "", pol: dict = None) -> list:
     """The High packet rate incidents being watched (board S-HR, C2238; `loop.watching`), as
     the table draws them above the incidents awaiting a person, the oldest first: nothing
     proposed and no AI call, so no severity, verdict or action; why it is not called a scan or
-    a flood, and what happens next."""
+    a flood, and what happens next. A large-packet stream's row carries its person's proposal
+    (`_person_proposal`, C2313), judged against *network*'s response policy *pol* (read once,
+    for the first such row, when not given)."""
+    from modules.sdn import closed_loop
+
     rows = []
     for r in watching["rows"]:
+        if pol is None and (
+                ((r.get("detection") or {}).get("rule"),
+                 (r.get("detection") or {}).get("basis")) in closed_loop.PERSON_ANSWERED):
+            pol = closed_loop.policy(network)
         d = r.get("detection") or {}
         inc = r.get("incident") or {}
         th, m = d.get("threshold") or {}, d.get("measurement") or {}
@@ -289,6 +310,11 @@ def watch_rows(watching: dict) -> list:
                      "coverage_words": d.get("confidence_why") or "",
                      # C2278: a flood candidate with a transfer's shape says that instead.
                      "transfer_words": (d.get("transfer") or {}).get("words") or "",
+                     # C2313: one large-packet stream says so, and that it is left to a person.
+                     "large_words": (d.get("confidence_why") or "")
+                     if d.get("basis") == "large_packets" else "",
+                     # C2313's condition: a person may rate-limit a large-packet stream.
+                     "propose": _person_proposal(network, d, pol),
                      "switches": 1 + len(also), "seen_also": also,
                      "last_seen": r.get("last_seen") or r.get("at"),
                      "window_words": inc.get("window_words") or ""})
@@ -350,7 +376,7 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
     awaiting = loop.awaiting(network)
     every = incident_rows(awaiting)
     watching = loop.watching(network)
-    watched = watch_rows(watching)
+    watched = watch_rows(watching, network)
     q, sev = (q or "").strip(), sev if sev in incidents.SEVERITY_ORDER else ""
     shown = [r for r in every if (not sev or r["severity"] == sev) and (not q or _matches(r, q))]
     counts = [{"severity": s, "words": SEVERITY_WORDS[s], "tone": SEVERITY_TONE[s],

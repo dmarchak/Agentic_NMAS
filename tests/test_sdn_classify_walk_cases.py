@@ -16,6 +16,13 @@ they are.
   and effect code (C2004, C2021) over the network's flow intent records as of the detection
   (tests/fixtures/sdn/lab8/walk_intent_s1.json). The three the kept evidence cannot rebuild are
   named, each with why, and only they.
+- **The walk's floods, re-recorded as watched** (C2313, the operator's decision of 2026-11-03,
+  option (i)): each is one iperf UDP stream of 1,512 B packets at about 21 Mb/s, the shape of
+  RC-UDP1, which is benign, and the counters cannot tell intent. Rebuilt from the evidence the
+  walk kept, each is High packet rate, basis ``large_packets``, watched with no response
+  proposed: a person decides (`as_large_packets`: its rule, title, key, basis, confidence and
+  words, its mean packet read off its port's kept counters; nothing else). The cases are kept
+  as the walk kept them.
 - **The set**: eight threats (two scans, four floods, two unauthorised flows), none sharing the
   evidence of a recorded or held-out case. The file's pin, prompt and expectations against
   their evidence are checked with the other two files' (tests/test_sdn_classify_cases.py,
@@ -136,11 +143,51 @@ def _rebuildable():
     return [c for c in load()["cases"] if c["key"] not in KEPT_AS_IS]
 
 
+#: The walk's floods, each one iperf UDP stream of 1,512 B packets (C2313): a large-packet
+#: stream under the rule, watched, a person decides (the operator's decision of 2026-11-03,
+#: option (i)).
+LARGE_PACKETS = ("walk-flood-1-s1", "walk-flood-1-s2", "walk-flood-2-s1", "walk-flood-2-s2")
+#: The flood's mean-packet line, the operator's (C2313, option (a)): 200 B.
+FLOOD_MAX_MEAN_BYTES = 200
+
+
+def as_large_packets(kept: dict, section: dict, key: bool = True) -> dict:
+    """A walk flood's detection (or its section's detection piece) as C2313's rule names it: High
+    packet rate, basis ``large_packets`` (where the detection has a basis), lower confidence, the
+    reason and the words naming its mean packet, read off the port's counters the walk kept (its
+    received bytes over its packets a second), against the operator's 200 B; nothing else."""
+    (port,) = _piece(section, "port")
+    mean = port["rx_bytes_per_s"] / port["rx_pps"]
+    over = f"its packets average {mean:,.0f} B, over the flood's {FLOOD_MAX_MEAN_BYTES} B"
+    out = dict(kept, rule="high_rate", title=D.TITLES["high_rate"], confidence="lower",
+               confidence_why=(f"{over}: one large-packet stream, which a rate alone does not "
+                               "show to be an attack"),
+               words=(f"{kept['words']}, not called a flood: {over} (sdn_flood_max_mean_bytes), "
+                      "and no other source sends to the same host; a large-packet flood is left "
+                      "to a person"))
+    if "basis" in kept:
+        out["basis"] = "large_packets"
+    if key:
+        out["key"] = D.detection_key("high_rate", kept["network"], kept["connection"],
+                                     kept["dpid_hex"], [kept["subject"]["kind"],
+                                                        kept["subject"]["value"]])
+    return out
+
+
 @pytest.mark.parametrize("case", _rebuildable(), ids=lambda c: c["key"])
 def test_each_case_is_what_the_code_builds_from_the_evidence_the_walk_kept(case):
     det, sec = rebuilt(case)
-    assert json.loads(json.dumps(det)) == case["detection"]
-    assert json.loads(json.dumps(sec)) == case["section"]
+    want, want_sec = case["detection"], case["section"]
+    if case["key"] in LARGE_PACKETS:
+        # C2313 (the operator's decision of 2026-11-03, option (i)): the walk's flood is a
+        # large-packet stream, watched, never proposed: a person decides.
+        assert det["rule"] in D.WATCH_ONLY and det["basis"] == "large_packets"
+        want = as_large_packets(want, want_sec)
+        want_sec = dict(want_sec, pieces=[
+            as_large_packets(p, want_sec, key=False) if p["kind"] == "detection" else p
+            for p in want_sec["pieces"]])
+    assert json.loads(json.dumps(det)) == want
+    assert json.loads(json.dumps(sec)) == want_sec
 
 
 #: The scan fallback's words as the walk kept them, and High packet rate's now (board S-HR,

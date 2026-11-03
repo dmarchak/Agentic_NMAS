@@ -319,6 +319,32 @@ def reapply_confirm():
                     200 if done.get("outcome") != "refused" else 409)
 
 
+@bp.route("/watch/<wid>/propose", methods=["POST"])
+def watch_propose(wid):
+    """Rate-limit this source… on a watched large-packet stream (C2313's condition, the
+    operator's decision of 2026-11-03, option (i)): the watching row made a response awaiting
+    a person (`loop.propose_from_watch`), its action the rate limit, its parameters the
+    catalogue's defaults, its why naming the verified person who pressed it; the watching row
+    closed as proposed by a person. Checked as the flood rule's response under the network's
+    policy (the stream is the flood rule's held candidate). Nothing is sent and no AI is
+    asked: the response is then previewed and confirmed by hash as any is. Refused beside the
+    control, naming why; made, the region drawn with the new response open."""
+    from modules import identity
+    from modules.sdn import loop
+
+    network = _network_of_form()
+    actor = identity.request_actor()
+    try:
+        made = loop.propose_from_watch(network, wid, actor=actor,
+                                       actor_verified=identity.actor_verification(actor),
+                                       actor_kind=identity.request_identity().kind)
+    except loop.ProposalRefused as exc:
+        return _refused_beside(str(exc))
+    ctx = _ctx("responses")
+    ctx["g"]["incidents"]["open"] = made["response"]["id"]
+    return _strict(render_template("v2/_sdn_view.html", **ctx))
+
+
 @bp.route("/response/<rid>/dismiss", methods=["POST"])
 def response_dismiss(rid):
     """Dismiss a response awaiting a person, with their reason; nothing is sent."""

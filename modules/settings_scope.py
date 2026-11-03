@@ -65,7 +65,8 @@ SCOPES: dict = {
     # scan's ports and window, its fallback rate, a flood's factor and window). Drawn on SDN ›
     # Responses (17.5, board 3), not on a generic card (`CARDLESS`).
     **_group(NETWORK, "sdn_detection", "sdn_scan_ports", "sdn_scan_window_seconds",
-             "sdn_scan_fallback_pps", "sdn_flood_factor", "sdn_flood_window_seconds"),
+             "sdn_scan_fallback_pps", "sdn_flood_factor", "sdn_flood_window_seconds",
+             "sdn_flood_max_mean_bytes"),
     # PHASE8_PLAN 17.1 S8: a response's hard timeout and its ceiling, one network's together.
     # Drawn on SDN › Responses beside the response they bound, not on a generic card.
     **_group(NETWORK, "sdn_responses", "sdn_response_hard_timeout_seconds",

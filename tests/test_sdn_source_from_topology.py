@@ -98,12 +98,40 @@ def walk(key):
     return next(c for c in data["cases"] + data["retired"] if c["key"] == key)
 
 
-def walk_flood(key, topo):
+#: The mean packet a small-packet flood is given (C2313): the measured floods' 42 B (RC-ICMP and
+#: RC-UDPF in tests/fixtures/sdn/recorded/), under the flood's `sdn_flood_max_mean_bytes`.
+SMALL_PACKET_BYTES = 42
+
+
+def small_packets(collected: dict) -> dict:
+    """*collected* with every port's received bytes edited to small packets (C2313, the
+    operator's decision of 2026-11-03, option (i)): the minimal edit, ``rx_bytes_per_s =
+    rx_pps * 42`` and its delta likewise, so the walk's flood, one iperf UDP stream of 1,512 B
+    packets (a large-packet stream, watched, under the rule), is a flood under it; every other
+    field as the walk kept it. For the tests that borrow the walk's flood as a flood."""
+    out = copy.deepcopy(collected)
+    for ctl in out.get("controllers") or []:
+        for sw in ctl.get("switches") or []:
+            for p in sw.get("ports") or []:
+                if p.get("rx_pps") is not None and p.get("rx_bytes_per_s") is not None:
+                    p["rx_bytes_per_s"] = p["rx_pps"] * SMALL_PACKET_BYTES
+                if p.get("rx_packets_delta") is not None and p.get("rx_bytes_delta") is not None:
+                    p["rx_bytes_delta"] = p["rx_packets_delta"] * SMALL_PACKET_BYTES
+    return out
+
+
+def walk_flood(key, topo, small=False):
     """The walk's flood *key* judged again by the flood rule over its kept evidence (its
-    baseline and since as its threshold and measurement state them), with *topo*."""
+    baseline and since as its threshold and measurement state them), with *topo*. Under C2313's
+    rule the walk's stream of 1,512 B packets is a large-packet stream (High packet rate, basis
+    ``large_packets``, watched); *small* edits its ports' received bytes to small packets
+    (`small_packets`), so it is a flood, for a test that borrows it as one."""
     case = walk(key)
     d = case["detection"]
     collected, sw = collection_of(case)
+    if small:
+        collected = small_packets(collected)
+        sw = collected["controllers"][0]["switches"][0]
     t, m = d["threshold"], d["measurement"]
     pid = d["evidence"][0]
     baseline = {pid: {"samples": [t["baseline_pps"]] * t["baseline_samples"],
@@ -218,10 +246,16 @@ def test_flows_naming_their_source_are_never_overridden_by_the_topology():
 
 
 def test_a_rule_given_no_topology_names_nothing_from_it():
-    """What keeps the recorded cases' rebuilds as they are: no topology, no ``source_from``."""
+    """What keeps the recorded cases' rebuilds as they are: no topology, no ``source_from``. The
+    rebuild is the recorded case as C2313's rule names it (a large-packet stream, watched: the
+    operator's decision of 2026-11-03, option (i); tests/test_sdn_classify_walk_cases.py's
+    `as_large_packets`), and nothing more."""
+    from tests.test_sdn_classify_walk_cases import as_large_packets
+
     d, _c, _s = walk_flood("walk-flood-1-s1", None)
     assert d["source"] is None and "source_from" not in d
-    assert json.loads(json.dumps(d)) == walk("walk-flood-1-s1")["detection"]
+    case = walk("walk-flood-1-s1")
+    assert json.loads(json.dumps(d)) == as_large_packets(case["detection"], case["section"])
 
 
 @pytest.mark.usefixtures("networks")
@@ -266,12 +300,13 @@ def _answer(source, affected):
 def test_the_classifier_may_propose_a_named_source_and_never_one_of_several():
     limits = {"sdn_response_max_seconds": 3600}
     pol = CL.policy("Default")
-    named, c1, s1 = walk_flood("walk-flood-1-s1", stored())
+    # The walk's flood as a flood (C2313: its ports' bytes edited to small packets).
+    named, c1, s1 = walk_flood("walk-flood-1-s1", stored(), small=True)
     sent = CL.sent_evidence(D.section(named, c1, s1))
     why, params = CL.check_classification(_answer(H2, [H2]), named, sent, limits, pol=pol,
                                           network="Default")
     assert why == "" and params["source"] == H2
-    several, c2, s2 = walk_flood("walk-flood-1-s1", stored(edit=plus(H5_V6)))
+    several, c2, s2 = walk_flood("walk-flood-1-s1", stored(edit=plus(H5_V6)), small=True)
     sent = CL.sent_evidence(D.section(several, c2, s2))
     assert {H2, "2001:db8:8::5"} <= set(sent["names"]), "the port's hosts may be named"
     why, _p = CL.check_classification(_answer("2001:db8:8::5", [H2, "2001:db8:8::5"]), several,
@@ -283,8 +318,9 @@ def test_the_classifier_may_propose_a_named_source_and_never_one_of_several():
 
 def several_on(connection="lab-controller", extra=H5, network="Default"):
     """The walk's MAC-only flood on s1 port 2, judged with a second host there, as a detection
-    of *connection* on *network* (the route tests' controller)."""
-    d, _c, _s = walk_flood("walk-flood-1-s1", stored(name=CONN, edit=plus(extra)))
+    of *connection* on *network* (the route tests' controller); its ports' bytes edited to small
+    packets, so it is a flood under C2313's rule (`small_packets`)."""
+    d, _c, _s = walk_flood("walk-flood-1-s1", stored(name=CONN, edit=plus(extra)), small=True)
     return dict(d, connection=connection, network=network)
 
 
@@ -334,7 +370,8 @@ def test_a_host_not_on_the_port_is_refused_naming_both(lab, extra, chosen, liste
 
 @pytest.mark.usefixtures("lab")
 def test_no_host_to_choose_is_refused_saying_why_and_never_offers_a_choice():
-    d, _c, _s = walk_flood("walk-flood-1-s1", stored(edit=without_h2))
+    # The walk's flood as a flood (C2313: its ports' bytes edited to small packets).
+    d, _c, _s = walk_flood("walk-flood-1-s1", stored(edit=without_h2), small=True)
     got = CL.respond_to_threat("Default", dict(d, connection="lab-controller",
                                                network="Default"), "drop_source",
                                {"source": H2})
@@ -352,7 +389,8 @@ def test_a_detection_unread_when_it_fired_is_looked_up_now_and_offers_no_choice_
     drew no picker."""
     import tests.test_sdn_lab8 as L8
 
-    d, _c, _s = walk_flood("walk-flood-1-s1", stored(now=READ_EPOCH + 3600))
+    # The walk's flood as a flood (C2313: its ports' bytes edited to small packets).
+    d, _c, _s = walk_flood("walk-flood-1-s1", stored(now=READ_EPOCH + 3600), small=True)
     d = dict(d, connection="lab-controller", network="Default")
     assert d["source_from"]["state"] == "unread"
     lab["fake"].topology = L8.captured_topology()
@@ -400,11 +438,12 @@ def test_the_card_draws_the_picker_one_host_named_and_none_with_no_preview(lab):
     c = lab["client"]
     several = LP.propose("Default", dict(several_on(), key="k-several"), "drop_source", "low",
                          why="HITL")
-    one, _c, _s = walk_flood("walk-flood-1-s1", stored())
+    # The walk's flood as a flood (C2313: its ports' bytes edited to small packets).
+    one, _c, _s = walk_flood("walk-flood-1-s1", stored(), small=True)
     named = LP.propose("Default", dict(one, key="k-named", connection="lab-controller",
                                        network="Default", source="192.0.2.12"),
                        "drop_source", "low", why="HITL")
-    nothing, _c, _s = walk_flood("walk-flood-1-s1", stored(edit=without_h2))
+    nothing, _c, _s = walk_flood("walk-flood-1-s1", stored(edit=without_h2), small=True)
     none = LP.propose("Default", dict(nothing, key="k-none", connection="lab-controller",
                                       network="Default"), "drop_source", "low", why="HITL")
     page = c.get("/v2/sdn/responses?list=Default").get_data(as_text=True)

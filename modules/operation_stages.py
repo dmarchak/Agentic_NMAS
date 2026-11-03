@@ -203,6 +203,17 @@ STAGES = {
     "sdn_v2.reapply_confirm": Stages(
         "sdn_v2.reapply_preview", "hash", "modules.sdn.flow_ops.verify_installed",
         "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
+    # C2313's condition: a person's decision, a watched large-packet stream made a response
+    # awaiting a person; it sends nothing. The response then has the five stages above
+    # (sdn_v2.response_preview, its hash, Verify, rollback, the record), unchanged.
+    "sdn_v2.watch_propose": Stages(
+        "n/a: it makes a response awaiting a person and sends nothing; that response's preview "
+        "is sdn_v2.response_preview",
+        "n/a: nothing is sent; the response's confirm is bound to its previewed requests' hash "
+        "(sdn_v2.response_confirm)",
+        NO_DEVICE,
+        "n/a: nothing is sent; the response it makes is dismissed with a reason",
+        "modules.sdn.loop.propose_from_watch"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -458,6 +469,9 @@ HISTORY = {
     "sdn_v2.reapply_confirm": ("sdn_operations",),
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
+    "sdn_v2.watch_propose": "n/a: a person's proposal is kept with the network's SDN responses "
+                            "(modules/sdn/loop.py), never a device's record; the response's "
+                            "confirm is recorded by sdn_v2.response_confirm",
     "sdn_v2.policy_set": NOT_A_DEVICE,
     "sdn_v2.mode_set": "n/a: the network's SDN mode is kept in its own record "
                        "(modules/sdn/modes.py), never a device's",

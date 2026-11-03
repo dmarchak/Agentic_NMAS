@@ -31,7 +31,29 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `bc0cb2fef244dde93643d613ad4acee2afc3c3528f79059082d5c034f5c33ec1`
+Templates sha256: `6252c168fa6b0b9b0f1ee73197dfb27a91c1a17dd13088caa8f75011ea220bd1`
+
+**Compared again 2026-11-03 ~07:2x UTC for C2313** (a flood is a high packet rate of small
+packets, the operator's decision, option (a)):
+- **A watching row of one large-packet stream** draws "Why it is not called a flood: <its mean
+  packet against the flood's size> (C2313). A large-packet flood is left to you: it is watched,
+  and nothing is proposed. If another source sends to the same host, it is called one attack."
+  This is where board S-HR's rate-only "Why it is not called a scan or a flood" stands, as a
+  transfer's row does (C2278).
+- **The rules table's Flood row** names the small packets and the large-packet exception
+  beside its threshold, with the network's size line.
+- **The same row draws Rate-limit this source…** (the operator's condition, option (i), the
+  same day), before Dismiss. It is drawn disabled, saying why, when the network's response
+  policy allows no rate limit for the flood rule, or when the stream names no source to act on.
+  Pressing it makes the stream a response awaiting a person, drawn open.
+
+Nothing else moves. Compared by reading the template against board S-HR's opened row (its order:
+Detected, Why, What happens next, Proposed, Dismiss) and against the rules table's row, with no
+new shot (no shot plants a large-packet stream). Its words are held by
+tests/test_sdn_large_packets.py. A deviation: docs/STANDING_APPROVAL_LOG.md, "C2313 built".
+Templates sha256 before: `bc0cb2fef244dde93643d613ad4acee2afc3c3528f79059082d5c034f5c33ec1`
+(and `5cdaf423ea3d0f5e00664d6ba11d6e4dbe5cecbd90c5fffab2823102d89348fb` between the row's
+words and its control, never committed).
 
 **Compared again 2026-11-03 ~02:3x UTC for C2325** (SDN on a network with no controller): the
 empty state's notice (board SdnControllers' "No SDN controller is connected to this network")

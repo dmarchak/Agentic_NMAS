@@ -54,8 +54,10 @@ def auto_on(network=NET):
 
 
 def flood(key="walk-flood-1-s1", topo=None):
-    """The walk's flood *key* judged again with *topo*, as a detection on the test's network."""
-    d, _c, _s = walk_flood(key, stored() if topo is None else topo)
+    """The walk's flood *key* judged again with *topo*, as a detection on the test's network;
+    its ports' bytes edited to small packets (C2313: one stream of 1,512 B packets is watched
+    under the rule, and AUTO's source rule is what these tests are about, on a flood)."""
+    d, _c, _s = walk_flood(key, stored() if topo is None else topo, small=True)
     return dict(d, network=NET)
 
 
@@ -164,7 +166,8 @@ def test_in_the_loop_a_flow_named_source_is_applied_as_before(networks, monkeypa
 @pytest.mark.parametrize("handed", [True, False], ids=["detection-handed", "ask-alone"])
 def test_an_unattended_confirm_of_a_topology_source_is_refused_and_nothing_is_sent(
         lab, monkeypatch, handed):  # noqa: F811
-    d, _c, _s = walk_flood("walk-flood-1-s1", stored(name=CONN))
+    # The walk's flood as a flood (C2313: its ports' bytes edited to small packets).
+    d, _c, _s = walk_flood("walk-flood-1-s1", stored(name=CONN), small=True)
     d = dict(d, connection="lab-controller", network=NET)
     preview = CL.respond_to_threat(NET, d, "drop_source")
     assert preview["ok"], preview["error"]

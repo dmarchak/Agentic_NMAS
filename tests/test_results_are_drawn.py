@@ -258,6 +258,11 @@ PAGE_RECORD = {
     "sdn_v2.response_confirm": ("templates/v2/_sdn_op.html",
                                 ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
                                 "v2.history_page"),
+    # Rate-limit this source… on a watched large-packet stream (C2313): the response it makes
+    # drawn open on SDN › Responses with its proposal and why (who proposed it), read again
+    # there.
+    "sdn_v2.watch_propose": ("templates/v2/_sdn_responses.html",
+                             ("ic.open == r.id", "r.label", "r.why"), "sdn_v2.responses"),
     # A lost response's re-apply (C2018): the same card, the run on History the same way.
     "sdn_v2.reapply_confirm": ("templates/v2/_sdn_op.html",
                                ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),

@@ -475,7 +475,8 @@ class TestThresholds:
         got = D.thresholds("Default")
         assert got["ok"] and got["values"] == {
             "sdn_scan_ports": 20, "sdn_scan_window_seconds": 60, "sdn_scan_fallback_pps": 100,
-            "sdn_flood_factor": 5, "sdn_flood_window_seconds": 30}
+            "sdn_flood_factor": 5, "sdn_flood_window_seconds": 30,
+            "sdn_flood_max_mean_bytes": 200}
 
     def test_a_network_s_own_are_its_own(self):
         L.write("Default", {"sdn_scan_ports": 30, "sdn_flood_factor": 3}, actor="op")

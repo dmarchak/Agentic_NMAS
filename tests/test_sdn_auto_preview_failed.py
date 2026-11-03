@@ -45,8 +45,10 @@ def auto_on(network=NET):
 
 
 def flow_named(connection="lab-controller"):
-    """The walk's second flood on s1, its flows naming its source, on *connection*."""
-    d, _c, _s = walk_flood("walk-flood-2-s1", stored(edit=plus(H5)))
+    """The walk's second flood on s1, its flows naming its source, on *connection*; its ports'
+    bytes edited to small packets (C2313: one stream of 1,512 B packets is watched under the
+    rule, and AUTO's preview is what these tests are about, on a flood)."""
+    d, _c, _s = walk_flood("walk-flood-2-s1", stored(edit=plus(H5)), small=True)
     assert d["source"] == H2 and "source_from" not in d, "premise: the flows name it"
     return dict(d, network=NET, connection=connection)
 

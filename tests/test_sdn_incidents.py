@@ -350,12 +350,13 @@ LINK_WORDS = ("port 3 is an inter-switch link, and its flows carry 00:00:00:00:0
 def _walk_floods(edit=None):
     """The walk's two floods (s1 port 2, s2 port 3) on Default, and the stored topology they
     were judged with (*edit* a minimal edit of its hosts, as tests/test_sdn_source_from_topology
-    makes them)."""
+    makes them). Their ports' bytes edited to small packets (C2313: one stream of 1,512 B
+    packets is watched under the rule, and grouping floods is what these tests are about)."""
     from tests.test_sdn_source_from_topology import stored, walk_flood
 
     topo = stored(edit=edit)
-    s1, _c, _s = walk_flood("walk-flood-1-s1", topo)
-    s2, _c, _s = walk_flood("walk-flood-1-s2", topo)
+    s1, _c, _s = walk_flood("walk-flood-1-s1", topo, small=True)
+    s2, _c, _s = walk_flood("walk-flood-1-s2", topo, small=True)
     return dict(s1, network=NET), dict(s2, network=NET), topo
 
 

@@ -268,6 +268,8 @@ does not call it either:
 3. **Or it ends.** When none of its switches shows the rate any longer, the row closes as
    "ended, never more than a rate".
 4. **Or you dismiss it**, with a reason. It cannot be confirmed: there is nothing to confirm.
+5. **Or, on a large-packet stream, you rate-limit it** (below): the row closes as "proposed
+   by a person", and the stream is an incident awaiting you.
 
 **A transfer is High packet rate too, not a flood.** When the flood rule's candidate port
 receives a transfer's shape, it is watched the same way, never proposed:
@@ -279,6 +281,39 @@ The ports receiving that transfer's ACKs are watched too. The row says "Why it i
 flood" with the session it saw. A shape the flows cannot show (flows that name no TCP ports,
 or no return flow read) is judged as a flood is. A transfer can still crowd a link, so it
 stays on SDN › Responses and Needs attention until it ends.
+
+**A flood is a high packet rate of small packets.** When the flood rule's candidate port is no
+transfer, its mean received packet (its byte rate over its packet rate) is read:
+- **Small packets** (the network's `sdn_flood_max_mean_bytes` or fewer, 200 bytes by default)
+  are a flood, as measured floods are: an ICMP flood and an hping3 UDP flood each average about
+  42 bytes.
+- **Large packets** (more than that) from one source are one large-packet stream, such as an
+  iperf UDP test at about 1,500 bytes a packet. It is watched as High packet rate with no
+  response proposed, and its row says why. **A large-packet flood is left to you:** a rate and a
+  size alone do not show one stream to be an attack.
+- **Rate-limit this source…** on a large-packet stream's row is how you act on one. It makes
+  the stream a response awaiting you, and nothing more:
+  1. **Mercury checks four things:**
+     - that you are a verified person;
+     - that the row is still watched;
+     - that the stream names a source to act on, or hosts on its port to choose among;
+     - that the network's response policy allows `rate_limit_source` for the **Flood** rule.
+
+     The stream is the flood rule's held candidate, so it is checked as a flood's response
+     is: a policy that forbids rate-limiting floods forbids it here, and the control says so,
+     disabled.
+  2. **The response is proposed** at the switch the source enters by, where the controller's
+     topology tells it: the rate limit at the catalogue's defaults, its why "proposed by
+     <you> from a watched large-packet stream", its detection and evidence the watched
+     one's. No AI call is made, and nothing is sent to a switch.
+  3. **The watching row closes** as "proposed by a person". Firing again, the stream is that
+     response's, and is not watched again beside it.
+  4. **From there it is any response,** through the steps above: preview, confirm by hash,
+     apply, Verify and the record.
+- **Large packets from two or more sources to one host** are one attack on that host's total
+  (each source counted once, at the port it enters by). Each port is a flood, and the incidents
+  are grouped as one attack on one target ([Incidents](#incidents), step 7).
+- A port whose byte rate was not read is judged on its packet rate alone.
 
 These are the one kind of row Mercury closes by itself, and the row says so. Until 2026-11-02
 this rate was the scan rule's fallback and was called a scan; on the Lab 8 walk it fired on a

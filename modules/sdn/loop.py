@@ -454,8 +454,9 @@ def awaiting(network: str) -> dict:
 
 #: The kinds that close a watching row (PHASE8_PLAN 17.8): the system's own, ``joined`` (the
 #: flood rule fired for the same traffic) and ``ended`` (it no longer fires), or a person's
-#: ``dismissed``.
-WATCH_CLOSED = ("joined", "ended", "dismissed")
+#: ``dismissed`` or ``proposed_by_person`` (C2313: a rate limit proposed from a watched
+#: large-packet stream, `propose_from_watch`).
+WATCH_CLOSED = ("joined", "ended", "dismissed", "proposed_by_person")
 
 
 def watch(network: str, detection: dict, incident: dict, *, now: float = None) -> dict:
@@ -480,6 +481,67 @@ def watched(network: str, watch_id: str, how: str, *, why: str, incident: str = 
     row = {"kind": how, "id": watch_id, "at": _iso(now), "why": why, "incident": incident}
     _append(network, PENDING_FILE, row)
     return row
+
+
+class ProposalRefused(ValueError):
+    """A person's proposal from a watching row refused, in words naming why."""
+
+
+def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verified: str,
+                       actor_kind: str, now: float = None, stored: dict = None) -> dict:
+    """A person's "Rate-limit this source…" on a watched large-packet stream (C2313's
+    condition, the operator's decision of 2026-11-03, option (i)): the watching row *watch_id*
+    made a response awaiting a person, and the row closed ``proposed_by_person``. Its action
+    `closed_loop.PERSON_ACTION`, its parameters the catalogue's defaults, its detection the
+    watched one with its evidence, its incident the watching row's (its switches seen also),
+    proposed at the switch the source enters by where the controller's topology tells it
+    (`incidents.ingress`; *stored* its stored read, read when None). Nothing is sent and no AI
+    is asked: the response then goes through the normal preview, confirm by hash, apply,
+    Verify and record. Refused (`ProposalRefused`, naming why) unless *actor* is a verified
+    person (*actor_verified* neither empty nor ``none``, *actor_kind* ``person``: a verified
+    service is not one, whatever the gate's settings), the row is open, and
+    `closed_loop.person_proposal_refusal` passes: a large-packet stream, a source to act on,
+    and the network's response policy allowing the rate limit for the flood rule, the rule a
+    large-packet stream is checked as (the flood rule's held candidate). ``{"response",
+    "closed"}``, the rows appended."""
+    from modules import identity
+    from modules.sdn import closed_loop, incidents
+
+    if (not actor or actor == identity.UNVERIFIED or actor_verified in ("", "none")
+            or actor_kind != "person"):
+        raise ProposalRefused(f"a rate limit is proposed from a watching row by a verified "
+                              f"person, and this request's is {actor or 'nobody'} "
+                              f"(verified: {actor_verified or 'none'}, a "
+                              f"{actor_kind or 'caller of no kind'}): nothing was proposed")
+    row = next((r for r in watching(network)["rows"] if r.get("id") == watch_id), None)
+    if row is None:
+        raise ProposalRefused(f"no watching row {watch_id} is open on {network}: nothing was "
+                              "proposed")
+    d = row.get("detection") or {}
+    refusal = closed_loop.person_proposal_refusal(network, d)
+    if refusal:
+        raise ProposalRefused(f"{refusal}: nothing was proposed")
+    inc = dict(row.get("incident") or {})
+    src = inc.get("source") or d.get("source") or ""
+    chosen = incidents.ingress(network, {"members": [d], "source": src}, stored)
+    rec = dict(inc, ingress_known=bool(chosen["known"]), ingress_words=chosen["words"],
+               ingress_port=chosen["port"], seen_also=list(row.get("seen_also") or []))
+    action = closed_loop.PERSON_ACTION
+    now = time.time() if now is None else now
+    response = propose(
+        network, d, action, closed_loop.CATALOGUE[action]["risk"], now=now,
+        why=f"proposed by {actor} from a watched large-packet stream",
+        params=dict(closed_loop.RATE_LIMIT_DEFAULT),
+        classified=(f"no AI classification: {actor} proposed the rate limit from watching row "
+                    f"{watch_id}, checked as the flood rule's under the network's response "
+                    "policy"), incident=rec)
+    closed = {"kind": "proposed_by_person", "id": watch_id, "at": _iso(now), "actor": actor,
+              "actor_verified": actor_verified, "why": "proposed by a person",
+              "response": response["id"]}
+    _append(network, PENDING_FILE, closed)
+    log.info("sdn: %s proposed %s on %s from watching row %s as %s", actor, action, network,
+             watch_id, response["id"])
+    return {"response": response, "closed": closed}
 
 
 def began(network: str, response_id: str, row: dict, *, now: float = None) -> dict:
@@ -1507,7 +1569,15 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                               or (holding.get(d["key"]) or {}).get("id")
                               or answered.get((incident_of.get(d["key"]) or {}).get("key"))]
                   if fid]
-        watched_now = _watch_pass(network, seen, rated, floods, now(), line)
+        # A watched stream a person made a response from (C2313, `propose_from_watch`) is that
+        # response's, awaiting a person: firing again, it is not watched again beside it, and
+        # its response is active again as any response's is.
+        for d in rated:
+            again = waiting.get(d["key"])
+            if again is not None and again.get("inactive_since"):
+                mark(network, again["id"], "active", now=now())
+        watched_now = _watch_pass(network, seen, [d for d in rated if d["key"] not in waiting],
+                                  floods, now(), line)
         out["seen_also"] += watched_now.pop("seen_also")
         out.update(watched_now)
         if len(todo) > 1:

@@ -612,6 +612,11 @@ DEFAULTS: dict = {
     "sdn_scan_fallback_pps": 100,
     "sdn_flood_factor": 5,
     "sdn_flood_window_seconds": 30,
+    # A flood is a high packet rate of small packets (C2313, the operator's decision of
+    # 2026-11-03): a held candidate whose packets average more than this many bytes is one
+    # large-packet stream, watched, unless several sources send to one host. The operator's
+    # line, between the measured floods (42 B) and the benign streams (1,512 B).
+    "sdn_flood_max_mean_bytes": 200,
     # SDN responses (PHASE8_PLAN 17.1 S8, `modules/sdn/flow_ops.py`), per network: every flow a
     # response installs carries a hard timeout, 600 s unless the person sets another in the
     # preview, at most 3600 s, so a mistaken response expires by itself (the board's figures,
@@ -1062,6 +1067,7 @@ SCHEMA: dict = {
         "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},
         "sdn_flood_factor": {"type": "number", "minimum": 1.5, "maximum": 1000},
         "sdn_flood_window_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+        "sdn_flood_max_mean_bytes": {"type": "number", "minimum": 40, "maximum": 65535},
         "sdn_response_hard_timeout_seconds": {"type": "integer", "minimum": 1,
                                               "maximum": 65535},
         "sdn_response_max_seconds": {"type": "integer", "minimum": 1, "maximum": 65535},

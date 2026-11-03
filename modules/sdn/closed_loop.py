@@ -1147,6 +1147,50 @@ def answering(rule: str) -> list:
     return [a for a, e in CATALOGUE.items() if rule in e["rules"]]
 
 
+#: The watched detections a person may turn into a response (C2313's condition, the operator's
+#: decision of 2026-11-03, option (i)), each with the rule it is answered and checked as: a
+#: large-packet stream (High packet rate, basis ``large_packets``) is the flood rule's held
+#: candidate (`detect.flood` held it over the flood's threshold and window, then judged its
+#: packets too large to call a flood), so a person's response to it is the flood rule's, under
+#: the flood rule's response policy. A policy that forbids rate-limiting floods forbids it here.
+PERSON_ANSWERED = {("high_rate", "large_packets"): "flood"}
+#: The one action a person proposes from a watched large-packet stream: a rate limit, its
+#: parameters the catalogue's defaults (`RATE_LIMIT_DEFAULT`), changed in the preview.
+PERSON_ACTION = "rate_limit_source"
+
+
+def answered_rule(detection: dict) -> str:
+    """The rule a response to *detection* answers, and is checked against the network's response
+    policy as: a watched large-packet stream's is the flood rule (`PERSON_ANSWERED`); every
+    other detection's is its own rule."""
+    d = detection or {}
+    return PERSON_ANSWERED.get((d.get("rule"), d.get("basis")), d.get("rule") or "")
+
+
+def person_proposal_refusal(network: str, detection: dict, action: str = PERSON_ACTION,
+                            pol: dict = None) -> str:
+    """Why a person may not propose *action* from the watched *detection* on *network*, or "":
+    it must be a large-packet stream (`PERSON_ANSWERED`), naming a source to act on (or hosts to
+    choose among, or a port whose host the preview looks up), and the network's response policy
+    (*pol*, read when not given) must allow *action* for the flood rule (`policy_refusal`, the
+    one check, naming the action, the rule and the actions the policy allows). Reads nothing
+    but the policy: drawn on the watching row, and checked again by its route."""
+    d = detection or {}
+    rule = PERSON_ANSWERED.get((d.get("rule"), d.get("basis")))
+    if rule is None:
+        return (f"only a watched large-packet stream (High packet rate, basis large_packets) is "
+                f"proposed by a person; this one is {d.get('rule') or 'no rule'}, basis "
+                f"{d.get('basis') or 'none'}")
+    choice = source_choice(d)
+    if choice["state"] in NOTHING_TO_CHOOSE:
+        return (f"the watched stream names no source to rate-limit: "
+                f"{choice['words'] or 'its port has no host to act on'}")
+    refusal = policy_refusal(network, rule, action, pol)
+    if refusal:
+        return f"a large-packet stream is checked as the flood rule's held candidate: {refusal}"
+    return ""
+
+
 def policy_problems(value) -> list:
     """Why *value* is not a response policy, each in words naming the rule, the action and
     the actions allowed for it (none when it is one): a mapping naming every rule (`RULES`) and
@@ -1703,9 +1747,13 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
     out = {"ok": False, "error": "", "action": action_id, "risk": "", "ask": None,
            "params": dict(params or {})}
     try:
-        if not isinstance(detection, dict) or detection.get("rule") not in RULES:
+        # The rule the response answers: a watched large-packet stream a person proposed a
+        # response from is the flood rule's (C2313, `answered_rule`); every other its own.
+        rule = answered_rule(detection) if isinstance(detection, dict) else ""
+        if rule not in RULES:
             raise ResponseRefused("a response answers one detection of the scan, flood or "
-                                  "unauthorised-flow rule")
+                                  "unauthorised-flow rule, or a watched large-packet stream a "
+                                  "person proposed it from")
         if detection.get("network") not in (None, "", network):
             raise ResponseRefused(f"the detection is {detection.get('network')!r}'s, not "
                                   f"{network!r}'s")
@@ -1713,15 +1761,15 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         if not action_id:
             if not pol["ok"]:
                 raise ResponseRefused(pol["error"])
-            action_id = pol["rules"][detection["rule"]]["default"]
+            action_id = pol["rules"][rule]["default"]
         entry = CATALOGUE.get(action_id)
         if entry is None:
             raise ResponseRefused(f"{action_id!r} is not in the response catalogue "
                                   f"({', '.join(CATALOGUE)})")
-        if detection["rule"] not in entry["rules"]:
+        if rule not in entry["rules"]:
             raise ResponseRefused(f"{action_id} answers {', '.join(entry['rules'])}, not "
-                                  f"{detection['rule']}")
-        refusal = policy_refusal(network, detection["rule"], action_id, pol)
+                                  f"{rule}")
+        refusal = policy_refusal(network, rule, action_id, pol)
         if refusal:
             raise ResponseRefused(refusal)
         out.update(action=action_id, risk=entry["risk"])
@@ -1860,6 +1908,11 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                       "detection": {k: detection.get(k) for k in
                                     ("key", "rule", "title", "dpid_hex", "source", "words",
                                      "at")}}
+        if rule != detection.get("rule"):
+            # C2313: a watched large-packet stream's basis, so the confirm checks the policy
+            # for the same rule the preview did (`answered_rule`); kept only where the rule
+            # answered is not the detection's own, so every other ask is as it was.
+            out["ask"]["detection"]["basis"] = detection.get("basis")
         if out["params"].get("source_from"):
             # C2002: how the source acted on was found or chosen, kept with the response.
             out["ask"]["detection"]["source_from"] = out["params"]["source_from"]
@@ -1925,7 +1978,7 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
             f"the confirm names {action_id} and its preview {previewed}: nothing was sent; "
             "preview again")}
     action_id = previewed
-    refusal = policy_refusal(network, (ask.get("detection") or {}).get("rule") or "", action_id)
+    refusal = policy_refusal(network, answered_rule(ask.get("detection") or {}), action_id)
     if refusal:
         return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     # A source chosen among a port's hosts (C2002), held to those hosts again at the confirm,

@@ -30,6 +30,13 @@ alert in Mercury's alert stream with an evidence pack, so Explain works on it un
   17.9; `transfer`): a candidate whose entering traffic has a transfer's shape (a few TCP
   sessions carrying its packets at a large mean size, their ACKs returning on the same switch),
   or is a transfer's ACKs, is High packet rate, basis ``transfer``, watched and never proposed.
+  **A flood is a high packet rate of small packets** (C2313, the operator's decision of
+  2026-11-03): a candidate whose received packets average more than `sdn_flood_max_mean_bytes`
+  (200) is one large-packet stream, High packet rate, basis ``large_packets``, watched with no
+  response proposed. **A large-packet flood is left to a person**, unless several named
+  sources send to one host: two or more such candidates' sources, all to the same host, are
+  judged as one attack on that host's total (each port a flood; `incidents` groups them as one
+  attack, C2279). A port whose byte rate was not read is judged on its packet rate alone.
 - **Unauthorised flow** (`unauthorised`): every flow `flow_intent.classify` calls
   ``unauthorised`` on a switch whose table was read whole. With the flow intent unreadable,
   nothing is judged, and the answer says so.
@@ -103,6 +110,7 @@ their episodes. ``changed`` in the answer says the loop (S10) is to announce ``a
 the collection once each, and one state document is read and written per collection.
 """
 
+import collections
 import copy
 import hashlib
 import ipaddress
@@ -130,7 +138,10 @@ RULE_UIDS = {"scan": "sdn-scan", "flood": "sdn-flood",
 WATCH_ONLY = ("high_rate",)
 #: The thresholds, per network (`modules/settings_schema.py`), each with its default.
 THRESHOLDS = {"sdn_scan_ports": 20, "sdn_scan_window_seconds": 60, "sdn_scan_fallback_pps": 100,
-              "sdn_flood_factor": 5, "sdn_flood_window_seconds": 30}
+              "sdn_flood_factor": 5, "sdn_flood_window_seconds": 30,
+              "sdn_flood_max_mean_bytes": 200}
+#: Sources sending large packets to one host that make one attack (C2313): two or more.
+ATTACK_SOURCES = 2
 CONFIDENCE = ("high", "lower")
 #: The baseline: a median over this many earlier collections, ready after this many.
 BASELINE_SAMPLES = 12
@@ -735,8 +746,10 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
     (`port_source`); None names none from it."""
     at = _epoch(collected.get("collected_at"))
     factor, window = values["sdn_flood_factor"], values["sdn_flood_window_seconds"]
+    max_mean = values.get("sdn_flood_max_mean_bytes", THRESHOLDS["sdn_flood_max_mean_bytes"])
     over = dict(over or {})
     detections, judged, pending, no_baseline = [], set(), [], []
+    large = []     # held candidates of large packets, judged together after every port
     for ctl, sw in _switches(collected):
         conn, dh = ctl.get("connection") or "", sw["dpid_hex"]
         for p in sw.get("ports") or []:
@@ -791,21 +804,85 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
                     since=since, transfer=shape,
                     **(named if shape["side"] == "data" else {})))
                 continue
-            detections.append(_detection(
-                "flood", collected, ctl, sw, subject=("port", p["port_no"]), scope=pid,
-                port=p["port_no"], source=source, targets=_targets(entering),
-                **_dst_hosts_of(entering, topo, conn),
-                words=(f"port {p['port_no']} of switch {dh} ({conn}) received {rate:g} packets "
-                       f"a second, at or above {factor:g}x its baseline of {median:g} "
-                       f"({limit:g}), for {held:g} s since {_iso(since)} (the window is "
-                       f"{window} s)"),
+            words = (f"port {p['port_no']} of switch {dh} ({conn}) received {rate:g} packets "
+                     f"a second, at or above {factor:g}x its baseline of {median:g} "
+                     f"({limit:g}), for {held:g} s since {_iso(since)} (the window is "
+                     f"{window} s)")
+            flood_kw = dict(
+                subject=("port", p["port_no"]), scope=pid, port=p["port_no"], source=source,
+                targets=_targets(entering), **_dst_hosts_of(entering, topo, conn),
                 measurement=measured, threshold=limit_said, confidence="high",
                 confidence_why=("the port's own counters, read twice a stated interval apart, "
                                 "against its own earlier collections"),
                 evidence=[pid] + [f["id"] for f in entering], basis="rate", since=since,
-                sources=sources, **named))
+                sources=sources, **named)
+            mean = _port_mean(p)
+            if mean is not None and mean > max_mean:
+                large.append({"ctl": ctl, "sw": sw, "words": words, "kw": flood_kw,
+                              "mean": mean, "rate": rate})
+                continue
+            detections.append(_detection("flood", collected, ctl, sw, words=words,
+                                         **flood_kw))
+    detections += _large_packets(collected, large, max_mean)
     return {"detections": detections, "judged": judged, "over": over, "pending": pending,
             "no_baseline": no_baseline}
+
+
+def _port_mean(p: dict):
+    """A port's mean received packet, bytes (its byte rate over its packet rate), or None
+    when either rate was not read."""
+    pps, bps = p.get("rx_pps"), p.get("rx_bytes_per_s")
+    return (bps / pps) if pps and bps is not None else None
+
+
+def _large_packets(collected: dict, large: list, max_mean) -> list:
+    """The held candidates whose packets average over *max_mean* bytes (C2313): those sending
+    to one host from ATTACK_SOURCES or more named sources are floods, one attack on the host's
+    total; every other is High packet rate, basis ``large_packets``, watched with no response
+    proposed (a large-packet flood is left to a person)."""
+    by_host = collections.defaultdict(list)
+    for c in large:
+        d = c["kw"]
+        for host in sorted({_canon_addr(t) for t in list(d.get("targets") or [])
+                            + list(d.get("dst_hosts") or [])} - {""}):
+            by_host[host].append(c)
+    attacked = {}
+    for host, members in by_host.items():
+        # Each named source counted once, at its own port: where it enters, not each link.
+        first = {}
+        for c in members:
+            src = c["kw"].get("source")
+            if src and src not in first:
+                first[src] = c
+        if len(first) >= ATTACK_SOURCES:
+            total = sum(c["rate"] for c in first.values())
+            bits = sum(c["rate"] * c["mean"] * 8 for c in first.values())
+            for c in members:
+                attacked.setdefault(id(c), (host, sorted(first), total, bits))
+    out = []
+    for c in large:
+        sw, d = c["sw"], c["kw"]
+        if id(c) in attacked:
+            host, srcs, total, bits = attacked[id(c)]
+            out.append(_detection(
+                "flood", collected, c["ctl"], sw,
+                words=(c["words"] + f"; its packets average {c['mean']:,.0f} B, but "
+                       f"{len(srcs)} sources ({', '.join(srcs)}) send to {host}, "
+                       f"{total:,.0f} packets a second and about {bits / 1e6:,.1f} Mb/s in "
+                       "all: judged as one attack on that host"),
+                attack_sources=srcs, attack_host=host, **d))
+            continue
+        out.append(_detection(
+            "high_rate", collected, c["ctl"], sw,
+            **dict(d, basis="large_packets", confidence="lower",
+                   confidence_why=(f"its packets average {c['mean']:,.0f} B, over the "
+                                   f"flood's {max_mean:g} B: one large-packet stream, which "
+                                   "a rate alone does not show to be an attack")),
+            words=(c["words"] + f", not called a flood: its packets average "
+                   f"{c['mean']:,.0f} B, over the flood's {max_mean:g} B "
+                   "(sdn_flood_max_mean_bytes), and no other source sends to the same host; "
+                   "a large-packet flood is left to a person")))
+    return out
 
 
 #: How many times larger one side's mean packet is than the other's before it is called the

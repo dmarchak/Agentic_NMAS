@@ -443,6 +443,8 @@ DECLARED = {
     "sdn_v2.response_confirm": ("sdn",),
     "sdn_v2.reapply_confirm": ("sdn",),
     "sdn_v2.response_dismiss": ("sdn",),
+    # C2313: a watching row made a response awaiting a person (its Needs attention row too).
+    "sdn_v2.watch_propose": ("sdn",),
     "sdn_v2.mode_set": ("sdn",),
     "sdn_v2.policy_set": ("settings", "sdn"),
     "sdn_v2.loop_set": ("sdn",),

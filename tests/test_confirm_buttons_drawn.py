@@ -1808,6 +1808,13 @@ class TestSdnOperationCards(_Cards):
                  "ip_proto 6)"),
         "response": ("_sdn_responses.html", "Preview the {{ r.label | lower }}…",
                      r"Preview the drop traffic from the source…", "viewer"),
+        # C2313's condition: a watched large-packet stream's Rate-limit this source…, drawn
+        # from the real watching row; blocked by the network's response policy forbidding the
+        # flood rule's rate limit (the rule the stream is checked as).
+        "watch_propose": ("_sdn_responses.html", "Rate-limit this source…",
+                          r"Rate-limit this source…",
+                          "data: the network's response policy allows the flood rule no rate "
+                          "limit"),
     }
     FORM = "/v2/sdn/flow/form?list=Default&do=add&connection=lab-controller&dpid=0000000000000001"
     ADD = {"list": "Default", "do": "add", "connection": "lab-controller",
@@ -1854,6 +1861,36 @@ class TestSdnOperationCards(_Cards):
     def blocked_response(self, request, monkeypatch):
         as_service(monkeypatch)
         return self._responses(request)
+
+    def _watching(self, request):
+        """The Lab 8 walk's first flood on s1 port 2, a large-packet stream under C2313's rule
+        (tests/test_sdn_source_from_topology.py's `walk_flood`), watched on Default."""
+        from modules.sdn import loop as LP
+        from tests.test_sdn_source_from_topology import stored, walk_flood
+        lab = request.getfixturevalue("lab")
+        d, _c, _s = walk_flood("walk-flood-1-s1", stored())
+        assert d["basis"] == "large_packets", "floor: a large-packet stream"
+        LP.watch("Default", dict(d, network="Default", connection="lab-controller"),
+                 {"key": "high_rate|192.0.2.2", "rule": "high_rate", "source": "192.0.2.2",
+                  "window_s": 30, "window_setting": "sdn_flood_window_seconds",
+                  "window_words": "within 30 s", "seen_also": []})
+        html = _text(lab["client"].get("/v2/sdn/responses?list=Default"))
+        assert "1 watching" in html, "floor: the watching row is drawn"
+        return html
+
+    def drawn_watch_propose(self, request):
+        return self._watching(request)
+
+    def blocked_watch_propose(self, request, monkeypatch):
+        from modules.sdn import closed_loop as CL
+        request.getfixturevalue("lab")
+        CL.save_policy("Default", {"scan": ["drop_source"], "flood": ["drop_source"],
+                                   "unauthorised_flow": ["remove_flow"]},
+                       actor="op@example.com", actor_verified="access")
+        html = self._watching(request)
+        assert "outside Default&#39;s response policy for flood" in html, \
+            "floor: the refusal is drawn"
+        return html
 
 
 EXCUSED: dict = {}
@@ -1911,9 +1948,10 @@ class TestThePopulation:
         the Intent tab's Store the value, C235, 2026-11-01; 71 until board FC's Approve and run
         and Go on, C2283, 2026-11-02; 73 until its Approve and commit: nothing to send, the
         same day; 74 until Bulk intent's own screen, and its Commit the change to N devices'
-        intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307)."""
+        intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307; 73 until a
+        watched large-packet stream's Rate-limit this source…, C2313, 2026-11-03)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 73, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 74, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

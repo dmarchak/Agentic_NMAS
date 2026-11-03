@@ -101,6 +101,9 @@ NOT_DIRECT = {
                                "authority's own path",
     "sdn_v2.reapply_confirm": "puts a lost response back through the switch's controller, the "
                               "authority's own path (C2018)",
+    "sdn_v2.watch_propose": "makes a watched stream a response awaiting a person (C2313) and "
+                            "sends nothing; the response is sent by sdn_v2.response_confirm, "
+                            "through the switch's controller",
 }
 
 

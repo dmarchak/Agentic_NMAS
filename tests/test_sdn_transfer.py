@@ -118,7 +118,7 @@ def test_a_transfer_s_watching_row_says_why_it_is_not_a_flood(calls):  # noqa: F
     assert w["transfer_words"] == d["transfer"]["words"] and calls == []
 
 
-def test_with_no_acks_returning_rc_tcp_s_data_is_a_flood_again():
+def test_with_no_acks_returning_rc_tcp_s_data_is_judged_as_the_flood_rule_judges_it():
     """The return side is the shape's half: RC-TCP with its ACK flows taken out of the switch
     tables (the minimal edit: the flows whose match names h4's MAC as the sender) is judged as
     a flood is, on the data's ports."""
@@ -132,6 +132,48 @@ def test_with_no_acks_returning_rc_tcp_s_data_is_a_flood_again():
                 sw["flows"] = [f for f in sw.get("flows") or []
                                if (f.get("match") or {}).get("eth_src") != acks]
     passes = S.replay(series)
-    floods = [r for r in passes if _of(r, "flood")]
-    assert floods and {(1, 2), (2, 3)} <= set(_of(floods[0], "flood"))
     assert not [d for r in passes for d in r["detections"] if d.get("basis") == "transfer"]
+    # Judged as the flood rule judges it (C2313, the operator's decision of 2026-11-03): one
+    # sender's 44 KB-a-packet stream is a large-packet stream, watched, never a transfer.
+    judged = [r for r in passes if _of(r, "flood", "high_rate")]
+    got = _of(judged[0], "flood", "high_rate")
+    assert {(1, 2), (2, 3)} <= set(got)
+    assert {got[k]["basis"] for k in ((1, 2), (2, 3))} == {"large_packets"}
+    assert not [d for r in passes for d in r["detections"] if d["rule"] == "flood"
+                and (d["dpid"], d["port"]) in ((1, 2), (2, 3))]
+
+
+def _without_sessions_from(label: str, address: str) -> dict:
+    """*label*'s series with every TCP session flow from *address* (`detect._session`'s source)
+    taken out of the switch tables (the minimal edit); the ports' counters are left as
+    captured."""
+    import copy
+    series = S.load(f"{DIR}/{label}.jsonl")
+    for p in series["passes"]:
+        p["collected"] = copy.deepcopy(p["collected"])
+        for ctl in p["collected"].get("controllers") or []:
+            for sw in ctl.get("switches") or []:
+                sw["flows"] = [f for f in sw.get("flows") or []
+                               if (D._session(f) or ("",))[0] != address]
+    return series
+
+
+def test_a_small_packet_stream_is_a_transfer_s_acks_only_with_its_data_returning():
+    """The return side decides flood or not, under C2313's rule: RC-TCP's ACK ports (s1 port 3,
+    s2 port 2) receive small packets (66 B, under the flood's 200 B). With the session's data
+    flowing the other way on the same switch, they are a transfer's ACKs, watched; with the
+    data's flows taken out (the TCP session flows from h2, 192.0.2.2), nothing shows them to
+    be a transfer's, so they are a high rate of small packets: a flood."""
+    acks_ports = ((1, 3), (2, 2))
+    passes = replayed("RC-TCP")
+    with_data = {(d["dpid"], d["port"]): d for r in passes for d in r["detections"]
+                 if (d["dpid"], d["port"]) in acks_ports}
+    assert set(with_data) == set(acks_ports)
+    assert all(d["rule"] == "high_rate" and d["basis"] == "transfer"
+               and d["transfer"]["side"] == "acks" for d in with_data.values())
+    passes = S.replay(_without_sessions_from("RC-TCP", "192.0.2.2"))
+    floods = {(d["dpid"], d["port"]) for r in passes for d in r["detections"]
+              if d["rule"] == "flood"}
+    assert set(acks_ports) <= floods, floods
+    assert not [d for r in passes for d in r["detections"]
+                if (d["dpid"], d["port"]) in acks_ports and d.get("basis") == "transfer"]

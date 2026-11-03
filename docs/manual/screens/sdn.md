@@ -200,8 +200,31 @@ mode and whether the loop is running.
   it itself: when the flood rule fires for the same port or source, it joins that incident,
   whose row then reads **Flood · began as High packet rate** and says since when; when the
   rate falls below the threshold, it ends as "ended, never more than a rate". The same source
-  on several switches is one row. You may dismiss it with a reason. How it works:
-  [High packet rate](sdn-flows#high-rate).
+  on several switches is one row. You may dismiss it with a reason. It also watches what the
+  flood rule holds but does not call a flood:
+  - **a TCP transfer**, its data with its ACKs returning;
+  - **one large-packet stream**, whose packets average more than the flood's size (200 B by
+    default, `sdn_flood_max_mean_bytes`).
+
+  A flood is a high packet rate of small packets. **A large-packet flood is left to you:** its
+  row says so, and nothing is proposed by itself.
+
+  **Rate-limit this source…** on that row makes the stream an incident awaiting you:
+  - **What it proposes:** the flood rule's rate limit on the stream's source, at the
+    catalogue's defaults (1,000 kbit/s, a burst of 100, the network's hard timeout). Its why
+    names you, and its evidence is the watched detection's.
+  - **What pressing it does:** it sends nothing and asks no AI. The watching row closes as
+    proposed by a person, and the new incident opens.
+  - **From there:** you preview the rate limit (its rate, unit, burst and timeout are yours to
+    change), confirm it by its hash, and it is applied, verified and recorded as any response
+    is.
+  - **When it is disabled:** it is checked as the Flood rule's response under the network's
+    response policy, since the stream is what the flood rule held. Where the policy does not
+    allow `rate_limit_source` for floods, or the stream names no source to act on (a link
+    port), the control is drawn disabled and says why.
+
+  Large packets from two or more sources to one host are one attack on that host, and are
+  called a flood. How it works: [High packet rate](sdn-flows#high-rate).
 - **An incident, opened**: the detection (the rule, the source, the switch, its confidence
   and its words, an alert with its evidence pack; an unauthorised flow's words also say what it
   does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the

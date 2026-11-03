@@ -188,6 +188,9 @@ GATES = {
     "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
                             "onboard_device"),
     "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, or (Free, C1504) frees the IP addresses of a Decommissioning record holding a device's management address, from v2's NetBox page and a device's NetBox tab"),
+    # C2313's condition (the operator's decision of 2026-11-03, option (i)): a person's decision
+    # that the later response confirm acts on, so a person is required (approve), never a service.
+    "sdn_v2.watch_propose": _g(A, "Rate-limit this source… on a watched large-packet stream (C2313): makes it a response awaiting a person, the flood rule's rate limit at the catalogue's defaults, checked against the network's response policy for the flood rule and naming the verified person who proposed it; the watching row closed as proposed by a person; nothing is sent and no AI is asked: the response is previewed and confirmed by hash as any is, recorded"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
     "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
