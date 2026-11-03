@@ -76,6 +76,16 @@ SCANNED = {
 #: Loops the scan cannot see (the work is behind a call). (file, function)
 #: -> (kind, why), from the 2026-09-29 survey.
 SURVEYED = {
+    ("modules/heal/detect.py", "run"): (
+        "sequential", "each read is `drift_check.check_device`, which holds the network's one "
+                      "drift-run lock across processes (`_OneRun`), so two reads of one network "
+                      "at once refuse each other (`DriftRunning`); a pass reads at most "
+                      "`READS_PER_PASS` and names the rest (board H, H2)"),
+    ("modules/heal/decide.py", "run"): (
+        "sequential", "each decision's rate guards (per device, per network, the same deviation "
+                      "twice: board H section 6, guards 9 to 11) count the decisions recorded "
+                      "before it, so two decided at once could both pass a limit one of them "
+                      "reaches; one read per incident, under the network's heal lock (H3)"),
     ("modules/nsot/deploy.py", "run_batch"): (
         "sequential", "the circuit breaker: `CircuitBreaker` stops the batch after the "
                       "first device a bad change breaks, and `max_workers()` says vIOS-L2 "

@@ -140,7 +140,9 @@ class TestARowThatClearsByTime:
                          # A lost response's hard timeout, when it would have expired (C2018).
                          ("sdn_mitigation", "lost"),
                          # A day after the last AI call that withheld a line (C2272).
-                         ("ai_withheld", "withheld")}
+                         ("ai_withheld", "withheld"),
+                         # A dry-run heal record's marking window ends (board H, H3).
+                         ("heal", "would_heal")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

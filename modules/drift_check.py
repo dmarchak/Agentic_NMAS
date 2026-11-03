@@ -329,6 +329,38 @@ def changed_lines(diff: list) -> int:
                if line[:1] in ("+", "-") and not line.startswith(("+++", "---")))
 
 
+def drift_diff(golden_text: str, current: str, hostname: str) -> list:
+    """The drift check's comparison of a device's *current* configuration with its golden: a
+    unified diff of both, the device's self-signed certificate and comment lines set aside, the
+    volatile lines cleaned (`_clean`). One comparison for the run, one device's check and the
+    heal's decision (board H, H3: the decision's fresh read is judged by the same departure)."""
+    from modules.nsot.normalize import strip_comments, strip_self_signed_certs
+
+    return list(difflib.unified_diff(
+        _clean("\n".join(strip_comments(strip_self_signed_certs(golden_text or "")))),
+        _clean("\n".join(strip_comments(strip_self_signed_certs(current or "")))),
+        fromfile=f"{hostname} — golden config",
+        tofile=f"{hostname} — running config",
+        lineterm="",
+    ))
+
+
+def departure(diff: list) -> str:
+    """What differs, as a fingerprint (board H, H2: the grace period's "the same departure at
+    both reads"): a hash of the unified diff's ``+`` and ``-`` lines (`changed_lines`' lines),
+    each masked by `redact_text` first, so a secret's value is never what is hashed. Two reads
+    of one device with the same departure hold the same lines departed; "" for no diff."""
+    import hashlib
+
+    from modules.redact import redact_text
+
+    lines = [redact_text(line) for line in diff
+             if line[:1] in ("+", "-") and not line.startswith(("+++", "---"))]
+    if not lines:
+        return ""
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:16]
+
+
 def _clean(text: str) -> list[str]:
     """Strip volatile/boilerplate lines before diffing."""
     return [
@@ -514,7 +546,11 @@ def check_device(list_name: str, hostname: str, by: str) -> dict:
                     if e.get("hostname") == hostname), "")
     return {"ok": state in ("clean", "drifted"), "hostname": hostname, "state": state,
             "changed_lines": entry.get("changed_lines"), "summary": one.get("summary", ""),
-            "error": error or skipped}
+            "error": error or skipped,
+            # Board H, H2: the grace period compares two reads' departures, and dates each by
+            # when the device was read.
+            "departure": entry.get("departure", ""), "read_at": entry.get("read_at"),
+            "skipped": bool(skipped)}
 
 
 def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
@@ -640,15 +676,8 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         # (2026-10-02: IOS-XE writes "! Call-home is enabled by Smart-Licensing."
         # itself, by licensing state, and r3's crash-reboot dropped it): set aside
         # by normalize.strip_comments and said in one line.
-        from modules.nsot.normalize import (comment_note, self_signed_note,
-                                            strip_comments, strip_self_signed_certs)
-        diff = list(difflib.unified_diff(
-            _clean("\n".join(strip_comments(strip_self_signed_certs(golden_text)))),
-            _clean("\n".join(strip_comments(strip_self_signed_certs(current)))),
-            fromfile=f"{hostname} — golden config",
-            tofile=f"{hostname} — running config",
-            lineterm="",
-        ))
+        from modules.nsot.normalize import comment_note, self_signed_note
+        diff = drift_diff(golden_text, current, hostname)
         note = self_signed_note(golden_text, current)
         if note:
             cert_list.append(hostname)
@@ -677,7 +706,8 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         drifted_list.append((hostname, len(diff)))
         # The lines that differ (C2319): a unified diff's +/- lines, never its two headers, its
         # hunk lines or its context (one changed line read as "11 diff lines").
-        differing[hostname] = {"changed_lines": changed_lines(diff), "read_at": read_at}
+        differing[hostname] = {"changed_lines": changed_lines(diff), "read_at": read_at,
+                               "departure": departure(diff)}
 
         try:
             add_approval(
@@ -855,6 +885,14 @@ class DriftChecker:
         now = time.time()
         self._next[list_name] = now + _get_interval()
         _save_state({"last_check_ts": now, "last_result": result}, list_name)
+        # Board H, H2: the run's drifted devices are heal triggers ("check this device now"),
+        # each with the read the run made. A trigger that fails is logged; the record stands.
+        try:
+            from modules.heal import triggers as heal_triggers
+            heal_triggers.after_drift_record(list_name, result)
+        except Exception as exc:
+            log.error("drift_check: %s's run recorded; its heal triggers failed: %s: %s",
+                      list_name, type(exc).__name__, exc)
         # Every open page hears that a run was recorded (board F4: the Diagnostics card redraws
         # when a Check now finishes; no polling). An announcement that cannot be made (no
         # socket in this process) is logged: the record stands.

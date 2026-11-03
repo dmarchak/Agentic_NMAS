@@ -185,6 +185,9 @@ ANNOUNCERS = {
     # modules/notify/delivery.py (board H, H7): each delivery's end, an event's, a Test
     # send's or a code's; and a destination verified.
     "notify": ("notifications",),
+    # modules/heal/decide.py (board H, H3): a pass's decisions recorded; a dry-run record
+    # rides on its device's drift row (`attention.heal_source`).
+    "heal-decide": ("drift",),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

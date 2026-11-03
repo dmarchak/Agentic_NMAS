@@ -792,6 +792,9 @@ def start(announce=None) -> list:
 
     # C1192: Needs attention's rows sighted whenever a reader it draws finishes.
     attention_record.install()
+    # Board H, H2: the heal triggers ride on the readers' stores ("check this device now").
+    from modules.heal import triggers as heal_triggers
+    heal_triggers.install()
     _stop.clear()
     started = []
     for r in readers():

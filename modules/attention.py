@@ -192,6 +192,10 @@ ROW_KINDS = {
     ("notify", "failed"): ("a notification could not be delivered",
                            "read the delivery log's error, fix the relay or the webhook, then "
                            "Test send"),
+    # Board H, H3 (docs/HEAL_TO_INTENT.md section 7): what self-healing would have done, in
+    # dry run, carried by the device's drift row (it attaches there, keeping the row's action).
+    ("heal", "would_heal"): ("self-healing, in dry run, would have healed a device",
+                             "read what it would have done, then mark it right or wrong"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -459,6 +463,9 @@ CLEARS = {
                                   "a day after the last AI call that withheld a line (by "
                                   "time), or acknowledged with a reason once the lines are "
                                   "read and their writer found"),
+    ("heal", "would_heal"): (("resolves", "time"),
+                             "a person marks the record right or wrong, or 7 days pass "
+                             "(decisions.MARK_DAYS)"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -4645,6 +4652,55 @@ def notify_source(got=None) -> dict:
                                   if got["state"] == "ok" else "no notification team is set"))
 
 
+def heal_source(got=None, now=None) -> dict:
+    """What self-healing would have done, in dry run (board H, H3; docs/HEAL_TO_INTENT.md
+    section 7: "the device's ordinary drift row carries it (`attach_to`), so a person resolving
+    the drift sees what the heal would have done"). ONE row per dry-run record of the network
+    on screen not yet marked right or wrong and under `decisions.MARK_DAYS` old, attached to
+    its device's drift row, keeping that row's own action; standing alone only when the drift
+    row has gone (the device back at its golden), its action then the mark. Each names the
+    mode on the network ("self-healing: dry run on <network>"): a dry run is never read as
+    AUTO."""
+    from modules.heal import decisions as HD
+
+    started = time.time()
+    now = now or started
+    label = "Self-healing: dry run"
+    lst = _page_network()
+    try:
+        rows = HD.decisions(lst) if got is None else got
+    except Exception as exc:
+        return source_result("heal", label, read_at=started, took_ms=0,
+                             error=f"{lst}'s heal decisions could not be read: {exc}")
+    out = []
+    for d in rows:
+        if d.get("outcome") != "would_heal" or d.get("mark"):
+            continue
+        at = float(d.get("epoch") or 0)
+        if now - at > HD.MARK_DAYS * 86400:
+            continue
+        host = d.get("device") or ""
+        units = "; ".join(u.get("words", "") for u in d.get("units") or [])
+        r = row(source="heal", kind="would_heal", key=d.get("id") or "?", level="warning",
+                what=(f"Self-healing: dry run on {lst}: it would have healed {host}"
+                      + (f": {units}" if units else "")),
+                cause=(f"{d.get('words') or ''}; program {d.get('program_hash') or '?'}. Nothing "
+                       "was sent: the network is in dry run, so what it would have done is "
+                       "recorded for a person to judge"),
+                action={"label": f"Read the record on {host}'s History, then mark it right or "
+                                 "wrong", "href": f"/v2/device/{host}?tab=history"},
+                devices=[host] if host else [], since=at,
+                clears_at=at + HD.MARK_DAYS * 86400,
+                operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
+                          "tier": d.get("tier"), "mode": d.get("mode")},
+                attach_to=f"drift:{lst}:drifted:{host}" if host else None)
+        r["attach_action"] = False
+        out.append(r)
+    return source_result("heal", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=out,
+                         checked=f"list {lst}: {len(out)} dry-run record(s) to mark")
+
+
 def reload_unverified_source(found=None) -> dict:
     """Each device whose newest reload record ended NOT VERIFIED (C2240): it answered on
     SSH's port after the reload and could not be signed in to within the verify's bound, so
@@ -5197,7 +5253,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reload_unverified_source, host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
-           sdn_mitigation_source, sdn_controllers_source, notify_source)
+           sdn_mitigation_source, sdn_controllers_source, notify_source, heal_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -5274,6 +5330,8 @@ SOURCE_KEYS = {
     "ai_withheld_source": ("ai_calls",),
     # Every delivery announces its record (modules/notify/delivery.py, board H's H7).
     "notify_source": ("notifications",),
+    # Board H, H3: a decision recorded (`heal-decide`) re-reads the drift row it rides on.
+    "heal_source": ("drift",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

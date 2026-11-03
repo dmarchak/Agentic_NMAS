@@ -40,26 +40,14 @@ LINE_CAP = 20
 def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
                  platform: str = "") -> dict:
     """``{"state", "adds", "removes", "reordered", "lines", "why"}``."""
-    from modules.nsot import hostvars, normalize, templates_repo
-    from modules.nsot import manifest as _manifest
+    from modules.nsot import normalize
     from modules.nsot.render_artifact import build_artifact
 
+    got = _prepared(repo, list_name, hostname, platform)
+    if got.get("why"):
+        return _unknown(got["why"])
     try:
-        committed = hostvars.read_committed(repo, hostname)
-    except Exception as exc:                   # noqa: BLE001
-        return _unknown(f"committed intent could not be read: {exc}")
-    if committed is None:
-        return _unknown("no committed intent: nothing says what this device should be")
-    try:
-        if not platform:
-            entry = _manifest.find_by_name(repo, hostname)[1] or {}
-            platform = entry.get("platform") or committed.get("platform") or ""
-        # What the device should be includes what it inherits from the
-        # network's monitoring profile (P.9), through the one merge.
-        from modules.nsot import profile as _profile
-        effective = _profile.effective_for(repo, list_name, hostname, committed, platform)
-        intent = hostvars.hydrate_secrets(effective, hostname, list_name)
-        src = templates_repo.render_source(repo, hostname, platform)
+        intent, src, platform = got["intent"], got["src"], got["platform"]
         stored = "\n".join(normalize.strip_for_repo(config_text or ""))
         artifact = build_artifact(hostname, stored, platform, template=src["template"],
                                   host_vars=intent, template_root=src["root"])
@@ -84,6 +72,57 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
             "adds": drift.get("adds", 0), "removes": drift.get("removes", 0),
             "reordered": drift.get("reordered", 0), "lines": lines[:LINE_CAP], "why": "",
             "classes": classes, "vtp_mode": mode}
+
+
+def _prepared(repo: str, list_name: str, hostname: str, platform: str = "") -> dict:
+    """What *hostname* should be, ready to render: ``{"intent", "src", "platform"}``, its
+    secrets hydrated, or ``{"why"}`` naming why not. One preparation for `intent_match` and
+    `intended_config`, so the two never render different intents."""
+    from modules.nsot import hostvars, templates_repo
+    from modules.nsot import manifest as _manifest
+
+    try:
+        committed = hostvars.read_committed(repo, hostname)
+    except Exception as exc:
+        return {"why": f"committed intent could not be read: {exc}"}
+    if committed is None:
+        return {"why": "no committed intent: nothing says what this device should be"}
+    try:
+        if not platform:
+            entry = _manifest.find_by_name(repo, hostname)[1] or {}
+            platform = entry.get("platform") or committed.get("platform") or ""
+        # What the device should be includes what it inherits from the
+        # network's monitoring profile (P.9), through the one merge.
+        from modules.nsot import profile as _profile
+        effective = _profile.effective_for(repo, list_name, hostname, committed, platform)
+        intent = hostvars.hydrate_secrets(effective, hostname, list_name)
+        src = templates_repo.render_source(repo, hostname, platform)
+    except Exception as exc:
+        log.warning("intent_match: %s: could not prepare committed intent: %s", hostname, exc)
+        return {"why": f"committed intent could not be rendered: {exc}"}
+    return {"intent": intent, "src": src, "platform": platform}
+
+
+def intended_config(repo: str, list_name: str, hostname: str, platform: str = "") -> dict:
+    """The render of *hostname*'s committed intent, secrets resolved, as `build_artifact`
+    renders it to validate (board H, H3: the heal's intersection rule compares it line by
+    line). ``{"text", "platform", "why"}``. IN MEMORY ONLY: never stored, logged or returned
+    to a page; a caller records only masked lines and hashes."""
+    from modules.nsot import roundtrip
+
+    got = _prepared(repo, list_name, hostname, platform)
+    if got.get("why"):
+        return {"text": None, "platform": platform, "why": got["why"]}
+    intent, src = got["intent"], got["src"]
+    kwargs = {"template_name": (src.get("template") or "base.j2").split("/")[-1]}
+    if src.get("root"):
+        kwargs["template_root"] = src["root"]
+    try:
+        text = roundtrip.render(intent, intent.get("platform", got["platform"]), **kwargs)
+    except Exception as exc:
+        return {"text": None, "platform": got["platform"],
+                "why": f"committed intent could not be rendered: {type(exc).__name__}: {exc}"}
+    return {"text": text, "platform": intent.get("platform", got["platform"]), "why": ""}
 
 
 def _classes(details: dict, config_text: str, intent: dict, stored: str, platform: str):

@@ -91,6 +91,11 @@ ENTRY_POINTS = {
         m for m, _digests, _n in __import__("modules.secret_compare", fromlist=["_masked_lines"])
         ._masked_lines(PLANTED, None, None)),
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
+    # A heal unit as its decision record keeps it, each line masked (board H, H3).
+    "modules/heal/kinds.py:masked_unit": lambda: "\n".join(
+        __import__("modules.heal.kinds", fromlist=["masked_unit"]).masked_unit(
+            {"op": "add", "chain": [], "lines": [], "add": [(None, PLANTED)],
+             "remove": [(None, PLANTED)]})["add"]),
     # The notifier's egress mask on every message it sends (board H, H7).
     "modules/notify/message.py:mask": lambda: (
         __import__("modules.notify.message", fromlist=["mask"]).mask(PLANTED)),

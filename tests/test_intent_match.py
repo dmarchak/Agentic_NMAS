@@ -201,6 +201,38 @@ class TestTheTrailerAndTheBaseline:
         assert any("s9 skipped" in r for r in out["baseline_denied"])
 
 
+class TestTheHealsRender:
+    """Board H, H3: the heal's intersection rule reads committed intent's render through the
+    one preparation `intent_match` uses (`intended_config`), on r2's real capture."""
+
+    def test_the_render_of_intent_reproduces_the_real_capture(self, lab):
+        from modules.heal.kinds import departures
+
+        repo, captured = lab
+        got = im.intended_config(repo, "Lab", "r2")
+        assert got["why"] == "" and got["platform"] == "cisco_iosxe"
+        dep = departures(captured, captured, got["text"])
+        assert (dep["missing"], dep["added"]) == ([], [])
+
+    def test_the_hosts_exact_case_is_two_units_one_missing_one_added(self, lab, monkeypatch):
+        from modules.heal.kinds import classify
+
+        monkeypatch.setattr("modules.nsot.removal.host_addresses", lambda: ["192.0.2.60"])
+        repo, captured = lab
+        intended = im.intended_config(repo, "Lab", "r2")["text"]
+        got = classify(captured, _broken(captured), intended, platform="cisco_iosxe",
+                       mgmt_ip="203.0.113.12")
+        kinds = sorted((u["kind"], u["chain"][0], u["lines"][0].strip()) for u in got["units"])
+        assert kinds == [("added_line", "interface GigabitEthernet2", "load-interval 30"),
+                         ("missing_line", "interface GigabitEthernet2", "ipv6 ospf 1 area 0")]
+        assert got["removal_ids"] and got["blocked"] is None, "load-interval is measured exact"
+
+    def test_no_intent_is_said_never_rendered(self, lab):
+        repo, _captured = lab
+        got = im.intended_config(repo, "Lab", "nope")
+        assert got["text"] is None and "no committed intent" in got["why"]
+
+
 def test_the_trailer_words():
     assert im.trailer({"r1": {"state": "match"}, "r2": {"state": "match"}}) == \
         "Intent-Match: yes (2 of 2)"

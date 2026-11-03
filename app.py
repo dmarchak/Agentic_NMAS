@@ -609,6 +609,14 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Reader jobs did not start: %s", _e)
 
+    # Heal to intent's detect pass (board H, H2): each watching incident's device read until
+    # its grace period settles it, then handed to the decision. It reads and changes nothing.
+    try:
+        from modules.heal import detect as _heal_detect
+        _heal_detect.start()
+    except Exception as _e:
+        app.logger.error("Heal detect pass did not start: %s", _e)
+
     # Prometheus's generated SNMP targets, kept current with the inventory
     # (C232): regenerated when it changes, and a backstop for other processes.
     try:
