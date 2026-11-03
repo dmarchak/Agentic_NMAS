@@ -23,6 +23,7 @@ draws it as a card.
 import difflib
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
 
@@ -438,9 +439,23 @@ def _masked_rows(rows: list) -> list:
     return [dict(r, text=redact_text(r["text"])) for r in rows]
 
 
+#: A reference with no value, as the masked render places it (C2332, `build_artifact`).
+_NO_VALUE = re.compile(r"<missing-secret:([A-Za-z0-9_]+)>")
+
+
+def no_value_words(text: str) -> str:
+    """*text* with each reference that has no value said as such (C2332, the operator's walk:
+    the preview drew `secret ••••••••` where nothing was stored): "(no value: <ref>; a deploy
+    is refused until it has one)"."""
+    return _NO_VALUE.sub(lambda m: f"(no value: {m.group(1)}; a deploy is refused until it has "
+                                   "one)", text or "")
+
+
 def _rows_of(pairs, kind: str = "add") -> list:
-    """Rows for (section, line) pairs, each section's line drawn once above its lines."""
+    """Rows for (section, line) pairs, each section's line drawn once above its lines; a
+    reference with no value said in words (`no_value_words`)."""
     rows, last = [], None
+    pairs = [(s, no_value_words(l) if l else l) for s, l in pairs]
     for section, line in pairs:
         if not line:
             rows.append({"kind": kind, "text": section})

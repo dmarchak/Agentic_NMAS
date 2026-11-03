@@ -315,9 +315,13 @@ def commit(name):
         return _card(editor_ctx(ref, dev, text=text, base=base, summary=summary,
                                 refused=refused), got.get("status", 400))
     p = intent_edit.preview(ref.name, host, text)
+    offer = deploy_offer_ctx(ref, dev)
+    # C2331 (the operator's walk, 2026-11-03): the offer's Set value… opens the Secret
+    # references card's form, and the commit's result replaced the section that held the card,
+    # so its press had no target. The result draws the card while a reference has no value.
     return _card({"state": "done", "host": host, "list": ref.name, "r": got, "p": p,
-                  "summary": summary, "actor": identity.request_actor(),
-                  "offer": deploy_offer_ctx(ref, dev)})
+                  "summary": summary, "actor": identity.request_actor(), "offer": offer,
+                  "secrets": secrets_ctx(ref, dev) if offer.get("missing") else None})
 
 
 def deploy_offer_ctx(ref, dev) -> dict:

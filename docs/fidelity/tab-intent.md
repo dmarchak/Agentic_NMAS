@@ -27,7 +27,18 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `4fd84f62f46f581f4c698ace3230b52a4a3a32b7db6c3638e8cfd8153ab9d942`
+Templates sha256: `c6913d7d746d8155ccba95440ed51669baa6233291ba788afb360e1105680e33`
+
+**Compared again 2026-11-03 ~04:4x UTC for C2331 and C2332** (the operator's walk on r8): a
+commit's result that names a reference with no value now holds the Secret references card
+below its foot, the card the offer's Set value… opens (the result replaced the section that held
+it, so the press had no target); and "What a deploy would send now" says a reference with no
+value in words, "(no value: <ref>; a deploy is refused until it has one)", where it drew the
+mask. Compared by reading against the boards the tab's record names (board H-S's card, its
+regions unchanged; the result's other regions untouched): the card as the tab draws it, in the
+place it held before the commit. Held by tests/test_intent_editor_v2.py and
+tests/test_secret_refs_resolve.py. Templates sha256 before:
+`4fd84f62f46f581f4c698ace3230b52a4a3a32b7db6c3638e8cfd8153ab9d942`.
 
 **Compared again 2026-11-02 (C2299, board FC phase 2 (a)), by the template:** the Secret
 references card reads the device's intent with its committed layers merged under it, so a

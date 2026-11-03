@@ -210,6 +210,18 @@ class TestEveryHelpLinkRenders:
         assert "getting-started#ai-spend" in links, links
         for i, want in enumerate(links):
             b.js("document.querySelector('#help-panel-body').innerHTML=''; return 1")
+            # C2160, measured in CI #1385 (2026-11-03): the marked link was gone and the popover
+            # closed, nothing in flight: the spend panel is re-read while open (`nmas-ai-open`,
+            # `nmas:ai_spend`), which replaces its links. So each link is found at its click,
+            # by its manual slug, the popover opened again first if it has closed.
+            b.js("var d=document.querySelector('#ai-spend');"
+                 "if (d && !d.open) document.querySelector('#nmas-ai').click(); return 1")
+            b.wait_for("return !!document.querySelector('#nmas-ai-panel .ai-head')", 10)
+            b.wait_for(f"var l=document.querySelectorAll('.topbar details[open] ' + "
+                       f"{LINKS.replace(', ', ', .topbar details[open] ')!r});"
+                       f"var a=Array.from(l).find(function(x){{return x.getAttribute("
+                       f"'data-manual') === {want!r}}});"
+                       f"if (!a) return false; a.setAttribute('data-top', {i}); return true", 10)
             b.click(f'[data-top="{i}"]')
             slug, _h, section = want.partition("#")
             href = f"/v2/help/{slug}" + (f"#{section}" if section else "")

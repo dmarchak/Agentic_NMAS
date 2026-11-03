@@ -122,6 +122,27 @@ def test_the_masked_list_names_every_reference(monkeypatch):
     assert "user_lab_secret" in art.summary()["masked_refs"]
 
 
+def test_the_preview_says_a_reference_has_no_value_and_masks_one_that_has(monkeypatch):
+    """C2332 (the operator's walk on r8, 2026-11-03): "What a deploy would send now" drew
+    `secret ••••••••` for the lab account's reference while it had no value. The masked render
+    masks only what resolved; a reference with none is its placeholder, said in words."""
+    from modules.nsot.intent_edit import no_value_words
+    from modules.nsot.render_artifact import MASK, build_artifact
+
+    capture, doc, values = _committed("cisco_iosxe")
+    del values["net:edge1:user_lab_secret"]                 # typed nowhere yet
+    monkeypatch.setattr(credentials, "get_template_secret", lambda name: values.get(name, ""))
+    monkeypatch.setattr("modules.config.list_slug", lambda name: name)
+    art = build_artifact("edge1", capture, "cisco_iosxe",
+                         host_vars=hostvars.hydrate_secrets(doc, "edge1", "net"),
+                         template="cisco_iosxe/base.j2", template_approved=True)
+    lab = next(l for l in art.rendered_masked.splitlines() if l.startswith("username lab "))
+    assert lab == "username lab privilege 15 secret <missing-secret:user_lab_secret>", lab
+    assert MASK in art.rendered_masked, "a reference with a value is masked as before"
+    assert no_value_words(lab) == ("username lab privilege 15 secret (no value: user_lab_secret;"
+                                   " a deploy is refused until it has one)")
+
+
 # ── the card's states ───────────────────────────────────────────────────────────────────
 
 @pytest.fixture

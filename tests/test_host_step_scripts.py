@@ -92,7 +92,10 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C2125: Alloy's severity stage takes a mixed-case facility (2026-10-28).
             "c2125-alloy-mixed-case-facility.sh",
             # C1917: NetBox admitted from the operator's laptop only, in DOCKER-USER (2026-10-27).
-            "c1917-netbox-docker-user.sh"}
+            "c1917-netbox-docker-user.sh",
+            # C2323: the telemetry rules regenerated with their real detection time and
+            # installed, Grafana restarted, every live rule as before (2026-11-03).
+            "c2323-telemetry-detect.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

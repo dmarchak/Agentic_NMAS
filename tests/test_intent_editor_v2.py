@@ -159,6 +159,16 @@ class TestCommitting:
         assert 'aria-disabled="true"' in offer and "no value" in offer
         assert 'href="/v2/device/s4?op=deploy"' not in offer
         assert 'hx-trigger="nmas:credentials from:body"' in offer
+        # C2331 (the operator's walk on r8, 2026-11-03: Set value… did nothing, and "Couldn't
+        # load this card" was drawn): its press swaps #intent-secrets, so the result holds that
+        # card, and the press opens its form for the reference.
+        button = re.search(r'<a class="btn btn-small" data-op="set-secret-value"[^>]*>', offer)
+        target = re.search(r'hx-target="#([^"]+)"', button.group(0)).group(1)
+        assert f'id="{target}"' in html, f"the press's target #{target} is not on the result"
+        opened = ed["client"].get(re.search(r'hx-get="([^"]+)"', button.group(0)).group(1))
+        card = opened.get_data(as_text=True)
+        assert opened.status_code == 200 and f'id="{target}"' in card and 'id="sr-form"' in card
+        assert 'name="ref" value="user_lab_secret"' in card, card[:800]
         # Every reference named, valued: the offer re-read offers Plan a deploy….
         for ref in [m for m in re.findall(r'set=([a-z_0-9]+)"', offer)]:
             credentials.set_template_secret(credentials.template_secret_key("lab", "s4", ref),

@@ -3453,3 +3453,29 @@ interpreter (`scratchpad/ctl_shr.py` t1 to t4, 2026-11-03 ~01:0x UTC). Baseline:
 | T3 the retriever ranking the question unmasked | killed | `test_a_pasted_secret_is_masked_before_it_leaves_and_said` |
 
 **The result: 3 mutants with the canary; every one killed; the worktree removed each time.**
+
+## 2026-11-03: the preview's masked render says a reference with no value (C2332), by hand
+
+**What changed in the tier:** `render_artifact.build_artifact`'s masked render (the preview and
+`intended/`, never sent) masks only the references that resolved. A reference the truthful
+render placed as `<missing-secret:<name>>` (no value stored) stays that placeholder, never the
+mask a stored value gets. The Intent tab's rows then say it in words (`intent_edit.no_value_words`).
+The truthful render, the program sent, and every comparison (`report`, `intent_drift`) are
+unchanged. The danger the hand check guards is a lookup that answers nothing for a reference
+that HAS a value: `roundtrip.render` then falls back to the hydrated value itself, and the real
+secret is in the preview.
+**The method:** each mutant one exact replacement of the changed line, required to match once,
+in a `scripts/nmas-control` throwaway worktree, then tests/test_secret_refs_resolve.py,
+test_previews_mask_secrets.py, test_no_get_returns_a_stored_secret.py,
+test_no_post_returns_a_stored_secret.py and test_render_artifact.py, one worker, in CI's
+interpreter (`scratchpad/mut_c2332.py`, 2026-11-03 ~04:3x UTC). Baseline: they pass.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the mask itself changed (`'not-the-mask'`) | killed | `test_render_is_masked`, `test_masked_render_is_refused_on_a_deploy_path`, the new test |
+| L1 the lookup answering nothing for every reference (each resolved value rendered) | killed | `test_no_planted_value_comes_back` (anon and person), `test_render_is_masked`, the new test |
+| L2 no reference ever without a value (every reference masked: the defect back) | killed | `test_the_preview_says_a_reference_has_no_value_and_masks_one_that_has` |
+| L3 the test inverted (a resolved value rendered, a missing one masked) | killed | `test_no_planted_value_comes_back`, `test_render_is_masked`, the new test |
+
+**The result: 3 mutants with the canary; every one killed, the leak by the existing guards as
+well as the new test; the worktree removed each time.**

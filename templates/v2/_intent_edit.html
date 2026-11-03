@@ -128,6 +128,9 @@
     <span class="op-act"><a class="btn btn-primary" data-op="removal" href="{{ removal_href }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}</span>
     {%- endif %}
   </div>
+  {#- C2331: the Secret references card, whose form the offer's Set value… opens, drawn while a
+      reference has no value (the result replaces the section that held it). -#}
+  {%- if c.secrets %}{% with c=c.secrets %}{% include "v2/_intent_secrets.html" %}{% endwith %}{% endif %}
 </section>
 {%- elif c.state == 'moved' %}
 {%- set m = c.m -%}

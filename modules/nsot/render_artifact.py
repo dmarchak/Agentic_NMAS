@@ -459,6 +459,10 @@ def build_artifact(device: str, running_config: str, platform: str,
     # so a masked render is non-ASCII by construction and would report every
     # secret line as unsendable.
     unsendable = _unsendable_lines(truthful)
+    # The references with no value, as the truthful render placed them (C2332, the operator's
+    # walk: the preview drew `secret ••••••••` for a reference with no value, as if one
+    # were stored). The masked render masks only those that resolved.
+    no_value = set(_MISSING_REF.findall(truthful))
     del truthful
 
     if host_vars is None:
@@ -471,8 +475,10 @@ def build_artifact(device: str, running_config: str, platform: str,
                                             from_capture)
         del capture_render
 
+    # A reference with no value renders as its placeholder (`roundtrip.render`'s
+    # `<missing-secret:<name>>`), never as the mask a stored value gets.
     rendered = roundtrip.render(parsed, resolved_platform,
-                                secret_lookup=lambda _name: MASK,
+                                secret_lookup=lambda name: None if name in no_value else MASK,
                                 **render_kwargs)
 
     return RenderArtifact(
