@@ -252,6 +252,93 @@ def test_the_runs_are_an_evaluation_each_printed_and_counted(world, monkeypatch,
     assert kept["collection"]["collected_at"] == got["collected_at"]
 
 
+# ── saved collections as one batch (`--cases`, the blind set's normal cases) ─────────────────
+
+def _batches(make):
+    """The provider's batch calls, faked (tests/test_ai_batch.py's): ``make(custom_id, data)``
+    is each request's answer, *data* its parsed blocks."""
+    from tests.test_ai_batch import FakeBatches, _message
+    return FakeBatches(answer=lambda cid, params: {
+        "type": "succeeded", "message": _message(json.dumps(make(cid, data_of(params))))},
+        states=("ended",))
+
+
+def _cases(*ids):
+    return {"cases": [{"id": i, "collection": normal(), "expect": {"threat_detected": False}}
+                      for i in ids]}
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_batched_round_sends_what_a_call_sends_and_judges_each_answer_the_same(world):
+    """Each batched request's messages are the live call's for the same collection, byte for
+    byte (one request path, `prepare_collection`), and each answer is judged and its use
+    recorded as a call's is."""
+    from modules.ai import triggers
+    mod = _script()
+    collected = normal()
+    world.answer = None
+    mod.classify_collection(NET, collected, actor=EVAL, trigger=triggers.evaluation(EVAL),
+                            send=citing(world, lambda d: no_threat(d["evidence"]["pieces"][0]
+                                                                   ["id"])))
+    live = world.sent[-1]["messages"]
+    fake = _batches(lambda cid, d: no_threat(d["evidence"]["pieces"][0]["id"]))
+    got = mod.classify_collections_batch(NET, [{"id": "N1", "collection": collected}], 2,
+                                         actor=EVAL, trigger=triggers.evaluation(EVAL),
+                                         provider=fake, sleep=lambda s: None)
+    assert got["ok"] and got["batch_id"] == "msgbatch_0test", got["detail"]
+    (sent,) = fake.created
+    assert [r["custom_id"] for r in sent] == ["N1-{}-v{}-r0".format(*CL.COLLECTION_PROMPT),
+                                              "N1-{}-v{}-r1".format(*CL.COLLECTION_PROMPT)]
+    assert all(r["params"]["messages"] == live for r in sent)
+    assert all(r["ok"] and r["threat_detected"] is False and r["check"]["passed"]
+               for r in got["results"].values())
+    assert [u["use"] for us in calls.uses().values() for u in us].count(
+        "assessed a collection no rule fired on: no threat") == 3
+
+
+@pytest.mark.usefixtures("lab")
+def test_each_run_is_scored_against_its_locked_expectation(world, tmp_path, capsys):
+    """A case is reliable only when every run passes: a threat answered on N2's normal traffic
+    in one run is that run's miss, named, and N2 is not reliable; N1's runs all pass."""
+    def make(cid, d):
+        a = no_threat(d["evidence"]["pieces"][0]["id"])
+        return dict(a, threat_detected=True, threat_type="other", severity="low") \
+            if cid.startswith("N2-") and cid.endswith("-r1") else a
+    out = tmp_path / "blind-normal.json"
+    assert _script().score_cases(_cases("N1", "N2"), NET, EVAL, 2, str(out), 1.0,
+                                 provider=_batches(make), sleep=lambda s: None) == 0
+    said = capsys.readouterr().out
+    assert "N1: 2 of 2 passed · reliable" in said
+    assert "N2: 1 of 2 passed · NOT reliable" in said
+    assert "run 1: threat_detected true where the key says false" in said
+    kept = json.loads(out.read_text())
+    assert kept["summary"].startswith("1 of 2 case(s) reliable; batch msgbatch_0test")
+    assert [(c["id"], c["passes"], c["reliable"]) for c in kept["cases"]] == [
+        ("N1", 2, True), ("N2", 1, False)]
+    assert {r["trigger"]["kind"] for r in rows()} == {"evaluation"}
+
+
+def test_a_case_s_misses_name_what_failed():
+    from_key = {"threat_detected": False}
+    m = _script().case_misses
+    assert m(from_key, {"ok": True, "threat_detected": False, "check": {"passed": True}}) == []
+    assert m(from_key, {"ok": False, "error": "over_cap"}) == ["not answered (over_cap)"]
+    assert m(from_key, {"ok": True, "threat_detected": False,
+                        "check": {"passed": False, "why": "cites no evidence id"}}) == [
+        "the check refused it: cites no evidence id"]
+
+
+@pytest.mark.usefixtures("lab")
+def test_saved_cases_need_a_stop_and_are_never_a_dry_run(world, tmp_path, capsys):
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(_cases("N1")))
+    out = tmp_path / "o.json"
+    assert _script().main(["--list", NET, "--cases", str(path), "--out", str(out),
+                           "--actor", EVAL]) == 2
+    assert "needs --stop-usd" in capsys.readouterr().err
+    assert world.sent == [] and rows() == [] and not out.exists()
+
+
 def test_a_person_s_address_is_refused_as_the_actor(networks, capsys):  # noqa: F811
     assert _script().main(["--list", NET, "--out", "/tmp/x.json", "--actor",
                            "op@example.com"], collector=lambda n, i: {}) == 2

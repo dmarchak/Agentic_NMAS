@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Display time zone board</title>
+<!-- Board for C2314 (the operator's order of 2026-11-03): one display time zone for the
+     installation, on Settings › Installation › General. A, the card at rest and being changed;
+     B, how a time reads once it is set; C, the change recorded, the day cap's day moving at the
+     next midnight. Self-contained: no external fonts or scripts. Example names only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 14px;text-decoration:none;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field input,.field select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.field .hint{font-size:12px;color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:190px 1fr;gap:6px 14px;font-size:13px}
+.kv dt{color:var(--ink-2)}.kv dd{margin:0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.topbar{display:flex;justify-content:flex-end;gap:12px;align-items:center;font-size:13px}
+.aichip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.na{display:grid;grid-template-columns:90px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-2);align-items:start}
+.tip{display:inline-block;background:#15191E;color:#FFFFFF;font-size:12px;border-radius:5px;padding:3px 8px;margin-left:6px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 18px;width:1404px;margin:0 auto 10px;font-size:13px}
+.q h3{margin-bottom:6px}
+.q ol{margin:6px 0 0 18px;padding:0}
+.q li{margin:2px 0}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>One display time zone for the installation (C2314): board for sign-off</h1>
+<div>The operator's order of 2026-11-03: a global display time zone (an IANA name, default UTC), storage staying UTC, every displayed time naming its zone, the daily boundaries following it with a change taking effect at the next local midnight, schedules keeping their own stated zone. Three artboards at 1440 wide, then the decisions. Yellow dashed notes are the board's annotations, not part of the screen. Every other link and control is one the built screen will have.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · Settings › Installation › General: the display time zone, at rest and being changed</strong>: a new tab, first, because the zone is the installation's and not a network's. The change's preview says what moves and what does not before anything is written.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#" class="on">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">Settings › Installation <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1>
+<p class="muted" style="margin:4px 0 0;font-size:13px">These settings apply to every network (3), standalone ones included. They are the installation's own, not values a network inherits. A change here changes all of them.</p></div>
+<nav class="tabs" aria-label="The installation's settings">
+<a class="tab on" href="#">General</a><a class="tab" href="#">Connections</a><a class="tab" href="#">Access and identity</a><a class="tab" href="#">Platforms and roles</a><a class="tab" href="#">Console servers</a><a class="tab" href="#">Diagnostics</a><a class="tab" href="#">AI</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="Display time zone, at rest">
+<div style="display:flex;justify-content:space-between;align-items:center"><h2>Display time zone</h2><span class="chip">default</span></div>
+<dl class="kv">
+<dt>Zone</dt><dd><strong>UTC</strong> <span class="muted">· the default: nobody has set one</span></dd>
+<dt>A time now reads</dt><dd>3 Nov 20:05 UTC</dd>
+<dt>The day begins</dt><dd>00:00 UTC, for the AI day cap, the AI chip's "today" and every "Today" range</dd>
+</dl>
+<p class="muted" style="margin:0;font-size:12.5px">Every screen draws its times in this zone and names it. Mercury stores every time in UTC whatever is set here, so nothing kept changes. A schedule keeps the zone it was stated in.</p>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn" href="#">Change…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+
+<section class="card" aria-label="Display time zone, being changed">
+<h2>Display time zone</h2>
+<label class="field">Zone
+<input type="search" value="America/Chicago" aria-describedby="tz-hint">
+<span class="hint" id="tz-hint">A zone name from this host's zone database (Region/City). Type to search; UTC is always offered. A zone follows its own daylight-saving changes.</span></label>
+<h3>What this changes</h3>
+<table><thead><tr><th>Where</th><th>Now</th><th>After Save</th></tr></thead><tbody>
+<tr><td>Every displayed time</td><td>3 Nov 20:05 UTC</td><td>3 Nov 14:05 CST</td></tr>
+<tr><td>The day cap's day, the chip's "today", "Today" ranges</td><td>from 00:00 UTC</td><td>from 00:00 CST, starting <strong>4 Nov 00:00 CST</strong> (06:00 UTC)</td></tr>
+<tr><td>Today's count, until then</td><td colspan="2">3 Nov 00:00 UTC to 4 Nov 00:00 CST: <strong>30 hours</strong>, one day of the cap</td></tr>
+</tbody></table>
+<h3>What does not change</h3>
+<ul class="muted" style="margin:0;padding-left:18px;font-size:13px">
+<li>Every stored time: records, receipts, commits and the AI ledger stay in UTC.</li>
+<li>Schedules in their own stated zone: the nightly backup window <strong>08:30 to 09:10 UTC</strong>, each network's drift check, each reader's interval.</li>
+<li>What a device logs, and Grafana's and Loki's own pages.</li>
+</ul>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn primary" href="#">Save the zone</a><a class="btn" href="#">Cancel</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+</div>
+<p class="callout">The day the cap is counting is never cut short or doubled: it ends at the first midnight in the new zone after Save, and its length is said (here 30 hours, since Chicago's midnight falls 6 hours after UTC's). Changing to a zone east of UTC gives a shorter day, said the same way. An unknown name refuses Save, naming the name typed and the zone database it was looked up in.</p>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · How a time reads once a zone is set</strong>: the zone's abbreviation after every time, UTC on hover. One zone on every screen. The viewer's browser zone is no longer used, until a person can choose their own (later, with accounts).</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#" class="on">Needs attention</a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span class="aichip">AI $0.42 today · resets 00:00 CST</span><span class="tip">The day cap's day: 4 Nov 00:00 CST (06:00 UTC), America/Chicago (Settings › Installation › General)</span></div>
+<h1 class="page">Needs attention</h1>
+<section class="card">
+<div class="na"><span class="chip warn">warning</span><div><strong>edge1: telemetry stream lost</strong><div class="muted" style="font-size:13px">since 14:05 CST <span class="tip">2026-11-03 20:05:12 UTC</span> · seen about 180 s after it stops</div></div><a class="btn sm" href="#">Open…</a></div>
+<div class="na"><span class="chip">info</span><div><strong>Nightly backup window</strong><div class="muted" style="font-size:13px">08:30 to 09:10 UTC (02:30 to 03:10 CST): nothing is run, staged or probed inside it</div></div><a class="btn sm" href="#">Open…</a></div>
+</section>
+<section class="card">
+<h2>History</h2>
+<table><thead><tr><th>When (CST)</th><th>What</th><th>Who</th></tr></thead><tbody>
+<tr><td>3 Nov 14:07</td><td>Display time zone changed from UTC to America/Chicago</td><td>operator@example.com</td></tr>
+<tr><td>3 Nov 13:52</td><td>Drift check, edge2: no drift</td><td>operator@example.com</td></tr>
+</tbody></table>
+</section>
+<p class="callout">A table's column head names the zone once ("When (CST)") instead of every cell. A time in another zone's daylight-saving change reads with its own abbreviation (CDT in summer). A schedule stated in UTC keeps UTC first and gives the display zone beside it. A zone with no abbreviation in the database reads its offset (UTC+05:30).</p>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The change recorded, before the day moves</strong>: the card says who changed it, when, and when the cap's day moves. History records the change with both zones.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#" class="on">Settings</a>
+</nav>
+<main>
+<h1 class="page">Settings › Installation</h1>
+<nav class="tabs" aria-label="The installation's settings">
+<a class="tab on" href="#">General</a><a class="tab" href="#">Connections</a><a class="tab" href="#">Access and identity</a><a class="tab" href="#">Platforms and roles</a><a class="tab" href="#">Console servers</a><a class="tab" href="#">Diagnostics</a><a class="tab" href="#">AI</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="Display time zone, saved">
+<div style="display:flex;justify-content:space-between;align-items:center"><h2>Display time zone</h2><span class="chip at">day moves at 00:00 CST</span></div>
+<dl class="kv">
+<dt>Zone</dt><dd><strong>America/Chicago</strong> <span class="muted">(CST, UTC−06:00)</span></dd>
+<dt>Set</dt><dd>3 Nov 14:07 CST by operator@example.com (verified); before: UTC</dd>
+<dt>A time now reads</dt><dd>3 Nov 14:09 CST</dd>
+<dt>The day begins</dt><dd>00:00 CST from <strong>4 Nov 00:00 CST</strong>. Until then today counts from 3 Nov 00:00 UTC (18:00 CST on 2 Nov): one 30-hour day</dd>
+</dl>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn" href="#">Change…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<section class="card" aria-label="The AI tab's day cap card, its zone line">
+<h2>AI (hosted) <span class="muted" style="font-weight:400;font-size:13px">· on the AI tab</span></h2>
+<dl class="kv">
+<dt>Cap per day</dt><dd>$15.00</dd>
+<dt>The day begins at</dt><dd>midnight in the display time zone, America/Chicago, from 4 Nov 00:00 CST (<a href="#">Settings › Installation › General</a>)</dd>
+</dl>
+<p class="muted" style="margin:0;font-size:12.5px">The card's own "The day begins at" field is gone: one zone decides every day boundary.</p>
+</section>
+</div>
+<p class="callout">Until the day moves, the AI chip, the cap's refusal and every "resets" read the same 30-hour day from one function (the day boundary's one home, <span class="mono">modules/ai/calls.py</span>), so a screen and the counter cannot disagree. After 4 Nov 00:00 CST the chip on the "day moves" card disappears.</p>
+</main>
+</div>
+
+<!-- ============================================================ Decisions -->
+<div class="artlabel"><strong>Decisions</strong>: each taken at its recommendation under the Phase 7 mode, one line in docs/STANDING_APPROVAL_LOG.md.</div>
+<div class="q">
+<h3>D1 · Where the setting lives</h3>
+<ol><li><strong>Recommended:</strong> a General tab, first, on Settings › Installation. The zone is the installation's, like who may sign in.</li><li>A field on the Default network's settings: a network would inherit it, and two networks could draw one event at two times.</li></ol>
+</div>
+<div class="q">
+<h3>D2 · The viewer's browser zone</h3>
+<ol><li><strong>Recommended:</strong> no longer used. Every script that redraws a time in the browser's zone (the clock words, Logs' query, the panels) draws in the installation's zone, so one event has one time on every screen and in every person's report. A person's own zone comes later, with accounts.</li><li>Keep the browser's zone where it is used today: two people read two times for one event, the defect C1740 records.</li></ol>
+</div>
+<div class="q">
+<h3>D3 · The AI day cap's own zone (<span class="mono">ai_cap_day_boundary</span>)</h3>
+<ol><li><strong>Recommended:</strong> it follows the display zone, and its own field leaves the AI card for a line naming the display zone. Its stored value stays readable for one release (expand, then contract). A release where it was set to a zone and no display zone is set seeds the display zone from it, so the cap's day stays where it was put.</li><li>Keep two zones: the chip's "today" and the cap's day could disagree with every other "today".</li></ol>
+</div>
+<div class="q">
+<h3>D4 · When a change moves the day</h3>
+<ol><li><strong>Recommended:</strong> displayed times move at Save. The day boundary moves at the first midnight in the new zone after Save, so the day being counted is one longer or shorter day, its length said on the card and in the preview. No day is counted twice, and no spend falls outside a day.</li><li>Move the boundary at Save: today's spend would be counted again or lost in a day that began hours ago.</li></ol>
+</div>
+<div class="q">
+<h3>D5 · How a time names its zone</h3>
+<ol><li><strong>Recommended:</strong> the zone database's abbreviation after the time (CST, CDT), its offset where it has none (UTC+05:30), UTC on hover, and a table naming it once in its column head.</li><li>The offset everywhere: always exact, and harder to read at a glance.</li></ol>
+</div>
+<div class="q">
+<h3>D6 · Who may change it, and its record</h3>
+<ol><li><strong>Recommended:</strong> an admin as a verified person, as every installation setting is, recorded on History with both zones and when the day moves. No reason asked: the change is reversible and moves no stored data.</li></ol>
+</div>
+<div style="height:40px"></div>
+</body>
+</html>

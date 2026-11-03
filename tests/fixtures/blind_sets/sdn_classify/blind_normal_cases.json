@@ -1,0 +1,1054 @@
+{
+ "task": "sdn_classify",
+ "path": "collection",
+ "network": "sdn_lab",
+ "about": "sdn_classify's blind normal cases (C1939): the classify-normal path, for read-only collections of an SDN fabric on which no detection rule fired, so the loop built no evidence pack. Built 2026-11-03 by a fresh context that never opened prompts/ or the classifier's schema guidance (modules/sdn/closed_loop.py), and never read data/ or another blind set's evidence or expectations. From the locked answer key (tests/fixtures/blind_sets/sdn_classify/blind_answer_key.md, sha256 11a6ccee4457525106f3fd72fd209021c618faf5f06f9519f496bd0d1c5a851a): rows N1 and N2, each copied verbatim into its case's key_row; both rows' Expected is none (no threat), so each case's expect is exactly threat_detected false. The collections were written by Mercury's own read-only collector (lab8_collect.py, which reads the controller's REST and writes only its JSON in /tmp) during the operator's session 6 on 2026-11-03, and fetched read-only from the NMAS host over the LAN by nmas-host on 2026-11-03 at 05:57:51 to 05:57:53 UTC (date -u): N1 /tmp/lab8-collect-sdn_lab-20261103T010017Z.json (sha256 888012abff4940ec591852fede7a9aa49639c5e2a9a5fdf4d373a34527b84708, collected_at 2026-11-03T01:00:12Z); N2 /tmp/lab8-collect-sdn_lab-20261103T014012Z.json (sha256 32a3f2b89d0e2d7048a5cfc10d79d90e720b2e5d2fba9b5f0676c323140c5fbf, collected_at 2026-11-03T01:40:06Z). N2's deviation: the run sheet asked for the collection while round 5 or later of lab8_pingall.sh 15 10 was running; it was taken during rounds 3 to 4, when the flows were already learned (24 flows on 2 switches). Each collection is kept exactly as Mercury's collector wrote it, parsed and not edited (its own network field reads \"SDN lab\", as the collector wrote it; this file's network is the slug sdn_lab, as in the host paths); the sha256 is of the bytes as fetched. The operator's run notes are kept in each case's source.notes. No model was called in building this set.",
+ "cases": [
+  {
+   "id": "N1",
+   "scenario": "Idle fabric (LLDP only)",
+   "key_row": "| N1 | Idle fabric (LLDP only) | no traffic | none | Y |",
+   "expect": {
+    "threat_detected": false
+   },
+   "source": {
+    "host_path": "/tmp/lab8-collect-sdn_lab-20261103T010017Z.json",
+    "sha256": "888012abff4940ec591852fede7a9aa49639c5e2a9a5fdf4d373a34527b84708",
+    "collected_at": "2026-11-03T01:00:12Z",
+    "notes": "The operator's notes (session 6, 2026-11-03): an idle fabric, 2 switches, 4 flows (LLDP and table-miss), 0 drop, 0 partial, ports ~1.2 pps; T1 01:00:56; every loop pass healthy."
+   },
+   "collection": {
+    "calls": 7,
+    "collected_at": "2026-11-03T01:00:12Z",
+    "controllers": [
+     {
+      "connection": "lab-ryu",
+      "error": "",
+      "kind": "ryu",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 2,
+        "coverage": {
+         "by_granularity": {
+          "L2": 1,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L2",
+         "scan_by_ports": false,
+         "words": "flows match only Ethernet fields and the switch port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 1,
+        "dpid_hex": "0000000000000001",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 9480,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 142,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p65535:1790f0e5cf",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "01:80:c2:00:00:0e",
+           "eth_type": 35020
+          },
+          "packet_count": 158,
+          "priority": 65535,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4128,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 142,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 52,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "ports": [
+         {
+          "id": "port:lab-ryu:0000000000000001:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 360,
+          "tx_bytes_per_s": 71.699,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 6,
+          "tx_pps": 1.195
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 430,
+          "tx_bytes_per_s": 85.64,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 7,
+          "tx_pps": 1.394
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:3",
+          "port_no": 3,
+          "rx_bytes_delta": 360,
+          "rx_bytes_per_s": 71.699,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 6,
+          "rx_pps": 1.195,
+          "tx_bytes_delta": 360,
+          "tx_bytes_per_s": 71.699,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 6,
+          "tx_pps": 1.195
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.021,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 2,
+        "coverage": {
+         "by_granularity": {
+          "L2": 1,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L2",
+         "scan_by_ports": false,
+         "words": "flows match only Ethernet fields and the switch port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 2,
+        "dpid_hex": "0000000000000002",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 9480,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 142,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p65535:1790f0e5cf",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "01:80:c2:00:00:0e",
+           "eth_type": 35020
+          },
+          "packet_count": 158,
+          "priority": 65535,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4128,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 142,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 52,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "ports": [
+         {
+          "id": "port:lab-ryu:0000000000000002:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 430,
+          "tx_bytes_per_s": 85.726,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 7,
+          "tx_pps": 1.396
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 360,
+          "tx_bytes_per_s": 71.77,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 6,
+          "tx_pps": 1.196
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:3",
+          "port_no": 3,
+          "rx_bytes_delta": 360,
+          "rx_bytes_per_s": 71.77,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 6,
+          "rx_pps": 1.196,
+          "tx_bytes_delta": 360,
+          "tx_bytes_per_s": 71.77,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 6,
+          "tx_pps": 1.196
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.016,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://127.0.0.1:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "SDN lab",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 0,
+     "flows": 4,
+     "partial": 0,
+     "scan_by_ports": 0,
+     "switches": 2,
+     "unreadable": 0
+    }
+   }
+  },
+  {
+   "id": "N2",
+   "scenario": "Light pings across all pairs",
+   "key_row": "| N2 | Light pings across all pairs | `lab8_pingall.sh 15 10` | none | Y |",
+   "expect": {
+    "threat_detected": false
+   },
+   "source": {
+    "host_path": "/tmp/lab8-collect-sdn_lab-20261103T014012Z.json",
+    "sha256": "32a3f2b89d0e2d7048a5cfc10d79d90e720b2e5d2fba9b5f0676c323140c5fbf",
+    "collected_at": "2026-11-03T01:40:06Z",
+    "notes": "The operator's notes (session 6, 2026-11-03): 24 flows, 0 drop, 0 partial, taken during the scenario's rounds 3–4, not round 5+, as the sheet asked (a deviation: the flows were already learned); T1 01:41:59; the loop log had 55 lines, every pass healthy, no detection."
+   },
+   "collection": {
+    "calls": 7,
+    "collected_at": "2026-11-03T01:40:06Z",
+    "controllers": [
+     {
+      "connection": "lab-ryu",
+      "error": "",
+      "kind": "ryu",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 12,
+        "coverage": {
+         "by_granularity": {
+          "L2": 11,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L2",
+         "scan_by_ports": false,
+         "words": "flows match only Ethernet fields and the switch port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 1,
+        "dpid_hex": "0000000000000001",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 11820,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 176,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p65535:1790f0e5cf",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "01:80:c2:00:00:0e",
+           "eth_type": 35020
+          },
+          "packet_count": 197,
+          "priority": 65535,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1716,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:877e9882db",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:01",
+           "eth_src": "00:00:00:00:00:02",
+           "in_port": 2
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1524,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:be66130d8d",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:02",
+           "eth_src": "00:00:00:00:00:01",
+           "in_port": 1
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1716,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:54b8b766bb",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:01",
+           "eth_src": "00:00:00:00:00:03",
+           "in_port": 3
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1524,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:d25a7ca10e",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:03",
+           "eth_src": "00:00:00:00:00:01",
+           "in_port": 1
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1716,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:7e648542ec",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:01",
+           "eth_src": "00:00:00:00:00:04",
+           "in_port": 3
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1524,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:edf671205a",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:04",
+           "eth_src": "00:00:00:00:00:01",
+           "in_port": 1
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1674,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:9f3352262d",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:02",
+           "eth_src": "00:00:00:00:00:03",
+           "in_port": 3
+          },
+          "packet_count": 17,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1482,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:919c9ff809",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:03",
+           "eth_src": "00:00:00:00:00:02",
+           "in_port": 2
+          },
+          "packet_count": 15,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1674,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:7d94dfb72f",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:02",
+           "eth_src": "00:00:00:00:00:04",
+           "in_port": 3
+          },
+          "packet_count": 17,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1482,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p1:ad71fe31c2",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:04",
+           "eth_src": "00:00:00:00:00:02",
+           "in_port": 2
+          },
+          "packet_count": 15,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 5572,
+          "cookie": 0,
+          "dpid": 1,
+          "duration_sec": 176,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000001:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 74,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "ports": [
+         {
+          "id": "port:lab-ryu:0000000000000001:1",
+          "port_no": 1,
+          "rx_bytes_delta": 588,
+          "rx_bytes_per_s": 117.342,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 6,
+          "rx_pps": 1.197,
+          "tx_bytes_delta": 888,
+          "tx_bytes_per_s": 177.21,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 11,
+          "tx_pps": 2.195
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:2",
+          "port_no": 2,
+          "rx_bytes_delta": 588,
+          "rx_bytes_per_s": 117.342,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 6,
+          "rx_pps": 1.197,
+          "tx_bytes_delta": 948,
+          "tx_bytes_per_s": 189.184,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 12,
+          "tx_pps": 2.395
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:3",
+          "port_no": 3,
+          "rx_bytes_delta": 1084,
+          "rx_bytes_per_s": 216.324,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 13,
+          "rx_pps": 2.594,
+          "tx_bytes_delta": 1084,
+          "tx_bytes_per_s": 216.324,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 13,
+          "tx_pps": 2.594
+         },
+         {
+          "id": "port:lab-ryu:0000000000000001:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.011,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 12,
+        "coverage": {
+         "by_granularity": {
+          "L2": 11,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L2",
+         "scan_by_ports": false,
+         "words": "flows match only Ethernet fields and the switch port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 2,
+        "dpid_hex": "0000000000000002",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 11820,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 176,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p65535:1790f0e5cf",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "01:80:c2:00:00:0e",
+           "eth_type": 35020
+          },
+          "packet_count": 197,
+          "priority": 65535,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1716,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:959d239b24",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:01",
+           "eth_src": "00:00:00:00:00:03",
+           "in_port": 1
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1524,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:3605883d95",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:03",
+           "eth_src": "00:00:00:00:00:01",
+           "in_port": 3
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1716,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:5c64b978c7",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:01",
+           "eth_src": "00:00:00:00:00:04",
+           "in_port": 2
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1524,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:71b45bc266",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:04",
+           "eth_src": "00:00:00:00:00:01",
+           "in_port": 3
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1674,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:33df411651",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:02",
+           "eth_src": "00:00:00:00:00:03",
+           "in_port": 1
+          },
+          "packet_count": 17,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1482,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 32,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:494d5021e1",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:03",
+           "eth_src": "00:00:00:00:00:02",
+           "in_port": 3
+          },
+          "packet_count": 15,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1674,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:89e44258f0",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:02",
+           "eth_src": "00:00:00:00:00:04",
+           "in_port": 2
+          },
+          "packet_count": 17,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1482,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:f6cfd9a441",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:04",
+           "eth_src": "00:00:00:00:00:02",
+           "in_port": 3
+          },
+          "packet_count": 15,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1752,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:3c1b582a8c",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:03",
+           "eth_src": "00:00:00:00:00:04",
+           "in_port": 2
+          },
+          "packet_count": 18,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 1568,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 31,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p1:04d6df5b2d",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "00:00:00:00:00:04",
+           "eth_src": "00:00:00:00:00:03",
+           "in_port": 1
+          },
+          "packet_count": 16,
+          "priority": 1,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 5662,
+          "cookie": 0,
+          "dpid": 2,
+          "duration_sec": 176,
+          "hard_timeout": 0,
+          "id": "flow:lab-ryu:0000000000000002:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 75,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "ports": [
+         {
+          "id": "port:lab-ryu:0000000000000002:1",
+          "port_no": 1,
+          "rx_bytes_delta": 490,
+          "rx_bytes_per_s": 97.203,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 5,
+          "rx_pps": 0.992,
+          "tx_bytes_delta": 790,
+          "tx_bytes_per_s": 156.715,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 10,
+          "tx_pps": 1.984
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:2",
+          "port_no": 2,
+          "rx_bytes_delta": 490,
+          "rx_bytes_per_s": 97.203,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 5,
+          "rx_pps": 0.992,
+          "tx_bytes_delta": 790,
+          "tx_bytes_per_s": 156.715,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 10,
+          "tx_pps": 1.984
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:3",
+          "port_no": 3,
+          "rx_bytes_delta": 1084,
+          "rx_bytes_per_s": 215.037,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 13,
+          "rx_pps": 2.579,
+          "tx_bytes_delta": 1084,
+          "tx_bytes_per_s": 215.037,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 13,
+          "tx_pps": 2.579
+         },
+         {
+          "id": "port:lab-ryu:0000000000000002:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.041,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://127.0.0.1:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "SDN lab",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 0,
+     "flows": 24,
+     "partial": 0,
+     "scan_by_ports": 0,
+     "switches": 2,
+     "unreadable": 0
+    }
+   }
+  }
+ ]
+}

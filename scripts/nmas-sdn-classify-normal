@@ -36,6 +36,17 @@ run.
 
 **`--dry-run`**: the collection read, and what would be sent by part (the pieces by kind, their
 characters, the ids, the names, the catalogue), with no call and nothing recorded.
+
+**`--cases <file> --stop-usd <n>`**: saved collections in place of a live one (the blind set's
+normal cases, ``{"cases": [{"id", "collection", "expect": {"threat_detected": false}}]}``),
+every case asked *--runs* times as ONE batch at the batch rate (`gateway.ask_batch`), each
+request the one a call sends, each answer judged as a call's is, and each run scored against
+its case's locked expectation; per case its passes and whether every run passed (reliable),
+then the share of cases reliable:
+
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-classify-normal --list <network> \\
+        --cases tests/fixtures/blind_sets/sdn_classify/blind_normal_cases.json --runs 10 \\
+        --stop-usd 1 --out /tmp/sdn-blind-normal.json
 """
 import argparse
 import json
@@ -182,6 +193,130 @@ def classify_normal(network: str, collected: dict, actor: str, runs: int, out: s
     return status
 
 
+def batch_custom_id(case_id: str, run: int) -> str:
+    """A batched request's custom_id: the case, the prompt's version and the run
+    (``N1-sdn_classify_collection-v1-r0``), in the provider's shape (letters, digits, _ and -,
+    at most 64)."""
+    from modules.sdn import closed_loop
+
+    name, version = closed_loop.COLLECTION_PROMPT
+    safe = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in str(case_id))
+    return f"{safe}-{name}-v{int(version)}-r{int(run)}"[:64]
+
+
+def classify_collections_batch(network: str, items: list, runs: int, *, actor: str,
+                               trigger: dict, stop_usd: float = None, provider=None,
+                               sleep=None) -> dict:
+    """Saved collections no rule fired on, each asked *runs* times as one batch at the batch
+    rate (`gateway.ask_batch`, which refuses any trigger but an evaluation's): each of *items*
+    (``{"id", "collection"}``) through `closed_loop.prepare_collection`, the request a call
+    sends, and each answer judged as `classify_collection` judges it, its use recorded the
+    same. ``{"ok", "error", "detail", "batch_id", "cost_usd", "results": {custom_id:
+    classify_collection's result with "id" and "run"}}``; an item a gate refuses is its result
+    in every run, nothing sent."""
+    from modules.ai import calls, gateway
+    from modules.sdn import closed_loop
+
+    requests, preps, results = [], {}, {}
+    for item in items:
+        prep = closed_loop.prepare_collection(network, item["collection"])
+        for run in range(int(runs)):
+            cid = batch_custom_id(item["id"], run)
+            meta = {"id": item["id"], "run": run}
+            base = {"ok": False, "error": prep["error"], "detail": prep["detail"],
+                    "call_id": "", "cost_usd": 0.0, "assessment": None,
+                    "threat_detected": None, "check": None, "sent": prep["sent"]}
+            if not prep["ok"]:
+                results[cid] = dict(base, **meta)
+                continue
+            preps[cid] = (prep, dict(base, **meta))
+            requests.append({"custom_id": cid, "feature": closed_loop.CLASSIFY_FEATURE,
+                             "prompt": tuple(closed_loop.COLLECTION_PROMPT),
+                             "schema": closed_loop.ThreatAssessment,
+                             "parts": prep["req"]["data"], "context": prep["req"]["context"],
+                             "subject": prep["subject"]})
+    if not requests:
+        return {"ok": False, "error": "nothing_sent", "detail": "every case was refused "
+                "before a batch was built (each result names why); nothing was sent",
+                "batch_id": "", "cost_usd": 0.0, "results": results}
+    got = gateway.ask_batch(requests, actor=actor, trigger=trigger, stop_usd=stop_usd,
+                            provider=provider, sleep=sleep)
+    for cid, (prep, out) in preps.items():
+        one = got["results"].get(cid)
+        if one is None:
+            results[cid] = dict(out, error=got["error"] or "no_result",
+                                detail=got["detail"] or "the batch returned no result for it")
+            continue
+        out.update(call_id=one.get("call_id", ""), cost_usd=one.get("cost_usd", 0.0))
+        if not one["ok"]:
+            results[cid] = dict(out, error=one["error"], detail=one.get("detail", ""))
+            continue
+        judged = closed_loop.judge_collection(network, one["output"], prep)
+        calls.record_use(one["call_id"], "assessed a collection no rule fired on: "
+                         + ("a threat (a false positive to report)"
+                            if judged["threat_detected"] else "no threat"),
+                         actor=actor, detail=judged["check"]["why"] or "the check passed",
+                         links={"page": "/v2/sdn/responses"})
+        results[cid] = dict(out, ok=True, error="", detail="", **judged)
+    return {"ok": got["ok"], "error": got["error"], "detail": got["detail"],
+            "batch_id": got["batch_id"],
+            "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in results.values()), 6),
+            "results": results}
+
+
+def case_misses(expect: dict, result: dict) -> list:
+    """What a run of a normal case missed against its locked expectation (*expect*
+    ``{"threat_detected": false}``, the answer key's "none"): not answered, a threat where none
+    is expected, or the code's check refusing the answer. Empty is a pass."""
+    if not result.get("ok"):
+        return [f"not answered ({result.get('error')})"]
+    out = []
+    if bool(result.get("threat_detected")) != bool(expect.get("threat_detected")):
+        out.append("threat_detected {} where the key says {}".format(
+            str(bool(result.get("threat_detected"))).lower(),
+            str(bool(expect.get("threat_detected"))).lower()))
+    check = result.get("check") or {}
+    if not check.get("passed"):
+        out.append(f"the check refused it: {check.get('why')}")
+    return out
+
+
+def score_cases(data: dict, network: str, actor: str, runs: int, out: str, stop_usd: float,
+                provider=None, sleep=None) -> int:
+    """`--cases`: every case's saved collection asked *runs* times in one batch, each run
+    scored against its case's locked expectation (`case_misses`), and per case its passes and
+    whether every run passed (reliable); then the share of cases reliable. Kept in *out*."""
+    from modules.ai import triggers
+
+    items = [{"id": c["id"], "collection": c["collection"]} for c in data["cases"]]
+    got = classify_collections_batch(network, items, runs, actor=actor,
+                                     trigger=triggers.evaluation(actor), stop_usd=stop_usd,
+                                     provider=provider, sleep=sleep)
+    report, reliable = [], 0
+    for c in data["cases"]:
+        mine = sorted((r for r in got["results"].values() if r["id"] == c["id"]),
+                      key=lambda r: r["run"])
+        scored = [dict(r, misses=case_misses(c["expect"], r)) for r in mine]
+        passes = sum(1 for r in scored if not r["misses"])
+        ok = bool(scored) and passes == len(scored)
+        reliable += ok
+        report.append({"id": c["id"], "passes": passes, "runs": len(scored), "reliable": ok,
+                       "runs_scored": scored})
+        print(f"{c['id']}: {passes} of {len(scored)} passed"
+              + (" · reliable" if ok else " · NOT reliable")
+              + "".join(f"\n  run {r['run']}: " + "; ".join(r["misses"])
+                        for r in scored if r["misses"]), flush=True)
+    words = (f"{reliable} of {len(report)} case(s) reliable; batch "
+             f"{got['batch_id'] or 'none'}, ${got['cost_usd']:.4f}"
+             + (f"; {got['error']}: {got['detail']}" if not got["ok"] else ""))
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"network": network, "actor": actor, "runs": runs,
+                   "batch_id": got["batch_id"], "spent_usd": got["cost_usd"],
+                   "summary": words, "cases": report}, fh, indent=2)
+    print(f"{words}; written {out}")
+    return 0 if got["ok"] else 3
+
+
 def main(argv=None, collector=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("--checkout", default="")
@@ -193,6 +328,11 @@ def main(argv=None, collector=None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--dry-run", action="store_true",
                     help="say what would be sent; no call")
+    ap.add_argument("--cases", default="",
+                    help="saved collections with their locked expectations, asked as one "
+                         "batch at the batch rate in place of a live collection")
+    ap.add_argument("--stop-usd", type=float, default=None,
+                    help="with --cases: the most the batch may cost; refused whole above it")
     args = ap.parse_args(argv)
     checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
     sys.path.insert(0, checkout)
@@ -218,6 +358,16 @@ def main(argv=None, collector=None) -> int:
         if refusal:
             print(f"nmas-sdn-classify-normal: {refusal}", file=sys.stderr)
             return 2
+    if args.cases:
+        if args.dry_run or args.stop_usd is None:
+            print("nmas-sdn-classify-normal: --cases is asked as one batch and needs "
+                  "--stop-usd, the most it may cost (no --dry-run)", file=sys.stderr)
+            return 2
+        with open(args.cases, encoding="utf-8") as fh:
+            data = json.load(fh)
+        print(f"nmas-sdn-classify-normal: {len(data['cases'])} case(s) from {args.cases}, "
+              f"{args.runs} run(s) each, one batch, recorded as {actor}")
+        return score_cases(data, network, actor, args.runs, args.out, args.stop_usd)
     collected = (collector or collect)(network, args.interval)
     s = collected.get("summary") or {}
     print(f"nmas-sdn-classify-normal: {network}, collected {collected.get('collected_at')} "
