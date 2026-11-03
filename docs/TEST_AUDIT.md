@@ -88,7 +88,22 @@ No classification and no fixes:
   - **What (b) needs beyond it:** mutmut stops a mutant at its first failing test, so its
     results name no test's own kills. (b) needs every covered test run alone against each
     mutant of the functions it covers.
-  - **Its cost:** sized from #69's mutant counts before it is built.
+  - **Its cost, sized 2026-11-03 ~13:2x UTC, before it is built:**
+    - **The inputs:** the coverage nightly #36's per-test reach; #69's 273
+      mutants over 5 functions, about 55 a function; and tool (a)'s 1.31 s of wall per test
+      run alone.
+    - **`modules/ai/`:** 543 functions, 530 reached, 86,611 function and test pairs; about
+      4.7 million test runs, about 1,721 h serial.
+    - **`modules/sdn/`:** 449 functions, 444 reached, 58,461 pairs; about 3.2 million runs,
+      about 1,162 h.
+  - **As specified, it is not runnable** (about 2,900 h for the two Phase 8 modules alone,
+    before the other full-scope areas). One pytest run per mutant holding all its covering
+    tests, every failure recorded (`--continue-on-collection-errors`, no `-x`), saves the
+    start-up per test, but still pays each test's own time.
+  - **The measurement it needs:** a covering test's in-process time, read from one module's
+    run.
+  - **The decision is the operator's:** the shape (full, sampled with a recorded seed, or
+    narrowed to the functions the deletion tool and the score flag).
 
 ## The independent review
 

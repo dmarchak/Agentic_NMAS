@@ -107,6 +107,8 @@ VOCABULARY = {
                "last stored it (Phase 4)",
     "coverage_reporting": "when each device's monitoring data last arrived, as the coverage-reporting reader last stored it (Coverage's not-reporting cells)",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
+    "scheduled_jobs": "each scheduled workflow's newest scheduled runs, as the scheduled-jobs "
+                      "reader last stored them",
     "app_version": "whether the running commit is what is pushed (origin/main), as the "
                    "app-pushed reader last stored it",
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",

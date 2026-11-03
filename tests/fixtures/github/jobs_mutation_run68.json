@@ -1,0 +1,137 @@
+{
+ "total_count": 2,
+ "jobs": [
+  {
+   "name": "outside the backup window (08:30 to 09:10 UTC)",
+   "conclusion": "success",
+   "steps": [
+    {
+     "name": "Set up job",
+     "conclusion": "success"
+    },
+    {
+     "name": "Run now=$(date -u +%H%M)",
+     "conclusion": "success"
+    },
+    {
+     "name": "Complete job",
+     "conclusion": "success"
+    }
+   ]
+  },
+  {
+   "name": "mutate",
+   "conclusion": "failure",
+   "steps": [
+    {
+     "name": "Set up job",
+     "conclusion": "success"
+    },
+    {
+     "name": "Run actions/checkout@v4",
+     "conclusion": "success"
+    },
+    {
+     "name": "Run actions/setup-python@v5",
+     "conclusion": "success"
+    },
+    {
+     "name": "Install the host's versions, CI's tools and mutmut, exactly",
+     "conclusion": "success"
+    },
+    {
+     "name": "The runner's environment (information, not a gate)",
+     "conclusion": "success"
+    },
+    {
+     "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+     "conclusion": "success"
+    },
+    {
+     "name": "The runner image, for the setup caches' keys",
+     "conclusion": "success"
+    },
+    {
+     "name": "promtool, cached by the runner image (C1637)",
+     "conclusion": "success"
+    },
+    {
+     "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+     "conclusion": "skipped"
+    },
+    {
+     "name": "promtool answers",
+     "conclusion": "success"
+    },
+    {
+     "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+     "conclusion": "success"
+    },
+    {
+     "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+     "conclusion": "skipped"
+    },
+    {
+     "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+     "conclusion": "success"
+    },
+    {
+     "name": "Allow a network namespace for the tests (this VM only)",
+     "conclusion": "success"
+    },
+    {
+     "name": "The last night's record (the commit it covered, and what it left over)",
+     "conclusion": "success"
+    },
+    {
+     "name": "The newest coverage drill-down (each function's tests, measured)",
+     "conclusion": "success"
+    },
+    {
+     "name": "Download it",
+     "conclusion": "success"
+    },
+    {
+     "name": "Plan the night",
+     "conclusion": "success"
+    },
+    {
+     "name": "Mutate, within the budget, confined to loopback",
+     "conclusion": "success"
+    },
+    {
+     "name": "The report",
+     "conclusion": "failure"
+    },
+    {
+     "name": "Keep the record for the next night",
+     "conclusion": "success"
+    },
+    {
+     "name": "Keep the full report",
+     "conclusion": "success"
+    },
+    {
+     "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+     "conclusion": "skipped"
+    },
+    {
+     "name": "Post promtool, cached by the runner image (C1637)",
+     "conclusion": "skipped"
+    },
+    {
+     "name": "Post Run actions/setup-python@v5",
+     "conclusion": "skipped"
+    },
+    {
+     "name": "Post Run actions/checkout@v4",
+     "conclusion": "success"
+    },
+    {
+     "name": "Complete job",
+     "conclusion": "success"
+    }
+   ]
+  }
+ ]
+}

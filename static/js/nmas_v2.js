@@ -16,6 +16,8 @@
      vocabulary; the readers that announce them). */
   var KEYS = ['reachability', 'integration_health', 'alerts', 'drift', 'dashboards', 'reads',
               'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines',
+              // C2347's reader: the scheduled quality jobs' runs.
+              'scheduled_jobs',
               // A batch deploy run as a job (P.9 d2), and the goldens it commits.
               'deploy_job', 'goldens',
               // C38's reader: the routing adjacencies intent implies.
@@ -652,6 +654,7 @@
   function relaySettings() { relay('settings'); }
   function relayJobHealth() { relay('job_health'); }
   function relayCiVerdict() { relay('ci_verdict'); }
+  function relayScheduledJobs() { relay('scheduled_jobs'); }
   function relayAppVersion() { relay('app_version'); }
   function relayNetbox() { relay('netbox'); }
   function relayRemote() { relay('remote'); }
@@ -870,6 +873,7 @@
     NMAS.subscribe('settings', 'v2Settings', relaySettings);
     NMAS.subscribe('job_health', 'v2JobHealth', relayJobHealth);
     NMAS.subscribe('ci_verdict', 'v2CiVerdict', relayCiVerdict);
+    NMAS.subscribe('scheduled_jobs', 'v2ScheduledJobs', relayScheduledJobs);
     NMAS.subscribe('app_version', 'v2AppVersion', relayAppVersion);
     NMAS.subscribe('netbox', 'v2Netbox', relayNetbox);
     NMAS.subscribe('remote', 'v2Remote', relayRemote);

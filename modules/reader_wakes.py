@@ -108,6 +108,8 @@ NOT_WOKEN = {
     "app-pushed": "the application repository's origin: changed by a push to GitHub, read again "
                   "when an update's host job finishes (routes/update.py)",
     "ci-verdict": "GitHub Actions: changed by CI, never by an operation here",
+    "scheduled-jobs": "GitHub Actions' scheduled runs: changed by GitHub's schedule, never by an "
+                      "operation here",
     "reachability": "whether each device answers ICMP and SSH: read every 5 s, and no operation's "
                     "write changes it",
     "logs-tail": "the network's log store's last 15 minutes: devices write it, never an operation "

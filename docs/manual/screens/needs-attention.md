@@ -74,7 +74,10 @@ mid-run); a device's SSH host key that changed (**Re-key…** on its page), and 
 planned window kept; the records database's stores that do not match or do not answer; the
 scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
 way that drops lines; the log redaction found unhealthy; the CI verdict on the running commit,
-and a pushed release whose CI failed; host steps owed; a NetBox-sourced network's unreadable
+and a pushed release whose CI failed; a scheduled quality job (each workflow with a schedule,
+such as the weekly mutation run) whose newest scheduled run failed, or that has not succeeded
+within its period and GitHub's start delay, with a link to the run (it clears only when a
+scheduled run succeeds; a dispatched one does not clear it); host steps owed; a NetBox-sourced network's unreadable
 inventory; a rollback's record; pending onboardings (overdue, or still holding a staged
 credential); Grafana's rule groups that stopped evaluating, and rules that read no data; the
 fleet's heartbeat stopping at once (one row, not one per device); the routing adjacencies

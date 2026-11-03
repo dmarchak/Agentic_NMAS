@@ -1,0 +1,65 @@
+{
+ "total_count": 4,
+ "workflow_runs": [
+  {
+   "id": 41337732668,
+   "run_number": 68,
+   "event": "schedule",
+   "status": "completed",
+   "conclusion": "failure",
+   "head_branch": "main",
+   "head_sha": "815a40c96ed6a91a346c3954d1735e5f9f322f4e",
+   "created_at": "2026-11-01T18:39:24Z",
+   "run_started_at": "2026-11-01T18:39:24Z",
+   "updated_at": "2026-11-01T20:54:09Z",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/41337732668",
+   "path": ".github/workflows/mutation-nightly.yml",
+   "name": "mutation-nightly"
+  },
+  {
+   "id": 40215802462,
+   "run_number": 67,
+   "event": "schedule",
+   "status": "completed",
+   "conclusion": "failure",
+   "head_branch": "main",
+   "head_sha": "750c0550f607db75579ec70eab32255e8cd8fa21",
+   "created_at": "2026-10-25T17:18:11Z",
+   "run_started_at": "2026-10-25T17:18:11Z",
+   "updated_at": "2026-10-25T19:27:20Z",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/40215802462",
+   "path": ".github/workflows/mutation-nightly.yml",
+   "name": "mutation-nightly"
+  },
+  {
+   "id": 38742553276,
+   "run_number": 13,
+   "event": "schedule",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "head_branch": "main",
+   "head_sha": "2948c8a07fea60ff8823c6e10aacc666dc37db06",
+   "created_at": "2026-10-15T13:25:22Z",
+   "run_started_at": "2026-10-15T13:25:22Z",
+   "updated_at": "2026-10-15T13:44:04Z",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/38742553276",
+   "path": ".github/workflows/mutation-nightly.yml",
+   "name": "mutation-nightly"
+  },
+  {
+   "id": 38574128745,
+   "run_number": 3,
+   "event": "schedule",
+   "status": "completed",
+   "conclusion": "failure",
+   "head_branch": "main",
+   "head_sha": "9a834033f5186ff8bf2d4b13c116c3a332be066b",
+   "created_at": "2026-10-14T13:43:00Z",
+   "run_started_at": "2026-10-14T13:43:00Z",
+   "updated_at": "2026-10-14T16:10:41Z",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/38574128745",
+   "path": ".github/workflows/mutation-nightly.yml",
+   "name": "mutation-nightly"
+  }
+ ]
+}

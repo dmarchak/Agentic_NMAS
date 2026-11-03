@@ -765,7 +765,9 @@ class TestTheShippedScripts:
         # recorded, the AI card's Test; Phase 8's 8.0b).
         # +1 2026-10-27: sdn (SDN › Controllers and Flows redraw on the sdn-controllers
         # reader's announcement, PHASE8_PLAN 17.1 S11).
-        assert len(keys) == 51
+        # +1 2026-11-03: scheduled_jobs (Needs attention redraws on the scheduled-jobs
+        # reader's announcement, C2347).
+        assert len(keys) == 52
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

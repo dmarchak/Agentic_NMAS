@@ -121,6 +121,12 @@ ROW_KINDS = {
                                  "read which handler and what got through, then restart Mercury"),
     ("ci", "verdict"): ("the running commit has no CI pass",
                         "update to a release CI passed, or find why CI could not be asked"),
+    ("scheduled_jobs", "failed"): ("a scheduled quality job's newest scheduled run did not "
+                                   "succeed", "read where it failed and fix forward"),
+    ("scheduled_jobs", "overdue"): ("a scheduled quality job has not succeeded within its "
+                                    "period", "find why its schedule has not run or passed"),
+    ("scheduled_jobs", "unread"): ("a scheduled quality job's runs could not be read",
+                                   "read what GitHub answered"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
     # C1693: a hand-formatted document cannot be patched (Change it in words, bulk intent).
     ("intent-format", "hand"): ("a device's committed intent does not round-trip through "
@@ -364,6 +370,12 @@ CLEARS = {
                                    "180 days"),
     ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
     ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
+    ("scheduled_jobs", "failed"): (("resolves",), "the workflow's next scheduled run succeeds "
+                                   "(read every 30 minutes); a dispatched run does not clear it"),
+    ("scheduled_jobs", "overdue"): (("resolves",), "a scheduled run of the workflow succeeds "
+                                    "(read every 30 minutes)"),
+    ("scheduled_jobs", "unread"): (("resolves",), "the reader's next read (every 30 minutes) "
+                                   "gets the workflow's runs from GitHub"),
     ("redaction", "unhealthy"): (("resolves",), "every log handler masks the canary and no "
                                  "redaction has failed: read again at each read of this page"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
@@ -2404,6 +2416,75 @@ def ci_source(cached=None) -> dict:
     return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="ci-verdict",
                          checked=f"{commit[:10]}: {v.get('state')}")
+
+
+def scheduled_jobs_source(cached=None, now: float = None) -> dict:
+    """Each scheduled quality job that failed, or has not succeeded within its period (C2347,
+    the operator's rule, 2026-11-03): one WARNING row per workflow, naming its newest scheduled
+    run, how it ended and where, and its last success; its action the run's link. The verdict
+    is `scheduled_jobs.judge`'s, against the clock at each read of this page."""
+    from modules import reader_job
+    from modules.readers import ci_verdict as CV
+    from modules.readers import scheduled_jobs as SJ
+
+    started = time.time() if now is None else now
+    label = "Scheduled quality jobs"
+    got = reader_job.read_cached(SJ.NAME) if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000) if now is None else 0
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("scheduled_jobs", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    rows, said = [], []
+    for w in v.get("workflows") or []:
+        verdict = SJ.judge(w, now=started)
+        said.append(f"{w.get('file')}: {verdict['state']}")
+        if verdict["state"] == "ok":
+            continue
+        name, cause = w.get("name") or w.get("file"), f"cron {w.get('cron') or '?'}"
+        if verdict["state"] == "unread":
+            rows.append(row(source="scheduled_jobs", kind="unread", key=w.get("file"),
+                            level="warning", cause=cause,
+                            what=f"The scheduled job {name} could not be read: "
+                                 f"{verdict['words']}",
+                            action={"label": "Read the error: it names the workflow and what "
+                                             "GitHub answered", "known": False}))
+            continue
+
+        def linked(label, run):
+            if run and run.get("html_url"):
+                return {"label": label, "run_url": run["html_url"],
+                        "run": str(run.get("run_number") or "")}
+            return {"label": label}
+
+        if verdict["state"] == "failed":
+            where = CV.failed_words({"failed_at": w.get("failed_at")})
+            rows.append(row(source="scheduled_jobs", kind="failed", key=w.get("file"),
+                            level="warning", cause=cause,
+                            what=(f"The scheduled job {name} failed: {verdict['words']}"
+                                  + (f"; failed at {where}" if where else "")),
+                            action=linked("The developer reads where the run failed and fixes "
+                                          "forward; a dispatched run checks the fix, but only "
+                                          "a scheduled run that succeeds clears this",
+                                          w.get("newest"))))
+        else:
+            rows.append(row(source="scheduled_jobs", kind="overdue", key=w.get("file"),
+                            level="warning", cause=cause,
+                            what=f"The scheduled job {name} is overdue: {verdict['words']}",
+                            action=linked("The developer finds why the schedule has not run or "
+                                          "passed: GitHub stops scheduling a repository's "
+                                          "workflows after 60 days without a commit",
+                                          w.get("last_success"))))
+    return source_result("scheduled_jobs", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=value_at, stale_after_seconds=promise, reader=SJ.NAME,
+                         checked=(f"{len(v.get('workflows') or [])} workflow(s) with a schedule, "
+                                  f"their scheduled runs on main: " + ("; ".join(said) or "none")))
 
 
 # ---------------------------------------------------------------------------
@@ -5055,8 +5136,8 @@ def ai_spend_source(now=None) -> dict:
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, integrations_source, ci_source, redaction_source,
-           reachability_source, netbox_secrets_source, credential_health_source,
+           grafana_source, integrations_source, ci_source, scheduled_jobs_source,
+           redaction_source, reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
@@ -5085,6 +5166,7 @@ SOURCE_KEYS = {
     "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained
     "integrations_source": ("integration_health",),
     "ci_source": ("ci_verdict",),
+    "scheduled_jobs_source": ("scheduled_jobs",),
     # Redaction changes only inside this process (a handler added unfiltered); it is measured
     # at each read of the page, and a settings change is the nearest a change announces.
     "redaction_source": ("settings",),
