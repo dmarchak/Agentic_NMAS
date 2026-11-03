@@ -31,7 +31,17 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `ad1864d30a8937ad5c5d5cb822852cb9be9958d716ec7d4094a2f152d4967c6b`
+Templates sha256: `2006c910920997b6ab9655bb567382872f5482a26361a6657ad41b05291de260`
+
+**Compared again 2026-11-02 ~23:2x UTC for C2278** (a transfer is not a flood, PHASE8_PLAN
+17.9): a watching row of a flood candidate with a transfer's shape draws "Why it is not called
+a flood: <the transfer's words> (C2278). A transfer can still crowd a link: it is watched, and
+nothing is proposed." where the board's "Why it is not called a scan or a flood" stands; every
+other row is as compared above. Compared by reading the template against board S-HR's opened
+row (its order: Detected, Why, What happens next, Proposed, Dismiss), no new shot (no shot
+plants a transfer; its words are held by tests/test_sdn_transfer.py). A deviation:
+docs/STANDING_APPROVAL_LOG.md, "C2278 built". Templates sha256 before:
+`ad1864d30a8937ad5c5d5cb822852cb9be9958d716ec7d4094a2f152d4967c6b`.
 
 **Compared again 2026-11-02 ~22:3x UTC for S-HR (C2238, PHASE8_PLAN 17.8 (b))**, beside
 `SdnHighRate.dc.html` (board S-HR, canvas version 183, approved under the Phase 7 mode

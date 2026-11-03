@@ -47,7 +47,11 @@
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ w.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ w.id }}" class="sdn-h3">{{ w.rule_label }}{% if w.source %} from <span class="mono">{{ w.source }}</span>{% endif %} on <span class="mono">{{ w.dpid_hex }}</span></h3> {{ badge((w.confidence or 'lower') ~ ' confidence', 'muted', title="The detection rule's confidence, not a threat's severity") }}</div>
   <p class="small">Detected {{ stamp(w.at) }} on <span class="mono">{{ w.dpid_hex }}</span>{% if w.port is not none %} port {{ w.port }}{% endif %}: {% if w.rate is not none %}{{ '{:,.0f}'.format(w.rate) }}{% else %}?{% endif %} packets a second (threshold {{ w.threshold }}), <span title="{{ w.coverage_words }}">from flows that name no transport ports</span> · an alert with its evidence pack</p>
+  {%- if w.transfer_words %}
+  <p class="small"><strong>Why it is not called a flood:</strong> {{ w.transfer_words }} (C2278). A transfer can still crowd a link: it is watched, and nothing is proposed.</p>
+  {%- else %}
   <p class="small"><strong>Why it is not called a scan or a flood:</strong> its switch's flows name no transport ports, so no destination ports can be counted (a scan), and the flood rule has not fired for this port or source (its {{ fw }} s hold). It may be either, or a burst that ends.</p>
+  {%- endif %}
   <p class="small"><strong>What happens next:</strong> if the flood rule fires for the same port or source, this incident joins it ("began as High packet rate") and its response is proposed there; if the rate falls below {{ w.threshold }} a second, it ends as "ended, never more than a rate".</p>
   {%- if w.seen_also %}
   <details class="sdn-also" data-keep="inc-{{ w.id }}-also"><summary class="small">Seen also on {{ w.seen_also | length }} other switch{{ 'es' if w.seen_also | length != 1 }}</summary>

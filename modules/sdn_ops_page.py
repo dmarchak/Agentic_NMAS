@@ -285,6 +285,8 @@ def watch_rows(watching: dict) -> list:
                      "port": d.get("port"), "confidence": d.get("confidence"),
                      "rate": m.get("value"), "threshold": th.get("value"),
                      "coverage_words": d.get("confidence_why") or "",
+                     # C2278: a flood candidate with a transfer's shape says that instead.
+                     "transfer_words": (d.get("transfer") or {}).get("words") or "",
                      "switches": 1 + len(also), "seen_also": also,
                      "last_seen": r.get("last_seen") or r.get("at"),
                      "window_words": inc.get("window_words") or ""})

@@ -258,6 +258,17 @@ does not call it either:
    "ended, never more than a rate".
 4. **Or you dismiss it**, with a reason. It cannot be confirmed: there is nothing to confirm.
 
+**A transfer is High packet rate too, not a flood.** When the flood rule's candidate port
+receives a transfer's shape, it is watched the same way, never proposed:
+- at most 4 TCP sessions carry 90% of its packets, at a mean of 500 bytes or more;
+- on the same switch, a flow of the same pair the other way carries the ACKs, at 100 bytes or
+  less and at least 30% of the data's packets.
+
+The ports receiving that transfer's ACKs are watched too. The row says "Why it is not called a
+flood" with the session it saw. A shape the flows cannot show (flows that name no TCP ports,
+or no return flow read) is judged as a flood is. A transfer can still crowd a link, so it
+stays on SDN › Responses and Needs attention until it ends.
+
 These are the one kind of row Mercury closes by itself, and the row says so. Until 2026-11-02
 this rate was the scan rule's fallback and was called a scan; on the Lab 8 walk it fired on a
 flood's first seconds and on ordinary transfers alike.

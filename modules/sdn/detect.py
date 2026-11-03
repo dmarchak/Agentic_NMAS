@@ -26,7 +26,10 @@ alert in Mercury's alert stream with an evidence pack, so Explain works on it un
   its baseline, held for `sdn_flood_window_seconds` (30): each collection over it since the
   first; one not over clears it. Received (``rx``), the switch's view of what the attached
   host sends: the source side, which a response acts on. A port with no baseline yet reads
-  "no baseline yet", never a detection.
+  "no baseline yet", never a detection. **A transfer is not a flood** (C2278, PHASE8_PLAN
+  17.9; `transfer`): a candidate whose entering traffic has a transfer's shape (a few TCP
+  sessions carrying its packets at a large mean size, their ACKs returning on the same switch),
+  or is a transfer's ACKs, is High packet rate, basis ``transfer``, watched and never proposed.
 - **Unauthorised flow** (`unauthorised`): every flow `flow_intent.classify` calls
   ``unauthorised`` on a switch whose table was read whole. With the flow intent unreadable,
   nothing is judged, and the answer says so.
@@ -376,18 +379,7 @@ def link_sources(entering: list, topo, connection: str) -> list:
     MAC on *connection*: ``[{"mac", "addresses"}]``, *addresses* [] when no host is listed
     with it. A link port carries every host behind it, so this names candidates, never the
     source: `incidents.group` joins the one incident among them, or none."""
-    hosts = {}
-    ctl = next((c for c in (topo or {}).get("controllers") or []
-                if c.get("name") == connection), None) or {}
-    for h in ctl.get("hosts") or []:
-        mac = str(h.get("mac") or "").lower()
-        for value in list(h.get("ipv4") or []) + list(h.get("ipv6") or []):
-            try:
-                addr = ipaddress.ip_address(str(value).strip())
-            except ValueError:
-                continue
-            if not addr.is_unspecified and addr.compressed not in hosts.setdefault(mac, []):
-                hosts[mac].append(addr.compressed)
+    hosts = _macs_hosts(topo, connection)
     out = []
     for f in entering:
         mac = str((f.get("match") or {}).get("eth_src") or "").strip().lower()
@@ -479,6 +471,7 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
             detections.append(_detection(
                 "high_rate", collected, ctl, sw, subject=("port", p["port_no"]), scope=p["id"],
                 port=p["port_no"], source=source,
+                **_dst_hosts_of(entering, topo, conn),
                 words=(f"port {p['port_no']} of switch {dh} ({conn}) received {p['rx_pps']:g} "
                        f"packets a second over {sw['sample'].get('elapsed_s')} s, at or above "
                        f"the high packet rate threshold of {pps:g} (sdn_scan_fallback_pps); "
@@ -581,6 +574,158 @@ def update_baseline(baseline: dict, collected: dict, exclude=()) -> dict:
 
 # ───────────────────────────────────────────────────────────────────────────── flood
 
+#: A transfer's shape (C2278, PHASE8_PLAN 17.9), each bound set wide of what RC-TCP measured
+#: (one iperf session, 2026-11-01: the data one TCP flow at a mean packet of about
+#: 44.7 kB, its ACKs returning at 66 B and about two-thirds of its packets): at most
+#: TRANSFER_SESSIONS TCP sessions carrying TRANSFER_SHARE of the port's entering packets at a
+#: mean of TRANSFER_DATA_BYTES or more, with a flow of the reverse pair on the same switch at
+#: TRANSFER_ACK_BYTES or less and TRANSFER_ACK_SHARE or more of their packets.
+TRANSFER_SESSIONS = 4
+TRANSFER_SHARE = 0.9
+TRANSFER_DATA_BYTES = 500
+TRANSFER_ACK_BYTES = 100
+TRANSFER_ACK_SHARE = 0.3
+
+
+def _macs_hosts(topo, connection: str) -> dict:
+    """``{mac: [addresses]}``: each host the controller's topology (*topo*) lists on
+    *connection*, its MAC lower-case, its addresses canonical."""
+    hosts = {}
+    ctl = next((c for c in (topo or {}).get("controllers") or []
+                if c.get("name") == connection), None) or {}
+    for h in ctl.get("hosts") or []:
+        mac = str(h.get("mac") or "").lower()
+        for value in list(h.get("ipv4") or []) + list(h.get("ipv6") or []):
+            try:
+                addr = ipaddress.ip_address(str(value).strip())
+            except ValueError:
+                continue
+            if not addr.is_unspecified and addr.compressed not in hosts.setdefault(mac, []):
+                hosts[mac].append(addr.compressed)
+    return hosts
+
+
+def _targets(entering: list) -> list:
+    """The destination addresses the flows *entering* a port name, sorted."""
+    return sorted({a for f in entering for a in [_address(f.get("match"), "dst")] if a})
+
+
+def dst_hosts(entering: list, topo, connection: str) -> list:
+    """The addresses the controller's topology lists for the destination MACs of the flows
+    *entering* a port that name no destination address (C2237: a flow matching MACs only names
+    none, so a victim's replies could not be told from a source's traffic, and RC-ICMP named its
+    victim a flood source), link-local left out (every interface has one); sorted. Kept on the
+    detection for `mark_replies` and never sent to the classifier, as `link_sources` is: the
+    topology's other hosts are not the port's own (the egress class sends only those)."""
+    hosts = _macs_hosts(topo, connection)
+    out = set()
+    for f in entering:
+        m = f.get("match") or {}
+        if _address(m, "dst"):
+            continue
+        for a in hosts.get(str(m.get("eth_dst") or "").strip().lower(), []):
+            if not ipaddress.ip_address(a).is_link_local:
+                out.add(a)
+    return sorted(out)
+
+
+def _dst_hosts_of(entering: list, topo, connection: str) -> dict:
+    """``{"dst_hosts": [...]}`` for a detection when `dst_hosts` names any, else ``{}``: a
+    detection on flows naming their destinations carries no such field, as before."""
+    hosts = dst_hosts(entering, topo, connection)
+    return {"dst_hosts": hosts} if hosts else {}
+
+
+def _ends(f: dict, hosts: dict) -> tuple:
+    """``(sender, receiver)``: what flow *f*'s match names each end by, an address with its
+    host's MAC, or a MAC with its host's addresses (`_macs_hosts`); empty sets for an end it
+    does not name."""
+    m = f.get("match") or {}
+    by_addr = {a: mac for mac, addrs in hosts.items() for a in addrs}
+    out = []
+    for side in ("src", "dst"):
+        names = set()
+        addr = _address(m, side)
+        if addr:
+            names |= {addr} | ({by_addr[addr]} if addr in by_addr else set())
+        mac = str(m.get(f"eth_{side}") or "").strip().lower()
+        if mac and "/" not in mac:
+            names |= {mac} | set(hosts.get(mac) or [])
+        out.append(names)
+    return tuple(out)
+
+
+def _mean_bytes(flows: list):
+    pkts = sum(f.get("packet_count") or 0 for f in flows)
+    return (sum(f.get("byte_count") or 0 for f in flows) / pkts) if pkts else None
+
+
+def _session(f: dict):
+    """``(source, destination, tcp/<port>)`` for a TCP flow naming both addresses and a port (a
+    match naming a TCP port is TCP's by OpenFlow's prerequisites, ``ip_proto`` 6)."""
+    m = f.get("match") or {}
+    src, dst = _address(m, "src"), _address(m, "dst")
+    port = m.get("tcp_dst", m.get("tcp_src"))
+    return (src, dst, f"tcp/{port}") if src and dst and port is not None else None
+
+
+def _reverse(f: dict, g: dict, hosts: dict) -> bool:
+    """Whether *g* carries *f*'s pair the other way."""
+    fs, fd = _ends(f, hosts)
+    gs, gd = _ends(g, hosts)
+    return bool(fs & gd) and bool(fd & gs)
+
+
+def transfer(sw: dict, port_no, topo, connection: str) -> dict:
+    """The transfer's shape of the traffic entering *port_no* (C2278, PHASE8_PLAN 17.9), or
+    None: ``{"side", "session", "words"}``, *side* ``data`` (the port receives the transfer's
+    data: its TCP sessions, `TRANSFER_*`'s bounds, a reverse flow of ACKs on the switch) or
+    ``acks`` (the port receives a transfer's ACKs: a small-packet flow carrying most of its
+    packets, the reverse of a TCP session's data on the switch). A shape the flows cannot show
+    (no TCP flow naming a port, or no reverse flow read) is None: judged as a flood is."""
+    entering = _entering(sw, port_no)
+    total = sum(f.get("packet_count") or 0 for f in entering)
+    if not total:
+        return None
+    hosts = _macs_hosts(topo, connection)
+    flows = sw.get("flows") or []
+    sessions = [f for f in entering if _session(f)]
+    data = sum(f.get("packet_count") or 0 for f in sessions)
+    keys = list(dict.fromkeys(_session(f) for f in sessions))
+
+    def acks_for(datas):
+        need = TRANSFER_ACK_SHARE * sum(f.get("packet_count") or 0 for f in datas)
+        back = [g for g in flows if g not in datas
+                and any(_reverse(d, g, hosts) for d in datas)]
+        mean = _mean_bytes(back)
+        ok = back and mean is not None and mean <= TRANSFER_ACK_BYTES and \
+            sum(g.get("packet_count") or 0 for g in back) >= need
+        return back if ok else None
+
+    if keys and len(keys) <= TRANSFER_SESSIONS and data >= TRANSFER_SHARE * total and \
+            (_mean_bytes(sessions) or 0) >= TRANSFER_DATA_BYTES and acks_for(sessions):
+        src, dst, port = keys[0]
+        more = f" and {len(keys) - 1} more" if len(keys) > 1 else ""
+        return {"side": "data", "session": keys[0],
+                "words": (f"one TCP session from {src} to {dst} {port}{more} with its ACKs "
+                          f"returning, at a mean of {_mean_bytes(sessions):,.0f} B a packet: "
+                          "a transfer's shape, not a flood's")}
+    top = entering[0]
+    if (top.get("packet_count") or 0) >= TRANSFER_SHARE * total and \
+            (_mean_bytes([top]) or TRANSFER_ACK_BYTES + 1) <= TRANSFER_ACK_BYTES:
+        datas = [f for f in flows if _session(f) and _reverse(top, f, hosts)
+                 and (_mean_bytes([f]) or 0) >= TRANSFER_DATA_BYTES
+                 and (top.get("packet_count") or 0) >= TRANSFER_ACK_SHARE *
+                 (f.get("packet_count") or 0)]
+        if datas:
+            src, dst, port = _session(datas[0])
+            return {"side": "acks", "session": _session(datas[0]),
+                    "words": (f"the ACKs of a TCP session from {src} to {dst} {port}, at a "
+                              f"mean of {_mean_bytes([top]):,.0f} B a packet: a transfer's "
+                              "shape, not a flood's")}
+    return None
+
+
 def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
           topo: dict = None) -> dict:
     """The flood rule over one collection: ``{"detections", "judged", "over", "pending",
@@ -628,11 +773,28 @@ def flood(collected: dict, baseline: dict, values: dict, over: dict = None,
             entering = _entering(sw, p["port_no"])
             source, sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
                                                             p["port_no"])
+            shape = transfer(sw, p["port_no"], topo, conn)
+            if shape is not None:
+                # A transfer's shape (C2278, PHASE8_PLAN 17.9): a rate with a session's data
+                # and its ACKs is not a flood's evidence. Watched as High packet rate, never
+                # classified or proposed (`WATCH_ONLY`), its words saying why.
+                detections.append(_detection(
+                    "high_rate", collected, ctl, sw, subject=("port", p["port_no"]), scope=pid,
+                    port=p["port_no"], source=source if shape["side"] == "data" else None,
+                    words=(f"port {p['port_no']} of switch {dh} ({conn}) received {rate:g} "
+                           f"packets a second, at or above {factor:g}x its baseline "
+                           f"({limit:g}) for {held:g} s, not called a flood: "
+                           + shape["words"]),
+                    measurement=measured, threshold=limit_said, confidence="lower",
+                    confidence_why=("a transfer's shape in the flows: " + shape["words"]),
+                    evidence=[pid] + [f["id"] for f in entering], basis="transfer",
+                    since=since, transfer=shape,
+                    **(named if shape["side"] == "data" else {})))
+                continue
             detections.append(_detection(
                 "flood", collected, ctl, sw, subject=("port", p["port_no"]), scope=pid,
-                port=p["port_no"], source=source,
-                targets=sorted({a for f in entering for a in [_address(f.get("match"), "dst")]
-                                if a}),
+                port=p["port_no"], source=source, targets=_targets(entering),
+                **_dst_hosts_of(entering, topo, conn),
                 words=(f"port {p['port_no']} of switch {dh} ({conn}) received {rate:g} packets "
                        f"a second, at or above {factor:g}x its baseline of {median:g} "
                        f"({limit:g}), for {held:g} s since {_iso(since)} (the window is "
@@ -667,6 +829,12 @@ def _mean_packet(collected: dict, d: dict):
     return None
 
 
+def _destinations(d: dict) -> set:
+    """Where detection *d*'s traffic goes: the addresses its flows name (``targets``), and those
+    the topology lists for its MAC-only flows' destinations (``dst_hosts``, C2237)."""
+    return {_canon_addr(t) for t in list(d.get("targets") or []) + list(d.get("dst_hosts") or [])}
+
+
 def mark_replies(detections: list, collected: dict) -> list:
     """*detections* with each rate detection whose source is the DESTINATION of another
     rate detection's traffic (a different source) marked as replying, never a source (C2237:
@@ -683,9 +851,9 @@ def mark_replies(detections: list, collected: dict) -> list:
         for o in rate:
             if o is d or _canon_addr(o["source"]) == src:
                 continue
-            if src not in {_canon_addr(t) for t in o.get("targets") or []}:
+            if src not in _destinations(o):
                 continue
-            mutual = _canon_addr(o["source"]) in {_canon_addr(t) for t in d.get("targets") or []}
+            mutual = _canon_addr(o["source"]) in _destinations(d)
             mine, theirs = _mean_packet(collected, d), _mean_packet(collected, o)
             if mutual and mine and theirs and mine >= SENDER_SIZE_RATIO * theirs:
                 continue                                   # d is the pair's sender
