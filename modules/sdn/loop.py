@@ -941,7 +941,70 @@ def _incidents(network: str, seen: dict, fresh: list, rows_waiting: list, now: f
             todo.append(chosen["detection"])
         for m in inc["members"]:
             incident_of[m["key"]] = inc
+    # One attack on one target (C2279, PHASE8_PLAN 17.10): the pass's new flood incidents that
+    # send to one address are one attack, classified once, on its first incident.
+    new = [inc for inc in dict((id(i), i) for i in incident_of.values()).values()
+           if inc["joined"] is None]
+    for att in attacks(new):
+        lead = att["lead"]
+        for inc in att["members"]:
+            rec = dict(inc["record"], attack=att["record"])
+            inc.update(record=rec, attack=att["record"])
+            if inc is not lead:
+                todo = [d for d in todo if d["key"] != inc["chosen"]["detection"]["key"]]
     return incident_of, todo
+
+
+def attacks(new: list) -> list:
+    """The attacks among a pass's new incidents (C2279, PHASE8_PLAN 17.10): flood incidents
+    whose detections send to one address (`detect._destinations`: the flows' destinations, and
+    the topology's for MAC-only flows, C2237), that address none of their own sources or
+    replying hosts, two or more of them. Each ``{"target", "lead", "members", "record"}``:
+    *lead* the first incident in the pass's order, classified for all; *record* what each
+    member's response keeps (the target, the lead's key, the members' keys and sources). An
+    incident is a member of one attack at most, the first that takes it."""
+    from modules.sdn import detect
+
+    by_target, taken, out = {}, set(), []
+    for inc in new:
+        if inc.get("rule") != "flood":
+            continue
+        own = set()
+        dests = set()
+        for m in inc["members"]:
+            own |= {canon_source(s) for s in [m.get("source")] + list(m.get("sources") or [])
+                    + list(m.get("replying_hosts") or []) if s}
+            dests |= detect._destinations(m)
+        for t in sorted(dests - own):
+            by_target.setdefault(t, []).append(inc)
+    for target, incs in by_target.items():
+        members = [i for i in incs if id(i) not in taken]
+        if len(members) < 2:
+            continue
+        taken |= {id(i) for i in members}
+        sources = sorted({canon_source(i["chosen"]["detection"].get("source"))
+                          for i in members if i["chosen"]["detection"].get("source")})
+        out.append({"target": target, "lead": members[0], "members": members,
+                    "record": {"key": f"attack|{target}", "target": target,
+                               "lead": members[0]["key"],
+                               "lead_detection": members[0]["chosen"]["detection"]["key"],
+                               "incidents": [i["key"] for i in members],
+                               "sources": sources}})
+    return out
+
+
+def member_verdict(lead: dict, d: dict, attack: dict) -> dict:
+    """An attack's member's verdict (C2279): the lead's classification and action for *d*,
+    its parameters the lead's but for the source, *d*'s own; always a person's to confirm,
+    since the parameters were checked against the lead's evidence, not *d*'s."""
+    params = {k: v for k, v in (lead.get("params") or {}).items() if k != "source"}
+    if d.get("source"):
+        params["source"] = d["source"]
+    words = (f"classified with the attack on {attack['target']} (its first incident's: "
+             f"{lead.get('words')}); no call of its own")
+    return dict(lead, params=params, person=True, refused_call=lead.get("refused_call") or "",
+                why=("one attack, classified once on its first incident: a person confirms "
+                     "each source's response"), words=words)
 
 
 def _source_words(d: dict) -> str:
@@ -1398,6 +1461,18 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                     f"{rec['ingress_words']}; seen also on "
                     f"{_switches_words(rec['seen_also'])}"), switches=1 + len(rec["seen_also"]))
             d = incidents.stamp(d, rec)
+            att = inc.get("attack")
+            if att and att["lead_detection"] != d["key"]:
+                # A member of an attack (C2279): the lead's verdict, no call of its own.
+                lead = verdicts[att["lead_detection"]]
+                if isinstance(lead, Failed):
+                    lead = verdict_of(network, d, {"ok": False, "error": "exception",
+                                                   "detail": str(lead)})
+                verdict = member_verdict(lead, d, att)
+                line("classify", f"{verdict['words']} (risk {verdict['risk']})",
+                     attack=att["key"])
+                respond(d, inc, rec, verdict)
+                continue
             verdict = verdicts[d["key"]]
             if isinstance(verdict, Failed):
                 # The call raised (not one of the gateway's own refusals): this detection's

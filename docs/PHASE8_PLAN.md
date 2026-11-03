@@ -62,7 +62,7 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 | Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
 | Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
 | Expected effects (A2.2) | deterministic effects **built and deployed** (C506; board PS parts 1 and 2, e02b77c8, live 2026-11-02 02:55 UTC: the planned state on the header, Devices and Topology, and the Reload card's Expected effects, tested on B2's replay; C2274 open), not walked (the operator's walk on a planned Reload after session 11); the AI proposal **not built** | 15.12 for the AI part | none | the walk; the AI proposal's board |
-| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; no A row open (C2237 closed 2026-11-02 on the recorded captures: a victim's replies never named a flood's source on MAC-only flows); C2277 closed 2026-11-01; C2278 closed 2026-11-02 (17.9: a transfer is High packet rate, not a flood); C2238 closed 2026-11-02 by S-HR, built whole (17.8: High packet rate never classified or proposed, joined to its flood or ended, drawn on SDN › Responses and Needs attention; the walk's 17 fallback cases retired, C2309) | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
+| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; no A row open (C2237 closed 2026-11-02 on the recorded captures: a victim's replies never named a flood's source on MAC-only flows); C2277 closed 2026-11-01; C2278 closed 2026-11-02 (17.9: a transfer is High packet rate, not a flood); C2279 closed 2026-11-02 (17.10: one attack on one target, classified once); C2238 closed 2026-11-02 by S-HR, built whole (17.8: High packet rate never classified or proposed, joined to its flood or ended, drawn on SDN › Responses and Needs attention; the walk's 17 fallback cases retired, C2309) | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
 | The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
 | Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
 | The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
@@ -3935,6 +3935,38 @@ and never sent; tests/test_sdn_replies_recorded.py; C2237 closed, its incident-j
 C2311): it was this, on the same fixtures: RC-ICMP names the victim (192.0.2.3, s2
 port 1) a flood source, not marked replying, because its flows are L2-only and the topology
 names the port's host. The measurement comes before the design.
+
+### 17.10 C2279, one attack on one target: the design (decided 2026-11-02 ~23:5x UTC, before any code; the agent's, under the Phase 7 mode)
+
+**Measured on RC-UDP** (three senders to one host, `tests/fixtures/sdn/recorded/RC-UDP.jsonl`):
+the flood rule makes four detections at pass 13. They are s1 port 1 (h1), s2 port 1 (h3), s2
+port 2 (h4), and s1's link port 3, which names no source of its own. Each is its own incident,
+response row and AI call, though all four send to 192.0.2.2.
+
+**The attack.** Flood incidents whose detections' destinations (`targets` with `dst_hosts`,
+C2237) share one address, within the flood's window, are one **attack** on that address.
+- **Kept per source:** each source's response stays its own (each needs its own rate limit,
+  and a person confirms each: nothing confirms several at once).
+- **Once per attack:** one AI classification, on its first incident by the incidents' own
+  order; the other incidents carry that classification, said as such, with no call of their
+  own. A refused or failed call is the fail-safe for every member, as for one incident.
+- **On Needs attention:** one row per attack ("a flood on 192.0.2.2 from 3 sources, seen on
+  4 ports"), naming each incident, cleared when every member is answered (PHASE8_PLAN 20.5's
+  one row per cause).
+- **On SDN › Responses:** each member incident's row says "part of the attack on <target>
+  with N other sources". This is a deviation from board SdnResponses, compared by reading; the
+  rows are not regrouped, so no new board.
+- **Not attacks:** a destination that is one of the incident's own replying hosts (C2237's
+  pair); a pair two hosts send each other (an exchange, not an attack on one); the scan and
+  unauthorised-flow rules.
+
+**Order:** the attack key and its classification in the loop (tested on RC-UDP through the
+loop: one call, three responses, the link port's), then Needs attention's row and the
+Responses words. C2311 (a replying detection joined to its sender) stays its own.
+**Built 2026-11-02 ~23:5x UTC, in that order** (`loop.attacks`, `loop.member_verdict`,
+`attention._one_row_per_attack`; tests/test_sdn_attack.py on RC-UDP: one call, four responses
+each with its own source, the link port's among them, one row; C2279 closed). Pass-local:
+joining an attack across passes is not built.
 
 ## 18. Phase 8's scope, and AI cost safety (the operator, 2026-10-27)
 

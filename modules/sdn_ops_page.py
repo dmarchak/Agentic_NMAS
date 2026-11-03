@@ -262,6 +262,8 @@ def incident_rows(awaiting: dict) -> list:
                          "that saw it"),
                      "window_words": inc.get("window_words") or "",
                      "began_as": dict(r.get("began_as") or {}),
+                     # C2279: one attack on one target, classified once (PHASE8_PLAN 17.10).
+                     "attack": dict(inc.get("attack") or {}),
                      "pick": _pick(d, r.get("action"))})
     return rows
 

@@ -225,6 +225,17 @@ source's flows on each switch it crosses, so each switch's rule fires. Mercury a
    saw it), which is what lets it hold the source off across switches (above).
 6. **Inactive.** An incident is no longer active once none of its switches shows it: one
    switch's detection resolving while another's still fires keeps it active.
+7. **One attack on one target.** Flood incidents that start in the same pass and send to one
+   address are one attack on it. A flood from several sources at one host is one attack, not
+   one incident per sender.
+   - **Classified once,** on its first incident. The others carry that classification, said
+     as such, with no AI call of their own.
+   - **Each source keeps its own response,** with its own source. You confirm or dismiss each:
+     each needs its own rate limit, and nothing confirms several at once. A member's parameters
+     were checked on the first incident's evidence, so AUTO never acts on a member.
+   - **On Needs attention,** the attack is one row naming the target, its sources and its
+     incidents. On SDN › Responses, each member says what it is part of.
+   - **Not attacks:** a pair of hosts that are each other's destination, and a transfer.
 
 The loop's log names each incident seen on several switches in one line: the rule and source,
 how many switches, the window, the ingress and the switches seen also.

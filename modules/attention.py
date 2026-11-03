@@ -3090,6 +3090,49 @@ def _sdn_escalate_after(network: str) -> tuple:
     return got, ""
 
 
+def _one_row_per_attack(rows: list, waiting: dict) -> list:
+    """*rows* (the incidents awaiting a person, most severe first) with an attack's incidents
+    (C2279, PHASE8_PLAN 17.10: one target flooded from several sources, classified once) as
+    one row, its first's (the most severe, the longest waiting), DANGER when any member's is,
+    its words naming the target, the sources and each incident; cleared once every member is
+    answered or dismissed (each member's own row is gone then)."""
+    out, first = [], {}
+    for x in rows:
+        key = (x["operands"].get("network"), x["operands"].get("attack"))
+        if not key[1]:
+            out.append(x)
+            continue
+        if key not in first:
+            first[key] = dict(x, operands=dict(x["operands"], incidents=[
+                x["operands"]["incident"]]))
+            out.append(first[key])
+            continue
+        lead = first[key]
+        lead["operands"]["incidents"].append(x["operands"]["incident"])
+        if x["level"] == "danger":
+            lead["level"] = "danger"
+    for lead in first.values():
+        network = lead["operands"]["network"]
+        att = next(((r.get("incident") or {}).get("attack") or {}
+                    for r in (waiting.get(network) or {}).get("rows") or []
+                    if r.get("id") == lead["operands"]["incident"]), {})
+        ids = lead["operands"]["incidents"]
+        if len(ids) < 2:
+            continue
+        srcs = att.get("sources") or []
+        lead["what"] = (f"SDN flood on {att.get('target')} on {network}, from "
+                        f"{len(srcs)} source{'' if len(srcs) == 1 else 's'} "
+                        f"({', '.join(srcs) or 'none named'}), one attack in {len(ids)} "
+                        "incidents, awaits a person")
+        lead["cause"] = (f"One attack on {att.get('target')} (C2279: its incidents send to one "
+                         f"address, classified once): incidents {', '.join(ids)}. "
+                         + lead["cause"])
+        lead["action"] = dict(lead["action"], label=(
+            f"Open the attack's first incident on {network}'s SDN › Responses, then preview "
+            "and confirm each source's response, or dismiss each with a reason"))
+    return out
+
+
 def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
     """The SDN incidents awaiting a person (`loop.awaiting`, one response per incident;
     C1999): one row per incident, never one per detection or per switch, naming its network,
@@ -3194,12 +3237,15 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                           "severity": sev, "since": r.get("at") or "",
                           "inactive": bool(r.get("inactive_since")),
                           "escalated": bool(up), "unanswered_minutes": waited,
-                          "escalate_after_minutes": after},
+                          "escalate_after_minutes": after,
+                          **({"attack": inc["attack"]["key"]}
+                             if (inc.get("attack") or {}).get("key") else {})},
                 action={"label": (f"Open the incident on {network}'s SDN › Responses: preview "
                                   f"{r.get('action') or 'a response'} at {where} and confirm "
                                   "it, or dismiss the incident with a reason"),
                         "href": (f"/v2/sdn/responses?list={network}&incident="
                                  f"{r.get('id')}#sdn-i-{r.get('id')}")}))
+    rows = _one_row_per_attack(rows, waiting)
     for network, got in sorted(watching.items()):
         if got.get("state") == "unreadable":
             if not any(u.startswith(f"{network} (") for u in unread):

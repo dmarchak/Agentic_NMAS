@@ -77,6 +77,9 @@
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
+  {%- if r.attack.incidents and r.attack.incidents | length > 1 %}
+  <p class="small sdn-attack">Part of the attack on <span class="mono">{{ r.attack.target }}</span> with {{ r.attack.incidents | length - 1 }} other incident{{ 's' if r.attack.incidents | length > 2 }} ({{ r.attack.sources | length }} source{{ 's' if r.attack.sources | length != 1 }}{% if r.attack.sources %}: <span class="mono">{{ r.attack.sources | join(', ') }}</span>{% endif %}), classified once on its first incident; each source's response is confirmed or dismissed on its own.</p>
+  {%- endif %}
   {%- if r.began_as %}
   <p class="small sdn-began">Began as High packet rate {{ stamp(r.began_as.since) }} <span class="faint">(watching row <span class="mono">{{ r.began_as.watch }}</span>, joined into this incident when the flood rule fired)</span>.</p>
   {%- endif %}

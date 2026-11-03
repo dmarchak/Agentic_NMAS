@@ -31,7 +31,17 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `2006c910920997b6ab9655bb567382872f5482a26361a6657ad41b05291de260`
+Templates sha256: `500b13123b9af7f70a3bc510a958cafb9e469e63fa8594189de1b70dfcd72f26`
+
+**Compared again 2026-11-02 ~23:5x UTC for C2279** (one attack on one target, PHASE8_PLAN
+17.10): an opened incident that is a member of an attack draws "Part of the attack on <target>
+with N other incidents (K sources: …), classified once on its first incident; each source's
+response is confirmed or dismissed on its own." above its Ingress line; the rows are not
+regrouped, and nothing else moves. Compared by reading the template against SdnResponses'
+opened incident (its order: the title, Detected, Ingress, Source, the AI box, Proposed, the
+actions), no new shot (no shot plants an attack; its words are held by tests/test_sdn_attack.py).
+A deviation: docs/STANDING_APPROVAL_LOG.md, "C2279 built". Templates sha256 before:
+`2006c910920997b6ab9655bb567382872f5482a26361a6657ad41b05291de260`.
 
 **Compared again 2026-11-02 ~23:2x UTC for C2278** (a transfer is not a flood, PHASE8_PLAN
 17.9): a watching row of a flood candidate with a transfer's shape draws "Why it is not called
