@@ -1,5 +1,8 @@
-{#- The top bar's quiet "Update available" (routes/device_v2.update_available): news, not a
-    problem, so neutral; the Update page is where it is read and acted on. Empty when there is
-    no update, CI has not passed for it, or it is a Needs attention row instead. -#}
 {%- from "v2/_macros.html" import icon -%}
-{%- if avail %}<a class="update-pill" href="{{ url_for('v2.update') }}" title="{{ avail.title }}" aria-label="Update available: {{ avail.title }}">{{ icon('info', 14) }}<span>Update</span><span class="strip-words">available</span></a>{% endif -%}
+{#- The top bar's "Update available" (the operator, 2026-10-02): quiet news in the status strip,
+    drawn only while an update is installable and nothing makes it a Needs attention row.
+    Empty (no element) otherwise, so the strip never shows a stale offer. It names the commit it
+    would install (C2337), and while the in-app update cannot be offered (its updater lacks the
+    safe-deploy script's gates, or an SDN loop runs) it is drawn held, saying why; it still opens
+    the Update page, whose gates and Confirm say the same. -#}
+{%- if avail %}<a class="update-pill{{ ' update-pill-held' if avail.held }}" href="{{ url_for('v2.update') }}" title="{{ ('Update to ' ~ avail.tip ~ ': not offered: ' ~ avail.held) if avail.held else avail.title }}" aria-label="{{ ('Update to ' ~ avail.tip ~ ', not offered: ' ~ avail.held) if avail.held else 'Update available: ' ~ avail.title }}">{{ icon('warn' if avail.held else 'info', 14) }}<span>Update</span><span class="strip-words">{{ ' to ' ~ avail.tip ~ (' (held)' if avail.held else '') }}</span></a>{% endif -%}

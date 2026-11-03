@@ -613,10 +613,14 @@ def _value(**over):
 
 
 def _plan_kw(value=None, install="ok"):
+    # The world's updater runs the safe-deploy script's gates and no SDN loop runs (C2337: the
+    # two gates' own refusals are tests/test_update_button.py's TestOneDeployPath).
+    from modules import update_op
     return {"cached": {"state": "ok", "doc": {"last_good": {"value": value or _value(),
                                                              "value_at": "2026-09-30T10:01:00Z"}}},
             "install": {"state": install}, "running": "a" * 40, "pending_now": [],
-            "now_outcome": {"state": "absent"}, "operations": []}
+            "now_outcome": {"state": "absent"}, "operations": [], "loops": [],
+            "gates_run": update_op.SAFE_DEPLOY_GATES}
 
 
 def _plan(**kw):
@@ -624,11 +628,56 @@ def _plan(**kw):
     return update_op.plan(**_plan_kw(**kw))
 
 
+class TestOneDeployPath:
+    """C2337 (the operator, 2026-11-03: the in-app Update deployed outside the safe-deploy
+    script, which refuses while an SDN loop runs and checks the pages after the restart): it is
+    offered only while its installed updater runs those gates and no loop runs; neither its
+    Confirm nor a wait for CI passes otherwise, and each refusal names what it lacks."""
+
+    def test_an_updater_that_lacks_the_gates_is_not_offered_nor_waited_for(self):
+        from modules import update_op
+        kw = dict(_plan_kw(), gates_run=())
+        p = update_op.plan(**kw)
+        assert not p["selectable"] and not p.get("waitable"), p["why_not"]
+        assert (f"{update_op.SAFE_DEPLOY_GATE}: the installed updater does not run the refusal "
+                "while an SDN loop runs, the page smoke after the restart") in p["why_not"]
+        assert "deploy through the safe-deploy script" in p["why_not"]
+        p = update_op.plan(**dict(kw, gates_run=("sdn_loop",)))
+        assert not p["selectable"] and "the page smoke after the restart" in p["why_not"]
+        assert "the refusal while an SDN loop runs" not in p["why_not"]
+
+    def test_a_running_sdn_loop_refuses_it(self):
+        from modules import update_op
+        p = update_op.plan(**dict(_plan_kw(), loops=["sdn_lab"]))
+        assert not p["selectable"]
+        assert (f"{update_op.SDN_LOOP_GATE}: sdn_lab: the restart would stop it") in p["why_not"]
+
+    def test_the_gates_are_the_installed_updater_s_own(self, tmp_path):
+        from modules import update_op
+        src = tmp_path / "nmas-update"
+        src.write_text('#!/usr/bin/env python3\nGATES = ("ci", "health", "sdn_loop", "smoke")\n')
+        assert update_op.updater_gates({"state": "ok"}, str(src)) == {
+            "ci", "health", "sdn_loop", "smoke"}
+        assert update_op.updater_gates({"state": "differs"}, str(src)) == set(), \
+            "an installed copy that differs is an older updater"
+        assert update_op.updater_gates({"state": "ok"}, str(tmp_path / "absent")) == set()
+        src.write_text("#!/usr/bin/env python3\n")
+        assert update_op.updater_gates({"state": "ok"}, str(src)) == set()
+
+    def test_today_s_updater_runs_neither_so_the_in_app_update_is_held(self):
+        """The repository's updater declares no GATES yet: the interim the operator asked for
+        (held, saying why) holds until an updater that runs them is written and installed."""
+        from modules import update_op
+        assert update_op.updater_gates({"state": "ok"}) & set(update_op.SAFE_DEPLOY_GATES) \
+            == set()
+
+
 class TestThePreview:
     def test_all_gates_pass_and_the_hash_is_stable(self):
         a, b = _plan(), _plan()
         assert a["selectable"] and a["hash"] == b["hash"]
-        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 7
+        # Nine: C2337 added the SDN loop's and the safe-deploy script's gates to the seven.
+        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 9
 
     @pytest.mark.parametrize("value,words", [
         (_value(ci={"tip": "b" * 40, "state": "pending", "sentence": "PENDING"}), "CI passed the target"),

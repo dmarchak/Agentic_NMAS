@@ -601,6 +601,17 @@ def update_available():
             if got.get("state") == "ok" else {}
         if v and str(v.get("running") or "") == str(health._COMMIT or ""):
             avail = attention.update_available(v)
+        if avail:
+            # C2337: held, naming why, while the in-app update lacks the safe-deploy script's
+            # gates or an SDN loop runs (the Update page's own gates, `update_op.plan`).
+            from modules import update_op as U
+            runs = U.updater_gates(U.install_state())
+            held = [U.SAFE_DEPLOY_WORDS[g] for g in U.SAFE_DEPLOY_GATES if g not in runs]
+            loops = U.sdn_loops_running()
+            avail = dict(avail, held="; ".join(
+                (["the in-app update does not yet run " + ", ".join(held)
+                  + " (deploy through the safe-deploy script)"] if held else [])
+                + ([f"an SDN loop runs on {', '.join(loops)}"] if loops else [])))
     except Exception as exc:                            # noqa: BLE001
         # News, never a problem: a failed read draws nothing here, and the
         # Needs attention source says the comparison could not be read.

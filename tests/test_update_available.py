@@ -116,8 +116,16 @@ class TestTheTopBar:
                             {"state": "absent", "doc": None, "why": "not in this test"})
         return A.app.test_client().get("/v2/update-available")
 
+    def _offerable(self, monkeypatch, gates=None, loops=()):
+        """The in-app path's own gates (C2337): the installed updater's, and the SDN loops."""
+        from modules import update_op as U
+        monkeypatch.setattr(U, "updater_gates", lambda install=None: set(
+            U.SAFE_DEPLOY_GATES if gates is None else gates))
+        monkeypatch.setattr(U, "sdn_loops_running", lambda: list(loops))
+
     def test_an_installable_update_is_a_neutral_link_to_the_update_page(self, monkeypatch,
                                                                         running):
+        self._offerable(monkeypatch)
         r = self._get(monkeypatch, _value())
         body = r.get_data(as_text=True)
         assert r.status_code == 200 and 'class="update-pill"' in body
@@ -125,6 +133,22 @@ class TestTheTopBar:
         assert 'title="3 commits to install from origin/main' in body
         assert "warn" not in body and "danger" not in body         # neutral, not a problem
         assert "script-src" in (r.headers.get("Content-Security-Policy") or "")
+
+    @pytest.mark.parametrize("gates,loops,words", [
+        ((), (), "the in-app update does not yet run the refusal while an SDN loop runs, the page "
+                 "smoke after the restart (rolling back on a failure) (deploy through the "
+                 "safe-deploy script)"),
+        (None, ("sdn_lab",), "an SDN loop runs on sdn_lab")])
+    def test_held_it_names_the_commit_and_why(self, monkeypatch, running, gates, loops, words):
+        """C2337 (the operator, 2026-11-03): until the in-app update runs the safe-deploy
+        script's gates, the pill names the commit it would install and is drawn held, saying
+        why; it still opens the Update page, whose gates refuse its Confirm."""
+        import html as _h
+        self._offerable(monkeypatch, gates=gates, loops=loops)
+        body = _h.unescape(self._get(monkeypatch, _value()).get_data(as_text=True))
+        assert 'class="update-pill update-pill-held"' in body and 'href="/v2/update"' in body
+        assert f"Update to {TIP[:7]}: not offered: {words}" in body, body[:900]
+        assert f" to {TIP[:7]} (held)" in body
 
     @pytest.mark.parametrize("value,last", [
         (_value(ci={"tip": TIP, "state": "pending"}), NO_UPDATE_ASKED),

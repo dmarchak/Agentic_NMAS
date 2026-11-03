@@ -545,6 +545,54 @@ def wait_end_words(doc: dict) -> str:
 CI_GATE = "CI passed the target"
 #: The gate an update cannot pass while an operation holds a device (CONCURRENCY_AUDIT R5).
 OPERATIONS_GATE = "no operation is running on a device"
+#: C2337 (the operator, 2026-11-03: "one deploy path"): the safe-deploy script refuses while an
+#: SDN loop runs and checks the pages after the restart, rolling back on a failure; the in-app
+#: update is offered only once its updater runs the same. Each gate's name in the updater's own
+#: `GATES` declaration, and its words.
+SDN_LOOP_GATE = "no SDN loop is running"
+SAFE_DEPLOY_GATE = "the update runs the safe-deploy script's gates"
+SAFE_DEPLOY_GATES = ("sdn_loop", "smoke")
+SAFE_DEPLOY_WORDS = {"sdn_loop": "the refusal while an SDN loop runs",
+                     "smoke": "the page smoke after the restart (rolling back on a failure)"}
+#: The repository's updater, whose `GATES = (...)` names what it runs.
+UPDATER_SOURCE = os.path.join(ROOT, "deploy", "update", "nmas-update")
+
+
+def updater_gates(install: dict = None, source: str = UPDATER_SOURCE) -> set:
+    """The gates the INSTALLED updater runs (C2337): those the repository's updater declares
+    (`GATES = ("...", ...)` in deploy/update/nmas-update), and only while the installed copy is
+    that file (`install_state` "ok"); an installed copy that differs is an older updater, so it
+    runs none of the declared ones for certain. An unreadable source declares none."""
+    import re
+
+    if (install or {}).get("state") != "ok":
+        return set()
+    try:
+        with open(source, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return set()
+    m = re.search(r"^GATES = \(([^)]*)\)", text, re.M)
+    return set(re.findall(r'"([a-z_]+)"', m.group(1))) if m else set()
+
+
+def sdn_loops_running() -> list:
+    """The networks whose SDN loop runs now, read from each loop's own log as the app's start-up
+    reads it (`loop.ran_until_now`: a start with no stop after it), the safe-deploy script's
+    check. A log that cannot be read is named too: unread is never "not running"."""
+    from modules.nsot import listref
+    from modules.sdn import loop
+
+    out = []
+    for network in listref.names():
+        got = loop._read(network, loop.LOG_FILE)                   # noqa: SLF001
+        if got["state"] == "absent":
+            continue
+        if got["state"] != "ok":
+            out.append(f"{network} (its loop's log is {got['state']})")
+        elif loop.ran_until_now(got["rows"]):
+            out.append(network)
+    return out
 
 
 def operations_words(ops: list) -> str:
@@ -558,7 +606,8 @@ def operations_words(ops: list) -> str:
 
 
 def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
-         holder=None, waiting=None, operations=None, pin=None) -> dict:
+         holder=None, waiting=None, operations=None, pin=None, loops=None,
+         gates_run=None) -> dict:
     """What the Update preview draws, with its gates and its hash.
 
     The target is the newest commit since the running one that CI passed (the reader's
@@ -648,6 +697,21 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
           "they can be read" if unread else "none" if not operations else
           "the restart would end it half-applied: " + operations_words(operations)
           + ". Update when it finishes"))
+    # C2337 (the operator, 2026-11-03): one deploy path, with the safe-deploy script's gates.
+    # A restart stops a running SDN loop and it does not resume by itself (C2000).
+    loops_now = sdn_loops_running() if loops is None else loops
+    gate(SDN_LOOP_GATE, not loops_now,
+         "none" if not loops_now else
+         f"{', '.join(loops_now)}: the restart would stop it, and it does not resume by itself; "
+         "a person stops it first")
+    # The page smoke and the rest of the safe-deploy script's gates run by the updater itself.
+    runs = updater_gates(install) if gates_run is None else set(gates_run)
+    lacking = [g for g in SAFE_DEPLOY_GATES if g not in runs]
+    gate(SAFE_DEPLOY_GATE, not lacking,
+         "yes" if not lacking else
+         ("the installed updater does not run " + ", ".join(SAFE_DEPLOY_WORDS[g] for g in lacking)
+          + ", which the safe-deploy script does (C2337): deploy through the safe-deploy "
+          "script, or install the updater that runs them (a host step)"))
     from modules import host_steps as HS
     # Each BEFORE step checked where the tool can check it (the operator,
     # 2026-09-30): a step the check finds done needs no box; one it finds not

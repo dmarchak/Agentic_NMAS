@@ -62,6 +62,13 @@ Each of these is a gate, and any failing refuses the update:
   waits until they finish. An update already waiting for CI keeps waiting while one runs.
   A terminal `nmas-deploy` asks the same question before it restarts, and refuses (exit 10)
   naming each one.
+- no SDN loop is running. The restart would stop it, and it does not resume by itself; a
+  person stops it first.
+- the update runs the safe-deploy script's gates: the refusal while an SDN loop runs, and the
+  page smoke after the restart, rolling back on a failure. It passes only while the installed
+  updater is the repository's and declares them. Until one that does is installed (a host
+  step), the update is not offered, the top bar's Update names the commit it would install
+  and is drawn held, saying why, and a deploy goes through the safe-deploy script.
 
 An operation that a restart or a crash did cut off is a Needs attention row: what was
 running, on which devices, who started it and its last step. Read each device and compare
