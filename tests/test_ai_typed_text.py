@@ -248,9 +248,10 @@ def test_text_of_several_lines_is_said_line_by_line(gw):
 
 def test_a_mask_the_person_typed_themselves_is_not_said_as_one_made(gw):
     got = _ask(gw, "rows with <redacted:snmp_community> in them, community Wombat77Comm")
-    # Only the community after the word "community" is a new mask: no position names it, so
-    # nothing is masked and nothing said.
-    assert "typed_masked" not in got
+    # Only the community after the word "community" is a new mask (C2340: what a person types
+    # is masked by its clause's shape), and the placeholder they typed is not one this made.
+    assert got["typed_masked"]["values"] == 1
+    assert "an SNMP community" not in got["typed_masked"]["said"]
     typed = "snmp-server community Wombat77Comm RO, like <redacted:snmp_community>"
     got = _ask(gw, typed)
     assert got["typed_masked"]["values"] == 1
@@ -339,7 +340,8 @@ def test_an_explain_pack_is_sent_as_the_request_s_one_mask_makes_it_and_nothing_
 
 def test_every_mask_redact_makes_has_its_words():
     labels = {label for label, _p in redact._POSITIONAL} | {label for label, _p in
-                                                           redact._EGRESS}
+                                                           redact._EGRESS} | set(
+        redact.TYPED_LABELS)
     assert len(labels) >= 15, labels
     assert set(gateway.MASK_WORDS) == labels, sorted(set(gateway.MASK_WORDS) ^ labels)
     assert len(set(gateway.MASK_WORDS.values())) == len(gateway.MASK_WORDS), "each its own"

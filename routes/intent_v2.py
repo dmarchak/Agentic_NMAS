@@ -198,7 +198,7 @@ def words(name):
         # What was masked before sending (C1845) is drawn back masked too, in the box and in
         # the commit's one line that starts from it: the value is never in the page.
         from modules import redact
-        shown = redact.redact_egress(shown)
+        shown = redact.redact_typed(shown)
     return _strict(render_template("v2/_intent_words.html", host=host,
                                    w=dict(w, sentence=shown, model=model)))
 

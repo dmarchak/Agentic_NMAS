@@ -10,8 +10,10 @@ hand (the operator, 2026-11-02; PHASE8_PLAN 0.5). Read-only.
 For each UTC day the record holds: the calls (its rows with a cost, never a use of a call's
 answer), the calls that cost something, their dollars
 (`cost_usd` summed) and the running total, and of those dollars how much was an evaluation's
-(an ``evaluation:`` actor), a person's and a background job's. Then the total of every day, the
-total since *--since* (its first day included), and with *--budget* what is left of it. With
+(an ``evaluation:`` actor), a person's and a background job's. Then the lifetime total (every
+day, never set against a budget), the total since *--since* (its first day included), and with
+*--budget* what is left of it for that span alone. The Phase 8 budget's span starts the day the
+credit's bill does (PHASE8_PLAN 0.5, its `--since`), so a report states that span. With
 *--reading* (the provider console's figure for the same span) it prints the gap between the two,
 since the ledger holds Mercury's price table's costs and the console holds the bill.
 
@@ -80,13 +82,17 @@ def report(got: dict, since: str = "", budget: float = None, reading: float = No
         out.append(f"{day}  calls {d['calls']:6d}  costing {d['costing']:6d}  "
                    f"${d['usd']:10.4f}  running ${running:10.4f}" + (f"  ({split})" if split
                                                                      else ""))
-    out.append(f"every day: ${running:.4f}; lines that did not parse: {got['unparsed']}")
+    # Lifetime and a budget's span are two figures, each named (the operator, 2026-11-03: the
+    # lifetime total was reported against the $190, which counts only the credit's span).
+    out.append(f"lifetime, every day the record holds: ${running:.4f} (never a budget's "
+               f"figure); lines that did not parse: {got['unparsed']}")
     if since:
         spent = sum(d["usd"] for day, d in got["days"].items() if day >= since)
         before = running - spent
         out.append(f"since {since} (its day included): ${spent:.4f}; before it: ${before:.4f}")
         if budget is not None:
-            out.append(f"of the ${budget:.2f} budget: ${budget - spent:.4f} left")
+            out.append(f"of the ${budget:.2f} budget for the spend since {since}: "
+                       f"${spent:.4f} spent, ${budget - spent:.4f} left")
         if reading is not None:
             out.append(f"the console's reading ${reading:.2f}; the ledger's ${spent:.4f}; the "
                        f"gap ${spent - reading:+.4f} (the ledger holds Mercury's price table's "

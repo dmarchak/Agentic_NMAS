@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""The toolbar assistant's recorded cases, asked as one batch (card P7; PHASE8_PLAN 16.10, stage
+1's build, order item (c)): every case of a case file (by default
+tests/fixtures/ai_cases/assistant/recorded.json) asked *--runs* times as ONE batch at the batch
+rate (`gateway.ask_batch`), each request the one a person's press sends for the same question
+and screen (`assistant.prepare`, the one request path), each answer judged as a press's is
+(`assistant.judge`), and each run scored against its case (`cases.assistant_misses`). The call
+is made here, never from Mercury's modules: an AI call from the product's code starts only from
+a gated POST, and this is an operator's evaluation run on the host.
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter): each case
+    # with what the retriever chooses for it, and nothing sent
+    nmas-host nmas -- <checkout>/scripts/nmas-assistant-cases --list
+    # and asked through the gateway, ten runs of every case, one batch
+    nmas-host nmas -- <checkout>/scripts/nmas-assistant-cases --runs 10 --stop-usd 3 \\
+        --out /tmp/assistant-recorded.json
+
+**No network is named:** stage 1's assistant sends nothing of a network (the question, the
+screen asked from and the manual's passages), and its calls name none.
+
+**`--list`**: each case's class, screen and question, the passages the retriever chooses (how
+many, their characters) and whether its expected sections are in the top 5; no call, nothing
+recorded.
+
+**Asked as an evaluation, never a person** (C1784, C1846): the actor is ``evaluation:<run>``
+(none given is ``evaluation:assistant-cases-<UTC time>``; an address or anything else is
+refused before anything is read), so its spend counts against the caps under its run. The batch
+is refused whole, nothing sent, when its worst case is over `--stop-usd` (required) or would pass
+the day cap. A case whose retriever chooses no passage is Mercury's own answer ("the manual
+doesn't cover this") in every run, with nothing sent.
+
+**The report** (printed, and kept whole in `--out`, never inside the checkout): per case its
+passes and whether it is reliable (every run passed), each run's misses named; per class its
+reliable share; overall the share reliable, against 15.12's done floor (`FLOOR`). Beside it, per
+question (one call), the prompt's tokens (input, cache writes and reads), the output's tokens and
+the cost, from the call's own record (`calls`: the provider's usage and the batch-rate cost the
+gateway kept), their mean and max, and the estimate they test: the retriever's budget
+(`manual_index.BUDGET_CHARS`) at 4 and at 2.585 characters a token; the cost per answer that
+passed.
+"""
+import argparse
+import json
+import os
+import statistics
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+CASES = os.path.join("tests", "fixtures", "ai_cases", "assistant", "recorded.json")
+#: 15.12's done floor applied to reliability: 95% (90% only for Explain and the Analyst, which
+#: the assistant is neither).
+FLOOR = 0.95
+#: The rates the retriever's budget was sized at (manual_index's `BUDGET_CHARS`): 4 characters
+#: a token, and C1798's 2.585.
+RATES = (4.0, 2.585)
+#: The retriever's top k a recorded case's expected sections must reach (`--list`).
+TOP_K = 5
+
+
+def batch_custom_id(n, run: int) -> str:
+    """A batched request's custom_id: the case, the prompt's version and the run
+    (``a7-assistant-v1-r0``), in the provider's shape."""
+    from modules.ai import assistant
+
+    name, version = assistant.PROMPT
+    return f"a{int(n)}-{name}-v{int(version)}-r{int(run)}"
+
+
+def _sent_rows(results: dict) -> dict:
+    """``{call id: its row}`` for every call *results* name, read once from the record."""
+    from modules.ai import calls
+
+    want = {r.get("call_id") for r in results.values() if r.get("call_id")}
+    if not want:
+        return {}
+    return {r["id"]: r for r in calls.read().get("rows") or [] if r.get("id") in want}
+
+
+def answer_cases_batch(items: list, runs: int, *, actor: str, trigger: dict,
+                       stop_usd: float = None, provider=None, sleep=None, clock=None) -> dict:
+    """Each of *items* (``{"n", "q", "screen"}``) asked *runs* times as one batch
+    (`gateway.ask_batch`, which refuses any trigger but an evaluation's): each request is
+    `assistant.prepare`'s, the one a press sends, and each answer is judged by
+    `assistant.judge`, its use recorded the same. ``{"ok", "error", "detail", "batch_id",
+    "cost_usd", "worst_usd", "results": {custom_id: judge's result with "n", "run", "sent" (the
+    request as it was submitted, from the call's record; None when nothing was), "output" (the
+    model's answer as it gave it) and "row" (the call's record)}}``. An item `prepare` answers
+    itself (no passage chosen, a question refused) is that answer in every run, nothing sent."""
+    from modules.ai import assistant, gateway
+
+    requests, preps, results = [], {}, {}
+    for item in items:
+        prep = assistant.prepare(item["q"], screen=item.get("screen") or "")
+        for run in range(int(runs)):
+            cid = batch_custom_id(item["n"], run)
+            meta = {"n": item["n"], "run": run}
+            if "done" in prep:
+                results[cid] = dict(prep["done"], sent=None, output=None, row=None, **meta)
+                continue
+            preps[cid] = (prep, meta)
+            requests.append(dict(prep["request"], custom_id=cid))
+    if not requests:
+        return {"ok": True, "error": "", "detail": "no case chose a passage; nothing was sent",
+                "batch_id": "", "cost_usd": 0.0, "worst_usd": 0.0, "results": results}
+    got = gateway.ask_batch(requests, actor=actor, trigger=trigger, stop_usd=stop_usd,
+                            provider=provider, sleep=sleep, clock=clock)
+    rows = _sent_rows(got["results"])
+    for cid, (prep, meta) in preps.items():
+        one = got["results"].get(cid)
+        if one is None:
+            one = {"ok": False, "error": got["error"] or "no_result",
+                   "detail": got["detail"] or "the batch returned no result for it"}
+        row = rows.get(one.get("call_id") or "")
+        # Sent only once the batch was submitted: its id is on the row from then on.
+        submitted = bool(row and (row.get("batch") or {}).get("id"))
+        output = one.get("output")
+        results[cid] = dict(assistant.judge(one, prep, actor=actor),
+                            sent=row.get("request") if submitted else None,
+                            output=output.model_dump(mode="json") if output is not None
+                            else None, row=row, **meta)
+    return {"ok": got["ok"], "error": got["error"], "detail": got["detail"],
+            "batch_id": got["batch_id"], "worst_usd": got.get("worst_usd", 0.0),
+            "cost_usd": round(sum(float((r.get("row") or {}).get("cost_usd") or 0)
+                                  for r in results.values()), 6),
+            "results": results}
+
+
+def _request_chars(body: dict) -> int:
+    """The characters of a request's text: its system blocks and its messages."""
+    return (sum(len(b.get("text") or "") for b in body.get("system") or [])
+            + sum(len(m.get("content") or "") for m in body.get("messages") or []
+                  if isinstance(m.get("content"), str)))
+
+
+def usage(results: dict) -> dict:
+    """Tokens and cost per question (one call each), from the calls' own records: each
+    answered call's prompt (``input``: its uncached input, cache writes and cache reads, as the
+    provider counted them), ``output`` and ``cost_usd``, their mean and max; the measured
+    characters a token over the requests' text; and the estimate beside them, the retriever's
+    budget at each of `RATES`."""
+    from modules.ai import manual_index
+
+    per = []
+    for r in results.values():
+        row = r.get("row") or {}
+        t = row.get("tokens")
+        if not t:
+            continue
+        prompt = (int(t.get("input_tokens") or 0) + int(t.get("cache_creation_input_tokens") or 0)
+                  + int(t.get("cache_read_input_tokens") or 0))
+        per.append({"input": prompt, "uncached": int(t.get("input_tokens") or 0),
+                    "cache_write": int(t.get("cache_creation_input_tokens") or 0),
+                    "cache_read": int(t.get("cache_read_input_tokens") or 0),
+                    "output": int(t.get("output_tokens") or 0),
+                    "cost_usd": float(row.get("cost_usd") or 0),
+                    "chars": _request_chars(row.get("request") or {})})
+
+    def stat(key):
+        vals = [p[key] for p in per]
+        return {"mean": round(statistics.fmean(vals), 6) if vals else 0,
+                "max": max(vals) if vals else 0}
+    prompt_tokens = sum(p["input"] for p in per)
+    return {"calls": len(per),
+            **{k: stat(k) for k in ("input", "uncached", "cache_write", "cache_read", "output",
+                                    "cost_usd")},
+            "chars_per_token": round(sum(p["chars"] for p in per) / prompt_tokens, 3)
+            if prompt_tokens else None,
+            "estimate": {"budget_chars": manual_index.BUDGET_CHARS,
+                         **{f"tokens_at_{rate:g}": round(manual_index.BUDGET_CHARS / rate)
+                            for rate in RATES}}}
+
+
+def _share(k: int, n: int) -> str:
+    return f"{k} of {n} ({100.0 * k / n:.0f}%)" if n else "0 of 0"
+
+
+def _kept(r: dict) -> dict:
+    """A run as `--out` keeps it: the result, its call's tokens and cost, never the request
+    (each holds the passages: its characters instead)."""
+    row = r.get("row") or {}
+    out = {k: v for k, v in r.items() if k not in ("sent", "row")}
+    out.update(sent_chars=len(json.dumps(r["sent"], ensure_ascii=False)) if r.get("sent")
+               else 0, tokens=row.get("tokens"), cost_usd=row.get("cost_usd", 0.0),
+               verdict=row.get("verdict", ""))
+    return out
+
+
+def score_cases(data: dict, actor: str, runs: int, out: str, stop_usd: float, provider=None,
+                sleep=None, clock=None) -> int:
+    """Every case asked *runs* times in one batch, each run scored against its case
+    (`cases.assistant_misses`): per case its passes and whether every run passed (reliable),
+    per class its reliable share, overall the share reliable against `FLOOR`, and the tokens and
+    cost per question (`usage`). Kept in *out*."""
+    from modules.ai import assistant, cases, prompts, triggers
+
+    instructions = prompts.load(*assistant.PROMPT)["text"]
+    items = [{"n": c["n"], "q": c["q"], "screen": c.get("screen") or ""}
+             for c in data["cases"]]
+    got = answer_cases_batch(items, runs, actor=actor, trigger=triggers.evaluation(actor),
+                             stop_usd=stop_usd, provider=provider, sleep=sleep, clock=clock)
+    report, by_class, passed_runs = [], {}, 0
+    for c in data["cases"]:
+        expect = cases.assistant_expectation(c)
+        mine = sorted((r for r in got["results"].values() if r["n"] == c["n"]),
+                      key=lambda r: r["run"])
+        scored = [dict(r, misses=cases.assistant_misses(expect, r, instructions)) for r in mine]
+        passes = sum(1 for r in scored if not r["misses"])
+        passed_runs += passes
+        ok = bool(scored) and passes == len(scored)
+        k = by_class.setdefault(c["class"], {"cases": 0, "reliable": 0})
+        k["cases"] += 1
+        k["reliable"] += ok
+        report.append({"n": c["n"], "class": c["class"], "q": c["q"], "passes": passes,
+                       "runs": len(scored), "reliable": ok,
+                       "sent": any(r.get("sent") for r in scored),
+                       "runs_scored": [_kept(r) for r in scored]})
+        print(f"{c['n']} ({c['class']}): {passes} of {len(scored)} passed"
+              + (" · reliable" if ok else " · NOT reliable")
+              + ("" if any(r.get("sent") for r in scored) else " · nothing sent")
+              + "".join(f"\n  run {r['run']}: " + "; ".join(r["misses"])
+                        for r in scored if r["misses"]), flush=True)
+    reliable = sum(1 for r in report if r["reliable"])
+    used = usage(got["results"])
+    spent = got["cost_usd"]
+    for name, k in sorted(by_class.items()):
+        print(f"{name}: {_share(k['reliable'], k['cases'])} reliable")
+    est = used["estimate"]
+    print(f"per question ({used['calls']} calls): input tokens mean {used['input']['mean']:.0f}"
+          f", max {used['input']['max']}; output mean {used['output']['mean']:.0f}, max "
+          f"{used['output']['max']}; cost mean ${used['cost_usd']['mean']:.6f}, max "
+          f"${used['cost_usd']['max']:.6f}; the estimate: {est['budget_chars']} characters of "
+          f"passages, {est['tokens_at_4']} tokens at 4 a token, {est['tokens_at_2.585']} at "
+          f"2.585; measured {used['chars_per_token'] or 'no'} characters a token")
+    floor = (f"over the {FLOOR:.0%} floor" if report and reliable / len(report) >= FLOOR
+             else f"under the {FLOOR:.0%} floor")
+    words = (f"{_share(reliable, len(report))} case(s) reliable, {floor}; batch "
+             f"{got['batch_id'] or 'none'}, ${spent:.4f}"
+             + (f", ${spent / passed_runs:.6f} a passing answer" if passed_runs else "")
+             + (f"; {got['error']}: {got['detail']}" if not got["ok"] else ""))
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"actor": actor, "runs": runs, "prompt": "{}.v{}".format(*assistant.PROMPT),
+                   "batch_id": got["batch_id"], "spent_usd": spent,
+                   "worst_usd": got["worst_usd"], "summary": words, "floor": FLOOR,
+                   "classes": by_class, "usage": used, "cases": report}, fh, indent=2)
+    print(f"{words}; written {out}")
+    return 0 if got["ok"] else 3
+
+
+def list_cases(data: dict) -> int:
+    """`--list`: each case and what the retriever chooses for it, as `assistant.prepare` asks
+    (the question masked as it leaves); nothing sent, nothing recorded."""
+    from modules.ai import assistant, manual_index
+
+    for c in data["cases"]:
+        prep = assistant.prepare(c["q"], screen=c.get("screen") or "")
+        chosen = prep.get("chosen") or []
+        want = (c.get("expect") or {}).get("sections") or []
+        reach = ("" if not want else " · its section in the top 5" if manual_index.hits(
+            want, chosen[:TOP_K]) else " · its section NOT in the top 5")
+        print(f"{c['n']} ({c['class']}, {c.get('screen') or 'no screen'}): {c['q']}\n  "
+              + (f"{len(chosen)} passage(s), {sum(len(p['text']) for p in chosen)} characters"
+                 if chosen else "no passage chosen: nothing would be sent") + reach)
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--checkout", default="")
+    ap.add_argument("--cases", default=CASES, help="the case file (default: %(default)s)")
+    ap.add_argument("--list", action="store_true",
+                    help="each case and the passages chosen for it; nothing sent")
+    ap.add_argument("--runs", type=int, default=10, help="how many times to ask (1 to 20)")
+    ap.add_argument("--stop-usd", type=float, default=None,
+                    help="the most the batch may cost; refused whole above it (required)")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    args = ap.parse_args(argv)
+    checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
+    sys.path.insert(0, checkout)
+    os.chdir(checkout)
+    from modules.ai import cases
+    with open(args.cases, encoding="utf-8") as fh:
+        data = json.load(fh)
+    if args.list:
+        return list_cases(data)
+    if not 1 <= args.runs <= 20:
+        print(f"nmas-assistant-cases: --runs is from 1 to 20, not {args.runs}", file=sys.stderr)
+        return 2
+    if args.stop_usd is None:
+        print("nmas-assistant-cases: the cases are asked as one batch and need --stop-usd, the "
+              "most it may cost", file=sys.stderr)
+        return 2
+    if not args.out:
+        ap.error("a run that asks needs --out (or --list)")
+    if os.path.realpath(args.out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-assistant-cases: --out {args.out} is inside the checkout; write it "
+              "elsewhere", file=sys.stderr)
+        return 2
+    actor, refusal = cases.evaluation_actor(args.actor, "assistant-cases")
+    if refusal:
+        print(f"nmas-assistant-cases: {refusal}", file=sys.stderr)
+        return 2
+    print(f"nmas-assistant-cases: {len(data['cases'])} case(s) from {args.cases}, {args.runs} "
+          f"run(s) each, one batch, recorded as {actor}")
+    return score_cases(data, actor, args.runs, args.out, args.stop_usd)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -3479,3 +3479,38 @@ interpreter (`scratchpad/mut_c2332.py`, 2026-11-03 ~04:3x UTC). Baseline: they p
 
 **The result: 3 mutants with the canary; every one killed, the leak by the existing guards as
 well as the new test; the worktree removed each time.**
+
+## 2026-11-03: what a person types masked by its clause's shape (C2340), by hand
+
+**What changed in the tier:** a new mask for typed text, `redact.redact_typed`. It masks the
+value after a connective on the words as typed (`_TYPED_COPULA`), then runs `redact_egress`,
+then masks each secret word's clause (`_mask_clause`: the first value slot, the word after a
+connective, every credential-shaped token). It replaces `redact_egress` on the six typed paths:
+`gateway.mask_typed`, the assistant's ranking and gap record, `repo.masked_message`, and the
+masked question drawn back in `routes/v2.py` and `routes/intent_v2.py`. The danger the hand
+check guards is a value written in prose leaving the host, which it did before this change
+(15 of 18 prose shapes, C2340).
+**The method:** each mutant one exact replacement of a changed line, required to match once,
+in a `scripts/nmas-control` throwaway worktree. Then tests/test_redact_typed.py,
+test_ai_typed_text.py, test_url_userinfo_masked.py, test_assistant_cases.py,
+test_ai_assistant.py, test_redact_egress.py and test_ai_nl_logs.py ran, one worker, in CI's
+interpreter (`scratchpad/mut_c2340.py`, 2026-11-03 ~06:3x UTC). Baseline: 241 passed.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `redact_typed` returns its text | killed (66) | every prose shape in `test_a_secret_written_in_prose_never_leaves`, the typed paths' tests |
+| M1 the connective's value not masked first | killed (1) | `test_a_secret_written_in_prose_never_leaves[the password is hunter]` |
+| M2 the clause step skipped | killed (9) | the prose shapes passwd, passphrase, api key, token |
+| M3 no value slot | killed (1) | `test_a_secret_written_in_prose_never_leaves[the password for r2 is hunter]` |
+| M4 no credential shape | survived at first, then killed (1) | `test_a_secret_written_in_prose_never_leaves[my password for the lab account was changed yesterday from …]`, the case added for it |
+| M5 the gateway's typed parts by `redact_egress` | killed (2) | `test_the_typed_paths_use_it`, `test_a_mask_the_person_typed_themselves_is_not_said_as_one_made` |
+| M6 a commit message by `redact_egress` | killed (1), then (2) | `test_the_typed_paths_use_it`, then also `test_a_commit_message_never_keeps_a_prose_secret`, added for it |
+| M7 the assistant's ranking by `redact_egress` | killed (1) | `test_the_typed_paths_use_it` (by the source only) |
+| M8 a token holding a placeholder masked again | killed (1) | `test_every_masking_entry_point_masks_a_url_s_user_part[_mask_clause]` |
+| M10 the known values not masked first (the state before the gate's refusal) | killed (1) | `test_commit_message_masked.py::…::test_a_stored_value_typed_in_prose_never_reaches_the_commit`, in the first gate's run (browser3), which ran without the step |
+| M9 the URL's and the hyphen's guard removed | killed (4) | the URL census for `mask_typed`, `masked_message`, `redact_typed`; `test_a_url_s_user_part_is_the_egress_mask_s_whole` |
+
+**The result: 9 mutants with the canary; every one killed, M4 and M6 by behaviour only after
+their cases were added; the worktree removed each time.** M7 dies only to the test reading its
+source. The ranking's text stays in the process (it chooses passages and is neither sent nor
+kept), and the gap record that is kept has its own behaviour test.

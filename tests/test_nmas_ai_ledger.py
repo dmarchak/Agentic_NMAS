@@ -59,13 +59,15 @@ def test_each_utc_day_its_calls_dollars_and_whose():
     out = L.report(got)
     assert out[1].startswith("2026-10-29  calls      3  costing      2  $    2.7500  running "
                              "$    4.0000  (evaluation $2.5000, person $0.2500)")
-    assert out[-1] == "every day: $4.1250; lines that did not parse: 0"
+    assert out[-1] == ("lifetime, every day the record holds: $4.1250 (never a budget's "
+                       "figure); lines that did not parse: 0")
 
 
 def test_since_a_day_the_budget_left_and_the_gap_to_the_console():
     out = L.report(L.by_day(_lines()), since="2026-10-29", budget=190, reading=2.80)
     assert out[-3] == "since 2026-10-29 (its day included): $2.8750; before it: $1.2500"
-    assert out[-2] == "of the $190.00 budget: $187.1250 left"
+    assert out[-2] == ("of the $190.00 budget for the spend since 2026-10-29: $2.8750 spent, "
+                       "$187.1250 left")
     assert out[-1].startswith("the console's reading $2.80; the ledger's $2.8750; the gap "
                               "$+0.0750")
 
@@ -80,7 +82,8 @@ def test_the_command_reads_the_record_given_and_refuses_what_it_cannot(tmp_path,
     ledger.write_text("\n".join(_lines()) + "\n", encoding="utf-8")
     assert L.main(["--ledger", str(ledger), "--since", "2026-11-01", "--budget", "1"]) == 0
     printed = capsys.readouterr().out.splitlines()
-    assert printed[-1] == "of the $1.00 budget: $0.8750 left"
+    assert printed[-1] == ("of the $1.00 budget for the spend since 2026-11-01: $0.1250 spent, "
+                           "$0.8750 left")
     assert L.main(["--ledger", str(ledger), "--budget", "1"]) == 2
     assert "need --since" in capsys.readouterr().err
     assert L.main(["--ledger", str(tmp_path / "absent.jsonl")]) == 2

@@ -101,6 +101,11 @@ ENTRY_POINTS = {
     # What leaves the host through Phase 8's gateway (C1654): redact_text, then the egress
     # shapes.
     "modules/redact.py:redact_egress": lambda: redact.redact_egress(PLANTED, values={}),
+    # What a person types (C2340): redact_egress, then each secret word's clause by its shape.
+    "modules/redact.py:redact_typed": lambda: redact.redact_typed(PLANTED, values={}),
+    # Its clause step, on what it is only ever given: text `redact_egress` has masked.
+    "modules/redact.py:_mask_clause": lambda: redact._mask_clause(
+        redact.redact_egress(PLANTED, values={})),
     # A person's typed words on their way to a model (C1845): the typed part as sent.
     "modules/ai/gateway.py:mask_typed": lambda: __import__(
         "modules.ai.gateway", fromlist=["x"]).mask_typed(

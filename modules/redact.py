@@ -710,6 +710,126 @@ def egress_payload(payload, values: dict = None):
     return _walk(payload)
 
 
+# ── what a person types (C2340) ──────────────────────────────────────────────────────────────
+#
+# A person writes a secret in prose, not in a configuration's positions: "the password is X",
+# "set its password to X", "password: X", "the password for edge1 is X", "api key X". The egress
+# shapes take the one word after "password" or "secret" as its value, so each of those sent X
+# (measured 2026-11-03: 15 of 18 prose shapes). So typed text is masked by the clause's SHAPE,
+# not by its members: after a secret word, up to the clause's end (".", ";", ",", "!" or "?"
+# before a space, or the line's end), the value's slots are masked (the first word that is not
+# a connective, and the word after "is", "to", "=" or ":"), and so is every credential-shaped
+# token (letters with digits, or a symbol). It over-masks a word or two of prose, which costs
+# the reader nothing secret; an address stays, as everywhere in the mask. Applied only to what
+# a person types (a question, an instruction, a commit message): a configuration is masked by
+# its positions (`redact_egress`), whose lines this rule would cost their meaning.
+
+# A secret word standing alone: not inside a URL's user part ("x-access-token:…", which
+# `redact_egress` masks whole) nor a hyphenated word ("password-encryption").
+_SECRET_WORD = (r"(?<![\w/:@.-])"
+                r"(?:password|passwd|passphrase|pwd|pw|secret|community|api[-_ ]?key|token)s?")
+_TYPED_WORD = re.compile(r"(?i)" + _SECRET_WORD + r"(?=$|[\s:=])")
+_CLAUSE_END = re.compile(r"[.;,!?](?=\s|$)|\n")
+_CONNECTIVE = frozenset((
+    "is", "was", "are", "be", "to", "set", "now", "the", "a", "an", "of", "for", "new", "as",
+    "becomes", "will", "should", "it", "its", "my", "our", "their", "this", "that", "here",
+    "=", ":", "-"))
+_COPULA = frozenset(("is", "was", "are", "be", "to", "as", "becomes", "=", ":"))
+_SYMBOL = re.compile(r"[^\w\s'\-]")
+#: The labels only `redact_typed` writes.
+TYPED_LABELS = ("typed_secret",)
+_TYPED_PLACEHOLDER = PLACEHOLDER.format(label=TYPED_LABELS[0])
+_TYPE_NUMBER = re.compile(r"\d{1,2}")
+_TYPED_COPULA = re.compile(
+    r"(?i)(" + _SECRET_WORD + r"(?:\s*[:=]\s*|\s+(?:is|was|are|be|to|as|becomes|set\s+to)\s+(?:now\s+)?))"
+    r"(\S+?)(?=[.;,!?]?(?:\s|$))")
+
+
+def _is_address(token: str) -> bool:
+    import ipaddress
+    try:
+        ipaddress.ip_interface(token.strip("[]()"))
+        return True
+    except ValueError:
+        return False
+
+
+def _credential_shaped(token: str) -> bool:
+    if _is_address(token):
+        return False
+    letters = any(ch.isalpha() for ch in token)
+    digits = any(ch.isdigit() for ch in token)
+    return (letters and digits) or bool(_SYMBOL.search(token))
+
+
+def _mask_clause(clause: str) -> str:
+    """The value slots and credential-shaped tokens of the words after a secret word."""
+    parts = []
+    for piece in re.split(r"(\s+)", clause):
+        # A value glued to its "=" or ":" ("password:X") is the copula, then the value.
+        while piece[:1] in (":", "=") and len(piece) > 1:
+            parts.append(piece[0])
+            piece = piece[1:]
+        parts.append(piece)
+    out, first_done, after_copula = [], False, False
+    for part in parts:
+        if not part or part.isspace():
+            out.append(part or "")
+            continue
+        word = part.lower()
+        if _ALREADY.match(part) or "<redacted:" in part:
+            # A value already masked fills its slot: a pasted line keeps its other words.
+            out.append(part)
+            first_done, after_copula = True, False
+            continue
+        if word in _COPULA:
+            out.append(part)
+            after_copula = True
+            continue
+        if word in _CONNECTIVE or (not first_done and _TYPE_NUMBER.fullmatch(part)):
+            # A pasted line's type number ("password 7 <x>", "secret 5 <x>") names how the
+            # value is stored; the value is the word after it.
+            out.append(part)
+            continue
+        slot = not first_done or after_copula
+        first_done, after_copula = True, False
+        if (slot and not _is_address(part)) or _credential_shaped(part):
+            out.append(_TYPED_PLACEHOLDER)
+        else:
+            out.append(part)
+    return "".join(out)
+
+
+def redact_typed(text: str, values: dict = None) -> str:
+    """Mask *text* a person typed, as it leaves the host or is kept where it is pushed
+    (`redact_egress`, then each secret word's clause by its shape; C2340). Idempotent."""
+    if not text:
+        return text
+    # A value Mercury holds is masked first, by value, so it keeps its own label.
+    values = known_secret_values() if values is None else values
+    pattern, table = _compile(values)
+    if pattern is not None:
+        text = pattern.sub(
+            lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "secret")), text)
+    # Then the value after a connective, on the words as typed: the positions' mask would
+    # take "is" in "password is X" for the value and send X.
+    text = _TYPED_COPULA.sub(
+        lambda m: m.group(1) + (m.group(2) if _ALREADY.match(m.group(2))
+                                else _TYPED_PLACEHOLDER), text)
+    text = redact_egress(text, values)
+    out, at = [], 0
+    for m in _TYPED_WORD.finditer(text):
+        if m.start() < at:
+            continue
+        end = _CLAUSE_END.search(text, m.end())
+        stop = end.start() if end else len(text)
+        out.append(text[at:m.end()])
+        out.append(_mask_clause(text[m.end():stop]))
+        at = stop
+    out.append(text[at:])
+    return "".join(out)
+
+
 def contains_known_secret(payload) -> list:
     """Labels of any known secret present in *payload*. For tests and audits."""
     values = known_secret_values()

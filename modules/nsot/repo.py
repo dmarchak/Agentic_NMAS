@@ -1585,7 +1585,7 @@ def masked_message(message: str) -> str:
     from modules import redact
 
     values = redact.known_secret_values()
-    masked = "\n".join(redact.redact_egress(line, values)
+    masked = "\n".join(redact.redact_typed(line, values)
                        for line in (message or "").split("\n"))
     if masked != (message or ""):
         log.warning("repo: a commit message held a secret (by its position or a stored value); "

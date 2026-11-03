@@ -110,35 +110,67 @@ def subject(screen: str) -> dict:
     return {"kind": SUBJECT_KIND, "id": screen or "", "devices": []}
 
 
+def prepare(question: str, *, screen: str = "") -> dict:
+    """`answer`'s steps before its call, the one code path a person's press and an evaluation's
+    batched request share (scripts/nmas-assistant-cases): the question's checks, the passages
+    chosen from it as it leaves (masked, the mask's placeholders out), and the request.
+    ``{"done": <answer's result, no call>}`` when it is refused (empty, too long) or no passage
+    is chosen (a manual gap); else ``{"chosen", "drawn", "request"}``, *request* what
+    `gateway.ask` takes for it: ``{"feature", "prompt", "schema", "parts", "context",
+    "subject"}``."""
+    from modules.ai import manual_index
+
+    question = (question or "").strip()
+    if not question:
+        return {"done": {"ok": False, "state": "refused", "error": "empty",
+                         "detail": "Ask a question first.", "passages": [], "gap": False}}
+    if len(question) > MAX_QUESTION:
+        return {"done": {"ok": False, "state": "refused", "error": "too_long",
+                         "detail": (f"The question is {len(question)} characters; ask it in at "
+                                    f"most {MAX_QUESTION}."), "passages": [], "gap": False}}
+    # Chosen from the question as it leaves (`redact.redact_egress`), its placeholders taken
+    # out: neither a pasted secret's value nor the mask's own words rank the manual.
+    from modules import redact
+    ranked_by = re.sub(r"<redacted[^>]*>", " ", redact.redact_typed(question))
+    chosen = manual_index.select(ranked_by, screen=screen)
+    drawn = [{"link": p["link"], "page": p["page"], "heading": p["heading"]} for p in chosen]
+    if not chosen:
+        return {"done": {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
+                         "passages": [], "gap": True}}
+    return {"chosen": chosen, "drawn": drawn,
+            "request": {"feature": FEATURE, "prompt": PROMPT, "schema": AssistantAnswer,
+                        "parts": parts(question, screen, chosen), "context": context(),
+                        "subject": subject(screen)}}
+
+
 def answer(question: str, *, screen: str = "", actor: str, trigger: dict, send=None,
            today: str = None) -> dict:
     """A person's question answered from the manual, or why not: ``{"ok", "state", "error",
     "detail", "answer"?, "cites"?, "passages", "call_id"?, "gap"}``. *state* ``answered``,
     ``not_covered`` (no passage chosen, or the passages do not cover it: no answer drawn),
     ``refused`` (a gate, or Mercury's check) or ``failed``; *gap* True when the manual's gap
-    is the route's to record; *passages* each chosen one's link, page and heading."""
-    from modules.ai import calls, gateway, manual_index
+    is the route's to record; *passages* each chosen one's link, page and heading. Its steps:
+    `prepare`, one call through the gateway, `judge`."""
+    from modules.ai import gateway
 
-    question = (question or "").strip()
-    if not question:
-        return {"ok": False, "state": "refused", "error": "empty",
-                "detail": "Ask a question first.", "passages": [], "gap": False}
-    if len(question) > MAX_QUESTION:
-        return {"ok": False, "state": "refused", "error": "too_long",
-                "detail": (f"The question is {len(question)} characters; ask it in at most "
-                           f"{MAX_QUESTION}."), "passages": [], "gap": False}
-    # Chosen from the question as it leaves (`redact.redact_egress`), its placeholders taken
-    # out: neither a pasted secret's value nor the mask's own words rank the manual.
-    from modules import redact
-    ranked_by = re.sub(r"<redacted[^>]*>", " ", redact.redact_egress(question))
-    chosen = manual_index.select(ranked_by, screen=screen)
-    drawn = [{"link": p["link"], "page": p["page"], "heading": p["heading"]} for p in chosen]
-    if not chosen:
-        return {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
-                "passages": [], "gap": True}
-    got = gateway.ask(FEATURE, PROMPT, AssistantAnswer, parts(question, screen, chosen),
-                      actor=actor, trigger=trigger, context=context(), subject=subject(screen),
-                      send=send, today=today)
+    prep = prepare(question, screen=screen)
+    if "done" in prep:
+        return prep["done"]
+    req = prep["request"]
+    got = gateway.ask(req["feature"], req["prompt"], req["schema"], req["parts"],
+                      actor=actor, trigger=trigger, context=req["context"],
+                      subject=req["subject"], send=send, today=today)
+    return judge(got, prep, actor=actor)
+
+
+def judge(got: dict, prep: dict, *, actor: str) -> dict:
+    """`answer`'s steps after its call, the one code path a call and an evaluation's batched
+    answer share: *got* is `gateway.ask`'s result (or a batch's for one request, the same
+    shape), *prep* `prepare`'s. Mercury's check (`check`), then covered or not, the use
+    recorded on the call; the result is `answer`'s."""
+    from modules.ai import calls
+
+    chosen, drawn = prep["chosen"], prep["drawn"]
     if not got.get("ok"):
         return {"ok": False, "state": "refused", "error": got.get("error") or "failed",
                 "detail": got.get("detail") or "", "call_id": got.get("call_id") or "",
@@ -177,8 +209,8 @@ def _gaps_path() -> str:
 def record_gap(question: str, *, screen: str, state: str, actor: str, best: float = None,
                call_id: str = "", now: float = None) -> dict:
     """Record a question the manual did not answer (*state*: no passage chosen, not covered,
-    or refused by the check), the question masked as it leaves (`redact.redact_egress`), so the
-    record holds no secret a person pasted. The ask route's write; the read that ranks writes
+    or refused by the check), the question masked as it leaves (`redact.redact_typed`), so the
+    record holds no secret a person pasted or wrote. The ask route's write; the read that ranks writes
     nothing."""
     from modules import redact
     from modules.config import open_secure
@@ -186,7 +218,7 @@ def record_gap(question: str, *, screen: str, state: str, actor: str, best: floa
 
     row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if now is None
                                                                   else now)),
-           "question": redact.redact_egress(" ".join((question or "").split()))[:MAX_QUESTION],
+           "question": redact.redact_typed(" ".join((question or "").split()))[:MAX_QUESTION],
            "screen": screen or "", "state": state, "actor": actor, "call_id": call_id or "",
            **({"best": round(float(best), 3)} if best is not None else {})}
     path = _gaps_path()

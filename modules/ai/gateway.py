@@ -158,6 +158,7 @@ MASK_WORDS = {
     "egress_snmp_auth": "an SNMPv3 authentication key",
     "egress_snmp_priv": "an SNMPv3 privacy key",
     "egress_hash": "a password hash",
+    "typed_secret": "a word written as a password or secret",
 }
 #: A value masked because Mercury holds it (`redact.known_secret_values`).
 BY_VALUE_WORDS = "a credential Mercury holds"
@@ -182,8 +183,9 @@ def _new_masks(before: str, after: str) -> list:
 
 def mask_typed(parts: dict, names, values: dict) -> dict:
     """``{"parts", "masked"}``: *parts* with each typed part (*names*) masked as it leaves the
-    host (`redact.redact_egress`: by position, by the egress shapes and by the known values
-    *values*), every other part the very object given; and what was masked, per part and line,
+    host (`redact.redact_typed`: by position, by the egress shapes, by the known values
+    *values*, and each secret word's clause by its shape, C2340), every other part the very
+    object given; and what was masked, per part and line,
     ``[{"part", "line", "lines", "labels"}]``, never a value. A typed part absent, or holding
     nothing to mask, is left as it is."""
     from modules import redact
@@ -193,7 +195,7 @@ def mask_typed(parts: dict, names, values: dict) -> dict:
         text = parts.get(name)
         if not isinstance(text, str) or not text:
             continue
-        masked = redact.redact_egress(text, values)
+        masked = redact.redact_typed(text, values)
         if masked == text:
             continue
         out[name] = masked

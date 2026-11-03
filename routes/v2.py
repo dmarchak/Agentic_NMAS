@@ -838,7 +838,7 @@ def _ask_words(fill, view, template: str, ctx, page: str):
         # What was masked before sending (C1845) is drawn back masked too: the value is
         # never in the page, and the box holds the words as the model read them.
         from modules import redact
-        typed = redact.redact_egress(typed)
+        typed = redact.redact_typed(typed)
     got["question"] = typed
     q["words"] = got
     if not got["ok"] and q.get("built"):
