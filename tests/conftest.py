@@ -142,6 +142,28 @@ def _needs_attention_computed_per_request():
     yield
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _shipped_history_is_read_in_the_copied_checkout():
+    """In mutmut's copy of the checkout (`NMAS_COPY_OF` names the checkout it copies, set by
+    scripts/nmas-mutation), the shipped templates' git history is read at the path git
+    tracks (C1651; tests/copy_history.py): ONLY that lookup, `templates_repo._history` for
+    the application's own checkout; every template's content is still read from the copy.
+    Without it a test built on that history (tests/test_confirm_buttons_drawn.py's bring
+    case) failed the clean run of the weekly mutation runs #46 and #68. Outside a copy,
+    nothing changes."""
+    from modules.nsot import templates_repo
+    from tests.copy_history import copy_prefix, history_in_copy
+    prefix = copy_prefix(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         os.environ.get("NMAS_COPY_OF", ""))
+    if not prefix:
+        yield
+        return
+    mp = pytest.MonkeyPatch()
+    mp.setattr(templates_repo, "_history", history_in_copy(templates_repo._history, prefix))
+    yield
+    mp.undo()
+
+
 @pytest.fixture(autouse=True)
 def _needs_attention_shared_value_cleared():
     """No test is served another test's shared Needs attention value (C1262)."""

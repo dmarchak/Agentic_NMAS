@@ -36,6 +36,11 @@ pydefs = _load("pydefs", os.path.join(ROOT, "scripts", "pydefs.py"))
 CANARY_FILE = "tests/mutation_canary.py"
 CANARY_IN_PROCESS = (CANARY_FILE, "in_process")
 CANARY_IN_CHILD = (CANARY_FILE, "in_child")
+#: The canary's other direction (C1651, the operator, 2026-11-03): a function no test calls,
+#: every one of whose mutants must survive. A kill there means the run's kills prove nothing.
+CANARY_UNTESTED = (CANARY_FILE, "untested")
+#: A mutant of the untested canary may read so: not killed.
+UNTESTED_OK = ("survived", "no tests")
 CANARY_TESTS = "tests/test_mutation_canary.py"
 
 #: A mutant no test failed on. "no tests" is mutmut's name for one no test even reached: it
@@ -1137,6 +1142,15 @@ def canary_error(results: dict) -> str:
         return ("MEASUREMENT BROKEN: the canary's mutants must all be killed, and "
                 + ", ".join(f"{m} was {s}" for m, s in sorted(alive.items()))
                 + " (tests/mutation_canary.py says what each proves)")
+    untested = only_functions(results, [CANARY_UNTESTED])
+    if not untested:
+        return (f"MEASUREMENT BROKEN: {dotted(CANARY_UNTESTED)}, the canary no test calls, "
+                "made no mutant, so nothing shows the run cannot kill what is untested")
+    killed = sorted(m for m, s in untested.items() if s not in UNTESTED_OK)
+    if killed:
+        return ("MEASUREMENT BROKEN: the untested canary's mutants must all survive, and "
+                + ", ".join(f"{m} was {untested[m]}" for m in killed)
+                + ": the run kills what no test calls, so none of its kills stands")
     return ""
 
 

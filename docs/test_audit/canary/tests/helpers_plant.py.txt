@@ -1,0 +1,5 @@
+"""The canary's asserting helper (not a test module): a test calling it asserts through it."""
+
+
+def check_positive(x):
+    assert x > 0, x

@@ -1,0 +1,96 @@
+"""The test audit's canary, tool (c): planted tests, each of one static pattern, and clean
+tests that no tool may flag (docs/test_audit/canary/). Named for modules/widget.py, so that
+module is this file's subject."""
+from unittest import mock
+
+import pytest
+
+from modules import widget
+from modules.widget import compute
+from tests.helpers_plant import check_positive
+
+
+class _Resp:
+    status_code = 200
+    data = b"body"
+
+
+# --- plants ---------------------------------------------------------------------------------
+
+def test_plant_tautology_same_sides():
+    x = compute(1)
+    assert x == x
+
+
+def test_plant_tautology_constant():
+    compute(1)
+    assert True
+
+
+def test_plant_assertion_free():
+    compute(2)
+
+
+def test_plant_mock_of_subject_object(monkeypatch):
+    monkeypatch.setattr(widget, "helper", lambda x: 0)
+    assert widget.compute(5) == 1
+
+
+def test_plant_mock_of_subject_string():
+    with mock.patch("modules.widget.helper", return_value=0):
+        assert widget.compute(3) == 1
+
+
+def test_plant_swallowed_exception():
+    result = None
+    try:
+        result = widget.compute(None)
+    except Exception:
+        pass
+    assert result is None or result > 0
+
+
+def test_plant_status_only_code():
+    r = _Resp()
+    assert r.status_code == 200
+
+
+def test_plant_status_only_ok():
+    body = {"ok": True, "items": [compute(1)]}
+    assert body["ok"]
+
+
+# --- clean ----------------------------------------------------------------------------------
+
+def test_clean_compute_value():
+    assert widget.compute(2) == 5
+
+
+def test_clean_patches_a_collaborator(monkeypatch):
+    slept = []
+    monkeypatch.setattr(widget, "time", mock.Mock(sleep=slept.append))
+    assert widget.wait() == "done" and slept == [0]
+
+
+def test_clean_uses_an_asserting_helper():
+    check_positive(widget.compute(1))
+
+
+def test_clean_narrow_handler_and_a_client_patch():
+    class _Client:
+        def patch(self, url):
+            return _Resp()
+    r = _Client().patch("modules.widget.helper")
+    try:
+        value = widget.compute(2)
+    except KeyError:
+        value = None
+    assert value == 5 and r.data == b"body"
+
+
+class TestCleanClass:
+    def test_clean_raises_and_reads_content(self):
+        with pytest.raises(TypeError):
+            widget.compute(None)
+        r = _Resp()
+        assert r.status_code == 200 and r.data == b"body"

@@ -1,0 +1,720 @@
+#!/usr/bin/env python3
+"""The existing-test audit's tool (c), static patterns (docs/TEST_AUDIT.md): every test file under
+`<root>/tests/` parsed with `ast` (never a pattern over the text), and each test function showing
+one of five shapes listed. It lists suspects only: it never says whether a finding is real.
+
+    scripts/nmas-test-audit-static [--root DIR] [--out FILE]
+
+A test function is what pytest's patterns here name: `test_*` at a module's top level, or a
+`test_*` method of a `Test*` class (nested `Test*` classes included). Its id is the pytest node
+id, `tests/<file>::<Class>::<name>`, without parametrize ids.
+
+**The five patterns, and each one's stated rule and limits:**
+
+1. `tautology`: an `assert` whose comparison has the same expression on both sides (any adjacent
+   pair of a chained comparison, compared by `ast.dump`), or whose test is a constant truthy
+   literal (`assert True`, `assert 1`, `assert "x"`), a non-empty f-string, or a non-empty
+   tuple, list, set or dict display (`assert (x, "msg")` is always true). Limits: asserts are
+   read anywhere inside the test, nested functions included; `f() == f()` is listed (it may be a
+   determinism check: the detail says when a call is on both sides); unittest's
+   `self.assertEqual(x, x)` is not read.
+2. `assertion-free`: the test has no `assert`, no `pytest.raises`/`warns`/`fail`/
+   `deprecated_call` (or `raises`/`warns`/`fail` imported from pytest), no `raise
+   AssertionError`, no call of a method whose name starts with `assert` (a mock's
+   `assert_called_once_with`, unittest's `assertEqual`), and no call to a helper whose own body
+   asserts (by the same rule). A helper is resolved by name, **one level deep**: a function
+   defined at the top of the same file, a method of the test's own class called through
+   `self.`, or a name (or a module's attribute) imported by `from tests... import` /
+   `import tests....` and defined at the top of that file. A helper that only calls another
+   helper that asserts is not followed. An unresolved call whose name starts with `assert` is
+   counted as asserting. Not read: fixtures that assert, `conftest.py`, helpers reached through
+   an object.
+3. `mock-of-subject`: a `<x>.setattr(...)` call (monkeypatch, `pytest.MonkeyPatch`), a
+   `mock.patch(...)`/`patch(...)`, `patch.object(...)` or `patch.multiple(...)` (called, as a
+   decorator, or as a context manager), whose target is a function or class **defined at the
+   top level** of the test file's subject module. The subject: for `tests/test_<x>.py`,
+   `modules/<x>.py`, `modules/*/<x>.py`, `routes/<x>.py` and `modules/<a>/<b>.py` for
+   `<x>` = `<a>_<b>` (rule A, the file's name); and any module under `modules/` or `routes/` the
+   file imports whose last name is a whole `_`-separated part of `<x>` (rule B, imported as the
+   subject: `test_deploy_receipts.py` importing `modules.nsot.receipts`). A target is a dotted
+   string, a module alias's attribute, or a method of a class the subject defines. The patch is
+   read in the test's body and decorators, and **one level** into the fixtures it names and the
+   autouse fixtures of its file and class, defined in the same file. Limits: a name the subject
+   only imports (a collaborator seen through the subject's namespace) is not listed, nor a
+   constant or other assignment; a subject loaded by `importlib` (the scripts) is not seen;
+   `conftest.py` fixtures are not read.
+4. `swallowed-exception`: a `try` in the test with a handler whose body is only `pass`, `...`
+   or `continue`, or that catches bare, `Exception` or `BaseException`, and in either case
+   neither re-raises (any `raise`) nor asserts (by rule 2's own forms) inside the handler; and a
+   `with contextlib.suppress(Exception|BaseException)`. Limits: a narrow handler with a real
+   body (`except KeyError: x = None`) is not listed; what the test does after the `try` is not
+   read.
+5. `status-only`: the test has at least one `assert`, and every assert is on a status alone:
+   each `and`-ed part of it compares only a status (`.status_code`, `.status`, `.returncode`,
+   `.ok`, `["ok"]`, `["status"]`, `.get("ok")`, or a name `ok`/`status`/`status_code`/
+   `returncode`) with constants, or is such a status bare or negated. A test with any other
+   assertion form (pytest.raises, a mock assert, a helper that asserts) is not listed. Limits: an
+   assert message (`assert r.status_code == 200, r.data`) is not content.
+
+Output: a TSV `test_id<TAB>module<TAB>pattern<TAB>line<TAB>detail` (one row per finding; the
+module is the test file's path), then `#` lines: rows and distinct tests per pattern, and the
+total of test files and test functions parsed. The output is committed, so in every row an
+address literal, an email and a home path are replaced by `<address>`, `<email>`, `<home>`.
+Exit 0; 2 for a bad argument or a root with no `tests/`.
+"""
+import argparse
+import ast
+import collections
+import os
+import re
+import sys
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+PATTERNS = ("tautology", "assertion-free", "mock-of-subject", "swallowed-exception",
+            "status-only")
+PYTEST_ASSERTS = {"raises", "warns", "fail", "deprecated_call"}
+STATUS_ATTRS = {"status_code", "status", "returncode", "ok"}
+STATUS_KEYS = {"ok", "status", "status_code", "returncode"}
+STATUS_NAMES = {"ok", "status", "status_code", "returncode"}
+BROAD = {"Exception", "BaseException"}
+SUBJECT_PACKAGES = ("modules", "routes")
+
+
+# --- finding test files and test functions -------------------------------------------------
+
+def test_files(root):
+    out = []
+    for d, dirs, files in os.walk(os.path.join(root, "tests")):
+        dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+        for f in sorted(files):
+            if f.startswith("test_") and f.endswith(".py"):
+                out.append(os.path.join(d, f))
+    return out
+
+
+def rel(root, path):
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def is_test_name(name):
+    """pytest.ini's `python_functions = test_*`."""
+    return name.startswith("test_")
+
+
+def is_test_class(name):
+    """pytest.ini's `python_classes = Test*`."""
+    return name.startswith("Test")
+
+
+def iter_tests(tree):
+    """(class chain, the class nodes, the function node) for each test function pytest's
+    patterns name, in source order."""
+    def in_class(cls, chain, classes):
+        for node in cls.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and is_test_name(node.name):
+                yield chain, classes, node
+            elif isinstance(node, ast.ClassDef) and is_test_class(node.name):
+                yield from in_class(node, chain + [node.name], classes + [node])
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and is_test_name(node.name):
+            yield [], [], node
+        elif isinstance(node, ast.ClassDef) and is_test_class(node.name):
+            yield from in_class(node, [node.name], [node])
+
+
+# --- what counts as asserting --------------------------------------------------------------
+
+def call_name(call):
+    f = call.func
+    if isinstance(f, ast.Name):
+        return f.id
+    if isinstance(f, ast.Attribute):
+        return f.attr
+    return ""
+
+
+def is_pytest_assert_call(call, pytest_names):
+    """pytest.raises/warns/fail/deprecated_call, or one imported from pytest by name."""
+    f = call.func
+    if isinstance(f, ast.Attribute) and f.attr in PYTEST_ASSERTS \
+            and isinstance(f.value, ast.Name) and f.value.id in pytest_names["module"]:
+        return True
+    return isinstance(f, ast.Name) and f.id in pytest_names["direct"]
+
+
+def asserting_nodes(nodes, pytest_names):
+    """The assertion forms among *nodes*, as (line, what)."""
+    found = []
+    for n in nodes:
+        if isinstance(n, ast.Assert):
+            found.append((n.lineno, "assert"))
+        elif isinstance(n, ast.Call):
+            if is_pytest_assert_call(n, pytest_names):
+                found.append((n.lineno, "pytest." + call_name(n)))
+            elif isinstance(n.func, ast.Attribute) and n.func.attr.startswith("assert"):
+                found.append((n.lineno, "." + n.func.attr))
+        elif isinstance(n, ast.Raise) and n.exc is not None:
+            exc = n.exc.func if isinstance(n.exc, ast.Call) else n.exc
+            if isinstance(exc, ast.Name) and exc.id == "AssertionError":
+                found.append((n.lineno, "raise AssertionError"))
+    return found
+
+
+# --- one file's names ----------------------------------------------------------------------
+
+class FileInfo:
+    def __init__(self, root, path, tree):
+        self.root, self.path, self.tree = root, path, tree
+        self.funcs = {n.name: n for n in tree.body
+                      if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        self.pytest_names = {"module": set(), "direct": set()}
+        self.module_alias = {}      # local name -> dotted module
+        self.from_names = {}        # local name -> (dotted module, name)
+        self.dotted_roots = set()   # `import a.b.c` binds `a`
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Import):
+                for a in n.names:
+                    if a.name == "pytest":
+                        self.pytest_names["module"].add(a.asname or "pytest")
+                    if a.asname:
+                        self.module_alias[a.asname] = a.name
+                    else:
+                        self.dotted_roots.add(a.name.split(".")[0])
+                        self.module_alias.setdefault(a.name.split(".")[0], a.name.split(".")[0])
+            elif isinstance(n, ast.ImportFrom):
+                mod = self.absolute(n)
+                if mod is None:
+                    continue
+                for a in n.names:
+                    local = a.asname or a.name
+                    if mod == "pytest" and a.name in PYTEST_ASSERTS:
+                        self.pytest_names["direct"].add(local)
+                    full = f"{mod}.{a.name}"
+                    if module_file(root, full):
+                        self.module_alias[local] = full
+                    else:
+                        self.from_names[local] = (mod, a.name)
+
+    def absolute(self, node):
+        if not node.level:
+            return node.module
+        here = os.path.dirname(rel(self.root, self.path)).split("/")
+        base = here[: len(here) - (node.level - 1)] if node.level > 1 else here
+        parts = [p for p in base if p] + ([node.module] if node.module else [])
+        return ".".join(parts) if parts else None
+
+    def dotted(self, expr):
+        """The dotted module an expression names (an alias, or `a.b.c` after `import a.b.c`)."""
+        if isinstance(expr, ast.Name):
+            return self.module_alias.get(expr.id)
+        if isinstance(expr, ast.Attribute):
+            base = self.dotted(expr.value)
+            if base:
+                cand = f"{base}.{expr.attr}"
+                if module_file(self.root, cand):
+                    return cand
+        return None
+
+
+_MODULE_CACHE = {}
+
+
+def module_file(root, dotted):
+    """The file a dotted first-party module lives in under *root*, or None."""
+    key = (root, dotted)
+    if key not in _MODULE_CACHE:
+        base = os.path.join(root, *dotted.split("."))
+        hit = None
+        for cand in (base + ".py", os.path.join(base, "__init__.py")):
+            if os.path.isfile(cand):
+                hit = cand
+                break
+        _MODULE_CACHE[key] = hit
+    return _MODULE_CACHE[key]
+
+
+_PARSED = {}
+
+
+def parse(path):
+    if path not in _PARSED:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                _PARSED[path] = ast.parse(fh.read(), filename=path)
+        except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
+            _PARSED[path] = None
+    return _PARSED[path]
+
+
+def top_definitions(tree):
+    """Names a module defines as functions or classes at its top level (inside a top-level
+    `if` or `try` too)."""
+    names = set()
+    def scan(body):
+        for n in body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(n.name)
+            elif isinstance(n, ast.If):
+                scan(n.body)
+                scan(n.orelse)
+            elif isinstance(n, ast.Try):
+                scan(n.body)
+                scan(n.orelse)
+                scan(n.finalbody)
+                for h in n.handlers:
+                    scan(h.body)
+    scan(tree.body)
+    return names
+
+
+# --- 1. tautology ---------------------------------------------------------------------------
+
+def has_call(expr):
+    return any(isinstance(n, ast.Call) for n in ast.walk(expr))
+
+
+def truthy_literal(expr):
+    if isinstance(expr, ast.Constant):
+        return bool(expr.value)
+    if isinstance(expr, ast.JoinedStr):
+        return bool(expr.values)
+    if isinstance(expr, (ast.Tuple, ast.List, ast.Set)):
+        return bool(expr.elts)
+    if isinstance(expr, ast.Dict):
+        return bool(expr.keys)
+    return False
+
+
+def tautologies(func):
+    out = []
+    for n in ast.walk(func):
+        if not isinstance(n, ast.Assert):
+            continue
+        t = n.test
+        if isinstance(t, ast.Compare):
+            sides = [t.left] + list(t.comparators)
+            for i, op in enumerate(t.ops):
+                a, b = sides[i], sides[i + 1]
+                if ast.dump(a) == ast.dump(b):
+                    call = "; a call on both sides" if has_call(a) else ""
+                    out.append((n.lineno, f"same expression on both sides of "
+                                f"{type(op).__name__}: {short(ast.unparse(t))}{call}"))
+                    break
+        elif truthy_literal(t):
+            kind = {"Constant": "constant", "JoinedStr": "f-string"}.get(
+                type(t).__name__, "non-empty " + type(t).__name__.lower() + " display")
+            out.append((n.lineno, f"asserts a truthy literal ({kind}): "
+                        f"{short(ast.unparse(t))}"))
+    return out
+
+
+def short(text, width=120):
+    text = " ".join(text.split())
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+# --- 2. assertion-free ----------------------------------------------------------------------
+
+def helper_targets(call, info, classes):
+    """The helper definitions a call may resolve to, one level: (kind, name, node, file info)."""
+    f = call.func
+    if isinstance(f, ast.Name):
+        if f.id in info.funcs:
+            return [("local", f.id, info.funcs[f.id], info)]
+        if f.id in info.from_names:
+            mod, name = info.from_names[f.id]
+            return imported(info, mod, name)
+    elif isinstance(f, ast.Attribute):
+        if isinstance(f.value, ast.Name) and f.value.id == "self" and classes:
+            for cls in reversed(classes):
+                for n in cls.body:
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == f.attr:
+                        return [("method", f.attr, n, info)]
+            # A base class defined in the same file (one level).
+            for cls in reversed(classes):
+                for b in cls.bases:
+                    if isinstance(b, ast.Name):
+                        for n in info.tree.body:
+                            if isinstance(n, ast.ClassDef) and n.name == b.id:
+                                for m in n.body:
+                                    if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                                            and m.name == f.attr:
+                                        return [("method", f.attr, m, info)]
+        mod = info.dotted(f.value)
+        if mod:
+            return imported(info, mod, f.attr)
+    return []
+
+
+def imported(info, mod, name):
+    if mod.split(".")[0] != "tests":
+        return []
+    path = module_file(info.root, mod)
+    tree = parse(path) if path else None
+    if tree is None:
+        return []
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+            return [("imported", f"{mod}.{name}", n, FileInfo(info.root, path, tree))]
+    return []
+
+
+def assertion_free(func, info, classes):
+    """None when the test asserts (itself or through a helper, one level), else a detail."""
+    if asserting_nodes(ast.walk(func), info.pytest_names):
+        return None
+    looked = collections.Counter()
+    for n in ast.walk(func):
+        if not isinstance(n, ast.Call):
+            continue
+        targets = helper_targets(n, info, classes)
+        if not targets:
+            if call_name(n).startswith("assert"):
+                return None
+            continue
+        for kind, _name, node, hinfo in targets:
+            looked[kind] += 1
+            if asserting_nodes(ast.walk(node), hinfo.pytest_names):
+                return None
+    parts = ", ".join(f"{v} {k}" for k, v in sorted(looked.items())) or "none"
+    return (f"no assert, pytest.raises/warns/fail or assert* call; helpers looked at, one "
+            f"level deep: {parts}; none asserts")
+
+
+# --- 3. mock of the module under test -------------------------------------------------------
+
+def subjects(info):
+    """The subject modules of a test file, each with the rule that named it."""
+    stem = os.path.basename(info.path)[len("test_"):-len(".py")]
+    root = info.root
+    found = {}
+    cands = [f"modules.{stem}", f"routes.{stem}"]
+    mods = os.path.join(root, "modules")
+    if os.path.isdir(mods):
+        for d in sorted(os.listdir(mods)):
+            if os.path.isdir(os.path.join(mods, d)):
+                cands.append(f"modules.{d}.{stem}")
+    parts = stem.split("_")
+    for i in range(1, len(parts)):
+        cands.append(f"modules.{'_'.join(parts[:i])}.{'_'.join(parts[i:])}")
+    for c in cands:
+        if module_file(root, c):
+            found.setdefault(c, "A (the file's name)")
+    tokens = f"_{stem}_"
+    imported_mods = set(info.module_alias.values()) | {m for m, _ in info.from_names.values()}
+    for m in sorted(imported_mods):
+        if m.split(".")[0] in SUBJECT_PACKAGES and module_file(root, m) \
+                and f"_{m.split('.')[-1]}_" in tokens:
+            found.setdefault(m, "B (imported, named in the file's name)")
+    return found
+
+
+def split_target(root, dotted):
+    """'a.b.c.attr' -> ('a.b.c', 'attr') for the longest prefix that is a module file."""
+    parts = dotted.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        mod = ".".join(parts[:i])
+        if module_file(root, mod):
+            return mod, ".".join(parts[i:])
+    return None, None
+
+
+def patch_targets(call, info):
+    """(module, attribute, form) for each target a patch call names."""
+    f = call.func
+    out = []
+    name = call_name(call)
+    args = call.args
+    def obj_target(obj, attr_node, form):
+        if not (isinstance(attr_node, ast.Constant) and isinstance(attr_node.value, str)):
+            return
+        mod = info.dotted(obj)
+        if mod:
+            out.append((mod, attr_node.value, form))
+        elif isinstance(obj, ast.Name) and obj.id in info.from_names:
+            m, cls = info.from_names[obj.id]
+            out.append((m, cls, form + f" (a method {attr_node.value} of {cls})"))
+    if isinstance(f, ast.Attribute) and f.attr == "setattr" and args:
+        first = args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str) and len(args) >= 2:
+            mod, attr = split_target(info.root, first.value)
+            if mod:
+                out.append((mod, attr.split(".")[0], "setattr(string)"))
+        elif len(args) >= 3:
+            obj_target(first, args[1], "setattr(object)")
+    elif name == "patch" and not (isinstance(f, ast.Attribute) and not is_mockish(f.value)):
+        if args and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+            mod, attr = split_target(info.root, args[0].value)
+            if mod:
+                out.append((mod, attr.split(".")[0], "patch(string)"))
+    elif name in ("object", "multiple") and isinstance(f, ast.Attribute) \
+            and call_name(ast.Call(func=f.value, args=[], keywords=[])) == "patch":
+        if name == "object" and len(args) >= 2:
+            obj_target(args[0], args[1], "patch.object")
+        elif name == "multiple" and args:
+            for kw in call.keywords:
+                if kw.arg:
+                    obj_target(args[0], ast.Constant(kw.arg), "patch.multiple")
+            if isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+                for kw in call.keywords:
+                    if kw.arg and module_file(info.root, args[0].value):
+                        out.append((args[0].value, kw.arg, "patch.multiple(string)"))
+    return out
+
+
+def is_mockish(expr):
+    """`mock`, `unittest.mock` or a name ending in mock: a `.patch` on it is mock's, not an HTTP
+    client's `client.patch("/url")`."""
+    if isinstance(expr, ast.Name):
+        return expr.id.lower().endswith("mock")
+    if isinstance(expr, ast.Attribute):
+        return expr.attr.lower().endswith("mock")
+    return False
+
+
+def fixtures_of(info, classes):
+    """name -> fixture node, and the autouse ones, for the file and the test's classes."""
+    def is_fixture(fn):
+        for d in fn.decorator_list:
+            target = d.func if isinstance(d, ast.Call) else d
+            if (isinstance(target, ast.Attribute) and target.attr == "fixture") or \
+                    (isinstance(target, ast.Name) and target.id == "fixture"):
+                auto = isinstance(d, ast.Call) and any(
+                    k.arg == "autouse" and isinstance(k.value, ast.Constant) and k.value.value
+                    for k in d.keywords)
+                return True, auto
+        return False, False
+    named, auto = {}, []
+    for scope in [info.tree] + list(classes):
+        for n in scope.body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                fx, au = is_fixture(n)
+                if fx:
+                    named[n.name] = n
+                    if au:
+                        auto.append(n)
+    return named, auto
+
+
+def mocks_of_subject(func, info, classes, subs, subject_defs):
+    if not subs:
+        return []
+    named, auto = fixtures_of(info, classes)
+    sources = [(func, "")]
+    params = [a.arg for a in func.args.args + func.args.kwonlyargs]
+    for p in params:
+        if p in named:
+            sources.append((named[p], f" via fixture {p}"))
+    for fx in auto:
+        if fx.name not in params:
+            sources.append((fx, f" via autouse fixture {fx.name}"))
+    out, seen = [], set()
+    for node, via in sources:
+        for n in ast.walk(node):
+            if not isinstance(n, ast.Call):
+                continue
+            for mod, attr, form in patch_targets(n, info):
+                if mod in subs and attr in subject_defs.get(mod, ()):
+                    key = (n.lineno, mod, attr, via)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append((n.lineno, f"{form} replaces {mod}.{attr}, defined in the subject "
+                                f"(rule {subs[mod]}){via}"))
+    return out
+
+
+# --- 4. swallowed exception ----------------------------------------------------------------
+
+def trivial(body):
+    return all(isinstance(s, (ast.Pass, ast.Continue)) or
+               (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant)
+                and s.value.value is Ellipsis) for s in body)
+
+
+def broad(type_node):
+    if type_node is None:
+        return "bare"
+    nodes = type_node.elts if isinstance(type_node, ast.Tuple) else [type_node]
+    for t in nodes:
+        name = t.id if isinstance(t, ast.Name) else t.attr if isinstance(t, ast.Attribute) else ""
+        if name in BROAD:
+            return name
+    return None
+
+
+def swallowed(func, info):
+    out = []
+    for n in ast.walk(func):
+        if isinstance(n, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+            for h in n.handlers:
+                b = broad(h.type)
+                if not (trivial(h.body) or b):
+                    continue
+                inner = [x for s in h.body for x in ast.walk(s)]
+                if any(isinstance(x, ast.Raise) for x in inner) or \
+                        asserting_nodes(inner, info.pytest_names):
+                    continue
+                caught = ast.unparse(h.type) if h.type is not None else "everything (bare)"
+                body = "only pass/.../continue" if trivial(h.body) else "no raise or assert"
+                out.append((h.lineno, f"except {caught}: {body}"))
+        elif isinstance(n, (ast.With, ast.AsyncWith)):
+            for item in n.items:
+                c = item.context_expr
+                if isinstance(c, ast.Call) and call_name(c) == "suppress" and \
+                        any(broad(a) for a in c.args):
+                    out.append((n.lineno, f"with {short(ast.unparse(c))}"))
+    return out
+
+
+# --- 5. status-only ------------------------------------------------------------------------
+
+def is_status(expr):
+    if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+        return is_status(expr.operand)
+    if isinstance(expr, ast.Attribute):
+        return expr.attr in STATUS_ATTRS
+    if isinstance(expr, ast.Name):
+        return expr.id in STATUS_NAMES
+    if isinstance(expr, ast.Subscript):
+        key = expr.slice
+        return isinstance(key, ast.Constant) and key.value in STATUS_KEYS
+    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) \
+            and expr.func.attr == "get" and expr.args:
+        key = expr.args[0]
+        return isinstance(key, ast.Constant) and key.value in STATUS_KEYS
+    return False
+
+
+def is_constant(expr):
+    if isinstance(expr, ast.Constant):
+        return True
+    if isinstance(expr, (ast.Tuple, ast.List, ast.Set)):
+        return all(is_constant(e) for e in expr.elts)
+    if isinstance(expr, ast.UnaryOp):
+        return is_constant(expr.operand)
+    if isinstance(expr, ast.Attribute):     # http.HTTPStatus.OK and the like
+        return isinstance(expr.value, (ast.Name, ast.Attribute)) and expr.attr.isupper()
+    return False
+
+
+def status_conjunct(expr):
+    if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.And):
+        return all(status_conjunct(v) for v in expr.values)
+    if isinstance(expr, ast.Compare):
+        sides = [expr.left] + list(expr.comparators)
+        return any(is_status(s) for s in sides) and \
+            all(is_status(s) or is_constant(s) for s in sides)
+    return is_status(expr)
+
+
+def status_only(func, info, classes):
+    found = asserting_nodes(ast.walk(func), info.pytest_names)
+    asserts = [n for n in ast.walk(func) if isinstance(n, ast.Assert)]
+    if not asserts or len(asserts) != len(found):
+        return None
+    for n in ast.walk(func):
+        if isinstance(n, ast.Call):
+            for _k, _name, node, hinfo in helper_targets(n, info, classes):
+                if asserting_nodes(ast.walk(node), hinfo.pytest_names):
+                    return None
+    if all(status_conjunct(a.test) for a in asserts):
+        return (asserts[0].lineno, f"{len(asserts)} assert(s), each on a status alone: "
+                f"{short(ast.unparse(asserts[0].test), 80)}")
+    return None
+
+
+# --- the run --------------------------------------------------------------------------------
+
+def audit(root):
+    rows, parsed_files, unparsed, total = [], 0, [], 0
+    for path in test_files(root):
+        tree = parse(path)
+        rp = rel(root, path)
+        if tree is None:
+            unparsed.append(rp)
+            continue
+        parsed_files += 1
+        info = FileInfo(root, path, tree)
+        subs = subjects(info)
+        subject_defs = {}
+        for m in subs:
+            t = parse(module_file(root, m))
+            subject_defs[m] = top_definitions(t) if t is not None else set()
+        for chain, classes, func in iter_tests(tree):
+            total += 1
+            tid = "::".join([rp] + chain + [func.name])
+            for line, detail in tautologies(func):
+                rows.append((tid, rp, "tautology", line, detail))
+            d = assertion_free(func, info, classes)
+            if d:
+                rows.append((tid, rp, "assertion-free", func.lineno, d))
+            for line, detail in mocks_of_subject(func, info, classes, subs, subject_defs):
+                rows.append((tid, rp, "mock-of-subject", line, detail))
+            for line, detail in swallowed(func, info):
+                rows.append((tid, rp, "swallowed-exception", line, detail))
+            s = status_only(func, info, classes)
+            if s:
+                rows.append((tid, rp, "status-only", s[0], s[1]))
+    return {"rows": rows, "files": parsed_files, "unparsed": unparsed, "tests": total}
+
+
+#: Quoted source in a detail is committed with the output, without the excused-line exemptions
+#: the test file itself carries: an address, an email or a home path is replaced.
+_PUBLIC = ((re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "<address>"),
+           (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "<email>"),
+           (re.compile(r"/(?:home|Users)/[^/\s'\"]+"), "<home>"))
+
+
+def public(text):
+    for pattern, placeholder in _PUBLIC:
+        text = pattern.sub(placeholder, text)
+    return text
+
+
+def report(result):
+    lines = ["test_id\tmodule\tpattern\tline\tdetail"]
+    for r in result["rows"]:
+        lines.append("\t".join(public(str(x).replace("\t", " ")) for x in r))
+    lines.append("")
+    rows = collections.Counter(r[2] for r in result["rows"])
+    tests = {p: len({r[0] for r in result["rows"] if r[2] == p}) for p in PATTERNS}
+    lines.append("# pattern\trows\ttests")
+    for p in PATTERNS:
+        lines.append(f"# {p}\t{rows.get(p, 0)}\t{tests[p]}")
+    lines.append(f"# any pattern\t{len(result['rows'])}\t{len({r[0] for r in result['rows']})}")
+    lines.append(f"# test files parsed\t{result['files']}")
+    lines.append(f"# test files that did not parse\t{len(result['unparsed'])}"
+                 + (f"\t{' '.join(result['unparsed'])}" if result["unparsed"] else ""))
+    lines.append(f"# test functions parsed\t{result['tests']}")
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="The test audit's static patterns, tool (c).")
+    ap.add_argument("--root", default=REPO, help="the folder holding tests/ (default: this "
+                    "repository)")
+    ap.add_argument("--out", help="write the output here as well as to stdout")
+    a = ap.parse_args(argv)
+    root = os.path.abspath(a.root)
+    if not os.path.isdir(os.path.join(root, "tests")):
+        print(f"nmas-test-audit-static: {root} holds no tests/ folder", file=sys.stderr)
+        return 2
+    text = "\n".join(report(audit(root))) + "\n"
+    sys.stdout.write(text)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

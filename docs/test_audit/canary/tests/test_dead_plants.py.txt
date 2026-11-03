@@ -1,0 +1,73 @@
+"""The test audit's canary, tool (d): planted tests that can never run (or run only as an
+expected failure), one conditionally skipped test, and clean tests no tool may flag
+(docs/test_audit/canary/)."""
+import sys
+
+import pytest
+
+from modules.widget import compute
+
+
+# --- plants ---------------------------------------------------------------------------------
+
+@pytest.mark.skip(reason="planted: always skipped by its decorator")
+def test_plant_skip_decorator():
+    assert compute(1) == 3
+
+
+@pytest.mark.skipif(True, reason="planted: a constant-true condition")
+def test_plant_skipif_true():
+    assert compute(1) == 3
+
+
+def test_plant_skip_first_statement():
+    pytest.skip("planted: skipped as the body's first statement")
+    assert compute(1) == 3
+
+
+@pytest.mark.xfail(reason="planted: expected to fail, with no condition")
+def test_plant_xfail_unconditional():
+    assert compute(1) == 0
+
+
+def test_plant_shadowed():
+    assert compute(1) == 3
+
+
+class TestPlantHasInit:
+    def __init__(self):
+        self.x = 1
+
+    def test_plant_class_with_init(self):
+        assert compute(self.x) == 3
+
+
+class PlantNotATestClass:
+    def test_plant_method_outside_a_test_class(self):
+        assert compute(1) == 3
+
+
+@pytest.mark.skipif(sys.platform == "planted-no-such-platform",
+                    reason="planted: a real condition, not dead")
+def test_plant_conditional_skip():
+    assert compute(1) == 3
+
+
+def test_plant_shadowed():  # noqa: F811 (planted: the first definition above never runs)
+    assert compute(2) == 5
+
+
+# --- clean ----------------------------------------------------------------------------------
+
+def test_clean_runs():
+    assert compute(0) == 1
+
+
+@pytest.mark.parametrize("x, want", [(1, 3), (2, 5)])
+def test_clean_parametrized(x, want):
+    assert compute(x) == want
+
+
+class TestCleanCollected:
+    def test_clean_method(self):
+        assert compute(3) == 7

@@ -1,0 +1,7 @@
+[pytest]
+# The test audit's canary (docs/TEST_AUDIT.md): the repository's own collection patterns.
+pythonpath = .
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*

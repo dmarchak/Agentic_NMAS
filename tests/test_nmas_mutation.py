@@ -41,6 +41,8 @@ PROBE = ("modules/readers/reachability.py", "probe")
 TCP = ("modules/integrations/monitoring_profile.py", "tcp_accepts")
 CANARY_KILLED = {f"tests.mutation_canary.x_in_process__mutmut_{n}": "killed" for n in (1, 2)}
 CANARY_KILLED.update({f"tests.mutation_canary.x_in_child__mutmut_{n}": "killed" for n in (1, 2)})
+# A working canary's other direction (C1651): the function no test calls, every mutant alive.
+CANARY_KILLED.update({f"tests.mutation_canary.x_untested__mutmut_{n}": "survived" for n in (1, 2)})
 
 
 # ── What a night plans ────────────────────────────────────────────────────────────────────────
@@ -1159,6 +1161,46 @@ class TestTheMeasurementIsChecked:
         only_in_process = {m: s for m, s in CANARY_KILLED.items() if "in_process" in m}
         assert "in_child (no mutant made) was missing" in M.canary_error(only_in_process)
         assert "made no mutant" in M.canary_error({})
+
+    def test_an_untested_canary_mutant_killed_is_a_broken_measurement(self):
+        """C1651's second canary: the run must not kill what no test calls."""
+        m = "tests.mutation_canary.x_untested__mutmut_2"
+        err = M.canary_error({**CANARY_KILLED, m: "killed"})
+        assert err.startswith("MEASUREMENT BROKEN") and f"{m} was killed" in err
+        assert "kills what no test calls" in err
+
+    def test_an_untested_canary_with_no_mutant_is_a_broken_measurement(self):
+        without = {m: s for m, s in CANARY_KILLED.items() if "untested" not in m}
+        assert "the canary no test calls, made no mutant" in M.canary_error(without)
+
+    def test_an_untested_canary_reading_no_tests_is_working(self):
+        no_tests = {m: ("no tests" if "untested" in m else s) for m, s in CANARY_KILLED.items()}
+        assert M.canary_error(no_tests) == ""
+
+    def test_the_untested_canary_is_called_by_no_test(self):
+        """Its premise, held: no test file calls it (parsed: a call whose function is named
+        `untested`, bare or as an attribute), so it is reached by no test. Floor: the same scan
+        finds the canary's `in_process` called by tests/test_mutation_canary.py."""
+        import ast
+
+        from tests.source_index import tracked
+
+        def callers(name):
+            out = []
+            for p in tracked("tests", suffix=".py", recursive=False):
+                if not os.path.basename(p).startswith("test_"):
+                    continue
+                with open(p, encoding="utf-8") as fh:
+                    tree = ast.parse(fh.read())
+                for n in ast.walk(tree):
+                    f = getattr(n, "func", None) if isinstance(n, ast.Call) else None
+                    if (isinstance(f, ast.Name) and f.id == name) or \
+                            (isinstance(f, ast.Attribute) and f.attr == name):
+                        out.append(os.path.basename(p))
+                        break
+            return out
+        assert "test_mutation_canary.py" in callers("in_process")
+        assert callers("untested") == []
 
     def test_a_mutant_of_an_unplanned_function_that_ran_breaks_the_scope(self):
         results = {"modules.readers.reachability.x_probe__mutmut_1": "killed",

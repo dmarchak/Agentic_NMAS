@@ -625,6 +625,10 @@ def cmd_run(a) -> int:
     code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)], next_log())
     if done("the canary, in a child", code):
         return code
+    # The canary's other direction: no test calls it, so every mutant must survive (C1651).
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_UNTESTED)], next_log())
+    if done("the untested canary", code):
+        return code
     # The canary must be dead before the night's mutants mean anything.
     broken = M.canary_error(M.parse_results(_mutmut("results", "--all", "true")))
     if broken:
@@ -667,7 +671,7 @@ def cmd_report(a) -> int:
             ran_record = json.load(fh)
     kinds = ran_record.get("kinds") or {}
     everything = M.parse_results(_mutmut("results", "--all", "true")) if planned else {}
-    canary = [M.CANARY_IN_PROCESS, M.CANARY_IN_CHILD]
+    canary = [M.CANARY_IN_PROCESS, M.CANARY_IN_CHILD, M.CANARY_UNTESTED]
     # A logging call's mutants are never run, so never counted, never "not checked".
     everything = {m: s for m, s in everything.items() if kinds.get(m) != "logging"}
     tonight = M.only_functions(everything, planned)

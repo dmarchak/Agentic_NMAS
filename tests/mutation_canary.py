@@ -20,3 +20,14 @@ def in_process(a: int, b: int) -> int:
 def in_child(a: int, b: int) -> int:
     """Two digits as a number (no comparison, so no boundary mutant is equivalent)."""
     return a * 10 + b
+
+
+def untested(a: int, b: int) -> int:
+    """No test calls this (C1651's second canary, the operator, 2026-11-03): every one of its
+    mutants must SURVIVE (or read "no tests"). One killed means the run kills what nothing
+    tests (a copy whose every test fails, a selection running the wrong tests), so its kills
+    prove nothing: the night fails as "measurement broken". The other direction of the two
+    above."""
+    if a > b:
+        return a - b
+    return b - a

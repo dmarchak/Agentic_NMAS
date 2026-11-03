@@ -1,0 +1,612 @@
+#!/usr/bin/env python3
+"""The existing-test audit's tool (d), dead tests (docs/TEST_AUDIT.md): pytest's own collection
+compared with the test definitions `ast` finds, listing tests that can never run, or never run
+as a test. It lists suspects only: it never says whether a finding is real.
+
+    scripts/nmas-test-audit-dead [--root DIR] [--python PY] [--collected FILE]
+                                 [--save-collection FILE] [--out FILE]
+
+**The collection.** In the repository, `scripts/nmas-test --collect-only -q -p no:cacheprovider
+--continue-on-collection-errors tests/` (CI's interpreter, confined; naming `tests/` keeps it out
+of the full-suite lock). Under another `--root` with no `scripts/nmas-test`, `<python> -m pytest`
+with the same arguments, run in that root (its own `pytest.ini`), the environment's `PYTEST_*`
+and `COV_CORE_*` variables removed so only the root's configuration counts. `--collected FILE`
+reads a saved collection's output instead of running one. Node ids are read without their
+parametrize ids.
+
+**The definitions.** In every `tests/**/test_*.py`: `test_*` functions at the module's top level
+(inside a top-level `if`/`try`/`with` too); `Test*` classes and their `test_*` methods, nested
+`Test*` classes included; `test_*` methods of any other class; and `test_*` functions defined
+inside a function.
+
+**What it lists, each rule and its limits:**
+- `uncollected`: defined, and no collected id is its id. A reason is given where one is found,
+  in this order: the file did not collect (its error); the file was written after the
+  collection began (its modification time; another writer in the checkout); the module or a
+  class sets
+  `__test__ = False`; the module skipped itself at collection (listed under the skip patterns
+  instead); a class in its chain does not match `Test*` (a method of a non-`Test*` class counts
+  as collected when a collected `Test*` subclass in the same file runs it); a class in its
+  chain has `__init__` or `__new__` (pytest does not collect it); defined inside a
+  function; removed by a module-level `del`; decorated (the decorated object may not be a
+  function); else "reason not found by the tool". Limits: a conftest hook that deselects is
+  only "reason not found"; a test inherited from another file is compared under its subclass's
+  id only.
+- `shadowed`: a `test_*` function or `Test*` class defined again in the same scope (module or
+  class body, direct statements only: definitions in the two arms of an `if` are not shadowing),
+  by a `def`, a `class`, an assignment or an import: the first definition can never run.
+- `always-skipped` / `always-xfail`: an unconditional `pytest.mark.skip`; a `skipif` or `xfail`
+  with no condition or a constant truthy non-string condition (`skipif(True)`, `skipif(1)`); an
+  unconditional `pytest.skip()` / `pytest.xfail()` as the body's first statement (after a
+  docstring); a module-level `pytest.skip(...)` outside any `if`; and a parametrize case
+  `pytest.param(..., marks=pytest.mark.skip)`. Marks are read on the function, on each class
+  in its chain, in `pytestmark` of the module and of each class (a mark or a list of them), and
+  through a module-level name assigned a mark (one level: `needs_x = pytest.mark.skipif(...)`).
+- `conditionally-skipped` / `conditionally-xfail` (reported apart: these are not dead): a
+  `skipif`/`xfail` with a condition, with the condition's text (a string condition is pytest's
+  evaluated expression); a `pytest.skip`/`pytest.xfail` under an `if` in the body or at the
+  module's top level, with the `if`'s text; `pytest.importorskip(...)` in the body or at the
+  module's top level. Limits: a skip raised by a fixture or a helper is not read; a condition is
+  never evaluated.
+
+Output: a TSV `test_id<TAB>module<TAB>pattern<TAB>line<TAB>detail` (the module is the test file's
+path), then `#` lines: rows and distinct tests per pattern, the total collected (the ids read,
+and pytest's own count line), the definitions found, the files that did not collect, and the
+collected ids with no definition here. The output is committed, so in every row an address
+literal, an email and a home path are replaced by `<address>`, `<email>`, `<home>`. Exit 0;
+1 when the collection's output holds no count
+line (it did not run); 2 for a bad argument.
+"""
+import argparse
+import ast
+import collections
+import os
+import re
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+PATTERNS = ("uncollected", "shadowed", "always-skipped", "always-xfail",
+            "conditionally-skipped", "conditionally-xfail")
+COLLECT_ARGS = ["--collect-only", "-q", "-p", "no:cacheprovider",
+                "--continue-on-collection-errors", "tests/"]
+COUNT_RE = re.compile(r"(\d+)(?:/\d+)? tests? collected|no tests collected|"
+                      r"collected (\d+) items?")
+
+
+def is_test_name(name):
+    """pytest.ini's `python_functions = test_*`."""
+    return name.startswith("test_")
+
+
+def is_test_class(name):
+    """pytest.ini's `python_classes = Test*`."""
+    return name.startswith("Test")
+
+
+def rel(root, path):
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def test_files(root):
+    out = []
+    for d, dirs, files in os.walk(os.path.join(root, "tests")):
+        dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+        for f in sorted(files):
+            if f.startswith("test_") and f.endswith(".py"):
+                out.append(os.path.join(d, f))
+    return out
+
+
+def short(text, width=140):
+    text = " ".join(text.split())
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+# --- the collection -------------------------------------------------------------------------
+
+def collection_command(root, python):
+    tool = os.path.join(root, "scripts", "nmas-test")
+    if os.access(tool, os.X_OK):
+        return [tool] + COLLECT_ARGS
+    return [python, "-m", "pytest"] + COLLECT_ARGS
+
+
+def run_collection(root, python):
+    env = {k: v for k, v in os.environ.items()
+           if not (k.startswith("PYTEST_") or k.startswith("COV_CORE_"))}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    cmd = collection_command(root, python)
+    r = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
+    return cmd, r.stdout + r.stderr
+
+
+def parse_collection(text):
+    """The collected base ids (no parametrize ids), the number of ids read, the files that did
+    not collect (path -> message), and pytest's own count line."""
+    ids, n, errors, count_line = set(), 0, {}, None
+    first_e, current = {}, None     # an error section's first `E ` line, by file
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("tests/") and "::" in line and " " not in line.split("[", 1)[0]:
+            n += 1
+            ids.add(line.split("[", 1)[0])
+            continue
+        m = re.match(r"_+ ERROR collecting (tests/\S+\.py) _+$", line)
+        if m:
+            current = m.group(1)
+            continue
+        if current and raw.startswith("E ") and current not in first_e:
+            first_e[current] = raw[1:].strip()
+            continue
+        m = re.match(r"ERROR (tests/\S+\.py)(?: - (.*))?$", line)
+        if m:
+            errors[m.group(1)] = (m.group(2) or first_e.get(m.group(1))
+                                  or "collection error").strip()
+            continue
+        if COUNT_RE.search(line) and ("collected" in line):
+            count_line = line.strip("= ").strip()
+    return ids, n, errors, count_line
+
+
+# --- the definitions ------------------------------------------------------------------------
+
+class Def:
+    def __init__(self, tid, path, node, chain, why=None):
+        self.tid, self.path, self.node, self.chain, self.why = tid, path, node, chain, why
+        self.classes = [c for c in chain if isinstance(c, ast.ClassDef)]
+
+
+def scope_statements(body):
+    """A scope's statements, through top-level if/try/with blocks (they bind in the scope)."""
+    for n in body:
+        yield n
+        if isinstance(n, ast.If):
+            yield from scope_statements(n.body)
+            yield from scope_statements(n.orelse)
+        elif isinstance(n, ast.Try):
+            yield from scope_statements(n.body)
+            yield from scope_statements(n.orelse)
+            yield from scope_statements(n.finalbody)
+            for h in n.handlers:
+                yield from scope_statements(h.body)
+        elif isinstance(n, (ast.With, ast.AsyncWith)):
+            yield from scope_statements(n.body)
+
+
+FUNC = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def definitions(rp, tree):
+    out = []
+
+    def in_function(fn, chain):
+        for n in ast.walk(fn):
+            if n is not fn and isinstance(n, FUNC) and is_test_name(n.name):
+                out.append(Def(None, rp, n, chain + [fn],
+                               f"defined inside the function {fn.name}, which pytest never "
+                               f"collects"))
+
+    def in_class(cls, names, chain):
+        for n in scope_statements(cls.body):
+            if isinstance(n, FUNC):
+                if is_test_name(n.name):
+                    out.append(Def("::".join([rp] + names + [n.name]), rp, n, chain + [cls]))
+                in_function(n, chain + [cls])
+            elif isinstance(n, ast.ClassDef):
+                in_class(n, names + [n.name], chain + [cls])
+
+    for n in scope_statements(tree.body):
+        if isinstance(n, FUNC):
+            if is_test_name(n.name):
+                out.append(Def(f"{rp}::{n.name}", rp, n, []))
+            in_function(n, [])
+        elif isinstance(n, ast.ClassDef):
+            in_class(n, [n.name], [])
+    return out
+
+
+def shadowed(rp, tree):
+    """(earlier def, how it is rebound, line) for each test name defined twice in one scope."""
+    rows = []
+
+    def bound(stmt):
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return [(stmt.name, "def")]
+        if isinstance(stmt, ast.ClassDef):
+            return [(stmt.name, "class")]
+        if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            return [(t.id, "assignment") for t in targets if isinstance(t, ast.Name)]
+        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            return [((a.asname or a.name).split(".")[0], "import") for a in stmt.names]
+        return []
+
+    def scope(body, names):
+        first = {}      # a test name -> the def or class binding it now
+        for stmt in body:
+            for name, how in bound(stmt):
+                if not (is_test_name(name) or is_test_class(name)):
+                    continue
+                if name in first:
+                    rows.append(("::".join([rp] + names + [name]), first.pop(name), how,
+                                 stmt.lineno))
+                if how in ("def", "class"):
+                    first[name] = stmt
+            if isinstance(stmt, ast.ClassDef):
+                scope(stmt.body, names + [stmt.name])
+    scope(tree.body, [])
+    return rows
+
+
+# --- marks ----------------------------------------------------------------------------------
+
+def mark_name(expr):
+    """'skip' / 'skipif' / 'xfail' for pytest.mark.<x> or mark.<x>, called or not."""
+    target = expr.func if isinstance(expr, ast.Call) else expr
+    if isinstance(target, ast.Attribute) and target.attr in ("skip", "skipif", "xfail"):
+        v = target.value
+        if (isinstance(v, ast.Attribute) and v.attr == "mark") or \
+                (isinstance(v, ast.Name) and v.id == "mark"):
+            return target.attr
+    return None
+
+
+def module_marks(tree):
+    """Module-level names assigned a mark (`needs_x = pytest.mark.skipif(...)`)."""
+    named = {}
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and len(n.targets) == 1 and \
+                isinstance(n.targets[0], ast.Name) and mark_name(n.value):
+            named[n.targets[0].id] = n.value
+    return named
+
+
+def resolve_marks(expr, named):
+    """The mark expressions an expression stands for (a list, a named mark, a mark)."""
+    if isinstance(expr, (ast.List, ast.Tuple)):
+        return [m for e in expr.elts for m in resolve_marks(e, named)]
+    if isinstance(expr, ast.Name) and expr.id in named:
+        return [named[expr.id]]
+    return [expr] if mark_name(expr) else []
+
+
+def judge_mark(expr):
+    """(pattern, detail) for one skip/skipif/xfail mark, or None when it can never apply."""
+    kind = mark_name(expr)
+    args = expr.args if isinstance(expr, ast.Call) else []
+    kwargs = {k.arg: k.value for k in expr.keywords} if isinstance(expr, ast.Call) else {}
+    always = "always-skipped" if kind in ("skip", "skipif") else "always-xfail"
+    cond = "conditionally-skipped" if kind in ("skip", "skipif") else "conditionally-xfail"
+    text = short(ast.unparse(expr))
+    if kind == "skip":
+        return always, f"unconditional mark: {text}"
+    conditions = list(args) or ([kwargs["condition"]] if "condition" in kwargs else [])
+    if not conditions:
+        return always, f"{kind} with no condition: {text}"
+    shown = []
+    for c in conditions:
+        if isinstance(c, ast.Constant) and not isinstance(c.value, str):
+            if c.value:
+                return always, f"{kind} with a constant-true condition: {text}"
+            continue
+        shown.append(ast.unparse(c))
+    if not shown:
+        return None
+    return cond, f"{kind} condition: {short(' or '.join(shown))}"
+
+
+def is_pytest_call(expr, names):
+    return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and \
+        expr.func.attr in names and isinstance(expr.func.value, ast.Name) and \
+        expr.func.value.id == "pytest"
+
+
+def first_statement(body):
+    stmts = list(body)
+    if stmts and isinstance(stmts[0], ast.Expr) and isinstance(stmts[0].value, ast.Constant) \
+            and isinstance(stmts[0].value.value, str):
+        stmts = stmts[1:]
+    return stmts[0] if stmts else None
+
+
+def module_level_skips(tree):
+    """(pattern, line, detail) for a module that skips itself at its top level."""
+    out = []
+    for n in tree.body:
+        if isinstance(n, ast.Expr) and is_pytest_call(n.value, ("skip",)):
+            out.append(("always-skipped", n.lineno,
+                        f"the module calls {short(ast.unparse(n.value))} at its top level"))
+        elif isinstance(n, ast.If) and any(isinstance(s, ast.Expr) and
+                                           is_pytest_call(s.value, ("skip",)) for s in n.body):
+            out.append(("conditionally-skipped", n.lineno,
+                        f"the module skips itself if {short(ast.unparse(n.test))}"))
+    for n in tree.body:
+        for x in ([n.value] if isinstance(n, (ast.Expr, ast.Assign)) else []):
+            if is_pytest_call(x, ("importorskip",)):
+                out.append(("conditionally-skipped", n.lineno,
+                            f"the module's {short(ast.unparse(x))}"))
+    return out
+
+
+def body_skips(fn):
+    out = []
+    first = first_statement(fn.body)
+    if isinstance(first, ast.Expr) and is_pytest_call(first.value, ("skip", "xfail")):
+        kind = first.value.func.attr
+        out.append(("always-skipped" if kind == "skip" else "always-xfail", first.lineno,
+                    f"the body's first statement: {short(ast.unparse(first.value))}"))
+    for n in ast.walk(fn):
+        if isinstance(n, ast.If):
+            for s in n.body:
+                if isinstance(s, ast.Expr) and is_pytest_call(s.value, ("skip", "xfail")):
+                    kind = s.value.func.attr
+                    out.append(("conditionally-skipped" if kind == "skip"
+                                else "conditionally-xfail", s.lineno,
+                                f"pytest.{kind} if {short(ast.unparse(n.test))}"))
+        elif isinstance(n, ast.Call) and is_pytest_call(n, ("importorskip",)):
+            out.append(("conditionally-skipped", n.lineno, short(ast.unparse(n))))
+    return out
+
+
+def param_case_skips(fn, named):
+    out = []
+    for d in fn.decorator_list:
+        for n in ast.walk(d):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and \
+                    n.func.attr == "param":
+                for k in n.keywords:
+                    if k.arg == "marks":
+                        for m in resolve_marks(k.value, named):
+                            j = judge_mark(m)
+                            if j:
+                                out.append((j[0], n.lineno, f"one parametrize case: {j[1]}"))
+    return out
+
+
+def skip_rows(d, tree, named, module_skips):
+    rows = list(module_skips)
+    marks = []
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytestmark"
+                                             for t in n.targets):
+            marks += [(m, "the module's pytestmark") for m in resolve_marks(n.value, named)]
+    for cls in d.classes:
+        for dec in cls.decorator_list:
+            marks += [(m, f"class {cls.name}") for m in resolve_marks(dec, named)]
+        for n in cls.body:
+            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and
+                                                 t.id == "pytestmark" for t in n.targets):
+                marks += [(m, f"class {cls.name}'s pytestmark")
+                          for m in resolve_marks(n.value, named)]
+    for dec in d.node.decorator_list:
+        marks += [(m, "") for m in resolve_marks(dec, named)]
+    for m, where in marks:
+        j = judge_mark(m)
+        if j:
+            rows.append((j[0], m.lineno, j[1] + (f" (on {where})" if where else "")))
+    rows += body_skips(d.node)
+    rows += param_case_skips(d.node, named)
+    return rows
+
+
+# --- why a definition was not collected -----------------------------------------------------
+
+def test_false(body):
+    for n in body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__test__"
+                                             for t in n.targets):
+            if isinstance(n.value, ast.Constant) and not n.value.value:
+                return n.lineno
+    return None
+
+
+def deleted(tree, name):
+    for n in tree.body:
+        if isinstance(n, ast.Delete) and any(isinstance(t, ast.Name) and t.id == name
+                                             for t in n.targets):
+            return n.lineno
+    return None
+
+
+def subclass_runs(d, tree, collected):
+    """A method of a non-Test* class counts as collected when a collected Test* subclass in the
+    same file (by its bases, transitively) runs it."""
+    owner = d.classes[-1].name
+    classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+    def inherits(c, seen=()):
+        for b in c.bases:
+            if isinstance(b, ast.Name):
+                if b.id == owner:
+                    return True
+                if b.id in classes and b.id not in seen:
+                    if inherits(classes[b.id], seen + (b.id,)):
+                        return True
+        return False
+    for name, c in classes.items():
+        if is_test_class(name) and inherits(c):
+            suffix = f"::{name}::{d.node.name}"
+            if any(i.startswith(d.path + "::") and i.endswith(suffix) for i in collected):
+                return True
+    return False
+
+
+def why_uncollected(d, tree, errors, collected_files, root, started):
+    if d.path in errors:
+        return f"the file did not collect: {short(errors[d.path])}"
+    if started is not None:
+        try:
+            changed = os.path.getmtime(os.path.join(root, d.path)) >= started
+        except OSError:
+            changed = False
+        if changed:
+            return "the file was written after the collection started (run the tool again)"
+    line = test_false(tree.body)
+    if line:
+        return f"the module sets __test__ = False (line {line})"
+    for cls in d.classes:
+        line = test_false(cls.body)
+        if line:
+            return f"class {cls.name} sets __test__ = False (line {line})"
+    for cls in d.classes:
+        if not is_test_class(cls.name):
+            return f"class {cls.name} does not match pytest's python_classes (Test*)"
+    for cls in d.classes:
+        for n in cls.body:
+            if isinstance(n, FUNC) and n.name in ("__init__", "__new__"):
+                return (f"class {cls.name} has {n.name} (line {n.lineno}); pytest does not "
+                        f"collect a class with a constructor")
+    top = d.classes[0].name if d.classes else d.node.name
+    line = deleted(tree, top)
+    if line:
+        return f"{top} is removed by del at line {line}"
+    if d.path not in collected_files:
+        return "no test of this file was collected"
+    if d.node.decorator_list:
+        decs = ", ".join(short(ast.unparse(x), 60) for x in d.node.decorator_list)
+        return f"decorated ({decs}); the decorated object may not be a function"
+    return "reason not found by the tool"
+
+
+# --- the run --------------------------------------------------------------------------------
+
+def audit(root, collection_text, started=None):
+    """*started*: when the collection began (epoch seconds), so a file written after it is said
+    to be newer than the collection, not uncollected for a reason of its own."""
+    collected, n_ids, errors, count_line = parse_collection(collection_text)
+    collected_files = {i.split("::", 1)[0] for i in collected}
+    rows, defined_ids, n_defs = [], set(), 0
+    for path in test_files(root):
+        rp = rel(root, path)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read(), filename=path)
+        except (OSError, SyntaxError, UnicodeDecodeError, ValueError) as exc:
+            rows.append((rp, rp, "uncollected", 0, f"the file does not parse: {exc}"))
+            continue
+        named = module_marks(tree)
+        module_skips = module_level_skips(tree)
+        module_skipped = any(p == "always-skipped" for p, _l, _d in module_skips)
+        shadow = shadowed(rp, tree)
+        shadowed_nodes = {id(prev) for _tid, prev, _how, _line in shadow}
+        rebound_last = {tid for tid, _prev, how, _line in shadow if how not in ("def", "class")}
+        for tid, prev, how, line in shadow:
+            rows.append((tid, rp, "shadowed", prev.lineno,
+                         f"defined again at line {line} ({how}); the definition at line "
+                         f"{prev.lineno} never runs"))
+        for d in definitions(rp, tree):
+            n_defs += 1
+            if d.tid is None:
+                name = "::".join([rp] + [c.name for c in d.chain if hasattr(c, "name")]
+                                 + [d.node.name])
+                rows.append((name, rp, "uncollected", d.node.lineno, d.why))
+                continue
+            defined_ids.add(d.tid)
+            if id(d.node) in shadowed_nodes:
+                continue
+            collectible = all(is_test_class(c.name) for c in d.classes)
+            if collectible:
+                for pattern, line, detail in skip_rows(d, tree, named, module_skips):
+                    rows.append((d.tid, rp, pattern, line, detail))
+            if d.tid in collected or d.tid in rebound_last or module_skipped:
+                continue
+            if not collectible and subclass_runs(d, tree, collected):
+                continue
+            if any(p == "conditionally-skipped" and "the module" in det
+                   for p, _l, det in module_skips) and rp not in collected_files \
+                    and rp not in errors:
+                continue
+            rows.append((d.tid, rp, "uncollected", d.node.lineno,
+                         why_uncollected(d, tree, errors, collected_files, root, started)))
+    extra = sorted(i for i in collected if i not in defined_ids)
+    return {"rows": rows, "ids": n_ids, "base_ids": len(collected), "errors": errors,
+            "count_line": count_line, "defs": n_defs, "extra": extra}
+
+
+#: Quoted source in a detail is committed with the output, without the excused-line exemptions
+#: the test file itself carries: an address, an email or a home path is replaced.
+_PUBLIC = ((re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "<address>"),
+           (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "<email>"),
+           (re.compile(r"/(?:home|Users)/[^/\s'\"]+"), "<home>"))
+
+
+def public(text):
+    for pattern, placeholder in _PUBLIC:
+        text = pattern.sub(placeholder, text)
+    return text
+
+
+def report(result, cmd_text):
+    lines = ["test_id\tmodule\tpattern\tline\tdetail"]
+    for r in result["rows"]:
+        lines.append("\t".join(public(str(x).replace("\t", " ")) for x in r))
+    lines.append("")
+    rows = collections.Counter(r[2] for r in result["rows"])
+    lines.append("# pattern\trows\ttests")
+    for p in PATTERNS:
+        lines.append(f"# {p}\t{rows.get(p, 0)}\t"
+                     f"{len({r[0] for r in result['rows'] if r[2] == p})}")
+    lines.append(f"# collection\t{cmd_text}")
+    lines.append(f"# pytest's count line\t{result['count_line']}")
+    lines.append(f"# collected ids read\t{result['ids']}")
+    lines.append(f"# collected tests without parametrize ids\t{result['base_ids']}")
+    lines.append(f"# test definitions found by ast\t{result['defs']}")
+    lines.append(f"# files that did not collect\t{len(result['errors'])}"
+                 + (f"\t{' '.join(sorted(result['errors']))}" if result["errors"] else ""))
+    lines.append(f"# collected tests with no definition in their file (inherited)\t"
+                 f"{len(result['extra'])}")
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="The test audit's dead tests, tool (d).")
+    ap.add_argument("--root", default=REPO, help="the folder holding tests/ (default: this "
+                    "repository)")
+    ap.add_argument("--python", default=sys.executable,
+                    help="the interpreter for a root without scripts/nmas-test")
+    ap.add_argument("--collected", help="read this saved collection output instead of "
+                    "running one")
+    ap.add_argument("--save-collection", help="write the collection's output here")
+    ap.add_argument("--out", help="write the output here as well as to stdout")
+    a = ap.parse_args(argv)
+    root = os.path.abspath(a.root)
+    if not os.path.isdir(os.path.join(root, "tests")):
+        print(f"nmas-test-audit-dead: {root} holds no tests/ folder", file=sys.stderr)
+        return 2
+    if a.collected:
+        with open(a.collected, encoding="utf-8") as fh:
+            text = fh.read()
+        cmd_text = f"read from a saved collection ({os.path.basename(a.collected)})"
+        started = None
+    else:
+        started = time.time()
+        cmd, text = run_collection(root, a.python)
+        shown = [os.path.basename(cmd[0]) if os.path.isabs(cmd[0]) else cmd[0]] + cmd[1:]
+        if shown[0].startswith("python"):
+            shown[0] = "python"
+        cmd_text = " ".join(shown)
+    if a.save_collection:
+        with open(a.save_collection, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    result = audit(root, text, started)
+    if result["count_line"] is None:
+        print("nmas-test-audit-dead: the collection's output holds no count line; it did not "
+              "run. Its last lines:\n" + "\n".join(text.splitlines()[-15:]), file=sys.stderr)
+        return 1
+    out = "\n".join(report(result, cmd_text)) + "\n"
+    sys.stdout.write(out)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

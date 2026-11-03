@@ -1,0 +1,15 @@
+"""The canary's module under test: tests/test_widget.py is named for it."""
+import time
+
+
+def helper(x):
+    return x * 2
+
+
+def compute(x):
+    return helper(x) + 1
+
+
+def wait():
+    time.sleep(0)
+    return "done"
