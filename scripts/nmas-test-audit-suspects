@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""The existing-test audit's combined suspects list (docs/TEST_AUDIT.md, "The output"): every
+test any tool flagged, and which tools, with the total test count beside it. It merges what the
+tools listed; it classifies nothing (the independent reviewer's).
+
+    scripts/nmas-test-audit-suspects --static docs/test_audit/static/<day>/raw.tsv \\
+        --dead docs/test_audit/dead/<day>/raw.tsv --deletion docs/test_audit/deletion/<day>/raw.tsv \\
+        --named <commit> --named-reason <regex> --total <collected> \\
+        --out docs/test_audit/suspects/<day>/suspects.tsv
+
+**What counts as flagged:**
+- **(c) static:** every row (tautology, assertion-free, mock-of-subject, swallowed-exception,
+  status-only).
+- **(d) dead:** uncollected, shadowed, always skipped, always xfail. A conditional skip or xfail
+  is reported by (d) as not dead, and is left out here.
+- **(a) deletion:** "still passes" only. Its "stale" and "not collected" rows are not
+  suspicions of the test, and are left out.
+- **named:** the tests the operator named as a suspect group: the `Test-Weakened:` trailers of
+  *--named*'s commit (C2313: 40 tests coupled to one recording's label).
+
+Tool (e) lists fakes, not tests, so its table stays its own (docs/test_audit/fakes/).
+
+**Output:** a TSV `test_id, tools, how many, details`, one row per test, the most-flagged first;
+then `#` lines with the counts per tool, the tests flagged by one tool, by two or more, and the
+total collected. Exit 0; 2 for a file it cannot read.
+"""
+import argparse
+import collections
+import os
+import re
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+DEAD_FLAGGED = ("uncollected", "shadowed", "always-skipped", "always-xfail")
+DELETION_FLAGGED = ("still passes",)
+
+
+def rows(path: str):
+    """A tool's TSV rows as dicts, its `#` lines and its header aside."""
+    with open(path, encoding="utf-8") as fh:
+        lines = [ln.rstrip("\n") for ln in fh if ln.strip() and not ln.startswith("#")]
+    head = lines[0].split("\t")
+    return [dict(zip(head, ln.split("\t"))) for ln in lines[1:]]
+
+
+def named_tests(commit: str, reason: str = "") -> list:
+    """The test ids in *commit*'s `Test-Weakened:` trailers whose reason (after the dash)
+    matches *reason* (a regular expression; empty for every trailer)."""
+    from modules.nsot.repo import run_git
+    body = run_git(ROOT, "show", "-s", "--format=%B", commit).stdout
+    out = []
+    for ln in body.splitlines():
+        m = re.match(r"Test-Weakened: (tests/\S+::.+?) — (.*)$", ln)
+        if m and (not reason or re.search(reason, m.group(2))):
+            out.append(m.group(1))
+    return out
+
+
+def combine(static=(), dead=(), deletion=(), named=()) -> dict:
+    """``{test_id: {tool: [detail]}}`` for every test a tool flagged."""
+    out = collections.defaultdict(lambda: collections.defaultdict(list))
+    for r in static:
+        out[r["test_id"]]["static"].append(f"{r['pattern']} (line {r['line']})")
+    for r in dead:
+        if r["pattern"] in DEAD_FLAGGED:
+            out[r["test_id"]]["dead"].append(r["pattern"])
+    for r in deletion:
+        if r["result"] in DELETION_FLAGGED:
+            out[r["test_id"]]["deletion"].append(f"still passes: {r['detail'][:120]}")
+    for t in named:
+        out[t]["named"].append("C2313: coupled to the walk flood's label")
+    return out
+
+
+def report(combined: dict, total: int) -> list:
+    lines = ["test_id\ttools\thow many\tdetails"]
+    order = sorted(combined, key=lambda t: (-len(combined[t]), t))
+    for t in order:
+        tools = combined[t]
+        detail = "; ".join(f"{k}: {', '.join(v)}" for k, v in sorted(tools.items()))
+        lines.append(f"{t}\t{','.join(sorted(tools))}\t{len(tools)}\t{detail}")
+    per = collections.Counter(k for t in combined.values() for k in t)
+    lines.append(f"# tests flagged: {len(combined)} of {total} collected")
+    for k in ("static", "dead", "deletion", "named"):
+        lines.append(f"# by {k}: {per.get(k, 0)}")
+    many = sum(1 for t in combined.values() if len(t) >= 2)
+    lines.append(f"# flagged by one tool: {len(combined) - many}; by two or more: {many}")
+    return lines
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    p.add_argument("--static", required=True)
+    p.add_argument("--dead", required=True)
+    p.add_argument("--deletion", required=True)
+    p.add_argument("--named", default="", help="a commit whose Test-Weakened trailers name a group")
+    p.add_argument("--named-reason", default="",
+                   help="only the trailers whose reason matches this regular expression")
+    p.add_argument("--total", type=int, required=True, help="the tests collected (tool (d))")
+    p.add_argument("--out", required=True)
+    a = p.parse_args(argv)
+    try:
+        combined = combine(rows(a.static), rows(a.dead), rows(a.deletion),
+                           named_tests(a.named, a.named_reason) if a.named else ())
+    except OSError as exc:
+        print(f"nmas-test-audit-suspects: {exc}", file=sys.stderr)
+        return 2
+    lines = report(combined, a.total)
+    os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+    with open(a.out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print("\n".join(ln for ln in lines if ln.startswith("#")))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

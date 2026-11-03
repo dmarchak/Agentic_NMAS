@@ -163,7 +163,8 @@ NOT_RATCHETS = {
     # The test audit's canary expectations (C2349): exact sets, compared with ==, never a
     # ceiling that may only fall: a plant added to the canary adds to them.
     ("tests/test_test_audit_tools.py", "DEAD_PLANTS"): "the dead-test tool's canary plants, an exact set its run must equal (C2349); a new plant adds to it, and a missed one fails the test",
-    ("tests/test_test_audit_tools.py", "DEAD_CLEAN"): "the dead-test tool's canary clean tests, an exact set its collection must hold (C2349); a new clean test adds to it",
+    ("tests/test_test_audit_suspects.py", "DEAD"): "the combined suspects list's input rows, tool (d)'s output shape, one of them a conditional skip that must be left out (C2349); a fixture, never a count that moves",
+    ("tests/test_test_audit_tools.py", "DEAD_CLEAN"):"the dead-test tool's canary clean tests, an exact set its collection must hold (C2349); a new clean test adds to it",
     # The product's own thresholds and data, whose name only shares a stem.
     ("modules/ai/nl_query.py", "OFFER_FLOOR"): "a product threshold: the fewest metrics the context budget rule trims an offer to, the deepest rank a case's right metric was measured at (C1830); a better ranking may lower it",
     ("modules/sdn/detect.py", "BASELINE_FLOOR_PPS"): "a product threshold: the least packets a second an idle port's flood baseline counts as, so a quiet port is not flooded by its first ping; to be measured on the slice's first run (C1865), up or down",

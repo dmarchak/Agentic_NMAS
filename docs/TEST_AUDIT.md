@@ -71,6 +71,25 @@ No classification and no fixes:
   and stated before the rest runs. The weekly run has not completed a measurement since 10-25
   (C1651), so its clean run is fixed first.
 
+## Where it stands (2026-11-03 ~13:0x UTC)
+
+- **Built, canaried and run:**
+  - **(a) deletion:** 9 of 9 plants, 325 listed of 11,493 in scope;
+  - **(c) static:** 8 of 8 plants, 1,376 tests;
+  - **(d) dead:** 9 of 9 plants, 4 tests;
+  - **(e) fakes:** 5 of 5 plants, 198 differing fields across 6 fakes.
+
+  Each one's outputs are under `docs/test_audit/<tool>/2026-11-03/`.
+- **The combined suspects list:** 1,730 of 21,154 tests, in
+  `docs/test_audit/suspects/2026-11-03/`.
+- **Not built: (b), mutation with per-test kills.**
+  - **What the weekly run gives:** the mutation workflow ran green on Phase 8 functions
+    (run #69: both canaries held, 217 of 273 killed on 5 functions, C2354).
+  - **What (b) needs beyond it:** mutmut stops a mutant at its first failing test, so its
+    results name no test's own kills. (b) needs every covered test run alone against each
+    mutant of the functions it covers.
+  - **Its cost:** sized from #69's mutant counts before it is built.
+
 ## The independent review
 
 A snapshot of the repository at a named commit is made for the reviewer
