@@ -1,0 +1,11 @@
+"""The fakes audit's canary: a test file using the planted fakes, so the tool's "used by" column
+has something to count."""
+from tests.fake_widget import FakeGadget, FakeWidget
+
+
+def test_a_widget_is_read():
+    assert FakeWidget().request("GET", "http://widgets.invalid/widgets/1").status_code == 200
+
+
+def test_a_gadget_is_read():
+    assert FakeGadget().request("GET", "http://gadgets.invalid/g/1").status_code == 200

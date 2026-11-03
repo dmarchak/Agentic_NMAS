@@ -1,0 +1,321 @@
+fake	file	service	recording	state	field	recorded	fake
+_fakes_live_under_pytests_temporary_tree	tests/conftest.py	none named	looked: tests/fixtures/live tests/fixtures/under tests/fixtures/pytests tests/fixtures/temporary tests/fixtures/tree tests/fixtures/liveunder tests/fixtures/underpytests tests/fixtures/pyteststemporary tests/fixtures/temporarytree	no recording	-	-	not compared: no recording
+Console	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+_Listener	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+RawServer	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+Silent	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+_Answer	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+SshServer	tests/console_fakes.py	console server	15 files in tests/fixtures/console	recorded	-	-	not compared: no driver
+FakeResponse	tests/fake_netbox.py	none named	looked: tests/fixtures/response	no recording	-	-	not compared: no recording
+FakeNetBox	tests/fake_netbox.py	NetBox REST API	3 files in tests/fixtures/netbox	recorded	-	-	compared: 7 requests, 0 differing fields
+Handler	tests/fixtures/fake_geckodriver.py	geckodriver (WebDriver)	looked: no folder is named for geckodriver (WebDriver); tests/fixtures/ holds 27 folders, none of its words	no recording	-	-	not compared: no recording
+DummyDatapath	tests/fixtures/sdn/ryu/render_with_ryu.py	none named	looked: tests/fixtures/datapath	no recording	-	-	not compared: no recording
+install	tests/oob_fake_steps.py	none named	looked: tests/fixtures/install tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+then_with_timeout	tests/oob_fake_steps.py	none named	looked: tests/fixtures/then tests/fixtures/timeout tests/fixtures/thenwith tests/fixtures/withtimeout tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+static_lines	tests/oob_fake_steps.py	none named	looked: tests/fixtures/static tests/fixtures/lines tests/fixtures/staticlines tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+refused_in	tests/oob_fake_steps.py	none named	looked: tests/fixtures/refused tests/fixtures/refusedin tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+readback_plan	tests/oob_fake_steps.py	none named	looked: tests/fixtures/readback tests/fixtures/plan tests/fixtures/readbackplan tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+readback_verdict	tests/oob_fake_steps.py	none named	looked: tests/fixtures/readback tests/fixtures/verdict tests/fixtures/readbackverdict tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+copy_line	tests/oob_fake_steps.py	none named	looked: tests/fixtures/copy tests/fixtures/line tests/fixtures/copyline tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+copy_steps	tests/oob_fake_steps.py	none named	looked: tests/fixtures/copy tests/fixtures/steps tests/fixtures/copysteps tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+verify_copy	tests/oob_fake_steps.py	none named	looked: tests/fixtures/verify tests/fixtures/copy tests/fixtures/verifycopy tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+boot_file	tests/oob_fake_steps.py	none named	looked: tests/fixtures/boot tests/fixtures/file tests/fixtures/bootfile tests/fixtures/oob tests/fixtures/steps tests/fixtures/oobfake	no recording	-	-	not compared: no recording
+deploy_plan._fake	tests/payload_providers.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+deploy_plan_with_residue._fake	tests/payload_providers.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+fixture	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu	built from recording	-	-	not compared: answers from the recording
+Clock	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+Response	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+captured	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+Session	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: it answers what a test hands its constructor (*answers), and the generic driver hands it nothing
+ryu_action	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	compared: 51 requests, 23 differing fields
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	compared: 51 requests, 9 differing fields
+lab8	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu	built from recording	-	-	not compared: answers from the recording
+with_flows	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+ryu_switch	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+ryu_collection	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	not compared: no driver
+Routes	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	15 files in tests/fixtures/sdn/ryu tests/fixtures/sdn/lab8	recorded	-	-	compared: 51 requests, 0 differing fields
+FakeBatches	tests/test_ai_batch.py	Anthropic API	looked: tests/fixtures/ai_cases tests/fixtures/ai_calibration tests/fixtures/blind_sets for a provider's own answer (`stop_reason` and `content`, or `processing_status`)	no recording	-	-	not compared: no recording
+fake_feature	tests/test_ai_triggers.py	none named	looked: tests/fixtures/feature	no recording	-	-	not compared: no recording
+_fake	tests/test_assistant_cases.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+_apply._fake	tests/test_attention_actions_follow_outcome.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+_fake_reads	tests/test_capture_reads_concurrently.py	none named	looked: tests/fixtures/reads	no recording	-	-	not compared: no recording
+FakeExec	tests/test_console_wrapper.py	none named	looked: tests/fixtures/exec	no recording	-	-	not compared: no recording
+FakeArtifact	tests/test_deploy_batch.py	none named	looked: tests/fixtures/artifact	no recording	-	-	not compared: no recording
+TestTheConfirmedListReachesTheTransport.spy._fake_push	tests/test_deploy_contract.py	none named	looked: tests/fixtures/push	no recording	-	-	not compared: no recording
+client._fake	tests/test_deploy_plan_apply_seam.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheCommandFingerprintRefusalSaysWhatMoved.client._fake	tests/test_deploy_plan_apply_seam.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+loki.fake_get	tests/test_device_logs.py	Loki HTTP API	tests/fixtures/loki/device_logs.json	built from recording	-	-	not compared: answers from the recording
+FakeNetBox	tests/test_device_netbox.py	NetBox REST API	tests/fixtures/netbox/device_records.json	built from recording	-	-	not compared: answers from the recording
+FakeSession	tests/test_device_reload.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	not compared: no driver
+FakeGrafana	tests/test_device_v2.py	Grafana HTTP API	tests/fixtures/grafana	built from recording	-	-	not compared: answers from the recording
+FakeKea	tests/test_dhcp_reader.py	Kea Control Agent	tests/fixtures/kea	built from recording	-	-	not compared: answers from the recording
+FakeKea	tests/test_dhcp_reservations.py	Kea Control Agent	tests/fixtures/kea	built from recording	-	-	not compared: answers from the recording
+_snapshot.FakeKea	tests/test_dhcp_subnets.py	Kea Control Agent	tests/fixtures/kea	built from recording	-	-	not compared: answers from the recording
+loki.fake_get	tests/test_drift_overview.py	Loki HTTP API	tests/fixtures/loki/lines_s3.json	built from recording	-	-	not compared: answers from the recording
+_prometheus.fake_get	tests/test_evidence_pack.py	Prometheus HTTP API	tests/fixtures/prometheus/neighbours.json	built from recording	-	-	not compared: answers from the recording
+_captured.Fake	tests/test_evidence_pack_context.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheRead.Fake	tests/test_grafana_reader.py	Grafana HTTP API	tests/fixtures/grafana	built from recording	-	-	not compared: answers from the recording
+TestACutLokiReadIsRefused._fake	tests/test_heartbeat_rules.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+FakeLoki	tests/test_history_ask_logs.py	Loki HTTP API	tests/fixtures/loki	built from recording	-	-	not compared: answers from the recording
+FakeProm	tests/test_history_ask_metrics.py	Prometheus HTTP API	tests/fixtures/prometheus	built from recording	-	-	not compared: answers from the recording
+_fake_integration	tests/test_installation_settings.py	none named	looked: tests/fixtures/integration	no recording	-	-	not compared: no recording
+fake	tests/test_integration_health.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+DummyIntegration	tests/test_integrations_base.py	none named	looked: tests/fixtures/integration	no recording	-	-	not compared: no recording
+FakeProxmox	tests/test_job_health.py	Proxmox VE API	1 file in tests/fixtures/credential_health/proxmox_own_token_record.json	recorded	-	-	not compared: no driver
+fake_kea	tests/test_kea_m5_helper.py	Kea Control Agent	11 files in tests/fixtures/kea	recorded	-	-	not compared: no driver
+TestTheWatch.test_a_full_page_is_a_cut_answer.Fake	tests/test_logging_path.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+FakeLoki	tests/test_logs_tail.py	Loki HTTP API	tests/fixtures/loki	built from recording	-	-	not compared: answers from the recording
+FakeLoki	tests/test_logs_v2.py	Loki HTTP API	tests/fixtures/loki	built from recording	-	-	not compared: answers from the recording
+page.fake_get	tests/test_neighbours.py	Prometheus HTTP API	tests/fixtures/prometheus/neighbours.json	built from recording	-	-	not compared: answers from the recording
+_fake_dump	tests/test_netbox_backup.py	none named	looked: tests/fixtures/dump	no recording	-	-	not compared: no recording
+_fake_run	tests/test_netbox_backup.py	none named	looked: tests/fixtures/run	no recording	-	-	not compared: no recording
+TestTheScratchQueryReachesPsql.test_every_docker_exec_fed_stdin_has_dash_i.fake	tests/test_netbox_backup.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheSharedFakeAnswersAnUnknownIdAsNetBoxDoes._fake	tests/test_netbox_dry_run_placeholders.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheSharedFakeAnswersAnUnknownSlugAsNetBoxDoes._fake	tests/test_netbox_dry_run_placeholders.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheRoutes.page.fake_sync	tests/test_netbox_preview_progress.py	none named	looked: tests/fixtures/sync	no recording	-	-	not compared: no recording
+TestASecondSyncOfAnUnchangedDeviceIsSilent._sent.fake_patch	tests/test_netbox_update_provenance.py	none named	looked: tests/fixtures/patch	no recording	-	-	not compared: no recording
+_run.fake_health	tests/test_nmas_deploy.py	none named	looked: tests/fixtures/health	no recording	-	-	not compared: no recording
+TestTheRunnerVersionMatchesCI._with.fake	tests/test_nmas_deploy.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestHoldsTheServiceCannotRead._answer.fake	tests/test_nmas_deploy.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestAFailedRunSaysWhy.test_the_run_keeps_mutmuts_output_and_names_the_copys_checkout.FakeMutmut	tests/test_nmas_mutation.py	mutmut	7 files in tests/fixtures/mutation	recorded	-	-	not compared: no driver
+TestTestsThatFailInTheCopy.test_the_run_measures_the_copy_deselects_and_tries_again.fake_run	tests/test_nmas_mutation.py	none named	looked: tests/fixtures/run	no recording	-	-	not compared: no recording
+TestTestsThatFailInTheCopy._run_step.fake_run	tests/test_nmas_mutation.py	none named	looked: tests/fixtures/run	no recording	-	-	not compared: no recording
+_fake_python	tests/test_nmas_test_interpreter.py	none named	looked: tests/fixtures/python	no recording	-	-	not compared: no recording
+_fake_ssh	tests/test_no_pattern_kill.py	none named	looked: tests/fixtures/ssh	no recording	-	-	not compared: no recording
+fake_plan	tests/test_oob_onboard.py	none named	looked: tests/fixtures/plan	no recording	-	-	not compared: no recording
+client._fake	tests/test_p3_wizard_draws_the_program.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheRestorePathCanAuthorise._stub	tests/test_p3_wizard_draws_the_program.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+_stub	tests/test_planned_state.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+_deploy_plan._fake	tests/test_previews_mask_secrets.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestNoSecretReachesTheProvider.test_no_stored_secret_appears_in_any_provider_payload._FakeMessages	tests/test_provider_redaction.py	Anthropic API	looked: tests/fixtures/ai_cases tests/fixtures/ai_calibration tests/fixtures/blind_sets for a provider's own answer (`stop_reason` and `content`, or `processing_status`)	no recording	-	-	not compared: no recording
+FakeCursor	tests/test_records_db.py	PostgreSQL (psycopg)	looked: no folder is named for PostgreSQL (psycopg); tests/fixtures/ holds 27 folders, none of its words	no recording	-	-	not compared: no recording
+FakeConnection	tests/test_records_db.py	none named	looked: tests/fixtures/connection	no recording	-	-	not compared: no recording
+client._fake	tests/test_recreate.py	recording at tests/fixtures/configs/fleet/s3.cfg	tests/fixtures/configs/fleet/s3.cfg	built from recording	-	-	not compared: answers from the recording
+TestTheConfirmStartsTheBoundRun.test_the_job_runs_what_was_confirmed_as_the_person.fake_run	tests/test_reload_v2.py	none named	looked: tests/fixtures/run	no recording	-	-	not compared: no recording
+_fake_github	tests/test_remote_setup_v2.py	GitHub	2 files in tests/fixtures/github	recorded	-	-	not compared: no driver
+client._fake	tests/test_removal_pipeline.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestTheImportNamesARetiredHolder._fake	tests/test_retire_frees_addresses.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+TestRipIsDetected._stub_command	tests/test_rip_verify.py	none named	looked: tests/fixtures/command	no recording	-	-	not compared: no recording
+_fake_batches	tests/test_sdn_classify_cases.py	Anthropic API	looked: tests/fixtures/ai_cases tests/fixtures/ai_calibration tests/fixtures/blind_sets for a provider's own answer (`stop_reason` and `content`, or `processing_status`)	no recording	-	-	not compared: no recording
+fake_with	tests/test_sdn_lab8.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+test_open_ssh_floors_every_read_before_the_session_logs_in.Fake	tests/test_session_reads_wait_for_the_device.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	not compared: could not be loaded (LookupError: defined inside a function: not reachable without running it)
+FakeConn	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	compared: 4 requests, 4 differing fields
+fake_netmiko	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	not compared: no driver
+FakeConn	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	compared: 4 requests, 4 differing fields
+fake_netmiko	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	142 files in tests/fixtures/operational tests/fixtures/transcripts tests/fixtures/endpoints tests/fixtures/tier2 tests/fixtures/topology/rip tests/fixtures/reload	recorded	-	-	not compared: no driver
+Fake	tests/test_ssh_slots_across_processes.py	none named	looked: nothing: no service word, and no word of its name of 3 letters or more beside fake, stub and dummy	no recording	-	-	not compared: no recording
+_fake_reads	tests/test_topology_v2.py	recording at tests/fixtures/path/cef_fleet.json	tests/fixtures/path/cef_fleet.json	built from recording	-	-	not compared: answers from the recording
+FakeVenv	tests/test_venv_deploy.py	none named	looked: tests/fixtures/venv	no recording	-	-	not compared: no recording
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	11 files in tests/fixtures/kea	recorded	-	-	compared: 6 requests, 78 differing fields
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	11 files in tests/fixtures/kea	recorded	-	-	compared: 6 requests, 80 differing fields
+_FakeSock	tests/test_ztp_reservations.py	none named	looked: tests/fixtures/sock	no recording	-	-	not compared: no recording
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	GET /stats/flow/1 content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	GET /stats/flow/abc answer	status 400	raised ValueError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/add answer	status 404	raised KeyError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/add answer	status 500	raised KeyError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	GET /v1.0/topology/links content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	GET /v1.0/topology/links body	text, 12 lines	empty
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/bogus answer	status 404	raised KeyError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	GET /stats/desc/1 answer	status 200	raised AssertionError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	GET /stats/flow/1 body.1[].match.dl_vlan	string	integer
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	GET /stats/port/1 answer	status 200	raised AssertionError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	GET /stats/flow/99 content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/meterentry/add content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/delete_strict content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/meterentry/delete content type	text/html; charset=UTF-8	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add answer	status 404	raised KeyError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add status	500	200
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add content type	text/plain	text/html
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add body	text, 28 lines	empty
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/lab8/flood_s1.json	differs	GET /stats/port/1 answer	status 200	raised AssertionError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/lab8/l2_only_s1.json	differs	GET /stats/port/1 answer	status 200	raised AssertionError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/lab8/scan_s1.json	differs	GET /stats/port/1 answer	status 200	raised AssertionError
+FakeRyu	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/lab8/unauthorised_s2.json	differs	GET /stats/port/2 answer	status 200	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/add answer	status 404	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/add answer	status 500	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_no_switch.json	differs	POST /stats/flowentry/bogus answer	status 404	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/meterentry/add answer	status 200	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add answer	status 200	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/delete_strict answer	status 200	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/meterentry/delete answer	status 200	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add answer	status 404	raised AssertionError
+Replay	tests/sdn_fakes.py	Ryu controller REST (ofctl_rest)	tests/fixtures/sdn/ryu/rest_with_peer.json	differs	POST /stats/flowentry/add answer	status 500	raised AssertionError
+FakeConn	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_debugging.txt	differs	send_command(show debugging) text	text, 21 lines	text, 1 line, not the recorded text
+FakeConn	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_interfaces_Loopback0.txt	differs	send_command(show interfaces Loopback0) text	text, 24 lines	text, 1 line, not the recorded text
+FakeConn	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_interfaces_Loopback0__after_clear_counters.txt	differs	send_command(show interfaces Loopback0) text	text, 24 lines	text, 1 line, not the recorded text
+FakeConn	tests/test_session_write_guard.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_logging__after_clear_logging.txt	differs	send_command(show logging) text	text, 34 lines	text, 1 line, not the recorded text
+FakeConn	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_debugging.txt	differs	send_command(show debugging) text	text, 21 lines	text, 2 lines, not the recorded text
+FakeConn	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_interfaces_Loopback0.txt	differs	send_command(show interfaces Loopback0) text	text, 24 lines	text, 2 lines, not the recorded text
+FakeConn	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_interfaces_Loopback0__after_clear_counters.txt	differs	send_command(show interfaces Loopback0) text	text, 24 lines	text, 2 lines, not the recorded text
+FakeConn	tests/test_ssh_sessions.py	device CLI over SSH (Netmiko)	tests/fixtures/operational/r2__show_logging__after_clear_logging.txt	differs	send_command(show logging) text	text, 34 lines	text, 2 lines, not the recorded text
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.hash	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.allocator	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.authoritative	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.boot-file-name	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.calculate-tee-times	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.control-socket	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-generated-prefix	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-override-client-update	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-override-no-update	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-qualifying-suffix	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-replace-client-name	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-send-updates	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-update-on-renew	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-use-conflict-resolution	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.decline-probation-period	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp-ddns	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp-queue-control	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp4o6-port	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.early-global-reservations-lookup	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.echo-client-id	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.expired-leases-processing	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hooks-libraries	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.host-reservation-identifiers	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hostname-char-replacement	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hostname-char-set	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ip-reservations-unique	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.lease-database	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.loggers	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.match-client-id	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.multi-threading	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.next-server	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.option-data	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.option-def	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.parked-packet-limit	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.rebind-timer	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.renew-timer	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-global	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-in-subnet	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-lookup-first	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-out-of-pool	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.sanity-checks	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.server-hostname	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.server-tag	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.shared-networks	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.statistic-default-sample-age	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.statistic-default-sample-count	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.store-extended-info	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.t1-percent	number	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.t2-percent	number	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.interfaces-config.re-detect	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-interface	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-interface-id	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-subnet	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].allocator	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].calculate-tee-times	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].interface	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].max-valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].min-valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].pools	array	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].rebind-timer	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].renew-timer	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].reservations-out-of-pool	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].store-extended-info	boolean	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].t1-percent	number	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].t2-percent	number	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[]	object	no element
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].user-context.comment	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].user-context.mercury-ztp	absent	string
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-lease4-get-all.json	differs	lease4-get-all (dhcp4) result[].text	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-lease4-get-all.json	differs	lease4-get-all (dhcp4) result[].arguments.leases[]	object	no element
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp4-version-get.json	differs	version-get (dhcp4) answer	a result, JSON array	raised AssertionError
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp6-config-get.json	differs	config-get (dhcp6) result[].arguments.Dhcp6	object	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp6-config-get.json	differs	config-get (dhcp6) result[].arguments.hash	string	absent
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp6-config-get.json	differs	config-get (dhcp6) result[].arguments.Dhcp4	absent	object
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp6-lease6-get-all.json	differs	lease6-get-all (dhcp6) answer	a result, JSON array	raised AssertionError
+FakeKea	tests/test_ztp_relayed.py	Kea Control Agent	tests/fixtures/kea/dhcp6-version-get.json	differs	version-get (dhcp6) answer	a result, JSON array	raised AssertionError
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.allocator	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.authoritative	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.boot-file-name	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.calculate-tee-times	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.control-socket	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-generated-prefix	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-override-client-update	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-override-no-update	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-qualifying-suffix	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-replace-client-name	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-send-updates	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-update-on-renew	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ddns-use-conflict-resolution	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.decline-probation-period	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp-ddns	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp-queue-control	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.dhcp4o6-port	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.early-global-reservations-lookup	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.echo-client-id	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.expired-leases-processing	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hooks-libraries	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.host-reservation-identifiers	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hostname-char-replacement	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.hostname-char-set	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.interfaces-config	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.ip-reservations-unique	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.lease-database	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.loggers	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.match-client-id	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.multi-threading	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.next-server	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.option-def	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.parked-packet-limit	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.rebind-timer	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.renew-timer	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-global	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-in-subnet	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-lookup-first	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.reservations-out-of-pool	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.sanity-checks	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.server-hostname	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.server-tag	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.shared-networks	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.statistic-default-sample-age	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.statistic-default-sample-count	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.store-extended-info	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.t1-percent	number	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.t2-percent	number	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-interface	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-interface-id	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].4o6-subnet	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].allocator	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].calculate-tee-times	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].interface	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].max-valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].min-valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].pools	array	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].rebind-timer	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].relay	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].renew-timer	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].reservations-out-of-pool	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].store-extended-info	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].t1-percent	number	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].t2-percent	number	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].user-context	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].valid-lifetime	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].always-send	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].code	integer	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].csv-format	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].data	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].never-send	boolean	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-config-get.json	differs	config-get (dhcp4) result[].arguments.Dhcp4.subnet4[].option-data[].space	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-lease4-get-all.json	differs	lease4-get-all (dhcp4) result[].text	string	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-lease4-get-all.json	differs	lease4-get-all (dhcp4) result[].arguments.leases[]	object	no element
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp4-version-get.json	differs	version-get (dhcp4) answer	a result, JSON array	raised AssertionError
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp6-config-get.json	differs	config-get (dhcp6) result[].arguments.Dhcp6	object	absent
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp6-config-get.json	differs	config-get (dhcp6) result[].arguments.Dhcp4	absent	object
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp6-lease6-get-all.json	differs	lease6-get-all (dhcp6) answer	a result, JSON array	raised AssertionError
+FakeKea	tests/test_ztp_reservations.py	Kea Control Agent	tests/fixtures/kea/dhcp6-version-get.json	differs	version-get (dhcp6) answer	a result, JSON array	raised AssertionError
+
+# test files parsed	887
+# test files that did not parse	0
+# fakes	111
+# state built from recording	18
+# state recorded	30
+# state no recording	63
+# fakes compared	8
+# requests asked	180
+# differing-field rows	198
+# fakes with a difference	6

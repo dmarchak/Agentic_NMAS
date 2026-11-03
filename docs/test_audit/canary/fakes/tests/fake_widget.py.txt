@@ -1,0 +1,73 @@
+"""The fakes audit's canary (docs/TEST_AUDIT.md, tool (e), `scripts/nmas-test-audit-fakes`).
+
+Stand-ins for a planted Widget API, whose recording is tests/fixtures/widget/answers.json (three
+answers: a widget read, a widget that is not there, a widget created), and one for a Gadget API,
+which has no recording. Not a test module.
+
+- `FakeWidget` answers each recorded request as the recording does, typed by hand: the tool
+  must list no difference, and must not take this docstring's mention of the recording
+  (tests/fixtures/widget/answers.json) for the fake reading it.
+- `FakeWidgetDrifted` answers the widget read with `tags` missing and `size` a string: the tool
+  must list exactly those two fields.
+- `FakeWidgetReplay` answers from the recording itself: built from recording.
+- `FakeGadget` stands for a service with no recording: the tool must say so and where it looked.
+- `Answer` is the HTTP answer the fakes return; it is in a fake module, so it is listed too.
+"""
+import json
+import os
+from urllib.parse import urlsplit
+
+RECORDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "widget",
+                         "answers.json")
+
+
+class Answer:
+    def __init__(self, status, payload):
+        self.status_code = status
+        self.headers = {"Content-Type": "application/json"}
+        self.text = json.dumps(payload)
+
+
+class FakeWidget:
+    """Answers as tests/fixtures/widget/answers.json recorded, typed by hand."""
+
+    def request(self, method, url, data=None, **kwargs):
+        path = urlsplit(url).path
+        if method == "GET" and path == "/widgets/1":
+            return Answer(200, {"id": 1, "name": "bolt", "size": 3, "tags": ["steel"]})
+        if method == "POST" and path == "/widgets":
+            return Answer(201, {"id": 2, "name": json.loads(data)["name"], "size": 0,
+                                "tags": []})
+        return Answer(404, {"error": f"no widget {path.rsplit('/', 1)[-1]}"})
+
+
+class FakeWidgetDrifted:
+    """The same, but the widget read leaves out `tags` and gives `size` as a string."""
+
+    def request(self, method, url, data=None, **kwargs):
+        path = urlsplit(url).path
+        if method == "GET" and path == "/widgets/1":
+            return Answer(200, {"id": 1, "name": "bolt", "size": "3"})
+        if method == "POST" and path == "/widgets":
+            return Answer(201, {"id": 2, "name": json.loads(data)["name"], "size": 0,
+                                "tags": []})
+        return Answer(404, {"error": f"no widget {path.rsplit('/', 1)[-1]}"})
+
+
+class FakeWidgetReplay:
+    """Answers each request with the recording's own answer for it."""
+
+    def __init__(self):
+        with open(RECORDING, encoding="utf-8") as fh:
+            self.entries = {(e["method"], e["path"]): e for e in json.load(fh)}
+
+    def request(self, method, url, data=None, **kwargs):
+        e = self.entries[(method, urlsplit(url).path)]
+        return Answer(e["status"], json.loads(e["body"]))
+
+
+class FakeGadget:
+    """A Gadget API's stand-in: no recording of a gadget service exists."""
+
+    def request(self, method, url, data=None, **kwargs):
+        return Answer(200, {"gadget": urlsplit(url).path})

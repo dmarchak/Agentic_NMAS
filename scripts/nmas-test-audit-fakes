@@ -1,0 +1,1239 @@
+#!/usr/bin/env python3
+"""The existing-test audit's tool (e), fakes (docs/TEST_AUDIT.md): each fake the tests use in
+place of a real service, found by parsing, matched to a recording of that service, and, where a
+driver exists, asked the recording's requests and its answers compared field by field. It lists
+what differs. It never says whether a difference matters: that is the independent reviewer's.
+
+    scripts/nmas-test-audit-fakes [--root DIR] [--out FILE] [--inventory FILE]
+
+**The inventory, by name (`ast`, never matching text).** Every `.py` file under `<root>/tests/`
+(a walk; `__pycache__` skipped) is parsed. A fake is a class or function, at any depth, whose
+name holds `fake`, `stub` or `dummy` (any case), and is not a test (`test*` function, `Test*`
+class); and, in a fake module (a file whose name holds `fake` and does not start `test_`),
+every top-level class and every top-level function not starting with `_`. Limits: a stand-in
+named otherwise (`_Conn`, `_Resp`, a lambda handed to `monkeypatch.setattr`) is not seen; a
+helper in a fake module is listed though it may stand for nothing.
+
+**Per fake, all mechanical:**
+- *stands for*: its bases; each `setattr`/`monkeypatch.setattr`/`mock.patch`/`patch.object`
+  whose new value is it (the name bare, a class's call, or inside a lambda), and each keyword
+  argument it is passed as (`kea=FakeKea()`), with the target as written; its docstring's
+  first line.
+- *used by*: files under tests/ that reference its name where the name is it: the defining
+  file, and files importing it from the defining module (`from tests.x import Name`, or
+  `x.Name` through an imported module). A nested fake counts its own file only, and one
+  reached through `self.` is not counted.
+- *reads*: the recordings its own body reaches: a string constant naming a `fixtures` folder, or
+  a name it uses that reaches one: a module-level name of its file (an assignment or a def,
+  followed to a fixed point, and names imported from `tests.` modules), or a name an enclosing
+  function binds (a local helper or assignment). Docstrings and bare string statements are not
+  read. A parameter of an enclosing function is not followed.
+- *typed literals*: dict displays in its body with two or more constant string keys (answers it
+  builds itself, beside any it reads).
+- *service*: the first rule that matches: the recording folder it reads (`SERVICES`' folders,
+  else the file itself); a `SERVICES` word among the words of its name (camel and snake parts,
+  and each adjacent pair joined: `FakeNetBox` gives `netbox`), then of its file's name for a
+  member the fake module rule alone found, then of its bases; a `SERVICES` method name it
+  defines; else a word of its name (and that file's) that is a folder `tests/fixtures/<word>`.
+  The evidence is given. Limits: a word list, so a fake whose name, file, bases and methods
+  name no service is "none named" (each folder its words could name looked for), and a word can
+  name the wrong service (`Clock` in `sdn_fakes.py` is put with the Ryu controller by its
+  file's name).
+
+**State, one of three:**
+- `built from recording`: it reads a recording (above). It is not compared: what it answers
+  from the recording cannot differ from it. Limit: a fake that reads a recording for some
+  answers and builds others (its typed literals count) is in this state too, and those other
+  answers are not compared.
+- `recorded`: its service has a recording (a file in a folder of the service, passing the
+  service's content check where it has one).
+- `no recording`: none, with every folder looked in.
+
+**The comparison**, for a `recorded` fake a driver can drive. A driver asks the fake the
+requests a recording holds and pairs each recorded answer with the fake's:
+- *HTTP entries* (`DRIVERS`' Ryu drivers and the generic one): a recording that is a JSON list
+  of `{method, path, request_body, status, content_type, body}` entries (Ryu's captures); the
+  fake asked `request(method, <base><path>, data=<request_body bytes>)`. The generic driver
+  takes a class with a `request` method constructible with no arguments and no `*args` (a
+  fake built from answers a test hands it, `sdn_fakes.Session`, is not driven), a fresh one
+  per recording file. `FakeRyu` is first seeded from the same recording as the tests seed it
+  (switches, flow tables through the product's `flow_from_ryu`, meter configuration and
+  features, topology answers); `Replay` and `Routes` are built from the recording's entries.
+  A recording holding one answer and no request (`flow_stats_empty.json`) is not asked.
+- *CLI text*: a class with `send_command`, constructed with no arguments or with Netmiko's
+  connection parameters; its `find_prompt()` names the device, and each capture
+  `tests/fixtures/operational/<device>__<command>.txt` is asked by its command.
+- *Kea*: a class with `command` (the Kea service): each recorded answer
+  `tests/fixtures/kea/<service>-<command>.json` asked as `command(<command>, <service>)`, the
+  recorded document compared with the fake's `result`. The two ZTP fakes are built with empty
+  reservation files (`DRIVERS`).
+- *FakeNetBox* (`tests/fake_netbox.py`): seeded as tests/test_console_path.py seeds it, then
+  each endpoint of `tests/fixtures/netbox/console_shapes.json` read with `limit=1`, and a
+  console port's fields compared with the captured OPTIONS field names. `cables.json` and
+  `device_records.json` are not asked.
+- A fake defined inside a function is not reachable without running it, and is not driven.
+
+**Field by field:** the status and the content type by value; a JSON body by shape (each key
+present, each value's JSON type, objects and arrays recursively; an array's elements merged, so
+a key in only some elements is not told apart, and a dict keyed by data, such as a dpid, is
+read as keys); a text body or CLI answer by its line count when the text differs (never
+printing the text). A fake that raises is listed with the exception's name. Values are not
+compared, only presence and type. A field differing in several answers of one recording is
+one row.
+
+Output: a TSV `fake<TAB>file<TAB>service<TAB>recording<TAB>state<TAB>field<TAB>recorded<TAB>
+fake`: one row per fake with its state (field `-`; recorded: the recording or where it looked;
+fake: compared or not, and why), then one row per differing field (state `differs`, the
+recording file, field `<request> <path>`), then `#` lines with the counts. `--inventory` writes
+each fake's inventory row as TSV. Addresses, emails and home paths are replaced in every row.
+Exit 0; 2 for a root with no `tests/`.
+"""
+import argparse
+import ast
+import collections
+import importlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+NAME_RULE = re.compile(r"fake|stub|dummy", re.I)
+FIXTURES_RE = re.compile(r"(?:^|/)fixtures(?:/|$)")
+#: Words of a name never taken for a service or a fixtures folder.
+STOPWORDS = {"fake", "fakes", "stub", "stubs", "dummy", "test", "tests", "the", "a", "an", "of",
+             "for", "with", "to", "in", "on", "and", "or", "init", "new"}
+BASE_URL = "http://192.0.2.10:8080"
+NETMIKO_PARAMS = {"device_type": "cisco_xe", "ip": "192.0.2.12", "host": "192.0.2.12",
+                  "username": "u", "password": "p", "secret": "p", "port": 22}
+
+
+def _anthropic_answer(value, depth=0):
+    """A provider's own answer: a Messages object (`stop_reason` and `content`) or a batch
+    (`processing_status`), anywhere in a JSON document (eight levels)."""
+    if depth > 8:
+        return False
+    if isinstance(value, dict):
+        if {"stop_reason", "content"} <= set(value) or "processing_status" in value:
+            return True
+        return any(_anthropic_answer(v, depth + 1) for v in value.values())
+    if isinstance(value, list):
+        return any(_anthropic_answer(v, depth + 1) for v in value[:200])
+    return False
+
+
+#: (service, words, method names, recording folders or files, content check or None). The
+#: content check, where given, is what a file must hold to count as that service's recording.
+SERVICES = (
+    ("Ryu controller REST (ofctl_rest)", {"ryu", "sdn"}, set(),
+     ("tests/fixtures/sdn/ryu", "tests/fixtures/sdn/lab8"), None),
+    ("NetBox REST API", {"netbox"}, set(), ("tests/fixtures/netbox",), None),
+    ("Kea Control Agent", {"kea"}, set(), ("tests/fixtures/kea",), None),
+    ("Loki HTTP API", {"loki"}, set(), ("tests/fixtures/loki",), None),
+    ("Prometheus HTTP API", {"prom", "prometheus"}, set(), ("tests/fixtures/prometheus",), None),
+    ("Grafana HTTP API", {"grafana"}, set(), ("tests/fixtures/grafana",), None),
+    ("Proxmox VE API", {"proxmox", "pve"}, set(),
+     ("tests/fixtures/credential_health/proxmox_own_token_record.json",), None),
+    ("GitHub", {"github"}, set(), ("tests/fixtures/github",), None),
+    ("Anthropic API", {"anthropic", "batches", "messages", "claude"}, set(),
+     ("tests/fixtures/ai_cases", "tests/fixtures/ai_calibration", "tests/fixtures/blind_sets"),
+     ("a provider's own answer (`stop_reason` and `content`, or `processing_status`)",
+      _anthropic_answer)),
+    ("device CLI over SSH (Netmiko)", {"netmiko"},
+     {"send_command", "send_command_timing", "send_config_set", "find_prompt", "write_channel",
+      "read_channel"},
+     ("tests/fixtures/operational", "tests/fixtures/transcripts", "tests/fixtures/endpoints",
+      "tests/fixtures/tier2", "tests/fixtures/topology/rip", "tests/fixtures/reload"), None),
+    ("console server", {"console"}, set(), ("tests/fixtures/console",), None),
+    ("PostgreSQL (psycopg)", {"psycopg", "postgres", "postgresql", "cursor"},
+     {"cursor", "fetchall", "fetchone"}, (), None),
+    ("mutmut", {"mutmut"}, set(), ("tests/fixtures/mutation",), None),
+    ("geckodriver (WebDriver)", {"geckodriver"}, set(), (), None),
+)
+
+
+# --- reading the tree ----------------------------------------------------------------------
+
+def py_files(root):
+    out = []
+    for d, dirs, files in os.walk(os.path.join(root, "tests")):
+        dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+        out += [os.path.join(d, f) for f in sorted(files) if f.endswith(".py")]
+    return out
+
+
+def rel(root, path):
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def words(identifier):
+    """An identifier's words, lowercased (`FakeNetBox`: fake, net, box), then each adjacent
+    pair joined (fakenet, netbox), so a compound service name is a word too."""
+    out = []
+    for part in re.split(r"[_.\-\s]+", identifier or ""):
+        out += [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", part)]
+    return out + [a + b for a, b in zip(out, out[1:])]
+
+
+def docstring_line(node):
+    doc = ast.get_docstring(node) if isinstance(
+        node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)) else None
+    return (doc or "").strip().splitlines()[0] if doc else ""
+
+
+def _evaluated(node):
+    """Every node under *node* that is evaluated: docstrings and bare string statements left
+    out."""
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        yield n
+        for child in ast.iter_child_nodes(n):
+            if (isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant)
+                    and isinstance(child.value.value, str)):
+                continue
+            stack.append(child)
+
+
+def _fixture_paths_in(node):
+    """The `tests/fixtures/...` paths the string constants under *node* name: an
+    `os.path.join(..., "fixtures", "a", "b")`'s constants after `fixtures`, or a constant
+    holding `fixtures/...`."""
+    out = set()
+    for n in _evaluated(node):
+        if isinstance(n, ast.Call):
+            consts = [a.value if isinstance(a, ast.Constant) and isinstance(a.value, str)
+                      else None for a in n.args]
+            if "fixtures" in consts:
+                parts = []
+                for c in consts[consts.index("fixtures") + 1:]:
+                    if c is None or c.endswith((".json", ".txt", ".yaml", ".yml", ".jsonl")):
+                        if c is not None:
+                            parts.append(c)
+                        break
+                    parts.append(c)
+                out.add("/".join(["tests/fixtures"] + parts))
+        elif isinstance(n, ast.Constant) and isinstance(n.value, str) and \
+                n.value != "fixtures" and FIXTURES_RE.search(n.value) and "\n" not in n.value:
+            # A bare "fixtures" is a path part, read with its call above.
+            tail = n.value[n.value.index("fixtures"):].strip("/")
+            out.add("tests/" + tail)
+    return out
+
+
+class FileInfo:
+    """One parsed file: its module-level bindings, its imports from `tests.`, and which of
+    its names reach a recording."""
+
+    def __init__(self, root, path, tree):
+        self.root, self.path, self.rel, self.tree = root, path, rel(root, path), tree
+        self.bindings = {}       # name -> node (assignment value, def)
+        self.imported = {}       # local name -> (module rel path, name or None for a module)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                self.bindings[node.name] = node
+            elif isinstance(node, ast.Assign):
+                for t in node.targets:
+                    for n in ast.walk(t):
+                        if isinstance(n, ast.Name):
+                            self.bindings[n.id] = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                    and node.value is not None:
+                self.bindings[node.target.id] = node.value
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and \
+                    node.module.split(".")[0] == "tests" and not node.level:
+                mod = node.module.replace(".", "/") + ".py"
+                for a in node.names:
+                    sub = node.module.replace(".", "/") + "/" + a.name + ".py"
+                    if os.path.isfile(os.path.join(root, sub)):
+                        self.imported[a.asname or a.name] = (sub, None)
+                    else:
+                        self.imported[a.asname or a.name] = (mod, a.name)
+            elif isinstance(node, ast.Import):
+                for a in node.names:
+                    if a.name.split(".")[0] == "tests" and "." in a.name:
+                        self.imported[a.asname or a.name] = (a.name.replace(".", "/") + ".py",
+                                                             None)
+
+
+class Tree:
+    def __init__(self, root):
+        self.root = root
+        self.files = {}
+        self.unparsed = []
+        for path in py_files(root):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    tree = ast.parse(fh.read(), filename=path)
+            except (SyntaxError, UnicodeDecodeError, ValueError):
+                self.unparsed.append(rel(root, path))
+                continue
+            info = FileInfo(root, path, tree)
+            self.files[info.rel] = info
+        self._reach = {}
+
+    def reach(self, frel, name, seen=None):
+        """The recording paths a module-level *name* of file *frel* reaches (empty: none)."""
+        key = (frel, name)
+        if key in self._reach:
+            return self._reach[key]
+        seen = set() if seen is None else seen
+        if key in seen:
+            return set()
+        seen.add(key)
+        info = self.files.get(frel)
+        out = set()
+        if info is not None:
+            if name in info.bindings:
+                out = self.reach_node(info, info.bindings[name], seen)
+            elif name in info.imported:
+                mod, nm = info.imported[name]
+                if nm is not None:
+                    out = self.reach(mod, nm, seen)
+        self._reach[key] = out
+        return out
+
+    def reach_node(self, info, node, seen=None, local=None):
+        """The recording paths *node* reaches. *local*: names an enclosing function binds,
+        followed before the module's."""
+        seen = set() if seen is None else seen
+        local = local or {}
+        out = set(_fixture_paths_in(node))
+        for n in _evaluated(node):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id != getattr(
+                    node, "name", None):
+                if n.id in local and ("local", id(local[n.id])) not in seen:
+                    seen.add(("local", id(local[n.id])))
+                    out |= self.reach_node(info, local[n.id], seen, local)
+                elif n.id in info.bindings or n.id in info.imported:
+                    out |= self.reach(info.rel, n.id, seen)
+            elif isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and \
+                    n.value.id in info.imported and info.imported[n.value.id][1] is None:
+                out |= self.reach(info.imported[n.value.id][0], n.attr, seen)
+        return out
+
+
+# --- the inventory -------------------------------------------------------------------------
+
+def _defs(tree):
+    """(node, qualified name, depth, enclosing kinds, enclosing nodes) for every class and
+    function."""
+    out = []
+
+    def visit(body, chain, kinds, nodes):
+        for node in body:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                q = ".".join(chain + [node.name])
+                out.append((node, q, len(chain), tuple(kinds), tuple(nodes)))
+                kind = "class" if isinstance(node, ast.ClassDef) else "function"
+                visit(node.body, chain + [node.name], kinds + [kind], nodes + [node])
+            else:
+                # A def inside an `if`, `try`, `with` or loop is at its enclosing depth.
+                for field in ("body", "orelse", "finalbody"):
+                    sub = getattr(node, field, None)
+                    if isinstance(sub, list):
+                        visit(sub, chain, kinds, nodes)
+                for h in getattr(node, "handlers", None) or ():
+                    visit(h.body, chain, kinds, nodes)
+    visit(tree.body, [], [], [])
+    return out
+
+
+def _enclosing_locals(enclosing):
+    """Names bound by the statements directly in each enclosing FUNCTION's body (a local
+    helper, a local assignment): name -> node, the innermost winning."""
+    out = {}
+    for fn in enclosing:
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for st in fn.body:
+            if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out[st.name] = st
+            elif isinstance(st, ast.Assign):
+                for tgt in st.targets:
+                    for n in ast.walk(tgt):
+                        if isinstance(n, ast.Name):
+                            out[n.id] = st.value
+    return out
+
+
+def is_test(node):
+    if isinstance(node, ast.ClassDef):
+        return node.name.startswith("Test")
+    return node.name.startswith("test")
+
+
+def service_for(root, sources, methods, reads, name_words):
+    """(service, evidence, recording folders, content check) by the rules in the docstring.
+    *sources* is ((where, words), ...) in the order they are tried."""
+    for path in sorted(reads):
+        for svc, _w, _m, folders, check in SERVICES:
+            if any(path == f or path.startswith(f + "/") for f in folders):
+                return svc, f"reads {path}", folders, check
+        return f"recording at {path}", f"reads {path}", (path,), None
+    for where, ws_of in sources:
+        for svc, ws, _m, folders, check in SERVICES:
+            hit = sorted(ws & set(ws_of))
+            if hit:
+                return svc, f"word '{hit[0]}' in its {where}", folders, check
+    for svc, _w, ms, folders, check in SERVICES:
+        hit = sorted(ms & set(methods))
+        if hit:
+            return svc, f"method {hit[0]}()", folders, check
+    looked = []
+    for t in name_words:
+        if t in STOPWORDS or len(t) < 3 or any(t.startswith(s) for s in ("fake", "stub",
+                                                                          "dummy")):
+            continue
+        folder = f"tests/fixtures/{t}"
+        looked.append(folder)
+        if os.path.isdir(os.path.join(root, folder)):
+            return f"{t} (by its name)", f"word '{t}' names {folder}", (folder,), None
+    return "none named", "no service word", tuple(looked), None
+
+
+def _fixture_folders(root):
+    full = os.path.join(root, "tests", "fixtures")
+    return sum(1 for x in os.listdir(full) if os.path.isdir(os.path.join(full, x))
+               and x != "__pycache__") if os.path.isdir(full) else 0
+
+
+def recording_files(root, folders, check):
+    out = []
+    for f in folders:
+        full = os.path.join(root, f)
+        if os.path.isfile(full):
+            cands = [full]
+        elif os.path.isdir(full):
+            cands = []
+            for d, dirs, files in os.walk(full):
+                dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+                cands += [os.path.join(d, x) for x in sorted(files)
+                          if not x.endswith((".py", ".pyc", ".md"))]
+        else:
+            continue
+        for c in cands:
+            if check is not None:
+                try:
+                    if c.endswith(".jsonl"):
+                        with open(c, encoding="utf-8") as fh:
+                            docs = [json.loads(line) for line in fh if line.strip()]
+                    else:
+                        with open(c, encoding="utf-8") as fh:
+                            docs = [json.load(fh)]
+                except (ValueError, OSError, UnicodeDecodeError):
+                    continue
+                if not any(check[1](d) for d in docs):
+                    continue
+            out.append(rel(root, c))
+    return out
+
+
+def _value_names(expr):
+    """(name, how) an expression hands over as a value: `bare` (the name itself), `called`
+    (its call's answer: an instance, when the name is a class), or `lambda` (in a lambda's
+    body)."""
+    if isinstance(expr, ast.Name):
+        return {(expr.id, "bare")}
+    if isinstance(expr, ast.Attribute):
+        return {(expr.attr, "bare")}
+    if isinstance(expr, ast.Call):
+        return {(n, "called") for n, _how in _value_names(expr.func)}
+    if isinstance(expr, ast.Lambda):
+        return {(n.id, "lambda") for n in ast.walk(expr.body) if isinstance(n, ast.Name)} | {
+            (n.attr, "lambda") for n in ast.walk(expr.body) if isinstance(n, ast.Attribute)}
+    return set()
+
+
+def _hands_over(fake, how):
+    """A function's call hands over its answer, not the function: only a class's call counts."""
+    return how != "called" or fake["kind"] == "class"
+
+
+def _call_name(call):
+    f = call.func
+    if isinstance(f, ast.Name):
+        return f.id
+    if isinstance(f, ast.Attribute):
+        return f.attr
+    return ""
+
+
+def inventory(root):
+    t = Tree(root)
+    fakes = []
+    for frel, info in sorted(t.files.items()):
+        # A test module named for fakes (this tool's own test) is a test module, not a fake one.
+        base = os.path.basename(frel).lower()
+        fake_module = "fake" in base and not base.startswith("test_")
+        for node, q, depth, _kinds, enclosing in _defs(info.tree):
+            if is_test(node):
+                continue
+            by_name = bool(NAME_RULE.search(node.name))
+            by_module = fake_module and depth == 0 and (
+                isinstance(node, ast.ClassDef) or not node.name.startswith("_"))
+            if not (by_name or by_module):
+                continue
+            kind = "class" if isinstance(node, ast.ClassDef) else "function"
+            bases = [ast.unparse(b) for b in node.bases] if kind == "class" else []
+            methods = [n.name for n in node.body if isinstance(n, (ast.FunctionDef,
+                                                                   ast.AsyncFunctionDef))] \
+                if kind == "class" else []
+            sources = [("name", words(node.name))]
+            if by_module and not by_name:
+                # A member the fake module rule alone found takes its file's name too; a fake
+                # named as one goes by its own name (a FakeGadget in fake_widget.py).
+                sources.append(("file's name",
+                                words(os.path.splitext(os.path.basename(frel))[0])))
+            sources.append(("bases", [w for b in bases for w in words(b)]))
+            reads = t.reach_node(info, node, local=_enclosing_locals(enclosing))
+            typed = sum(1 for n in _evaluated(node) if isinstance(n, ast.Dict) and sum(
+                1 for k in n.keys if isinstance(k, ast.Constant) and isinstance(k.value, str))
+                >= 2)
+            # The folder looked for: by each word of its name (and its file's, as above).
+            folder_words = [w for _where, ws in sources[:2 if by_module and not by_name else 1]
+                            for w in ws]
+            svc, evidence, folders, check = service_for(root, sources, methods, reads,
+                                                        folder_words)
+            fakes.append({
+                "file": frel, "name": q, "short": node.name, "line": node.lineno, "kind": kind,
+                "depth": depth, "nested_in_function": "function" in _kinds,
+                "found_by": "name" if by_name else "fake module", "bases": bases,
+                "methods": methods, "doc": docstring_line(node), "reads": sorted(reads),
+                "typed_literals": typed, "service": svc, "evidence": evidence,
+                "folders": folders, "check": check, "patched_as": [], "used_by": set()})
+    _uses(t, fakes)
+    for f in fakes:
+        if f["reads"]:
+            f["state"] = "built from recording"
+            f["recording"] = " ".join(f["reads"])
+            f["recordings"] = []
+            continue
+        files = recording_files(root, f["folders"], f["check"])
+        f["recordings"] = files
+        if files:
+            f["state"] = "recorded"
+            f["recording"] = f"{len(files)} file{'s' if len(files) != 1 else ''} in " \
+                             f"{' '.join(f['folders'])}"
+        else:
+            f["state"] = "no recording"
+            if f["folders"]:
+                where = " ".join(f["folders"])
+            elif f["service"] != "none named":
+                where = f"no folder is named for {f['service']}; tests/fixtures/ holds " \
+                        f"{_fixture_folders(root)} folders, none of its words"
+            else:
+                where = "nothing: no service word, and no word of its name of 3 letters or " \
+                        "more beside fake, stub and dummy"
+            if f["check"] is not None and f["folders"]:
+                where += f" for {f['check'][0]}"
+            f["recording"] = f"looked: {where}"
+    return t, fakes
+
+
+def _uses(t, fakes):
+    """Fill each fake's `used_by` and `patched_as` from every file's references."""
+    by_def = {(f["file"], f["short"]): f for f in fakes if f["depth"] == 0}
+    nested = collections.defaultdict(list)
+    for f in fakes:
+        if f["depth"]:
+            nested[(f["file"], f["short"])].append(f)
+    for frel, info in t.files.items():
+        # local name -> fakes it stands for in this file
+        local = collections.defaultdict(list)
+        for (dfile, name), f in by_def.items():
+            if dfile == frel:
+                local[name].append(f)
+        for (dfile, name), fs in nested.items():
+            if dfile == frel:
+                local[name] += fs
+        modules = {}
+        for alias, (mod, nm) in info.imported.items():
+            if nm is not None and (mod, nm) in by_def:
+                local[alias].append(by_def[(mod, nm)])
+            elif nm is None:
+                modules[alias] = mod
+        for n in ast.walk(info.tree):
+            hits = []
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in local:
+                hits = local[n.id]
+            elif isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and \
+                    n.value.id in modules and (modules[n.value.id], n.attr) in by_def:
+                hits = [by_def[(modules[n.value.id], n.attr)]]
+            for f in hits:
+                f["used_by"].add(frel)
+            if isinstance(n, ast.Call):
+                name = _call_name(n)
+                if name in ("setattr", "patch", "object") and len(n.args) >= 2:
+                    value = n.args[2] if name in ("setattr", "object") and len(n.args) >= 3 \
+                        else n.args[1]
+                    target = ", ".join(ast.unparse(a) for a in n.args[:2 if len(n.args) >= 3
+                                                                       else 1])
+                    for vname, how in _value_names(value):
+                        for f in local.get(vname, []):
+                            if _hands_over(f, how):
+                                f["patched_as"].append(f"{name}({target})")
+                for kw in n.keywords:
+                    if kw.arg and kw.arg != "new":
+                        for vname, how in _value_names(kw.value) if isinstance(
+                                kw.value, (ast.Name, ast.Call)) else ():
+                            for f in local.get(vname, []):
+                                if _hands_over(f, how):
+                                    f["patched_as"].append(f"{kw.arg}=")
+                    if kw.arg == "new" and name == "patch" and n.args:
+                        for vname, how in _value_names(kw.value):
+                            for f in local.get(vname, []):
+                                if _hands_over(f, how):
+                                    f["patched_as"].append(
+                                        f"patch({ast.unparse(n.args[0])})")
+
+
+# --- loading a fake ------------------------------------------------------------------------
+
+_loaded = {}
+
+
+def load_module(root, frel):
+    key = (root, frel)
+    if key in _loaded:
+        return _loaded[key]
+    if os.path.realpath(root) == os.path.realpath(REPO):
+        mod = importlib.import_module(frel[:-3].replace("/", "."))
+    else:
+        name = "fakes_audit_" + re.sub(r"\W", "_", frel[:-3])
+        loader = importlib.machinery.SourceFileLoader(name, os.path.join(root, frel))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+        loader.exec_module(mod)
+    _loaded[key] = mod
+    return mod
+
+
+def load_fake(root, fake):
+    """The fake's object, or raise naming why it cannot be reached."""
+    if fake["nested_in_function"]:
+        raise LookupError("defined inside a function: not reachable without running it")
+    obj = load_module(root, fake["file"])
+    for part in fake["name"].split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
+# --- answers -------------------------------------------------------------------------------
+
+def http_answer(resp):
+    """{status, content_type, body} of a response-like object."""
+    status = getattr(resp, "status_code", getattr(resp, "status", None))
+    headers = getattr(resp, "headers", None) or {}
+    ctype = None
+    for k, v in dict(headers).items():
+        if k.lower() == "content-type":
+            ctype = v
+    if ctype is None:
+        ctype = getattr(resp, "content_type", None)
+    body = None
+    text = getattr(type(resp), "text", None)
+    if isinstance(text, property) or isinstance(getattr(resp, "text", None), str):
+        body = resp.text
+    elif isinstance(getattr(resp, "content", None), (bytes, str)):
+        body = resp.content
+    elif hasattr(resp, "iter_content"):
+        body = b"".join(resp.iter_content())
+    elif hasattr(resp, "json"):
+        body = json.dumps(resp.json())
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    return {"status": status, "content_type": ctype, "body": body}
+
+
+def ask(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs), None
+    except Exception as e:  # noqa: BLE001 - a fake that raises is an answer, listed by name
+        return None, f"{type(e).__name__}"
+
+
+def entries_of(root, frel):
+    """A recording's HTTP entries, or None when it is not that shape."""
+    try:
+        with open(os.path.join(root, frel), encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (ValueError, OSError, UnicodeDecodeError):
+        return None
+    if isinstance(doc, list) and doc and all(
+            isinstance(e, dict) and {"method", "path", "status", "body"} <= set(e) for e in doc):
+        return doc
+    return None
+
+
+def send_entries(fake, frel, entries, base=BASE_URL):
+    out = []
+    for e in entries:
+        data = e.get("request_body")
+        label = f"{e['method']} {e['path']}"
+        resp, raised = ask(fake.request, e["method"], base + e["path"],
+                           data=data.encode("utf-8") if data is not None else None)
+        recorded = {"status": e["status"], "content_type": e.get("content_type"),
+                    "body": e["body"]}
+        mine = {"raised": raised} if raised else http_answer(resp)
+        out.append({"recording": frel, "request": label, "kind": "http",
+                    "recorded": recorded, "fake": mine})
+    return out
+
+
+# --- drivers -------------------------------------------------------------------------------
+
+def _entry_recordings(root, fake):
+    out = []
+    for frel in fake["recordings"]:
+        entries = entries_of(root, frel)
+        if entries is not None:
+            out.append((frel, entries))
+    return out
+
+
+def _takes_its_answers(cls):
+    """The name of a constructor's `*args`, when it has one: a fake built from the answers a
+    test hands it (sdn_fakes' Session), which the generic driver has none of."""
+    import inspect
+    try:
+        params = inspect.signature(cls).parameters.values()
+    except (TypeError, ValueError):
+        return None
+    for p in params:
+        if p.kind is p.VAR_POSITIONAL:
+            return p.name
+    return None
+
+
+def drive_generic_http(root, fake, cls):
+    recs = _entry_recordings(root, fake)
+    if not recs:
+        return None, "no recording of HTTP entries (method, path, status, body)"
+    var = _takes_its_answers(cls)
+    if var:
+        return None, f"it answers what a test hands its constructor (*{var}), and the " \
+                     "generic driver hands it nothing"
+    out = []
+    for frel, entries in recs:
+        obj, raised = ask(cls)
+        if raised:
+            return None, f"could not be constructed with no arguments ({raised})"
+        out += send_entries(obj, frel, entries)
+    return out, ""
+
+
+def _ryu_seed(entries):
+    from modules.sdn.drivers.ryu import flow_from_ryu
+    seed, topology = {}, {}
+    for e in entries:
+        if e["method"] != "GET" or e["status"] != 200:
+            continue
+        p = e["path"]
+        try:
+            body = json.loads(e["body"])
+        except ValueError:
+            continue
+        if p == "/stats/switches" and "dpids" not in seed:
+            seed["dpids"] = list(body)
+        elif p.startswith("/v1.0/topology/"):
+            topology[p] = body
+        else:
+            parts = p.strip("/").split("/")
+            if len(parts) != 3 or not parts[2].isdigit():
+                continue
+            d = int(parts[2])
+            if parts[1] == "flow":
+                seed.setdefault("flows", {}).setdefault(
+                    d, [flow_from_ryu(d, x).as_dict() for x in body.get(str(d), [])])
+            elif parts[1] == "meterfeatures" and body.get(str(d)):
+                seed.setdefault("features", body[str(d)][0])
+            elif parts[1] == "meterconfig":
+                seed.setdefault("meters", {}).setdefault(d, [
+                    {"meter_id": m["meter_id"], "flags": m.get("flags"),
+                     "bands": m.get("bands")} for m in body.get(str(d), [])])
+    if topology:
+        seed["topology"] = topology
+    return seed
+
+
+def drive_fake_ryu(root, fake, cls):
+    recs = _entry_recordings(root, fake)
+    out = []
+    for frel, entries in recs:
+        obj, raised = ask(cls, BASE_URL, **_ryu_seed(entries))
+        if raised:
+            return None, f"could not be seeded from {frel} ({raised})"
+        out += send_entries(obj, frel, entries)
+    return out, ""
+
+
+def drive_with_entries(root, fake, cls):
+    """A fake built on captured entries handed to it (sdn_fakes' Replay and Routes)."""
+    recs = _entry_recordings(root, fake)
+    out = []
+    for frel, entries in recs:
+        obj, raised = ask(cls, entries, BASE_URL)
+        if raised:
+            return None, f"could not be built from {frel} ({raised})"
+        out += send_entries(obj, frel, entries)
+    return out, ""
+
+
+def drive_cli(root, fake, cls):
+    obj, raised = ask(cls)
+    if raised:
+        obj, raised = ask(cls, **NETMIKO_PARAMS)
+    if raised:
+        return None, f"could not be constructed ({raised})"
+    if not hasattr(obj, "find_prompt"):
+        return None, "no find_prompt(): the device it stands for is not named"
+    prompt, raised = ask(obj.find_prompt)
+    if raised or not isinstance(prompt, str):
+        return None, f"find_prompt() answered no prompt ({raised or type(prompt).__name__})"
+    host = prompt.strip().rstrip("#>")
+    folder = os.path.join(root, "tests", "fixtures", "operational")
+    caps = sorted(f for f in (os.listdir(folder) if os.path.isdir(folder) else ())
+                  if f.startswith(host + "__") and f.endswith(".txt"))
+    if not caps:
+        return None, f"no capture tests/fixtures/operational/{host}__*.txt for its prompt"
+    out = []
+    for f in caps:
+        cmd = f[len(host) + 2:-4].split("__", 1)[0].replace("_", " ")
+        with open(os.path.join(folder, f), encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        answer, raised = ask(obj.send_command, cmd)
+        out.append({"recording": f"tests/fixtures/operational/{f}",
+                    "request": f"send_command({cmd})", "kind": "text",
+                    "recorded": {"text": text},
+                    "fake": {"raised": raised} if raised else {"text": answer}})
+    return out, ""
+
+
+KEA_RECORDING = re.compile(r"^(dhcp4|dhcp6)-(.+)\.json$")
+
+
+def drive_kea(root, fake, cls, build=None):
+    """Each recorded Control Agent answer `tests/fixtures/kea/<service>-<command>.json` asked
+    of the fake as `command(<command>, <service>)` (as the product's client calls it); the
+    recorded document compared with the fake's `result`. *build(cls, tmp)* constructs the fake
+    where it needs arguments (a reservations file it reads: an empty list, in *tmp*)."""
+    folder = os.path.join(root, "tests", "fixtures", "kea")
+    recs = sorted(f for f in (os.listdir(folder) if os.path.isdir(folder) else ())
+                  if KEA_RECORDING.match(f))
+    if not recs:
+        return None, "no recorded answer tests/fixtures/kea/<service>-<command>.json"
+    tmp = tempfile.mkdtemp(prefix="nmas-fakes-audit-kea-")
+    try:
+        obj, raised = ask(build, cls, tmp) if build else ask(cls)
+        if raised:
+            return None, f"could not be constructed ({raised})"
+        out = []
+        for f in recs:
+            svc, cmd = KEA_RECORDING.match(f).groups()
+            with open(os.path.join(folder, f), encoding="utf-8") as fh:
+                doc = json.load(fh)
+            answer, raised = ask(obj.command, cmd, svc)
+            if raised:
+                mine = {"raised": raised}
+            elif isinstance(answer, dict) and answer.get("ok") and "result" in answer:
+                mine = {"json": answer["result"]}
+            else:
+                mine = {"refused": str((answer or {}).get("error", answer))[:80]
+                        if isinstance(answer, dict) else type(answer).__name__}
+            out.append({"recording": f"tests/fixtures/kea/{f}", "request": f"{cmd} ({svc})",
+                        "kind": "json", "recorded": {"json": doc}, "fake": mine})
+        return out, ""
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _empty_file(tmp, name):
+    path = os.path.join(tmp, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("[]")
+    return path
+
+
+def _kea_with_fragment(cls, tmp):
+    """tests/test_ztp_reservations.py's FakeKea: the ZTP fragment it reads, empty."""
+    return cls(_empty_file(tmp, "ztp.json"))
+
+
+def _kea_with_files(cls, tmp):
+    """tests/test_ztp_relayed.py's FakeKea: subnets 255's and 40's reservation files, empty."""
+    return cls({255: _empty_file(tmp, "255.json"), 40: _empty_file(tmp, "40.json")})
+
+
+NETBOX_BASE = "http://nb.invalid"
+
+
+def drive_fake_netbox(root, fake, cls):
+    path = os.path.join(root, "tests", "fixtures", "netbox", "console_shapes.json")
+    if not os.path.isfile(path):
+        return None, "no tests/fixtures/netbox/console_shapes.json"
+    with open(path, encoding="utf-8") as fh:
+        cap = json.load(fh)
+    frel = rel(root, path)
+    # As tests/test_console_path.py seeds it: two devices, two interface cables (so the list
+    # pages, as the captured one did), and, on a second fake, one console path.
+    nb = cls()
+    dev = nb.seed("dcim/devices", {"name": "edge-a", "status": "planned"})
+    cs = nb.seed("dcim/devices", {"name": "cons-1", "status": "active"})
+    for port in ("Gi0/3", "Gi0/4"):
+        a = nb.seed("dcim/interfaces", {"device": dev["id"], "name": port})
+        b = nb.seed("dcim/interfaces", {"device": cs["id"], "name": port})
+        nb.seed("dcim/cables", {
+            "a_terminations": [{"object_type": "dcim.interface", "object_id": a["id"]}],
+            "b_terminations": [{"object_type": "dcim.interface", "object_id": b["id"]}],
+            "status": "connected"})
+    wired = cls()
+    wdev = wired.seed("dcim/devices", {"name": "edge-a", "status": "planned"})
+    wcs = wired.seed("dcim/devices", {"name": "cons-1", "status": "active"})
+    port = wired.seed("dcim/console-ports", {"device": wdev["id"], "name": "con 0"})
+    sport = wired.seed("dcim/console-server-ports", {"device": wcs["id"], "name": "port 5"})
+    wired.seed("dcim/cables", {
+        "a_terminations": [{"object_type": "dcim.consoleport", "object_id": port["id"]}],
+        "b_terminations": [{"object_type": "dcim.consoleserverport", "object_id": sport["id"]}],
+        "status": "connected", "label": ""})
+    out = []
+    for endpoint, rec in sorted(cap["endpoints"].items()):
+        resp, raised = ask(nb.get, f"{NETBOX_BASE}/api/{endpoint}", params={"limit": 1})
+        mine = {"raised": raised} if raised else {
+            "status": resp.status_code, "content_type": None,
+            "body": json.dumps(resp.json())}
+        out.append({"recording": frel, "request": f"GET {endpoint}?limit=1", "kind": "http",
+                    "recorded": {"status": rec["get_status"], "content_type": None,
+                                 "body": json.dumps(rec["get_body"])},
+                    "fake": mine})
+        if rec.get("post_fields") and endpoint.strip("/") in ("dcim/console-ports",
+                                                                "dcim/console-server-ports"):
+            resp, raised = ask(wired.get, f"{NETBOX_BASE}/api/{endpoint}")
+            if raised:
+                mine = {"raised": raised}
+            else:
+                results = resp.json().get("results") or [{}]
+                mine = {"keys": sorted(results[0])}
+            out.append({"recording": frel, "request": f"OPTIONS {endpoint} (field names)",
+                        "kind": "keys", "recorded": {"keys": sorted(rec["post_fields"])},
+                        "fake": mine})
+    return out, ""
+
+
+#: Drivers by (file, fake): the fakes no generic driver can seed.
+DRIVERS = {
+    ("tests/sdn_fakes.py", "FakeRyu"): drive_fake_ryu,
+    ("tests/sdn_fakes.py", "Replay"): drive_with_entries,
+    ("tests/sdn_fakes.py", "Routes"): drive_with_entries,
+    ("tests/fake_netbox.py", "FakeNetBox"): drive_fake_netbox,
+    ("tests/test_ztp_reservations.py", "FakeKea"):
+        lambda root, fake, cls: drive_kea(root, fake, cls, _kea_with_fragment),
+    ("tests/test_ztp_relayed.py", "FakeKea"):
+        lambda root, fake, cls: drive_kea(root, fake, cls, _kea_with_files),
+}
+
+
+def driver_for(fake):
+    if (fake["file"], fake["name"]) in DRIVERS:
+        return DRIVERS[(fake["file"], fake["name"])]
+    if fake["kind"] != "class":
+        return None
+    if "request" in fake["methods"]:
+        return drive_generic_http
+    if "send_command" in fake["methods"]:
+        return drive_cli
+    if "command" in fake["methods"] and fake["service"] == "Kea Control Agent":
+        return drive_kea
+    return None
+
+
+# --- the comparison ------------------------------------------------------------------------
+
+def jtype(v):
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "boolean"
+    if isinstance(v, int):
+        return "integer"
+    if isinstance(v, float):
+        return "number"
+    if isinstance(v, str):
+        return "string"
+    if isinstance(v, list):
+        return "array"
+    if isinstance(v, dict):
+        return "object"
+    return type(v).__name__
+
+
+def shape(v):
+    t = jtype(v)
+    if t == "object":
+        return {"object": {str(k): shape(x) for k, x in v.items()}}
+    if t == "array":
+        el = None
+        for x in v:
+            el = merge(el, shape(x))
+        return {"array": el}
+    return {t: None}
+
+
+def merge(a, b):
+    if a is None:
+        return b
+    if b is None:
+        return a
+    out = dict(a)
+    for t, sub in b.items():
+        if t not in out:
+            out[t] = sub
+        elif t == "object":
+            keys = dict(out[t])
+            for k, s in sub.items():
+                keys[k] = merge(keys.get(k), s)
+            out[t] = keys
+        elif t == "array":
+            out[t] = merge(out[t], sub)
+    return out
+
+
+def describe(s):
+    return "|".join(sorted(s)) if s else "no element"
+
+
+def diff_shapes(a, b, path):
+    rows = []
+    ta, tb = set(a), set(b)
+    if ta != tb:
+        rows.append((path, describe(a), describe(b)))
+    if "object" in ta and "object" in tb:
+        ka, kb = a["object"], b["object"]
+        for k in sorted(set(ka) - set(kb)):
+            rows.append((f"{path}.{k}", describe(ka[k]), "absent"))
+        for k in sorted(set(kb) - set(ka)):
+            rows.append((f"{path}.{k}", "absent", describe(kb[k])))
+        for k in sorted(set(ka) & set(kb)):
+            rows += diff_shapes(ka[k], kb[k], f"{path}.{k}")
+    if "array" in ta and "array" in tb:
+        ea, eb = a["array"], b["array"]
+        if ea is None and eb is not None:
+            rows.append((f"{path}[]", "no element", describe(eb)))
+        elif eb is None and ea is not None:
+            rows.append((f"{path}[]", describe(ea), "no element"))
+        elif ea is not None:
+            rows += diff_shapes(ea, eb, f"{path}[]")
+    return rows
+
+
+def _as_json(text):
+    if text is None or (isinstance(text, str) and not text.strip()):
+        return False, None
+    try:
+        return True, json.loads(text)
+    except (ValueError, TypeError):
+        return False, None
+
+
+def _text_desc(text):
+    if text is None:
+        return "none"
+    if isinstance(text, str) and not text.strip():
+        return "empty"
+    n = len(str(text).splitlines())
+    return f"text, {n} line{'' if n == 1 else 's'}"
+
+
+def compare(ex):
+    """The differing fields of one exchange: (field, recorded, fake)."""
+    rec, mine = ex["recorded"], ex["fake"]
+    if "raised" in mine:
+        what = f"status {rec['status']}" if "status" in rec else (
+            f"{len(rec['keys'])} fields" if "keys" in rec else
+            f"a result, JSON {jtype(rec['json'])}" if "json" in rec else
+            _text_desc(rec.get("text")))
+        return [("answer", what, f"raised {mine['raised']}")]
+    if "refused" in mine:
+        return [("answer", "a result", f"no result ({mine['refused']})")]
+    rows = []
+    if ex["kind"] == "json":
+        return diff_shapes(shape(rec["json"]), shape(mine["json"]), "result")
+    if ex["kind"] == "keys":
+        ka, kb = set(rec["keys"]), set(mine["keys"])
+        rows += [(f"field {k}", "present", "absent") for k in sorted(ka - kb)]
+        rows += [(f"field {k}", "absent", "present") for k in sorted(kb - ka)]
+        return rows
+    if ex["kind"] == "text":
+        if rec["text"] != mine["text"]:
+            rows.append(("text", _text_desc(rec["text"]),
+                         _text_desc(mine["text"]) + ", not the recorded text"
+                         if isinstance(mine["text"], str) else jtype(mine["text"])))
+        return rows
+    if rec["status"] != mine["status"]:
+        rows.append(("status", str(rec["status"]), str(mine["status"])))
+    if rec.get("content_type") != mine.get("content_type"):
+        rows.append(("content type", str(rec.get("content_type")),
+                     str(mine.get("content_type"))))
+    ja, va = _as_json(rec["body"])
+    jb, vb = _as_json(mine["body"])
+    if ja and jb:
+        rows += diff_shapes(shape(va), shape(vb), "body")
+    elif ja != jb:
+        rows.append(("body", f"JSON {jtype(va)}" if ja else _text_desc(rec["body"]),
+                     f"JSON {jtype(vb)}" if jb else _text_desc(mine["body"])))
+    elif rec["body"] != mine["body"]:
+        a, b = _text_desc(rec["body"]), _text_desc(mine["body"])
+        rows.append(("body", a, b if a != b else b + ", not the recorded text"))
+    return rows
+
+
+# --- the audit -----------------------------------------------------------------------------
+
+def audit(root):
+    """{fakes, rows, unparsed}: each fake with its state and comparison, and the TSV rows."""
+    tree, fakes = inventory(root)
+    rows = []
+    for f in fakes:
+        f["exchanges"], f["differing"] = 0, []
+        if f["state"] != "recorded":
+            f["compared"] = "not compared: " + (
+                "answers from the recording" if f["state"] == "built from recording"
+                else "no recording")
+            continue
+        drive = driver_for(f)
+        if drive is None:
+            f["compared"] = "not compared: no driver"
+            continue
+        try:
+            cls = load_fake(root, f)
+        except Exception as e:  # noqa: BLE001 - why it could not be reached is the answer
+            f["compared"] = f"not compared: could not be loaded ({type(e).__name__}: " \
+                            f"{str(e)[:120]})"
+            continue
+        exchanges, why = drive(root, f, cls)
+        if exchanges is None:
+            f["compared"] = f"not compared: {why}"
+            continue
+        seen = set()
+        for ex in exchanges:
+            for field, a, b in compare(ex):
+                key = (ex["recording"], f"{ex['request']} {field}", a, b)
+                if key not in seen:
+                    seen.add(key)
+                    f["differing"].append(key)
+        f["exchanges"] = len(exchanges)
+        f["compared"] = f"compared: {len(exchanges)} requests, {len(f['differing'])} " \
+                        f"differing fields"
+    for f in fakes:
+        rows.append((f["name"], f["file"], f["service"], f["recording"], f["state"], "-",
+                     "-", f["compared"]))
+    for f in fakes:
+        for recording, field, a, b in f["differing"]:
+            rows.append((f["name"], f["file"], f["service"], recording, "differs", field, a, b))
+    return {"fakes": fakes, "rows": rows, "unparsed": tree.unparsed, "files": len(tree.files)}
+
+
+_PUBLIC = ((re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "<address>"),
+           (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "<email>"),
+           (re.compile(r"/(?:home|Users)/[^/\s'\"]+"), "<home>"))
+
+
+def public(text):
+    for pattern, placeholder in _PUBLIC:
+        text = pattern.sub(placeholder, text)
+    return text
+
+
+def _cell(x):
+    return public(str(x).replace("\t", " ").replace("\n", " "))
+
+
+def report(result):
+    lines = ["fake\tfile\tservice\trecording\tstate\tfield\trecorded\tfake"]
+    lines += ["\t".join(_cell(x) for x in r) for r in result["rows"]]
+    fakes = result["fakes"]
+    states = collections.Counter(f["state"] for f in fakes)
+    compared = [f for f in fakes if f["compared"].startswith("compared")]
+    lines.append("")
+    lines.append(f"# test files parsed\t{result['files']}")
+    lines.append(f"# test files that did not parse\t{len(result['unparsed'])}"
+                 + (f"\t{' '.join(result['unparsed'])}" if result["unparsed"] else ""))
+    lines.append(f"# fakes\t{len(fakes)}")
+    for s in ("built from recording", "recorded", "no recording"):
+        lines.append(f"# state {s}\t{states.get(s, 0)}")
+    lines.append(f"# fakes compared\t{len(compared)}")
+    lines.append(f"# requests asked\t{sum(f['exchanges'] for f in compared)}")
+    lines.append(f"# differing-field rows\t{sum(len(f['differing']) for f in compared)}")
+    lines.append(f"# fakes with a difference\t{sum(1 for f in compared if f['differing'])}")
+    return lines
+
+
+def inventory_report(result):
+    lines = ["fake\tfile\tline\tkind\tfound by\tservice\tservice by\tstate\trecording\t"
+             "typed literals\tstands for\tused by"]
+    for f in result["fakes"]:
+        stands = []
+        if f["bases"]:
+            stands.append("bases " + ", ".join(f["bases"]))
+        pa = list(dict.fromkeys(f["patched_as"]))
+        if pa:
+            stands.append("as " + "; ".join(pa[:4]) + (f" (+{len(pa) - 4})" if len(pa) > 4
+                                                      else ""))
+        if f["doc"]:
+            stands.append("doc: " + f["doc"][:140])
+        used = sorted(f["used_by"])
+        lines.append("\t".join(_cell(x) for x in (
+            f["name"], f["file"], f["line"], f["kind"], f["found_by"], f["service"],
+            f["evidence"], f["state"], f["recording"], f["typed_literals"],
+            " | ".join(stands) or "-",
+            f"{len(used)} file{'' if len(used) == 1 else 's'}"
+            + (f": {' '.join(used[:5])}" if used else "")
+            + (" ..." if len(used) > 5 else ""))))
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="The test audit's fakes, tool (e).")
+    ap.add_argument("--root", default=REPO, help="the folder holding tests/ (default: this "
+                    "repository)")
+    ap.add_argument("--out", help="write the output here as well as to stdout")
+    ap.add_argument("--inventory", help="write each fake's inventory row (TSV) here")
+    a = ap.parse_args(argv)
+    root = os.path.abspath(a.root)
+    if not os.path.isdir(os.path.join(root, "tests")):
+        print(f"nmas-test-audit-fakes: {root} holds no tests/ folder", file=sys.stderr)
+        return 2
+    # Importing a test module to drive its fake may import the product: its store is a
+    # temporary folder, never the checkout's data/.
+    tmp = None
+    if not os.environ.get("NMAS_DATA_DIR"):
+        tmp = tempfile.mkdtemp(prefix="nmas-fakes-audit-")
+        os.environ["NMAS_DATA_DIR"] = tmp
+    try:
+        result = audit(root)
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+    text = "\n".join(report(result)) + "\n"
+    sys.stdout.write(text)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    if a.inventory:
+        with open(a.inventory, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(inventory_report(result)) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

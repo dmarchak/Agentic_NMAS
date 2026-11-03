@@ -1,0 +1,26 @@
+[
+ {
+  "method": "GET",
+  "path": "/widgets/1",
+  "request_body": null,
+  "status": 200,
+  "content_type": "application/json",
+  "body": "{\"id\": 1, \"name\": \"bolt\", \"size\": 3, \"tags\": [\"steel\"]}"
+ },
+ {
+  "method": "GET",
+  "path": "/widgets/9",
+  "request_body": null,
+  "status": 404,
+  "content_type": "application/json",
+  "body": "{\"error\": \"no widget 9\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/widgets",
+  "request_body": "{\"name\": \"nut\"}",
+  "status": 201,
+  "content_type": "application/json",
+  "body": "{\"id\": 2, \"name\": \"nut\", \"size\": 0, \"tags\": []}"
+ }
+]
