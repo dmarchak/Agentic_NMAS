@@ -451,11 +451,12 @@ class TestTheCommitBeingMade:
         assert 'nmas-bypass-scan" --repo "$ROOT" --message "$1" || status=1' in hook
 
     def test_the_hook_refuses_when_either_refuses(self, tmp_path):
-        """The hook's own logic, run with stand-ins for its checks: all five passing passes,
+        """The hook's own logic, run with stand-ins for its checks: all six passing passes,
         and any one of them refusing refuses the commit (red, then green the third, board TI
-        item 1; the guard check the fourth, item 2; the bypass scan the fifth, item 3)."""
+        item 1; the guard check the fourth, item 2; the bypass scan the fifth, item 3; the
+        premise check the sixth, item 5)."""
         checks = ("nmas-host-step-check", "nmas-test-weakening-check", "nmas-red-green",
-                  "nmas-guard-check", "nmas-bypass-scan")
+                  "nmas-guard-check", "nmas-bypass-scan", "nmas-premise-check")
         cases = [((0,) * len(checks), 0)] + [
             (tuple(int(i == j) for j in range(len(checks))), 1) for i in range(len(checks))]
         for codes, want in cases:
@@ -491,6 +492,22 @@ class TestTheCommitBeingMade:
         scan = next(s for s in steps if 'nmas-bypass-scan --range "$RANGE"' in s.get("run", ""))
         assert scan["if"] == host["if"] and scan["env"] == host["env"]
         assert scan["run"].replace("nmas-bypass-scan", "X") == \
+            host["run"].replace("nmas-host-step-check", "X")
+
+    def test_the_hook_runs_the_premise_check_too(self):
+        """Board TI item 5 (2026-11-03): a premise correction names what was measured."""
+        hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
+        assert 'nmas-premise-check" --message "$1" || status=1' in hook
+
+    def test_ci_runs_the_premise_check_over_the_pushed_range_as_the_others_do(self):
+        """Board TI item 5: shard a or the docs shard, as the host-step check runs."""
+        doc = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+        steps = doc["jobs"]["test"]["steps"]
+        host = next(s for s in steps if 'nmas-host-step-check --range "$RANGE"' in s.get("run", ""))
+        mine = next(s for s in steps
+                    if 'nmas-premise-check --range "$RANGE"' in s.get("run", ""))
+        assert mine["if"] == host["if"] and mine["env"] == host["env"]
+        assert mine["run"].replace("nmas-premise-check", "X") == \
             host["run"].replace("nmas-host-step-check", "X")
 
 

@@ -379,6 +379,23 @@ jobs:
           echo "checking $RANGE"
           python scripts/nmas-bypass-scan --range "$RANGE"
 
+      # Board TI item 5 (docs/TEST_INTEGRITY.md): a premise correction names what was measured
+      # ('Premise-Corrected: <test> — measured: <what, where, the result>'). It reads only the
+      # messages, so the docs shard carries it too.
+      - name: Every premise correction names its measurement
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-premise-check --range "$RANGE"
+
   # Lab 7 (2026-10-14): every shard's per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function
   # report in the job summary, the HTML report as an artifact, and the ratchet against

@@ -83,6 +83,7 @@ GUARDS = {
     "scripts/nmas-host-step-check": WHOLE,
     "scripts/nmas-red-green": WHOLE,
     "scripts/nmas-bypass-scan": WHOLE,   # board TI item 3, a gate script (2026-11-03)
+    "scripts/nmas-premise-check": WHOLE,  # board TI item 5, a gate script (2026-11-03)
     "scripts/nmas-guard-check": WHOLE,
     "tests/ratchet_lists.py": WHOLE,
     "tests/coverage_baseline.json": WHOLE,

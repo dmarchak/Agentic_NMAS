@@ -48,7 +48,8 @@ GOOD = 'Approved-By: operator — "change the hook as the board says"'
 GUARD_PATHS = ["scripts/hooks/commit-msg", "scripts/hooks/a-new-hook", "scripts/nmas-gate",
                "scripts/nmas-stage-guard", "scripts/nmas-test-weakening-check",
                "scripts/nmas-host-step-check", "scripts/nmas-red-green",
-               "scripts/nmas-guard-check", "scripts/nmas-bypass-scan", "tests/ratchet_lists.py",
+               "scripts/nmas-guard-check", "scripts/nmas-bypass-scan",
+               "scripts/nmas-premise-check", "tests/ratchet_lists.py",
                "tests/coverage_baseline.json", "CLAUDE.md"]
 
 TESTING = """# What the test suite checks

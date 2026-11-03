@@ -147,6 +147,16 @@ class TestTheSnapshotNeverSurvives:
     removed on every exit: a pass, a refusal, an interrupt or a termination; one a killed gate
     left behind is removed by the next gate, and one a running gate owns is never touched."""
 
+    @pytest.fixture(autouse=True)
+    def _own_temp(self, tmp_path, monkeypatch):
+        """C2389 (2026-11-03): these tests plant and count snapshot folders, so they and their
+        gates use a temporary folder of their own; in the shared one, another worker's gate
+        made or removed a snapshot between the counts (3 of 4 runs at -n 2 failed)."""
+        own = tmp_path / "tmp"
+        own.mkdir()
+        monkeypatch.setitem(ENV, "TMPDIR", str(own))
+        monkeypatch.setattr(tempfile, "tempdir", str(own))
+
     @staticmethod
     def _snapshots():
         tmp = tempfile.gettempdir()
@@ -445,7 +455,7 @@ def test_each_job_is_a_gate_command():
     # pushed range once (a docs-only push can change a guard or add a bypass).
     assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed",
                                               "Every weakened test ", "Every changed guard ",
-                                              "Every bypass a commi"}
+                                              "Every bypass a commi", "Every premise correc"}
     cov = doc["jobs"]["coverage"]
     assert cov["needs"] == ["scope", "test"]
     assert cov["if"] == "${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}"

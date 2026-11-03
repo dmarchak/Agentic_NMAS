@@ -18,6 +18,9 @@
 # - Each way past a test or a guard a commit adds (a skip, 'pragma: no cover', noqa, a broad
 #   except in a test, a mock of the module under test, a raised bound, a guarded word built
 #   from pieces) is named in 'Bypass: <file>:<line> — <reason>' (board TI item 3).
+# - A premise correction names what was measured, 'Premise-Corrected: <test> — measured:
+#   <what, where, the result>', and a message whose prose says a premise was corrected or
+#   wrong carries one (board TI item 5).
 #
 # All run whatever the others answer, so one commit hears every refusal at once.
 #
@@ -32,4 +35,5 @@ python3 "$CHECKS/scripts/nmas-test-weakening-check" --message "$1" || status=1
 python3 "$CHECKS/scripts/nmas-red-green" --repo "$ROOT" --message "$1" || status=1
 python3 "$CHECKS/scripts/nmas-guard-check" --repo "$ROOT" --message "$1" || status=1
 python3 "$CHECKS/scripts/nmas-bypass-scan" --repo "$ROOT" --message "$1" || status=1
+python3 "$CHECKS/scripts/nmas-premise-check" --message "$1" || status=1
 exit $status
