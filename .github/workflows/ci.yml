@@ -361,6 +361,24 @@ jobs:
           echo "checking $RANGE"
           python scripts/nmas-guard-check --range "$RANGE"
 
+      # Board TI item 3 (docs/TEST_INTEGRITY.md): each way past a test or a guard a commit
+      # adds names its reason ('Bypass: <file>:<line> — <reason>'). The commit-msg hook
+      # refuses it locally; this refuses a bypass of the hook. It runs no tests, so the docs
+      # shard carries it too.
+      - name: Every bypass a commit adds names its reason
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-bypass-scan --range "$RANGE"
+
   # Lab 7 (2026-10-14): every shard's per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function
   # report in the job summary, the HTML report as an artifact, and the ratchet against

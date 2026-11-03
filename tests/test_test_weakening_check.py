@@ -444,18 +444,26 @@ class TestTheCommitBeingMade:
         hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
         assert 'nmas-guard-check" --repo "$ROOT" --message "$1" || status=1' in hook
 
+    def test_the_hook_runs_the_bypass_scan_too(self):
+        """Board TI item 3 (2026-11-03): each way past a test or a guard a commit adds names
+        its reason."""
+        hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
+        assert 'nmas-bypass-scan" --repo "$ROOT" --message "$1" || status=1' in hook
+
     def test_the_hook_refuses_when_either_refuses(self, tmp_path):
-        """The hook's own logic, run with stand-ins for its checks: all four passing passes,
+        """The hook's own logic, run with stand-ins for its checks: all five passing passes,
         and any one of them refusing refuses the commit (red, then green the third, board TI
-        item 1; the guard check the fourth, item 2)."""
-        for codes, want in (((0, 0, 0, 0), 0), ((1, 0, 0, 0), 1), ((0, 1, 0, 0), 1),
-                            ((0, 0, 1, 0), 1), ((0, 0, 0, 1), 1)):
+        item 1; the guard check the fourth, item 2; the bypass scan the fifth, item 3)."""
+        checks = ("nmas-host-step-check", "nmas-test-weakening-check", "nmas-red-green",
+                  "nmas-guard-check", "nmas-bypass-scan")
+        cases = [((0,) * len(checks), 0)] + [
+            (tuple(int(i == j) for j in range(len(checks))), 1) for i in range(len(checks))]
+        for codes, want in cases:
             root = tmp_path / ("r" + "".join(map(str, codes)))
             (root / "scripts" / "hooks").mkdir(parents=True)
             hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
             (root / "scripts" / "hooks" / "commit-msg").write_text(hook)
-            for name, code in zip(("nmas-host-step-check", "nmas-test-weakening-check",
-                                   "nmas-red-green", "nmas-guard-check"), codes):
+            for name, code in zip(checks, codes):
                 (root / "scripts" / name).write_text(f"import sys\nsys.exit({code})\n")
             _git(root, "init", "-q")
             p = subprocess.run(["sh", str(root / "scripts" / "hooks" / "commit-msg"), "MSG"],
@@ -473,6 +481,16 @@ class TestTheCommitBeingMade:
         assert mine["if"] == host["if"] == "matrix.shard == 'a' || matrix.shard == 'docs'"
         assert mine["env"] == host["env"]
         assert mine["run"].replace("nmas-test-weakening-check", "X") == \
+            host["run"].replace("nmas-host-step-check", "X")
+
+    def test_ci_runs_the_bypass_scan_over_the_pushed_range_as_the_others_do(self):
+        """Board TI item 3: shard a or the docs shard, as the host-step check runs."""
+        doc = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+        steps = doc["jobs"]["test"]["steps"]
+        host = next(s for s in steps if 'nmas-host-step-check --range "$RANGE"' in s.get("run", ""))
+        scan = next(s for s in steps if 'nmas-bypass-scan --range "$RANGE"' in s.get("run", ""))
+        assert scan["if"] == host["if"] and scan["env"] == host["env"]
+        assert scan["run"].replace("nmas-bypass-scan", "X") == \
             host["run"].replace("nmas-host-step-check", "X")
 
 

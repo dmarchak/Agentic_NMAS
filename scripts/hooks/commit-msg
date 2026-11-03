@@ -15,6 +15,9 @@
 # - A commit that changes a guard (every file here, the gate and its checks, the ratchets,
 #   CLAUDE.md, docs/TESTING.md's rule sections; board TI item 2) carries the operator's
 #   approval, 'Approved-By: operator — "<the operator's own words, quoted>"'.
+# - Each way past a test or a guard a commit adds (a skip, 'pragma: no cover', noqa, a broad
+#   except in a test, a mock of the module under test, a raised bound, a guarded word built
+#   from pieces) is named in 'Bypass: <file>:<line> — <reason>' (board TI item 3).
 #
 # All run whatever the others answer, so one commit hears every refusal at once.
 #
@@ -25,4 +28,5 @@ python3 "$ROOT/scripts/nmas-host-step-check" --message "$1" || status=1
 python3 "$ROOT/scripts/nmas-test-weakening-check" --message "$1" || status=1
 python3 "$ROOT/scripts/nmas-red-green" --repo "$ROOT" --message "$1" || status=1
 python3 "$ROOT/scripts/nmas-guard-check" --repo "$ROOT" --message "$1" || status=1
+python3 "$ROOT/scripts/nmas-bypass-scan" --repo "$ROOT" --message "$1" || status=1
 exit $status

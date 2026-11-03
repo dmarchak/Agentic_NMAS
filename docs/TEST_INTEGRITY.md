@@ -111,6 +111,24 @@ operator.
   it cannot. Run by the gate and CI.
 - **Cost:** a reason line for each. Most commits add none.
 - **Prevents:** green bought by switching a check off, unnoticed in a long commit.
+- **Built 2026-11-03:** `scripts/nmas-bypass-scan`, in `scripts/hooks/commit-msg` and in CI job
+  a and the docs shard. It is a guard itself (item 2's list), and its tests are
+  tests/test_bypass_scan.py.
+  - **How each kind is found:** by ast or tokenize, and as text only in a file that does not
+    parse. Each finding names which (D4).
+  - **The guarded words:** read from the config-read hook's own patterns, plus `tests/`.
+  - **What the survey found:** over the last 150 commits, 596 noqa, 35 skips, 18 mocks of the
+    module under test, 3 raised bounds and 2 broad excepts, and no guarded word built from
+    pieces.
+  - **The volume:** the noqa are mostly the interpreter adoption's `# noqa: E402` in each new
+    script. No linter runs in CI, so they excuse nothing today. Whether they need a reason is
+    the operator's call (C2360).
+- **What it does not see:**
+  - a skip held in a helper, fixture or conftest that already existed;
+  - a mock through a module loaded by path;
+  - a bound raised inside a function or as an environment default;
+  - a word built from a variable or by `os.path.join`;
+  - anything outside Python files.
 
 ### 4. Behaviour over presence
 

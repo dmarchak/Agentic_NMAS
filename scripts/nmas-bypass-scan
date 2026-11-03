@@ -1,0 +1,951 @@
+#!/usr/bin/env python3
+"""The bypass scanner (board TI, item 3; docs/TEST_INTEGRITY.md): each way past a test or a
+guard that a commit ADDS needs a reason line in the commit, so green bought by switching a
+check off is not lost in a long commit.
+
+    scripts/nmas-bypass-scan [--repo DIR] [--commit SHA]          # one commit (default HEAD)
+    scripts/nmas-bypass-scan [--repo DIR] --message FILE          # the commit being made: the
+                                                                  # index against HEAD
+    scripts/nmas-bypass-scan [--repo DIR] --commit SHA --message FILE   # that commit, the
+                                                                  # trailers read from FILE
+    scripts/nmas-bypass-scan [--repo DIR] --range A..B            # each commit in it (CI)
+
+**The kinds.** Each changed Python file (`.py`, or a file with no extension whose first line is
+a python `#!`) is read at the commit and at its parent and PARSED at both (D4: it parses where
+it can, matches text where it cannot, and says which for each finding):
+1. **skip**, in a test file (`tests/**.py`, any `conftest.py`): `pytest.mark.skip`, `skipif`,
+   `xfail` (a decorator, a `pytestmark`, a `pytest.param` mark), the calls `pytest.skip(`,
+   `pytest.xfail(`, `pytest.importorskip(`, and unittest's `skip`, `skipIf`, `skipUnless`,
+   `expectedFailure` and `skipTest(`; by the AST, names resolved through the file's imports;
+2. **pragma: no cover**, in any Python file: a COMMENT token (tokenize) matching coverage's own
+   pattern, never text inside a string;
+3. **noqa**, in any Python file: a COMMENT token holding the word `noqa`;
+4. **broad except**, in a test file: `except:`, `except Exception`, `except BaseException`
+   (alone or in a tuple), by the AST;
+5. **mock of the module under test**, in `tests/**/test_<name>.py`: a `<x>.setattr(`,
+   `mock.patch(`, `patch(`, `mocker.patch(` or `.patch.object(` whose target is the module
+   `<name>`: an expression rooted at a name the file's imports bind, whose resolved dotted path
+   holds `<name>` (`from modules import <name>`, `from modules.x import <name> as N`,
+   `import modules.x.<name>`), or a string target whose dotted path holds `<name>`;
+6. **raised bound**: a module-level or class-level assignment of a numeric constant (a literal,
+   or arithmetic on literals, evaluated) whose NAME holds TIMEOUT, BOUND, CEILING, LIMIT, MAX
+   or BUDGET (any case), its value higher than the parent's; and a `timeout=` keyword literal
+   at a call site matched by its scope, its callee and its order there, higher than the
+   parent's (a scope whose number of calls to that callee changed cannot be matched, and says
+   so in a note);
+7. **guarded word built from pieces**: string literals joined (`+`, an f-string of literals,
+   `"sep".join([...])` of literals, `%` or `.format` of literals, `chr(<int>)`, or adjacent
+   literals, which the parser joins into one and so are read as tokens) into a text that one
+   of the GUARDED patterns matches while no single piece does (C2345's `"config" + "_repo"`).
+
+**Added only.** Each occurrence is keyed by its kind, its enclosing scope (the function or
+class, qualified) and what it is (the call or decorator dumped without positions, the comment's
+text, the target, the joined text), and counted at both sides of each changed file (a renamed
+file read under its old name at the parent). A key whose count rose is ADDED, the excess named
+at the lines the commit adds where they hold it (difflib), else its last occurrences; an
+occurrence the commit removed from another file under the same key is a move, credited. So a
+skip already on the parent is not named again, one moved with its test is not, and one added to
+an existing test or a new one is, a test renamed with its skip included. A bound is compared by
+value: lowered or unchanged is nothing. A new file's every occurrence is added. Where the
+commit's file does not parse, its added lines are MATCHED AS TEXT for kinds 1 to 4 (said); where
+the parent's does not, only the occurrences on lines the commit adds count (said).
+
+**The reason.** Each finding needs a trailer naming its file and its line in the commit's
+version:
+
+    Bypass: <file>:<line> — <reason>
+
+(an em dash, en dash or hyphen, spaced; one trailer covers every finding on its line). A trailer
+without its reason excuses nothing and is refused; one naming no finding is said in a note.
+
+**Not seen:** a skip or guard reached through a helper, fixture or conftest that already held
+it; a mock of the module under test through a name no import binds (a module loaded by path, a
+fixture returning it) or by `monkeypatch.setitem`/`setenv`; a bound raised in a function body, by
+an argparse or environment default, a config file, or a keyword other than `timeout=`; a word
+built from a variable or an argument (C2345's second form), by `os.path.join`, or outside a
+Python file.
+
+**The index** (`--message` without `--commit`): the default index, read without its lock
+(`git diff-index --cached`, `git show :<path>`); a temporary index (GIT_INDEX_FILE, a
+`git commit -a`) is refused, exit 2. Every git call goes through `modules.nsot.repo.run_git`
+(C931), which drops git's repository variables (`REPO_LOCAL_ENV`), so as a commit-msg hook it
+reads the repository it names and nothing it inherited (C2357). It starts no other process.
+
+Output: per commit, one line per finding (its kind, `file:line`, what, and how it was found) and
+`N found, E excused, R refused`; a commit adding none passes and says so. Exit 0 every finding
+excused; 1 refused, naming each and the trailer that would excuse it; 2 could not ask (git, the
+guarded patterns), which is never a pass.
+"""
+import argparse
+import ast
+import collections
+import difflib
+import importlib.machinery
+import importlib.util
+import io
+import os
+import re
+import subprocess
+import sys
+import tokenize
+from typing import NamedTuple
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: One git read's bound (repo.run_git's own default): a `git show` of one file or a
+#: `diff-tree` of one commit. A call that hits it names itself (exit 2), never a pass.
+GIT_TIMEOUT = 30
+INDEX = ":"
+
+#: THE GUARDED WORDS, one list: each a pattern a hook or check refuses, so text built from
+#: pieces to miss it is found (C2345, C2346). The config-read hook's own patterns are imported
+#: from the hook at run time, never retyped, so the scanner matches what the hook matches:
+#: STORE_PATH (the store folders: data/lists, config_cache, checkpoints, config_repo,
+#: golden_configs, pre_change, backups, and the sealed files), CONFIG_WORDS (configuration
+#: named on a host) and SCRIPT_STORE_WORDS (a store named in a scratch script). Then `tests/`:
+#: a test path built to miss a check keyed on it.
+GUARDED_FROM = (("scripts/hooks/claude-no-raw-config-reads",
+                 ("STORE_PATH", "CONFIG_WORDS", "SCRIPT_STORE_WORDS")),)
+GUARDED_EXTRA = (("a test path (tests/)", r"tests/"),)
+
+K_SKIP = "skip"
+K_PRAGMA = "pragma: no cover"
+K_NOQA = "noqa"
+K_EXCEPT = "broad except"
+K_MOCK = "mock of the module under test"
+K_BOUND = "raised bound"
+K_BUILT = "guarded word built from pieces"
+
+M_AST = "parsed: ast"
+M_COMMENT = "parsed: tokenize, a comment token"
+M_ADJACENT = "parsed: tokenize, adjacent string literals (the parser joins them into one)"
+M_CALLSITE = "parsed: ast, the call site matched by its scope, callee and order"
+M_TEXT = "text: the file does not parse at the commit, so its added lines were matched"
+PARENT_UNPARSED = "; the parent's does not parse, so only the lines the commit adds count"
+
+#: coverage.py's default exclusion pattern, so a pragma coverage honours is one this counts.
+PRAGMA = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
+#: flake8's and ruff's suppression, in a comment: a hash then the word, with or without codes,
+#: anywhere in the comment (as flake8 searches the line), and the file-wide `flake8:` and
+#: `ruff:` forms. Prose naming the word is not one.
+NOQA = re.compile(r"#\s*noqa\b|\b(?:flake8|ruff)\s*:\s*noqa\b", re.I)
+BOUND_NAME = re.compile(r"TIMEOUT|BOUND|CEILING|LIMIT|MAX|BUDGET", re.I)
+SKIP_NAMES = {"pytest.mark.skip", "pytest.mark.skipif", "pytest.mark.xfail", "pytest.skip",
+              "pytest.xfail", "pytest.importorskip", "unittest.skip", "unittest.skipIf",
+              "unittest.skipUnless", "unittest.expectedFailure"}
+PATCH_FUNCS = {"unittest.mock.patch", "mock.patch", "mocker.patch", "patch"}
+BROAD = {"Exception", "BaseException", "builtins.Exception", "builtins.BaseException"}
+
+#: The text fallback (D4), for a file that does not parse at the commit: its added lines.
+TEXT_SKIP = re.compile(r"\bpytest\s*\.\s*(?:mark\s*\.\s*)?(?:skip|skipif|xfail|importorskip)\b"
+                       r"|\bunittest\s*\.\s*(?:skip\w*|expectedFailure)\b|\.skipTest\s*\(")
+TEXT_EXCEPT = re.compile(r"^\s*except\s*(?::|\(?\s*(?:Exception|BaseException)\b)")
+
+TRAILER_KEY = "Bypass"
+ANY_KEY = re.compile(r"^[A-Za-z]+(?:-[A-Za-z]+)*:\s")
+TRAILER_VALUE = re.compile(r"^(?P<subject>\S+)\s+(?:—|–|-{1,2})\s+(?P<reason>\S.*)$", re.S)
+SUBJECT = re.compile(r"^(?P<path>.+):(?P<line>\d+)$")
+SCISSORS = re.compile(r"^# -+ >8 -+$", re.M)
+
+
+class CannotAsk(Exception):
+    pass
+
+
+class Occ(NamedTuple):
+    kind: str
+    key: tuple
+    line: int
+    detail: str
+    method: str
+
+
+class Finding(NamedTuple):
+    kind: str
+    path: str
+    line: int
+    detail: str
+    method: str
+
+
+# --- git ------------------------------------------------------------------------------------
+
+def git(root, *args, text=True, ok_missing=False):
+    """git in *root*, through the one runner pinned to it (C931, `repo.run_git`)."""
+    from modules.nsot.repo import run_git
+    try:
+        r = run_git(root, *args, text=text, timeout=GIT_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CannotAsk(f"git {' '.join(args)}: {exc}") from exc
+    if r.returncode != 0:
+        if ok_missing:
+            return None
+        err = r.stderr if text else r.stderr.decode(errors="replace")
+        raise CannotAsk(f"git {' '.join(args)} exited {r.returncode}: {err.strip()[:300]}")
+    return r.stdout
+
+
+class Side:
+    """One revision's files: a commit, the index (INDEX), or nothing (None: a root's parent)."""
+
+    def __init__(self, root, rev):
+        self.root, self.rev, self._cache = root, rev, {}
+
+    def read(self, path):
+        """*path*'s text, or None where it holds none or it is not UTF-8 text."""
+        if self.rev is None or path is None:
+            return None
+        if path not in self._cache:
+            spec = f":{path}" if self.rev == INDEX else f"{self.rev}:{path}"
+            data = git(self.root, "show", spec, text=False, ok_missing=True)
+            try:
+                self._cache[path] = None if data is None else data.decode("utf-8")
+            except UnicodeDecodeError:
+                self._cache[path] = None
+        return self._cache[path]
+
+
+def _name_status(text):
+    """`[(old path or None, new path or None)]` from `--name-status -z` output."""
+    parts = text.split("\0")
+    out, i = [], 0
+    while i < len(parts) and parts[i]:
+        status = parts[i]
+        if status[0] in "RC":
+            old, new = parts[i + 1], parts[i + 2]
+            out.append((old if status[0] == "R" else None, new))
+            i += 3
+        else:
+            path = parts[i + 1]
+            out.append((None if status[0] == "A" else path, None if status[0] == "D" else path))
+            i += 2
+    return out
+
+
+def changes_between(root, parent, commit):
+    if parent is None:            # a root commit, or the first commit being made: all added
+        if commit == INDEX:
+            names = git(root, "ls-files", "-z")
+        else:
+            names = git(root, "ls-tree", "-r", "-z", "--name-only", commit)
+        return [(None, p) for p in names.split("\0") if p]
+    if commit == INDEX:
+        return _name_status(git(root, "diff-index", "--cached", "-M", "--name-status", "-z",
+                                parent))
+    return _name_status(git(root, "diff-tree", "-r", "-M", "--name-status", "-z", parent,
+                            commit))
+
+
+# --- what a file is -------------------------------------------------------------------------
+
+def _base(path):
+    return path.rsplit("/", 1)[-1]
+
+
+def is_python(path, text):
+    if path.endswith(".py"):
+        return True
+    if "." in _base(path) or not text:
+        return False
+    first = text.split("\n", 1)[0]
+    return first.startswith("#!") and "python" in first
+
+
+def in_tests(path):
+    return (path.startswith("tests/") and path.endswith(".py")) or _base(path) == "conftest.py"
+
+
+def own_module(path):
+    """`<name>` for `tests/**/test_<name>.py`, else None."""
+    base = _base(path)
+    if path.startswith("tests/") and base.startswith("test_") and base.endswith(".py"):
+        return base[len("test_"):-len(".py")] or None
+    return None
+
+
+def guarded_patterns():
+    """`[(name, compiled pattern)]`: GUARDED_FROM's patterns read from their files in this
+    checkout (the scanner's own), then GUARDED_EXTRA."""
+    out = []
+    for rel, names in GUARDED_FROM:
+        path = os.path.join(REPO, *rel.split("/"))
+        try:
+            loader = importlib.machinery.SourceFileLoader("_nmas_guard_" + _base(rel)
+                                                          .replace("-", "_"), path)
+            spec = importlib.util.spec_from_loader(loader.name, loader)
+            mod = importlib.util.module_from_spec(spec)
+            loader.exec_module(mod)
+        except (OSError, SyntaxError, ImportError) as exc:
+            raise CannotAsk(f"the guarded words could not be read from {rel}: {exc}") from exc
+        for name in names:
+            pat = getattr(mod, name, None)
+            if not isinstance(pat, re.Pattern):
+                raise CannotAsk(f"{rel} holds no pattern {name}: the guarded words are "
+                                "incomplete")
+            out.append((f"{rel}'s {name}", pat))
+    out += [(name, re.compile(p)) for name, p in GUARDED_EXTRA]
+    return out
+
+
+# --- scopes, names, numbers -----------------------------------------------------------------
+
+def _parse(text):
+    if text is None:
+        return None
+    try:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _scoped(tree):
+    """[(first line, last line, qualified name)] for every def and class, outermost first."""
+    out = []
+
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                q = prefix + child.name
+                first = min([child.lineno] + [d.lineno for d in child.decorator_list])
+                out.append((first, child.end_lineno, q))
+                walk(child, q + ".")
+            else:
+                walk(child, prefix)
+
+    walk(tree, "")
+    return out
+
+
+def _scope_at(scopes, line):
+    best = "<module>"
+    for first, last, q in scopes:
+        if first <= line <= last:
+            best = q            # later entries are nested deeper
+    return best
+
+
+def _aliases(tree):
+    """{local name: the dotted name it is bound to} from every import in *tree*."""
+    out = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.asname:
+                    out[a.asname] = a.name
+                else:
+                    root = a.name.split(".", 1)[0]
+                    out[root] = root
+        elif isinstance(node, ast.ImportFrom):
+            mod = "." * node.level + (node.module or "")
+            for a in node.names:
+                if a.name != "*":
+                    out[a.asname or a.name] = f"{mod}.{a.name}" if mod else a.name
+    return out
+
+
+def _dotted(node, aliases=None):
+    """`a.b.c` for a Name or an attribute chain, its root resolved through *aliases*; else
+    None."""
+    if isinstance(node, ast.Name):
+        return (aliases or {}).get(node.id, node.id)
+    if isinstance(node, ast.Attribute):
+        inner = _dotted(node.value, aliases)
+        return f"{inner}.{node.attr}" if inner else None
+    return None
+
+
+def _root_name(node):
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def number(node):
+    """A numeric constant's value: a literal, or arithmetic on literals; else None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+            and not isinstance(node.value, bool):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        v = number(node.operand)
+        return None if v is None else (-v if isinstance(node.op, ast.USub) else v)
+    if isinstance(node, ast.BinOp):
+        a, b = number(node.left), number(node.right)
+        if a is None or b is None:
+            return None
+        try:
+            if isinstance(node.op, ast.Add):
+                return a + b
+            if isinstance(node.op, ast.Sub):
+                return a - b
+            if isinstance(node.op, ast.Mult):
+                return a * b
+            if isinstance(node.op, ast.Div):
+                return a / b
+            if isinstance(node.op, ast.FloorDiv):
+                return a // b
+            if isinstance(node.op, ast.Mod):
+                return a % b
+            if isinstance(node.op, ast.Pow) and abs(b) <= 64:
+                return a ** b
+        except (ZeroDivisionError, OverflowError):
+            return None
+    return None
+
+
+# --- kind 7's pieces ------------------------------------------------------------------------
+
+def _const_str(node):
+    """A string literal's text, or `chr(<int literal>)`'s; else None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "chr" \
+            and len(node.args) == 1 and not node.keywords:
+        v = number(node.args[0])
+        if isinstance(v, int) and 0 <= v < 0x110000:
+            return chr(v)
+    return None
+
+
+def _is_join(node):
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "join" and _const_str(node.func.value) is not None
+            and len(node.args) == 1 and not node.keywords
+            and isinstance(node.args[0], (ast.List, ast.Tuple)))
+
+
+def _pieces(node):
+    """The literal pieces *node* joins, in order, None for a part that is not a literal."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _pieces(node.left) + _pieces(node.right)
+    if isinstance(node, ast.JoinedStr):
+        out = []
+        for v in node.values:
+            if isinstance(v, ast.FormattedValue):
+                s = _const_str(v.value) if v.format_spec is None and v.conversion in (-1, 115) \
+                    else None
+                out.append(s)
+            else:
+                out.append(_const_str(v))
+        return out
+    if _is_join(node):
+        sep, out = _const_str(node.func.value), []
+        for i, e in enumerate(node.args[0].elts):
+            if i and sep:
+                out.append(sep)
+            out += _pieces(e)
+        return out
+    return [_const_str(node)]
+
+
+def _formatted(node):
+    """`(value, pieces)` for `"fmt" % literals` or `"fmt".format(literals)`; else None."""
+    try:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) \
+                and _const_str(node.left) is not None:
+            args = node.right.elts if isinstance(node.right, ast.Tuple) else [node.right]
+            vals = [ast.literal_eval(a) for a in args]
+            if all(isinstance(v, (str, int, float)) for v in vals):
+                fmt = _const_str(node.left)
+                return fmt % tuple(vals), [fmt, *map(str, vals)]
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "format" and _const_str(node.func.value) is not None \
+                and not node.keywords and node.args:
+            vals = [ast.literal_eval(a) for a in node.args]
+            if all(isinstance(v, (str, int, float)) for v in vals):
+                fmt = _const_str(node.func.value)
+                return fmt.format(*vals), [fmt, *map(str, vals)]
+    except (ValueError, TypeError, KeyError, IndexError, SyntaxError):
+        return None
+    return None
+
+
+def _runs(pieces):
+    """Each run of two or more consecutive non-empty literal pieces."""
+    out, cur = [], []
+    for p in pieces + [None]:
+        if p is None:
+            if len(cur) >= 2:
+                out.append(cur)
+            cur = []
+        elif p:
+            cur.append(p)
+    return out
+
+
+def built_word(value, pieces, guarded):
+    """`(pattern name, matched text)` when *value* holds a guarded word no single piece does."""
+    for name, pat in guarded:
+        m = pat.search(value)
+        if m and not any(pat.search(p) for p in pieces):
+            return name, m.group(0).strip()
+    return None
+
+
+# --- one file's occurrences -----------------------------------------------------------------
+
+class Scan(NamedTuple):
+    parsed: bool
+    occs: list
+    bounds: dict          # (scope, NAME) -> (value, line)
+    calls: dict           # (scope, callee) -> [(timeout value or None, line)]
+
+
+UNPARSED = Scan(False, [], {}, {})
+
+
+def scan(path, text, guarded):
+    """Every occurrence of every kind in *path*'s *text* (a Python file), or UNPARSED."""
+    tree = _parse(text)
+    if tree is None:
+        return UNPARSED
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError):
+        return UNPARSED
+    scopes = _scoped(tree)
+    aliases = _aliases(tree)
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+    test_file, mod = in_tests(path), own_module(path)
+    occs = []
+
+    def at(node):
+        return _scope_at(scopes, node.lineno)
+
+    consumed = set()
+    for node in ast.walk(tree):                 # breadth first: an outer join before its parts
+        # 1. a skip
+        if test_file and isinstance(node, (ast.Name, ast.Attribute)):
+            up = parent.get(node)
+            d = _dotted(node, aliases)
+            longer = isinstance(up, ast.Attribute) and up.value is node
+            if not longer and (d in SKIP_NAMES or (isinstance(node, ast.Attribute)
+                                                   and node.attr == "skipTest")):
+                site = up if isinstance(up, ast.Call) and up.func is node else node
+                what = "skipTest()" if d not in SKIP_NAMES else d + ("()" if site is up else "")
+                occs.append(Occ(K_SKIP, (K_SKIP, at(node), ast.dump(site)), node.lineno,
+                                f"{what} (in {at(node)})", M_AST))
+        # 4. a broad except
+        if test_file and isinstance(node, ast.ExceptHandler):
+            types = [] if node.type is None else (
+                node.type.elts if isinstance(node.type, ast.Tuple) else [node.type])
+            broad = node.type is None or any(_dotted(t) in BROAD for t in types)
+            if broad:
+                shown = "except:" if node.type is None else f"except {ast.unparse(node.type)}"
+                occs.append(Occ(K_EXCEPT, (K_EXCEPT, at(node), shown), node.lineno,
+                                f"{shown} (in {at(node)})", M_AST))
+        # 5. a mock of the module the file is named for
+        if mod and isinstance(node, ast.Call) and node.args:
+            target = _mock_target(node, mod, aliases)
+            if target:
+                occs.append(Occ(K_MOCK, (K_MOCK, at(node), target), node.lineno,
+                                f"{ast.unparse(node.func)} of {target} (module {mod!r}, the "
+                                f"file's name; in {at(node)})", M_AST))
+        # 7. a guarded word built from literal pieces
+        if id(node) not in consumed:
+            found = []
+            if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)) \
+                    or isinstance(node, ast.JoinedStr) or _is_join(node):
+                found = [("".join(r), r) for r in _runs(_pieces(node))]
+            else:
+                f = _formatted(node)
+                found = [f] if f else []
+            if found:
+                consumed.update(id(n) for n in ast.walk(node))
+            for value, pieces in found:
+                hit = built_word(value, pieces, guarded)
+                if hit:
+                    occs.append(Occ(K_BUILT, (K_BUILT, at(node), value), node.lineno,
+                                    f"{' + '.join(repr(p) for p in pieces)} makes {hit[1]!r}, "
+                                    f"which {hit[0]} matches and no piece does "
+                                    f"(in {at(node)})", M_AST))
+    # 2, 3, and 7's adjacent literals: by tokens
+    group = []
+
+    def close_group():
+        if len(group) >= 2:
+            value = "".join(s for s, _l in group)
+            hit = built_word(value, [s for s, _l in group], guarded)
+            if hit:
+                line = group[0][1]
+                scope = _scope_at(scopes, line)
+                occs.append(Occ(K_BUILT, (K_BUILT, scope, value), line,
+                                f"{' '.join(repr(s) for s, _l in group)} makes {hit[1]!r}, "
+                                f"which {hit[0]} matches and no piece does (in {scope})",
+                                M_ADJACENT))
+        group.clear()
+
+    for tok in tokens:
+        if tok.type == tokenize.COMMENT:
+            line, scope = tok.start[0], _scope_at(scopes, tok.start[0])
+            said = " ".join(tok.string.split())
+            if PRAGMA.search(tok.string):
+                occs.append(Occ(K_PRAGMA, (K_PRAGMA, scope, said), line,
+                                f"{said!r} (in {scope})", M_COMMENT))
+            if NOQA.search(tok.string):
+                occs.append(Occ(K_NOQA, (K_NOQA, scope, said), line,
+                                f"{said!r} (in {scope})", M_COMMENT))
+            continue
+        if tok.type == tokenize.NL:
+            continue
+        if tok.type == tokenize.STRING:
+            try:
+                v = ast.literal_eval(tok.string)
+            except (ValueError, SyntaxError):
+                v = None
+            if isinstance(v, str):
+                group.append((v, tok.start[0]))
+                continue
+        close_group()
+    close_group()
+    bounds, calls = _bounds(tree, scopes)
+    return Scan(True, occs, bounds, calls)
+
+
+def _mock_target(call, mod, aliases):
+    """The target text when *call* patches the module *mod*, else None."""
+    func = call.func
+    d = _dotted(func, aliases) or ""
+    first = call.args[0]
+    is_setattr = isinstance(func, ast.Attribute) and func.attr == "setattr"
+    is_patch = d in PATCH_FUNCS or (d.endswith(".object") and d[:-len(".object")] in PATCH_FUNCS)
+    if not (is_setattr or is_patch):
+        return None
+    attr = ""
+    if len(call.args) > 1 and isinstance(call.args[1], ast.Constant) \
+            and isinstance(call.args[1].value, str):
+        attr = "." + call.args[1].value
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        if mod in first.value.split("."):
+            return first.value
+        return None
+    root = _root_name(first)
+    if root is None or root not in aliases:
+        return None
+    resolved = _dotted(first, aliases)
+    if resolved and mod in resolved.split("."):
+        return resolved + attr
+    return None
+
+
+def _bounds(tree, scopes):
+    """`(bounds, calls)`: each module- or class-level numeric constant whose name is a bound's,
+    `{(scope, NAME): (value, line)}`; and each call, `{(scope, callee): [(timeout= literal or
+    None, line)]}` in source order."""
+    bounds = {}
+
+    def walk(body, scope):
+        for st in body:
+            targets, value = [], None
+            if isinstance(st, ast.Assign):
+                targets, value = st.targets, st.value
+            elif isinstance(st, ast.AnnAssign) and st.value is not None:
+                targets, value = [st.target], st.value
+            for t in targets:
+                if isinstance(t, ast.Name) and BOUND_NAME.search(t.id):
+                    v = number(value)
+                    if v is not None:
+                        bounds[(scope, t.id)] = (v, st.lineno)
+            if isinstance(st, ast.ClassDef):
+                walk(st.body, st.name if scope == "<module>" else f"{scope}.{st.name}")
+            elif isinstance(st, (ast.If, ast.Try, ast.With)):
+                for part in ("body", "orelse", "finalbody"):
+                    walk(getattr(st, part, []) or [], scope)
+                for h in getattr(st, "handlers", []) or []:
+                    walk(h.body, scope)
+
+    walk(tree.body, "<module>")
+    calls = collections.defaultdict(list)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            v = next((number(k.value) for k in node.keywords if k.arg == "timeout"), None)
+            calls[(_scope_at(scopes, node.lineno), ast.dump(node.func))].append(
+                (v, node.lineno, node.col_offset))
+    for k in calls:
+        calls[k].sort(key=lambda x: (x[1], x[2]))
+    return bounds, dict(calls)
+
+
+def text_occurrences(path, text, lines):
+    """D4's fallback: the commit's added *lines* of a file that does not parse, matched."""
+    occs, rows = [], text.splitlines()
+    for n in sorted(lines):
+        row = rows[n - 1] if 0 < n <= len(rows) else ""
+        hits = []
+        if in_tests(path) and TEXT_SKIP.search(row):
+            hits.append(K_SKIP)
+        if PRAGMA.search(row):
+            hits.append(K_PRAGMA)
+        if "#" in row and NOQA.search(row[row.index("#"):]):
+            hits.append(K_NOQA)
+        if in_tests(path) and TEXT_EXCEPT.search(row):
+            hits.append(K_EXCEPT)
+        occs += [Occ(k, (k, n), n, repr(row.strip()[:100]), M_TEXT) for k in hits]
+    return occs
+
+
+# --- added, against the parent --------------------------------------------------------------
+
+def added_lines(old, new):
+    """The 1-based line numbers of *new* that a line diff from *old* adds."""
+    a, b = (old or "").splitlines(), (new or "").splitlines()
+    out = set()
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    for tag, _i1, _i2, j1, j2 in sm.get_opcodes():
+        if tag in ("replace", "insert"):
+            out.update(range(j1 + 1, j2 + 1))
+    return out
+
+
+def excess(old_occs, new_occs, lines):
+    """The occurrences of *new_occs* whose key's count rose from *old_occs*, preferring those
+    on *lines* (the lines the commit adds), then the last; and the keys whose count fell."""
+    before = collections.Counter(o.key for o in old_occs)
+    after = collections.Counter(o.key for o in new_occs)
+    by_key = collections.defaultdict(list)
+    for o in new_occs:
+        by_key[o.key].append(o)
+    out = []
+    for key, occs in by_key.items():
+        n = len(occs) - before[key]
+        if n > 0:
+            occs = sorted(occs, key=lambda o: (o.line not in lines(),
+                                               o.line if o.line in lines() else -o.line))
+            out += occs[:n]
+    fell = collections.Counter({k: before[k] - after[k] for k in before if before[k] > after[k]})
+    return out, fell
+
+
+def judge_file(path, old_text, new_text, guarded):
+    """`(found [(Occ)], fell Counter, notes)` for one changed Python file."""
+    cache = {}
+
+    def lines():
+        if "l" not in cache:
+            cache["l"] = added_lines(old_text, new_text)
+        return cache["l"]
+
+    new = scan(path, new_text, guarded)
+    if not new.parsed:
+        return text_occurrences(path, new_text, lines()), collections.Counter(), [
+            f"{path} does not parse at the commit: its added lines were matched as text "
+            "(kinds 1 to 4 only)"]
+    notes = []
+    if old_text is None:
+        return list(new.occs), collections.Counter(), notes
+    old = scan(path, old_text, guarded)
+    if not old.parsed:
+        found = [o._replace(method=o.method + PARENT_UNPARSED)
+                 for o in new.occs if o.line in lines()]
+        return found, collections.Counter(), notes
+    found, fell = excess(old.occs, new.occs, lines)
+    for key, (value, line) in new.bounds.items():
+        was = old.bounds.get(key)
+        if was is not None and value > was[0]:
+            scope, name = key
+            found.append(Occ(K_BOUND, (K_BOUND, scope, name), line,
+                             f"{name} raised from {was[0]!r} to {value!r} (in {scope})", M_AST))
+    for key, sites in new.calls.items():
+        was = old.calls.get(key)
+        if was is None:
+            continue
+        if len(was) != len(sites):
+            if any(v is not None for v, _l, _c in sites):
+                notes.append(f"{path}: the timeout= at line(s) "
+                             f"{', '.join(str(l) for v, l, _c in sites if v is not None)} "
+                             f"cannot be matched to the parent's (the calls to that callee in "
+                             f"{key[0]} went from {len(was)} to {len(sites)}): not judged")
+            continue
+        for (v_old, _lo, _co), (v_new, line, _cn) in zip(was, sites):
+            if v_old is not None and v_new is not None and v_new > v_old:
+                found.append(Occ(K_BOUND, (K_BOUND, key[0], line), line,
+                                 f"timeout= raised from {v_old!r} to {v_new!r} (in {key[0]})",
+                                 M_CALLSITE))
+    return found, fell, notes
+
+
+def findings(root, parent, commit, guarded):
+    """`(findings, notes)` for one commit (*commit* a sha or INDEX, *parent* a sha or None)."""
+    before, after = Side(root, parent), Side(root, commit)
+    per_file, fell, notes = [], collections.Counter(), []
+    for old, new in changes_between(root, parent, commit):
+        if new is None:
+            continue
+        text = after.read(new)
+        if text is None or not is_python(new, text):
+            continue
+        found, gone, more = judge_file(new, before.read(old), text, guarded)
+        per_file += [(new, o) for o in found]
+        fell.update(gone)
+        notes += more
+    out = []
+    for path, o in sorted(per_file, key=lambda x: (x[0], x[1].line, x[1].kind)):
+        if fell[o.key] > 0:          # the same occurrence the commit took from another file
+            fell[o.key] -= 1
+            notes.append(f"{path}:{o.line}: {o.kind} {o.detail} moved from another file "
+                         "(credited)")
+            continue
+        out.append(Finding(o.kind, path, o.line, o.detail, o.method))
+    return out, notes
+
+
+# --- trailers -------------------------------------------------------------------------------
+
+def message_body(message):
+    cut = SCISSORS.search(message)
+    if cut:
+        message = message[:cut.start()]
+    return "\n".join(line for line in message.splitlines() if not line.startswith("#"))
+
+
+def trailer_values(message, key):
+    """Each `key:` trailer's value, a wrapped value joined: it runs to a blank line or the next
+    `Key:` line."""
+    head = re.compile(rf"^{re.escape(key)}:[ \t]*", re.I)
+    out, cur = [], None
+    for line in message_body(message).splitlines():
+        if head.match(line):
+            if cur is not None:
+                out.append(cur)
+            cur = head.sub("", line).strip()
+        elif cur is not None:
+            if not line.strip() or ANY_KEY.match(line):
+                out.append(cur)
+                cur = None
+            else:
+                cur += " " + line.strip()
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
+def excuses(message):
+    """`({(path, line): reason}, [malformed trailer])`."""
+    got, bad = {}, []
+    for value in trailer_values(message, TRAILER_KEY):
+        m = TRAILER_VALUE.match(value)
+        s = SUBJECT.match(m.group("subject")) if m else None
+        if not m or not s:
+            bad.append(f"a {TRAILER_KEY} trailer that is not '<file>:<line> — <reason>' "
+                       f"(\"{value[:100]}\"): it excuses nothing")
+            continue
+        got[(s.group("path"), int(s.group("line")))] = m.group("reason")
+    return got, bad
+
+
+def check(root, parent, commit, message, label, guarded):
+    """`(lines, refused)` for one commit."""
+    found, notes = findings(root, parent, commit, guarded)
+    ex, bad = excuses(message)
+    lines = [f"nmas-bypass-scan: {label}"]
+    refused = list(bad)
+    used = set()
+    n_ex = 0
+    for f in found:
+        where = f"{f.path}:{f.line}"
+        reason = ex.get((f.path, f.line))
+        if reason is not None:
+            used.add((f.path, f.line))
+            n_ex += 1
+            lines.append(f"  excused  {f.kind}  {where}  {f.detail}  [{f.method}]; "
+                         f"Bypass: {reason}")
+        else:
+            lines.append(f"  REFUSED  {f.kind}  {where}  {f.detail}  [{f.method}]")
+            refused.append(f"{f.kind} at {where} ({f.detail}); excuse with: "
+                           f"Bypass: {where} — <reason>")
+    for (path, line) in sorted(set(ex) - used):
+        notes.append(f"Bypass: {path}:{line} names no finding of this commit")
+    lines += [f"  note: {n}" for n in notes]
+    if not found:
+        lines.append("  no bypass added: passes")
+    else:
+        lines.append(f"  {len(found)} found, {n_ex} excused, {len(found) - n_ex} refused")
+    return lines, refused
+
+
+def _staged_index_ok(root):
+    """The default index is the one this reads; a temporary one (GIT_INDEX_FILE) is refused."""
+    given = os.environ.get("GIT_INDEX_FILE")
+    if not given:
+        return
+    gitdir = git(root, "rev-parse", "--absolute-git-dir").strip()
+    if os.path.realpath(os.path.join(root, given)) != os.path.realpath(
+            os.path.join(gitdir, "index")):
+        raise CannotAsk(f"GIT_INDEX_FILE is {given}, not {os.path.join(gitdir, 'index')}: the "
+                        "commit being made is not the default index (a `git commit -a` or "
+                        "`git commit <path>`), which this does not read")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--repo", default=os.getcwd(), help="the checkout (default: here)")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--commit", help="the commit to check (default HEAD)")
+    g.add_argument("--range", help="A..B: each commit in it (CI)")
+    ap.add_argument("--message", help="read the trailers from this file; without --commit, "
+                    "the commit being made (the index against HEAD)")
+    a = ap.parse_args(argv)
+    if a.range and a.message:
+        ap.error("--message reads one commit's trailers: not with --range")
+    root = os.path.abspath(a.repo)
+    out, refused = [], []
+    try:
+        guarded = guarded_patterns()
+        todo = []
+        if a.range:
+            shas = git(root, "rev-list", "--no-merges", "--reverse", a.range).split()
+            if not shas:
+                out.append(f"nmas-bypass-scan: {a.range} holds no commit to check")
+            todo = [(s, None) for s in shas]
+        elif a.message and not a.commit:
+            _staged_index_ok(root)
+            with open(a.message, encoding="utf-8") as fh:
+                message = fh.read()
+            head = git(root, "rev-parse", "--verify", "-q", "HEAD", ok_missing=True)
+            head = head.strip() if head else None
+            label = (f"the commit being made (the index on {head[:12]})" if head else
+                     "the commit being made, the first (no parent: everything in it is added)")
+            lines, why = check(root, head, INDEX, message, label, guarded)
+            out += lines
+            refused += [("the commit being made", w) for w in why]
+        else:
+            sha = git(root, "rev-parse", "--verify", (a.commit or "HEAD") + "^{commit}").strip()
+            todo = [(sha, a.message)]
+        for sha, message_file in todo:
+            parents = git(root, "log", "-1", "--format=%P", sha).split()
+            subject = git(root, "log", "-1", "--format=%s", sha).strip()
+            label = f"{sha[:12]} {subject[:80]}"
+            if not parents:
+                label += " (a root commit: everything in it is added)"
+            if message_file:
+                with open(message_file, encoding="utf-8") as fh:
+                    message = fh.read()
+            else:
+                message = git(root, "log", "-1", "--format=%B", sha)
+            lines, why = check(root, parents[0] if parents else None, sha, message, label,
+                               guarded)
+            out += lines
+            refused += [(sha[:12], w) for w in why]
+    except (CannotAsk, OSError) as exc:
+        print("\n".join(out), flush=True)
+        print(f"nmas-bypass-scan: COULD NOT ASK: {exc}", file=sys.stderr)
+        return 2
+    print("\n".join(out), flush=True)
+    for where, why in refused:
+        print(f"nmas-bypass-scan: REFUSED: {where} {why}", file=sys.stderr)
+    if refused:
+        print("nmas-bypass-scan: each way past a test or a guard a commit adds is named with "
+              "its reason, 'Bypass: <file>:<line> — <reason>' (docs/TEST_INTEGRITY.md, item 3)",
+              file=sys.stderr)
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
