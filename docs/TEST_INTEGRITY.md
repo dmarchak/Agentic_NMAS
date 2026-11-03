@@ -143,6 +143,22 @@ operator.
   - **The smoke:** its page list gains a per-page content assertion. It moves into the
     repository with C2339.
 - **Cost:** about a test an hour to convert. The inventory comes first, to size it.
+- **The inventory, built 2026-11-03:**
+  - **The tool and the list:** `scripts/nmas-presence-inventory`, and its list
+    `tests/presence_only.py`, held by tests/test_presence_only.py as a ratchet that only
+    shrinks.
+  - **The count:** of 2158 UI tests, 1018 presence only (C2363) and 41 undecided.
+  - **The sizing:** about 1000 hours at a test an hour, so the list is triaged before it is
+    converted.
+  - **A second shape, reported but not held** (`--controls`, C2364, the operator's decision):
+    38 tests assert a control is drawn and never request its path. C2288's own test is one: it
+    pressed a different control.
+  - **The ten to convert first,** all controls drawn and never pressed:
+    - the Secret references card's Set value… (C2288's own);
+    - the Devices bar's Save;
+    - the pending page's verify, bootstrap and abandon;
+    - Rotate, Retire, Restore, Revert and Retry, and Persist;
+    - Add device's preview.
 - **Prevents:** a control that is drawn and does nothing, passing every test (C2288).
 
 ### 5. "Premise corrected", measured
@@ -157,6 +173,13 @@ operator.
 - **Cost:** one line a correction.
 - **Prevents:** a test bent to the code under the word "premise", with no evidence that the
   code was right.
+- **Built 2026-11-03:** `scripts/nmas-premise-check`, in `scripts/hooks/commit-msg`, in CI job a
+  and the docs shard, and on the guard list. Its tests are tests/test_premise_check.py.
+  - **The prose rule:** a message whose prose, outside quotes, backticks and trailers, says a
+    premise was corrected or wrong needs at least one trailer.
+  - **The trailer rule:** each trailer names `measured:` and at least 3 words.
+  - **Its first run over the commits since Phase 8 began:** 14 refused, which is history and
+    stands.
 
 ### 6. The register's downgrades, reviewed
 
@@ -164,6 +187,15 @@ operator.
   evidence, for the operator's review.
 - **How:** `scripts/nmas-register-weekly`, reading the register's history (each row's bucket
   at the week's start and end) and printing each such row and the commit that moved it.
+- **Every re-tag or re-sort near the Phase 8 cap of 60, listed** (the operator, 2026-11-03),
+  with its rows, its old and new tags, the counts before and after, and the commit that moved
+  it. **The first entry:** 2026-11-03, C2371 to C2378, Lab 10's rows, from "Phase 8: blocks
+  0.1.5" (59 of 60 blocking) to "Lab 10: blocks; Phase 8: after" (52), by the operator's
+  direction, Lab 10 being ahead of Phase 8 on the roadmap.
+- **The week's `Guards-Existing` uses, counted** (the operator, 2026-11-03): each commit's
+  trailers of the week, the test each names and its reason. A test excused from red, then green
+  is a test the check could not show able to fail; the count shows how often it happens (C2361:
+  every new browser test, until red, then green can run one).
 - **Cost:** a few minutes of reading a week.
 - **Prevents:** a safety finding quietly made smaller.
 

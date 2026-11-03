@@ -1,0 +1,1130 @@
+#!/usr/bin/env python3
+"""Behaviour over presence, the inventory (board TI, item 4, decision D5; docs/TEST_INTEGRITY.md):
+every UI test that asserts only PRESENCE, found by parsing, so the conversion (each test made to
+press its control and assert the effect) can be sized and then held by a ratchet that only
+shrinks, tests/presence_only.py.
+
+    scripts/nmas-presence-inventory [--root DIR] [--all] [--controls] [--write]
+
+**The property.** A UI test is a test function that requests a v2 page or fragment (a Flask test
+client `.get(`/`.post(` on a path starting "/v2", or a real browser driven to a "/v2" URL, as the
+repo's browser helpers do). It asserts PRESENCE ONLY when every assertion it makes is about a
+status code, or about text/markup/an element being present or absent in the response or page,
+and it never PRESSES a control and asserts the effect (no POST/PUT/DELETE through the client to a
+mutating route followed by an assertion on state or a later read; no browser click/submit/
+keypress followed by an assertion). Decided by parsing (`ast`): the calls made, in order; the
+asserts and what they compare. Where the parse cannot decide (a helper that hides the request or
+the click), the test is listed with the reason "undecided: <why>", never guessed. The first known
+case: C2288's Set value…, which the commit's result drew and which did nothing when pressed
+(C2331); its contract test drew the prompt and never pressed the button.
+
+**How it is read.** Test files and test functions are nmas-test-audit-static's (`tests/**/
+test_*.py`, `test_*` functions and `Test*` classes' methods; the node id without parametrize
+ids), and so are its helper resolution (a function at the top of the same file, a method of the
+test's class through `self.`, a name imported from `tests.`; here followed `MAX_DEPTH` levels
+deep, a function defined inside the test too, each walked with its parameters bound to the
+call's arguments), its fixture reading (the same file's fixtures a test names) and its status
+rule (`.status_code`, `.status`, `["ok"]` and the rest, compared with constants). Each test's
+body is walked statement by statement, in
+order (a loop's body twice, so a press at its end comes before an assert at its start), and
+every value carries what it was read from:
+
+- **a read**: a test client's `.get/.head/.post/.put/.delete/.patch/.open` whose path is a
+  string starting "/" (a literal, an f-string's leading text, a constant, a parametrize value, a
+  local helper's returned string), or any such call on a receiver already seen making one in the
+  file, or a client made by `.test_client()`; a browser's `.go(url)`, `.js(script)` and
+  `.wait_for(script)` in a file that imports `tests.browser` (or on a receiver seen using one).
+  A read's value is the response (or the page), stamped with when it was read.
+- **a press**: a client request by POST, PUT, DELETE or PATCH (or `.open` with such a method);
+  a browser `.click(` or `.type(`, a WebDriver `_call` to an element's click or value or to
+  actions, and a `.js(`/`.wait_for(` script that clicks, submits, dispatches an event or calls
+  `htmx.trigger`/`htmx.ajax`.
+- **state**: anything read from the world rather than from a response: a fixture's value, a
+  call to a first-party or unresolved function, a method called on a state value, a name a
+  lambda or nested function passed out may change.
+
+An assert's each `and`-ed part is then **status** (the status rule), **response** (a membership
+`x in <response>`, or a value read from a response and nothing else), **mixed** (a response
+compared with state, such as a drawn value with the stored one), **state** (no response in it)
+or **trivial** (neither). `wait_for` is a response assert at its own time; a mock's `assert_*`
+and `pytest.raises` are state asserts. Asserts made before the test's first read are its
+preconditions and are not counted.
+
+**The verdict**, per UI test:
+- **pressing**: a press followed by an assert with a state or mixed part, or with a response
+  part read after the press (a later read: a browser's page after a click is always one); or a
+  press made after a stand-in that fails when called was passed out (`monkeypatch.setattr(job,
+  "start", lambda *a: pytest.fail("started"))`), which asserts what the press does;
+- **undecided: <why>**, when it would otherwise be presence-only and something it did was not
+  read: the client or browser passed to a function the parse does not follow, a browser script
+  that is not a string it can read, or (with no v2 read seen) a request or navigation whose
+  path or URL it cannot read;
+- **state**: no press asserted, but an assert after the first read on state alone (a read that
+  writes nothing, a counter): not presence-only, and not a press either;
+- **presence**: otherwise. Its reason says which: status only; draws only; presses but asserts
+  only its own answer; or asserts nothing after its read.
+
+**A control drawn and never pressed** (`--controls`; reported, not held by the ratchet). The
+verdict is per test, so a test that presses one control and asserts its effect is pressing even
+where it only draws another: C2288's own test pressed Commit and re-read the deploy offer, and
+only drew the Set value… beside it, which is how that button passed (its version before C2331's
+fix, c9b12114's parent, is listed by this report and called pressing by the verdict). So each
+`<text> in <answer>` assert whose text names a v2 control (`hx-get|hx-post|hx-put|hx-delete|
+hx-patch|action="/v2..."`) is listed when the test never requests that control's path (its
+query aside). Not judged in a browser test (a click names no route) or where a request's path is
+not read (it may be the press).
+
+**What it does not see** (each a limit, never a guess): a request made through a fixture's
+callable or an object's method; a request on a receiver the file never uses with a readable
+path, whose own path cannot be read either (it could be any `.get`); a helper deeper than
+`MAX_DEPTH` (a client or browser passed to one makes the test undecided); conftest fixtures
+and fixtures imported from another file (their value is state); a test defined inside an `if`
+at module level; a browser script assembled at run time from values it cannot resolve
+(undecided).
+
+**Output.** One line per presence-only and undecided test, `<verdict>\\t<test id>\\t<reason>`
+(`--all` adds the pressing and state tests; `--controls` a `drawn-unpressed` line per control
+drawn and never pressed), then `#` totals: UI tests scanned, presence, undecided, pressing,
+state, the tests drawing a control they never press, and the test functions parsed. `--write`
+writes the presence and undecided ids into `<root>/tests/presence_only.py` (`PRESENCE_ONLY`,
+`UNDECIDED`), the list tests/test_presence_only.py holds and tests/ratchet_lists.py declares
+`shrinks`. Exit 0; 2 for a root with no `tests/`.
+"""
+import argparse
+import ast
+import collections
+import importlib.machinery
+import importlib.util
+import os
+import re
+import sys
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def _load(name):
+    path = os.path.join(REPO, "scripts", name)
+    loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+#: The existing-test audit's static tool: its test files, test functions, helper and fixture
+#: resolution and status rule are this inventory's, never a second copy.
+S = _load("nmas-test-audit-static")
+
+
+_INFOS = {}
+
+
+def _info_once(cls):
+    """The tool's `imported` builds the imported file's FileInfo at every call (8,288 of them a
+    scan, 76 s of its 122, profiled 2026-11-03); here each file's is built once, in this
+    process's copy of the tool only (cleared with the tool's own caches by `inventory`)."""
+    def make(root, path, tree):
+        key = (root, path)
+        if key not in _INFOS:
+            _INFOS[key] = cls(root, path, tree)
+        return _INFOS[key]
+    return make
+
+
+S.FileInfo = _info_once(S.FileInfo)
+
+REQUEST_METHODS = {"get", "head", "post", "put", "delete", "patch", "open"}
+MUTATING = {"post", "put", "delete", "patch"}
+BROWSER_METHODS = {"go", "click", "type", "js", "wait_for", "_call"}
+#: A browser script that presses: a click, a submit, a dispatched event, an htmx trigger.
+PRESS_SCRIPT = re.compile(r"\.click\(\s*\)|dispatchEvent\s*\(|requestSubmit\s*\(|"
+                          r"\.submit\(\s*\)|htmx\.trigger\s*\(|htmx\.ajax\s*\(")
+#: A raw WebDriver command that presses (an element's click or keys, or an action chain).
+WEBDRIVER_PRESS = re.compile(r"/click\b|/value\b|/actions\b")
+#: A v2 control an assert's text says is drawn: htmx's request attributes and a form's action.
+DRAWN_CONTROL = re.compile(r'(?:hx-(?:get|post|put|delete|patch)|action)="(/v2[^"]*)"')
+PURE_BUILTINS = {
+    "abs", "all", "any", "bool", "bytes", "chr", "dict", "divmod", "enumerate", "filter",
+    "float", "format", "frozenset", "hash", "int", "isinstance", "issubclass", "iter", "len",
+    "list", "map", "max", "min", "next", "ord", "range", "repr", "reversed", "round", "set",
+    "sorted", "str", "sum", "tuple", "type", "zip"}
+#: Modules whose functions compute from their arguments alone (parsing, matching, formatting).
+PURE_MODULES = {"re", "json", "html", "textwrap", "urllib", "urllib.parse", "bs4", "string",
+                "itertools", "functools", "collections", "math", "base64", "hashlib", "shlex",
+                "difflib", "ast", "copy", "html.parser", "operator", "unicodedata"}
+UNKNOWN = "\x00"            # an unresolved part of a string
+MAX_STRINGS = 64
+#: How many helper levels are followed (a test's helper, and that helper's own).
+MAX_DEPTH = 2
+
+
+class Taint:
+    """What a value was read from: a response (the latest read time) and/or the world."""
+    __slots__ = ("resp", "state")
+
+    def __init__(self, resp=None, state=False):
+        self.resp, self.state = resp, state
+
+    def __or__(self, other):
+        r = [x for x in (self.resp, other.resp) if x is not None]
+        return Taint(max(r) if r else None, self.state or other.state)
+
+
+PURE = Taint()
+WORLD = Taint(state=True)
+
+
+def union(taints):
+    out = Taint()
+    for t in taints:
+        out = out | t
+    return out
+
+
+# --- the file's own facts --------------------------------------------------------------------
+
+def imports_browser(n):
+    """An import of the repo's browser helper, tests/browser.py."""
+    if isinstance(n, ast.ImportFrom) and n.module:
+        return n.module == "tests.browser" or (n.module == "tests" and
+                                               any(a.name == "browser" for a in n.names))
+    return isinstance(n, ast.Import) and any(a.name == "tests.browser" for a in n.names)
+
+
+def literal_path(node):
+    """A request's path when it is written out: a string or an f-string's leading text."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr) and node.values and \
+            isinstance(node.values[0], ast.Constant):
+        return node.values[0].value
+    return None
+
+
+def path_arg(call):
+    if call.args:
+        return call.args[0]
+    for k in call.keywords:
+        if k.arg in ("path", "url"):
+            return k.value
+    return None
+
+
+class FileFacts:
+    """One test file: the audit tool's FileInfo, its module constants, and the receivers it
+    uses as a client and as a browser."""
+    _cache = {}
+
+    @classmethod
+    def of(cls, root, path):
+        key = (root, path)
+        if key not in cls._cache:
+            tree = S.parse(path)
+            cls._cache[key] = cls(root, path, tree) if tree is not None else None
+        return cls._cache[key]
+
+    def __init__(self, root, path, tree):
+        self.root, self.path, self.tree = root, path, tree
+        self.info = S.FileInfo(root, path, tree)
+        self.browser = False
+        self.consts = {}
+        self._strings = {}          # module constant -> its strings, read once
+        self.literals = set()       # names bound to a collection display: data, not a client
+        for n in tree.body:
+            targets = n.targets if isinstance(n, ast.Assign) else \
+                [n.target] if isinstance(n, ast.AnnAssign) and n.value is not None else []
+            for t in targets:
+                if isinstance(t, ast.Name):
+                    self.consts[t.id] = n.value
+                    if isinstance(n.value, (ast.Dict, ast.List, ast.Tuple, ast.Set)):
+                        self.literals.add(t.id)
+        # One walk: the browser helper's import, the receivers of requests with a written-out
+        # path, the receivers of the browser's methods, and names bound to `.test_client()`.
+        clients, browser_calls = [], []
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.Import, ast.ImportFrom)) and imports_browser(n):
+                self.browser = True
+            elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+                if n.func.attr in REQUEST_METHODS:
+                    p = path_arg(n)
+                    lit = literal_path(p) if p is not None else None
+                    if lit is not None and lit.startswith("/") and \
+                            not self.is_data(n.func.value):
+                        clients.append(n.func.value)
+                elif n.func.attr in BROWSER_METHODS:
+                    browser_calls.append(n.func.value)
+            elif isinstance(n, (ast.Assign, ast.withitem)):
+                value = n.value if isinstance(n, ast.Assign) else n.context_expr
+                targets = n.targets if isinstance(n, ast.Assign) else \
+                    [n.optional_vars] if n.optional_vars is not None else []
+                if isinstance(value, ast.Call) and S.call_name(value) == "test_client":
+                    clients += targets
+        self.client_handles = {handle_key(e) for e in clients}
+        self.browser_handles = {handle_key(e) for e in browser_calls} if self.browser else set()
+
+    def is_data(self, expr):
+        return isinstance(expr, ast.Name) and expr.id in self.literals
+
+    def module_strings(self, name, seen):
+        """A module constant's strings, or one imported by name from another `tests.` file."""
+        key = (self.path, name)
+        if key in seen:
+            return None
+        if name in self._strings:
+            return self._strings[name]
+        got = None
+        node = self.consts.get(name)
+        if node is not None:
+            got = strings(node, Scope(self), seen | {key})
+        elif name in self.info.from_names:
+            mod, orig = self.info.from_names[name]
+            path = S.module_file(self.root, mod) if mod.split(".")[0] == "tests" else None
+            other = FileFacts.of(self.root, path) if path else None
+            if other is not None and other is not self:
+                got = other.module_strings(orig, seen | {key})
+        if not seen:                # a value read inside a cycle's guard is not kept
+            self._strings[name] = got
+        return got
+
+
+_CTX = re.compile(r", ctx=(?:Load|Store|Del)\(\)")
+
+
+def _norm(dump):
+    """A dump without its load/store context, so `b` bound and `b` used compare equal."""
+    return _CTX.sub("", dump)
+
+
+def handle_key(expr):
+    """An expression's identity as a receiver: its dump without context (a bare name built
+    directly, the dump's own spelling, since most receivers are one)."""
+    if isinstance(expr, ast.Name):
+        return f"Name(id={expr.id!r})"
+    if isinstance(expr, (ast.Constant, ast.Lambda, ast.JoinedStr)):
+        return ""               # never a client or a browser
+    return _norm(ast.dump(expr))
+
+
+# --- strings: what a path, a URL or a script can be ------------------------------------------
+
+class Scope:
+    """Names a string can be resolved through: the frame's own, then the class's, then the
+    module's constants."""
+
+    def __init__(self, facts, local=None, classes=()):
+        self.facts, self.local, self.classes = facts, local or {}, classes
+
+    def lookup(self, name, seen):
+        if name in self.local:
+            return self.local[name]
+        return self.facts.module_strings(name, seen)
+
+    def class_attr(self, attr, seen):
+        for cls in reversed(self.classes):
+            for n in cls.body:
+                if isinstance(n, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == attr for t in n.targets):
+                    return strings(n.value, Scope(self.facts), seen | {"self." + attr})
+        return None
+
+
+def _product(a, b):
+    out = [x + y for x in a for y in b]
+    return out[:MAX_STRINGS]
+
+
+def strings(node, scope, seen=frozenset()):
+    """The strings *node* may be, an unresolved part written UNKNOWN; None when nothing of it
+    can be read."""
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, str):
+            return [node.value]
+        if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return [str(node.value)]        # a width or a count written into a script
+        return None
+    if isinstance(node, ast.JoinedStr):
+        out = [""]
+        for v in node.values:
+            if isinstance(v, ast.Constant):
+                out = _product(out, [str(v.value)])
+            else:
+                part = strings(v.value, scope, seen) if isinstance(v, ast.FormattedValue) \
+                    else None
+                out = _product(out, part or [UNKNOWN])
+        return out
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = strings(node.left, scope, seen), strings(node.right, scope, seen)
+        if left is None and right is None:
+            return None
+        return _product(left or [UNKNOWN], right or [UNKNOWN])
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+        # `"..%d.." % X`: the text and what is put into it (its place in the text aside).
+        left = strings(node.left, scope, seen)
+        return _product(left, strings(node.right, scope, seen) or [UNKNOWN]) if left else None
+    if isinstance(node, ast.Name):
+        return scope.lookup(node.id, seen)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and \
+            node.value.id in ("self", "cls"):
+        return scope.class_attr(node.attr, seen)
+    if isinstance(node, ast.Subscript):
+        return strings(node.value, scope, seen)
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        out = []
+        for e in node.elts:
+            out += strings(e, scope, seen) or []
+        return out[:MAX_STRINGS] if out else None
+    if isinstance(node, ast.Dict):
+        out = []
+        for e in list(node.keys) + list(node.values):
+            out += (strings(e, scope, seen) or []) if e is not None else []
+        return out[:MAX_STRINGS] if out else None
+    if isinstance(node, ast.IfExp):
+        out = (strings(node.body, scope, seen) or []) + (strings(node.orelse, scope, seen) or [])
+        return out or None
+    if isinstance(node, ast.Call):
+        f = node.func
+        if isinstance(f, ast.Attribute) and f.attr in ("format", "replace", "strip", "lower",
+                                                       "rstrip", "lstrip", "upper"):
+            base = strings(f.value, scope, seen)
+            return [s + (UNKNOWN if f.attr == "format" else "") for s in base] if base else None
+        if isinstance(f, ast.Attribute) and f.attr in ("items", "values", "keys", "get"):
+            return strings(f.value, scope, seen)    # a mapping's strings, keys and values
+        if isinstance(f, ast.Name) and f.id in ("str", "sorted", "list", "tuple", "set") and \
+                node.args:
+            return strings(node.args[0], scope, seen)
+        if isinstance(f, ast.Name) and f.id in scope.facts.info.funcs and f.id not in seen:
+            return helper_strings(scope.facts.info.funcs[f.id], node, scope, seen | {f.id})
+    return None
+
+
+def helper_strings(fn, call, scope, seen):
+    """The strings a local helper returns, its parameters bound to the call's arguments."""
+    params = [a.arg for a in fn.args.args]
+    local = {}
+    for p, a in zip(params, call.args):
+        local[p] = strings(a, scope, seen)
+    for k in call.keywords:
+        if k.arg:
+            local[k.arg] = strings(k.value, scope, seen)
+    inner = Scope(scope.facts, {k: v for k, v in local.items() if v is not None})
+    if id(fn) not in _RETURNS:
+        _RETURNS[id(fn)] = [n.value for n in ast.walk(fn)
+                            if isinstance(n, ast.Return) and n.value is not None]
+    out = []
+    for value in _RETURNS[id(fn)]:
+        out += strings(value, inner, seen) or []
+    return out[:MAX_STRINGS] or None
+
+
+#: id(function node) -> its returned expressions (the trees live as long as the tool's cache).
+_RETURNS = {}
+
+
+def deep_strings(node, scope):
+    """Every string inside *node*'s subtree that resolves, and whether every leaf did."""
+    whole = strings(node, scope)
+    if whole is not None:
+        return whole, all(UNKNOWN not in s for s in whole)
+    out = []        # the whole did not resolve (a call such as `srv.url(x)`): its parts
+    for sub in ast.walk(node):
+        if sub is node:
+            continue
+        got = strings(sub, scope) if isinstance(sub, (ast.Constant, ast.Name, ast.JoinedStr,
+                                                      ast.BinOp, ast.Attribute)) else None
+        if got:
+            out += got
+    return out, False
+
+
+# --- one test, walked in order ---------------------------------------------------------------
+
+class Run:
+    """The events of one test: reads, presses, asserts and what was not read."""
+
+    def __init__(self, root, facts):
+        self.root, self.facts = root, facts
+        self.clock = 0
+        self.reads, self.presses, self.asserts, self.unread = [], [], [], []
+        #: (time, where): a stand-in passed out that fails when called (`lambda:
+        #: pytest.fail("started")`), an assert on what any later press does.
+        self.traps = []
+        #: (control's path, where): a v2 control an assert says is drawn (`hx-get="/v2/..."`).
+        self.drawn = []
+        self.v2_seen = False
+
+    def marks(self):
+        return (self.clock, len(self.reads), len(self.presses), len(self.asserts),
+                len(self.unread), len(self.traps), len(self.drawn))
+
+    def rewind(self, saved):
+        self.clock = saved[0]
+        del self.reads[saved[1]:], self.presses[saved[2]:], self.asserts[saved[3]:]
+        del self.unread[saved[4]:], self.traps[saved[5]:], self.drawn[saved[6]:]
+
+    def tick(self):
+        self.clock += 1
+        return self.clock
+
+
+class Frame:
+    def __init__(self, run, facts, classes, depth, local_strings=None):
+        self.run, self.facts, self.classes, self.depth = run, facts, classes, depth
+        # The receivers used as a client and as a browser: the file's, and this frame's own
+        # (a helper's parameter given one), kept per frame so no test's walk changes another's.
+        self.clients, self.browsers = set(facts.client_handles), set(facts.browser_handles)
+        self.env = {}
+        self.local_strings = dict(local_strings or {})
+        self.local_defs = {}
+        self.returns = []
+
+    @property
+    def scope(self):
+        return Scope(self.facts, self.local_strings, self.classes)
+
+    def where(self, lineno):
+        """`line N` in the test's own file, `<file>:N` in a helper's."""
+        if self.facts is self.run.facts:
+            return f"line {lineno}"
+        return f"{S.rel(self.run.root, self.facts.path)}:{lineno}"
+
+    # -- statements --
+
+    def walk(self, body):
+        for stmt in body:
+            self.stmt(stmt)
+
+    def bind(self, target, taint, strs=None):
+        if isinstance(target, ast.Name):
+            self.env[target.id] = taint
+            if strs is not None:
+                self.local_strings[target.id] = strs
+            else:
+                self.local_strings.pop(target.id, None)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for e in target.elts:
+                self.bind(e.value if isinstance(e, ast.Starred) else e, taint, strs)
+        elif isinstance(target, (ast.Attribute, ast.Subscript)):
+            self.expr(target.value)
+            base = target.value
+            if isinstance(base, ast.Name) and base.id in self.env:   # `found[k] = v`
+                self.env[base.id] = self.env[base.id] | taint
+
+    def stmt(self, s):
+        run = self.run
+        if isinstance(s, ast.Expr):
+            self.expr(s.value)
+        elif isinstance(s, (ast.Assign, ast.AnnAssign)):
+            if s.value is None:
+                return
+            t = self.expr(s.value)
+            strs = strings(s.value, self.scope)
+            for target in (s.targets if isinstance(s, ast.Assign) else [s.target]):
+                self.bind(target, t, strs)
+        elif isinstance(s, ast.AugAssign):
+            t = self.expr(s.value)
+            if isinstance(s.target, ast.Name):
+                self.env[s.target.id] = self.env.get(s.target.id, PURE) | t
+        elif isinstance(s, ast.Assert):
+            self.assertion(s)
+        elif isinstance(s, (ast.If, ast.While)):
+            self.expr(s.test)
+            for _ in range(2 if isinstance(s, ast.While) else 1):
+                self.walk(s.body)
+            self.walk(s.orelse)
+        elif isinstance(s, (ast.For, ast.AsyncFor)):
+            t = self.expr(s.iter)
+            self.bind(s.target, t, strings(s.iter, self.scope))
+            self.walk(s.body)
+            self.walk(s.body)
+            self.walk(s.orelse)
+        elif isinstance(s, (ast.With, ast.AsyncWith)):
+            raises = False
+            for item in s.items:
+                c = item.context_expr
+                if isinstance(c, ast.Call) and self._is_raises(c):
+                    raises = True
+                t = self.expr(c)
+                if item.optional_vars is not None:
+                    self.bind(item.optional_vars, t)
+            self.walk(s.body)
+            if raises:
+                run.asserts.append((run.tick(), [("state", None)], self.where(s.lineno)))
+        elif isinstance(s, ast.Try) or type(s).__name__ == "TryStar":
+            self.walk(s.body)
+            for h in s.handlers:
+                if h.name:
+                    self.env[h.name] = WORLD
+                self.walk(h.body)
+            self.walk(s.orelse)
+            self.walk(s.finalbody)
+        elif isinstance(s, ast.Return):
+            if s.value is not None:
+                self.returns.append(self.expr(s.value))
+        elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            self.local_defs[s.name] = s
+            self.passed_out(s)
+        elif isinstance(s, ast.ClassDef):
+            self.passed_out(s)
+        elif hasattr(ast, "Match") and isinstance(s, ast.Match):
+            self.expr(s.subject)
+            for case in s.cases:
+                self.walk(case.body)
+
+    def _is_raises(self, call):
+        f = call.func
+        names = self.facts.info.pytest_names
+        if isinstance(f, ast.Attribute) and f.attr in ("raises", "warns") and \
+                isinstance(f.value, ast.Name) and f.value.id in names["module"]:
+            return True
+        return isinstance(f, ast.Name) and f.id in names["direct"]
+
+    def passed_out(self, node):
+        """A closure may change the names it reads: each becomes state."""
+        for n in ast.walk(node):
+            if isinstance(n, ast.Name) and n.id in self.env:
+                self.env[n.id] = self.env[n.id] | WORLD
+
+    # -- asserts --
+
+    def assertion(self, s):
+        parts = []
+        conjuncts = s.test.values if isinstance(s.test, ast.BoolOp) and \
+            isinstance(s.test.op, ast.And) else [s.test]
+        for c in conjuncts:
+            t = self.expr(c)
+            self._drawn_controls(c, s.lineno)
+            if S.status_conjunct(c):
+                parts.append(("status", t.resp))
+            elif self._membership_in_response(c):
+                parts.append(("response", t.resp))
+            elif t.resp is not None and t.state:
+                parts.append(("mixed", t.resp))
+            elif t.resp is not None:
+                parts.append(("response", t.resp))
+            elif t.state:
+                parts.append(("state", None))
+            else:
+                parts.append(("trivial", None))
+        self.run.asserts.append((self.run.tick(), parts, self.where(s.lineno)))
+
+    def _membership_in_response(self, c):
+        if not isinstance(c, ast.Compare) or not all(isinstance(op, (ast.In, ast.NotIn))
+                                                     for op in c.ops):
+            return False
+        return union(self.expr_quiet(x) for x in c.comparators).resp is not None
+
+    def _drawn_controls(self, c, lineno):
+        """`'hx-get="/v2/..."' in html`: a control the assert says is drawn (C2288's shape)."""
+        if not (isinstance(c, ast.Compare) and len(c.ops) == 1 and isinstance(c.ops[0], ast.In)):
+            return
+        for s in strings(c.left, self.scope) or []:
+            for m in DRAWN_CONTROL.finditer(s):
+                self.run.drawn.append((m.group(1).replace("&amp;", "&"), self.where(lineno)))
+
+    # -- expressions --
+
+    def name(self, n):
+        if n in self.env:
+            return self.env[n]
+        info = self.facts.info
+        if n in self.facts.consts:
+            return PURE
+        if n in info.from_names or n in info.module_alias:
+            mod = info.module_alias.get(n) or info.from_names[n][0]
+            return PURE if mod in PURE_MODULES or mod.split(".")[0] in PURE_MODULES else WORLD
+        if n in PURE_BUILTINS or n in ("True", "False", "None"):
+            return PURE
+        return WORLD
+
+    def expr(self, e):
+        if e is None:
+            return PURE
+        if isinstance(e, ast.Constant):
+            return PURE
+        if isinstance(e, ast.Name):
+            return self.name(e.id)
+        if isinstance(e, ast.Call):
+            return self.call(e)
+        if isinstance(e, ast.Lambda):
+            self.passed_out(e)
+            return PURE
+        if isinstance(e, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            saved = dict(self.env)
+            out = PURE
+            for g in e.generators:
+                it = self.expr(g.iter)
+                out = out | it
+                self.bind(g.target, it)
+                for cond in g.ifs:
+                    out = out | self.expr(cond)
+            if isinstance(e, ast.DictComp):
+                out = out | self.expr(e.key) | self.expr(e.value)
+            else:
+                out = out | self.expr(e.elt)
+            self.env = saved
+            return out
+        if isinstance(e, ast.NamedExpr):
+            t = self.expr(e.value)
+            self.bind(e.target, t, strings(e.value, self.scope))
+            return t
+        if isinstance(e, (ast.Yield, ast.YieldFrom)):
+            t = self.expr(e.value)
+            self.returns.append(t)
+            return PURE
+        out = PURE
+        for child in ast.iter_child_nodes(e):
+            if isinstance(child, ast.expr):
+                out = out | self.expr(child)
+            elif isinstance(child, ast.comprehension):
+                out = out | self.expr(child.iter)
+        return out
+
+    def call(self, c):
+        f = c.func
+        run, facts = self.run, self.facts
+        recv = self.expr(f.value) if isinstance(f, ast.Attribute) else PURE
+        args = [self.expr(a.value if isinstance(a, ast.Starred) else a) for a in c.args]
+        args += [self.expr(k.value) for k in c.keywords]
+        attr = f.attr if isinstance(f, ast.Attribute) else None
+        if attr is not None and isinstance(f.value, ast.Name) and f.value.id in self.env:
+            # `problems.append(x)`: a local's method may keep what it is given.
+            self.env[f.value.id] = self.env[f.value.id] | union(args)
+
+        if attr in REQUEST_METHODS:
+            got = self.request(c, attr)
+            if got is not None:
+                return got
+        if attr in BROWSER_METHODS and (facts.browser or handle_key(f.value)
+                                        in self.browsers):
+            return self.browser(c, attr)
+        if attr == "emit" and handle_key(f.value) in self.clients:
+            run.presses.append((run.tick(), f"emit {ast.unparse(c.args[0])[:40]}"
+                                if c.args else "emit"))
+            return PURE
+        if attr is not None and attr.startswith("assert"):
+            t = recv | union(args)
+            run.asserts.append((run.tick(), [("response", t.resp) if t.resp is not None
+                                             else ("state", None)], self.where(c.lineno)))
+            return PURE
+        if self._is_raises(c) and len(c.args) >= 2:
+            run.asserts.append((run.tick(), [("state", None)], self.where(c.lineno)))
+            return WORLD
+        # A helper, its parameters bound to the call's arguments.
+        if self.depth < MAX_DEPTH:
+            target = None
+            if isinstance(f, ast.Name) and f.id in self.local_defs:
+                target = (self.local_defs[f.id], facts, self.classes, False)
+            else:
+                for _k, _n, node, hinfo in S.helper_targets(c, facts.info, self.classes):
+                    hf = FileFacts.of(self.run.root, hinfo.path) if hinfo.path != facts.path \
+                        else facts
+                    if hf is not None:
+                        target = (node, hf, self.classes if hf is facts else (),
+                                  isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+                                  and f.value.id == "self")
+                    break
+            if target is not None:
+                return self.splice(c, args, *target)
+        # Anything else: a pure computation, or a read of the world.
+        if self._pure(c, recv):
+            return recv | union(args)
+        self._handles_passed(c)
+        self._traps(c)
+        run.tick()
+        return recv | union(args) | WORLD
+
+    def _pure(self, c, recv):
+        """Whether the call computes from what it is given (*recv*: its receiver's taint)."""
+        f, info = c.func, self.facts.info
+        if isinstance(f, ast.Name):
+            if f.id in self.env or f.id in self.local_defs:
+                return False
+            if f.id in PURE_BUILTINS:
+                return True
+            if f.id in info.from_names:
+                mod = info.from_names[f.id][0]
+                return mod in PURE_MODULES or mod.split(".")[0] in PURE_MODULES
+            return False
+        if isinstance(f, ast.Attribute):
+            mod = info.dotted(f.value)
+            if mod is not None:
+                return mod in PURE_MODULES or mod.split(".")[0] in PURE_MODULES
+            base = f.value
+            if isinstance(base, ast.Name) and base.id in info.from_names and \
+                    base.id not in self.env:
+                mod = info.from_names[base.id][0]
+                return mod in PURE_MODULES or mod.split(".")[0] in PURE_MODULES
+            # A method of a value: pure on a response or a constant, a read on state.
+            return not recv.state
+        return False
+
+    def expr_quiet(self, e):
+        """A value's taint, the events its evaluation would add left out (read twice)."""
+        saved = self.run.marks()
+        t = self.expr(e)
+        self.run.rewind(saved)
+        return t
+
+    def _traps(self, c):
+        """A stand-in passed out that fails when called asserts what a later press does."""
+        names = self.facts.info.pytest_names
+        for a in list(c.args) + [k.value for k in c.keywords]:
+            node = a if isinstance(a, ast.Lambda) else \
+                self.local_defs.get(a.id) if isinstance(a, ast.Name) else None
+            if node is not None and S.asserting_nodes(ast.walk(node), names):
+                self.run.traps.append((self.run.tick(), self.where(a.lineno)))
+
+    def _handles_passed(self, c):
+        handles = self.clients | self.browsers
+        for a in list(c.args) + [k.value for k in c.keywords]:
+            if isinstance(a, ast.Starred):
+                a = a.value
+            if handle_key(a) in handles:
+                self.run.unread.append(f"the client or browser `{ast.unparse(a)}` is passed to "
+                                       f"`{S.short(ast.unparse(c.func), 50)}`, which the parse "
+                                       "does not follow")
+                return
+
+    def splice(self, c, taints, node, hfacts, classes, is_method):
+        """A helper walked in place, its parameters bound to the call's arguments (*taints*,
+        already evaluated: the positional ones, then the keywords)."""
+        params = [a.arg for a in node.args.args]
+        if is_method and params:
+            params = params[1:]
+        frame = Frame(self.run, hfacts, classes, self.depth + 1)
+        defaults = node.args.defaults
+        for p, d in zip(params[len(params) - len(defaults):], defaults):
+            frame.env[p] = PURE
+            s = strings(d, frame.scope)
+            if s is not None:
+                frame.local_strings[p] = s
+        for p in params:
+            frame.env.setdefault(p, WORLD)
+        if is_method and node.args.args:
+            frame.env[node.args.args[0].arg] = WORLD
+        scope = self.scope
+        positional = list(zip(params, zip(c.args, taints)))
+        keywords = [(k.arg, (k.value, t)) for k, t in zip(c.keywords, taints[len(c.args):])
+                    if k.arg]
+        for p, (a, t) in positional + keywords:
+            if isinstance(a, ast.Starred):
+                continue
+            frame.env[p] = t
+            s = strings(a, scope)
+            if s is not None:
+                frame.local_strings[p] = s
+            if handle_key(a) in self.clients:
+                frame.clients.add(handle_key(ast.Name(id=p)))
+            if handle_key(a) in self.browsers:
+                frame.browsers.add(handle_key(ast.Name(id=p)))
+        frame.walk(node.body)
+        return union(frame.returns) if frame.returns else PURE
+
+    # -- reads and presses --
+
+    def request(self, c, method):
+        run, facts = self.run, self.facts
+        p = path_arg(c)
+        recv = c.func.value
+        strs = strings(p, self.scope) if p is not None else None
+        known = handle_key(recv) in self.clients and strs is None
+        paths = [s for s in strs or [] if s.startswith("/")]
+        if facts.is_data(recv) or not (paths or known):
+            return None
+        if method == "open":
+            for k in c.keywords:
+                if k.arg == "method" and isinstance(k.value, ast.Constant):
+                    method = str(k.value.value).lower()
+            method = method if method in REQUEST_METHODS - {"open"} else "get"
+        v2 = any(s.startswith("/v2") for s in paths) if paths else None
+        shown = (paths[0].replace(UNKNOWN, "{…}") if paths else
+                 S.short(ast.unparse(p), 40) if p is not None else "?")
+        t = run.tick()
+        run.reads.append((t, method.upper(), shown, v2, "client"))
+        if v2:
+            run.v2_seen = True
+        if method in MUTATING:
+            run.presses.append((t, f"{method.upper()} {shown}"))
+        self.clients.add(handle_key(recv))
+        return Taint(resp=t)
+
+    def browser(self, c, attr):
+        run, facts = self.run, self.facts
+        self.browsers.add(handle_key(c.func.value))
+        scope = self.scope
+        if attr == "go":
+            arg = path_arg(c)
+            strs, complete = deep_strings(arg, scope) if arg is not None else ([], False)
+            v2 = True if any("/v2" in s for s in strs) else (False if complete else None)
+            shown = next((s for s in strs if "/v2" in s), None) or \
+                (S.short(ast.unparse(arg), 40) if arg is not None else "?")
+            t = run.tick()
+            run.reads.append((t, "GO", shown.replace(UNKNOWN, "{…}"), v2, "browser"))
+            if v2:
+                run.v2_seen = True
+            return PURE
+        if attr in ("click", "type"):
+            css = S.short(ast.unparse(c.args[0]), 40) if c.args else "?"
+            run.presses.append((run.tick(), f"{attr} {css}"))
+            return PURE
+        if attr == "_call":
+            text = " ".join(s for a in c.args for s in deep_strings(a, scope)[0])
+            if WEBDRIVER_PRESS.search(text):
+                run.presses.append((run.tick(), "WebDriver " + WEBDRIVER_PRESS.search(text)[0]))
+            elif "/url" in text and len(c.args) >= 3:
+                strs, complete = deep_strings(c.args[2], scope)
+                v2 = True if any("/v2" in s for s in strs) else (False if complete else None)
+                t = run.tick()
+                run.reads.append((t, "GO", "WebDriver url", v2, "browser"))
+                if v2:
+                    run.v2_seen = True
+            return PURE
+        # js / wait_for: the page read now, and a press when the script presses.
+        script = c.args[0] if c.args else None
+        strs = strings(script, scope) if script is not None else None
+        text = " ".join(strs or [])
+        t = run.tick()
+        if PRESS_SCRIPT.search(text):
+            run.presses.append((t, f"{attr} script {PRESS_SCRIPT.search(text)[0].strip()}"))
+        elif strs is None or UNKNOWN in text:
+            run.unread.append(f"a browser script that is not read: "
+                              f"`{S.short(ast.unparse(script), 50) if script else '?'}`")
+        if attr == "wait_for":
+            t = run.tick()
+            run.asserts.append((t, [("response", t)], self.where(c.lineno)))
+            return Taint(resp=t)
+        return Taint(resp=t)
+
+
+# --- the verdict -----------------------------------------------------------------------------
+
+def parametrized(func, classes, facts):
+    """name -> the strings a parametrize decorator gives it (the function's and its classes')."""
+    out = {}
+    for holder in list(classes) + [func]:
+        for d in holder.decorator_list:
+            if not (isinstance(d, ast.Call) and S.call_name(d) == "parametrize" and
+                    len(d.args) >= 2):
+                continue
+            names = strings(d.args[0], Scope(facts)) or []
+            names = [n.strip() for s in names for n in s.split(",") if n.strip()]
+            values = d.args[1]
+            if isinstance(values, ast.Name):
+                values = facts.consts.get(values.id, values)
+            per = collections.defaultdict(list)
+            if isinstance(values, (ast.List, ast.Tuple)):
+                for el in values.elts:
+                    if isinstance(el, ast.Call) and S.call_name(el) == "param":
+                        el = ast.Tuple(elts=el.args) if len(names) > 1 else \
+                            (el.args[0] if el.args else el)
+                    if len(names) > 1 and isinstance(el, (ast.Tuple, ast.List)):
+                        for n, v in zip(names, el.elts):
+                            per[n] += strings(v, Scope(facts)) or []
+                    elif names:
+                        per[names[0]] += strings(el, Scope(facts)) or []
+            else:
+                got = strings(values, Scope(facts)) or []
+                for n in names:
+                    per[n] += got
+            for n in names:
+                out[n] = per.get(n, [])
+    return out
+
+
+def judge(root, facts, chain, classes, func):
+    """(verdict, reason) for one test function, or None when it is not a UI test."""
+    run = Run(root, facts)
+    frame = Frame(run, facts, classes, 0)
+    params = parametrized(func, classes, facts)
+    named, _auto = S.fixtures_of(facts.info, classes)
+    for a in func.args.args + func.args.kwonlyargs:
+        if a.arg in params:
+            frame.env[a.arg] = PURE
+            frame.local_strings[a.arg] = params[a.arg]
+        elif a.arg in named:
+            fx = Frame(run, facts, classes, 1)
+            for b in named[a.arg].args.args:
+                fx.env[b.arg] = WORLD
+            fx.walk(named[a.arg].body)
+            frame.env[a.arg] = union(fx.returns) | WORLD if fx.returns else WORLD
+            if any(r.resp is not None for r in fx.returns):
+                frame.env[a.arg] = union(fx.returns)
+        else:
+            frame.env[a.arg] = WORLD
+    if chain:
+        frame.env["self"] = WORLD
+    run.asserts.clear()             # a fixture's asserts are its own preconditions
+    frame.walk(func.body)
+    if not run.reads:
+        return None
+    if not run.v2_seen:
+        unknown = [r for r in run.reads if r[3] is None]
+        if not unknown:
+            return None
+        r = unknown[0]
+        what = "path" if r[4] == "client" else "URL"
+        return ("undecided", f"undecided: a {r[1]} whose {what} is not read (`{r[2]}`), and no "
+                "v2 read seen", [])
+    verdict = _verdict(run)
+    return verdict + (unpressed(run),)
+
+
+def unpressed(run):
+    """The v2 controls an assert says are drawn whose route the test never requests (C2288's
+    shape: Set value… drawn, never pressed). Not judged where a browser drives the page (a
+    click names no route) or a request's path is not read (it may be the press)."""
+    if any(r[4] == "browser" for r in run.reads) or any(r[3] is None for r in run.reads):
+        return []
+    requested = {r[2].split("?", 1)[0] for r in run.reads}
+    out = []
+    for path, where in run.drawn:
+        base = path.split("?", 1)[0]
+        if UNKNOWN not in base and base not in requested and (path, where) not in out:
+            out.append((path, where))
+    return out
+
+
+def _verdict(run):
+    first = run.reads[0][0]
+    asserts = [a for a in run.asserts if a[0] > first]
+    for p_time, what in run.presses:
+        for t_time, where in run.traps:
+            if t_time < p_time:
+                return ("pressing", f"{what}, with a stand-in that fails when called ({where}) "
+                        "asserting its effect")
+        for a_time, parts, line in asserts:
+            if a_time <= p_time:
+                continue
+            for kind, resp in parts:
+                if kind in ("state", "mixed") or (kind in ("response",) and resp is not None
+                                                   and resp > p_time):
+                    return ("pressing", f"{what}, then {line} asserts the effect "
+                            f"({kind}{', read after the press' if kind == 'response' else ''})")
+    state = [a for a in asserts if any(k == "state" for k, _r in a[1])]
+    if state:
+        return ("state", f"asserts state at {state[0][2]} without pressing a control")
+    if run.unread:
+        return ("undecided", "undecided: " + run.unread[0])
+    v2 = next(r for r in run.reads if r[3])
+    where = f"{v2[1]} {v2[2]}"
+    kinds = [k for _t, parts, _l in asserts for k, _r in parts if k != "trivial"]
+    if not kinds:
+        return ("presence", f"asserts nothing after its read ({where})")
+    if run.presses:
+        return ("presence", f"presses ({run.presses[0][1]}) but asserts only its own answer, "
+                "never the effect")
+    if all(k == "status" for k in kinds):
+        return ("presence", f"status only: {len(kinds)} assert(s) on {where}'s status")
+    return ("presence", f"draws only: {len(kinds)} assert(s) on what {where} drew")
+
+
+def inventory(root, controls=None):
+    """{test id: (verdict, reason)} over every UI test under *root*/tests, and the count of
+    test functions parsed; *controls*, a dict, is given {test id: [(path, where)]} of the
+    controls each asserts drawn and never requests."""
+    for cache in (FileFacts._cache, _INFOS, _RETURNS, S._PARSED, S._MODULE_CACHE):
+        cache.clear()           # each scan reads the files as they are now
+    out, parsed = {}, 0
+    for path in S.test_files(root):
+        facts = FileFacts.of(root, path)
+        if facts is None:
+            continue
+        rp = S.rel(root, path)
+        for chain, classes, func in S.iter_tests(facts.tree):
+            parsed += 1
+            got = judge(root, facts, chain, classes, func)
+            if got is not None:
+                tid = "::".join([rp] + chain + [func.name])
+                out[tid] = got[:2]
+                if got[2] and controls is not None:
+                    controls[tid] = got[2]
+    return out, parsed
+
+
+# --- the ratchet file ------------------------------------------------------------------------
+
+HEADER = '''"""Behaviour over presence: the UI tests that assert only presence, and those the parse
+cannot decide (board TI, item 4; decision D5, docs/TEST_INTEGRITY.md). Generated by
+`scripts/nmas-presence-inventory --write`, which states the property; held by
+tests/test_presence_only.py and declared `shrinks` in tests/ratchet_lists.py.
+
+Each listed test is converted to press its control and assert the effect, and then leaves the
+list (a converted test still listed fails the test). A new presence-only test is not added: it
+is written to press. (Not a test module.)
+"""
+'''
+
+
+def render(found):
+    def block(comment, name, ids):
+        if not ids:
+            return "\n".join([comment, f"{name} = frozenset()"])
+        return "\n".join([comment, f"{name} = frozenset({{"] +
+                         [f'    "{i}",' for i in sorted(ids)] + ["})"])
+    presence = [i for i, (v, _r) in found.items() if v == "presence"]
+    undecided = [i for i, (v, _r) in found.items() if v == "undecided"]
+    return (HEADER + "\n" +
+            block("# The UI tests that assert only presence. Only shrinks: a test converted to "
+                  "press\n# its control and assert the effect leaves.", "PRESENCE_ONLY", presence)
+            + "\n\n" +
+            block("# The UI tests the parse cannot decide, each for the reason the script "
+                  "prints.\n# Only shrinks: one made readable, or converted, leaves.",
+                  "UNDECIDED", undecided)
+            + "\n")
+
+
+def report(found, parsed, show_all=False, controls=None, show_controls=False):
+    lines = []
+    order = ("presence", "undecided") + (("pressing", "state") if show_all else ())
+    for verdict in order:
+        for tid in sorted(t for t, (v, _r) in found.items() if v == verdict):
+            lines.append(f"{verdict}\t{tid}\t{S.public(found[tid][1])}")
+    controls = controls or {}
+    if show_controls:
+        for tid in sorted(controls):
+            for path, where in controls[tid]:
+                lines.append(f"drawn-unpressed\t{tid}\t{found[tid][0]}; asserts {path} drawn "
+                             f"({where}), never requests it")
+    counts = collections.Counter(v for v, _r in found.values())
+    lines.append("")
+    lines.append(f"# UI tests scanned\t{len(found)}")
+    for verdict in ("presence", "undecided", "pressing", "state"):
+        lines.append(f"# {verdict}\t{counts.get(verdict, 0)}")
+    pressing = sum(1 for t in controls if found[t][0] == "pressing")
+    lines.append(f"# tests asserting a v2 control drawn that they never request\t{len(controls)}"
+                 f"\t({pressing} of them pressing another control)")
+    lines.append(f"# test functions parsed\t{parsed}")
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Behaviour over presence: the inventory.")
+    ap.add_argument("--root", default=REPO, help="the folder holding tests/ (default: this "
+                    "repository)")
+    ap.add_argument("--all", action="store_true", help="list the pressing and state tests too")
+    ap.add_argument("--controls", action="store_true",
+                    help="list each v2 control a test asserts drawn and never requests")
+    ap.add_argument("--write", action="store_true",
+                    help="write the presence and undecided ids into tests/presence_only.py")
+    a = ap.parse_args(argv)
+    root = os.path.abspath(a.root)
+    if not os.path.isdir(os.path.join(root, "tests")):
+        print(f"nmas-presence-inventory: {root} holds no tests/ folder", file=sys.stderr)
+        return 2
+    controls = {}
+    found, parsed = inventory(root, controls)
+    sys.stdout.write("\n".join(report(found, parsed, a.all, controls, a.controls)) + "\n")
+    if a.write:
+        dest = os.path.join(root, "tests", "presence_only.py")
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(render(found))
+        print(f"# written\t{os.path.relpath(dest, root)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
