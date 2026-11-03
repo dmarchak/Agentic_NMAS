@@ -438,16 +438,24 @@ class TestTheCommitBeingMade:
         hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
         assert 'nmas-red-green" --repo "$ROOT" --message "$1"' in hook
 
+    def test_the_hook_runs_the_guard_check_too(self):
+        """Board TI item 2 (2026-11-03): a commit changing a guard carries the operator's
+        quoted approval."""
+        hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
+        assert 'nmas-guard-check" --repo "$ROOT" --message "$1" || status=1' in hook
+
     def test_the_hook_refuses_when_either_refuses(self, tmp_path):
-        """The hook's own logic, run with stand-ins for its checks: any of the three refusing
-        refuses the commit (red, then green the third, board TI item 1)."""
-        for codes, want in (((0, 0, 0), 0), ((1, 0, 0), 1), ((0, 1, 0), 1), ((0, 0, 1), 1)):
+        """The hook's own logic, run with stand-ins for its checks: all four passing passes,
+        and any one of them refusing refuses the commit (red, then green the third, board TI
+        item 1; the guard check the fourth, item 2)."""
+        for codes, want in (((0, 0, 0, 0), 0), ((1, 0, 0, 0), 1), ((0, 1, 0, 0), 1),
+                            ((0, 0, 1, 0), 1), ((0, 0, 0, 1), 1)):
             root = tmp_path / ("r" + "".join(map(str, codes)))
             (root / "scripts" / "hooks").mkdir(parents=True)
             hook = (ROOT / "scripts" / "hooks" / "commit-msg").read_text()
             (root / "scripts" / "hooks" / "commit-msg").write_text(hook)
             for name, code in zip(("nmas-host-step-check", "nmas-test-weakening-check",
-                                   "nmas-red-green"), codes):
+                                   "nmas-red-green", "nmas-guard-check"), codes):
                 (root / "scripts" / name).write_text(f"import sys\nsys.exit({code})\n")
             _git(root, "init", "-q")
             p = subprocess.run(["sh", str(root / "scripts" / "hooks" / "commit-msg"), "MSG"],

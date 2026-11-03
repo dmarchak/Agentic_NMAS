@@ -343,6 +343,24 @@ jobs:
           echo "checking $RANGE"
           python scripts/nmas-red-green --range "$RANGE"
 
+      # Board TI item 2 (docs/TEST_INTEGRITY.md): a commit that changes a guard (the hooks, the
+      # gate and its checks, the ratchets, CLAUDE.md, docs/TESTING.md's rule sections) carries
+      # 'Approved-By: operator — "<the operator's own words>"'. Shard a, or the doc shard a
+      # docs-only push runs alone: such a push can change CLAUDE.md or TESTING.md's rules.
+      - name: Every changed guard carries the operator's approval
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-guard-check --range "$RANGE"
+
   # Lab 7 (2026-10-14): every shard's per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function
   # report in the job summary, the HTML report as an artifact, and the ratchet against

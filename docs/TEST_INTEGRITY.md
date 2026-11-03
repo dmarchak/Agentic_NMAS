@@ -77,6 +77,21 @@ operator.
   **The later fix is a hardware-key signature:** the approval is signed with a key that needs a
   touch to sign, so only the operator, present, can make one. The check then verifies the
   signature, not the words.
+- **Built 2026-11-03:** `scripts/nmas-guard-check`, whose one guard list is `GUARDS`. It runs in
+  `scripts/hooks/commit-msg` and in CI job a and the docs shard over every pushed range. Its
+  tests are tests/test_guard_check.py.
+  - **The trailer:** the name must be exactly `operator`, and the reason must quote at least 3
+    words. A malformed `Approved-By` is refused in any commit.
+  - **docs/TESTING.md:** a changed line is free only as a test file's row inside the
+    `| File | Covers |` table, on its own side of the diff.
+  - **Its first real runs:** f49c147b, 8d698270 and 3bf87049 change guards with no approval.
+    They came before the rule, so history stands.
+  - **Not guards, so changeable without approval:**
+    - `.github/workflows/ci.yml`, whose steps run these checks;
+    - `scripts/nmas-test` and `scripts/nmas-control`;
+    - the checks' own tests.
+
+    Whether to add them is the operator's call (C2358).
 
 ### 3. The bypass scanner, in the gate
 

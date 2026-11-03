@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""Protected guards (board TI, item 2; docs/TEST_INTEGRITY.md, decisions D2, D3, D6): a commit
+that changes a GUARD carries the operator's approval, so a guard is never loosened in the same
+commit as the work it guards.
+
+    scripts/nmas-guard-check [--repo DIR] [--commit SHA]          # one commit (default HEAD)
+    scripts/nmas-guard-check [--repo DIR] --message FILE          # the commit being made: the
+                                                                  # index against HEAD
+    scripts/nmas-guard-check [--repo DIR] --commit SHA --message FILE   # that commit, the
+                                                                  # trailers read from FILE
+    scripts/nmas-guard-check [--repo DIR] --range A..B            # each commit in it (CI)
+
+**The guards** are `GUARDS` below, the one list: every file under `scripts/hooks/`; the gate
+and its parts (`scripts/nmas-gate`, `scripts/nmas-stage-guard`,
+`scripts/nmas-test-weakening-check`, `scripts/nmas-host-step-check`, `scripts/nmas-red-green`);
+this check itself; the ratchets (`tests/ratchet_lists.py`, `tests/coverage_baseline.json`);
+`CLAUDE.md`; and docs/TESTING.md's rule sections, NOT its per-file table (D3).
+
+**What is a change.** Each path the commit adds, modifies, deletes or changes the type or mode
+of, against its first parent (`git diff-tree -r --no-renames --raw`, or `git diff-index
+--cached` for the index): a rename is its old path deleted and its new path added, so a guard
+renamed away, or a file renamed onto a guard's path, is a change to a guard.
+
+**docs/TESTING.md, by line** (D3). The file is PARSED at both sides: its per-file table is the
+markdown table whose header is `| File | Covers |` (a header line, a separator line, and the
+`|` lines that follow it). The changed lines are those `difflib` finds between the two sides'
+lines. A changed line is FREE when it is a row of that table on its own side of the diff (a
+removed line in the parent's table, an added line in the commit's) and is a test file's row,
+its first cell beginning with the file's name in backticks (`` | `test_...` | ...``, or
+`` | `test_...` (C50) | ...``); every other changed line, added or removed (prose, a heading, the
+header, a helper's row, a line that splits the table), is a rule-section change. A table whose
+header is changed is not found, so every line then counts as a rule change: the check errs
+toward asking. A mode or type change with the text the same is a change to the guard.
+
+**The approval** (D2): a trailer
+
+    Approved-By: operator — "<the operator's own words, quoted>"
+
+(an em dash, en dash or hyphen between the name and the reason, spaced; a wrapped value read
+whole). The name is the ROLE word `operator`, exactly, never a person's name (the repository is
+public). The reason holds a double-quoted span (straight or curly quotes) of at least
+QUOTE_MIN_WORDS words, since the agent writes `Approved-By` only quoting the operator; the
+reviewer checks each quote against the conversation. One proper trailer approves every guard
+the commit changes. An `Approved-By` without its reason, naming anyone but `operator`, or
+quoting nothing is refused, in any commit (a claim about the operator that cannot stand).
+
+**Limit, said plainly** (the board's): the trailer is a claim; nothing in git proves who wrote
+it. The later fix is a hardware-key signature, which this would then verify instead.
+
+**The index** (`--message` without `--commit`): the default index, read without taking its lock
+(`git diff-index --cached`, `git show :<path>`); a `git commit -a` or `git commit <path>`
+builds a temporary index (GIT_INDEX_FILE), which this refuses to guess at (exit 2). Every git
+call goes through `repo.run_git`, which drops git's repository-local variables (C931, C2357).
+
+Output: per commit, each guard path changed and whether it was approved; each refusal names the
+path, the comparison made and the trailer that would excuse it. A root commit, or the first
+commit being made, has no parent and passes, said. Exit 0 pass; 1 refused; 2 could not ask
+(git, or the message file), which is never a pass.
+"""
+import argparse
+import difflib
+import os
+import re
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: How a guard is judged: any change to the file, or a change to its rule sections only.
+WHOLE, RULES = "whole file", "rule sections"
+#: THE guards, board TI item 2 (docs/TEST_INTEGRITY.md): the one list. A key ending in "/" is
+#: every file under that folder. This script is one of them ("the check itself is a guard").
+GUARDS = {
+    "scripts/hooks/": WHOLE,
+    "scripts/nmas-gate": WHOLE,
+    "scripts/nmas-stage-guard": WHOLE,
+    "scripts/nmas-test-weakening-check": WHOLE,
+    "scripts/nmas-host-step-check": WHOLE,
+    "scripts/nmas-red-green": WHOLE,
+    "scripts/nmas-guard-check": WHOLE,
+    "tests/ratchet_lists.py": WHOLE,
+    "tests/coverage_baseline.json": WHOLE,
+    "CLAUDE.md": WHOLE,
+    "docs/TESTING.md": RULES,
+}
+#: docs/TESTING.md's per-file table: its header's cells, and a test file's row (D3).
+TABLE_HEADER = ("File", "Covers")
+TABLE_SEPARATOR = re.compile(r"^\|(?:\s*:?-+:?\s*\|)+\s*$")
+#: Its first cell begins with the test file's name in backticks (four of the 803 rows carry a
+#: note after it, "`test_job_health.py` (C28 rows)", 2026-11-03).
+TABLE_ROW = re.compile(r"^\| `test_[^`]*`[^|]*\|")
+#: The words a quoted approval needs at least ("a span of a few words", D2).
+QUOTE_MIN_WORDS = 3
+QUOTED = re.compile(r'"([^"]*)"|“([^”]*)”')
+ROLE = "operator"
+KEY = "Approved-By"
+EXCUSE = f'{KEY}: {ROLE} — "<the operator\'s own words, quoted>"'
+ANY_KEY = re.compile(r"^[A-Za-z]+(?:-[A-Za-z]+)*:\s")
+TRAILER_VALUE = re.compile(r"^(?P<name>\S+)\s+(?:—|–|-{1,2})\s+(?P<reason>\S.*)$", re.S)
+SCISSORS = re.compile(r"^# -+ >8 -+$", re.M)
+#: The commit being made: the default index.
+INDEX = ":"
+#: One git read's bound (repo.run_git's own default). The reads are a `diff-tree` of one commit
+#: or a `git show` of one file; this repository's last five commits, as one `--range`, took
+#: 0.17 s in all on the laptop (2026-11-03). Not 2.5 times a call: a CI runner's fresh clone was
+#: not measured, so it is generous, and a call that hits it names itself (exit 2), never a pass.
+GIT_TIMEOUT = 30
+STATUS = {"A": "added", "M": "modified", "D": "deleted", "T": "type changed"}
+
+
+class CannotAsk(Exception):
+    pass
+
+
+def git(root, *args, ok_missing=False):
+    """git in *root*, through the one runner pinned to it (C931, `repo.run_git`), which drops
+    git's repository-local variables (C2357)."""
+    from modules.nsot.repo import run_git
+    try:
+        r = run_git(root, *args, timeout=GIT_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CannotAsk(f"git {' '.join(args)}: {exc}") from exc
+    if r.returncode != 0:
+        if ok_missing:
+            return None
+        raise CannotAsk(f"git {' '.join(args)} exited {r.returncode}: {r.stderr.strip()[:300]}")
+    return r.stdout
+
+
+def guard_of(path):
+    """The GUARDS key *path* falls under, or None."""
+    for key in GUARDS:
+        if path == key or (key.endswith("/") and path.startswith(key)):
+            return key
+    return None
+
+
+# --- what changed ---------------------------------------------------------------------------
+
+def changes_between(root, parent, commit):
+    """`[(status letter, path, (old mode, old blob), (new mode, new blob))]`, a rename as a
+    deletion and an addition."""
+    if commit == INDEX:
+        text = git(root, "diff-index", "--cached", "--raw", "--no-renames", "-z", parent)
+    else:
+        text = git(root, "diff-tree", "-r", "--raw", "--no-renames", "-z", parent, commit)
+    parts = text.split("\0")
+    out, i = [], 0
+    while i + 1 < len(parts) and parts[i]:
+        meta = parts[i].lstrip(":").split()
+        out.append((meta[4][0], parts[i + 1], (meta[0], meta[2][:10]),
+                    (meta[1], meta[3][:10])))
+        i += 2
+    return out
+
+
+def show(root, side, path):
+    """*path*'s text at *side* (a commit, or INDEX), or "" where it holds none."""
+    return git(root, "show", f"{'' if side == INDEX else side}:{path}", ok_missing=True) or ""
+
+
+def free_lines(lines):
+    """The 0-based indices of *lines* that are test files' rows of the per-file table."""
+    free, i = set(), 0
+    while i + 1 < len(lines):
+        head = lines[i].strip()
+        cells = tuple(c.strip() for c in head.strip("|").split("|")) if head.startswith("|") \
+            else ()
+        if cells == TABLE_HEADER and TABLE_SEPARATOR.match(lines[i + 1].strip()):
+            j = i + 2
+            while j < len(lines) and lines[j].startswith("|"):
+                if TABLE_ROW.match(lines[j]):
+                    free.add(j)
+                j += 1
+            i = j
+        else:
+            i += 1
+    return free
+
+
+def rule_changes(old_text, new_text):
+    """`(rule lines, free count)`: rule lines are `[("-" or "+", 1-based line, text)]`, each
+    changed line outside the per-file table's test rows on its side; free count the rest."""
+    old, new = old_text.splitlines(), new_text.splitlines()
+    old_free, new_free = free_lines(old), free_lines(new)
+    rules, free = [], 0
+    sm = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            continue
+        for i in range(i1, i2):
+            if i in old_free:
+                free += 1
+            else:
+                rules.append(("-", i + 1, old[i]))
+        for j in range(j1, j2):
+            if j in new_free:
+                free += 1
+            else:
+                rules.append(("+", j + 1, new[j]))
+    return rules, free
+
+
+def guard_changes(root, parent, commit):
+    """`(guarded, notes)`: guarded is `[(path, what changed, the comparison)]`, notes the
+    changes to a RULES guard that touched only its free lines."""
+    guarded, notes = [], []
+    p = parent[:12]
+    side = "the index" if commit == INDEX else f"the commit {commit[:12]}"
+    for status, path, was, now in changes_between(root, parent, commit):
+        key = guard_of(path)
+        if key is None:
+            continue
+        what = STATUS.get(status, status)
+        if status == "D":
+            guarded.append((path, what, f"present on the parent {p}, absent at {side}"))
+            continue
+        if status == "A":
+            guarded.append((path, what, f"absent on the parent {p}, present at {side}"))
+            continue
+        if GUARDS[key] == WHOLE:
+            guarded.append((path, what, f"mode and blob {' '.join(was)} on the parent {p}, "
+                                        f"{' '.join(now)} at {side}"))
+            continue
+        rules, free = rule_changes(show(root, parent, path), show(root, commit, path))
+        if rules:
+            shown = "; ".join(f"{s}{n}: {t.strip()[:60]!r}" for s, n, t in rules[:3])
+            more = f"; and {len(rules) - 3} more" if len(rules) > 3 else ""
+            guarded.append((path, f"{what}, its rule sections", (
+                f"{len(rules)} changed line(s) outside the per-file table's test rows between "
+                f"the parent {p} and {side} ({shown}{more})")))
+        elif free:
+            notes.append(f"{path}: {free} changed line(s) (removed or added), each a test "
+                         "file's row of the per-file table, no rule section: free (D3)")
+        else:
+            guarded.append((path, what, f"the text the same, its mode {was[0]} on the parent "
+                                        f"{p} and {now[0]} at {side}"))
+    return guarded, notes
+
+
+# --- the trailer ----------------------------------------------------------------------------
+
+def message_body(message):
+    cut = SCISSORS.search(message)
+    if cut:
+        message = message[:cut.start()]
+    return "\n".join(line for line in message.splitlines() if not line.startswith("#"))
+
+
+def trailer_values(message, key=KEY):
+    """Each `key:` trailer's value, a wrapped value joined: it runs to a blank line or the next
+    `Key:` line."""
+    head = re.compile(rf"^{re.escape(key)}:[ \t]*", re.I)
+    out, cur = [], None
+    for line in message_body(message).splitlines():
+        if head.match(line):
+            if cur is not None:
+                out.append(cur)
+            cur = head.sub("", line).strip()
+        elif cur is not None:
+            if not line.strip() or ANY_KEY.match(line):
+                out.append(cur)
+                cur = None
+            else:
+                cur += " " + line.strip()
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
+def quoted_words(reason):
+    """The most words in any one double-quoted span of *reason*."""
+    best = 0
+    for m in QUOTED.finditer(reason):
+        best = max(best, len(re.findall(r"\w+", m.group(1) or m.group(2) or "")))
+    return best
+
+
+def approvals(message):
+    """`(proper, bad)`: the proper Approved-By values, and why each other one is refused."""
+    proper, bad = [], []
+    for value in trailer_values(message):
+        m = TRAILER_VALUE.match(value)
+        shown = value[:100]
+        if not m:
+            bad.append(f"an {KEY} trailer without its ' — <reason>' (\"{shown}\"); needed: "
+                       f"{EXCUSE}")
+        elif m.group("name") != ROLE:
+            bad.append(f"an {KEY} trailer naming '{m.group('name')}', where exactly '{ROLE}' "
+                       f"(the role, never a person's name) is required; needed: {EXCUSE}")
+        elif quoted_words(m.group("reason")) < QUOTE_MIN_WORDS:
+            bad.append(f"an {KEY} trailer whose reason quotes {quoted_words(m.group('reason'))}"
+                       f" word(s), where a double-quoted span of at least {QUOTE_MIN_WORDS} of "
+                       f"the operator's own words is required (\"{shown}\"); needed: {EXCUSE}")
+        else:
+            proper.append(m.group("reason"))
+    return proper, bad
+
+
+# --- the judgement --------------------------------------------------------------------------
+
+def check(root, parent, commit, message, label):
+    """`(lines, refused)` for one commit: *commit* a commit or INDEX, *parent* its parent."""
+    guarded, notes = guard_changes(root, parent, commit)
+    proper, bad = approvals(message)
+    lines = [f"nmas-guard-check: {label}"] + [f"  note: {n}" for n in notes]
+    refused = list(bad)
+    for path, what, comparison in guarded:
+        if proper:
+            lines.append(f"  approved  {path} ({what}): {KEY}: {ROLE} — {proper[0][:120]}")
+        else:
+            lines.append(f"  REFUSED   {path} ({what}): {comparison}")
+            refused.append(f"{path} ({what}): {comparison}, with no proper {KEY} trailer; "
+                           f"excuse with: {EXCUSE}")
+    for why in bad:
+        lines.append(f"  REFUSED   {why}")
+    if not guarded:
+        lines.append("  no guard changed: passes" + (
+            f" ({len(proper)} {KEY} trailer(s) present, none needed)" if proper else ""))
+    else:
+        lines.append(f"  {len(guarded)} guard path(s) changed, "
+                     f"{len(guarded) if proper else 0} approved")
+    return lines, refused
+
+
+def _staged_index_ok(root):
+    """The default index is the one this reads; a temporary one (GIT_INDEX_FILE) is refused."""
+    given = os.environ.get("GIT_INDEX_FILE")
+    if not given:
+        return
+    gitdir = git(root, "rev-parse", "--absolute-git-dir").strip()
+    if os.path.realpath(os.path.join(root, given)) != os.path.realpath(
+            os.path.join(gitdir, "index")):
+        raise CannotAsk(f"GIT_INDEX_FILE is {given}, not {os.path.join(gitdir, 'index')}: the "
+                        "commit being made is not the default index (a `git commit -a` or "
+                        "`git commit <path>`), which this does not read")
+
+
+def _read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--repo", default=os.getcwd(), help="the checkout (default: here)")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--commit", help="the commit to check (default HEAD)")
+    g.add_argument("--range", help="A..B: each commit in it (CI)")
+    ap.add_argument("--message", help="read the trailers from this file; without --commit, "
+                    "the commit being made (the index against HEAD)")
+    a = ap.parse_args(argv)
+    if a.range and a.message:
+        ap.error("--message reads one commit's trailers: not with --range")
+    root = os.path.abspath(a.repo)
+    out, refused = [], []
+    try:
+        if a.range:
+            shas = git(root, "rev-list", "--no-merges", "--reverse", a.range).split()
+            if not shas:
+                out.append(f"nmas-guard-check: {a.range} holds no commit to check")
+            todo = [(s, None) for s in shas]
+        elif a.message and not a.commit:
+            _staged_index_ok(root)
+            message = _read(a.message)
+            head = git(root, "rev-parse", "--verify", "-q", "HEAD", ok_missing=True)
+            todo = []
+            if head is None:
+                out.append("nmas-guard-check: the commit being made is the first: no parent, "
+                           "nothing to compare, passes")
+            else:
+                head = head.strip()
+                lines, why = check(root, head, INDEX, message,
+                                   f"the commit being made (the index on {head[:12]})")
+                out += lines
+                refused += [("the commit being made", w) for w in why]
+        else:
+            sha = git(root, "rev-parse", "--verify", (a.commit or "HEAD") + "^{commit}").strip()
+            todo = [(sha, a.message)]
+        for sha, message_file in todo:
+            parents = git(root, "log", "-1", "--format=%P", sha).split()
+            subject = git(root, "log", "-1", "--format=%s", sha).strip()
+            label = f"{sha[:12]} {subject[:80]}"
+            if not parents:
+                out.append(f"nmas-guard-check: {label}: a root commit, no parent to compare, "
+                           "passes")
+                continue
+            message = _read(message_file) if message_file else \
+                git(root, "log", "-1", "--format=%B", sha)
+            lines, why = check(root, parents[0], sha, message, label)
+            out += lines
+            refused += [(sha[:12], w) for w in why]
+    except (CannotAsk, OSError) as exc:
+        print("\n".join(out), flush=True)
+        print(f"nmas-guard-check: COULD NOT ASK: {exc}", file=sys.stderr)
+        return 2
+    print("\n".join(out), flush=True)
+    for where, why in refused:
+        print(f"nmas-guard-check: REFUSED: {where} {why}", file=sys.stderr)
+    if refused:
+        print("nmas-guard-check: a commit that changes a guard (the hooks, the gate and its "
+              "checks, the ratchets, CLAUDE.md, docs/TESTING.md's rule sections; "
+              "docs/TEST_INTEGRITY.md, item 2) carries the operator's approval, quoting the "
+              f"operator's own words: {EXCUSE}", file=sys.stderr)
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
