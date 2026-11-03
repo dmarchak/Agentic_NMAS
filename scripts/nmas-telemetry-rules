@@ -304,9 +304,40 @@ def main(argv=None) -> int:
     from modules import grafana_rule_deletes as GD
     for line in GD.write_beside(doc, "nmas-tel-", args.out, "telemetry"):
         print(line)
-    print("Then delete the hand-built rule \"gRPC telemetry stream lost\" in Grafana, "
-          "or both fire.")
+    print(hand_built_words())
     return EXIT_OK
+
+
+#: The hand-built rule these generated rules replace (C304): while it exists, both fire.
+HAND_BUILT = "gRPC telemetry stream lost"
+
+
+def hand_built_words(cached=None) -> str:
+    """Whether the hand-built rule is still in Grafana, from the grafana-alerts reader's stored
+    rule definitions (no Grafana call here): its uid and folder and the instruction to delete
+    it when it is there; that nothing is to be deleted when the store read every rule and it is
+    not among them; and that it is not known when the store is unreadable or partial (the
+    operator, 2026-11-03: the reminder printed whether or not the rule existed)."""
+    from modules import reader_job
+    got = reader_job.read_cached("grafana-alerts") if cached is None else cached
+    value = ((got.get("doc") or {}).get("last_good") or {}).get("value") or {}
+    defs = value.get("rule_definitions")
+    if got.get("state") != "ok" or not isinstance(defs, dict):
+        why = got.get("why") or "it holds no rule definitions"
+        return (f"Whether the hand-built rule \"{HAND_BUILT}\" is still in Grafana is not known: "
+                f"the grafana-alerts reader's store is not readable ({why}). Check Grafana: if "
+                "it is there, delete it, or both fire.")
+    found = [d for d in defs.values() if (d or {}).get("title") == HAND_BUILT]
+    if found:
+        return "; ".join(f"Then delete the hand-built rule \"{HAND_BUILT}\" in Grafana (uid "
+                         f"{d.get('uid')}, folder {d.get('folder')}), or both fire" for d in found)
+    if not value.get("rule_definitions_complete"):
+        return (f"The hand-built rule \"{HAND_BUILT}\" is not among the {len(defs)} rule(s) the "
+                "reader stored, but its read of Grafana's rules was partial ("
+                f"{value.get('rule_definitions_why') or 'no reason recorded'}): check Grafana.")
+    at = ((got.get("doc") or {}).get("last_good") or {}).get("value_at")
+    return (f"The hand-built rule \"{HAND_BUILT}\" is not in Grafana (the reader's "
+            f"{len(defs)} rule(s), read whole at {at}): nothing to delete.")
 
 
 if __name__ == "__main__":

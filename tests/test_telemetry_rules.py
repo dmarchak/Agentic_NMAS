@@ -134,7 +134,10 @@ class TestRefusalsAndTheCheck:
         assert T.main(["--datasource-uid", "prom-uid", "--out", str(out)]) == T.EXIT_OK
         said = capsys.readouterr().out
         assert "wrote 8 rule(s)" in said and "not streaming: s1" in said
-        assert 'delete the hand-built rule "gRPC telemetry stream lost"' in said
+        # The hand-built rule's line says what the grafana-alerts store holds (2026-11-03): here
+        # the test's data folder holds no store, so whether the rule exists is not known.
+        assert ('Whether the hand-built rule "gRPC telemetry stream lost" is still in Grafana is '
+                'not known') in said
         assert T.main(["--check", "--out", str(out)]) == T.EXIT_OK
         assert "telemetry rules current for 8 stream(s)" in capsys.readouterr().out
 
@@ -237,6 +240,31 @@ class TestTheRealDetectionTime:
         unread = T.rule_for("r7", "101", "prom-uid")
         assert "detect_seconds" not in unread["labels"]
         assert "was not read" in unread["annotations"]["description"]
+
+    def test_the_hand_built_rule_s_reminder_follows_grafana(self):
+        """The operator, 2026-11-03: the reminder to delete the hand-built rule printed whether
+        or not it existed. The titles and uids below are the host's grafana-alerts store as
+        read that day (32 rules, read whole, the hand-built rule absent)."""
+        def store(defs, complete=True, state="ok"):
+            return {"state": state, "why": "the reader has not run", "doc": {"last_good": {
+                "value_at": "2026-11-03T17:04:22Z",
+                "value": {"rule_definitions": defs, "rule_definitions_complete": complete,
+                          "rule_definitions_why": "" if complete else "a folder unread"}}}}
+        ours = {"nmas-tel-r7-101": {"uid": "nmas-tel-r7-101", "folder": "NMAS",
+                                    "title": "NMAS telemetry stream lost: r7 subscription 101"},
+                "syslog": {"uid": "syslog", "folder": "Lab",
+                           "title": "Critical syslog received"}}
+        absent = T.hand_built_words(store(ours))
+        assert "is not in Grafana" in absent and "nothing to delete" in absent
+        assert "Then delete" not in absent
+        there = T.hand_built_words(store(dict(ours, hb={
+            "uid": "hb-uid", "folder": "Lab", "title": T.HAND_BUILT})))
+        assert there.startswith('Then delete the hand-built rule "gRPC telemetry stream lost"')
+        assert "uid hb-uid, folder Lab" in there
+        partial = T.hand_built_words(store(ours, complete=False))
+        assert "partial" in partial and "check Grafana" in partial
+        unread = T.hand_built_words({"state": "never", "why": "the reader has not run"})
+        assert "not known" in unread and "the reader has not run" in unread
 
     def test_needs_attention_s_words_say_it(self):
         from modules.readers.grafana_alerts import absence_words

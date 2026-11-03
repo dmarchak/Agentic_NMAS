@@ -81,6 +81,25 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 
 ### 0.3 The workstreams, in order
 
+**The schedule (the operator, 2026-11-03 ~17:2x UTC).** Phase 8 aims at the end of November, not
+this week. This week's work is paced to the usage left (about 3.5 days at the week's rate),
+highest value first:
+
+| Week | Done by its end |
+|---|---|
+| Nov 3–8 | Board TI items 1 to 7 and the existing-test audit, ready for the independent reviewer. C2305. P7 stage 1 finished and measured. P5's board drawn for the operator's review. Support for the operator's sessions 9 to 11. |
+| Nov 9–15 | P5 built, and the drain-and-replace walk. Incident correlation. The fresh SDN blind capture (BU1 and BU2 among it, C2366). |
+| Nov 16–22 | The lean digest, the pre-send review, pipeline checks, and save as a script. Beta labels. The AI-off walk. |
+| Nov 23–29 | The demo path and the video. The final measurements. The remaining credit used before it expires on 11-29. |
+
+**How the work is run (the operator, 2026-11-03):**
+- **The fast checks run before every full gate:** the changed tests, the doc, register and
+  lab-name and publication scans, and the commit-msg checks on the staged commit. This cuts
+  refused gates. There is no linter yet (C2362).
+- **Parallel agents only for road-map build work.**
+- **Chat reports are "Needs the operator" plus what changed;** the detail is in the report
+  file.
+
 The operator's proposal, kept, with three changes where the evidence disagrees (each said):
 
 0. **A rows and today's fixes:** C2003 (the only A row tagged blocking; its A part closed
