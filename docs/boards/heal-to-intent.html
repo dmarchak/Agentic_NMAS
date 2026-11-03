@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Heal to intent board</title>
+<!-- Board H (the operator's direction of 2026-11-03, Lab 10): heal to intent, the design in
+     docs/HEAL_TO_INTENT.md. For the operator's review, not self-signed. Artboards A to G, every
+     new screen and card the feature adds, then the decisions. Self-contained: no external
+     fonts or scripts. Example names only: lab device names r1 to r8 and s1 to s5, the
+     192.0.2.0/24 test range, example.com addresses. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--ai:#5B3FA8;--ai-soft:#F1ECFB;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--ai:#B9A2F0;--ai-soft:#2B2340}}
+:root[data-theme="dark"]{--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--ai:#B9A2F0;--ai-soft:#2B2340}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+.side .badge{float:right;background:var(--danger);color:#fff;border-radius:9px;font-size:11px;padding:0 6px}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+pre.prog{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:0;white-space:pre-wrap}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}.chip.danger{background:var(--danger-soft);color:var(--danger)}.chip.ai{background:var(--ai-soft);color:var(--ai)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.dangerous{border-color:var(--danger);color:var(--danger)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.aimark{display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--ai);border:1.4px solid var(--ai);border-radius:4px;padding:0 3px;margin-right:4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 14px;text-decoration:none;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field input,.field select,.field textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.field .hint{font-size:12px;color:var(--ink-2)}
+.radio{display:flex;gap:16px;font-size:13px;align-items:center}
+.kv{display:grid;grid-template-columns:190px 1fr;gap:6px 14px;font-size:13px}
+.kv dt{color:var(--ink-2)}.kv dd{margin:0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.topbar{display:flex;justify-content:flex-end;gap:12px;align-items:center;font-size:13px}
+.aichip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.sec{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.na{display:grid;grid-template-columns:92px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-2);align-items:start}
+.na.open{background:var(--surface-2);padding:12px;border-radius:6px;border:1px solid var(--line)}
+.sub{margin:8px 0 0;padding-top:8px;border-top:1px solid var(--line-2)}
+.advisory{border:1px solid var(--ai);border-left:4px solid var(--ai);background:var(--ai-soft);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.steps td:first-child{width:28px;color:var(--ink-2)}
+.ok-t{color:var(--ok)}.warn-t{color:var(--warn)}.danger-t{color:var(--danger)}
+.mail{background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:13px}
+.mail .mh{padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);display:grid;grid-template-columns:70px 1fr;gap:2px 10px}
+.mail .mh span{color:var(--ink-2)}
+.mail .mb{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.mail ol{margin:0;padding-left:18px}
+.tip{display:inline-block;background:#15191E;color:#FFFFFF;font-size:12px;border-radius:5px;padding:3px 8px;margin-left:6px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 18px;width:1404px;margin:0 auto 10px;font-size:13px}
+.q h3{margin-bottom:6px}
+.q ol{margin:6px 0 0 18px;padding:0}
+.q li{margin:2px 0}
+.toggle{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:12.5px}
+.toggle span{padding:3px 9px;border-right:1px solid var(--line);white-space:nowrap}
+.toggle span:last-child{border-right:0}
+.toggle span.on{background:var(--accent);color:var(--on-accent)}
+.scope{display:flex;gap:10px;align-items:center;font-size:13px}
+.scope select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Heal to intent (board H): board for the operator's review</h1>
+<div>The operator's direction of 2026-11-03, for Lab 10: a self-healing application that heals a device back to its committed intent, deterministic and with no AI in the loop. A can't-fix notification carries an advisory AI analysis (the addition of the same day). The design, the tier table, the guards, the demo plan, the estimate and the schedule are in <span class="mono">docs/HEAL_TO_INTENT.md</span>. Seven artboards at 1440 wide, then the decisions. Yellow dashed notes are the board's annotations, not part of the screen. Every other link and control is one the built screen will have. <strong>Not self-signed:</strong> the operator reviews this before anything is built.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · Settings · Default › Self-healing</strong>: a new tab, the network's own policy (never inherited from Default). At left the policy at rest (dry run) and the tier per fix kind. At right a mode change being previewed, and the hard stops.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#" class="on">Settings</a>
+</nav>
+<main>
+<div class="topbar"><a href="#" class="aichip"><span class="aimark">AI</span>$0.12 today · 1 background on</a><span class="muted">operator@example.com</span></div>
+<div><h1 class="page">Settings · Default <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1>
+<p class="muted" style="margin:4px 0 0;font-size:13px">Default is the base layer: its values are set here, and every network that inherits takes them. Each card names who that is. Self-healing is each network's own: no network inherits it.</p></div>
+<div class="scope">Network <select aria-label="Network"><option>Default</option><option>branch</option><option>sdn_lab</option></select><a href="#">Settings › Installation</a></div>
+<nav class="tabs" aria-label="Default's settings">
+<a class="tab" href="#">Integrations</a><a class="tab" href="#">Network</a><a class="tab on" href="#">Self-healing</a>
+</nav>
+<div class="cols">
+<div style="display:flex;flex-direction:column;gap:14px">
+<section class="card" aria-label="Self-healing mode">
+<div class="card-head"><h2>Self-healing on Default</h2><span class="chip at">dry run</span></div>
+<dl class="kv">
+<dt>Mode</dt><dd><strong>Dry run</strong>: every step but the apply. Each record says what it would have done</dd>
+<dt>Set</dt><dd>3 Nov 18:20 UTC by operator@example.com (verified), "dry run every fix kind before the lab walks"</dd>
+<dt>Network stage</dt><dd>lab <span class="muted">(Auto is allowed only on a network marked lab, until the AUTO production-readiness gate)</span></dd>
+<dt>Would have healed</dt><dd>7 · right 6 · wrong 0 · <a href="#">1 unmarked</a> <span class="muted">(History, kind heal, dry run)</span></dd>
+<dt>Production's bar</dt><dd>2 days of 30 and 7 events of 100, at 1% wrong or fewer. <span class="muted">Lab drills never count toward it.</span></dd>
+<dt>Policy fingerprint</dt><dd class="mono">pol-3f9c2a81</dd>
+</dl>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a class="btn" href="#">Change mode…</a><a class="btn" href="#">Turn off</a><a href="#">History of this policy</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+
+<section class="card" aria-label="Fix kinds and their tiers">
+<div class="card-head"><h2>Fix kinds</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="muted" style="margin:0;font-size:12.5px">A kind's tier is fixed by Mercury. Here you choose whether each Tier 1 kind heals in Auto or stays in dry run, and whether Tier 2 kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
+<table><thead><tr><th>Fix kind</th><th>Tier</th><th>In Auto</th><th>Lab scenario</th></tr></thead><tbody>
+<tr><td>Missing line: re-apply intent's line (merge)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>M6 dry run passed 14 Nov · auto <span class="faint">not yet</span></td></tr>
+<tr><td>Changed line: set intent's value (merge)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr><td>Added line: remove it (a measured shape, one removal unit)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>C3 dry run passed 14 Nov</td></tr>
+<tr><td>Admin down where intent says up: <span class="mono">no shutdown</span></td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr><td>Takes effect through a process reset (router-id)</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td>R8 proposed 14 Nov</td></tr>
+<tr><td>QoS policy</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">removal shapes not measured: can't fix until they are</span></td></tr>
+<tr><td>A secret added back</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr><td>Physical or link down while admin up; unknown cause</td><td><span class="chip">3 alert</span></td><td><span class="muted">Alert only</span> <span class="tip">Configuration cannot fix a cable, an optic or a far end</span></td><td>I5</td></tr>
+<tr><td>Security ACL · credentials and AAA · Mercury's management path · multi-device</td><td><span class="chip danger">4 never</span></td><td><span class="muted">Never automatic</span></td><td>C4</td></tr>
+</tbody></table>
+<div style="display:flex;gap:10px"><a class="btn" href="#">Change fix kinds…</a></div>
+</section>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<section class="card" aria-label="Changing the mode">
+<h2>Change self-healing on Default</h2>
+<div class="radio" role="radiogroup" aria-label="Mode"><label><input type="radio" name="m"> Off</label><label><input type="radio" name="m"> Dry run</label><label><input type="radio" name="m" checked> Auto</label></div>
+<label class="field">Auto until
+<input type="text" value="2026-11-20 18:00 UTC"><span class="hint">Required, at most 7 days. At its end the mode returns to dry run, and History says so.</span></label>
+<label class="field">Reason
+<textarea rows="2">Lab walks: Tier 1 kinds whose scenarios passed in dry run</textarea></label>
+<h3>What this changes</h3>
+<table><thead><tr><th>Where</th><th>Now</th><th>After confirm</th></tr></thead><tbody>
+<tr><td>Mode</td><td>Dry run</td><td><strong>Auto until 20 Nov 18:00 UTC</strong>, then dry run</td></tr>
+<tr><td>Kinds that heal without a person</td><td>none</td><td>Missing line; Added line (as allowed above)</td></tr>
+<tr><td>Kinds proposed to a person</td><td colspan="2">Process reset; QoS policy; a secret added back (unchanged)</td></tr>
+<tr><td>Devices it may act on</td><td colspan="2">Default's 11, less any device held, in a planned window or with a golden that departs from intent</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:12.5px">Each heal runs the deploy pipeline as you, by this policy: its program and hash recorded first, the device held, verified, rolled back on failure, recorded, and its golden read again.</p>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn primary" href="#">Turn on Auto for Default until 20 Nov 18:00 UTC</a><a class="btn" href="#">Cancel</a></div>
+<p class="callout">The confirm is bound to this preview's fingerprint (mode, kinds, guards, expiry) and needs a verified person. On a network not marked lab, the Auto choice is drawn disabled, with "Auto is turned on only on a network marked lab until the AUTO production-readiness gate is complete; branch is marked production".</p>
+</section>
+
+<section class="card" aria-label="Hard stops and guards">
+<div class="card-head"><h2>Hard stops and guards</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<table><thead><tr><th>Guard</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
+<tr><td>Grace: a change must persist</td><td>120 s, two reads</td><td>900 s (120 s on a lab network)</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Heals per device per hour</td><td>1</td><td>1</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Heals per network per hour</td><td>6</td><td>6</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>The same fix twice halts, within</td><td>24 h</td><td>24 h</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Devices departing at once: stop above</td><td>3</td><td>3</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Hold after a change or re-cabling nearby</td><td>60 min</td><td>60 min</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>A person working: outside changes</td><td>3 in 10 min</td><td>3 in 10 min</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Largest heal</td><td>one removal unit (an added line; R3's pair is one unit, N13), or one section re-applied</td><td>1</td><td><a href="#">Edit…</a></td></tr>
+<tr><td>Planned work, held devices, no-change windows</td><td colspan="2"><span class="muted">always: never during them</span></td><td></td></tr>
+<tr><td>A rolled-back heal</td><td colspan="2"><span class="muted">always halts the policy until a person lifts it</span></td><td></td></tr>
+</tbody></table>
+</section>
+
+<section class="card" aria-label="Who is told">
+<h2>Who is told</h2>
+<dl class="kv">
+<dt>Team</dt><dd><strong>Default on-call</strong>: 2 addresses, 1 webhook (<a href="#">Settings › Installation › Notifications</a>)</dd>
+<dt>Sent for</dt><dd><label><input type="checkbox" checked> can't fix</label> · <label><input type="checkbox" checked> a fix waiting for a person</label> · <label><input type="checkbox" checked> halted or held</label> · <label><input type="checkbox" checked> every automatic heal</label> · <label><input type="checkbox" checked> cleared</label></dd>
+<dt>AI analysis of a can't-fix</dt><dd><span class="chip">off for Default</span> <a href="#">Settings › Installation › AI</a></dd>
+</dl>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn sm" href="#">Save</a></div>
+</section>
+<div style="display:flex;justify-content:flex-end"><a class="btn dangerous sm" href="#">Stop self-healing everywhere…</a></div>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · Settings › Installation › Notifications</strong>: a new tab, the lean first slice of PHASE8_PLAN 20.7. One email relay, several webhooks, and teams of several recipients, each address verified by a code before use.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#" class="on">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">Settings › Installation <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1>
+<p class="muted" style="margin:4px 0 0;font-size:13px">These settings apply to every network. Each network's Self-healing tab chooses which team it tells.</p></div>
+<nav class="tabs" aria-label="The installation's settings">
+<a class="tab" href="#">General</a><a class="tab" href="#">Connections</a><a class="tab" href="#">Access and identity</a><a class="tab" href="#">Platforms and roles</a><a class="tab" href="#">Console servers</a><a class="tab" href="#">Diagnostics</a><a class="tab" href="#">AI</a><a class="tab on" href="#">Notifications</a>
+</nav>
+<div class="cols3">
+<section class="card" aria-label="Email relay">
+<div class="card-head"><h2>Email relay</h2><span class="chip ok">last sent 18:31 UTC</span></div>
+<label class="field">Relay host<input type="text" value="smtp.example.com"></label>
+<label class="field">Port<input type="text" value="587"></label>
+<label class="field">Security<select><option>STARTTLS (required)</option><option>TLS from the start</option><option>None (only to a relay on this host)</option></select></label>
+<label class="field">Username<input type="text" value="mercury@example.com"></label>
+<div class="field">Password<div><span class="chip">set 3 Nov by operator@example.com, never shown</span> <a href="#">Replace…</a></div></div>
+<label class="field">From<input type="text" value="Mercury &lt;mercury@example.com&gt;"></label>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a class="btn primary sm" href="#">Save</a><a class="btn sm" href="#">Test send to…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="muted" style="margin:0;font-size:12px">Uses the relay you choose. Mercury sends only from this host and stores the password encrypted.</p>
+</section>
+
+<section class="card" aria-label="Webhooks">
+<div class="card-head"><h2>Webhooks</h2><a class="btn sm" href="#">Add a webhook…</a></div>
+<table><thead><tr><th>Name</th><th>Format</th><th>Last</th><th></th></tr></thead><tbody>
+<tr><td>on-call chat<div class="mono faint">https://hooks.example.com/…<span title="the rest is its secret">••••</span></div></td><td>Slack-compatible</td><td><span class="ok-t">delivered 18:31</span></td><td><a href="#">Test send</a> · <a href="#">Edit…</a> · <a href="#">Remove…</a></td></tr>
+<tr><td>ticketing<div class="mono faint">https://192.0.2.40/hooks/…</div></td><td>Generic, signed</td><td><span class="danger-t">failed 18:31: 503</span></td><td><a href="#">Test send</a> · <a href="#">Edit…</a> · <a href="#">Remove…</a></td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:12px">Formats: Generic, signed (JSON with an HMAC-SHA256 signature over its timestamp and body); Slack-compatible; Teams-compatible; PagerDuty Events v2. A URL, routing key or signing secret is typed once and drawn masked.</p>
+<p class="callout">A failed delivery is retried three times and then raised under Needs attention ("A notification could not be delivered: ticketing"), with its error. Each attempt is a row in History, kind notification.</p>
+</section>
+
+<section class="card" aria-label="Teams">
+<div class="card-head"><h2>Teams</h2><a class="btn sm" href="#">Add a team…</a></div>
+<h3>Default on-call</h3>
+<table><tbody>
+<tr><td>noc@example.com</td><td><span class="chip ok">verified 3 Nov</span></td><td><a href="#">Remove</a></td></tr>
+<tr><td>engineer@example.com</td><td><span class="chip warn">code sent 18:29</span></td><td><input type="text" placeholder="code" size="7" aria-label="Verification code"> <a class="btn sm" href="#">Verify</a> <a href="#">Send again</a></td></tr>
+<tr><td>on-call chat <span class="faint">(webhook)</span></td><td><span class="chip ok">on</span></td><td><a href="#">Remove</a></td></tr>
+</tbody></table>
+<div style="display:flex;gap:10px;align-items:center"><input type="text" placeholder="add an address" aria-label="Add an address" style="font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px"><a class="btn sm" href="#">Add and send a code</a></div>
+<dl class="kv"><dt>Told about</dt><dd>Default (from its Self-healing tab)</dd></dl>
+<div style="display:flex;gap:10px"><a href="#">Delivery log (History › notification)</a></div>
+</section>
+</div>
+<p class="callout">Left for 20.7's full build: per-person contacts, phones and SMS, ntfy, routing by severity and device group, quiet hours, on-call schedules and escalation chains. An unverified address receives nothing but its code. A message carries no configuration line and no secret: each change is said by kind, with a link.</p>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · History, kind heal: an incident's step log</strong>: the summary leads (counts by outcome), the incidents grouped by day and searchable. Opened: C3's heal on r4, each step and its result, the program and hash, verify, and every record it wrote. Below it, a dry-run record with Right and Wrong.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">History <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<div class="scope">Kind <select aria-label="Kind"><option>Heal</option></select> Device <select aria-label="Device"><option>every device</option></select> Outcome <select aria-label="Outcome"><option>every outcome</option></select> <select aria-label="Range"><option>last 7 days</option></select> <input type="search" placeholder="Search" aria-label="Search" style="font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip ok">healed 5</span><span class="chip at">would heal 7</span><span class="chip warn">proposed 1</span><span class="chip danger">can't fix 3</span><span class="chip warn">held 1</span><span class="chip danger">halted 1</span></div>
+<section class="card" aria-label="An incident, opened">
+<div class="card-head"><div><h2>r4 healed: a static route added outside intent removed <span class="chip ok">healed · verified</span> <span class="chip">Auto · Tier 1 · added line</span></h2>
+<div class="muted" style="font-size:13px">16 Nov 15:02:41 to 15:05:58 UTC · policy pol-3f9c2a81, set by operator@example.com · incident hi-0c41e7</div></div>
+<a class="btn sm" href="#">Download the change record (.md)</a></div>
+<table class="steps"><thead><tr><th>#</th><th>Step</th><th>Read</th><th>Result</th><th>At</th></tr></thead><tbody>
+<tr><td>1</td><td>Trigger</td><td>r4's log: a configuration change from vty0 by lab</td><td>not Mercury's: no Mercury operation held r4 within 600 s</td><td>15:00:39</td></tr>
+<tr><td>2</td><td>Guards</td><td>the kill switch, the mode, planned work, holds, no-change windows, recent changes, devices departing (1 of 3), a person working (1 change in 10 min)</td><td class="ok-t">all clear</td><td>15:00:40</td></tr>
+<tr><td>3</td><td>Read r4 (Check drift now's read), then again after 120 s</td><td><span class="mono">show running-config</span>, twice</td><td>the same both times; 1 line differs from its golden</td><td>15:02:41</td></tr>
+<tr><td>4</td><td>Compare with intent and the last golden that matched it</td><td>committed intent at c81d03e; golden golden/r4/20261114T2210Z (intent: matching)</td><td>1 unit departs from both: an added static route</td><td>15:02:42</td></tr>
+<tr><td>5</td><td>Classify</td><td>shape global.ip-route on cisco_iosxe: measured exact (s1, 2026-10-07); not a route to the manager</td><td>Tier 1, added line: allowed in Auto</td><td>15:02:42</td></tr>
+<tr><td>6</td><td>Program and its hash</td><td>expected effects: no interface shut, no reach lost</td><td><span class="mono">prog-8d21f0c4</span>, 1 line (below)</td><td>15:02:43</td></tr>
+<tr><td>7</td><td>Apply, holding r4</td><td>r4 read again before sending: the same as step 3</td><td>sent 1 line; startup saved</td><td>15:03:20</td></tr>
+<tr><td>8</td><td>Verify (the deploy's)</td><td>neighbours, routes, interfaces; the line read back</td><td class="ok-t">passed: the line is gone; OSPF 3 of 3</td><td>15:04:12</td></tr>
+<tr><td>9</td><td>Verify the symptom</td><td>IP SLA 1 on r4; r1's IP SLA 1 (folded in)</td><td class="ok-t">both passing again</td><td>15:05:30</td></tr>
+<tr><td>10</td><td>Record and re-check the documentation</td><td>golden committed; r4 read again; intent compared</td><td class="ok-t">at its golden; intent: matching</td><td>15:05:52</td></tr>
+<tr><td>11</td><td>NetBox journal and notices</td><td>journal entry on r4; Default on-call</td><td class="ok-t">written; 2 delivered (noc@, on-call chat)</td><td>15:05:58</td></tr>
+</tbody></table>
+<pre class="prog">no ip route 192.0.2.11 255.255.255.255 192.0.2.111</pre>
+<dl class="kv">
+<dt>Receipt</dt><dd><a href="#">deploy receipt r4 15:03:20</a> (actor operator@example.com, by policy)</dd>
+<dt>Golden</dt><dd><a href="#">commit 4b2e91a</a> · Source: heal_to_intent · Actor-Verified: policy</dd>
+<dt>NetBox</dt><dd><a href="#">journal entry on r4</a> (success)</dd>
+<dt>Notices</dt><dd><a href="#">2 in the delivery log</a></dd>
+</dl>
+<p class="callout">Step 3's reads and the program are masked, as every record is. A heal that verified its configuration while the symptom remained reads amber, "healed configuration; symptom remains", and notifies as a can't-fix. A heal whose golden re-check differs reads partial (amber). Neither is ever green.</p>
+</section>
+<section class="card" aria-label="A dry-run record">
+<div class="card-head"><div><h3>r3 would have healed: the EEM applet NMAS-HEARTBEAT re-applied (3 lines) <span class="chip at">dry run · Tier 1 · missing line</span></h3>
+<div class="muted" style="font-size:13px">14 Nov 10:12 UTC · program prog-51aa09e2 · verify would read: the lines back, the next heartbeat within 300 s</div></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="muted" style="font-size:13px">Was this the right fix?</span><a class="btn sm" href="#">Right</a><a class="btn sm" href="#">Wrong…</a><a href="#">Open</a></div></div>
+</section>
+</main>
+</div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · Needs attention: a can't-fix (C4) and a can't-fix with its analysis pending (I5)</strong>: one line each. Opened, in the operator's order: What to do, Mercury's facts (detected, steps tried, results), then the AI analysis, advisory.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#" class="on">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><a href="#" class="aichip"><span class="aimark">AI</span>$0.15 today · 1 background on</a></div>
+<h1 class="page">Needs attention <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1>
+<div class="sec">Critical · 2</div>
+<div class="na open">
+<span class="chip danger">critical</span>
+<div>
+<strong>Self-healing will not fix r6: a security ACL was added outside intent, on the interface Mercury reaches r6 by</strong> <span class="muted">· 4 min · Tier 4</span>
+<div class="sub"><h3>What to do</h3>
+<p style="margin:4px 0">Decide whether the ACL belongs. If it does, adopt it into r6's intent. If it does not, it must be removed by a person: Mercury does not remove lines on the interface it reaches a device by, because no repair route independent of that path is built yet. The other alert, r7 unreachable, is folded in here: it is in r6's blast radius.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Edit r6's intent…</a><a class="btn sm" href="#">Capture r6…</a><a class="btn sm" href="#">Check drift now on r6</a><a class="btn sm" href="#">Acknowledge…</a></div>
+<p class="muted" style="margin:6px 0 0;font-size:12.5px">Clears when a later check finds r6 at its intent and r7 reachable, or when acknowledged with a reason.</p></div>
+<div class="sub"><h3>What Mercury found and tried</h3>
+<table class="steps"><tbody>
+<tr><td>1</td><td>18:02:10 r6 logged a configuration change from vty0 by lab: not Mercury's (no Mercury operation held r6)</td></tr>
+<tr><td>2</td><td>Guards clear: no planned work, r6 not held, 1 device departing</td></tr>
+<tr><td>3</td><td>18:04:11 r6 read twice, 120 s apart: 4 lines differ from its golden, the same both times</td></tr>
+<tr><td>4</td><td>Against intent: an extended ACL defined (3 lines) and applied inbound on Gi2 (1 line), none in intent</td></tr>
+<tr><td>5</td><td>Classified: a security ACL (Tier 4, never automatic); Gi2 holds r6's management address (Mercury's path)</td></tr>
+<tr><td>6</td><td>Nothing sent. r7's "Device unreachable", 18:06, folded in (r7 is reached through r6)</td></tr>
+<tr><td>7</td><td>Notified Default on-call: 2 delivered</td></tr>
+</tbody></table>
+<a href="#">The full step log, masked lines included (History)</a></div>
+<div class="sub advisory" aria-label="AI analysis, advisory">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><strong><span class="aimark">AI</span>AI analysis: Advisory (beta), a person should confirm</strong><span class="chip ai" title="Measured 2026-11-18: heal_analysis v1, 3 recorded cases (C4, I5, a failed verify), 10 runs each: 3 of 3 reliable, 30 of 30 runs passed, none confidently wrong. Not yet measured on a blind set, so it stays in beta. Explain's own score is not claimed for it.">3 of 3 recorded cases reliable (18 Nov, 10 runs each)</span></div>
+<div><strong>Hypothesis:</strong> the inbound ACL on r6 Gi2 permits TCP and UDP only, so OSPF (IP protocol 89) from r4 is dropped and the adjacency fell at its dead timer. r7 lost its route through r6. <span class="muted">Cites: tried:4, logs:r6:adjchg-1, neighbour_events:r4:2, concurrent:ep-r7-unreach</span></div>
+<div><strong>Recommended next step:</strong> confirm with <span class="mono">show ip access-lists</span> on r6 (its match counters), then decide adopt or remove. <span class="muted">A read on Show commands' allowlist.</span></div>
+<div class="muted" style="font-size:12.5px">Background call (trigger: r6's can't-fix incident hi-77d2a0), 18:04:58 UTC, $0.03, <a href="#">its record in History</a>. Sent: the evidence pack and what Mercury tried, configuration lines by kind only ("inbound ACL added on Gi2, 4 lines, content withheld"). Nothing in self-healing reads this answer.</div>
+<div style="display:flex;gap:8px;align-items:center"><a class="btn sm" href="#"><span class="aimark">AI</span>Analyse again…</a><span class="muted" style="font-size:12.5px">Was this right?</span><a class="btn sm" href="#">Yes</a><a class="btn sm" href="#">No…</a></div>
+</div>
+</div>
+<span></span>
+</div>
+<div class="na">
+<span class="chip danger">critical</span>
+<div><strong>Self-healing cannot fix r3 Gi4: down while administratively up, configuration at intent (physical or link)</strong> <span class="muted">· 2 min · Tier 3 · r4 held: a person appears to be working on it (11 changes in 10 min)</span>
+<div class="muted" style="font-size:12.5px;margin-top:2px"><span class="aimark">AI</span>AI analysis: pending (requested 18:41:02; the notice went without it at 18:42:02, and a follow-up is sent when it arrives)</div></div>
+<a class="btn sm" href="#">Open…</a>
+</div>
+<div class="sec">Warning · 1</div>
+<div class="na">
+<span class="chip warn">warning</span>
+<div><strong>A fix waits for a person: r6's OSPF router-id differs from intent (it takes effect through an OSPF process reset)</strong> <span class="muted">· 9 min · Tier 2</span></div>
+<a class="btn sm" href="#">Review the fix…</a>
+</div>
+<p class="callout">The analysis's other states, each said in place of the block, never a silent absence: "AI analysis: not run, off for this network (Settings › Installation › AI)"; "not run, its cap for today is reached ($1.00)"; "couldn't analyse: an answer cited tried:9, which was not sent"; "the provider did not answer within 90 s". Analyse again… is a person's press behind its cost confirm, and replaces the stored analysis (the old one stays in History).</p>
+</main>
+</div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · Needs attention: a Tier 2 proposal waiting (R8), opened; and a halted policy (the failed-verify case)</strong>: the program and its hash, what the reset does, Approve… by hash with a reason, Decline…; and Lift the halt…</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#" class="on">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<h1 class="page">Needs attention</h1>
+<div class="cols">
+<div class="na open" style="grid-template-columns:80px 1fr">
+<span class="chip warn">warning</span>
+<div>
+<strong>A fix waits for a person: r6's OSPF router-id differs from intent</strong> <span class="muted">· 9 min · Tier 2, process reset</span>
+<div class="sub"><h3>What to do</h3>
+<p style="margin:4px 0">Approve to set r6's router-id back to intent and reset its OSPF process. The reset drops every OSPF adjacency on r6 (2) until they form again, so choose the moment.</p>
+<pre class="prog">router ospf 1
+ router-id 192.0.2.16
+! then, measured: clear ip ospf 1 process (prompt answered: yes)</pre>
+<dl class="kv"><dt>Program</dt><dd class="mono">prog-e1c4772b · read at 18:12:30</dd>
+<dt>Expected effects</dt><dd>OSPF to r4 and r7 drops and forms again; r7 out of reach until then (blast radius)</dd>
+<dt>Verify reads</dt><dd>both adjacencies FULL within 120 s; no duplicate router-id logged on r4</dd>
+<dt>Rollback</dt><dd>the router-id back; a reset cannot be undone, and its adjacencies form again by themselves</dd></dl>
+<label class="field">Reason<input type="text" placeholder="at least three words"></label>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Approve and run on r6</a><a class="btn sm" href="#">Decline…</a><a class="btn sm" href="#">Check drift now on r6</a></div>
+<p class="muted" style="margin:6px 0 0;font-size:12.5px">Bound to this program's hash and to r6 as read at 18:12:30. If r6 changes, the proposal is withdrawn and made again. Clears when approved and verified, or r6 is back at intent, or declined with a reason.</p></div>
+<div class="sub"><a href="#">What Mercury found and tried (5 steps)</a></div>
+</div>
+</div>
+<div class="na open" style="grid-template-columns:80px 1fr">
+<span class="chip danger">critical</span>
+<div>
+<strong>Self-healing halted on Default: a heal on r2 failed its verify and was rolled back</strong> <span class="muted">· 3 min</span>
+<div class="sub"><h3>What to do</h3>
+<p style="margin:4px 0">Removing the OSPF network statement added outside intent on r2 dropped an adjacency to r8 (verify: OSPF 3 before, 2 after the settle window). The line was put back, and r2 is as it was before the heal. Decide whether the statement belongs in r2's intent, then lift the halt. No device on Default is healed until then; dry-run records continue.</p>
+<label class="field">Reason<input type="text" placeholder="at least three words"></label>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Lift the halt</a><a class="btn sm" href="#">Edit r2's intent…</a><a class="btn sm" href="#">Open the incident</a></div>
+<p class="muted" style="margin:6px 0 0;font-size:12.5px">Clears when a person lifts the halt. Other halts read the same way, each naming its guard and both operands: "2 heals on r4 within the hour (the limit is 1)"; "the same fix on r3 twice within 24 h"; "4 devices departing at once (the limit is 3)"; "stopped everywhere by operator@example.com".</p></div>
+<div class="sub advisory"><strong><span class="aimark">AI</span>AI analysis: Advisory (beta), a person should confirm</strong><div class="muted">Drawn as in artboard D.</div></div>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · The email and the webhook as received</strong>: Mercury's facts first, then the advisory block, then the link. At right, the "analysis pending" message, its follow-up, and the signed webhook's body.</div>
+<div class="art">
+<main>
+<div class="cols">
+<div class="mail" aria-label="The can't-fix email, with its analysis">
+<div class="mh"><span>From</span><div>Mercury &lt;mercury@example.com&gt;</div><span>To</span><div>noc@example.com, engineer@example.com</div><span>Subject</span><div><strong>[Mercury · Default] Can't fix r6: a security ACL added outside intent</strong></div></div>
+<div class="mb">
+<div><strong>Detected</strong> 18:02:10 UTC: r6 logged a configuration change from vty0 by lab, not made by Mercury. r7 has been unreachable since 18:06 (reached through r6).</div>
+<div><strong>What Mercury tried</strong>
+<ol><li>Checked the guards: no planned work, r6 not held, 1 device departing.</li>
+<li>Read r6 twice, 120 s apart: 4 lines differ from its golden.</li>
+<li>Compared with intent: an extended ACL added (3 lines) and applied inbound on Gi2 (1 line), content withheld.</li>
+<li>Classified: a security ACL (never fixed automatically), on the interface Mercury reaches r6 by.</li>
+<li>Sent nothing to r6.</li></ol></div>
+<div><strong>Result:</strong> not fixed. A person decides whether the ACL belongs (adopt it into intent) or removes it.</div>
+<div class="advisory"><strong>AI analysis: Advisory (beta), a person should confirm</strong>
+<div class="muted">Measured: 3 of 3 recorded cases reliable (18 Nov, 10 runs each).</div>
+<div><strong>Hypothesis:</strong> the ACL permits TCP and UDP only, so OSPF from r4 is dropped and the adjacency fell; r7 lost its route through r6.</div>
+<div><strong>Next step:</strong> read r6's ACL counters (<span class="mono">show ip access-lists</span>), then decide.</div></div>
+<div><a href="#">Open the incident in Mercury</a> · incident hi-77d2a0</div>
+<div class="faint" style="font-size:12px">No configuration line or secret is sent in a notice. The full masked lines are in Mercury.</div>
+</div></div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div class="mail" aria-label="The analysis pending">
+<div class="mh"><span>Subject</span><div><strong>[Mercury · Default] Can't fix r3 Gi4: down while administratively up</strong></div></div>
+<div class="mb"><div>… Mercury's facts and steps, as at left …</div>
+<div class="advisory"><strong>AI analysis: pending</strong><div class="muted">It was not back within 60 s. This notice was not held for it; a follow-up on this thread carries it.</div></div></div></div>
+<div class="mail" aria-label="The follow-up">
+<div class="mh"><span>Subject</span><div><strong>Re: [Mercury · Default] Can't fix r3 Gi4: AI analysis</strong></div></div>
+<div class="mb"><div class="advisory"><strong>AI analysis: Advisory (beta), a person should confirm</strong><div><strong>Hypothesis:</strong> a physical or far-end problem: Gi4 changed state repeatedly while administratively up; r4's side shows administrative changes by a person on vty0.</div><div><strong>Next step:</strong> check the link with the person working on r4; read <span class="mono">show interfaces GigabitEthernet4</span> on r3 for its input errors.</div></div>
+<div class="muted" style="font-size:12.5px">The failure states read: "AI analysis: couldn't analyse (its answer cited a step that was not sent)", "not run: off for Default", "not run: its cap for today is reached".</div></div></div>
+<pre class="prog" aria-label="The generic signed webhook">POST /hooks/mercury
+X-Mercury-Timestamp: 1763491322
+X-Mercury-Signature: sha256=&lt;hex of HMAC(secret, timestamp + "." + body)&gt;
+{"incident": "hi-77d2a0", "network": "Default", "device": "r6",
+ "event": "cant_fix", "tier": 4, "kind": "security_acl",
+ "summary": "a security ACL added outside intent, on the management interface",
+ "steps": ["guards clear", "read twice: 4 lines differ",
+           "inbound ACL added on Gi2, 4 lines, content withheld", "nothing sent"],
+ "analysis": {"state": "ready", "label": "Advisory (beta)", "hypothesis": "…"},
+ "link": "https://mercury.example.com/v2/history?incident=hi-77d2a0"}</pre>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ G -->
+<div class="artlabel"><strong>G · Settings › Installation › AI: the background feature's switch, with its estimate</strong>: the existing per-network switch (board AI3's pattern), with one new feature. Turning it on shows a labelled estimate first, and the record keeps the estimate shown.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#" class="on">Settings</a>
+</nav>
+<main>
+<div class="topbar"><a href="#" class="aichip"><span class="aimark">AI</span>$0.12 today · 1 background on</a></div>
+<h1 class="page">Settings › Installation</h1>
+<nav class="tabs" aria-label="The installation's settings">
+<a class="tab" href="#">General</a><a class="tab" href="#">Connections</a><a class="tab" href="#">Access and identity</a><a class="tab" href="#">Platforms and roles</a><a class="tab" href="#">Console servers</a><a class="tab" href="#">Diagnostics</a><a class="tab on" href="#">AI</a><a class="tab" href="#">Notifications</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="Background AI features">
+<div class="card-head"><h2>Background AI features</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="muted" style="margin:0;font-size:12.5px">A background feature calls the model with no person's press, only when Mercury's own code has found something. Each one is off per network until an admin turns it on here.</p>
+<table><thead><tr><th>Feature and its trigger</th><th>Network</th><th>State</th><th></th></tr></thead><tbody>
+<tr><td>The SDN loop classifies each detection<div class="faint">when a detection rule fires</div></td><td>sdn_lab</td><td><span class="chip ok">on until 15 Nov</span></td><td><a href="#">Turn off</a> · <a href="#">Caps…</a></td></tr>
+<tr><td>Self-healing analyses what it could not fix<div class="faint">when a heal stops at can't fix</div></td><td>Default</td><td><span class="chip">off</span></td><td><a class="btn sm" href="#">Turn on…</a></td></tr>
+</tbody></table>
+</section>
+<section class="card" aria-label="Turning it on: the estimate">
+<h2>Turn on: Self-healing analyses what it could not fix, on Default</h2>
+<dl class="kv">
+<dt>Calls a day</dt><dd>about 5 <span class="muted">(estimate: 23 can't-fix incidents on Default in the last 5 days, the dry-run walk's, 1 call each)</span></dd>
+<dt>Cost per call</dt><dd>$0.08, the worst case <span class="muted">(this feature has no sent calls yet, so its per-call cap stands in; Explain's measured $0.0257 is a different prompt)</span></dd>
+<dt>Dollars</dt><dd>about $0.40 a day, $12.00 a month at worst <span class="muted">(estimate; the provider bills, not Mercury)</span></dd>
+<dt>Caps</dt><dd><input type="text" value="$1.00" size="6" aria-label="Day cap"> a day · <input type="text" value="$10.00" size="6" aria-label="Month cap"> a month <span class="muted">(within the installation's $15.00 a day)</span></dd>
+<dt>What is sent</dt><dd>the incident's evidence pack and what Mercury tried, configuration lines by kind only. The configuration class is off on every network until the classification marking is built</dd>
+<dt>For</dt><dd>14 days, then it asks again</dd>
+</dl>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn primary" href="#">Turn on for Default with this estimate</a><a class="btn" href="#">Cancel</a></div>
+<p class="callout">The confirm is bound to this estimate's digest: if the estimate moves before the press, it is refused, naming both. Turning it off is one click here or in the spend panel, and stops new calls at once. The 50% and 80% warnings, the cap's stop and its Needs attention row are the existing rules.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ Decisions -->
+<div class="artlabel"><strong>Decisions for the operator</strong>: only what industry practice does not decide. Each has its recommendation; the reasons are in docs/HEAL_TO_INTENT.md section 18.</div>
+<div class="q"><h3>N1 · The grace period</h3><ol><li><strong>Recommended:</strong> 900 s by default (section 7's approved "2 readings and 15 minutes"); 120 s on a network marked lab, so a demo heal lands before the downstream alerts.</li></ol></div>
+<div class="q"><h3>N2 · A trigger beyond the three named</h3><ol><li><strong>Recommended:</strong> any firing alert on a managed device checks that device. M4's own CONFIG_I never reaches Mercury; without this, M4 heals only at the 4-hour schedule.</li></ol></div>
+<div class="q"><h3>N3 · The topology-change window</h3><ol><li><strong>Recommended:</strong> 60 minutes after any Mercury change record on the device or an intent neighbour, or an observed link-set change.</li></ol></div>
+<div class="q"><h3>N4 · Which ACLs count as security</h3><ol><li><strong>Recommended:</strong> all of them, definitions, entries and every binding, with no exception list in the first slice.</li></ol></div>
+<div class="q"><h3>N5 · The approved state</h3><ol><li><strong>Recommended:</strong> the last golden that matched intent (Intent-Match: yes), not a baseline tag.</li></ol></div>
+<div class="q"><h3>N6 · N per hour</h3><ol><li><strong>Recommended:</strong> section 7's approved rails: 1 per device and 6 per network an hour; the same fix twice in 24 h halts.</li></ol></div>
+<div class="q"><h3>N7 · R3 on r6 Gi2, Mercury's path to r6</h3><ol><li><strong>Recommended:</strong> run R3's heal on the r3–r4 link's Gi4, and keep the management-interface refusal.</li></ol></div>
+<div class="q"><h3>N8 · AUTO's expiry, and marking the network lab</h3><ol><li><strong>Recommended:</strong> an expiry is required, at most 7 days, then dry run. Marking Default lab and turning AUTO on there are the operator's.</li></ol></div>
+<div class="q"><h3>N9 · A line in a secret position</h3><ol><li><strong>Recommended:</strong> removing a routing key is Tier 1, masked, with the policy's words as its reason; adding any secret back is Tier 2; accounts, AAA and communities are Tier 4.</li></ol></div>
+<div class="q"><h3>N10 · The analysis's pack carries the masked intent-diff lines</h3><ol><li><strong>Recommended:</strong> send them, as Explain does (at most 20, the allowed class of 2026-10-29). The step log's own lines stay by kind.</li></ol></div>
+<div class="q"><h3>N11 · Phase 8's end</h3><ol><li><strong>Recommended:</strong> it moves to about Dec 11, with 0.1 unchanged; the credit-bound measurement rounds stay before 11-29.</li></ol></div>
+<div class="q"><h3>N12 · A change a named person made at the CLI</h3><ol><li><strong>Recommended:</strong> heal after the grace period, naming the person and notifying; the person-working guard holds a device under active work.</li></ol></div>
+<div style="height:40px"></div>
+</body>
+</html>

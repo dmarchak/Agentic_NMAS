@@ -95,6 +95,14 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 | **2, Lab 9, the final SDN lab, on physical hardware** (due 2026-11-30) | Mercury as the only management interface, the lab as its requirements list:<br>1. Multi-vendor drivers.<br>2. OpenFlow onboarding.<br>3. SDN apps: DNS filtering, DHCP steering, a path trace.<br>4. An SDN intent controller.<br>5. Protected flows.<br>6. Closed loop: link failure.<br>7. A live analyst.<br>8. Per-network model choice.<br>9. Laptop deployment.<br>10. B5 report export.<br>11. B4 candidates. | Gap board Nov 3–5; laptop install, C2305 and drivers Nov 5–14; onboarding, protected flows and apps Nov 15–19; SDN intent Nov 20–23; link failure, B4 and hardware testing Nov 24–30. Cut order if late: trace ports, the DNS block page, then a minimal B2 |
 | **Shared, at the front** | C2305 (benign traffic called a threat), right after board H. Board TI items 4 to 7 and the test audit continue at low priority. The independent review is the operator's to arrange. | — |
 
+**A date is an expectation, never a reason to wait** (the operator's correction, 2026-11-03):
+- An item starts as soon as its prerequisites are met: local CI, then a board's commit, then its
+  build.
+- The roadmap's dates say when an item is expected to finish. They exist to raise a concern
+  early when it runs behind.
+- Finishing ahead of a date is the goal.
+- This applies to every workstream. Reports never say "as scheduled".
+
 **The schedule is an expectation, not a limit (the operator, 2026-11-03):**
 - **Ahead of it:** don't wait for a week's boundary. Start the next week's items as soon as
   this week's are done, in the road map's order.

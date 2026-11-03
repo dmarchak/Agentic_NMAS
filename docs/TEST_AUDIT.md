@@ -102,8 +102,13 @@ No classification and no fixes:
     start-up per test, but still pays each test's own time.
   - **The measurement it needs:** a covering test's in-process time, read from one module's
     run.
-  - **The decision is the operator's:** the shape (full, sampled with a recorded seed, or
-    narrowed to the functions the deletion tool and the score flag).
+  - **Decided by the operator, 2026-11-03:** "option (1) measured on one module, then (3)
+    narrowed to the combined suspects and the weakest functions".
+    1. **Measure:** one run per mutant, holding all its covering tests, every failure recorded,
+       on one module.
+    2. **Then run, narrowed to:** the functions the combined suspects list's tests cover, and the
+       weakest functions by mutation score (C2354: `detect.mark_replies`, `detect.transfer`,
+       `gateway.mask_typed` first).
 
 ## The independent review
 

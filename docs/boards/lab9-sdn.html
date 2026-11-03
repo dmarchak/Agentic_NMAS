@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Lab 9 SDN board</title>
+<!-- Board for workstream 2 (PHASE8_PLAN 0.3; docs/LAB9_SDN_GAP.md): the screens and cards the final
+     SDN lab's items 2 to 10 add. A, SDN › Switches (OpenFlow onboarding's verify view, its preview
+     and result); B, SDN › Apps (DNS filtering, DHCP steering); C, SDN › Protected; D, Topology ›
+     Path… through flow tables; E, SDN › Policies' validation and refusals (board S9 holds the
+     rest); F, SDN › Responses' link-failure rule, capability matrix and run-for bound; G, Settings ›
+     AI's model tier; H, History › Export; I, SDN › Flows' Analyse this network. Self-contained: no
+     external fonts or scripts. Example names and documentation addresses only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+pre.mono{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:8px 10px;white-space:pre-wrap}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.ai::before{content:"\2726 ";color:var(--accent)}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 14px;text-decoration:none;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tab.new::after{content:" new";font-size:11px;color:var(--warn)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field input,.field select,.field textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.field .hint{font-size:12px;color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:190px 1fr;gap:6px 14px;font-size:13px;margin:0}
+.kv dt{color:var(--ink-2)}.kv dd{margin:0}
+.summary{display:flex;gap:18px;font-size:13px}
+.summary b{font-size:18px;display:block}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+tr.grp td{background:var(--surface-2);font-weight:600}
+.topbar{display:flex;justify-content:flex-end;gap:12px;align-items:center;font-size:13px}
+.aichip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.refusal{border-left:3px solid var(--danger);background:var(--danger-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.question{border-left:3px solid var(--warn);background:var(--warn-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.passed{border-left:3px solid var(--ok);background:var(--ok-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 18px;width:1404px;margin:0 auto 10px;font-size:13px}
+.q h3{margin-bottom:6px}
+.q ol{margin:6px 0 0 18px;padding:0}
+.q li{margin:2px 0}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Lab 9, the final SDN lab: the screens it adds (workstream 2), board for sign-off</h1>
+<div>From the read-only gap board, docs/LAB9_SDN_GAP.md. Nine artboards at 1440 wide, then the decisions. Two new SDN tabs (Switches, Apps) and one (Protected); Topology's Path… gains the controller's layer; Policies' validation and refusals extend board S9; Responses gains the link-failure rule, the capability matrix and a run-for bound; Settings › AI gains a model tier per network; History gains Export; SDN › Flows gains Analyse this network. Yellow dashed notes are the board's annotations, not part of the screen. Every other link and control is one the built screen will have. Example names (campus-sdn, of-eos-1, of-hp-1, ovs-1) and documentation addresses (192.0.2.0/24, 198.51.100.0/24, 2001:db8::/32) only.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · SDN › Switches: OpenFlow onboarding, the verify view</strong>: every switch NetBox marks for OpenFlow, what NetBox and intent say, what the controller sees and what the switch reports, joined on one row. A summary first; groups by state; per-switch detail on expand.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>campus-sdn</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab on new" href="#">Switches</a><a class="tab" href="#">Flows</a><a class="tab new" href="#">Apps</a><a class="tab new" href="#">Protected</a><a class="tab" href="#">Policies</a><a class="tab" href="#">Responses</a>
+</nav>
+<div class="summary">
+<div><b>5</b>marked for OpenFlow in NetBox</div><div><b style="color:var(--ok)">3</b>connected as intended</div><div><b style="color:var(--warn)">1</b>configured, not connected</div><div><b style="color:var(--danger)">1</b>differs from intent</div><div><b>0</b>seen by the controller, not in NetBox</div>
+</div>
+<div class="row"><input type="search" placeholder="Search name, DPID or address" style="font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;width:300px"><select><option>Every state</option><option>Connected as intended</option><option>Configured, not connected</option><option>Differs from intent</option><option>Not configured</option></select><select><option>Every platform</option><option>Arista EOS</option><option>ArubaOS-Switch</option><option>OVS on Linux</option></select><a class="btn sm" href="#">Configure from NetBox…</a><a class="btn sm" href="#">Verify now</a><span class="faint" style="font-size:12px">read 14:02 UTC, 40 s ago</span></div>
+<section class="card" style="padding:0">
+<table><thead><tr><th style="width:24px"></th><th>Switch</th><th>Platform</th><th>NetBox and intent: controller, port, version, transport</th><th>Controller sees</th><th>Switch reports</th><th>State</th><th></th></tr></thead><tbody>
+<tr class="grp"><td></td><td colspan="7">Differs from intent (1)</td></tr>
+<tr><td>▸</td><td><a href="#">of-hp-1</a><div class="faint mono">192.0.2.13</div></td><td>ArubaOS-Switch</td><td class="mono">192.0.2.50:6653 · 1.3 · tcp</td><td>DPID 00:0a:…:3e:01, since 13:40</td><td class="mono">controller 192.0.2.50:6633 · 1.3</td><td><span class="chip bad">port differs</span></td><td><a class="btn sm" href="#">Preview the fix…</a></td></tr>
+<tr class="grp"><td></td><td colspan="7">Configured, not connected (1)</td></tr>
+<tr><td>▾</td><td><a href="#">ovs-2</a><div class="faint mono">2001:db8:10::22</div></td><td>OVS on Linux</td><td class="mono">192.0.2.50:6653 · 1.3 · tcp</td><td>not in the switch list</td><td class="mono">br0 controller set · is_connected false</td><td><span class="chip warn">not connected</span></td><td><a class="btn sm" href="#">Verify now</a></td></tr>
+<tr><td></td><td colspan="7">
+<dl class="kv">
+<dt>NetBox</dt><dd>role openflow switch · config context <span class="mono">openflow</span> from the role (version 1.3, transport tcp) · controller: Service <span class="mono">openflow</span> on ctl-1, TCP 6653 · OpenFlow ports: 3 interfaces tagged openflow · <a href="#">Open in NetBox</a></dd>
+<dt>Intent</dt><dd><span class="mono">host_vars/ovs-2.yml</span> › openflow, derived from NetBox at commit <span class="mono">a1b2c3d</span> · <a href="#">Intent</a></dd>
+<dt>Last configured</dt><dd>13:55 UTC by operator@example.com, verified on the switch; <a href="#">its record</a></dd>
+<dt>Why not connected</dt><dd>the switch reports its controller set and not connected; the controller lists 4 switches, none at this DPID. The switch's route to 192.0.2.50 is the next thing to check: <a href="#">Read its routes</a></dd>
+</dl></td></tr>
+<tr class="grp"><td></td><td colspan="7">Connected as intended (3)</td></tr>
+<tr><td>▸</td><td><a href="#">of-eos-1</a></td><td>Arista EOS</td><td class="mono">192.0.2.50:6653 · 1.0 · tcp</td><td>DPID 00:1c:…:a0:01, since 12:10</td><td class="mono">connected · 1.0</td><td><span class="chip ok">as intended</span></td><td></td></tr>
+<tr><td>▸</td><td colspan="7" class="muted">of-eos-2, ovs-1 · <a href="#">show 2</a></td></tr>
+</tbody></table>
+</section>
+<p class="callout">A switch's management stays direct (Mercury configures its OpenFlow section) while its flows are the controller's: the split authority of the gap board, 2.1. "Configure from NetBox…" opens the preview below for the switches selected or every one that differs. The OpenFlow version is what intent says, never a default: of-eos-1 runs 1.0 because NetBox says so.</p>
+<div class="cols">
+<section class="card" aria-label="The preview">
+<h2>Configure OpenFlow on 2 switches</h2>
+<p class="muted" style="margin:0;font-size:13px">From NetBox and intent. Each switch's exact program, masked, then confirm by hash. Merge-only: nothing outside the OpenFlow section is sent.</p>
+<h3>of-hp-1 · ArubaOS-Switch</h3>
+<pre class="mono">openflow
+ controller-id 1 ip 192.0.2.50 port 6653
+ instance lab
+  controller-id 1
+  version 1.3
+  enable
+ exit
+exit</pre>
+<h3>ovs-2 · OVS on Linux (one OVSDB transaction)</h3>
+<pre class="mono">ovs-vsctl set-controller br0 tcp:192.0.2.50:6653 -- set bridge br0 protocols=OpenFlow13 -- set-fail-mode br0 secure</pre>
+<dl class="kv"><dt>Verify</dt><dd>the switch's read-back shows the controller and version; the controller's switch list holds its DPID within 30 s</dd>
+<dt>Undo if Verify fails</dt><dd>the before-state re-applied, shown here: <a href="#">of-hp-1's</a>, <a href="#">ovs-2's</a></dd>
+<dt>Hash</dt><dd class="mono">sha256:7f3e…91c2</dd></dl>
+<div class="row"><a class="btn primary" href="#">Configure 2 switches</a><a class="btn" href="#">Cancel</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<section class="card" aria-label="The result">
+<div class="row" style="justify-content:space-between"><h2>Configured 1 of 2</h2><span class="chip warn">partial</span></div>
+<table><thead><tr><th>Switch</th><th>Sent</th><th>Verify</th><th>Outcome</th></tr></thead><tbody>
+<tr><td>ovs-2</td><td>1 transaction</td><td>controller set; DPID 00:00:…:22 in the controller's list at +6 s</td><td><span class="chip ok">verified</span></td></tr>
+<tr><td>of-hp-1</td><td>8 lines</td><td>the switch reports port 6653; the controller's list does not hold it after 30 s</td><td><span class="chip bad">rolled back</span> to port 6633</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:13px">Recorded on History: one commit, two receipts. of-hp-1 is back as it was and stays "differs from intent".</p>
+<div class="row"><a class="btn sm" href="#">Open the record</a><a class="btn sm" href="#">Back to Switches</a></div>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · SDN › Apps: DNS filtering and DHCP steering</strong>: each app is flows Mercury installs and keeps as intent, steering to a service the network declares. The DNS filter is a separate service (lab tooling, like Kea is to DHCP); Mercury owns the steering, the settings and the filter's health.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Switches</a><a class="tab" href="#">Flows</a><a class="tab on" href="#">Apps</a><a class="tab" href="#">Protected</a><a class="tab" href="#">Policies</a><a class="tab" href="#">Responses</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="DNS filtering">
+<div class="row" style="justify-content:space-between"><h2>DNS filtering</h2><span class="chip ok">steering on 5 switches</span></div>
+<dl class="kv">
+<dt>Filter service</dt><dd>dns-filter on ctl-1, 192.0.2.50 and 2001:db8:10::50, UDP and TCP 53 (NetBox Service, protected) · <span class="chip ok">answering</span> read 14:01 UTC</dd>
+<dt>Verdict service</dt><dd class="mono">https://verdicts.example.net/v1/lookup</dd>
+<dt>When it cannot be asked</dt><dd>fail open: forward the query, and say so here (per network)</dd>
+<dt>Blocked names</dt><dd>answered with the block page's address, 192.0.2.60 (on)</dd>
+<dt>Steered</dt><dd>every edge port on 5 switches; IPv4 and IPv6; of-eos-1 and of-eos-2 send DNS to ovs-1 for the rewrite (no set_field in hardware: <a href="#">capability matrix</a>)</dd>
+<dt>Last hour</dt><dd>1,204 queries · 31 blocked (9 names) · 0 unanswered · 2 verdict-service timeouts, forwarded</dd>
+</dl>
+<table><thead><tr><th>Blocked name</th><th>Verdict</th><th>Queries</th><th>Hosts</th><th>Last</th></tr></thead><tbody>
+<tr><td class="mono">bad.example.com</td><td>malicious</td><td>14</td><td>2</td><td>13:58</td></tr>
+<tr><td class="mono">ads.example.org</td><td>suspicious</td><td>9</td><td>1</td><td>13:41</td></tr>
+<tr><td colspan="5" class="muted"><a href="#">7 more</a> · <a href="#">Every query in Logs</a></td></tr>
+</tbody></table>
+<div class="row"><a class="btn" href="#">Edit settings…</a><a class="btn" href="#">Preview steering…</a><a class="btn" href="#">Remove steering…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<section class="card" aria-label="DHCP steering">
+<div class="row" style="justify-content:space-between"><h2>DHCP steering</h2><span class="chip ok">on 5 switches</span></div>
+<dl class="kv">
+<dt>DHCP server</dt><dd>rtr-1, 192.0.2.1, MAC 00:00:5e:00:53:01 on of-eos-1 port 48 (NetBox Service <span class="mono">dhcp</span>, protected)</dd>
+<dt>Client requests</dt><dd>broadcasts on edge ports unicast to the server's MAC on its port; never flooded</dd>
+<dt>Server replies</dt><dd>dropped on every port but the server's (the trusted-port rule)</dd>
+<dt>IPv6</dt><dd><span class="chip warn">not covered</span> DHCPv6 (UDP 546 and 547) is not steered: it floods as before</dd>
+<dt>Last hour</dt><dd>12 requests steered · 0 replies dropped from another port</dd>
+</dl>
+<div class="row"><a class="btn" href="#">Edit settings…</a><a class="btn" href="#">Preview steering…</a><a class="btn" href="#">Remove steering…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+</div>
+<div class="cols">
+<section class="card" aria-label="DNS filtering, its settings being edited">
+<h2>DNS filtering · settings</h2>
+<label class="field">Filter service<select><option>dns-filter on ctl-1 (NetBox Service)</option></select><span class="hint">A NetBox Service tagged dns-filter. Add one on SDN › Protected or in NetBox.</span></label>
+<label class="field">Verdict service URL<input value="https://verdicts.example.net/v1/lookup"><span class="hint">The filter service asks it; Mercury tests it from here. Its key, if any, is typed in Credentials and never shown.</span></label>
+<label class="field">When the verdict service cannot be asked<select><option>Fail open: forward the query</option><option>Fail closed: answer blocked</option></select></label>
+<label class="field">Blocked names are answered with<select><option>The block page's address</option><option>NXDOMAIN</option></select></label>
+<label class="field">Block page address<input value="192.0.2.60"></label>
+<label class="field">Steer on<select><option>Every edge port on every switch</option><option>Chosen switches…</option></select></label>
+<div class="row"><a class="btn primary" href="#">Preview…</a><a class="btn" href="#">Test the verdict service</a><a class="btn" href="#">Cancel</a></div>
+</section>
+<section class="card" aria-label="Steering's preview">
+<h2>Steer DNS on 5 switches: 20 flows</h2>
+<table><thead><tr><th>Switch</th><th>Flow</th><th>Priority</th></tr></thead><tbody>
+<tr><td>ovs-1</td><td class="mono">udp,udp_dst=53 → set ipv4_dst 192.0.2.50, eth_dst …:50; output 3</td><td>400</td></tr>
+<tr><td>ovs-1</td><td class="mono">udp,udp_src=53 from 192.0.2.50 → set ipv4_src back; output normal</td><td>400</td></tr>
+<tr><td colspan="3" class="muted">and TCP 53 and IPv6 for each · <a href="#">every flow and its REST body</a></td></tr>
+</tbody></table>
+<div class="passed">Protected flows checked: none covered (DNS to the filter itself and the controller's channel are left alone).</div>
+<dl class="kv"><dt>Hash</dt><dd class="mono">sha256:0c41…aa7e</dd></dl>
+<div class="row"><a class="btn primary" href="#">Install 20 flows</a><a class="btn" href="#">Cancel</a></div>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · SDN › Protected: protected flows, and a writer refused</strong>: read from NetBox Services tagged protected and the management prefix; added here as a confirmed NetBox write; checked in one place every flow write passes through.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Switches</a><a class="tab" href="#">Flows</a><a class="tab" href="#">Apps</a><a class="tab on" href="#">Protected</a><a class="tab" href="#">Policies</a><a class="tab" href="#">Responses</a>
+</nav>
+<p class="muted" style="margin:0;font-size:13px">No flow Mercury writes may drop, divert or shadow these: the flow editor, responses (HITL and AUTO), re-apply, policies and apps all pass this check. Read from NetBox 14:00 UTC.</p>
+<section class="card" style="padding:0">
+<table><thead><tr><th>Kind</th><th>Protected traffic</th><th>From NetBox</th><th>Match it compiles to</th><th>Refused this week</th></tr></thead><tbody>
+<tr><td>DNS</td><td>to and from the DNS filter</td><td>Service dns-filter on ctl-1 · <a href="#">Open in NetBox</a></td><td class="mono">udp/tcp 53 ↔ 192.0.2.50, 2001:db8:10::50</td><td>1</td></tr>
+<tr><td>DHCP</td><td>client and server on UDP 67 and 68</td><td>Service dhcp on rtr-1 · <a href="#">Open in NetBox</a></td><td class="mono">udp 67,68</td><td>0</td></tr>
+<tr><td>Management</td><td>the management prefix</td><td>Prefix 198.51.100.0/24, role management · <a href="#">Open in NetBox</a></td><td class="mono">ipv4 198.51.100.0/24 (src or dst)</td><td>0</td></tr>
+<tr><td>Control channel</td><td>LLDP, OpenFlow's port, the controller's addresses</td><td>the controller connection (built in, cannot be removed)</td><td class="mono">eth_type 0x88cc; tcp 6653, 6633; 192.0.2.50</td><td>0</td></tr>
+</tbody></table>
+</section>
+<div class="cols">
+<section class="card" aria-label="Add a protected flow">
+<h2>Add a protected flow</h2>
+<label class="field">Kind<select><option>DNS</option><option>DHCP</option><option>Management</option><option>Other service</option></select></label>
+<label class="field">Served by<select><option>ctl-1 (NetBox device)</option></select></label>
+<label class="field">Protocol and ports<input value="udp 53, tcp 53"></label>
+<label class="field">Addresses<input value="192.0.2.50, 2001:db8:10::50"><span class="hint">The device's own addresses in NetBox; an address NetBox does not hold refuses with its name.</span></label>
+<label class="field">Reason<input value="the DNS filter must stay reachable"></label>
+<div class="row"><a class="btn primary" href="#">Preview the NetBox write…</a><a class="btn" href="#">Cancel</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<section class="card" aria-label="A writer refused">
+<h2>A response refused (SDN › Responses)</h2>
+<div class="refusal"><strong>Refused:</strong> the drop of 192.0.2.50 on ovs-1 would cover the protected DNS flow "dns-filter on ctl-1" (match ipv4_src 192.0.2.50 contains the protected address 192.0.2.50). Compared: the response's match against 4 protected flows; this one covered. Nothing was sent.</div>
+<p class="muted" style="margin:0;font-size:13px">The same check, the same words, from the flow editor, a policy, an app or AUTO. A person cannot override it from a writer: a protected flow changes only here, in NetBox.</p>
+<div class="row"><a class="btn sm" href="#">Open the protected flow</a><a class="btn sm" href="#">Dismiss the response…</a></div>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · Topology › Path…: a trace through the flow tables</strong>: the one home for tracing a path; on a network with a controller it walks the switches' tables as read. SDN › Flows links here ("Trace a packet…").</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">Topology › Path… <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<div class="row">
+<label class="field">From<select><option>h1 · 192.0.2.101 (ovs-1 port 2, from the controller)</option></select></label>
+<label class="field">To<input value="192.0.2.202"></label>
+<label class="field">Packet<select><option>TCP 443</option><option>UDP 53</option><option>ICMP echo</option><option>Custom…</option></select></label>
+<label class="field">Through<select><option>The flow tables (controller ctl-1)</option><option>Routing (CEF)</option></select></label>
+<a class="btn primary" href="#" style="align-self:flex-end">Trace</a><a href="#" class="how" style="align-self:flex-end"><i class="i">i</i>How does this work?</a>
+</div>
+<section class="card">
+<div class="row" style="justify-content:space-between"><h2>Delivered: h1 to h4, 3 switches</h2><span class="chip ok">delivered</span></div>
+<table><thead><tr><th>#</th><th>Switch (DPID)</th><th>In port</th><th>Matched flow</th><th>Owner</th><th>Out port</th><th>Next</th></tr></thead><tbody>
+<tr><td>1</td><td>ovs-1 <span class="mono faint">00:00:00:00:00:00:00:11</span></td><td>2</td><td class="mono">prio 100 · ip,nw_dst=192.0.2.202 → output 5</td><td>controller's own</td><td>5</td><td>link to of-eos-1 port 1</td></tr>
+<tr><td>2</td><td>of-eos-1 <span class="mono faint">00:1c:73:00:00:a0:00:01</span></td><td>1</td><td class="mono">prio 100 · dl_dst=…:02:02 → output 7</td><td>controller's own</td><td>7</td><td>link to ovs-2 port 1</td></tr>
+<tr><td>3</td><td>ovs-2 <span class="mono faint">00:00:00:00:00:00:00:22</span></td><td>1</td><td class="mono">prio 100 · ip,nw_dst=192.0.2.202 → output 4</td><td>Mercury's (policy allow-web)</td><td>4</td><td>h4, 192.0.2.202</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:13px">Tables read 14:03 UTC. The trace matches the packet against each table as read, in priority order; it does not send traffic (testing from the hosts is the operator's). Other endings: dropped (naming the flow), to the controller (table-miss), no match, a loop (a switch seen twice), or a link the controller does not list.</p>
+<div class="row"><a class="btn sm" href="#">Show on the map</a><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Open in SDN › Flows</a></div>
+</section>
+<p class="callout">Cut order 1: if late, the In port and Out port columns go first (DPIDs and the matched flow stay). An IPv6 destination traces the same way; a packet the tables match only by an OpenFlow 1.0 field name is compared by its 1.3 name.</p>
+</main>
+</div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · SDN › Policies: the intent controller's validation and its refusals</strong>: board S9 (SdnPolicies) holds the tab, the compiled flows and the effect in words; this adds what the words box checks against NetBox, and the three ways a request is refused or questioned, all before any flow is shown.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Switches</a><a class="tab" href="#">Flows</a><a class="tab" href="#">Apps</a><a class="tab" href="#">Protected</a><a class="tab on" href="#">Policies</a><a class="tab" href="#">Responses</a>
+</nav>
+<section class="card">
+<h2>Describe a policy</h2>
+<label class="field"><textarea rows="2">Block h2 from reaching the web servers on TCP 443 for an hour</textarea></label>
+<div class="row"><a class="btn primary ai" href="#">Draft the policy</a><span class="muted" style="font-size:12.5px">Haiku 5.5 (this network's economy tier) · about $0.001</span><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<h3>Checked against NetBox and the network</h3>
+<table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>
+<tr><td>Hosts named</td><td>h2 = 192.0.2.102 (NetBox IP, device h2; controller sees it on of-eos-2 port 9) · "the web servers" = tag web: web-1, web-2 (NetBox)</td></tr>
+<tr><td>Where it applies</td><td>of-eos-2, h2's ingress switch (an Arista switch, OpenFlow 1.0: a drop flow, no meter needed)</td></tr>
+<tr><td>Conflicts with installed flows</td><td>none: no higher-priority forward for this match; it shadows nothing</td></tr>
+<tr><td>Committed policies</td><td>none contradicts it (allow-web allows the subnet; this narrower block takes precedence by the priority scheme, said in the effect)</td></tr>
+<tr><td>Protected flows</td><td>none covered</td></tr>
+</tbody></table>
+<div class="passed">Checked. <a href="#">Preview the flows…</a> (board S9's preview: the flows, the REST bodies, the effect in words, confirm by hash).</div>
+</section>
+<div class="cols">
+<section class="card" aria-label="Three outcomes before a preview">
+<h2>Questioned or refused, before any flow</h2>
+<div class="question"><strong>Which h1?</strong> "isolate h1": NetBox holds two hosts named h1 (h1 on campus-sdn, h1-lab on campus-sdn). <a class="btn sm" href="#">h1 · 192.0.2.101</a> <a class="btn sm" href="#">h1-lab · 192.0.2.111</a> <a class="btn sm" href="#">Neither</a> <span class="muted">· asked before any AI call</span></div>
+<div class="refusal"><strong>Impossible:</strong> "rate-limit h3 to 1 Mbit/s": h3 enters at of-eos-1, which reports no meters (OpenFlow 1.0; <a href="#">capability matrix</a>). Compared: the action rate-limit against of-eos-1's features. Offer: <a class="btn sm" href="#">Drop instead…</a> <a class="btn sm" href="#">Rate-limit at ovs-1 instead…</a></div>
+<div class="refusal"><strong>Contradictory:</strong> "allow h2 to web-1 on 443 and block h2 from all web servers": the second part blocks what the first allows (web-1 is tagged web). Compared: the two parts' matches; the allow lies inside the block. Say which should win, or ask again.</div>
+<div class="refusal"><strong>Unknown host:</strong> "block h9": NetBox holds no host h9 and the controller has not seen one. Compared: the name against 14 NetBox hosts and 12 controller-learned hosts.</div>
+</section>
+<section class="card" aria-label="Protected flow refusal">
+<h2>Refused by a protected flow</h2>
+<div class="refusal"><strong>Refused:</strong> "block all UDP from the guest VLAN": it would cover the protected DHCP flow (udp 67,68 on rtr-1) and the protected DNS flow (udp 53 to ctl-1). Compared: the policy's match against 4 protected flows; 2 covered. Narrow it, for example "block all UDP except DNS and DHCP".</div>
+<p class="muted" style="margin:0;font-size:13px">The model returns a structured policy only (kind, source, destination, protocol, port, rate, duration); names resolve in code; every check above is code. Its answer never reaches a switch unchecked.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · SDN › Responses: link failure, the capability matrix, and the loop's run-for bound</strong>: a fifth detection rule; a per-switch table of what each switch can do and the fallback when it cannot; the loop stops by itself at its bound.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Switches</a><a class="tab" href="#">Flows</a><a class="tab" href="#">Apps</a><a class="tab" href="#">Protected</a><a class="tab" href="#">Policies</a><a class="tab on" href="#">Responses</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="A link failure awaiting approval">
+<div class="row" style="justify-content:space-between"><h2>Link down: of-eos-1 port 3 to of-eos-2 port 3</h2><span class="chip bad">awaiting approval</span></div>
+<dl class="kv">
+<dt>Seen</dt><dd>14:04:12 UTC: port 3 reported down by of-eos-1 (port status), and the controller no longer lists the link; 2 reads, 5 s apart</dd>
+<dt>Traffic on it before</dt><dd>3.1 Mbit/s, 4 host pairs (h1 to h4, …)</dd>
+<dt>Backup</dt><dd>of-eos-1 port 4 via ovs-1 to of-eos-2 (the controller's links); no fast-failover group on of-eos-1 (OpenFlow 1.0)</dd>
+<dt>Proposed</dt><dd>reroute: 6 flows on of-eos-1, ovs-1 and of-eos-2 for the 4 pairs, hard timeout 10 min, removed when the link returns</dd>
+<dt>Mode</dt><dd>HITL (AUTO is on only for network campus-sdn, marked lab, until 18:00 UTC)</dd>
+</dl>
+<div class="row"><a class="btn primary" href="#">Preview the reroute…</a><a class="btn" href="#">Dismiss…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="muted" style="margin:0;font-size:12.5px">On a switch with fast-failover groups the backup is already installed: the loop only verifies the backup port's counters rise, and says "failed over in the data plane".</p>
+</section>
+<section class="card" aria-label="The loop">
+<div class="row" style="justify-content:space-between"><h2>The loop</h2><span class="chip ok">running</span></div>
+<dl class="kv"><dt>Every</dt><dd>10 s</dd><dt>Stops by itself</dt><dd>at 14:20 UTC (run for 20 min), or at the AI day cap, or on Stop</dd><dt>Started</dt><dd>14:00 UTC by operator@example.com</dd></dl>
+<label class="field">Run for<select><option>20 minutes</option><option>5 minutes</option><option>1 hour</option><option>Until stopped (at most 24 h)</option></select></label>
+<div class="row"><a class="btn" href="#">Stop</a><a class="btn" href="#">Download the run's log</a></div>
+<h3>Rules</h3>
+<table><thead><tr><th>Rule</th><th>Threshold</th><th>Answered by</th></tr></thead><tbody>
+<tr><td>Scan</td><td>20 ports in 60 s</td><td>drop, rate-limit</td></tr>
+<tr><td>Flood</td><td>rate against baseline</td><td>rate-limit, drop</td></tr>
+<tr><td>Unauthorised flow</td><td>a cookie not Mercury's or the controller's</td><td>remove</td></tr>
+<tr><td><strong>Link down</strong> <span class="chip at">new</span></td><td>port down, or a link gone for 2 reads</td><td>reroute; verify failover</td></tr>
+</tbody></table>
+<a class="btn sm" href="#">Edit thresholds…</a>
+</section>
+</div>
+<section class="card" style="padding:0" aria-label="Capability matrix">
+<div style="padding:14px 18px 0" class="row"><h2>What each switch can do</h2><span class="faint" style="font-size:12px">read from the controller 13:50 UTC (features, meter features, group features, table features)</span><a class="btn sm" href="#">Read again</a></div>
+<table><thead><tr><th>Switch</th><th>OpenFlow</th><th>Tables</th><th>Meters</th><th>Fast-failover groups</th><th>Rewrite (set_field)</th><th>When it cannot</th></tr></thead><tbody>
+<tr><td>ovs-1, ovs-2</td><td>1.3</td><td>254</td><td><span class="chip ok">drop band, kbps, pktps</span></td><td><span class="chip ok">yes</span></td><td><span class="chip ok">yes</span></td><td>—</td></tr>
+<tr><td>of-hp-1</td><td>1.3</td><td>3</td><td><span class="chip warn">not read</span></td><td><span class="chip warn">not read</span></td><td><span class="chip ok">yes</span></td><td>meters unread: rate-limit refused until read; drop offered</td></tr>
+<tr><td>of-eos-1, of-eos-2</td><td>1.0</td><td>1</td><td><span class="chip bad">none</span></td><td><span class="chip bad">none</span></td><td><span class="chip bad">none</span></td><td>rate-limit → drop, or meter at an OVS switch on the path; reroute by flows; DNS steered via ovs-1</td></tr>
+</tbody></table>
+</section>
+<p class="callout">Example values only: the real matrix is read from the lab's switches. "Not read" and "none" are different states: a switch that did not answer a features request is never shown as lacking the feature.</p>
+</main>
+</div>
+
+<!-- ============================================================ G -->
+<div class="artlabel"><strong>G · Settings › AI: the model tier per network</strong>: a network chooses economy (the smallest model for every AI feature) or standard (each feature's pinned model). A tier is offered for a feature only where its recorded cases were measured on that model.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#" class="on">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">Settings › Installation <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="The installation's settings">
+<a class="tab" href="#">General</a><a class="tab" href="#">Connections</a><a class="tab" href="#">Access and identity</a><a class="tab" href="#">Platforms and roles</a><a class="tab" href="#">Console servers</a><a class="tab" href="#">Diagnostics</a><a class="tab on" href="#">AI</a>
+</nav>
+<section class="card">
+<h2>Model tier, per network</h2>
+<table><thead><tr><th>Network</th><th>Tier</th><th>Explain</th><th>Ask in words</th><th>Change it in words</th><th>Policy in words</th><th>SDN classify</th><th>Analyst</th></tr></thead><tbody>
+<tr><td>campus-sdn</td><td><select><option>Economy</option><option>Standard</option></select></td><td>Haiku 5.5 <span class="chip warn">not measured</span></td><td>Haiku 5.5 <span class="chip warn">not measured</span></td><td>Haiku 5.5 <span class="chip warn">not measured</span></td><td>Haiku 5.5</td><td>Haiku 5.5</td><td>Haiku 5.5</td></tr>
+<tr><td>default</td><td><select><option>Standard</option><option>Economy</option></select></td><td>Sonnet 5.5</td><td>Sonnet 5.5</td><td>Sonnet 5.5</td><td>Haiku 5.5</td><td>Haiku 5.5</td><td>Haiku 5.5</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:13px">"Not measured": the feature's recorded cases have not run on this model, so on that network the feature is drawn disabled with that reason until they have. A measured reliability below the feature's bar is shown beside it (beta, with its gap). The day and month caps and every estimate use the tier's prices.</p>
+<div class="row"><a class="btn primary" href="#">Preview the change…</a><a class="btn" href="#">Measure on Haiku…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+</main>
+</div>
+
+<!-- ============================================================ H -->
+<div class="artlabel"><strong>H · History › Export: the call and cost log, and the false-positive and failure log</strong>: the records History already keeps, downloaded for a report, masked as History masks them.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">History › Export <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<div class="row"><label class="field">Network<select><option>campus-sdn</option><option>Every network</option></select></label><label class="field">From<input value="2026-11-24 00:00 UTC"></label><label class="field">To<input value="2026-11-30 23:59 UTC"></label></div>
+<div class="cols">
+<section class="card">
+<h2>AI calls and cost</h2>
+<p class="muted" style="margin:0;font-size:13px">Every call in the range: when, feature, trigger (person or background, with who or which job), model, prompt version, tokens in and out, cache, dollars, latency, verdict (ok, refused by validation, a gate's refusal), and the call's History link. A total row per day and per feature.</p>
+<dl class="kv"><dt>In the range</dt><dd>412 calls · $0.38 · 3 refused by validation · 1 refused at the day cap</dd></dl>
+<div class="row"><a class="btn primary" href="#">Download CSV</a><a class="btn" href="#">Download JSON</a></div>
+</section>
+<section class="card">
+<h2>False positives and failures</h2>
+<p class="muted" style="margin:0;font-size:13px">Every SDN detection dismissed (with its reason and who), classification refused or not passing the check, Verify failure, rollback (with what it achieved), protected-flow refusal, and every evaluation run's misses (case, expected, got). One row each, with its record's link.</p>
+<dl class="kv"><dt>In the range</dt><dd>9 dismissed (6 "normal traffic") · 2 refused classifications · 1 Verify failure, rolled back · 4 evaluation misses</dd></dl>
+<div class="row"><a class="btn primary" href="#">Download CSV</a><a class="btn" href="#">Download JSON</a></div>
+</section>
+</div>
+<p class="callout">Both files carry their range, network, the time they were made and who made them in their first lines; amounts are the ledger's, summed by UTC day, never carried forward.</p>
+</main>
+</div>
+
+<!-- ============================================================ I -->
+<div class="artlabel"><strong>I · SDN › Flows: Analyse this network</strong>: a person-triggered analyst over the live collection (flows, port rates, drop rules, link status), every finding citing the evidence it read; a planted-issue sheet compares what it found with what was planted.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Switches</a><a class="tab on" href="#">Flows</a><a class="tab" href="#">Apps</a><a class="tab" href="#">Protected</a><a class="tab" href="#">Policies</a><a class="tab" href="#">Responses</a>
+</nav>
+<div class="row"><a class="btn ai" href="#">Analyse this network</a><span class="muted" style="font-size:12.5px">5 switches, collected 14:05 UTC · Haiku 5.5 · about $0.003</span><a class="btn sm" href="#">Trace a packet…</a><a class="btn sm" href="#">Add a flow…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<div class="cols">
+<section class="card">
+<div class="row" style="justify-content:space-between"><h2>3 findings</h2><span class="faint" style="font-size:12px">answered 14:05 UTC · <a href="#">the call</a> · Was this right? <a href="#">Yes</a> <a href="#">No</a></span></div>
+<table><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
+<tr><td><span class="chip bad">high</span> Link of-eos-1:3 to of-eos-2:3 is down</td><td>port 3 down on of-eos-1; its traffic now crosses ovs-1, whose port 5 runs at 92% of its rate</td><td class="mono">port:of-eos-1:3 · link:… · rate:ovs-1:5</td></tr>
+<tr><td><span class="chip warn">medium</span> A drop flow on ovs-2 matches nothing</td><td>priority 500 drop for 192.0.2.250, 0 packets in 2 h; no host has that address</td><td class="mono">flow:ovs-2:c0de…</td></tr>
+<tr><td><span class="chip warn">medium</span> h3 sends 40x its baseline on of-hp-1 port 7</td><td>a flood rule's hold has not completed; watch it on Responses</td><td class="mono">rate:of-hp-1:7</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:13px">Each claim cites evidence the collection holds; a claim citing nothing is dropped by the check, and the answer says how many were.</p>
+</section>
+<section class="card">
+<h2>Planted issues (an evaluation sheet)</h2>
+<table><thead><tr><th>Planted</th><th>Found</th><th>Why</th></tr></thead><tbody>
+<tr><td>Redundant link of-eos-1:3 failed</td><td><span class="chip ok">found</span></td><td>port status and the controller's links</td></tr>
+<tr><td>A stale drop on ovs-2</td><td><span class="chip ok">found</span></td><td>zero-count drop flow</td></tr>
+<tr><td>A shadowed allow on of-hp-1</td><td><span class="chip bad">missed</span></td><td>the shadowing flow is in table 1; the collection reads table 0 only on that switch</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Add a planted issue…</a><a class="btn sm" href="#">Download the sheet</a></div>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ Decisions -->
+<div class="artlabel"><strong>Decisions</strong>: practice decides D1 to D6 (cited in docs/LAB9_SDN_GAP.md, section 5); D7 and D8 are the operator's.</div>
+<div class="q">
+<h3>D1 · Where OpenFlow onboarding lives</h3>
+<ol><li><strong>Recommended:</strong> SDN › Switches, a new tab, with each switch's own device page linking to its row. The join (NetBox, the controller, the switch) is a fabric's question, asked across switches.</li><li>On each device page only: no fleet view of which switches failed to connect.</li></ol>
+</div>
+<div class="q">
+<h3>D2 · The DNS filter: Mercury's or a service it steers to</h3>
+<ol><li><strong>Recommended:</strong> a service Mercury steers to and reads (like Kea): Mercury owns the flows, settings and health; the filter itself is lab tooling. DNS-layer security products are resolvers a network steers to.</li><li>Build the resolver into Mercury: a DNS server inside a control plane, and a second thing to keep secure.</li></ol>
+</div>
+<div class="q">
+<h3>D3 · Protected flows: where they are defined</h3>
+<ol><li><strong>Recommended:</strong> NetBox Services tagged protected and the management prefix, added from SDN › Protected as a confirmed NetBox write; one check in the flow write path every writer shares.</li><li>A Mercury setting: a second source of truth for facts NetBox models.</li></ol>
+</div>
+<div class="q">
+<h3>D4 · The trace's home</h3>
+<ol><li><strong>Recommended:</strong> Topology › Path…, with the flow tables as a "Through" choice; SDN › Flows links to it. One home per action.</li><li>A new SDN › Trace tab: two path tools that answer differently.</li></ol>
+</div>
+<div class="q">
+<h3>D5 · Link failure: who repairs</h3>
+<ol><li><strong>Recommended:</strong> local repair where the switch has fast-failover groups (installed from policy), verified by the loop; elsewhere the loop proposes reroute flows (HITL) or applies them (AUTO on a lab-marked network). Local repair first, then re-optimisation.</li><li>Only the controller application reroutes: Mercury could not show or verify it.</li></ol>
+</div>
+<div class="q">
+<h3>D6 · A model tier per network</h3>
+<ol><li><strong>Recommended:</strong> economy or standard per network; a feature offered on a model only once its recorded cases ran on it, otherwise drawn disabled with that reason.</li><li>A model per feature per network: many settings, each needing its own measurement.</li></ol>
+</div>
+<div class="q">
+<h3>D7 · The operator's: identity on the laptop</h3>
+<ol><li>A single-user local provider for this install kind, time-boxed (1.5 days; an exception to the no-localhost rule and to the Keycloak decision).</li><li>Cloudflare Access on the laptop (no code; the Wi-Fi leg must be up for every write).</li><li>Keycloak beside netbox-docker and Mercury's OIDC provider (the product's direction; 3 to 5 days).</li></ol>
+</div>
+<div class="q">
+<h3>D8 · The operator's: the cuts past the three already ordered</h3>
+<ol><li>B4 as the verifier; the analyst through Explain; the tier per installation; the export as two plain routes; reroute only where fast failover exists (about 5.5 days in all).</li><li>And for the rest of the gap: more usage in Nov 15–19 and 24–30, the OVS path kept lean, or B1 behind B3.</li></ol>
+</div>
+<div style="height:40px"></div>
+</body>
+</html>
