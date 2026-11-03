@@ -464,7 +464,13 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ref", nargs="?", default="")
     ap.add_argument("--unstaged", action="store_true")
+    # The repository judged, when this copy is not its own (the gate runs the parent commit's
+    # checks against the commit being made, C2365).
+    ap.add_argument("--repo", default=None)
     args = ap.parse_args()
+    if args.repo:
+        global ROOT
+        ROOT = os.path.abspath(args.repo)
 
     diff = _diff(args)
     if not diff.strip():

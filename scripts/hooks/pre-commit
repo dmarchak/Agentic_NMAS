@@ -11,8 +11,11 @@
 # A clean rename or a deliberate deletion with no remaining references prints
 # and passes.
 ROOT="$(git rev-parse --show-toplevel)"
+# The checks' own copy: the gate sets NMAS_CHECKS_ROOT to a worktree of the parent commit, so
+# a commit is judged by the checks it came after, never by the version it brings (C2365).
+CHECKS="${NMAS_CHECKS_ROOT:-$ROOT}"
 # First, a staged secret or stray (2026-09-29): the repository is public, and a
 # key committed is a key published. NMAS_STAGE_ALLOW names a new path outside
 # the known top-level entries that belongs.
-python3 "$ROOT/scripts/nmas-stage-guard" --repo "$ROOT" || exit 1
-exec python3 "$ROOT/scripts/check_removed_definitions.py"
+python3 "$CHECKS/scripts/nmas-stage-guard" --repo "$ROOT" || exit 1
+exec python3 "$CHECKS/scripts/check_removed_definitions.py" --repo "$ROOT"

@@ -107,12 +107,16 @@ class TestAPassingRunCommits:
         assert _git(repo, "rev-parse", "HEAD^{tree}") == tree
 
     def test_a_hook_that_changes_the_commit_refuses_and_moves_nothing(self, repo, tmp_path):
-        """A committed tree other than the tested one is refused: the branch does not move."""
-        hooks = repo / ".git" / "hooks"
-        hooks.mkdir(exist_ok=True)
+        """A committed tree other than the tested one is refused: the branch does not move. The
+        hook that changes it is the parent commit's own `scripts/hooks/pre-commit`, the hooks
+        the gate's commit runs since C2365 (never `.git/hooks`, nor the working tree's)."""
+        hooks = repo / "scripts" / "hooks"
+        hooks.mkdir(parents=True)
         hook = hooks / "pre-commit"
         hook.write_text("#!/bin/sh\necho extra > extra.txt && git add extra.txt\n")
         hook.chmod(0o755)
+        _git(repo, "add", "scripts/hooks/pre-commit")
+        _git(repo, "commit", "-q", "--no-verify", "-m", "a hook that changes the commit")
         before = _git(repo, "rev-parse", "HEAD")
         r = _gate(repo, tmp_path)
         assert r.returncode == 1 and "REFUSED at the commit" in r.stdout, r.stdout + r.stderr
@@ -737,3 +741,93 @@ class TestOnlyNamedPaths:
     def test_without_a_ledger_nothing_is_named(self, two, tmp_path):
         r = _gate(two, tmp_path)
         assert r.returncode == 0 and "not touched by this session" not in r.stdout
+
+
+# --- C2365: the commit is judged by the parent commit's hooks ---------------------------------
+
+#: The parent's commit-msg hook: it refuses a message without APPROVED, through a check the
+#: hook calls from the checks' own copy, as the real hook does (`$CHECKS/scripts/...`).
+STRICT_HOOK = """#!/bin/sh
+ROOT="$(git rev-parse --show-toplevel)"
+CHECKS="${NMAS_CHECKS_ROOT:-$ROOT}"
+exec sh "$CHECKS/scripts/check" "$1"
+"""
+STRICT_CHECK = 'grep -q APPROVED "$1" || { echo "refused by the strict check" >&2; exit 1; }\n'
+LOOSE = "#!/bin/sh\nexit 0\n"
+
+
+@pytest.fixture
+def judged(tmp_path, monkeypatch):
+    """A repository whose committed hook is strict; a snapshot worktree whose staged change
+    weakens the hook and its check; and the working tree's own hooks folder weakened too (an
+    installed symlink, as on the laptop), so only the parent's copy can refuse."""
+    for k in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(k, raising=False)
+    for k, v in (("GIT_AUTHOR_NAME", "T"), ("GIT_AUTHOR_EMAIL", "t@example.com"),
+                 ("GIT_COMMITTER_NAME", "T"), ("GIT_COMMITTER_EMAIL", "t@example.com")):
+        monkeypatch.setenv(k, v)
+    r = tmp_path / "repo"
+    (r / "scripts" / "hooks").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(r))
+    (r / "scripts" / "hooks" / "commit-msg").write_text(STRICT_HOOK)
+    (r / "scripts" / "hooks" / "commit-msg").chmod(0o755)
+    (r / "scripts" / "check").write_text(STRICT_CHECK)
+    _git(r, "add", "-A")
+    _git(r, "commit", "-q", "--no-verify", "-m", "the strict hook")
+    parent = _git(r, "rev-parse", "HEAD")
+    # The working tree's hook loosened and installed: before C2365, the gate ran this one.
+    (r / "scripts" / "hooks" / "commit-msg").write_text(LOOSE)
+    os.symlink("../../scripts/hooks/commit-msg", r / ".git" / "hooks" / "commit-msg")
+    snap = tmp_path / "snap"
+    _git(r, "worktree", "add", "-q", "--detach", str(snap), parent)
+    (snap / "scripts" / "hooks" / "commit-msg").write_text(LOOSE)
+    (snap / "scripts" / "check").write_text("exit 0\n")
+    _git(snap, "add", "-A")
+    return {"repo": str(r), "snap": str(snap), "parent": parent, "tmp": tmp_path}
+
+
+def _message(tmp, text):
+    p = tmp / "commit-message.txt"
+    p.write_text(text)
+    return str(p)
+
+
+def test_a_commit_weakening_the_hook_is_refused_by_the_parent_s_hook(judged):
+    gate = _gate_module()
+    r = gate.commit_judged_by_parent(judged["repo"], judged["snap"], judged["parent"],
+                                     _message(judged["tmp"], "Loosen the hook\n"))
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "refused by the strict check" in r.stderr
+    assert _git(judged["snap"], "rev-parse", "HEAD") == judged["parent"], "no commit was made"
+
+
+def test_with_what_the_parent_s_hook_asks_the_same_commit_is_made(judged):
+    gate = _gate_module()
+    r = gate.commit_judged_by_parent(judged["repo"], judged["snap"], judged["parent"],
+                                     _message(judged["tmp"], "Loosen the hook\n\nAPPROVED\n"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _git(judged["snap"], "rev-parse", "HEAD^") == judged["parent"]
+
+
+def test_the_parent_s_worktree_is_removed_whatever_happens(judged):
+    gate = _gate_module()
+    gate.commit_judged_by_parent(judged["repo"], judged["snap"], judged["parent"],
+                                 _message(judged["tmp"], "Loosen the hook\n"))
+    listed = _git(judged["repo"], "worktree", "list", "--porcelain")
+    assert gate.JUDGE_PREFIX not in listed
+    assert sorted(p for p in os.listdir(tempfile.gettempdir())
+                  if p.startswith(gate.JUDGE_PREFIX) and
+                  os.path.isdir(os.path.join(tempfile.gettempdir(), p, "tree"))) == []
+
+
+def test_the_gate_s_commit_step_uses_it():
+    """Step 7 commits through `commit_judged_by_parent` with the gate's start commit, never a
+    plain `git commit` in the snapshot (parsed, not matched as text)."""
+    import ast
+    tree = ast.parse(open(GATE, encoding="utf-8").read())
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    names = {getattr(n.func, "id", None) for n in calls}
+    assert "commit_judged_by_parent" in names
+    plain = [n for n in calls if getattr(n.func, "id", None) == "git" and len(n.args) > 1 and
+             isinstance(n.args[1], ast.Constant) and n.args[1].value == "commit"]
+    assert plain == [], "a plain git commit runs the working tree's hook (C2365)"

@@ -81,16 +81,30 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 
 ### 0.3 The workstreams, in order
 
-**The schedule (the operator, 2026-11-03 ~17:2x UTC).** Phase 8 aims at the end of November, not
-this week. This week's work is paced to the usage left (about 3.5 days at the week's rate),
-highest value first:
+**The roadmap through 2026-11-30 (the operator, 2026-11-03 ~18:3x UTC).** It replaces the
+schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves behind both labs.
+- **No video work for either lab** by the agent.
+- **Explain's blind sessions 9 to 11** come after both labs.
+- **Settle design questions by industry best practice, citing it;** bring the operator only what
+  practice does not decide.
 
-| Week | Done by its end |
-|---|---|
-| Nov 3–8 | Board TI items 1 to 7 and the existing-test audit, ready for the independent reviewer. C2305. P7 stage 1 finished and measured. P5's board drawn for the operator's review. Support for the operator's sessions 9 to 11. |
-| Nov 9–15 | P5 built, and the drain-and-replace walk. Incident correlation. The fresh SDN blind capture (BU1 and BU2 among it, C2366). |
-| Nov 16–22 | The lean digest, the pre-send review, pipeline checks, and save as a script. Beta labels. The AI-off walk. |
-| Nov 23–29 | The demo path and the video. The final measurements. The remaining credit used before it expires on 11-29. |
+| Workstream | What | When |
+|---|---|---|
+| **0, local CI** (first, about a day) | A local CI runner equal to ci.yml, a recorded verdict per sha, as a root-owned service on the NMAS host (its install the operator's host step; its script and unit protected guards). The scheduled jobs move to it. Safe-deploy and the updater accept a green verdict from either the local runner or GitHub, saying which. GitHub CI still runs on every push, but deploys don't wait for it, and a disagreement is a Needs attention row. Deploys go in batches unless a fix is urgent. The offline-update gap is registered. | Nov 3–4 |
+| **1, Lab 10, self-healing** (due Mon 2026-11-23 23:59 MT) | Board H, "heal to intent" (docs/HEAL_TO_INTENT.md, docs/boards/heal-to-intent.html): the tiers, hard stops, records, notifications, and the advisory AI analysis on a can't-fix. | Board Nov 3–5 for review; build Nov 5–14; walks Nov 15–19; submitted Nov 20–23 |
+| **2, Lab 9, the final SDN lab, on physical hardware** (due 2026-11-30) | Mercury as the only management interface, the lab as its requirements list:<br>1. Multi-vendor drivers.<br>2. OpenFlow onboarding.<br>3. SDN apps: DNS filtering, DHCP steering, a path trace.<br>4. An SDN intent controller.<br>5. Protected flows.<br>6. Closed loop: link failure.<br>7. A live analyst.<br>8. Per-network model choice.<br>9. Laptop deployment.<br>10. B5 report export.<br>11. B4 candidates. | Gap board Nov 3–5; laptop install, C2305 and drivers Nov 5–14; onboarding, protected flows and apps Nov 15–19; SDN intent Nov 20–23; link failure, B4 and hardware testing Nov 24–30. Cut order if late: trace ports, the DNS block page, then a minimal B2 |
+| **Shared, at the front** | C2305 (benign traffic called a threat), right after board H. Board TI items 4 to 7 and the test audit continue at low priority. The independent review is the operator's to arrange. | — |
+
+**The schedule is an expectation, not a limit (the operator, 2026-11-03):**
+- **Ahead of it:** don't wait for a week's boundary. Start the next week's items as soon as
+  this week's are done, in the road map's order.
+- **Behind it, said early:** when a week's items look as if they won't finish in that week, say
+  so in "Needs the operator" as soon as it can be seen, not at the week's end. Say:
+  - which item;
+  - why (scope bigger than thought, blocked on the operator, usage, a defect found);
+  - what is proposed: reorder, cut scope to a lean version, or move the date.
+- **Every report carries one line on the schedule:** on track, ahead, or behind by how much,
+  and the reason.
 
 **How the work is run (the operator, 2026-11-03):**
 - **The fast checks run before every full gate:** the changed tests, the doc, register and

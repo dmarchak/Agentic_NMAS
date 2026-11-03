@@ -43,10 +43,11 @@ DEFERS_WITHOUT_PUBLISHING = {
 #: Commits in ANOTHER repository than a list's NSoT repository (the one the push hook serves),
 #: with the reason. Each must still be found by the scan (no ghosts).
 OTHER_REPOSITORY = {
-    ("scripts/nmas-gate", "_tested"): (
+    ("scripts/nmas-gate", "commit_judged_by_parent"): (
         "the developer's commit gate commits in the APPLICATION's own repository, never a "
         "list's (in its snapshot worktree since 2026-10-25, moving the branch by compare and "
-        "swap), and pushes it itself with --push"),
+        "swap; judged by the parent commit's hooks since 2026-11-03, C2365), and pushes it "
+        "itself with --push"),
     ("scripts/nmas-rollback", "main"): (
         "a rollback commits a revert in the APPLICATION's own repository, never a list's "
         "(C1669), and pushes it itself with --push"),

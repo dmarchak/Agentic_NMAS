@@ -200,8 +200,8 @@ def refuse(step, why, evidence=None):
     sys.exit(1)
 
 
-def git(repo, *args, check=True):
-    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+def git(repo, *args, check=True, env=None):
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, env=env)
     if check and r.returncode != 0:
         refuse("git " + args[0], (r.stderr or r.stdout).strip()[:400])
     return r
@@ -330,6 +330,40 @@ def make_snapshot(repo, tree, head):
             os.makedirs(os.path.dirname(os.path.join(snap, rel)), exist_ok=True)
             shutil.copy2(src, os.path.join(snap, rel))
     return snap, remove
+
+
+#: The parent commit's tree, the hooks' and checks' own copy (C2365).
+JUDGE_PREFIX = "nmas-gate-judge-"
+
+
+def commit_judged_by_parent(repo, snap, parent, message):
+    """`git commit` in *snap*, its hooks and the checks they run taken from *parent*, the commit
+    it comes after, never from the working tree or the commit being made (C2365; the operator,
+    2026-11-03: "nmas-gate's commit step runs the tested snapshot's hook, not the working tree's.
+    Where the commit changes the hook or any protected guard, the guard checks run from the
+    parent commit's version, never the version being committed").
+
+    Before, `.git/hooks/commit-msg` was a symlink to the working copy's `scripts/hooks/`, so the
+    commit ran whatever that file held then, uncommitted edits included, and a commit that
+    loosened a check was judged by its own looser version. Now a worktree of *parent* is made in
+    a fresh owner-only folder, `core.hooksPath` names its `scripts/hooks`, and `NMAS_CHECKS_ROOT`
+    names it to the hooks, which run its `scripts/` against the commit being made (`--repo`, the
+    hook's own working directory). Where no guard changes, the parent's checks are the
+    commit's. The worktree is removed whatever happens. Returns the commit's
+    `subprocess.CompletedProcess`."""
+    import tempfile
+
+    base = tempfile.mkdtemp(prefix=JUDGE_PREFIX)        # 0700, whatever the umask
+    judge = os.path.join(base, "tree")
+    try:
+        git(repo, "worktree", "add", "-q", "--detach", judge, parent)
+        env = dict(os.environ, NMAS_CHECKS_ROOT=judge)
+        return git(snap, "-c", f"core.hooksPath={os.path.join(judge, 'scripts', 'hooks')}",
+                   "commit", "-q", "-F", message, check=False, env=env)
+    finally:
+        git(repo, "worktree", "remove", "--force", judge, check=False)
+        shutil.rmtree(base, ignore_errors=True)
+        git(repo, "worktree", "prune", check=False)
 
 
 def verdict(path, rc):
@@ -705,8 +739,10 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
     with open(final, "w", encoding="utf-8") as fh:
         fh.write(body)
 
-    say("7. commit, in the snapshot")
-    git(snap, "commit", "-q", "-F", final)
+    say("7. commit, in the snapshot, judged by the parent commit's hooks")
+    r = commit_judged_by_parent(repo, snap, head, final)
+    if r.returncode != 0:
+        refuse("git commit", (r.stderr or r.stdout).strip()[:4000])
     new = git(snap, "rev-parse", "HEAD").stdout.strip()
     committed = git(snap, "rev-parse", f"{new}^{{tree}}").stdout.strip()
     if committed != tree:
