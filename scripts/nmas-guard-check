@@ -89,6 +89,8 @@ GUARDS = {
     "scripts/nmas-local-ci": WHOLE,
     "deploy/systemd/nmas-local-ci.service": WHOLE,
     "deploy/systemd/nmas-local-ci.timer": WHOLE,
+    # The slice whose caps bound the runner and its job containers (the operator, 2026-11-04).
+    "deploy/systemd/nmas-local-ci.slice": WHOLE,
     "scripts/nmas-guard-check": WHOLE,
     # C2358 (the operator, 2026-11-03): what runs the checks, and the checks' own tests.
     ".github/workflows/ci.yml": WHOLE,

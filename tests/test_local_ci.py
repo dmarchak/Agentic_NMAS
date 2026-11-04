@@ -30,7 +30,14 @@ What is held:
   line (the image pinned, never pulled, offline actions), each step's duration recorded, a
   failing step red naming it and its job's log, act past its bound red, act reporting no job an
   error (no verdict);
-- **schedules from the workflows' own crons**, and the quiet window;
+- **only a test step's failure is red** (the operator, 2026-11-04, C2503): a failure in a setup
+  step, or in act's own "Set up job", or in a job after a job with no verdict, is NO VERDICT
+  (`error`, `infrastructure` naming the job and step, `run` exiting 75), which the deploy gate
+  never refuses on; every verdict step the runner names is a step of ci.yml;
+- **push-triggered CI only** (C2504): `tick` runs ci.yml for main's new tip and nothing else,
+  however due a workflow's `schedule:` cron is; and the quiet window;
+- **the caps** (2026-11-04): every job container is put in the slice the service runs in, and
+  the units carry the slice's caps (a planted service without `Slice=` is found);
 - **the self-test** names what the host lacks;
 - **the confinement** (the operator's answer 1, a seccomp profile with least privilege): the
   profile is Docker's own default plus one rule letting `unshare` make a user and a network
@@ -38,7 +45,7 @@ What is held:
   another shape is refused, never guessed at;
 - **the job image** (answer 2): a browser test skipped because Firefox could not start is a
   test not run too, and the deep self-test runs both browsers in the image;
-- **no limits yet, online** (answers 3 and 4): every record says both;
+- **capped by the slice, online** (answers 3 and 4): every record says both;
 - **the override is the terminal's** (answer 5): the updater never passes one, and nothing the
   app serves names it;
 - **the workflows under act:** every step that changes the host kernel is skipped under act,
@@ -105,6 +112,8 @@ WF = {"jobs": {"build": {"steps": [{"uses": "actions/checkout@v4"},
                                    {"name": "Tests", "run": "pytest"},
                                    {"name": "Information", "run": "x", "continue-on-error": True},
                                    {"name": "Only on tags", "if": "x", "run": "y"}]}}}
+#: WF's verdict step (the runner's own VERDICT_STEPS are ci.yml's names).
+VS = {"Tests"}
 
 
 def _full(results=("success", "success", "success", "skipped"), job_result="success"):
@@ -121,7 +130,7 @@ class TestTheVerdictOfAnActRun:
 
     def test_a_failed_step_is_failed_naming_it(self, LC):
         v = LC.judge(WF, LC.read_act_log(_full(("success", "failure", "success", "skipped"),
-                                               "failure")))
+                                               "failure")), verdict_steps=VS)
         assert v["state"] == "failed" and v["failed"] == [
             {"job": "build", "step": "Tests", "result": "failure"}], v
 
@@ -146,15 +155,20 @@ class TestTheVerdictOfAnActRun:
                 "why": "act's log reports nothing of this job"} in v["not_run"]
 
     def test_a_post_stage_failure_is_kept_over_its_main_success(self, LC):
+        """Kept, and (checkout being a setup step, C2503) no verdict, naming it."""
         lines = _full() + [_line("build", 0, "actions/checkout@v4", "failure", stage="Post")]
-        v = LC.judge(WF, LC.read_act_log(lines))
-        assert v["state"] == "failed" and v["failed"][0]["step"] == "Run actions/checkout@v4"
+        v = LC.judge(WF, LC.read_act_log(lines), verdict_steps=VS)
+        assert v["state"] == "error" and not v["failed"], v
+        assert v["infrastructure"] == {"job": "build", "step": "Run actions/checkout@v4"}
+        lines = _full() + [_line("build", 1, "Tests", "failure", stage="Post")]
+        v = LC.judge(WF, LC.read_act_log(lines), verdict_steps=VS)
+        assert v["state"] == "failed" and v["failed"][0]["step"] == "Tests", v
 
     def test_matrix_runs_are_judged_each_on_their_own(self, LC):
         lines = [_line("build", i, None, "success", matrix={"shard": "a"}) for i in range(4)]
         lines += [_line("build", i, None, "success" if i != 1 else "failure",
                         matrix={"shard": "b"}) for i in range(4)]
-        v = LC.judge(WF, LC.read_act_log(lines))
+        v = LC.judge(WF, LC.read_act_log(lines), verdict_steps=VS)
         assert v["state"] == "failed" and v["failed"][0]["job"] == "build (b)", v
         assert [j["name"] for j in v["jobs"]] == ["build (a)", "build (b)"]
 
@@ -183,20 +197,33 @@ class TestTheVerdictOfAnActRun:
         assert act["bad"] == 1 and LC.judge(WF, act)["state"] == "passed"
 
 
-def _ci_log(ci_yml, drop=None):
+def _ci_log(ci_yml, drop=None, fail=()):
     """An act log reporting every job and every step of ci.yml (the test job as its five
-    shards), each a success; *drop* (job, step index) left out."""
+    shards), each a success; *drop* (job, step index) left out; each (job, shard or None, step
+    name) in *fail* failed, and the steps after it in that job skipped, as act logs a step
+    after a failure (probe 2, act-0.2.89-soft-hard.jsonl: "Skipping step ... due to ''")."""
     lines = []
     for job_id, jdoc in ci_yml["jobs"].items():
         runs = [{"shard": s} for s in ("browser1", "browser2", "browser3", "a", "b")] \
             if "strategy" in jdoc else [None]
         for m in runs:
+            broken = False
             for i, s in enumerate(jdoc.get("steps") or []):
-                if (job_id, i) != drop:
-                    lines.append(_line(job_id, s.get("id") or i, s.get("name"), "success",
-                                       matrix=m))
-            lines.append(_line(job_id, job_result="success", matrix=m))
+                if (job_id, i) == drop:
+                    continue
+                name = _wf_step_name(s)
+                result = "skipped" if broken else (
+                    "failure" if (job_id, (m or {}).get("shard"), name) in fail else "success")
+                broken = broken or result == "failure"
+                lines.append(_line(job_id, s.get("id") or i, s.get("name"), result, matrix=m))
+            lines.append(_line(job_id, job_result="failure" if broken else "success", matrix=m))
     return lines
+
+
+def _wf_step_name(s):
+    """A workflow step's name as the runner names it (`_step_name`) for the two shapes the
+    failures here name: its `name`, else "Run <uses>"."""
+    return s.get("name") or (f"Run {s['uses']}" if s.get("uses") else str(s.get("id")))
 
 
 class TestTheRealWorkflow:
@@ -226,6 +253,81 @@ class TestTheRealWorkflow:
         assert v["state"] == "incomplete"
         assert v["not_run"] == [{"job": "coverage", "step": "A planted step",
                                  "why": "act's log has no result for this step"}]
+
+
+TESTS = "Tests (R1, R4), confined to loopback, measured by tier"
+SETUP_PYTHON = "Run actions/setup-python@v5"
+PG_INSTALL = "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)"
+RATCHET = "The report and the ratchet"
+
+
+def _missing_verdict_steps(verdict_steps, workflow):
+    """The verdict step names *workflow* has no step of."""
+    names = {_wf_step_name(s) for j in workflow["jobs"].values() for s in j.get("steps") or []}
+    return sorted(set(verdict_steps) - names)
+
+
+class TestOnlyATestStepsFailureIsRed:
+    """The operator, 2026-11-04 (C2503): "a failure in a job's setup steps is 'no verdict, run
+    again', never red; only a failure in the test steps is red". The first host run's false
+    red was setup-python failing in four of five test jobs and shard b's PostgreSQL step in
+    dpkg: each is no verdict here, `error` naming the job and the step, which the deploy gate
+    never refuses on."""
+
+    def test_every_verdict_step_is_a_step_of_ci_yml(self, LC, ci_yml):
+        """By name, so a step renamed in ci.yml fails here; a renamed step planted in a copy
+        of ci.yml is found."""
+        assert len(LC.VERDICT_STEPS) >= 10, sorted(LC.VERDICT_STEPS)  # the floor, 2026-11-04
+        assert _missing_verdict_steps(LC.VERDICT_STEPS, ci_yml) == []
+        planted = json.loads(json.dumps(ci_yml))
+        for s in planted["jobs"]["test"]["steps"]:
+            if s.get("name") == "Every skip is a declared one":
+                s["name"] = "Every skip is declared"
+        assert _missing_verdict_steps(LC.VERDICT_STEPS, planted) == [
+            "Every skip is a declared one"]
+
+    def test_a_setup_step_that_failed_is_no_verdict_naming_it(self, LC, ci_yml):
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail={("test", "b",
+                                                                    SETUP_PYTHON)})))
+        assert v["state"] == "error" and v["failed"] == [], v["failed"]
+        assert v["infrastructure"] == {"job": "test (b)", "step": SETUP_PYTHON}
+        assert v["reason"] == ("NO VERDICT: infrastructure failure in test (b)'s step "
+                               "Run actions/setup-python@v5: run again")
+
+    def test_the_first_host_runs_failures_are_no_verdict(self, LC, ci_yml):
+        """C2503's run: setup-python in four shards, the PostgreSQL step in b."""
+        fail = {("test", s, SETUP_PYTHON) for s in ("browser1", "browser2", "browser3", "a")}
+        fail.add(("test", "b", PG_INSTALL))
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail=fail)))
+        assert v["state"] == "error" and v["failed"] == []
+        assert {(f["job"], f["step"]) for f in v["infrastructure_failures"]} == {
+            (f"test ({s})", step) for _j, s, step in fail}
+        assert v["reason"].endswith("(and 4 more): run again"), v["reason"]
+
+    def test_a_test_step_that_failed_is_red(self, LC, ci_yml):
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail={("test", "a", TESTS)})))
+        assert v["state"] == "failed" and v["infrastructure"] is None, v
+        assert v["failed"] == [{"job": "test (a)", "step": TESTS, "result": "failure"}]
+
+    def test_a_red_test_step_is_red_whatever_else_failed_to_set_up(self, LC, ci_yml):
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail={
+            ("test", "a", TESTS), ("test", "b", SETUP_PYTHON)})))
+        assert v["state"] == "failed" and [f["job"] for f in v["failed"]] == ["test (a)"]
+        assert v["infrastructure"] == {"job": "test (b)", "step": SETUP_PYTHON}
+
+    def test_a_job_after_a_job_with_no_verdict_has_none(self, LC, ci_yml):
+        """The coverage job needs the test jobs: after a test job's setup failed, its ratchet
+        has a shard's measurement missing, and its failure is no verdict. The same ratchet
+        failure after every test job set up is red."""
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail={
+            ("test", "b", SETUP_PYTHON), ("coverage", None, RATCHET)})))
+        assert v["state"] == "error" and v["failed"] == [], v["failed"]
+        assert ("coverage", RATCHET) in {(f["job"], f["step"])
+                                         for f in v["infrastructure_failures"]}
+        v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml, fail={("coverage", None,
+                                                                    RATCHET)})))
+        assert v["state"] == "failed" and v["failed"] == [
+            {"job": "coverage", "step": RATCHET, "result": "failure"}]
 
 
 JUNIT = (b'<?xml version="1.0"?><testsuites><testsuite name="pytest">'
@@ -299,8 +401,9 @@ def _g(repo, *args):
                           text=True, env=env, timeout=30).stdout.strip()
 
 
+#: A small ci.yml: a checkout (a setup step) and ci.yml's own tests step (a verdict step).
 MINI = ("name: ci\non: push\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    steps:\n"
-        "      - uses: actions/checkout@v4\n      - name: Tests\n        run: pytest\n")
+        f"      - uses: actions/checkout@v4\n      - name: \"{TESTS}\"\n        run: pytest\n")
 
 
 @pytest.fixture
@@ -368,7 +471,7 @@ class TestARun:
         assert rec["state"] == "passed" and rec["tree"] == world["tree"], rec
         steps = rec["jobs"][0]["steps"]
         assert [(s["name"], s["result"], s["duration_s"]) for s in steps] == [
-            ("Run actions/checkout@v4", "success", 1.5), ("Tests", "success", 600.0)]
+            ("Run actions/checkout@v4", "success", 1.5), (TESTS, "success", 600.0)]
         assert rec["duration_s"] == 700.0 and rec["started_at"] == "1970-01-01T00:16:40Z"
         argv = calls[0]
         assert argv[:2] == ["/usr/local/bin/act", "push"] and "--pull=false" in argv
@@ -383,10 +486,45 @@ class TestARun:
         rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
                             run=_fake_act([("Run actions/checkout@v4", "success", 1),
                                            ("Tests", "failure", 1)], []))
-        assert rec["state"] == "failed"
-        assert rec["failed"] == [{"job": "build", "step": "Tests", "result": "failure",
+        assert rec["state"] == "failed" and rec["infrastructure"] is None
+        assert rec["failed"] == [{"job": "build", "step": TESTS, "result": "failure",
                                   "log": os.path.join(world["store"], "runs", world["sha"],
                                                       "build.log")}]
+
+    def test_a_setup_step_failing_is_no_verdict_and_run_exits_75(self, LC, world, capsys):
+        """C2503: the checkout failed, so the tests never ran: `error`, the job and the step
+        named with the job's log, the NO VERDICT line, and `run`'s exit NO_VERDICT (75); a
+        test step failing is red, exit 1, and says no such line."""
+        rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
+                            run=_fake_act([("Run actions/checkout@v4", "failure", 1),
+                                           ("Tests", "skipped", 1)], []))
+        log = os.path.join(world["store"], "runs", world["sha"], "build.log")
+        assert rec["state"] == "error" and rec["failed"] == [], rec
+        assert rec["infrastructure"] == {"job": "build", "step": "Run actions/checkout@v4"}
+        assert rec["infrastructure_failures"][0]["log"] == log
+        assert rec["reason"] == ("NO VERDICT: infrastructure failure in build's step "
+                                 "Run actions/checkout@v4: run again")
+        assert LC.read_record(LC.verdict_path(world["store"], world["sha"]))["state"] == "error"
+        assert LC.report(rec, world["store"]) == LC.NO_VERDICT == 75
+        assert ("NO VERDICT: infrastructure failure in build's step Run actions/checkout@v4: "
+                "run again") in capsys.readouterr().out
+        red = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
+                            run=_fake_act([("Run actions/checkout@v4", "success", 1),
+                                           ("Tests", "failure", 1)], []))
+        assert LC.report(red, world["store"]) == 1
+        assert "NO VERDICT" not in capsys.readouterr().out
+
+    def test_the_deploy_gate_reads_no_verdict_as_no_verdict(self, LC, world):
+        """`nmas-deploy`'s `local_verdict` over the runner's own record of a setup failure:
+        `error` (one of the states it never refuses on, LOCAL_STATES), the reason said."""
+        LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
+                      run=_fake_act([("Run actions/checkout@v4", "failure", 1),
+                                     ("Tests", "skipped", 1)], []))
+        D = _load("scripts/nmas-deploy", "nmas_deploy_for_local_ci_no_verdict")
+        lv = D.local_verdict(str(world["dev"]), world["sha"],
+                             {"path": world["store"], "owner": os.getuid()})
+        assert lv["state"] == "error", lv
+        assert "NO VERDICT: infrastructure failure in build's step" in lv["words"]
 
     def test_act_past_its_bound_is_red_naming_the_bound(self, LC, world):
         rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
@@ -400,7 +538,9 @@ class TestARun:
 
     def test_acts_containers_get_the_profile_and_nothing_broader(self, LC, world):
         """The operator's answer 1: a seccomp profile, least privilege. act's containers run
-        with the profile, never privileged, with no capability added and no limit yet."""
+        with the profile, never privileged, with no capability added; each is put in the
+        runner's slice (2026-11-04), whose caps bound them all together, never a per-container
+        limit."""
         calls = []
         rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
                             run=_fake_act([("Run actions/checkout@v4", "success", 1),
@@ -408,12 +548,16 @@ class TestARun:
                             seccomp="/etc/nmas/local-ci-seccomp.json")
         argv = calls[0]
         assert argv[argv.index("--container-options") + 1] == (
-            "--security-opt seccomp=/etc/nmas/local-ci-seccomp.json")
+            "--security-opt seccomp=/etc/nmas/local-ci-seccomp.json "
+            "--cgroup-parent=nmas-local-ci.slice")
+        assert rec["confinement"]["cgroup_parent"] == "nmas-local-ci.slice"
         for broad in ("--privileged", "--container-cap-add", "SYS_ADMIN", "unconfined",
                       "--cpus", "--memory", "--userns", "--bind"):
             assert not any(broad in a for a in argv), (broad, argv)
         assert "--verbose" in argv, "a step skipped by its if is logged only at debug level"
         assert rec["confinement"]["seccomp"] == "/etc/nmas/local-ci-seccomp.json"
+        # C2503's cause: one job at a time, so no two installs share act's tool cache at once.
+        assert argv[argv.index("--concurrent-jobs") + 1] == "1", argv
 
     def test_the_jobs_are_on_dockers_bridge_never_the_hosts_network(self, LC, world):
         """act's own default is `--network host` (its --help, 0.2.89): a job would share the
@@ -439,15 +583,14 @@ class TestARun:
         rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM, run=run)
         assert rec["state"] == "error" and "bridge" in rec["reason"] and not calls, rec
 
-    def test_every_record_says_its_limits_are_unset_and_its_network_online(self, LC, world):
-        """Answers 3 and 4: online for now; CPU and memory limits after the first measured
-        run. Each record says both, naming where the measurement is."""
+    def test_every_record_names_its_slice_and_its_network_online(self, LC, world):
+        """Answers 3 and 4: online for now; the CPU and memory caps set after the first
+        measured run, on the slice (2026-11-04). Each record says both, naming the slice."""
         rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM,
                             run=_fake_act([("Run actions/checkout@v4", "success", 1),
                                            ("Tests", "success", 1)], []))
-        assert rec["limits"].startswith("unset: ") and "first measured run" in rec["limits"]
+        assert rec["limits"] == LC.LIMITS and "deploy/systemd/nmas-local-ci.slice" in rec["limits"]
         assert rec["network"] == "online"
-        assert LC.CONTAINER_LIMITS == ""
 
     def test_acts_environment_dumps_are_not_kept(self, LC, world):
         """act -v logs each step's whole environment ("setupEnv => map[...]"); the store is
@@ -504,35 +647,52 @@ class TestTheRecord:
 
 
 class TestSchedules:
-    """The scheduled workflows' own crons (one definition: the workflow file's `schedule:`)."""
+    """None here (the operator, 2026-11-04, C2504): the runner runs push-triggered CI, ci.yml
+    for main's new tip, and the scheduled workflows stay on GitHub's schedule. Its first tick
+    on the host counted every scheduled workflow as due and started the coverage nightly and
+    the weekly mutation run at once. Held through `tick` itself, over a real mirror."""
 
-    # 2026-11-01 was a Sunday.
-    SUN_1400 = 1793541600          # 2026-11-01T14:00:00Z
+    NIGHTLY = ("name: nightly\non:\n  schedule:\n    - cron: '* * * * *'\n  workflow_dispatch:\n"
+               "jobs:\n  night:\n    runs-on: ubuntu-24.04\n    steps:\n"
+               "      - name: All night\n        run: 'true'\n")
 
-    def test_cron_matching(self, LC):
-        assert LC.cron_matches("0 14 * * 0", self.SUN_1400)
-        assert not LC.cron_matches("0 14 * * 0", self.SUN_1400 + 86400)
-        assert LC.cron_matches("0 14 * * 7", self.SUN_1400)
-        assert LC.cron_matches("47 3 * * *", self.SUN_1400 - 10 * 3600 - 13 * 60)
-        assert LC.cron_matches("*/15 * * * *", self.SUN_1400 + 45 * 60)
+    def _tick(self, LC, world, calls, state=None):
+        if state is not None:
+            with open(os.path.join(world["store"], "state.json"), "w") as fh:
+                json.dump(state, fh)
+        env = {"NMAS_LOCAL_CI_ORIGIN": f"file://{world['dev']}", "NMAS_LOCAL_CI_PLATFORM": PLATFORM}
+        return LC.tick(world["store"], env,
+                       run=_fake_act([("Run actions/checkout@v4", "success", 1),
+                                      ("Tests", "success", 1)], calls),
+                       clock=lambda: 1793541600.0)          # 2026-11-01T14:00:00Z
 
-    def test_a_workflow_whose_cron_fired_since_its_last_start_is_due(self, LC):
-        wfs = {"mutation-nightly.yml": {"on": {"schedule": [{"cron": "0 14 * * 0"}]}},
-               "coverage-nightly.yml": {True: {"schedule": [{"cron": "47 3 * * *"}]}},
-               "other.yml": {"on": {"push": None}}}
-        now = self.SUN_1400 + 600
-        due = LC.due_schedules(wfs, {"coverage-nightly.yml": now - 60}, now)
-        assert due == [("mutation-nightly.yml", "0 14 * * 0", self.SUN_1400)]
-        assert LC.due_schedules(wfs, {"coverage-nightly.yml": now - 60,
-                                      "mutation-nightly.yml": self.SUN_1400 + 1}, now) == []
-
-    def test_the_repositorys_scheduled_workflows_are_found(self, LC):
-        docs = {}
-        for name in ("coverage-nightly.yml", "mutation-nightly.yml", "ci.yml"):
-            with open(os.path.join(ROOT, ".github", "workflows", name), encoding="utf-8") as fh:
-                docs[name] = yaml.safe_load(fh)
-        due = {n for n, _c, _f in LC.due_schedules(docs, {}, self.SUN_1400 + 60)}
-        assert due == {"coverage-nightly.yml", "mutation-nightly.yml"}
+    def test_a_scheduled_workflow_due_now_starts_nothing_and_ci_yml_runs_for_mains_tip(
+            self, LC, world, capsys):
+        dev = world["dev"]
+        (dev / ".github" / "workflows" / "nightly.yml").write_text(self.NIGHTLY)
+        _g(dev, "add", "-A")
+        _g(dev, "commit", "-q", "-m", "a nightly whose cron is due every minute")
+        tip = _g(dev, "rev-parse", "HEAD")
+        _g(dev, "checkout", "-q", "-b", "other")
+        (dev / "other.txt").write_text("not main\n")
+        _g(dev, "add", "-A")
+        _g(dev, "commit", "-q", "-m", "another branch's tip")
+        _g(dev, "checkout", "-q", "main")
+        calls = []
+        assert self._tick(LC, world, calls, state={"schedules": {"nightly.yml": 0}}) == 0
+        assert len(calls) == 1, calls
+        argv = calls[0]
+        assert argv[1] == "push" and argv[argv.index("-W") + 1] == ".github/workflows/ci.yml"
+        assert "schedule" not in argv and not any(a.endswith("nightly.yml") for a in argv), argv
+        rec = LC.read_record(LC.verdict_path(world["store"], tip))
+        assert rec["state"] == "passed" and rec["kind"] == "push"
+        assert sorted(os.listdir(os.path.join(world["store"], "verdicts"))) == [f"{tip}.json"]
+        assert not os.path.exists(os.path.join(world["store"], "scheduled"))
+        with open(os.path.join(world["store"], "state.json")) as fh:
+            assert json.load(fh) == {"last_tip": tip}, "the schedules' old state is dropped"
+        calls.clear()
+        assert self._tick(LC, world, calls) == 0
+        assert calls == [], "the tip has its verdict, and nothing else is ever started"
 
     def test_the_quiet_window(self, LC):
         at = 1793521800                # 2026-11-01T08:30:00Z
@@ -645,7 +805,8 @@ class TestActsCapturedLog:
 
     def test_a_matrix_run_is_judged_shard_by_shard(self, LC):
         v = LC.judge(_fixture_wf("probe.yml"),
-                     LC.read_act_log(_fixture_log("act-0.2.89-matrix.jsonl")))
+                     LC.read_act_log(_fixture_log("act-0.2.89-matrix.jsonl")),
+                     verdict_steps={"Fails on b"})
         assert v["state"] == "failed" and not v["not_run"], v
         assert v["failed"] == [{"job": "test (b)", "step": "Fails on b", "result": "failure"}]
         steps = {j["name"]: {s["name"]: s["result"] for s in j["steps"]} for j in v["jobs"]}
@@ -658,7 +819,8 @@ class TestActsCapturedLog:
 
     def test_skips_by_if_and_under_act_and_a_hard_failure(self, LC):
         v = LC.judge(_fixture_wf("probe2.yml"),
-                     LC.read_act_log(_fixture_log("act-0.2.89-soft-hard.jsonl")))
+                     LC.read_act_log(_fixture_log("act-0.2.89-soft-hard.jsonl")),
+                     verdict_steps={"Fails"})
         assert v["failed"] == [{"job": "hard", "step": "Fails", "result": "failure"}]
         assert v["not_run"] == [{"job": "soft", "step": "Skipped under act",
                                  "why": "the workflow skips it under act, and its env names "
@@ -668,13 +830,19 @@ class TestActsCapturedLog:
         assert steps["hard"] == {"Fails": "failure", "Never reached": "skipped",
                                  "Always runs": "success"}
 
-    def test_a_job_whose_set_up_failed_is_failed_naming_it(self, LC):
+    def test_a_job_whose_set_up_failed_has_no_verdict_naming_it(self, LC):
         """Probe 3: the job image absent from Docker's store. act's own `Set up job` (a
-        `stepid` line, not `stepID`) failed, and nothing after it ran."""
-        v = LC.judge(_fixture_wf("probe2.yml"),
-                     LC.read_act_log(_fixture_log("act-0.2.89-setup-failed.jsonl")))
-        assert v["state"] == "failed"
-        assert v["failed"] == [{"job": "soft", "step": "Set up job", "result": "failure"}]
+        `stepid` line, not `stepID`) failed, and nothing after it ran: the environment's
+        failure, so no verdict (C2503), naming the job and act's phase, never red, even with
+        every step of the job a verdict step."""
+        wf = _fixture_wf("probe2.yml")
+        every = {s["name"] for j in wf["jobs"].values() for s in j["steps"]}
+        v = LC.judge(wf, LC.read_act_log(_fixture_log("act-0.2.89-setup-failed.jsonl")),
+                     verdict_steps=every)
+        assert v["state"] == "error" and v["failed"] == [], v
+        assert v["infrastructure"] == {"job": "soft", "step": "Set up job"}
+        assert v["infrastructure_failures"] == [{"job": "soft", "step": "Set up job",
+                                                 "result": "failure"}]
         assert [n["job"] for n in v["not_run"]] == ["hard"], v["not_run"]
 
     def test_acts_times_carry_the_clocks_offset(self, LC):
@@ -793,6 +961,133 @@ class TestTheJobImage:
         installs = " ".join(ln for ln in text.splitlines() if "install" in ln or
                             ln.strip().startswith(("lib", "fonts")))
         assert re.search(r"\biproute2\b", installs), installs
+
+    def test_it_already_holds_what_ci_ymls_postgresql_step_installs(self, text, ci_yml):
+        """C2503: shard b's PostgreSQL step failed in dpkg on libpam-modules, because the
+        step's download fetched upgrades of the image's older libraries. The image installs
+        libpq5 and the server's libraries read ci.yml's own way (the same `apt-cache depends`
+        selection, from PGDG's repository added by the same script), so the step finds them."""
+        step = next(s for s in ci_yml["jobs"]["test"]["steps"]
+                    if (s.get("name") or "").startswith("PostgreSQL 18's packages from PGDG"))
+        select = re.search(r"deps=\$\((apt-cache depends postgresql-18 \| sed -n '[^']+' "
+                           r"\| sort -u)\)", step["run"])
+        assert select, step["run"]
+        assert select.group(1) in text, "the image selects the libraries as the step does"
+        assert "/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y" in step["run"]
+        assert "/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y" in text
+        assert re.search(r"apt-get install -y --no-install-recommends libpq5 \$\{deps\}", text)
+
+
+def _unit(text):
+    """A systemd unit's settings, ``{section: {key: value}}`` (comments and blanks skipped)."""
+    out, section = {}, None
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith(("#", ";")):
+            continue
+        if ln.startswith("[") and ln.endswith("]"):
+            section = out.setdefault(ln[1:-1], {})
+        elif "=" in ln and section is not None:
+            k, v = ln.split("=", 1)
+            section[k.strip()] = v.strip()
+    return out
+
+
+def _bytes(v):
+    n, unit = re.fullmatch(r"(\d+)([KMGT]?)", v).groups()
+    return int(n) * 1024 ** " KMGT".index(unit or " ")
+
+
+def cap_problems(service_text, slice_text, slice_name):
+    """What keeps the runner's units from capping CI beside Mercury, each by name: the service
+    must run in the slice and yield within it; the slice must carry a CPU quota, a memory
+    maximum with a lower MemoryHigh, and weights below the default 100."""
+    svc, slc = _unit(service_text).get("Service", {}), _unit(slice_text).get("Slice", {})
+    problems = []
+    if svc.get("Slice") != slice_name:
+        problems.append(f"the service's Slice= is {svc.get('Slice')!r}, not {slice_name!r}")
+    if svc.get("Nice") != "19" or svc.get("IOSchedulingClass") != "idle":
+        problems.append("the service does not yield (Nice=19, IOSchedulingClass=idle)")
+    if not re.fullmatch(r"\d+%", slc.get("CPUQuota", "")):
+        problems.append("the slice has no CPUQuota")
+    if not re.fullmatch(r"\d+[KMGT]?", slc.get("MemoryMax", "")):
+        problems.append("the slice has no MemoryMax")
+    elif not (re.fullmatch(r"\d+[KMGT]?", slc.get("MemoryHigh", ""))
+              and _bytes(slc["MemoryHigh"]) < _bytes(slc["MemoryMax"])):
+        problems.append("the slice's MemoryHigh is not below its MemoryMax")
+    for w in ("CPUWeight", "IOWeight"):
+        if not slc.get(w, "").isdigit() or int(slc[w]) >= 100:
+            problems.append(f"the slice's {w} is not below the default 100")
+    return problems
+
+
+class TestTheCaps:
+    """The operator, 2026-11-04: the runner shares the NMAS host with Mercury, so systemd caps
+    it. act's job containers are Docker's children, outside the service's cgroup, so the caps
+    are on a slice that holds both: the service (`Slice=`) and every container (act's
+    `--container-options "--cgroup-parent=nmas-local-ci.slice"`; Docker's systemd driver)."""
+
+    UNITS = ("nmas-local-ci.service", "nmas-local-ci.timer", "nmas-local-ci.slice")
+
+    @pytest.fixture
+    def rendered(self, tmp_path, monkeypatch):
+        H = _load("scripts/nmas-host", "nmas_host_for_local_ci")
+        R = _load("scripts/nmas-render-units", "render_units_for_local_ci")
+        hosts = tmp_path / "hosts.json"
+        hosts.write_text(json.dumps({"nmas": {"user": "op", "lan": "192.0.2.11",
+                                               "home": "/srv/op", "checkout": "/srv/op/nmas"}}))
+        monkeypatch.setenv(H.HOSTS_FILE_ENV, str(hosts))
+        out = tmp_path / "units"
+        assert R.main(["--out", str(out), *(os.path.join(ROOT, "deploy", "systemd", u)
+                                            for u in self.UNITS)]) == 0
+        return {u: (out / u).read_text() for u in self.UNITS}
+
+    def test_the_rendered_units_carry_the_caps(self, LC, rendered):
+        assert cap_problems(rendered["nmas-local-ci.service"], rendered["nmas-local-ci.slice"],
+                            LC.SLICE) == []
+        slc = _unit(rendered["nmas-local-ci.slice"])["Slice"]
+        # The starting caps (the operator, 2026-11-04): 2 of the host's 4 CPUs, 6 GiB of 15.5.
+        assert (slc["CPUQuota"], slc["MemoryMax"]) == ("200%", "6G")
+        assert LC.SLICE == "nmas-local-ci.slice" == self.UNITS[2]
+
+    @pytest.mark.parametrize("plant,named", [
+        (("service", "Slice=nmas-local-ci.slice\n", ""), "Slice="),
+        (("service", "Nice=19\n", "Nice=10\n"), "does not yield"),
+        (("slice", "CPUQuota=200%\n", ""), "no CPUQuota"),
+        (("slice", "MemoryHigh=5632M\n", "MemoryHigh=7G\n"), "not below its MemoryMax"),
+        (("slice", "CPUWeight=20\n", "CPUWeight=100\n"), "CPUWeight")])
+    def test_a_planted_unit_without_its_cap_is_found(self, LC, rendered, plant, named):
+        which, old, new = plant
+        texts = {"service": rendered["nmas-local-ci.service"],
+                 "slice": rendered["nmas-local-ci.slice"]}
+        assert old in texts[which], (which, old)
+        texts[which] = texts[which].replace(old, new)
+        problems = cap_problems(texts["service"], texts["slice"], LC.SLICE)
+        assert any(named in p for p in problems), problems
+
+    @pytest.mark.parametrize("shown,said", [
+        ("LoadState=loaded\nMemoryMax=6442450944\nCPUQuotaPerSecUSec=2s\n", None),
+        ("LoadState=not-found\nMemoryMax=infinity\nCPUQuotaPerSecUSec=infinity\n",
+         "is not installed (LoadState not-found)"),
+        ("LoadState=loaded\nMemoryMax=infinity\nCPUQuotaPerSecUSec=infinity\n",
+         "has no MemoryMax and no CPUQuotaPerSecUSec")])
+    def test_the_self_test_refuses_a_slice_without_its_caps(self, LC, tmp_path, shown, said):
+        """Docker makes a missing slice on demand, uncapped: a run then would put every job
+        container beside Mercury with no cap, so the per-run self-test refuses it."""
+        seen = []
+
+        def run(argv, **_kw):
+            seen.append(argv)
+            if argv[0] == "/usr/bin/systemctl":
+                return subprocess.CompletedProcess(argv, 0, stdout=shown, stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        probs = [p for p in LC.self_test(str(tmp_path), {"NMAS_LOCAL_CI_PLATFORM": PLATFORM},
+                                         run=run) if "nmas-local-ci.slice" in p]
+        assert any(a[:3] == ["/usr/bin/systemctl", "show", "nmas-local-ci.slice"] for a in seen)
+        if said is None:
+            assert probs == []
+        else:
+            assert len(probs) == 1 and said in probs[0], probs
 
 
 class TestTheOverrideIsTheTerminals:

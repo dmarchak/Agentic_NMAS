@@ -2,8 +2,8 @@
 """THE LOCAL CI RUNNER (workstream 0; docs/LOCAL_CI.md): GitHub's own workflow files, run on this
 host by act (nektos/act) in Docker, with a verdict recorded per commit.
 
-    nmas-local-ci tick              # the timer's: fetch, run main's tip if it has no verdict,
-                                    # then any scheduled workflow whose cron has come due
+    nmas-local-ci tick              # the timer's: fetch, run ci.yml at main's tip if it has
+                                    # no verdict; nothing else (never a scheduled workflow)
     nmas-local-ci run SHA [--before SHA]   # one commit, by hand (the operator's walk)
     nmas-local-ci self-test         # what this host lacks to run it, each by name, and the
                                     # job image's Firefox and geckodriver, started
@@ -18,6 +18,19 @@ act runs `.github/workflows/ci.yml` at the commit, and this wrapper only fetches
 reads act's own per-step results (`--json`) and writes the record. A step act did not run is
 recorded "not run", named, and the verdict is then not green, unless the workflow itself
 declares that step non-gating (`continue-on-error: true`, GitHub's own declaration).
+
+**Push-triggered CI only** (the operator, 2026-11-04, C2504): the runner runs ci.yml for
+main's new tip and nothing else. The scheduled workflows (the coverage nightly, the weekly
+mutation run) stay on GitHub's schedule; a workflow's `schedule:` trigger is never read here.
+
+**Only a test step's failure is red** (the operator, 2026-11-04, C2503): a failure in one of
+VERDICT_STEPS (ci.yml's tests and checks, by name) is a verdict; a failure in any other step
+(checkout, setup-python, a cache, pip, an install, an artifact) or in act's own "Set up job" is
+the environment's: the record's state is `error` with `infrastructure: {"job", "step"}`, the
+line "NO VERDICT: infrastructure failure in <job>'s step <step>: run again", and `run` exits
+NO_VERDICT (75, the gate's code for a run that could not judge, C2410). A job whose needed job
+had no verdict has none either. `scripts/nmas-deploy` reads `error` as no verdict: never a
+refusal, never green.
 
 **Installed ROOT-OWNED** (its install is the operator's host step, docs/LOCAL_CI.md) as
 /usr/local/lib/nmas-local-ci/nmas-local-ci, run by `nmas-local-ci.service` as
@@ -35,14 +48,18 @@ a missing image even then, measured 2026-11-03).
 - **online, on Docker's bridge:** never act's default `--network host`, which would put a job
   on the host's loopback beside Mercury and its stores; act's artifact and cache servers bind
   to the bridge's gateway, not act's default of the host's LAN address;
-- **no CPU or memory limit yet:** set after the first measured run (CONTAINER_LIMITS).
+- **capped together with the runner, in one systemd slice** (the operator, 2026-11-04): every
+  job container is started under `--cgroup-parent=nmas-local-ci.slice` (Docker's systemd
+  cgroup driver on cgroup v2), the slice the service runs in, so the slice's CPUQuota and
+  MemoryMax (deploy/systemd/nmas-local-ci.slice) bound all of CI at once beside Mercury. The
+  self-test refuses a run when the slice is not loaded with both caps.
 
 **The store** (/var/lib/nmas-local-ci, root 0755, files 0644): `verdicts/<sha>.json` (what
 `scripts/nmas-deploy`'s `local_verdict` reads, keyed by sha and judged by tree),
 `runs/<sha>/` (act's whole log, one text log per job, the artifacts act's server kept),
-`scheduled/<workflow>/<UTC stamp>.json`, `state.json` (the last tip run, each schedule's last
-start), `mirror.git` (a bare mirror of the origin). Every record is written whole, then renamed
-into place (atomic); a record that exists and cannot be read is never overwritten blind.
+`state.json` (the last tip run), `mirror.git` (a bare mirror of the origin). Every record is
+written whole, then renamed into place (atomic); a record that exists and cannot be read is
+never overwritten blind.
 
 Environment (set by the root-owned unit, never by a commit):
   NMAS_LOCAL_CI_ORIGIN     the repository to fetch (https:// or file://)
@@ -75,11 +92,33 @@ INSTALLED = "/usr/local/lib/nmas-local-ci"
 WORKFLOW = ".github/workflows/ci.yml"
 #: Every program this runs, by ABSOLUTE path (the updater's lesson, C246): a minimal PATH for
 #: a root process, and a name resolved through it, is how a root job breaks or is hijacked.
-BINARIES = {"git": "/usr/bin/git", "act": "/usr/local/bin/act", "docker": "/usr/bin/docker"}
+BINARIES = {"git": "/usr/bin/git", "act": "/usr/local/bin/act", "docker": "/usr/bin/docker",
+            "systemctl": "/usr/bin/systemctl"}
 SHA = re.compile(r"^[0-9a-f]{40}$")
 #: The schema `scripts/nmas-deploy`'s `local_verdict` reads (LOCAL_STATES there).
 SCHEMA = 1
 STATES = ("queued", "running", "passed", "failed", "error", "skipped", "incomplete")
+#: `run`'s exit when the run could not judge the commit (an infrastructure failure): the
+#: gate's code for the same case (scripts/nmas-gate, INTERRUPTED_BY_SLEEP, C2410).
+NO_VERDICT = 75
+
+#: The steps whose failure is RED (the operator, 2026-11-04, C2503): ci.yml's test and check
+#: steps, by their names there (tests/test_local_ci.py holds that each is in ci.yml, so a
+#: rename fails). Every other step sets the job up or keeps what it made, and a failure there
+#: is no verdict. A list of the verdict steps, not of the setup steps: a step added to ci.yml
+#: is setup until it is named here, so a new setup step can never turn a run red.
+VERDICT_STEPS = frozenset({
+    "Tests (R1, R4), confined to loopback, measured by tier",
+    "Every skip is a declared one",
+    "No removed definition is still called (R2)",
+    "Every host-installed change says what the host needs",
+    "Every weakened test names its register row",
+    "Every new or changed test is red on its parent",
+    "Every changed guard carries the operator's approval",
+    "Every bypass a commit adds names its reason",
+    "Every premise correction names its measurement",
+    "The report and the ratchet",
+})
 
 #: act's `--json` log fields, in one place, as act 0.2.89 writes them (captured 2026-11-03,
 #: tests/fixtures/act/): logrus JSON lines, a step's result as `stepResult` beside `jobID`,
@@ -108,13 +147,21 @@ RUN_BOUND_MIN = 180
 ENV_SKIPS = (re.compile(r"no (firefox|geckodriver)", re.I),
              re.compile(r"firefox could not start", re.I))
 
-#: CPU and memory limits on act's containers: NONE yet (the operator's answer 4, 2026-11-03:
-#: "after the first measured run"). What sets them: docs/LOCAL_CI.md, "The first measured
-#: run", its peak CPU and memory of the job containers against what the host has free beside
-#: Mercury. Then this holds e.g. "--cpus=4 --memory=8g", and each record says it.
-CONTAINER_LIMITS = ""
-LIMITS_UNSET = ("unset: CPU and memory limits are set after the first measured run "
-                "(docs/LOCAL_CI.md, \"The first measured run\"), the operator's answer 4")
+#: CPU and memory caps (the operator, 2026-11-04, after the first measured run): on ONE systemd
+#: slice, never per container. act's containers are Docker's children, outside the service's
+#: cgroup, so a cap on the service alone bounds nothing of CI; each container is started with
+#: this slice as its cgroup parent (Docker's systemd cgroup driver, cgroup v2), and the
+#: service runs in it too (`Slice=`), so the slice's caps bound the runner and every job
+#: container TOGETHER. The caps' values and their reasons: deploy/systemd/nmas-local-ci.slice.
+SLICE = "nmas-local-ci.slice"
+#: The jobs run one at a time (C2503's cause, 2026-11-04): act mounts one tool cache for every job
+#: (`act-toolcache`), and setup-python's install deletes a Python it finds there first, so jobs
+#: run at once deleted each other's 3.12.3 (four of five failed on the host; two of three in the
+#: laptop's probe). Run one after another, the first installs it and the rest find it cached.
+#: The slice caps CI's CPU at 200% anyway, so jobs at once would only share those two CPUs.
+CONCURRENT_JOBS = 1
+LIMITS = (f"the systemd slice {SLICE}: its CPUQuota and MemoryMax bound the runner and every "
+          "job container together (deploy/systemd/nmas-local-ci.slice)")
 #: The jobs' network (the operator's answer 3, "online for now"): Docker's bridge, so pip,
 #: setup-python and the cache-miss downloads reach the internet as on GitHub; never act's
 #: default `--network host`. Offline (a wheelhouse, setup-python's tool cache) is later.
@@ -288,32 +335,41 @@ def _step_name(i: int, step: dict) -> str:
                                 f"step {i + 1} ({step.get('id') or 'unnamed'})")
 
 
-def judge(workflow: dict, act: dict, junit_skips=None) -> dict:
+def judge(workflow: dict, act: dict, junit_skips=None, verdict_steps=None) -> dict:
     """The verdict of one act run against the workflow it ran.
 
     Every job of the workflow must appear in act's log (each of its matrix runs act reported);
     every step of every reported job must have a result. A step or job missing is NOT RUN,
-    named. A step act ran and failed is FAILED, unless the workflow declares it non-gating
-    (`continue-on-error: true` on the step or its job). "skipped" is act's own answer to a
-    step's `if:`, as GitHub's. Returns ``{"state", "jobs", "failed", "not_run"}``: passed (all
-    ran, none failed), failed (a gating failure), incomplete (none failed, something not run)."""
+    named. A step act ran and failed is FAILED when it is one of *verdict_steps* (by the
+    workflow's name for it; VERDICT_STEPS by default), unless the workflow declares it
+    non-gating (`continue-on-error: true` on the step or its job). Any other failure, act's
+    own phases' included, is INFRASTRUCTURE: the environment failed, not the commit; so is
+    every failure in a job whose needed job (`needs:`, followed through) had one. "skipped" is
+    act's own answer to a step's `if:`, as GitHub's. Returns ``{"state", "jobs", "failed",
+    "not_run", "infrastructure" (the first such failure's job and step, or None),
+    "infrastructure_failures" (each), "reason"}``: failed (a verdict step failed: red, whatever
+    else did), error (no verdict step failed and an infrastructure step did: no verdict, run
+    again), incomplete (nothing failed, something not run), passed (all ran, none failed)."""
+    verdict_steps = VERDICT_STEPS if verdict_steps is None else verdict_steps
     jobs_doc = workflow.get("jobs") or {}
-    out, failed, not_run = [], [], []
+    out, failed, infra, not_run = [], [], [], []
     seen_ids = {j["job_id"] for j in act["jobs"].values()}
     for job_id, jdoc in jobs_doc.items():
         if job_id not in seen_ids:
             not_run.append({"job": job_id, "step": "(the whole job)",
                             "why": "act's log reports nothing of this job"})
+    tainted = _no_verdict_jobs(jobs_doc, act, verdict_steps)
     for key, job in sorted(act["jobs"].items()):
         jdoc = jobs_doc.get(job["job_id"]) or {}
         job_soft = bool(jdoc.get("continue-on-error") is True)
+        after_no_verdict = bool(set(_needs(jdoc)) & tainted)
         steps = []
         # act's own phases: a "Set up job" that failed (the image absent, Docker refusing the
-        # container) is the job's failure, and its steps never started.
+        # container) is the environment's, and the job's steps never started.
         setup_failed = False
         for _pid, phase in sorted((job.get("phases") or {}).items()):
             if phase["result"] not in ("success", "skipped") and not job_soft:
-                failed.append({"job": key, "step": phase["name"], "result": phase["result"]})
+                infra.append({"job": key, "step": phase["name"], "result": phase["result"]})
                 setup_failed = setup_failed or "set up" in phase["name"].lower()
         for i, sdoc in enumerate(jdoc.get("steps") or []):
             sid = _step_id(i, sdoc)
@@ -345,13 +401,62 @@ def judge(workflow: dict, act: dict, junit_skips=None) -> dict:
             steps.append({"name": name, "step_id": sid, "result": got["result"],
                           "non_gating": soft, "duration_s": took})
             if got["result"] not in ("success", "skipped") and not soft:
-                failed.append({"job": key, "step": name, "result": got["result"]})
+                entry = {"job": key, "step": name, "result": got["result"]}
+                if name in verdict_steps and not after_no_verdict:
+                    failed.append(entry)
+                else:
+                    infra.append(entry)
         out.append({"name": key, "job_id": job["job_id"], "matrix": job["matrix"],
                     "result": job["result"] or "not reported", "steps": steps})
     for skip in junit_skips or []:
         not_run.append(skip)
-    state = "failed" if failed else ("incomplete" if not_run else "passed")
-    return {"state": state, "jobs": out, "failed": failed, "not_run": not_run}
+    reason = ""
+    if failed:
+        state = "failed"
+    elif infra:
+        state, first = "error", infra[0]
+        more = f" (and {len(infra) - 1} more)" if len(infra) > 1 else ""
+        reason = (f"NO VERDICT: infrastructure failure in {first['job']}'s step "
+                  f"{first['step']}{more}: run again")
+    else:
+        state = "incomplete" if not_run else "passed"
+    return {"state": state, "jobs": out, "failed": failed, "not_run": not_run,
+            "infrastructure": ({"job": infra[0]["job"], "step": infra[0]["step"]} if infra
+                               else None),
+            "infrastructure_failures": infra, "reason": reason}
+
+
+def _needs(jdoc: dict) -> list:
+    """A job's `needs:` as a list of job ids (GitHub takes one id or a list)."""
+    needs = (jdoc or {}).get("needs") or []
+    return [needs] if isinstance(needs, str) else [str(n) for n in needs]
+
+
+def _no_verdict_jobs(jobs_doc: dict, act: dict, verdict_steps) -> set:
+    """The job ids with no verdict: one with a failure outside *verdict_steps* (act's own
+    phases' included) in any of its matrix runs, and every job that needs one of those,
+    followed through `needs:` to the end."""
+    out = set()
+    for job in act["jobs"].values():
+        jdoc = jobs_doc.get(job["job_id"]) or {}
+        if jdoc.get("continue-on-error") is True:
+            continue
+        if any(p["result"] not in ("success", "skipped") for p in job["phases"].values()):
+            out.add(job["job_id"])
+        for i, sdoc in enumerate(jdoc.get("steps") or []):
+            got = job["steps"].get(_step_id(i, sdoc)) or {}
+            if (got.get("result") not in (None, "success", "skipped")
+                    and sdoc.get("continue-on-error") is not True
+                    and _step_name(i, sdoc) not in verdict_steps):
+                out.add(job["job_id"])
+    grew = True
+    while grew:
+        grew = False
+        for job_id, jdoc in jobs_doc.items():
+            if job_id not in out and set(_needs(jdoc)) & out:
+                out.add(job_id)
+                grew = True
+    return out
 
 
 def junit_env_skips(folder: str) -> list:
@@ -401,15 +506,16 @@ def act_argv(event: str, workflow: str, event_file: str, checkout: str, platform
     """act's command line: the workflow file at the commit, the event, the runner image pinned
     by digest and never pulled, the actions from their cache once fetched, act's own artifact
     and cache servers in the run's folders bound to *bind* (Docker's bridge gateway), the jobs
-    on Docker's bridge under the seccomp profile *seccomp* (and CONTAINER_LIMITS, once set),
-    verbose (a step skipped by its `if:` is logged only at debug level), every container
-    removed after."""
+    on Docker's bridge under the seccomp profile *seccomp*, each container in the slice SLICE
+    (its caps bound them all together), verbose (a step skipped by its `if:` is logged only at
+    debug level), every container removed after, and the jobs one at a time (CONCURRENT_JOBS)."""
     opts = " ".join(o for o in ((f"--security-opt seccomp={seccomp}" if seccomp else ""),
-                                CONTAINER_LIMITS) if o)
+                                f"--cgroup-parent={SLICE}") if o)
     argv = [BINARIES["act"], event, "-W", workflow, "-e", event_file, "-C", checkout,
             "-P", platform, "--pull=false", "--action-offline-mode",
             "--action-cache-path", actions, "--artifact-server-path", artifacts,
-            "--cache-server-path", cache, "--network", NETWORK, "--json", "--verbose", "--rm"]
+            "--cache-server-path", cache, "--network", NETWORK, "--json", "--verbose", "--rm",
+            "--concurrent-jobs", str(CONCURRENT_JOBS)]
     if bind:
         argv += ["--artifact-server-addr", bind, "--cache-server-addr", bind]
     if opts:
@@ -588,10 +694,11 @@ def own_identity() -> dict:
 
 def confinement(seccomp: str) -> dict:
     """What a record says of the jobs' confinement: the profile and its sha256, the network
-    ("online": Docker's bridge, the operator's answer 3), and the limits (none yet, said so)."""
+    ("online": Docker's bridge, the operator's answer 3), the cgroup parent, and the limits
+    (the slice's caps; the self-test refuses a run when the slice lacks them)."""
     return ({"seccomp": seccomp, "seccomp_sha256": _sha256_of(seccomp) if seccomp else "",
-             "docker_network": NETWORK},
-            "online", CONTAINER_LIMITS or LIMITS_UNSET)
+             "docker_network": NETWORK, "cgroup_parent": SLICE},
+            "online", LIMITS)
 
 
 def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: str,
@@ -653,7 +760,7 @@ def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: st
                 fh.write("\n".join(lines) + "\n")
         verdict = judge(workflow, act, junit_env_skips(artifacts))
         rec.update(verdict)
-        for f in rec["failed"]:
+        for f in rec["failed"] + rec["infrastructure_failures"]:
             f["log"] = os.path.join(rundir, re.sub(r"[^\w.-]+", "_", f["job"]) + ".log")
         if code is None:
             rec.update(state="failed", reason=f"act ran past the run's bound, {RUN_BOUND_MIN} "
@@ -677,69 +784,8 @@ def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: st
 
 
 # ---------------------------------------------------------------------------
-# Schedules: each workflow's own `schedule:` crons
+# The quiet window (the scheduled workflows are GitHub's, never this runner's: C2504)
 # ---------------------------------------------------------------------------
-
-def _cron_field(spec: str, value: int, lo: int, hi: int) -> bool:
-    for part in spec.split(","):
-        step = 1
-        if "/" in part:
-            part, step = part.split("/", 1)
-            step = int(step)
-        if part == "*":
-            a, b = lo, hi
-        elif "-" in part:
-            a, b = (int(x) for x in part.split("-", 1))
-        else:
-            a = b = int(part)
-        if a <= value <= b and (value - a) % step == 0:
-            return True
-    return False
-
-
-def cron_matches(cron: str, epoch: float) -> bool:
-    """Whether the five-field *cron* fires in the UTC minute of *epoch* (POSIX: a day matches
-    on its day of the month OR its weekday when both are restricted; Sunday is 0 or 7)."""
-    minute, hour, dom, month, dow = cron.split()
-    t = time.gmtime(epoch)
-    wd = (t.tm_wday + 1) % 7
-    day_ok_dom = _cron_field(dom, t.tm_mday, 1, 31)
-    day_ok_dow = _cron_field(dow, wd, 0, 7) or (wd == 0 and _cron_field(dow, 7, 0, 7))
-    if dom != "*" and dow != "*":
-        day = day_ok_dom or day_ok_dow
-    else:
-        day = day_ok_dom and day_ok_dow
-    return (_cron_field(minute, t.tm_min, 0, 59) and _cron_field(hour, t.tm_hour, 0, 23)
-            and _cron_field(month, t.tm_mon, 1, 12) and day)
-
-
-def last_fire(cron: str, now: float, within_s: int = 8 * 86400):
-    """The most recent minute at or before *now* that *cron* fires in, looked for back over
-    *within_s* (a weekly cron's period and a day); None when none."""
-    t = int(now // 60) * 60
-    for back in range(0, within_s, 60):
-        if cron_matches(cron, t - back):
-            return t - back
-    return None
-
-
-def due_schedules(workflows: dict, last_started: dict, now: float) -> list:
-    """``[(file, cron, fired_at)]``: each workflow (``{file: doc}``) with a `schedule:` cron that
-    has fired since its last local start. ci.yml has none: it runs on every push."""
-    due = []
-    for name, doc in sorted(workflows.items()):
-        on = doc.get("on", doc.get(True)) if isinstance(doc, dict) else None
-        crons = [s.get("cron") for s in ((on or {}).get("schedule") or [])
-                 if isinstance(on, dict) and isinstance(s, dict) and s.get("cron")]
-        fires = [(c, last_fire(c, now)) for c in crons]
-        fires = [(c, f) for c, f in fires if f is not None]
-        if not fires:
-            continue
-        cron, fired = max(fires, key=lambda cf: cf[1])
-        if (last_started.get(name) or 0) < fired:
-            due.append((name, cron, fired))
-    return due
-
 
 def in_quiet(window: str, now: float) -> bool:
     """Whether *now* (UTC) is inside *window*, "HH:MM-HH:MM" (empty: never)."""
@@ -819,17 +865,48 @@ def self_test(store: str, env: dict, run=subprocess.run, owner: int = 0,
                 problems.append(f"the runner image {image} cannot start Firefox and geckodriver "
                                 f"(exit {out.returncode}: {said or 'nothing said'}); the browser "
                                 "tests would skip, so every verdict would be incomplete")
+    problems += slice_problems(run)
     import importlib.util
     if importlib.util.find_spec("yaml") is None:          # the system's python3-yaml
         problems.append("python3-yaml is not installed")
     return problems
 
 
-def tick(store: str, env: dict, run=subprocess.run, clock=time.time) -> int:
-    """The timer's run: fetch; main's tip, if it has no verdict; each due schedule. One at a
-    time (a lock), nothing started inside the quiet window."""
-    import yaml
+def slice_problems(run=subprocess.run) -> list:
+    """What makes SLICE unable to cap CI, by name; [] when systemd has it loaded with a CPU
+    quota and a memory maximum. Docker makes an absent slice on demand, with NO caps, so a run
+    without this check would put every job container beside Mercury uncapped."""
+    try:
+        out = run([BINARIES["systemctl"], "show", SLICE, "-p", "LoadState", "-p", "MemoryMax",
+                   "-p", "CPUQuotaPerSecUSec"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [f"systemctl could not show {SLICE} ({exc})"]
+    props = dict(ln.split("=", 1) for ln in (out.stdout or "").splitlines() if "=" in ln)
+    if out.returncode != 0 or props.get("LoadState") != "loaded":
+        return [f"the slice {SLICE} is not installed (LoadState "
+                f"{props.get('LoadState') or '?'}): act's job containers would run uncapped "
+                "beside Mercury (docs/LOCAL_CI.md section 11)"]
+    unset = [p for p in ("MemoryMax", "CPUQuotaPerSecUSec")
+             if props.get(p, "infinity") in ("", "infinity")]
+    if unset:
+        return [f"the slice {SLICE} has no {' and no '.join(unset)}: its caps are not in force"]
+    return []
 
+
+def no_verdict_line(rec: dict) -> str:
+    """The line a run that could not judge its commit prints, or "" (C2503)."""
+    infra = rec.get("infrastructure") or {}
+    if rec.get("state") != "error" or not infra:
+        return ""
+    return (f"NO VERDICT: infrastructure failure in {infra.get('job')}'s step "
+            f"{infra.get('step')}: run again")
+
+
+def tick(store: str, env: dict, run=subprocess.run, clock=time.time) -> int:
+    """The timer's run: fetch; ci.yml at main's tip, if the tip has no verdict; nothing else.
+    A workflow's `schedule:` trigger is never read: the scheduled workflows run on GitHub's
+    schedule (the operator, 2026-11-04, C2504). One at a time (a lock), nothing started inside
+    the quiet window."""
     if in_quiet(env.get("NMAS_LOCAL_CI_QUIET", ""), clock()):
         print(f"nmas-local-ci: inside the quiet window {env.get('NMAS_LOCAL_CI_QUIET')} UTC: "
               "nothing started")
@@ -851,25 +928,15 @@ def tick(store: str, env: dict, run=subprocess.run, clock=time.time) -> int:
                 state = json.load(fh)
         except (OSError, ValueError):
             state = {}
-        seccomp = env.get("NMAS_LOCAL_CI_SECCOMP", "")
+        state.pop("schedules", None)       # the scheduled runs' starts, before C2504
         if not os.path.lexists(verdict_path(store, tip)):
             rec = run_commit(store, tip, state.get("last_tip") or "", _slug(origin), platform,
-                             run=run, clock=clock, seccomp=seccomp)
+                             run=run, clock=clock,
+                             seccomp=env.get("NMAS_LOCAL_CI_SECCOMP", ""))
             state["last_tip"] = tip
             print(f"nmas-local-ci: {tip[:10]} {rec['state']}")
-        workflows = {}
-        for name in _git(mirror, "ls-tree", "--name-only", f"{tip}:.github/workflows",
-                         run=run).split():
-            if name.endswith(".yml") and name != os.path.basename(WORKFLOW):
-                workflows[name] = yaml.safe_load(_git(mirror, "show",
-                                                      f"{tip}:.github/workflows/{name}",
-                                                      run=run)) or {}
-        for name, cron, fired in due_schedules(workflows, state.get("schedules") or {},
-                                               clock()):
-            state.setdefault("schedules", {})[name] = clock()
-            rec = run_scheduled(store, tip, name, cron, fired, platform, run=run, clock=clock,
-                                seccomp=seccomp)
-            print(f"nmas-local-ci: scheduled {name} at {tip[:10]} {rec['state']}")
+            if no_verdict_line(rec):
+                print(f"nmas-local-ci: {tip[:10]} {no_verdict_line(rec)}")
         write_state(state_path, state)
     finally:
         os.close(lock)
@@ -882,57 +949,6 @@ def write_state(path: str, state: dict) -> None:
         json.dump(state, fh, sort_keys=True)
     os.chmod(tmp, 0o644)
     os.replace(tmp, path)
-
-
-def run_scheduled(store, sha, name, cron, fired, platform, run=subprocess.run, clock=time.time,
-                  seccomp=""):
-    """One scheduled workflow at main's tip: act's `schedule` event, recorded under
-    `scheduled/<workflow>/` (not a deploy's verdict: the scheduled-jobs reader's, once moved)."""
-    import yaml
-
-    stamp = iso(clock()).replace(":", "")
-    path = os.path.join(store, "scheduled", name.rsplit(".", 1)[0], f"{stamp}.json")
-    work = tempfile.mkdtemp(prefix="nmas-local-ci-")
-    rundir = os.path.join(store, "runs", f"{name.rsplit('.', 1)[0]}-{stamp}")
-    os.makedirs(rundir, mode=0o755, exist_ok=True)
-    started = clock()
-    conf, network, limits = confinement(seccomp)
-    rec = {"schema": SCHEMA, "kind": "schedule", "workflow": f".github/workflows/{name}",
-           "sha": sha, "cron": cron, "fired_at": iso(fired), "state": "running",
-           "started_at": iso(started), "runner": own_identity(), "platform": platform,
-           "confinement": conf, "network": network, "limits": limits,
-           "log_dir": rundir, "jobs": [], "failed": [], "not_run": [], "reason": ""}
-    try:
-        bind = bridge_gateway(run)
-        clone = os.path.join(work, "checkout")
-        _git(None, "clone", "-q", "--no-local", "--no-checkout",
-             os.path.join(store, "mirror.git"), clone, run=run)
-        _git(clone, "checkout", "-q", "--detach", sha, run=run)
-        with open(os.path.join(clone, rec["workflow"]), encoding="utf-8") as fh:
-            workflow = yaml.safe_load(fh) or {}
-        event_file = os.path.join(work, "event.json")
-        with open(event_file, "w", encoding="utf-8") as fh:
-            json.dump({"schedule": cron}, fh)
-        log = os.path.join(rundir, "act.jsonl")
-        with open(log, "w", encoding="utf-8") as fh:
-            proc = run(act_argv("schedule", rec["workflow"], event_file, clone, platform,
-                                os.path.join(rundir, "artifacts"), os.path.join(store, "cache"),
-                                os.path.join(store, "actions"), seccomp=seccomp, bind=bind),
-                       stdout=fh, stderr=subprocess.STDOUT, text=True,
-                       timeout=RUN_BOUND_MIN * 60 * 2, cwd=clone)
-        drop_env_dumps(log)
-        with open(log, encoding="utf-8", errors="replace") as fh:
-            act = read_act_log(fh)
-        rec.update(judge(workflow, act, junit_env_skips(os.path.join(rundir, "artifacts"))))
-        if not act["jobs"]:
-            rec.update(state="error", reason=f"act exited {proc.returncode} and reported no job")
-    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        rec.update(state="error", reason=f"{type(exc).__name__}: {exc}")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-    rec.update(ended_at=iso(clock()), duration_s=round(clock() - started, 1))
-    write_record(path, rec)
-    return rec
 
 
 def main(argv=None, env=None) -> int:
@@ -999,8 +1015,18 @@ def main(argv=None, env=None) -> int:
                          seccomp=env.get("NMAS_LOCAL_CI_SECCOMP", ""))
     finally:
         os.close(lock)
-    print(f"nmas-local-ci: {args.sha[:10]} {rec['state']}: {len(rec['failed'])} failed, "
-          f"{len(rec['not_run'])} not run; record {verdict_path(store, args.sha)}")
+    return report(rec, store)
+
+
+def report(rec: dict, store: str) -> int:
+    """`run`'s last lines and its exit: 0 passed, NO_VERDICT when the environment failed (the
+    NO VERDICT line names the job and the step), 1 otherwise (red, incomplete, an error)."""
+    sha = rec["sha"]
+    print(f"nmas-local-ci: {sha[:10]} {rec['state']}: {len(rec['failed'])} failed, "
+          f"{len(rec['not_run'])} not run; record {verdict_path(store, sha)}")
+    if no_verdict_line(rec):
+        print(f"nmas-local-ci: {sha[:10]} {no_verdict_line(rec)}")
+        return NO_VERDICT
     return 0 if rec["state"] == "passed" else 1
 
 

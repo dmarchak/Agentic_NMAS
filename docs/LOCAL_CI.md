@@ -24,6 +24,17 @@ runner and use GitHub's verdict alone (tested).
   - the scheduled jobs' cutover waits on a week of parallel runs (section 5);
   - the CPU and memory limits wait on the first measured run (answer 4).
 
+**Since the host's first run (the operator's rulings, 2026-11-04):**
+- **Only a test step's failure is red (C2503).** A failure in a setup step is "no verdict,
+  run again": the record's state is `error`, naming the job and the step (section 2).
+- **Push-triggered CI only (C2504).** The runner runs ci.yml for main's new tip and nothing
+  else; the scheduled workflows stay on GitHub's schedule (section 5).
+- **Capped by systemd.** The runner and every job container share one slice,
+  `nmas-local-ci.slice`, whose caps bound them together (sections 9 and 11).
+- **The job image holds PostgreSQL 18's libraries** (C2503's dpkg failure, section 9).
+  Python 3.12.3 in its tool cache (C2503's setup-python failure) is built and measured, and
+  waits on the operator's licence decision (section 9).
+
 ## The operator's five answers (2026-11-03), and how each is carried
 
 | # | The answer | Where it is carried |
@@ -31,7 +42,7 @@ runner and use GitHub's verdict alone (tested).
 | 1 | **Confinement in act's containers: a seccomp profile, with least privilege.** | `nmas-local-ci seccomp-profile` derives the jobs' profile from Docker's own default, plus ONE rule: `unshare` may make a user namespace, a network namespace or both (the suite's `unshare -rn`), and no other namespace, without CAP_SYS_ADMIN. clone and clone3 keep the default's rules. act passes it as `--container-options "--security-opt seccomp=<profile>"`; never `--privileged`, no capability added. The self-test refuses a profile not root's, one allowing by default, or one allowing a namespace or mount syscall with no condition. Beyond the answer, by the same principle: the jobs are on Docker's bridge, never act's default `--network host`, and act's artifact and cache servers bind to the bridge's gateway, not act's default of the host's LAN address. |
 | 2 | **The runner image: the derived image with Firefox and geckodriver (MPL).** | `deploy/local-ci/runner.Dockerfile` (section 9, "The runner image"); the deep self-test starts both in the image with no network; a browser test skipped for any of tests/browser.py's three reasons is a step not run, never a pass. |
 | 3 | **pip and setup-python: online for now.** | The jobs reach the internet through Docker's bridge, as on GitHub. Every record says `"network": "online"`. Offline is later (section 9). |
-| 4 | **CPU and memory limits: after the first measured run.** | `CONTAINER_LIMITS` is empty, and every record says `"limits": "unset: ..."`, naming section 12. The first measured run reads the peak (section 12, step 4); then the limit is one constant. |
+| 4 | **CPU and memory limits: after the first measured run.** | Set 2026-11-04 from that run, on a systemd slice rather than per container: `deploy/systemd/nmas-local-ci.slice` (CPUQuota=200%, MemoryHigh=5632M, MemoryMax=6G, CPUWeight and IOWeight 20). The service runs in it (`Slice=`) and every job container is put in it (`--cgroup-parent=nmas-local-ci.slice`), so its caps bound all of CI together. Every record's `limits` names the slice, and the self-test refuses a run when the slice lacks its caps. |
 | 5 | **The CI override: terminal only, with no in-app button.** | `nmas-deploy --override-ci-red "<reason of at least 3 words>"` is its one door. The updater calls the gate with no override, and nothing the app serves names it (both tested). |
 
 **The licence rule, clarified** (the operator, 2026-11-03): the copyleft clause covers only what
@@ -77,19 +88,19 @@ event file the wrapper passes; **Cannot**, it cannot run under act as written.
 | Item (where) | Verdict | Why, and what settles it |
 |---|---|---|
 | `on: push`, `github.event.before`, `github.sha` (every range check, `scope`) | Flag | The wrapper writes the push event (`-e event.json`: `before`, `after`, `ref`, `repository`). act takes `github.sha` from the checkout's HEAD **(recalled)**, and the checkout is detached at the sha. Settled by the first range check's log line naming its range (section 12). |
-| `on: schedule` (the two nightlies) | Flag | `act schedule -e {"schedule": "<cron>"}`. act does not schedule anything itself; the wrapper reads each workflow's own `schedule:` crons (section 5). |
+| `on: schedule` (the two nightlies) | Not run here (C2504) | The runner runs push-triggered CI only; the scheduled workflows stay on GitHub's schedule, and the runner never reads a `schedule:` trigger (section 5). |
 | `concurrency:` (all three) | As is (ignored) | act does not implement concurrency groups **(recalled)**. The wrapper runs one workflow at a time (a lock), so nothing overlaps. |
 | `permissions:`, GITHUB_TOKEN | As is | ci.yml and coverage-nightly use no token (checkout with `persist-credentials: false`; the drill-down step asks the PUBLIC API with no token). The wrapper passes no secret, so act's `GITHUB_TOKEN` is empty. **mutation-nightly's "Download it" passes `github.token`**: see its row. |
 | Secrets | As is | None of the three workflows reads a secret. |
 | Service containers (`services:`, `container:`) | As is (none) | None of the three declares one (searched for both keys, 2026-11-03). The records tests' PostgreSQL is started by the suite itself (tests/pg_instance.py). |
 | `runs-on: ubuntu-24.04` | Flag | `-P ubuntu-24.04=sha256:<the job image's ID>`, built on the host (section 11), with `--pull=false`. act still pulls an image that is absent even then **(measured, probe 3)**, so the per-run self-test refuses to start when it is absent. |
 | `actions/checkout@v4` (every job) | Flag | When the workflow's own repository is checked out, act copies the local folder into the container instead of fetching **(recalled)**. So the wrapper's fresh, self-contained clone at the exact sha is what every job sees. `fetch-depth: 0` is moot: the clone holds the whole history the range checks read. A `git worktree` or a `--shared` clone would break inside the container, since their `.git` points outside it, so the clone is a full `--no-local` one. |
-| `actions/setup-python@v5`, `python-version: "3.12.3"`, `cache: pip` (every test job) | Flag, online | The job image has no tool cache for Python (`/opt/hostedtoolcache/Python` absent; its own `python3` is 3.12.3) **(measured, the job image)**, so setup-python downloads 3.12.3 from GitHub's `actions/python-versions` on each run (online, answer 3). |
+| `actions/setup-python@v5`, `python-version: "3.12.3"`, `cache: pip` (every test job) | Flag, online | The job image has no tool cache for Python (`/opt/hostedtoolcache/Python` absent; its own `python3` is 3.12.3) **(measured, the job image)**, so setup-python downloads 3.12.3 from GitHub's `actions/python-versions` on each run (online, answer 3). **On the host it failed in four of five test jobs (C2503):** act mounts one tool-cache volume (`act-toolcache`) into every job, and each job's install began by deleting the others' ("Deleting Python 3.12.3"). The fix, Python 3.12.3 already in the image's tool cache, waits on the operator's licence decision (section 9). |
 | "Install the host's versions, exactly" (pip from PyPI, `--require-hashes`) | As is, online | pip reaches PyPI through Docker's bridge (answer 3). |
 | Information steps (`nmas-env-facts`, `pip check`, the image key) | As is | `|| true`, and `ImageOS`/`ImageVersion` are unset under act, so the key reads `unknown-unknown`. The cache keys then differ from GitHub's, which is harmless. |
 | `actions/cache@v4` (promtool, PostgreSQL's packages), `actions/cache/restore@v4` and `/save@v4` (mutation's record) | Flag, **unsettled** | act's own cache server (`--cache-server-path`, kept in the store between runs), bound to the bridge gateway. Whether it answers actions/cache v4 is not yet measured. A miss is safe: the download steps below run. Settled by the cache step's log on the second run (section 12, step 6). |
 | The promtool and PostgreSQL download steps (`sudo apt-get`, PGDG's script, on a cache miss) | As is, online | The job's steps run as root **(measured, probe 4)**, inside a throwaway container. They need the network on a miss only. |
-| "PostgreSQL 18 for the records tests" (`sudo dpkg -i`, the server unpacked) | As is | It installs into the throwaway container, never the host. |
+| "PostgreSQL 18 for the records tests" (`sudo dpkg -i`, the server unpacked) | As is, with the image's libraries | It installs into the throwaway container, never the host. **On the host it failed in shard b (C2503), reproduced on the laptop 2026-11-04:** the image's libraries were older than Ubuntu's archive, so the download step fetched their upgrades too (45 packages beside the server's), and `dpkg -i` in name order refused libpam-modules, whose pre-dependency libpam-modules-bin was unpacked and not yet configured. The job image now holds libpq5 and the server's libraries (section 9), so the step downloads only the server, and nothing is left to configure. |
 | **"Allow a network namespace ..." (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, all three)** | **Skipped under act, said why** | A job container's `/proc/sys` is read-only, and the setting is the HOST kernel's, never a job's to change. Each of the three workflows now carries `if: ${{ !env.ACT }}` on the step (act sets `ACT=true`), with `env: {NMAS_ACT_NOT_GATING: "<why>"}` beside it; GitHub runs it as before. The verdict lists it "not run (act)", non-gating. Skipping it cannot pass a run: the tests step still refuses unless the suite's namespace can be made (C46). With the jobs' profile, the namespace IS made inside a container with the host's restriction on **(measured, the laptop: `apparmor_restrict_unprivileged_userns=1`, section 10)**. |
 | **The tests step's confinement** (`scripts/nmas-test`'s `unshare -rn` then `ip link set lo up`; mutation's `unshare -rn`; the red-green step's runs) | Flag (answer 1) | Docker's default profile refuses it **(measured)**; the jobs' profile allows it, and still refuses a mount or a PID namespace **(measured)**. `ip` was missing from act's medium image **(measured)**: the job image adds iproute2. |
 | **The tests run as root** (GitHub's runner runs as `runner`, uid 1001) | **Unsettled** | The jobs' steps run as root **(measured, probe 4)**, and nmas-test maps its namespace back to the caller's uid, so the suite runs as root. A test that checks a refusal to read a mode-0000 file passes or fails differently as root. The first run's failures name them (section 12, step 5); the fix is `--container-options "--user 1001"` with sudo for the setup steps, if the image allows it **(recalled: unverified)**. |
@@ -143,11 +154,15 @@ file itself, in containers, which are the standard isolation for CI jobs.
 
 **How the verdict is judged** (`judge`; tests/test_local_ci.py):
 - **Every job must be in act's log.** For each job the workflow defines, act must report it, and each matrix run it reports is judged on its own (`test (a)`). A job act reports nothing of is **NOT RUN**.
-- **act's own "Set up job" is part of the job.** It is logged as `stepid` (lower case) **(measured)**; when it fails (the image absent, Docker refusing the container) the job is **FAILED**, naming it, and its steps never started.
-- **Every step needs a result.** Each step of each reported job must have one in act's log; one without is **NOT RUN**, named. A step that failed is **FAILED**, named with its job's log, unless the workflow declares it non-gating (`continue-on-error: true` on the step or the job, GitHub's own declaration). A Post stage's failure counts.
+- **act's own "Set up job" is part of the job.** It is logged as `stepid` (lower case) **(measured)**; when it fails (the image absent, Docker refusing the container) the job has **NO VERDICT**, naming it, and its steps never started.
+- **Every step needs a result.** Each step of each reported job must have one in act's log; one without is **NOT RUN**, named. A Post stage's failure counts. A step that failed counts unless the workflow declares it non-gating (`continue-on-error: true` on the step or the job, GitHub's own declaration), and then:
+  - **a verdict step's failure is FAILED** (red), named with its job's log. The verdict steps are `VERDICT_STEPS` in the script, by their ci.yml names: the tests, the skip check, the range and commit checks, and the coverage job's ratchet. A test holds that each is a step of ci.yml, so a rename fails;
+  - **any other step's failure is NO VERDICT** (the operator, 2026-11-04, C2503: "a failure in a job's setup steps is 'no verdict, run again', never red"). Such steps are checkout, setup-python, the caches, pip, the promtool and PostgreSQL installs, and the artifact uploads and downloads. A step added to ci.yml is a setup step until it is named a verdict step, so a new setup step can never turn a run red;
+  - **a job whose needed job had no verdict has none either**, followed through `needs:`: the coverage job's ratchet after a test job's setup failed is no verdict.
 - **"skipped" is act's answer to a step's `if:`, as on GitHub,** with one exception. act logs a skip only at debug level ("Skipping step ... due to ...", `stepResult: skipped`) **(measured)**, so act runs `--verbose`; without it a skipped step would read as not run. A step skipped by `if: ${{ !env.ACT }}` (skipped because it runs under act) is **NOT RUN**, unless its own `env:` carries `NMAS_ACT_NOT_GATING: "<why>"`. The declaration lives in the workflow, beside the step.
 - **A browser test skipped for want of a working Firefox** (in the JUnit files act's artifact server kept) is **NOT RUN**.
-- **The state.** `passed`: all ran, none failed. `failed`: a gating failure, or act past its bound. `incomplete`: none failed, something not run; never green. `error`: act reported no job, or the bridge could not be read, so no verdict.
+- **The state.** `passed`: all ran, none failed. `failed`: a verdict step failed (whatever else did), or act past its bound. `error`, no verdict: a setup step failed and no verdict step did, or act reported no job, or the bridge could not be read. `incomplete`: nothing failed, something not run; never green.
+- **No verdict, said as such.** A setup failure's record carries `infrastructure: {"job", "step"}` (the first; `infrastructure_failures` lists each, with its job's log) and the reason "NO VERDICT: infrastructure failure in `<job>`'s step `<step>`: run again". `run` prints that line and exits 75, the gate's code for a run that could not judge (scripts/nmas-gate, C2410); `tick` prints it to the journal. `scripts/nmas-deploy` reads `error` as no verdict: it never refuses a deploy on it, and never reads it green (section 4).
 - **act's log format is in one table**, `F` in the script, as act 0.2.89 writes it **(measured: tests/fixtures/act/, the captured lines the tests read)**. A later act that differs is corrected in `F` alone.
 
 **Practice that settles the rest:**
@@ -167,11 +182,12 @@ Each record holds:
 - when it started and ended, and its duration;
 - the runner's own sha256 and the commit it was installed from;
 - the platform (the job image's ID), and the workflow file and its sha256;
-- `confinement` (the seccomp profile's path and sha256, the Docker network), `network`
-  ("online") and `limits` ("unset: ...", until answer 4's measurement sets them);
+- `confinement` (the seccomp profile's path and sha256, the Docker network, the cgroup
+  parent), `network` ("online") and `limits` (the slice whose caps bound the run);
 - each job's matrix, result and steps (name, result, duration, non-gating);
-- `failed` and `not_run`, each naming the job, the step and the log (`runs/<sha>/<job>.log`;
-  act's whole log is `runs/<sha>/act.jsonl`).
+- `failed`, `infrastructure_failures` and `not_run`, each naming the job, the step and the log
+  (`runs/<sha>/<job>.log`; act's whole log is `runs/<sha>/act.jsonl`), and `infrastructure`,
+  the first setup failure's job and step, or null.
 
 How it is written and read:
 - **Written whole, then renamed:** a temporary file in the same folder, synced, renamed, the
@@ -218,23 +234,24 @@ How the rest works:
 - **The override is the terminal's alone (answer 5):** `--override-ci-red "<reason of at least
   3 words>"`. The Update button has no override, and the updater's call passes none (tested).
 
-## 5. The scheduled jobs move to it
+## 5. The scheduled jobs stay on GitHub (C2504)
 
-- **The schedules come from the workflows' own `schedule:` crons,** read at main's tip on
-  each tick; no timer encodes a time. A workflow is due when its cron has fired since its last
-  local start.
-- **A scheduled run's record** goes to `scheduled/<workflow>/<UTC stamp>.json`, never a
-  deploy's verdict.
-- **The move is a parallel run, then a cutover** (practice for replacing a running system:
-  run old and new side by side, compare, then switch):
-  1. **Now:** GitHub's crons stay, and the local runs beside them.
-  2. **After a week of local scheduled runs matching GitHub's:** one commit removes the
-     `schedule:` triggers from the two workflows, keeping `workflow_dispatch`. Since the
-     wrapper reads the crons from those triggers, the crons move into a small file the wrapper
-     reads, and the same commit points the scheduled-jobs reader (C2347) at the local store.
-     Otherwise a failed local night raises nothing.
-- **What stays on GitHub:** ci.yml on every push and pull request (point 3), and
-  `workflow_dispatch` of the nightlies.
+**The operator, 2026-11-04: the runner runs only push-triggered CI (ci.yml) for new shas.**
+The coverage nightly and the weekly mutation run stay on GitHub's schedule, and the local
+runner never starts them. This replaces direction 1's "the scheduled jobs move to it" and the
+parallel-run plan that followed it.
+- **Why:** its first tick on the host counted every scheduled workflow as due and started the
+  coverage nightly and the mutation run at once (C2504). That was an unscheduled mutation run
+  under the weekly rule (CLAUDE.md: no other run is dispatched).
+- **What `tick` does:** fetch; run ci.yml at main's new tip, if that tip has no verdict;
+  nothing else. It never reads a workflow's `schedule:` trigger, and it starts nothing on
+  another branch's tip. A test holds both: a planted workflow whose cron is due every minute
+  starts nothing, and only ci.yml runs, for main's tip.
+- **Removed with it:** the cron matcher, the `scheduled/` record folder, and each schedule's
+  last start in `state.json` (dropped the next time `tick` writes it). The host step removes
+  the folder and the scheduled runs' logs (section 11, step 11).
+- **What stays on GitHub:** ci.yml on every push and pull request (point 3), the nightlies on
+  their crons, and their `workflow_dispatch`.
 
 ## 6. The disagreement row (the ci-agreement reader)
 
@@ -284,10 +301,30 @@ small-batch practice and the release-train practice.
    the host with ci.yml's install step taking `--no-index --find-links` under act, and
    setup-python's 3.12.3 kept in a tool cache volume. That is the difference between "runs
    without GitHub" and "runs without the internet", and it is not this workstream's yet.
-4. **CPU and memory caps: after the first measured run** (section 12, step 4). Until then
-   `CONTAINER_LIMITS` is empty and every record says so. The runner itself already yields to
-   the app (`Nice=10`, `CPUWeight=20`, `IOWeight=20` in its unit); the job containers are
-   Docker's children, outside those weights, which is why the caps are needed at all.
+4. **CPU and memory caps: after the first measured run** (section 12, step 4). **Set
+   2026-11-04, on a systemd slice** (the operator: "the runner shares the NMAS host with
+   Mercury: cap it with systemd"):
+   - **Why a slice:** the job containers are Docker's children, outside the service's cgroup,
+     so caps on the service alone would bound nothing of CI. The host runs Docker 29.1.3 with
+     the systemd cgroup driver on cgroup v2. The runner passes `--cgroup-parent=nmas-local-ci.slice`
+     in act's `--container-options`, beside the seccomp option, so every job container is in
+     the slice. The service runs in it too (`Slice=nmas-local-ci.slice`). The slice's caps then
+     bound the runner and all its containers together **(measured on the laptop, Docker 29.1.3,
+     systemd driver: a job container act started is in
+     `/nmas.slice/nmas-local.slice/nmas-local-ci.slice/docker-<id>.scope`)**. systemd reads the
+     dashes as nesting, so its parents `nmas.slice` and `nmas-local.slice` are made on demand,
+     uncapped.
+   - **The caps** (`deploy/systemd/nmas-local-ci.slice`, each with its reason there):
+     CPUQuota=200% (two of the host's four CPUs); MemoryMax=6G and MemoryHigh=5632M (15.5 GiB
+     less Mercury's 6.6 GiB, with about 2.9 GiB kept, and reclaim before a kill); CPUWeight=20
+     and IOWeight=20. They start from the first run's peak (1.87 GiB and 1.5 CPUs together,
+     a run whose setup failed in four of five jobs). The operator's measurement, Mercury's
+     `/v2/` response time with a run in progress and without, may move them (section 12, step 4).
+   - **Within the slice the runner yields:** `Nice=19`, `IOSchedulingClass=idle`.
+   - **Never uncapped by accident:** Docker makes a missing slice on demand with no caps
+     **(measured: `MemoryMax=infinity`, `CPUQuotaPerSecUSec=infinity` with no unit file)**, so
+     the per-run self-test refuses a run unless systemd has the slice loaded with a MemoryMax
+     and a CPUQuota.
 5. **The override: the terminal's alone.** No in-app override is built; one would need its own
    board.
 
@@ -300,7 +337,45 @@ pinned by its index digest (built 2026-08-15, image version 20260815), with:
   release asset's digest);
 - **iproute2**, since scripts/nmas-test brings loopback up with `ip` and act's medium image
   has none **(measured)**;
-- Firefox's shared libraries (GTK 3, ALSA) and two font packages.
+- Firefox's shared libraries (GTK 3, ALSA) and two font packages;
+- **PostgreSQL 18's libpq5 and the server's libraries** (C2503), from PGDG's repository as
+  ci.yml's PostgreSQL step adds it, read the step's own way (every `lib...` that
+  postgresql-18 depends on). Without them, the step's download also fetched upgrades of the
+  image's older libraries, and its `dpkg -i` refused libpam-modules (section 1). With them
+  the step downloads only the server's package and installs nothing **(measured on the
+  laptop, 2026-11-04: the step's two commands in a container from the old image fail on
+  libpam-modules; from the new one they pass, `postgres (PostgreSQL) 18.6`)**. A `dpkg -i`
+  of the same versions over themselves, a cache hit's case, passes too **(measured)**.
+
+**Held back for the operator: Python 3.12.3 in the tool cache (C2503's setup-python).**
+- **What it is:** actions/python-versions' own build of 3.12.3 for Ubuntu 24.04, the file
+  setup-python downloads. Release `3.12.3-11057844995`,
+  `python-3.12.3-linux-24.04-x64.tar.gz`, 121,683,532 bytes, sha256
+  `07ef2452a390e76505b5a26b37bae7f88bc260926ca70ae88cb679003ab42279`. The sha256 was
+  computed from the download on the laptop, 2026-11-04; the release asset publishes no
+  digest. It is installed by its own `setup.sh` into `/opt/hostedtoolcache/Python/3.12.3/x64`,
+  with the `x64.complete` marker.
+- **Why it waits:** its licence is PSF-2.0 (the tarball's `lib/python3.12/LICENSE.txt`; the
+  build repository is MIT). Python is not yet listed in docs/THIRD_PARTY_DEV_TOOLS.md, and it
+  is not an OS package. The licence is the operator's to approve.
+- **Measured on the laptop with act 0.2.89 (2026-11-04), three jobs at once:**
+  - **from an image without it:** each job found no 3.12.3 and downloaded it into act's
+    shared tool-cache volume; two of the three failed after another's "Deleting Python
+    3.12.3", the host's failure reproduced;
+  - **from an image with it:** all three logged "Successfully set up CPython (3.12.3)" in
+    about 0.2 s, with no download, and `python` was the tool cache's.
+- **The host step it needs:** act mounts the named volume `act-toolcache` over
+  `/opt/hostedtoolcache`, and Docker copies the image's files into it only while it is empty
+  **(measured)**. The host's volume holds the first run's partial installs, so it is removed
+  once (`sudo docker volume rm act-toolcache`) before the first run on the new image.
+- **The block:** in the workstream's report, ready to add after the operator's decision.
+  setup.sh upgrades pip from PyPI as it installs, as it does on GitHub's runner.
+
+Sizes **(measured on the laptop, 2026-11-04)**: by `docker image inspect`'s Size, the job
+image before this change is 720.7 MB, with PostgreSQL's libraries 749.2 MB (28.5 MB more),
+and with Python 3.12.3 too 866.0 MB (116.8 MB more). `docker images` shows 3.01 GB on disk
+for the image with PostgreSQL's libraries, the measure the 2.89 GB below was taken in. The
+build took 58 s with the base cached.
 
 Sizes **(measured on the laptop, 2026-11-03, Docker 29.1.3)**: the base downloads 567 MB
 compressed (6 layers) and takes 2.3 GB on disk; the job image takes 2.89 GB. The build took
@@ -385,10 +460,18 @@ data/lab_hosts.json), and `<account>` the repository's owner, read from the chec
      /usr/local/lib/nmas-local-ci/nmas-local-ci self-test` prints "self-test passed" (it also
      starts Firefox and geckodriver in the image).
    - Undo: `sudo rm /etc/nmas/local-ci.env`.
-8. **The units**, rendered into a fresh folder and installed by name:
-   `d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-local-ci.service deploy/systemd/nmas-local-ci.timer && sudo install -o root -g root -m 0644 "$d/nmas-local-ci.service" "$d/nmas-local-ci.timer" /etc/systemd/system/ && sudo systemctl daemon-reload`.
-   - Check: `systemctl cat nmas-local-ci.service`.
-   - Undo: `sudo rm /etc/systemd/system/nmas-local-ci.service /etc/systemd/system/nmas-local-ci.timer && sudo systemctl daemon-reload`.
+8. **The units and the slice that caps them**, rendered into a fresh folder and installed by
+   name:
+   `d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-local-ci.slice deploy/systemd/nmas-local-ci.service deploy/systemd/nmas-local-ci.timer && sudo install -o root -g root -m 0644 "$d/nmas-local-ci.slice" "$d/nmas-local-ci.service" "$d/nmas-local-ci.timer" /etc/systemd/system/ && sudo systemctl daemon-reload && rm -r "$d"`.
+   - Check: `systemctl cat nmas-local-ci.service` shows `Slice=nmas-local-ci.slice`, `Nice=19`
+     and `IOSchedulingClass=idle`; `systemctl show nmas-local-ci.slice -p LoadState -p
+     CPUQuotaPerSecUSec -p MemoryHigh -p MemoryMax` prints `LoadState=loaded`,
+     `CPUQuotaPerSecUSec=2s`, `MemoryHigh=5905580032` and `MemoryMax=6442450944`; step 7's
+     self-test passes, since it refuses a slice without its caps. During a run, `systemd-cgls
+     -u nmas-local-ci.slice` lists the service and each job's `docker-<id>.scope`.
+   - Undo: `sudo rm /etc/systemd/system/nmas-local-ci.slice /etc/systemd/system/nmas-local-ci.service /etc/systemd/system/nmas-local-ci.timer && sudo systemctl daemon-reload`.
+     To keep the units and lift only the caps, install the previous release's service (no
+     `Slice=`) the same way. The runner of this release refuses to run without the slice.
 9. **The first run, by hand (section 12), then the timer:** only once section 12 has read
    back, `sudo systemctl enable --now nmas-local-ci.timer`.
    - Check: `systemctl list-timers nmas-local-ci.timer`.
@@ -398,6 +481,13 @@ data/lab_hosts.json), and `<account>` the repository's owner, read from the chec
     as docs/UPDATE.md installs it.
     - Check: the About page's updater row reads installed.
     - Undo: install the previous release's file the same way.
+11. **After C2504 (push-triggered CI only), once:** remove what the scheduled runs left in the
+    store. `sudo rm -r /var/lib/nmas-local-ci/scheduled`, then each
+    `/var/lib/nmas-local-ci/runs/<workflow>-<UTC stamp>` folder by name (`sudo ls
+    /var/lib/nmas-local-ci/runs` lists them: a push run's folder is a 40-hex sha, a scheduled
+    one starts `coverage-nightly-` or `mutation-nightly-`).
+    - Check: `sudo ls /var/lib/nmas-local-ci` shows no `scheduled`.
+    - Undo: none needed; nothing reads them.
 
 ## 12. The first measured run (the main thread's, on the host)
 
@@ -419,8 +509,11 @@ In a second terminal while it runs: `sudo docker stats --no-stream` once a minut
    downloaded 3.12.3; the coverage job found `.coverage.*` and the tiers; the sysctl step
    reads "not run (act)".
 4. **The limits (answer 4):** the peak CPU and memory of the job containers (`docker stats`),
-   against what the host has free beside Mercury (`free -m`) and the app's own use. The cap is
-   set below what keeps Mercury's memory free, as `CONTAINER_LIMITS`, in one commit.
+   against what the host has free beside Mercury (`free -m`) and the app's own use. Set
+   2026-11-04 as the slice's caps (section 9, answer 4). What may move them is the
+   operator's measurement: Mercury's `/v2/` response time with a run in progress and without,
+   and the slice's own peak (`systemctl show nmas-local-ci.slice -p MemoryPeak -p
+   CPUUsageNSec` after the run).
 5. **Running as root:** every failure the record names, each read against GitHub's run of the
    same sha. A test that passes on GitHub and fails here as root is the root-against-`runner`
    row, fixed by the `--user` option or by the test.

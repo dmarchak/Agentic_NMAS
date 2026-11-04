@@ -2,7 +2,7 @@
 # GUARD (scripts/nmas-guard-check). Polls origin every 2 minutes after the last run ENDED, so
 # runs never overlap and a push waits at most about 2 minutes plus the run in progress.
 [Unit]
-Description=NMAS: poll for a commit or a scheduled workflow for the local CI runner
+Description=NMAS: poll main for a new tip for the local CI runner
 
 [Timer]
 OnBootSec=5min

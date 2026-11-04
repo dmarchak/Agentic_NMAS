@@ -1,0 +1,32 @@
+# TEMPLATE (2026-11-04): render it with scripts/nmas-render-units, never copy it
+# (docs/LOCAL_CI.md section 11 has the install). A PROTECTED GUARD (scripts/nmas-guard-check).
+# The local CI runner's caps, beside Mercury on one host (the operator, 2026-11-04). The runner
+# runs in this slice (nmas-local-ci.service, Slice=), and every job container act starts is put
+# in it too (the runner's --cgroup-parent=nmas-local-ci.slice; Docker's systemd cgroup driver
+# on cgroup v2), so these caps bound the runner and all its containers TOGETHER. A cap on the
+# service alone would bound nothing of CI: the containers are Docker's children, outside it.
+# systemd reads the dashes in the name as nesting (nmas.slice, then nmas-local.slice, made on
+# demand and uncapped); only this slice carries caps. The runner's self-test refuses a run
+# when this slice is not loaded with a CPUQuota and a MemoryMax (Docker would make it on
+# demand with none).
+#
+# The starting values, from the host's measurement (2026-11-04): 4 CPUs and 15.5 GiB; Mercury
+# and its services use about 6.6 GiB; the first local run's act containers peaked at 1.87 GiB
+# and 1.5 CPUs together (that run's setup failed in four of five jobs, so a whole run is
+# larger). The operator's measurement, Mercury's /v2/ response time with a run in progress
+# against without, may move them (docs/LOCAL_CI.md section 12).
+[Unit]
+Description=NMAS: the local CI runner and its job containers, capped beside Mercury
+
+[Slice]
+# Two of the host's four CPUs, at most, for all of CI together: Mercury keeps two whatever CI
+# does, and the first run's 1.5 CPUs fit under it with room for a whole run's five jobs.
+CPUQuota=200%
+# Below Mercury's share whenever both want the CPU or the disk (the default weight is 100).
+CPUWeight=20
+IOWeight=20
+# 6 GiB at most: 15.5 GiB less Mercury's 6.6 GiB leaves about 8.9 GiB, and 6 keeps about
+# 2.9 GiB for the kernel, the page cache and Mercury's growth. MemoryHigh, a little below it,
+# makes the kernel reclaim the jobs' memory before MemoryMax kills a job.
+MemoryHigh=5632M
+MemoryMax=6G

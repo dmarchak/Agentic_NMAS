@@ -60,7 +60,9 @@ GUARD_PATHS = ["scripts/hooks/commit-msg", "scripts/hooks/a-new-hook", "scripts/
                # Workstream 0 (the operator, 2026-11-03: "its script and unit are protected
                # guards"): the local CI runner and its unit templates.
                "scripts/nmas-local-ci", "deploy/systemd/nmas-local-ci.service",
-               "deploy/systemd/nmas-local-ci.timer"]
+               "deploy/systemd/nmas-local-ci.timer",
+               # The slice that caps the runner and its job containers (2026-11-04).
+               "deploy/systemd/nmas-local-ci.slice"]
 
 TESTING = """# What the test suite checks
 

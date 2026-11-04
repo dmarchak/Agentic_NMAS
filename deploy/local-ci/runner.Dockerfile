@@ -33,6 +33,23 @@ RUN apt-get update \
       fonts-dejavu-core fonts-liberation \
  && rm -rf /var/lib/apt/lists/*
 
+# PostgreSQL 18's client library and the server's library dependencies, already installed, as
+# ci.yml's PostgreSQL step installs them (C2503): PGDG's repository added by postgresql-common's
+# own script, then libpq5 and every `lib...` the postgresql-18 package depends on, read the
+# step's own way. Without them the step's download (`apt-get install --download-only`) fetched
+# the upgrades of the image's older libraries too (systemd, libc6, PAM: 45 packages beside the
+# server's own, measured on the laptop 2026-11-04), and its `dpkg -i` of them, in name order, refused libpam-modules:
+# it pre-depends on libpam-modules-bin of the same version, unpacked but not yet configured
+# ("pre-dependency problem - not installing libpam-modules"). The host's first run failed so in
+# shard b. apt orders the same upgrades correctly here; the step then downloads only what is
+# newer than this image, and a `dpkg -i` of the same versions over themselves passes (measured).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-common \
+ && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+ && deps="$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)" \
+ && apt-get install -y --no-install-recommends libpq5 ${deps} \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN d="$(mktemp -d)" \
  && curl -fsSL --max-time 900 -o "$d/firefox.tar.xz" \
       "https://ftp.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.xz" \

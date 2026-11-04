@@ -2,11 +2,12 @@
 # (docs/LOCAL_CI.md has the whole install). A PROTECTED GUARD (scripts/nmas-guard-check).
 # The local CI runner (workstream 0): /usr/local/lib/nmas-local-ci/nmas-local-ci, a ROOT-OWNED
 # copy run by the system's python3 in isolated mode, never the repository's file. It fetches
-# main, runs .github/workflows/*.yml at the commit under act in Docker, and writes a verdict
-# per commit to /var/lib/nmas-local-ci, which nmas-deploy and the Update button read. Its
-# settings come from the root-owned environment file, never from a commit.
+# main, runs .github/workflows/ci.yml at main's new tip under act in Docker (push-triggered CI
+# only: the scheduled workflows stay on GitHub's schedule, C2504), and writes a verdict per
+# commit to /var/lib/nmas-local-ci, which nmas-deploy and the Update button read. Its settings
+# come from the root-owned environment file, never from a commit.
 [Unit]
-Description=NMAS: run the repository's own CI workflows locally under act, a verdict per commit
+Description=NMAS: run the repository's own CI workflow locally under act, a verdict per commit
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service
@@ -16,13 +17,14 @@ Type=oneshot
 User=root
 EnvironmentFile=/etc/nmas/local-ci.env
 ExecStart=/usr/bin/python3 -I /usr/local/lib/nmas-local-ci/nmas-local-ci tick
-# The app on this host comes first (systemd.resource-control): the runner itself takes what
-# the app leaves. The containers act starts are Docker's children, outside these weights:
-# their CPU and memory limits are UNSET until the first measured run sets them (the operator's
-# answer 4; CONTAINER_LIMITS in the runner, docs/LOCAL_CI.md "The first measured run").
-Nice=10
-CPUWeight=20
-IOWeight=20
-# A push run's bound (RUN_BOUND_MIN, 180 min) and two scheduled runs' (each twice that), one
-# after another at worst: 15 h. Re-derived from the host's recorded durations after a week.
-TimeoutStartSec=15h
+# Mercury on this host comes first (the operator, 2026-11-04). The runner runs in the slice
+# whose caps bound it and every job container it starts together (nmas-local-ci.slice: the
+# containers are Docker's children, outside this service's cgroup, and join the slice by the
+# runner's --cgroup-parent). Within it, the runner itself yields the CPU and the disk to
+# everything else.
+Slice=nmas-local-ci.slice
+Nice=19
+IOSchedulingClass=idle
+# A push run's bound (RUN_BOUND_MIN, 180 min) and the fetch and clone before it: the runner's
+# own bound fires first and records the run red, naming the bound.
+TimeoutStartSec=3h15min

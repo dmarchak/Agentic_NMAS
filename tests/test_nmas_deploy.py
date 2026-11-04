@@ -1181,9 +1181,9 @@ def _local_store(tmp_path):
 
 
 def _local_record(store, world, sha, state, tree=None, duration=600.0, ended="2026-11-03T10:00:00Z",
-                  failed=None):
+                  failed=None, **extra):
     """A record as scripts/nmas-local-ci writes it (tests/test_local_ci.py holds the two to one
-    shape through the runner's own writer)."""
+    shape through the runner's own writer); *extra* fields added as given."""
     rec = {"schema": 1, "kind": "push", "sha": sha,
            "tree": tree or _git(world.dev, "rev-parse", f"{sha}^{{tree}}"),
            "state": state, "started_at": "2026-11-03T09:50:00Z", "ended_at": ended,
@@ -1197,6 +1197,7 @@ def _local_record(store, world, sha, state, tree=None, duration=600.0, ended="20
                                   "loopback, measured by tier", "result": "failure",
                                   "log": "/var/lib/nmas-local-ci/runs/x/test-a/12.log"}]
                                 if state == "failed" else [])}
+    rec.update(extra)
     path = os.path.join(store["path"], "verdicts", f"{sha}.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(rec, fh)
@@ -1266,6 +1267,29 @@ class TestTheLocalRunnersVerdict:
         assert "the local CI runner failed it" in err
         assert "step 'Tests (R1, R4), confined to loopback, measured by tier' in test (a)" in err
         assert calls == [], "a local red is final: GitHub is not asked"
+
+    def test_a_local_no_verdict_never_refuses_and_github_decides_saying_why(self, world,
+                                                                            tmp_path, capsys):
+        """C2503 (the operator, 2026-11-04): a failure in a job's setup steps is "no verdict,
+        run again", never red. The runner records it `error` with the job and step; the gate
+        reads it as no verdict: GitHub's green deploys, saying the local reason, and GitHub's
+        pending waits, never refused on the local record."""
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        why = ("NO VERDICT: infrastructure failure in test (b)'s step "
+               "Run actions/setup-python@v5: run again")
+        _local_record(store, world, sha, "error", reason=why,
+                      infrastructure={"job": "test (b)", "step": "Run actions/setup-python@v5"})
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)}, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted, out
+        assert f"The local runner: error: {why}" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "github"
+        sha2 = world.advance({"app.py": "v = 3\n"})
+        _local_record(store, world, sha2, "error", reason=why)
+        code, _, _ = _run(world, {sha2: self._pending(sha2)}, store=store)
+        assert code == 7 and _head(world) == sha, "GitHub pending and no local verdict: waits"
+        assert "refused" not in capsys.readouterr().err.lower()
 
     def test_a_local_green_with_github_red_is_refused_naming_both(self, world, tmp_path, capsys):
         store = _local_store(tmp_path)
