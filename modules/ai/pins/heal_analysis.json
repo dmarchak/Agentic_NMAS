@@ -1,0 +1,13 @@
+{
+  "words": "Analyse what self-healing could not fix (Needs attention, the notice)",
+  "model": "claude-sonnet-5-5",
+  "max_prompt_tokens": 27000,
+  "max_tokens": 5760,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {
+    "model": "Explain's pin (docs/HEAL_TO_INTENT.md section 12: the prompt and the check are Explain's, over a pack of the same sections plus what Mercury tried): Sonnet 5.5 until H13 measures its three recorded cases (C4, I5, V1) ten runs each; then pinned to the cheapest model that meets 15.12's bar.",
+    "max_prompt_tokens": "Explain's, 27,000 by the provider's own count (C2048): the incident's pack holds Explain's sections less the alert's own and the other alerts, plus the tried section (at most 40 steps, each one line). Not measured on this task yet: H13's cases are its first measurement, and a request over the bound is refused, never trimmed silently.",
+    "max_tokens": "Explain's measured bound (C1754's rule: about 2.5x the largest of 65 Explain outputs, 2,286 tokens): the answer's shape is Explain's. H13's runs measure this task's own outputs, and the bound moves to about 2.5x the largest then."
+  }
+}

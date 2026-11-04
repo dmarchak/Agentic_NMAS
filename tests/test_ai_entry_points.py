@@ -29,6 +29,14 @@ from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack import pack_lab  # noqa: F401 (the fixture)
 
 TOP = "<top level>"
+#: The background features' jobs (PHASE8_PLAN 18.3; CLAUDE.md, "AI cost safety": a call is a
+#: person's press or a background job's on a finding, and the gateway refuses a background
+#: call whose feature is off for its network). Each function here starts its feature's call
+#: under that feature's background trigger, so a way into the code that reaches the gateway
+#: only through one is no person's click: the scan stops there. Exact (each must still reach
+#: the gateway, its feature declared, and the scan find its caller without it), so it never
+#: excuses more than it names. ``{(module, function): background feature}``.
+BACKGROUND_JOBS = {("modules.heal_notice", "notice"): "heal_analysis"}
 
 
 def _methods(func):
@@ -43,10 +51,13 @@ def _methods(func):
     return None
 
 
-def entry_points(sources: dict) -> dict:
+def entry_points(sources: dict, background=None) -> dict:
     """``{(module, function or TOP): {"endpoint", "methods"}}``: every way into the code that
     reaches the gateway: a function that reaches it and that nothing scanned references, and
-    a module whose top-level code (a registration) references one that does."""
+    a module whose top-level code (a registration) references one that does. A background
+    feature's job (*background*, `BACKGROUND_JOBS` by default) is where the scan stops: what
+    reaches the gateway only through one is not a way in."""
+    stop = set(BACKGROUND_JOBS if background is None else background)
     trees = {T._dotted(rel): (rel, ast.parse(text)) for rel, text in sources.items()}
     modules = set(trees) | {m.rsplit(".", 1)[0] for m in trees if "." in m}
     funcs, routes = {}, {}
@@ -71,7 +82,7 @@ def entry_points(sources: dict) -> dict:
     while grew:
         grew = False
         for key, refs in funcs.items():
-            if key not in reached and refs & reached:
+            if key not in reached and key not in stop and refs & reached:
                 reached.add(key)
                 grew = True
     referenced = set().union(*funcs.values())
@@ -104,6 +115,26 @@ def test_every_way_to_the_gateway_is_a_gated_post():
     for r in found.values():
         assert served[r["endpoint"]] == {"POST"}, r
         assert route_gates.gate_for(r["endpoint"]) is not None, r
+
+
+def test_each_background_job_is_exact_and_names_its_feature():
+    """`BACKGROUND_JOBS` excuses only what it names: each job reaches the gateway (without the
+    stop, the scan finds the path through it), its feature is a declared background feature,
+    and the job names that feature's trigger; with the stop, nothing else is excused."""
+    from modules.ai import background
+
+    src = T._sources()
+    without = entry_points(src, background={})
+    assert ("app", TOP) in without, "the heal runner's start reaches the gateway through it"
+    assert ("app", TOP) not in entry_points(src)
+    for (mod, name), feature in BACKGROUND_JOBS.items():
+        assert feature in background.FEATURES, feature
+        rel = mod.replace(".", os.sep) + ".py"
+        tree = ast.parse(src[rel])
+        func = next(f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name == name)
+        assert "analyse" in {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
+    from modules.ai import heal_analysis
+    assert heal_analysis.trigger_for("Default", "hi-0", "j")["feature"] == "heal_analysis"
 
 
 HEAD = "from flask import Blueprint\nbp = Blueprint('planted', __name__)\n"
@@ -166,6 +197,9 @@ DEPLOY_PAGES = {"change_record": ["/v2/device/r2/deploy?back=overview&list=Lab"]
 #: Drawn only on a response awaiting a person: `test_sdn_responses_call_no_model`'s.
 SDN_PAGES = {"sdn_classify": ["/v2/sdn/responses?list=Default",
                               "/v2/sdn/view?tab=responses&list=Default"]}
+#: A background feature with no control drawn (board H, H8): what it kept is drawn by a
+#: can't-fix row's block when the item opens: `test_a_cant_fix_s_analysis_calls_no_model`'s.
+HEAL_PAGES = {"heal_analysis": ["/v2/attention/heal-analysis/Lab/hi-000000000000"]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -215,10 +249,22 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     assert len(world.sent) == 1
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
-    assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) == set(
-        controls.CONTROLS), "every registered control names its pages"
+    assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
+        HEAL_PAGES) == set(controls.CONTROLS), "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
+    assert seen == {"asked": [], "sends": []}
+
+
+def test_a_cant_fix_s_analysis_calls_no_model(world, monkeypatch):
+    """A can't-fix row's AI analysis block (board H, H8), loaded, redrawn and refreshed: it
+    reads what the analysis kept and never asks the gateway."""
+    seen = _count_ai(monkeypatch)
+    c = world.lab["client"]
+    for url in HEAL_PAGES["heal_analysis"]:
+        for headers in ({}, {"HX-Request": "true"}, {}):
+            r = c.get(url, headers=headers)
+            assert r.status_code == 200 and "AI analysis: pending" in r.get_data(as_text=True)
     assert seen == {"asked": [], "sends": []}
 
 

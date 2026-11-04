@@ -108,6 +108,8 @@ RATCHETS = (
     ("tests/test_v2_one_confirm.py", "LEGACY_HOMES", "shrinks"),
     ("tests/test_v2_text_sends_nowhere_old.py", "EXCUSED", "shrinks"),
     ("tests/test_host_actor_is_labelled.py", "EXCUSED", "shrinks"),
+    # The heal loop's references to modules.ai that predate H8's rule (board H, H8).
+    ("tests/test_heal_analysis_never_read.py", "KNOWN", "shrinks"),
     ("tests/todays_page_links.py", "GAPS", "shrinks"),
     ("tests/todays_page_links.py", "OTHER_GAPS", "shrinks"),
     ("tests/coverage_baseline.json", "assertion_free", "shrinks"),
@@ -141,6 +143,7 @@ RATCHETS = (
     # ── Floors: they never fall (a population a scan must keep finding) ─────────────────────
     ("tests/test_concepts_are_taught.py", "MIN_WORDS", "floor"),
     ("tests/test_confirm_buttons_drawn.py", "FLOOR", "floor"),
+    ("tests/test_heal_analysis_never_read.py", "FLOOR", "floor"),
     ("tests/test_console_records_at_rest.py", "FLOOR", "floor"),
     ("tests/test_oxidized_settings_inert.py", "FLOOR", "floor"),
     ("tests/test_presence_only.py", "UI_TESTS_FLOOR", "floor"),

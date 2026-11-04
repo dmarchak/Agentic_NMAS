@@ -5,7 +5,17 @@
 link. An event is a closed set of fields (`FIELDS`); any other key is refused by name, so a
 caller cannot hand a configuration's lines in under a new name: the heal says each unit by its
 kind ("inbound ACL added on Gi2, 2 lines, content withheld"), and the lines are one click away
-in Mercury. (The AI analysis block of a can't-fix is H8's, and not in this slice.)
+in Mercury.
+
+**The AI analysis block** (H8, section 12): a can't-fix's message carries, after Mercury's
+facts and before the link, the analysis's block (`ANALYSIS_FIELDS`: its state's words, the
+advisory label and score, the rationale, at most three hypotheses each with its next step), or
+its state alone ("AI analysis: pending", off, capped, couldn't analyse, the provider not
+answering): never a silent absence. The analysis that arrives after the first message goes as a
+follow-up, the event ``analysis``, threaded under the incident's first message (an email's
+``In-Reply-To``; a webhook's second event with the incident's id). The block is the
+notifier's (`modules/heal_notice.py`), which has withheld the incident's configuration lines
+from it.
 
 **The egress mask.** Everything a message carries, an email's subject and text and a
 webhook's whole JSON, goes through `redact.egress_payload` at its sender, the one place per
@@ -24,12 +34,19 @@ import time
 EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           "halted": "self-healing halted", "held": "a device held from healing",
           "healed": "healed, verified", "cleared": "cleared",
+          "analysis": "AI analysis of what could not be fixed",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 FIELDS = {"incident": 80, "event": 20, "network": 80, "device": 80, "kind": 80,
           "outcome": 200, "detected": 400, "detected_at": 40, "steps": 20, "todo": 400,
-          "link": 400}
+          "link": 400, "analysis": 1}
 STEP_FIELDS = {"what": 200, "result": 200}
+#: The AI analysis block's fields (H8) and each one's bound; its hypotheses at most
+#: `ANALYSIS_HYPOTHESES`, each `HYPOTHESIS_FIELDS`.
+ANALYSIS_FIELDS = {"state": 20, "words": 400, "label": 120, "score": 300, "rationale": 800,
+                   "hypotheses": 3}
+HYPOTHESIS_FIELDS = {"claim": 400, "next": 200}
+ANALYSIS_HYPOTHESES = 3
 _INCIDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 #: A link Mercury's own page path (History's `_PRODUCED` shape): never another site.
 _LINK = re.compile(r"^/v2/[A-Za-z0-9/_.~%-]*(\?[A-Za-z0-9_.~%=&+-]*)?(#[A-Za-z0-9_-]{1,80})?$")
@@ -60,7 +77,8 @@ def check_event(event: dict) -> dict:
     link = str(event.get("link") or "")
     if link and not _LINK.match(link):
         raise ValueError(f"the link {link[:80]!r} is not a Mercury page's path (/v2/...)")
-    out = {k: _line(event.get(k), FIELDS[k]) for k in FIELDS if k not in ("steps",)}
+    out = {k: _line(event.get(k), FIELDS[k]) for k in FIELDS if k not in ("steps", "analysis")}
+    out["analysis"] = _analysis(event.get("analysis"))
     steps = event.get("steps") or []
     if not isinstance(steps, list):
         raise ValueError("an event's steps are a list")
@@ -70,6 +88,44 @@ def check_event(event: dict) -> dict:
             raise ValueError(f"a step carries only {', '.join(STEP_FIELDS)}")
         out["steps"].append({k: _line(s.get(k), b) for k, b in STEP_FIELDS.items()})
     return out
+
+
+def _analysis(block) -> dict:
+    """The AI analysis block as a message may carry it (`ANALYSIS_FIELDS`), or ``{}`` for none;
+    an unknown field refused by name, each line bounded."""
+    if not block:
+        return {}
+    if not isinstance(block, dict) or set(block) - set(ANALYSIS_FIELDS):
+        raise ValueError(f"an analysis block carries only {', '.join(ANALYSIS_FIELDS)}")
+    out = {k: _line(block.get(k), b) for k, b in ANALYSIS_FIELDS.items() if k != "hypotheses"}
+    hyps = block.get("hypotheses") or []
+    if not isinstance(hyps, list):
+        raise ValueError("an analysis block's hypotheses are a list")
+    out["hypotheses"] = []
+    for h in hyps[:ANALYSIS_HYPOTHESES]:
+        if not isinstance(h, dict) or set(h) - set(HYPOTHESIS_FIELDS):
+            raise ValueError(f"a hypothesis carries only {', '.join(HYPOTHESIS_FIELDS)}")
+        out["hypotheses"].append({k: _line(h.get(k), b) for k, b in HYPOTHESIS_FIELDS.items()})
+    return out
+
+
+def analysis_lines(block: dict) -> list:
+    """The analysis block in a message's words: its state's words, then the label and score,
+    the rationale and each hypothesis with its next step (advisory: a person confirms)."""
+    if not block:
+        return []
+    lines = [block.get("words") or "AI analysis"]
+    if block.get("score"):
+        lines.append(f"  Measured: {block['score']}")
+    if block.get("rationale"):
+        lines.append(f"  {block['rationale']}")
+    hyps = block.get("hypotheses") or []
+    for i, h in enumerate(hyps, 1):
+        n = f" {i}" if len(hyps) > 1 else ""
+        lines.append(f"  Hypothesis{n}: {h['claim']}")
+        if h.get("next"):
+            lines.append(f"  Next step: {h['next']}")
+    return lines
 
 
 def link_url(path: str) -> tuple:
@@ -126,6 +182,9 @@ def text(facts: dict, *, sent_at: float = None) -> str:
         lines += [f"  {i}. {s['what']}: {s['result']}" for i, s in enumerate(facts["steps"], 1)]
     if facts.get("todo"):
         lines.append(f"What to do: {facts['todo']}")
+    if facts.get("analysis"):
+        # After Mercury's facts, before the link (section 12's order); advisory only.
+        lines += [""] + analysis_lines(facts["analysis"])
     url, said = link_url(facts.get("link", ""))
     if url:
         lines += ["", f"Open in Mercury: {url}{said}"]
@@ -144,4 +203,5 @@ def payload(facts: dict, *, sent_at: float = None) -> dict:
             "device": facts.get("device", ""), "kind": facts.get("kind", ""),
             "outcome": facts.get("outcome", ""), "detected": facts.get("detected", ""),
             "detected_at": facts.get("detected_at", ""), "steps": facts["steps"],
-            "todo": facts.get("todo", ""), "link": url, "sent_at": sent}
+            "todo": facts.get("todo", ""), "link": url, "sent_at": sent,
+            **({"analysis": facts["analysis"]} if facts.get("analysis") else {})}

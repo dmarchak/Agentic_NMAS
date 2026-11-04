@@ -1620,6 +1620,28 @@ def attention_explain(pack_id):
                                    x=_explained(pack), explain_model=_explain_model()))
 
 
+#: A heal incident's id as the route takes one (`heal.incidents._new`).
+_HEAL_INCIDENT = re.compile(r"^hi-[0-9a-f]{12}$")
+
+
+@bp.route("/attention/heal-analysis/<network>/<incident_id>", methods=["GET"])
+def attention_heal_analysis(network, incident_id):
+    """Board H, H8 (docs/HEAL_TO_INTENT.md section 12): a can't-fix row's AI analysis, drawn
+    when the item is opened, after Mercury's facts: what the analysis kept with the incident
+    (`heal_analysis.drawn`, a read of its store, never a call), advisory; pending, off,
+    capped, couldn't analyse or the provider not answering said in place. An incident id out
+    of shape, or a network Mercury does not hold, is said and reads nothing."""
+    from modules.ai import heal_analysis
+    from modules.nsot import listref
+
+    iid = incident_id[:40]
+    if not _HEAL_INCIDENT.match(iid) or not listref.exists(network[:80]):
+        got = {"state": "unknown", "error": "", "block": {}, "provenance": {}}
+    else:
+        got = heal_analysis.drawn(network[:80], iid)
+    return _strict(render_template("v2/_heal_analysis.html", got=got, incident=iid))
+
+
 @bp.route("/monitoring/alerts/pack/<pack_id>/explain", methods=["POST"])
 def monitoring_alert_explain(pack_id):
     """Explain (PHASE8_PLAN 15.9, P1's one AI step; modules/ai/explain.py): the pack's

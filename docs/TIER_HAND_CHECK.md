@@ -3628,3 +3628,61 @@ refused, or carried to a receiver nobody verified (a new URL left on, or its old
 - **M11's first test** asked for a destination the store refuses by its id, so the mutant's
   write could not land. Its test now moves a second webhook onto the first's URL: a real
   refused edit, with a real id.
+## 2026-11-04: the AI analysis of a can't-fix, egress by kind (board H's H8), by hand
+
+**What changed in the tier:** data off the host, new, and a background AI call. When
+self-healing stops at can't fix, `modules/ai/heal_analysis.py` sends the incident's evidence
+pack and what Mercury tried to the provider, through the gateway, and `modules/heal_notice.py`
+sends its answer in the can't-fix notice. The danger the hand check guards: a configuration
+line of the step log leaving as text (the program, a unit's lines, a line a step's words hold),
+in the request or in a message; the intent section's lines past N10's 20 or unmasked; the
+observed overlay sent as pack data; a message carrying a field outside its closed set; the
+call made on anything but a can't-fix, under another finding, twice for one incident, or for a
+past incident after a deploy; the notice waiting on the analysis without its bound; and the
+analyses' store keeping a secret. The withholding is `evidence_pack.withhold` (each of the
+incident's lines, `config_lines`, found as a whole line ignoring case and spacing),
+`unit_by_kind` and `tried_section` on the request side, and `heal_notice.facts` and
+`analysis_block` on the message side; the gateway's egress mask (`redact.egress_payload`) and
+the message's (`message.mask`) cover every byte after them, as before.
+**The method:** H7's: each mutant one exact replacement of a changed line, required to match
+once, in a `scripts/nmas-control` throwaway worktree (snapshot 555081d839 over c94d8b08 with H4,
+H6 and H8 uncommitted), then tests/test_heal_analysis.py, test_heal_notice.py,
+test_heal_analysis_never_read.py and test_notify.py with `-x`, two workers, in CI's
+interpreter, confined (`scratchpad/mut_h8.py`, 2026-11-04 03:50 to 03:54 UTC), the file
+restored and compared byte for byte after each. Baseline: 138 passed. The first run
+(snapshot 261538b77f, 03:04 to 03:06 UTC) left M1, M4, M10, M13, M19 and M21 alive; M1's
+mutant appended only the added lines, of which the ACL case has none, and was made to append
+both; M4, M13, M19 and M21 each gained its case (a line in another case, a program line in a
+notice's step, a past incident not yet taken, a secret in the answer kept), and were killed in
+the second (snapshot 2334638c33, 03:08 to 03:10 UTC); a third (ca1e47f570, 03:27 to 03:31 UTC)
+followed `analyse`'s call moving into `ask_prepared` (H13's seam, a recorded pack asked as
+`ask_prepared(request_of(pack))`). The fourth, recorded here, is of the code as handed over,
+the same result.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `withhold` returns its text unchanged | killed | `test_a_line_a_step_s_words_held_is_withheld` |
+| M1 a unit by kind carries its lines | killed | `test_no_configuration_line_of_the_step_log_leaves_as_text` |
+| M2 the program's lines not withheld | killed | `test_a_line_a_step_s_words_held_is_withheld` |
+| M3 the units' lines not withheld | killed | `test_a_unit_s_line_and_its_quote_by_the_analysis_are_withheld` |
+| M4 the withhold matches case | killed | `test_the_withhold_matches_whole_lines_only` |
+| M5 the withhold matches exact spacing | killed | `test_a_line_a_step_s_words_held_is_withheld` |
+| M6 no line long enough to withhold | killed | the same |
+| M7 a step's words sent as kept | killed | the same |
+| M8 the program piece carries its lines | killed | the same |
+| M9 the intent lines uncapped (40 for 20) | killed | `test_the_intent_lines_go_masked_and_at_most_twenty_n10` |
+| M10 the intent lines unmasked by the pack's own mask | **equivalent** | survived: the pack is masked again when it is built (`redact.redact_payload`) and the request as it leaves (`redact.egress_payload`, the same egress shapes), so a line the pack's mask missed is masked at the boundary. `intent_lines` is unchanged by H8 (Explain's, C2117) |
+| M11 the pack's sections sent as stored, not Explain's `sent_sections` | killed | `test_the_pack_goes_as_explain_s_the_observed_overlay_never_as_pack_data` |
+| M12 a notice's analysis not withheld | killed | `test_a_unit_s_line_and_its_quote_by_the_analysis_are_withheld` |
+| M13 a notice's steps not withheld | killed | `test_a_program_line_a_step_held_is_withheld_from_the_message` |
+| M14 an analysis block's unknown field carried | killed | `test_an_analysis_block_carries_only_its_fields` |
+| M15 a hypothesis's unknown field carried | killed | the same |
+| M16 the analysis asked on any outcome | killed | `test_only_a_cant_fix_asks_and_nothing_else_reaches_the_gateway` |
+| M17 the trigger names another finding | killed | `test_the_call_names_its_background_trigger_and_finding` |
+| M18 an incident claimed again | killed | `test_an_incident_is_claimed_once` |
+| M19 a past can't-fix told after a deploy | killed | `test_each_can_t_fix_is_told_once_and_a_past_one_never` |
+| M20 the message waits on the analysis without its bound | killed | `test_not_back_it_says_pending_then_follows_up` |
+| M21 the analyses' store keeps strings unmasked | killed | `test_every_string_is_masked_before_it_is_kept` |
+
+**The result: 21 mutants with the canary; 20 killed, 1 equivalent (M10, its reason above); the
+file identical after each; the worktree removed.**

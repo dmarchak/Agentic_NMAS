@@ -29,7 +29,10 @@ plans, guards (but the grace period) or sends.
 **The runner** (`start`): one thread in the app's process, a pass over every network with a
 watching or ready incident each `PASS_SECONDS`, and at once when a trigger was sighted
 (`wake`); after each network's pass, the decision (`decide.run`, H3) takes what it settled,
-and each heal it made is started as its own job (`act.run`, H4).
+and each heal it made is started as its own job (`act.run`, H4). After every network's pass,
+the notify step (H8, `_notify_step`): each new can't-fix on any network is told about once,
+with its AI analysis, by the notifier (`modules/heal_notice.py`), whose answer the runner
+never reads.
 An incident the decision deferred (`incidents.defer`) is not read before its time, and its
 grace period restarts there.
 """
@@ -327,8 +330,30 @@ def _loop() -> None:
             except Exception as exc:
                 log.error("heal: %s's heals could not start: %s: %s", name,
                           type(exc).__name__, exc)
+        _notify_step()
         _wake.wait(PASS_SECONDS)
         _wake.clear()
+
+
+def _notify_step() -> None:
+    """Step 6, notify (section 4; board H, H8): on every network, not only those still
+    watching (a heal's act ends in its own job, after its incident closed), each new can't-fix
+    is told about once, in its own thread (`heal_notice.run`). The pass reads nothing back
+    from it: what the notice and its analysis keep is the notifier's and the pages' alone."""
+    from modules.integration_groups import network_names
+
+    try:
+        names = network_names()
+    except Exception as exc:
+        log.error("heal: the networks could not be listed for notices: %s", exc)
+        return
+    for name in names:
+        try:
+            from modules import heal_notice
+            heal_notice.run(name)
+        except Exception as exc:
+            log.error("heal: %s's can't-fix notices could not start: %s: %s", name,
+                      type(exc).__name__, exc)
 
 
 def start() -> bool:

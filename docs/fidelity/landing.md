@@ -34,8 +34,13 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-dark-page-1440`; `landing-phone-board-LandingPhone-390` and `-NavPhone-390` beside
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
-Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `d6301a5476e7a4684fa8be5951377ae48448dd93db30252d4b08c3f7f182639b`
+Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
+Templates sha256: `fc12fb9529ab2d1cc5834c26c0da7a598e3b2a6b8480c2e421d1d1690eac7087`
+
+**Merged again 2026-11-04 ~20:2x UTC (H8 onto C2471):** H8's can't-fix branch and the halted
+row's branch of `_attention.html` were compared apart; the merged template holds both,
+unchanged, so the record compares the four templates at the merged hash. Before, on main:
+`d6301a5476e7a4684fa8be5951377ae48448dd93db30252d4b08c3f7f182639b`.
 
 **Compared again 2026-11-04 ~17:3x UTC for board H's artboard E, its second row** (C2471): a
 halted network's row ("Self-healing halted on <network>: <why>") offers **Lift the halt…** on
@@ -45,6 +50,13 @@ Every other row's line and What to do are unchanged: the template gains a branch
 a row whose action opens a halt. Compared from `heal-halt-page-1440`, `-1280` and `-390`
 (tests/test_board_shots.py `test_heal_proposal`) against artboard E's second row. Templates
 sha256 before: `eff778625a86abed48102a468b6c1bccf3194d45bde349d15de15637fbd1553e`.
+
+**Merged 2026-11-04 ~17:5x UTC** (H8's branch, at
+`c1bed3687f3c5361fb4a92557c11e33b4e63ceacd2daa91fbd16a606609f9f6e`): H8's record (below, ~02:5x) and artboard E's (~09:0x and
+~16:4x) were compared apart, each on its own branch of `_attention.html`; the merged template
+holds both branches, unchanged, so the record compares the four templates at the merged hash.
+H8's before: `70b3222f713900b746caca142b7451d05955f61939e3bed7a460137604131e5d`; artboard E's:
+`eff778625a86abed48102a468b6c1bccf3194d45bde349d15de15637fbd1553e`.
 
 **Compared again 2026-11-04 ~16:4x UTC** (C2448's gate): Review the fix… gains
 `data-next-acts="heal_proposal"`, the opener tests/test_next_steps_act.py holds every next step
@@ -58,6 +70,22 @@ do (its own record, docs/fidelity/heal-proposal.md). Every other row's line and 
 unchanged: the template gains a branch taken only by a row whose action opens a proposal.
 Compared from `heal-proposal-page-1440`, `-1280` and `-390` (tests/test_board_shots.py
 `test_heal_proposal`) against artboards D (the row's line) and E (the row opened). Templates
+sha256 before: `4befa3244b1c2b8057d53182059c8f99649351766efd702aeff0b7fc8553ce4d`.
+
+**Compared again 2026-11-04 ~02:5x UTC for board H's H8** (the AI analysis of a can't-fix,
+docs/HEAL_TO_INTENT.md section 12; artboard D): an opened item whose row carries an incident's
+analysis (`heal_analysis`, the `heal`/`cant_fix` row) draws, after Why this happened (Mercury's
+facts, written by code), an **AI analysis** block loaded when the item opens
+(`routes/v2.attention_heal_analysis`, `_heal_analysis.html`): what the analysis kept with the
+incident, advisory, its label and score, the rationale, each hypothesis with its next step, or
+its state in words (pending, not run, couldn't analyse, the provider not answering); opening it
+sends nothing. Every other row is unchanged. Compared by reading the template against
+artboard D's order (What to do, Mercury's facts, then the analysis), held by
+tests/test_heal_analysis.py (the route's read, its states) and the v2 walk
+(`_attention_heal_analysis`). Artboard D draws the analysis inline in the opened row; built,
+it is its own block under its heading, loaded on open as Explain's is (board NA-R): a
+**deviation**, logged in docs/STANDING_APPROVAL_LOG.md ("Board H, H8: the can't-fix row's AI
+analysis loaded on open"). `_heal_analysis.html` joins the templates compared. Templates
 sha256 before: `4befa3244b1c2b8057d53182059c8f99649351766efd702aeff0b7fc8553ce4d`.
 
 **Compared again 2026-11-03 ~02:0x UTC for C2316** (the operator's rule for acknowledgements):

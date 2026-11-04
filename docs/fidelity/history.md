@@ -34,6 +34,21 @@ Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
 Templates sha256: `e7b05604308a5e4760bb53bc046f151441ded64df0d9e8fde15eb656fca08f24`
 
+Compared again 2026-11-04 (board H, H6: the self-healing step log and the policy identity), by
+the template diff: `_timeline.html`'s kind table gains `heal` ("self-healing", info, drawn
+danger when the heal rolled back, failed after sending or was interrupted), and the Kind menu's
+What ran on a device gains **Self-healing** (`history_sources.KIND_GROUPS`); a heal's row
+opens, as every row does, to its record: the incident, its decisions, the mode, the policy, the
+program (masked) and its hash, the golden commit, the receipt, the re-check, the change record,
+the NetBox journal entry, then each step. Board D draws no heal kind: **deviation** (log:
+History's Kind menu gains Self-healing). The identity line (`_history_body.html`) counts a
+commit made under a confirmed policy (`Actor-Verified: policy`) under its own words, muted, and
+never in "Show only these"; with no other commit unverified it reads "All N commits carry a
+verified identity (n by the policy a verified person confirmed)". The board's identity line
+drew no policy value: **deviation** (same log line). H9 draws the step log's own screen (board
+H, artboard C). No other region changed. Templates sha256 before:
+`af5e85f45135f9432a225da354e46aa49d25fec8c39cb262dbf895b657923416`.
+
 **Compared again 2026-11-03 (C2384, board H's H9):** `_history_timeline.html`'s `hx-trigger`
 gained `nmas:notifications from:body`, so the timeline re-reads when a notification's delivery
 is recorded (`modules/notify/delivery.py` announces `notifications`). As on 2026-10-25, the

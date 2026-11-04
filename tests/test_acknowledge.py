@@ -125,7 +125,9 @@ class TestEveryKindSaysHowItClears:
                                      # A destination's last failed delivery (board H, H7).
                                      ("notify", "failed"),
                                      # One interrupted heal, by its decision (board H, H6).
-                                     ("heal", "interrupted")}
+                                     ("heal", "interrupted"),
+                                     # One can't-fix incident, by its id (board H, H8).
+                                     ("heal", "cant_fix")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

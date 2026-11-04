@@ -103,6 +103,18 @@ CONTROLS = {
         "screen": "SDN › Responses, a response awaiting a person",
         "beside": "the response's Preview, its hard timeout and Dismiss with this reason",
     },
+    # Board H, H8: a background feature, never a press. No screen draws a control for it yet
+    # (section 12's Analyse again, a person's press behind its cost confirm, is not built):
+    # Needs attention's can't-fix row and the notice draw what it kept.
+    "heal_analysis": {
+        "task": "heal_analysis",
+        "words": "Analyse what self-healing could not fix",
+        "endpoints": (),
+        "template": None,
+        "screen": "Needs attention, a can't-fix row's AI analysis block; the can't-fix notice",
+        "beside": "Mercury's facts on the row and in the notice (detected, steps tried, "
+                  "results), drawn with or without it",
+    },
 }
 
 #: Endpoints that reach the gateway without being an AI control of their own, each with why.

@@ -133,7 +133,9 @@ SECTION_WORDS = {"alert": "The alert",
                  "logs": "Log lines around the onset",
                  "neighbour_events": "What its one-hop neighbours logged and recorded around "
                                      "the onset",
-                 "sdn":"The SDN flows and port rates the detection rests on"}
+                 "sdn":"The SDN flows and port rates the detection rests on",
+                 "incident": "The heal incident: what started it",
+                 "tried": "What Mercury tried, each step and its result"}
 #: The section only an SDN detection's pack holds (`build_detection`, PHASE8_PLAN 17.1 S6), kept
 #: out of `SECTIONS` so a Grafana alert's pack, and Explain's pack format (the cached prefix,
 #: `explain.vocabulary`), are unchanged: the section rides as pack data, naming itself in its
@@ -1539,6 +1541,210 @@ def build_detection(inst: dict, *, network: str, sdn: dict, now: float, trigger:
     pack = {"schema": SCHEMA, "id": pack_id(key), "alert_key": key, "built_at": _iso(now),
             "store": detect.STORE, "rule": inst.get("rule") or "", "device": "",
             "network": network, "onset": _iso(onset), "trigger": trigger,
+            "provenance": "captured", "sections": sections}
+    pack = redact.redact_payload(pack)
+    pack["hash"] = digest(pack)
+    return pack
+
+
+# ----------------------------------------------------------------------------- a heal incident
+
+#: A heal incident's pack (board H, H8; docs/HEAL_TO_INTENT.md section 12, `build_incident`):
+#: what started the incident, and what Mercury tried. Both are outside `SECTIONS`, as the SDN
+#: section is, so an alert's pack and Explain's pack format are unchanged.
+INCIDENT_SECTION = "incident"
+TRIED_SECTION = "tried"
+#: The most tried steps a pack keeps (an incident's decisions and its act, each step one line):
+#: the first ones, the rest counted. A decision is about 8 steps and an act about 11
+#: (`decide.STEPS`, `act.STEPS`); an incident checked again later holds each decision.
+TRIED_STEPS = 40
+#: The most triggers the incident section keeps, the newest.
+INCIDENT_TRIGGERS = 10
+#: What stands in a step's words for a configuration line of the incident (section 12: the step
+#: log's configuration lines never leave as text, only by kind).
+WITHHELD = "(a configuration line, withheld)"
+#: A line shorter than this is never searched for in a step's words: too short to be a line
+#: (a word such as "end" or "!" would be found everywhere).
+WITHHOLD_MIN_CHARS = 6
+#: Each unit's operation by kind, in the words a notice uses.
+UNIT_VERBS = {"add": "missing from the device (intent holds it)",
+              "remove": "added outside intent", "change": "changed from intent"}
+
+
+def _norm(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def withhold(text: str, lines) -> str:
+    """*text* with every one of *lines* (the incident's configuration lines, masked) that it
+    holds replaced by `WITHHELD`, matched as a whole line's words, ignoring case and spacing,
+    the longest first (a removal's ``no <line>`` is found as itself before its line is)."""
+    import re
+
+    out = _norm(text)
+    for line in sorted({_norm(x) for x in lines or [] if len(_norm(x)) >= WITHHOLD_MIN_CHARS},
+                       key=len, reverse=True):
+        pat = r"(?<![\w-])" + r"\s+".join(re.escape(t) for t in line.split()) + r"(?![\w-])"
+        out = re.sub(pat, WITHHELD, out, flags=re.I)
+    return out
+
+
+def unit_by_kind(unit: dict) -> str:
+    """One unit of a heal decision said by its kind, where and how many lines, never the lines
+    (section 12: "inbound ACL added on Gi2, 2 lines, content withheld"). *unit* is the decision's
+    masked unit (`kinds.masked_unit`): only an interface is named as where it is."""
+    from modules.heal import kinds
+
+    section = str(unit.get("section") or "")
+    where = f" on {section.split()[1]}" if section.lower().startswith("interface ") and \
+        len(section.split()) > 1 else ""
+    n = len(unit.get("add") or []) + len(unit.get("remove") or [])
+    kind = kinds.KIND_WORDS.get(unit.get("kind"), unit.get("kind") or "a unit")
+    return (f"{kind} {UNIT_VERBS.get(unit.get('op'), 'departed from intent')}{where}, "
+            f"{n} line{'' if n == 1 else 's'}, content withheld")
+
+
+def config_lines(entry: dict, units) -> list:
+    """Every configuration line the incident's records hold (its program, and each unit's added
+    and removed lines), masked as they are kept: what `withhold` keeps out of the tried section."""
+    out = list(entry.get("program") or [])
+    for u in units or []:
+        out += list(u.get("add") or []) + list(u.get("remove") or [])
+    return out
+
+
+def tried_section(entry: dict, units, now: float) -> dict:
+    """What Mercury tried (section 12, `tried`): each step of the incident's step log entry
+    (`steplog.incident`), its decision's and its act's, in order, then each unit of what it
+    found by kind (`unit_by_kind`), then the program by its size and hash. Every piece cites as
+    ``tried:<n>``. A step's words have each of the incident's configuration lines withheld
+    (`withhold`): the lines never leave as text while the configuration class is off (15.11,
+    C1720), the only form there is now."""
+    source = "the heal step log (modules/heal/steplog.py), this incident's entry"
+    if not entry:
+        return _section(TRIED_SECTION, source, now, "absent",
+                        "the step log holds no entry for this incident")
+    lines = config_lines(entry, units)
+    steps = list(entry.get("steps") or [])
+    pieces = [{"what": "step", "step": s.get("step") or "", "result": s.get("result") or "",
+               "words": withhold(s.get("words") or "", lines), "row": s.get("row") or ""}
+              for s in steps[:TRIED_STEPS]]
+    pieces += [{"what": "unit", "words": unit_by_kind(u), "kind": u.get("kind") or "",
+                "tier": u.get("tier") or 0} for u in units or []]
+    program = list(entry.get("program") or [])
+    if program:
+        pieces.append({"what": "program", "words": (
+            f"the program: {len(program)} line{'' if len(program) == 1 else 's'}, hash "
+            f"{entry.get('program_hash') or '(none recorded)'}, content withheld")})
+    extra = {"outcome": entry.get("outcome") or "", "outcome_words": withhold(
+        entry.get("words") or "", lines), "mode": entry.get("mode") or "",
+             "kind": entry.get("kind") or "", "total": len(steps),
+             "subset": len(steps) > TRIED_STEPS}
+    return _section(TRIED_SECTION, source, now, "ok", pieces=pieces, **extra)
+
+
+def incident_section(incident: dict, now: float) -> dict:
+    """What started the incident (`modules/heal/incidents.py`'s record): its device, its cause
+    or symptom, and its newest triggers, each its kind, time, source and words (a log line's
+    words masked as every line Mercury shows), and the devices attached to it."""
+    source = "the heal incidents (modules/heal/incidents.py), as Mercury recorded the incident"
+    if not incident:
+        return _section(INCIDENT_SECTION, source, now, "absent",
+                        "the incident is no longer in the heal incidents' store")
+    from modules.heal import incidents as HI
+
+    trig = list(incident.get("triggers") or [])[-INCIDENT_TRIGGERS:]
+    pieces = [{"kind": t.get("kind") or "", "kind_words": HI.KIND_WORDS.get(t.get("kind"), ""),
+               "at": t.get("at") or "", "source": t.get("source") or "",
+               "words": t.get("words") or "", "device": incident.get("device") or ""}
+              for t in trig]
+    return _section(INCIDENT_SECTION, source, now, "ok", pieces=pieces,
+                    cause=incident.get("cause") or "", opened_at=incident.get("opened_at") or "",
+                    attached=[m.get("device") for m in incident.get("attached") or []],
+                    triggers_seen=int(incident.get("triggers_seen") or len(trig)))
+
+
+def incident_pack_id(network: str, incident_id: str) -> str:
+    """A heal incident's pack id: its network and incident, so it is never an alert's."""
+    digest_ = hashlib.sha256(f"{network}\0{incident_id}".encode()).hexdigest()[:20]
+    return f"ep-{digest_}-h"
+
+
+def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: float = None,
+                   loki=None, prometheus=None) -> dict:
+    """A heal incident's pack (board H, H8; section 12: "a can't-fix that started from a
+    CONFIG_I or the schedule has no alert, so a pack is built for the incident, as
+    `build_detection` builds one for an SDN detection"), masked and hashed. Never raises: a
+    source that fails is its section saying so. Its sections: what started it (`incident`),
+    the device, its recent History, its Intent check (with the masked intent-diff lines, at most
+    `INTENT_LINES`, N10), its neighbours, the network around it as observed, its health and the
+    monitoring side, its log lines around the incident's opening, and what Mercury tried
+    (`tried`), the incident's configuration said only by kind. *entry* is the incident's step
+    log entry, *units* its decisions' masked units; *now* the incident's time (its latest
+    step), as of which every time series is read."""
+    from modules import device_page
+    from modules import network_model as NM
+    from modules import redact
+    from modules.nsot import listref
+
+    clock = _now()
+    now = clock if now is None else float(now)
+    host = (incident or {}).get("device") or (entry or {}).get("device") or ""
+    onset = (incident or {}).get("opened_epoch")
+    onset = float(onset) if isinstance(onset, (int, float)) else None
+    sections = [incident_section(incident, clock)]
+    source = f"{network}'s inventory"
+    ref = dev = None
+    try:
+        ref = listref.resolve(network)
+        ref, dev = device_page.find_device(host, ref)
+    except Exception as exc:                          # said in the section, never raised
+        sections.append(_section("device", source, clock, "unreadable",
+                                 f"{host}'s row in {network} could not be read ({_failed(exc)})"))
+        ref = dev = None
+    if ref is not None and not dev:
+        sections.append(_section("device", source, clock, "absent",
+                                 f"{host} is not in {network}'s inventory"))
+        ref = None
+    elif ref is not None:
+        sections.append(_section("device", source, clock, "ok", pieces=[{
+            "device": dev.get("hostname") or host, "network": ref.name,
+            "address": dev.get("ip") or "", "platform": dev.get("platform") or "",
+            "device_from": "the heal incident", "note": ""}]))
+    if ref is None:
+        why = f"no device to read for: {sections[-1]['why']}"
+        for name in ("history", "intent", "neighbours", "observed", "health", "observer",
+                     "logs"):
+            sections.append(_absent(name, "", why))
+    else:
+        cap = {"ok": False, "error": "no device"}
+        try:
+            cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now)
+        except Exception as exc:                      # said in the sections, never raised
+            cap = {"ok": False, "error": _failed(exc)}
+        sections.append(history_section(ref, host))
+        sections.append(intent_section(ref, dev))
+        sections.append(neighbours_section(ref, dev, as_of=now))
+        sections.append(observed_section(cap, now, clock))
+        for name, fn in (("health", health_section), ("observer", observer_section)):
+            try:
+                kw = {"prometheus": prometheus}
+                if name == "health":
+                    kw["loki"] = loki
+                sections.append(fn(ref, host, cap, onset, now, clock, **kw))
+            except Exception as exc:                  # said in the section, never raised
+                sections.append(_section(name, "Prometheus", clock, "unreadable",
+                                         _failed(exc)))
+        sections.append(logs_section(ref, host, onset, now, client=loki))
+    sections.append(tried_section(entry, units, clock))
+    for s in sections:
+        mark(s, "captured", "read when self-healing stopped at can't fix")
+    pack = {"schema": SCHEMA, "id": incident_pack_id(network, (incident or {}).get("id") or (
+        entry or {}).get("incident") or ""), "kind": "heal_incident",
+            "incident": (incident or {}).get("id") or (entry or {}).get("incident") or "",
+            "built_at": _iso(now), "store": "heal", "rule": "self-healing could not fix it",
+            "device": host, "network": network, "onset": _iso(onset),
+            "trigger": "self-healing stopped at can't fix (docs/HEAL_TO_INTENT.md section 12)",
             "provenance": "captured", "sections": sections}
     pack = redact.redact_payload(pack)
     pack["hash"] = digest(pack)

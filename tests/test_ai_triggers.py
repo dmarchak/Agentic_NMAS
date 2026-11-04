@@ -144,9 +144,10 @@ def _bg(**over):
 def test_a_background_trigger_names_a_feature_mercury_knows(world):
     got = _ask(world, actor="job:j1", trigger=_bg())
     assert got.get("error") == "trigger" and world.sent == []
-    # The SDN loop's classify (PHASE8_PLAN 17.1 S7) is the one feature Mercury declares.
+    # The SDN loop's classify (PHASE8_PLAN 17.1 S7) and the can't-fix analysis (board H, H8)
+    # are the features Mercury declares.
     assert got.get("detail", "") == ("'fake_loop' is not a background feature Mercury knows; "
-                                     "known: sdn_classify")
+                                     "known: heal_analysis, sdn_classify")
 
 
 @pytest.mark.parametrize("over,said", [
@@ -297,7 +298,8 @@ def test_a_background_trigger_whose_names_are_not_text_is_refused_not_raised(wor
 def test_the_refusals_list_every_feature_and_finding_kind(world, fake_feature, monkeypatch):
     monkeypatch.setitem(background.FEATURES, "fake_digest", dict(background.FEATURES["fake_loop"]))
     got = _ask(world, actor="job:j1", trigger=_bg(feature="a_dream"))
-    assert got.get("detail", "").endswith("known: fake_digest, fake_loop, sdn_classify")
+    assert got.get("detail", "").endswith("known: fake_digest, fake_loop, heal_analysis, "
+                                          "sdn_classify")
     monkeypatch.setitem(background.FEATURES["fake_loop"], "findings", ("detection", "digest"))
     got = _ask(world, actor="job:j1", trigger=_bg(finding={"kind": "a hunch", "id": "x"}))
     assert "(detection or digest, with its id)" in got.get("detail", "")

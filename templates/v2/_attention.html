@@ -150,6 +150,14 @@
         <p class="att-cause">{{ r.cause }}</p>
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
       </div>
+      {#- Board H, H8: a can't-fix's AI analysis, after Mercury's facts, read from what it kept
+          when the item opens (never a call), advisory. -#}
+      {%- if r.heal_analysis %}
+      <div class="att-why">
+        <h3>AI analysis</h3>
+        <div hx-get="{{ url_for('v2.attention_heal_analysis', network=r.heal_analysis.network, incident_id=r.heal_analysis.incident) }}" hx-trigger="toggle once from:closest details.att" hx-swap="innerHTML"><p class="small muted">Drawn when this item is open: the analysis kept with the incident, advisory.</p></div>
+      </div>
+      {%- endif %}
       {%- endif %}
       <div class="att-det">
       <h3>Details</h3>

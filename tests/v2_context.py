@@ -912,6 +912,35 @@ def _attention_explain(client, _lab, _mp):
     assert "No evidence pack is built for this alert yet" in r.get_data(as_text=True)
 
 
+def _attention_heal_analysis(client, _lab, _mp):
+    """A can't-fix row's AI analysis (board H, H8), as its item loads it when opened: an
+    incident with no analysis kept yet draws its state, pending; one with a checked answer kept
+    (the store's read planted for this provider alone, then undone) draws its label, its
+    hypothesis and its next step. Neither calls anything."""
+    import pytest
+
+    from modules.ai import heal_analysis as HA
+
+    r = client.get("/v2/attention/heal-analysis/Lab/hi-000000000000")
+    assert r.status_code == 200, r.status_code
+    assert "AI analysis: pending" in r.get_data(as_text=True)
+    kept = {"row": "analysis", "incident": "hi-000000000001", "state": "answered",
+            "words": HA.words_of("answered"), "label": HA.beta(), "call_id": "ai-0",
+            "cost_usd": 0.03, "at": "2026-11-04T02:00:00Z",
+            "answer": {"rationale": "The ACL drops OSPF.", "needs_human": True,
+                       "mercury_cites": [],
+                       "hypotheses": [{"claim": "An inbound ACL drops OSPF on Gi2.",
+                                       "cites": ["tried:7"], "next": "show ip access-lists"}]}}
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(HA, "read", lambda network: {"state": "ok", "rows": [kept], "error": ""})
+        r = client.get("/v2/attention/heal-analysis/Lab/hi-000000000001")
+        text = r.get_data(as_text=True)
+        assert "Hypothesis:" in text and "show ip access-lists" in text, text[:400]
+    finally:
+        mp.undo()
+
+
 def _attention_withheld(client, _lab, _mp):
     """Needs attention with a withheld-lines row (C2295): its Acknowledge… form draws the
     disposition choice. The record of AI calls planted for this provider alone, then undone."""
@@ -2962,7 +2991,8 @@ def _heal_proposal(client, _lab, _mp):
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
-                   _attention_expected, _attention_explain, _attention_withheld,
+                   _attention_expected, _attention_explain, _attention_heal_analysis,
+                   _attention_withheld,
                    _attention_quiet_period,
                    _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,

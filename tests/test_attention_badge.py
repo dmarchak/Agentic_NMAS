@@ -142,7 +142,9 @@ class TestARowThatClearsByTime:
                          # A day after the last AI call that withheld a line (C2272).
                          ("ai_withheld", "withheld"),
                          # A dry-run heal record's marking window ends (board H, H3).
-                         ("heal", "would_heal")}
+                         ("heal", "would_heal"),
+                         # The day or month the can't-fix analysis's cap counts ends (H8).
+                         ("heal", "analysis_capped")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

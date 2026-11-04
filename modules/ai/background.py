@@ -85,6 +85,17 @@ FEATURES: dict = {
         "calls_per_finding": 1,
         "frequency": "modules.sdn.closed_loop:detection_frequency",
     },
+    # Board H, H8 (docs/HEAL_TO_INTENT.md section 12): the AI analysis of what self-healing
+    # could not fix, one call per can't-fix incident, its frequency the network's can't-fix
+    # incidents a day in the heal's own step log (`heal_analysis.cant_fix_frequency`).
+    "heal_analysis": {
+        "task": "heal_analysis",
+        "words": "Self-healing analyses what it could not fix",
+        "trigger_words": "a heal stops at can't fix",
+        "findings": ("heal_incident",),
+        "calls_per_finding": 1,
+        "frequency": "modules.ai.heal_analysis:cant_fix_frequency",
+    },
 }
 
 

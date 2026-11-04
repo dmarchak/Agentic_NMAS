@@ -223,6 +223,15 @@ ROW_KINDS = {
     # halted on a network by a guard (a rate cap, a repeat, a rollback) until a person lifts it.
     ("heal", "halted"): ("self-healing stopped on a network (a rate cap, a repeat, a rollback)",
                          "read why, then lift the halt with a reason"),
+    # Board H, H8 (docs/HEAL_TO_INTENT.md sections 9 and 12): self-healing stopped at can't
+    # fix; opened, What to do first, then Mercury's facts, then the AI analysis, advisory.
+    ("heal", "cant_fix"): ("self-healing could not fix a device's problem",
+                           "read what Mercury tried, then the action the reason names (adopt "
+                           "into intent, capture, check the link, or decide on the change)"),
+    # Section 12: the AI analysis of a can't-fix stopped at its cap.
+    ("heal", "analysis_capped"): ("the AI analysis of what self-healing could not fix stopped "
+                                  "at its cap",
+                                  "raise the cap in Settings › AI, or leave it off"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -517,6 +526,12 @@ CLEARS = {
     ("heal", "halted"): (("resolves",),
                          "a person lifts the halt on this item with a reason (Lift the halt), "
                          "recorded with their name in the network's heal decisions"),
+    ("heal", "cant_fix"): (("resolves", "acknowledge"),
+                           "a later decision finds the device with nothing to heal, or a later "
+                           "heal of it is healed and verified; or acknowledged with a reason"),
+    ("heal", "analysis_capped"): (("resolves", "time"),
+                                  "a later analysis on the network runs, an admin raises the "
+                                  "cap, or the cap's period (its day or its month) ends"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -594,7 +609,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # One console run (O6a): that run only, by its id.
                                ("console_ztp", "not_blank"), ("console_ztp", "failed"),
                                # One interrupted heal (board H, H6), by its decision's id.
-                               ("heal", "interrupted")})
+                               ("heal", "interrupted"),
+                               # One can't-fix incident (board H, H8), by its incident's id.
+                               ("heal", "cant_fix")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -4917,6 +4934,10 @@ def heal_source(got=None, now=None, found=None) -> dict:
     interrupted_n = len(out) - marked
     out += _heal_proposal_rows(lst, rows)
     proposals_n = len(out) - marked - interrupted_n
+    said = []
+    out += _heal_cant_fix_rows(lst, rows, now, said)
+    cant_fix_n = len(out) - marked - interrupted_n - proposals_n
+    out += _heal_capped_rows(lst, now, said)
     try:
         halted = _heal_halted_rows(lst)
     except Exception as exc:
@@ -4928,8 +4949,9 @@ def heal_source(got=None, now=None, found=None) -> dict:
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
                                   f"{interrupted_n} interrupted heal(s), "
-                                  f"{proposals_n} proposal(s) waiting, "
-                                  f"{len(halted)} halt(s) in force"))
+                                  f"{proposals_n} proposal(s) waiting, {cant_fix_n} can't-fix "
+                                  f"incident(s), {len(halted)} halt(s) in force"
+                                  + "".join(f"; {w}" for w in said)))
 
 
 def _heal_halted_rows(lst: str, halt: dict = None, stopped: dict = None) -> list:
@@ -5002,6 +5024,97 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
             operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
                       "tier": d.get("tier"), "mode": d.get("mode")}))
     return out
+
+
+#: A can't-fix stays on Needs attention this long unless a later decision or heal of its
+#: device clears it, or a person acknowledges it (the step log keeps it for ever).
+CANT_FIX_DAYS = 7
+
+
+def _later_done(rows: list) -> dict:
+    """``{device: epoch}``: the newest decision of each device that found nothing to heal, or
+    whose heal was healed and verified."""
+    later = {}
+    for d in rows:
+        if d.get("outcome") == "nothing" or (d.get("applied") or {}).get("outcome") == "healed":
+            later[d.get("device")] = max(later.get(d.get("device"), 0.0),
+                                         float(d.get("epoch") or 0))
+    return later
+
+
+def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
+    """Board H, H8 (sections 9 and 12): ONE row per incident that stopped at can't fix
+    (`heal_analysis.CANT_FIX`: the decision's can't fix, or an act whose symptom remained or
+    that rolled back), under `CANT_FIX_DAYS` old, until a later decision finds its device with
+    nothing to heal or a later heal of it is healed, or a person acknowledges it. Opened: What
+    to do (the action), then Mercury's facts (the cause: detected, the steps tried, their
+    results), then the AI analysis, advisory, drawn from what it kept (``heal_analysis``, the
+    template loads it when the item opens: never a call)."""
+    from modules import heal_notice
+    from modules.ai import heal_analysis as HA
+    from modules.heal import steplog
+
+    got = steplog.incidents(lst)
+    if got["state"] == "unreadable":
+        said.append(f"the step log cannot be read ({got['error']}), so no can't-fix is shown")
+        return []
+    later = _later_done(rows)
+    out = []
+    for e in got["entries"]:
+        if e.get("outcome") not in HA.CANT_FIX or not e.get("incident"):
+            continue
+        host, at = e.get("device") or "", float(e.get("epoch") or 0)
+        if now - at > CANT_FIX_DAYS * 86400 or later.get(host, 0.0) > at:
+            continue
+        steps = e.get("steps") or []
+        failed = [s for s in steps if s.get("result") not in ("ok", "")]
+        todo = (heal_notice.TODO_OUTCOME.get(e.get("outcome"))
+                or heal_notice.TODO.get(e.get("kind") or "", heal_notice.TODO_DEFAULT))
+        r = row(source="heal", kind="cant_fix", key=e["incident"], level="danger",
+                event=e["incident"], devices=[host] if host else [], since=at or None,
+                what=f"Self-healing could not fix {host} on {lst}: {e.get('words') or ''}",
+                cause=(f"Mercury's facts: {len(steps)} step(s) tried in "
+                       f"{steplog.MODE_WORDS.get(e.get('mode'), e.get('mode') or 'its mode')}, "
+                       f"ending {steplog.MARKS.get(e.get('outcome'), e.get('outcome'))}"
+                       + (f"; the last that did not pass: {failed[-1].get('step')}: "
+                          f"{failed[-1].get('words') or ''}" if failed else "")
+                       + ". The AI analysis below is advisory: a person decides."),
+                action={"label": f"{todo[0].upper()}{todo[1:]} (read the steps on {host}'s "
+                                 "History first)",
+                        "href": f"/v2/device/{host}?tab=history"},
+                operands={"list": lst, "incident": e["incident"],
+                          "outcome": e.get("outcome"), "kind": e.get("kind"),
+                          "mode": e.get("mode")})
+        r["heal_analysis"] = {"network": lst, "incident": e["incident"]}
+        out.append(r)
+    return out
+
+
+def _heal_capped_rows(lst: str, now: float, said: list) -> list:
+    """Section 12: ONE row while the network's newest AI analysis of a can't-fix stopped at its
+    cap (`heal_analysis.capped`), until the cap's period ends, an admin changes the cap, or a
+    later analysis runs. Mercury never raises a cap."""
+    from modules.ai import heal_analysis as HA
+
+    try:
+        got = HA.capped(lst, now=now)
+    except Exception as exc:
+        said.append(f"the AI analyses cannot be read ({exc})")
+        return []
+    if not got:
+        return []
+    period = "this month" if got["cap"] == "month" else "today"
+    return [row(source="heal", kind="analysis_capped", key=f"{lst}:{got['cap']}",
+                level="warning", since=got["at"], clears_at=got["ends"],
+                what=(f"The AI analysis of what self-healing could not fix on {lst} stopped: "
+                      f"its {got['cap']} cap is reached"),
+                cause=(f"{got['words']}. Can't-fix notices still go, saying the analysis was not "
+                       f"run, until the cap's period ends ({period}) or an admin raises it"),
+                action={"label": "Raise the feature's cap in Settings › AI, or leave it off "
+                                 "until the period ends",
+                        "href": AI_SETTINGS_HREF},
+                operands={"list": lst, "feature": HA.FEATURE, "cap": got["cap"],
+                          "incident": got["incident"]})]
 
 
 def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
