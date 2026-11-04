@@ -235,6 +235,44 @@ def test_a_trailer_quoting_too_few_words_is_refused(repo, trailer, said):
     assert "CLAUDE.md (modified)" in r.stderr and "with no proper Approved-By" in r.stderr
 
 
+@pytest.mark.parametrize("trailer", [
+    'Approved-By: operator — "<…>"',
+    'Approved-By: operator — "<the operator\'s own words, quoted>"',
+    'Approved-By: operator — "the operator\'s own words, quoted"',
+    'Approved-By: operator — “the operator’s own words, quoted”',
+    'Approved-By: operator — "approve the change ..."',
+    'Approved-By: operator — "approve the change …"',
+    'Approved-By: operator — "" and "three more words here"',
+    'Approved-By: operator — "   "',
+    'Approved-By: operator — "TBD by the operator later"',
+    'Approved-By: operator — "tbd: quote the operator here"',
+])
+def test_a_placeholder_quote_is_refused(repo, trailer):
+    """C2409 (the operator, 2026-11-04): angle brackets, an ellipsis, an empty quote, "TBD",
+    or the template's own words are a placeholder, never the operator's words, even when
+    another span beside it quotes enough words."""
+    _commit(repo, {"CLAUDE.md": "# Rules\n"}, f"Change it\n\n{trailer}\n")
+    r = run(repo, "--commit", "HEAD")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "quoting a placeholder" in r.stderr and "C2409" in r.stderr
+    assert "CLAUDE.md (modified)" in r.stderr and "with no proper Approved-By" in r.stderr
+
+
+@pytest.mark.parametrize("trailer", [
+    'Approved-By: operator — "Approved: fix C2409 so the guard check refuses placeholder '
+    'approvals, with canaries both ways."',
+    'Approved-By: operator — "keep the kill switch, then it may go last" (2026-11-03)',
+    'Approved-By: operator — "a quote with less than and greater than said in words"',
+])
+def test_a_real_quote_beside_the_placeholder_rule_passes(repo, trailer):
+    """The other way (C2409's canary): the operator's own words, with no placeholder in them,
+    still approve."""
+    _commit(repo, {"CLAUDE.md": "# Rules\n"}, f"Change it\n\n{trailer}\n")
+    r = run(repo, "--commit", "HEAD")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 guard path(s) changed, 1 approved" in r.stdout
+
+
 @pytest.mark.parametrize("name", ["Alice", "Operator", "the", "operators", "[Author]"])
 def test_a_name_other_than_operator_is_refused(repo, name):
     _commit(repo, {"CLAUDE.md": "# Rules\n"},

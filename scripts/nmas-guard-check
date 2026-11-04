@@ -287,6 +287,27 @@ def trailer_values(message, key=KEY):
     return out
 
 
+#: A quoted span that is a placeholder, never the operator's words (C2409, the operator,
+#: 2026-11-04: "refuses placeholder approvals"): angle brackets, an ellipsis, an empty quote,
+#: "TBD", or the template's own words. A template once passed as an approval. Only the
+#: operator's list: a wider word list refused the operator's own quote, which names
+#: "placeholder approvals".
+PLACEHOLDER = re.compile(r"[<>]|…|\.\.\.|\bTBD\b", re.I)
+TEMPLATE_WORDS = "the operator's own words"
+
+
+def placeholder_spans(reason):
+    """The double-quoted spans of *reason* that are placeholders, as written."""
+    out = []
+    for m in QUOTED.finditer(reason):
+        span = m.group(1) if m.group(1) is not None else (m.group(2) or "")
+        text = span.strip()
+        if not text or PLACEHOLDER.search(text) or \
+                TEMPLATE_WORDS in text.lower().replace("’", "'"):
+            out.append(span)
+    return out
+
+
 def quoted_words(reason):
     """The most words in any one double-quoted span of *reason*."""
     best = 0
@@ -307,6 +328,11 @@ def approvals(message):
         elif m.group("name") != ROLE:
             bad.append(f"an {KEY} trailer naming '{m.group('name')}', where exactly '{ROLE}' "
                        f"(the role, never a person's name) is required; needed: {EXCUSE}")
+        elif placeholder_spans(m.group("reason")):
+            spans = ", ".join(f'"{s}"' for s in placeholder_spans(m.group("reason")))
+            bad.append(f"an {KEY} trailer quoting a placeholder ({spans}: angle brackets, an "
+                       "ellipsis, an empty quote, TBD, or the template's words), never the "
+                       f"operator's own words (C2409; \"{shown}\"); needed: {EXCUSE}")
         elif quoted_words(m.group("reason")) < QUOTE_MIN_WORDS:
             bad.append(f"an {KEY} trailer whose reason quotes {quoted_words(m.group('reason'))}"
                        f" word(s), where a double-quoted span of at least {QUOTE_MIN_WORDS} of "
