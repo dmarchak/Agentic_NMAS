@@ -170,6 +170,12 @@ ROW_KINDS = {
                                 "outside any planned restart or deploy",
                                 "read the device's logs and neighbours; acknowledge it within "
                                 "its measured band if the cause is known"),
+    # C2446: two routers of one network claim one OSPF router-id, which only the log says.
+    ("adjacency_log", "duplicate_router_id"): ("a managed device logged a duplicate OSPF or "
+                                               "OSPFv3 router-id: two routers claim one id",
+                                               "compare each router's router-id with its "
+                                               "committed intent and set back the one that "
+                                               "departed"),
     ("restarts", "unplanned"): ("a device restarted and nothing planned it",
                                 "read the device's reason and crash file, and check the host then"),
     ("operations", "interrupted"): ("an operation on a device did not finish: the process ended "
@@ -430,6 +436,11 @@ CLEARS = {
                                 "under it, covering the drops up to the acknowledgement and the "
                                 "cycle then under way until it settles (any later drop raises "
                                 "it again), or a planned quiet period to its expiry"),
+    ("adjacency_log", "duplicate_router_id"): (("resolves",),
+                                               "no device logs the duplicate for 165 s (the "
+                                               "line repeats about every 66 s while two "
+                                               "routers hold the id), at the reader's next "
+                                               "read (every 2 minutes)"),
     ("adjacencies", "error"): (("resolves",), "the intent file can be read"),
     ("operations", "interrupted"): (("acknowledge",), "a person acknowledges it with a reason, "
                                     "after reading the devices; the record stays in the list's "
@@ -4389,6 +4400,91 @@ def _explained(drop: dict, a: dict, planned: list, receipts, peers: dict = None)
     return ""
 
 
+def _and(names: list) -> str:
+    names = list(names)
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _duplicate_rows(v: dict, value_at, names: dict) -> list:
+    """C2446: one CRITICAL row per duplicated router-id still logged (`adjacency_log.
+    still_logged`: a line within its quiet time of the read). Two or more devices of the network
+    that logged the id in the reader's window all claim it, and the row names each; one device
+    alone is named alone, with the neighbour it saw (by its device where committed intent gives
+    the address). Committed intent's owner of the id, when it names one, says which departed.
+    Never held by a planned window: a restart does not explain two routers with one id."""
+    from modules.readers import adjacency_log as AL
+
+    at = float(v.get("read_at") or value_at or 0)
+    window = int(v.get("duplicate_window_seconds") or AL.DUP_WINDOW_SECONDS) // 60
+    out = []
+    for k, g in sorted((v.get("duplicates") or {}).items()):
+        reports = g.get("reports") or {}
+        if not reports or not AL.still_logged(g, at):
+            continue
+        lst, proto, rid = g.get("list") or "", g.get("protocol") or "OSPF", g.get("router_id")
+        peers = _peer_names(lst, names)
+        claimers = sorted(reports)
+        seen = []                   # each neighbour named by a single report, by its device
+        for d in claimers:
+            seen += [peers.get(a, "") for a in reports[d].get("neighbors") or []]
+        others = sorted({s for s in seen if s and s not in claimers})
+        owner = peers.get(rid, "")
+
+        def said(d):
+            r = reports[d]
+            via = []
+            for a in r.get("neighbors") or []:
+                via.append(f"from {a}" + (f" ({peers[a]})" if peers.get(a) else ""))
+            via += [f"on {i}" for i in r.get("interfaces") or []]
+            via += [f"in area {a}" for a in r.get("areas") or []]
+            n = r.get("count") or 0
+            return (f"{d} logged it {' '.join(via) or 'with no neighbour named'}, {n} "
+                    f"time{'' if n == 1 else 's'}, the last at {str(r.get('last_at'))[11:19]} "
+                    "UTC")
+
+        if len(claimers) > 1:
+            what = f"{_and(claimers)} both claim {proto} router-id {rid}" if len(
+                claimers) == 2 else f"{_and(claimers)} all claim {proto} router-id {rid}"
+        else:
+            d = claimers[0]
+            r = reports[d]
+            nbr = (r.get("neighbors") or [""])[0]
+            who = peers.get(nbr, "")
+            what = (f"{d} logged a duplicate {proto} router-id {rid}"
+                    + (f": {who} ({nbr}) claims it too" if who else
+                       (f" from the neighbour at {nbr}" if nbr else "")))
+        if owner and owner in claimers + others:
+            departed = [d for d in claimers + others if d != owner]
+            judged = (f"Committed intent gives {rid} to {owner}, so "
+                      f"{_and(departed) if departed else 'another router'} departed from its "
+                      "intent")
+            fix = departed[0] if departed else owner
+        else:
+            judged = (f"Committed intent gives {rid} to "
+                      + (f"{owner}, none of these" if owner else "no device of the network"))
+            fix = claimers[0]
+        cause = ("; ".join(said(d) for d in claimers)
+                 + f" (the last {window} minutes). {judged}. OSPF names each router by its id, so "
+                 "two with one id overwrite each other's routes: adjacencies flap and what is "
+                 "behind them becomes unreachable. The device repeats the line about every 66 s "
+                 "while the duplicate holds.")
+        last = max(float(r.get("last_epoch") or 0) for r in reports.values())
+        first = min(float(r.get("first_epoch") or 0) for r in reports.values())
+        out.append(row(
+            source="adjacency_log", kind="duplicate_router_id", key=f"duplicate|{k}",
+            level="danger", what=what, devices=claimers + others, since=first, cause=cause,
+            read_at=value_at,
+            operands={"list": lst, "protocol": proto, "router_id": rid, "owner": owner,
+                      "claimers": claimers, "neighbours": others, "last": last,
+                      "still_logged": AL.still_logged(g, at)},
+            action={"label": (f"Compare {_and(sorted(set(claimers + others)))}'s {proto} "
+                              f"router-id with committed intent (each device's Intent tab), "
+                              f"and set back the one that departed: its router-id takes "
+                              "effect only once its OSPF process resets"),
+                    "href": f"/v2/device/{fix}?tab=intent&list={lst}"}))
+    return out
+
+
 def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
     """C589 (Core 1.0's K2): routing adjacencies a managed device LOGGED going down in the last
     day, which a drop between two scrapes leaves only in the log (the `adjacency-log` reader).
@@ -4480,6 +4576,8 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                                   "within its measured band"),
                         "href": (f"/v2/device/{a['device']}?tab=logs"
                                  f"&list={a.get('list') or ''}")}))
+        duplicates = _duplicate_rows(v, value_at, names)
+        rows.extend(duplicates)
     except RuntimeError as exc:
         return source_result("adjacency_log", label, read_at=started, took_ms=took,
                              value_at=value_at, stale_after_seconds=promise,
@@ -4491,7 +4589,11 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                  f"{v.get('window_days', 7)} days, from {v.get('devices', 0)} managed "
                  f"device(s); {len(adjacencies)} adjacency(ies) logged down"
                  + (f"; {explained} drop(s) inside a planned restart or a deploy, not raised"
-                    if explained else "")))
+                    if explained else "")
+                 + (f"; {v.get('duplicate_lines', 0)} duplicate router-id line(s) over the last "
+                    f"{int(v.get('duplicate_window_seconds') or 3600) // 60} minutes, "
+                    f"{len(duplicates)} id(s) still logged"
+                    if "duplicates" in v else "")))
 
 
 # ---------------------------------------------------------------------------

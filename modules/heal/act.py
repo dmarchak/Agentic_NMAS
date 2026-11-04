@@ -102,7 +102,12 @@ OUTCOME_WORDS = {"healed": "healed and verified",
 #: scrapes the adjacencies reader judges by (a minute apart, `adjacencies.PERSIST_READS`),
 #: so 2.5 x 60 s; an alert: the heartbeat's 300 s interval, 2.5 x 300 s. Reasoned from the
 #: intervals, not measured end to end (the register's row names the measurement).
-SYMPTOM_SECONDS = {"adjacency": 150, "adjacency_log": 150, "alert": 750}
+#: A duplicate router-id (C2446, R8's "no duplicate router-id logged"): gone once no line is
+#: within the reader's quiet time (`adjacency_log.QUIET_SECONDS`, 165 s, 2.5 times the line's
+#: measured 66 s repeat) of a read, and the reader reads every 120 s, so 165 s and two reads:
+#: 405 s. Reasoned from the repeat and the interval, not measured end to end.
+SYMPTOM_SECONDS = {"adjacency": 150, "adjacency_log": 150, "alert": 750,
+                   "duplicate_router_id": 405}
 #: How often a symptom's source is read again while it waits: a quarter of the shortest bound.
 POLL_SECONDS = 30
 
@@ -185,7 +190,8 @@ class Sources:
 
 def symptom_triggers(triggers: list) -> list:
     """The triggers that name a symptom to read again: an adjacency down, a logged adjacency
-    drop, a firing alert. A configuration change or a drift record names none."""
+    drop, a firing alert, a duplicate router-id logged (C2446: R8's verify). A
+    configuration change or a drift record names none."""
     return [t for t in triggers or [] if t.get("kind") in SYMPTOM_SECONDS and t.get("source")]
 
 
@@ -222,6 +228,25 @@ def alert_firing(value: dict, device: str, rule: str, interface: str = "") -> bo
     return False
 
 
+def duplicate_logged(value: dict, network: str, protocol: str, router_id: str, at: float,
+                     since: float) -> bool:
+    """Whether the adjacency-log reader's *value* (read at *at*) still holds *router_id*'s
+    duplicate logged after *since*, by any device of *network* (C2446, R8's "no duplicate
+    router-id logged"): a line within the reader's quiet time of the read
+    (`adjacency_log.still_logged`). Any device, not only this one: either router logging it
+    means two still hold the id."""
+    from modules.readers import adjacency_log as AL
+
+    for g in ((value or {}).get("duplicates") or {}).values():
+        if network and g.get("list") not in ("", None, network):
+            continue
+        if protocol and (g.get("protocol") or "") != protocol:
+            continue
+        if g.get("router_id") == router_id and AL.still_logged(g, at, since):
+            return True
+    return False
+
+
 def _store_for(trigger: dict) -> str:
     """The store a trigger's symptom is read again from: its own source, but a logged drop's,
     which logs events, is read from the adjacencies reader of the same configuration."""
@@ -242,6 +267,10 @@ def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> 
     if trigger["kind"] == "alert":
         present = alert_firing(value, device, trigger.get("rule") or "",
                                trigger.get("interface") or "")
+    elif trigger["kind"] == "duplicate_router_id":
+        present = duplicate_logged(value, network, trigger.get("protocol") or "",
+                                   trigger.get("router_id") or "",
+                                   float(good.get("read_started") or 0), since)
     else:
         present = adjacency_down(value, network, [device] + list(trigger.get("related") or []),
                                  trigger.get("protocol") or "")

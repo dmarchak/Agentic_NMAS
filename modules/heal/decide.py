@@ -168,7 +168,7 @@ def _symptom(incident: dict) -> str:
                incident.get("triggers") or [])
     if link:
         return "physical"
-    if kinds & {"alert", "adjacency_log"}:
+    if kinds & {"alert", "adjacency_log", "duplicate_router_id"}:
         return "unknown_cause"
     return ""
 

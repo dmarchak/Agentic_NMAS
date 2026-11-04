@@ -314,6 +314,49 @@ class TestAdjacencyLog:
                                     **kw)["sighted"] == 0
 
 
+class TestDuplicateRouterId:
+    """C2446: the adjacency-log reader's duplicate router-id reports (typed here in the
+    reader's shape; the real lines are tests/test_duplicate_router_id.py's), each episode a
+    trigger on each device that logged it, and on the neighbour intent names by its address."""
+
+    def dup(self, reports, rid="192.0.2.77"):
+        return {"duplicates": {f"Default|OSPF|{rid}": {
+            "list": "Default", "protocol": "OSPF", "router_id": rid, "reports": {
+                d: {"device": d, "count": 2, "first_epoch": first, "last_epoch": last,
+                    "neighbors": [nbr], "interfaces": ["GigabitEthernet1"], "areas": [],
+                    "variants": ["NBR"]} for d, (nbr, first, last) in reports.items()}}}}
+
+    def test_both_routers_logging_it_are_checked_in_one_incident(self, world):
+        value = self.dup({"edge-a": ("192.0.2.6", T0, T0 + 66),
+                          "core-b": ("192.0.2.5", T0 + 2, T0 + 68)})
+        got = T.from_adjacency_log("adjacency-log", value, now=T0 + 70)
+        assert got["sighted"] == 2, got
+        (inc,) = opened()
+        assert {inc["device"]} | {m["device"] for m in inc["attached"]} == {"edge-a", "core-b"}
+        kinds = {t["kind"] for t in inc["triggers"]}
+        assert kinds == {"duplicate_router_id"}, kinds
+        assert inc["triggers"][0]["router_id"] == "192.0.2.77"
+
+    def test_one_router_logging_it_checks_the_neighbour_intent_names(self, world):
+        got = T.from_adjacency_log("adjacency-log",
+                                   self.dup({"edge-a": ("192.0.2.6", T0, T0 + 66)}),
+                                   now=T0 + 70)
+        assert got["sighted"] == 2, got
+        (inc,) = opened()
+        assert {inc["device"]} | {m["device"] for m in inc["attached"]} == {"edge-a", "core-b"}
+
+    def test_each_episode_once_and_a_new_one_after_the_quiet_time(self, world):
+        from modules.readers import adjacency_log as AL
+
+        T.from_adjacency_log("adjacency-log", self.dup({"edge-a": ("192.0.2.6", T0, T0 + 66)}),
+                             now=T0 + 70)
+        same = self.dup({"edge-a": ("192.0.2.6", T0, T0 + 132)})
+        assert T.from_adjacency_log("adjacency-log", same, now=T0 + 140)["sighted"] == 0
+        back = T0 + 132 + AL.QUIET_SECONDS + 60
+        again = self.dup({"edge-a": ("192.0.2.6", back, back + 66)})
+        assert T.from_adjacency_log("adjacency-log", again, now=back + 70)["sighted"] == 2
+
+
 class TestTopology:
     def graph(self, *links):
         return {"configured": True, "networks": {"Default": {"layers": {"physical": [

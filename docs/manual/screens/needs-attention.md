@@ -112,6 +112,19 @@ last day, the last time and the reason the device gave.
   expiry, and a drop after it brings the row back.
 - With no drop for a day, the row clears.
 
+**A duplicate router-id.** Two routers given one OSPF router-id overwrite each other's routes:
+adjacencies flap and what is behind them becomes unreachable, and only the devices' own log
+says why (`%OSPF-4-DUP_RTRID_NBR`, its area and AS variants, and OSPFv3's). The same reader
+asks for those lines over the last hour and raises one critical row per duplicated id: "edge1
+and edge2 both claim OSPF router-id …" when both routers logged it (each sees the other's
+hello carrying its own id), or the one device that logged it, beside the neighbour address it
+saw (by its device where committed intent gives the address). The row names each interface,
+and which router departed from its committed intent where intent gives the id to one of them;
+its action opens that router's Intent tab. A planned restart never explains it. The device
+repeats the line about every 66 seconds while the duplicate holds, so the row clears once no
+line has come for 165 seconds, at the reader's next read. Self-healing reads the same lines
+again after a router-id fix: "no duplicate router-id logged" is the fix's check.
+
 Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares
 Oxidized's copy. A change made on a device outside Mercury is raised by the drift check, which reads each
 device's running configuration against its golden on the interval set for it (four hours

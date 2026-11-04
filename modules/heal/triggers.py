@@ -22,6 +22,10 @@ fleet once per interval, so a trigger adds no per-device work per request:
   checked (the peer named by its router id or address in committed intent, IPv4 or IPv6); a
   drop a planned restart or a deploy explains is not one (`attention._explained`, the row's
   own rule);
+- **a duplicate router-id logged** (C2446): the same reader's duplicate router-id reports,
+  once per episode on each device that logged it and on the neighbour committed intent names
+  by the address it saw; R8's verify reads it again (`act.duplicate_logged`). No planned
+  window explains one;
 - **the drift record**: each device a drift run found departed (`DriftChecker.record`), its
   run's read kept as the incident's first read.
 The `topology-graph` reader's step records when each network's observed link set last changed
@@ -420,7 +424,7 @@ def from_adjacencies(store: str, value: dict, now: float = None) -> dict:
 def from_adjacency_log(store: str, value: dict, now: float = None, *, planned=None,
                        receipts=None) -> dict:
     """The `adjacency-log` step: each logged drop newer than the store's cursor that no planned
-    restart or deploy explains, both ends."""
+    restart or deploy explains, both ends; and each new duplicate router-id episode (C2446)."""
     from modules import attention as A
 
     now = time.time() if now is None else float(now)
@@ -428,12 +432,15 @@ def from_adjacency_log(store: str, value: dict, now: float = None, *, planned=No
     seen = (_cursors().get("cursors") or {}).get(store)
     new = [(k, a, d) for k, a in adj.items() for d in a.get("drops") or []
            if seen is None or float(d.get("epoch") or 0) > float(seen)]
-    if not new:
+    episodes = _duplicate_episodes(store, value)
+    if not new and not episodes:
         return _counts()
-    _move(lambda doc: doc.setdefault("cursors", {}).__setitem__(
-        store, max(float(d.get("epoch") or 0) for _k, _a, d in new)))
+    if new:
+        _move(lambda doc: doc.setdefault("cursors", {}).__setitem__(
+            store, max(float(d.get("epoch") or 0) for _k, _a, d in new)))
     ctx, counts, out = _Context(now), _counts(), []
-    if planned is None:
+    _duplicate_triggers(store, episodes, ctx, counts, out)
+    if planned is None and new:
         from modules import restarts
         planned = restarts.planned_rows()
     if receipts is None:
@@ -461,6 +468,65 @@ def from_adjacency_log(store: str, value: dict, now: float = None, *, planned=No
             out.append((network, peer, dict(base, key="adjlog:" + _key(k, at, peer),
                                             related=[device])))
     return _deliver(ctx, out, counts)
+
+
+def _duplicate_episodes(store: str, value: dict) -> list:
+    """C2446: each device's duplicate router-id report with a line newer than the store's
+    cursor, ``[(group key, group, device, report, episode start)]``, the cursors moved. One
+    EPISODE per device and id: a report whose first line in the window comes more than the
+    reader's quiet time after the last line consumed starts a new one; any other continues the
+    episode under way (a gap inside the window is not seen, and continues it)."""
+    from modules.readers import adjacency_log as AL
+
+    dups = (value or {}).get("duplicates") or {}
+    if not dups:
+        return []
+
+    def change(doc):
+        held = doc.setdefault("duplicates", {}).setdefault(store, {})
+        out = []
+        for k, g in sorted(dups.items()):
+            for device, r in sorted((g.get("reports") or {}).items()):
+                last, first = float(r.get("last_epoch") or 0), float(r.get("first_epoch") or 0)
+                was = held.get(f"{k}|{device}") or {}
+                if was and last <= float(was.get("last") or 0):
+                    continue
+                start = (first if not was or first - float(was.get("last") or 0)
+                         > AL.QUIET_SECONDS else float(was.get("episode") or first))
+                held[f"{k}|{device}"] = {"last": last, "episode": start}
+                if not was or start != float(was.get("episode") or 0):
+                    out.append((k, g, device, r, start))
+        return out
+
+    return _move(change)
+
+
+def _duplicate_triggers(store: str, episodes: list, ctx, counts: dict, out: list) -> None:
+    """Each new episode a trigger on the device that logged it, and on each device committed
+    intent gives a neighbour address it named (both ends, as a logged drop's)."""
+    for k, g, device, r, start in episodes:
+        network = g.get("list") or ""
+        if ctx.mode(network) == "off":
+            counts["off"] += 1
+            continue
+        peers = ctx.peers(network)
+        named = sorted({peers.get(a, "") for a in r.get("neighbors") or []} - {"", device})
+        claimers = sorted(set(g.get("reports") or {}) - {device})
+        rid, proto = g.get("router_id") or "", g.get("protocol") or "OSPF"
+        base = {"kind": "duplicate_router_id", "epoch": start, "at": _iso(start),
+                "source": store, "protocol": proto, "router_id": rid,
+                "words": (f"{device} logged a duplicate {proto} router-id {rid}"
+                          + "".join(f" from {a}" + (f" ({peers[a]})" if peers.get(a) else "")
+                                    for a in r.get("neighbors") or [])
+                          + "".join(f" on {i}" for i in r.get("interfaces") or [])
+                          + f" since {_iso(start)}")}
+        related = sorted(set(named) | set(claimers))
+        out.append((network, device, dict(base, key="dup:" + _key(k, device, start),
+                                          related=related)))
+        for peer in named:
+            if peer not in claimers:
+                out.append((network, peer, dict(base, key="dup:" + _key(k, device, start, peer),
+                                                related=[device])))
 
 
 def _link_fingerprint(graph: dict) -> str:
