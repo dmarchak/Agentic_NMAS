@@ -4007,3 +4007,33 @@ def test_heal_proposal(tmp_path, monkeypatch):
                                  data={"hash": v["hash"], "reason": "the duplicate router-id"
                                        " from the console change"})
     assert r.status_code == 200 and started[0]["hash"] == v["hash"]
+    from modules.heal import decisions
+    # Artboard E's second row (C2471): a rolled-back heal halts Default; Lift the halt… opens
+    # the row, a reason is typed, and the shot is taken (`heal-halt`); then Lift the halt is
+    # pressed in the browser and its answer drawn in place.
+    h = decisions.halt("Default", guard=14, name="a rolled-back heal",
+                       words="the heal of edge-b (hd-1) was rolled back: verify read OSPF 3 "
+                             "before, 2 after the settle window",
+                       operands={"decision": "hd-1", "device": "edge-b"})
+
+    def lift(b):
+        b.js(f"document.querySelector('a.att-jump[href=\"#heal-halt-{h['id']}\"]').click(); "
+             "return 1")
+        b.wait_for("return !!document.querySelector('.heal-halt input[name=reason]')")
+        b.js("document.querySelector('.heal-halt input[name=reason]').value = "
+             "'the statement belongs in intent now'; return 1")
+
+    with browser.Served(A.app) as served:
+        _shoot("heal-halt", "", lambda w: "/v2/", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=lift)
+        from tests.browser import Browser
+        with Browser() as b:
+            b.go(served.url("/v2/"))
+            lift(b)
+            # Enter in the reason submits nothing (C2472): no form owns it.
+            assert b.js("return document.querySelector('.heal-halt input[name=reason]').form "
+                        "=== null")
+            b.js("document.querySelector('.heal-halt button[hx-include]').click(); return 1")
+            b.wait_for("return /Lifted by you/.test((document.querySelector('.heal-halt') || "
+                       "{}).textContent || '')", 15)
+    assert decisions.halted("Default") == {}

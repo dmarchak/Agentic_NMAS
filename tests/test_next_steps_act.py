@@ -87,6 +87,11 @@ OPENERS = {
     # tests/test_board_shots.py's test_heal_proposal).
     "heal_proposal": ("document.querySelector('.heal-prop .heal-lead') && "
                       "document.querySelector('.heal-prop input[name=hash]')"),
+    # A halted network's Lift the halt… (board H artboard E's second row, C2471): its reason and
+    # its button drawn in the opened row (pressed in a browser by tests/test_board_shots.py's
+    # test_heal_proposal).
+    "heal_halt": ("document.querySelector('.heal-halt input[name=reason]') && "
+                  "document.querySelector('.heal-halt button[hx-include]')"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,

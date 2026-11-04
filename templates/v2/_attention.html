@@ -19,6 +19,9 @@
 {#- Board H, artboard D and E: a proposal's Review the fix… opens the row to its card (nmas_v2.js
     `citeClicked`, `a.att-jump`: every section holding the card opened, the card focused). -#}
 {%- elif r.action.open == 'heal_proposal' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_proposal" href="#heal-prop-{{ r.action.decision }}">Review the fix…</a>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
+{#- Board H, artboard E's second row (C2471): a halt's Lift the halt… opens the row to its
+    reason and its button, drawn in the row. -#}
+{%- elif r.action.open == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
 {%- elif r.devices %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
 {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
@@ -84,6 +87,8 @@
         {%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}{% if r.action.href and r.action.href.startswith('/v2/') %} <a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A self-healing proposal's controls are on its card, drawn below. -#}
         {%- elif r.action.open == 'heal_proposal' %}
+        {#- A halt's Lift the halt is its card, drawn below. -#}
+        {%- elif r.action.open == 'heal_halt' %}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
@@ -93,6 +98,11 @@
           (routes/heal_proposal_v2.proposal), with Approve and Decline. -#}
       {%- if r.action.open == 'heal_proposal' %}
       <div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:closest details.att" hx-swap="outerHTML"><p class="small muted">Drawn when this item is open: the proposal as Mercury recorded it, with Approve and Decline.</p></div>
+      {%- endif %}
+      {#- Board H, artboard E's second row (C2471): a halted network's reason and Lift the
+          halt, drawn from the row itself (it carries the halt). -#}
+      {%- if r.action.open == 'heal_halt' %}
+      {%- with halt_id=r.action.halt, list_name=r.action.list, device=r.action.device, halt=none, answered=false, lifted=none, refused=none, reason=none %}{% include "v2/_heal_halt.html" %}{% endwith %}
       {%- endif %}
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}

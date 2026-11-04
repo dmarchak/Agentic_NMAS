@@ -12,7 +12,16 @@ nothing. Every write is `modules/heal/propose.py`'s.
 read by `proposal` when the row is opened; its **Approve and run on <device>** and **Decline**
 post `approve` and `decline` with htmx, and each is answered with the card again, its answer
 in place (approved and its job, declined, or the refusal with the reason typed kept). A request
-that is not htmx's is answered ``{"ok", "error", ...}`` as H5 built them.
+that is not htmx's is answered ``{"ok", "error", ...}`` as H5 built them. A proposal the heal's
+own pass withdrew (C2470: its device read back at intent, or changed) is drawn as withdrawn,
+naming why, and its approval is refused naming the hash confirmed and both states.
+
+**Lift the halt** (artboard E's second row, C2471): the Needs attention row ``heal``/``halted``
+(`attention._heal_halted_rows`) carries its card (`templates/v2/_heal_halt.html`): a reason,
+kept outside any form so Enter submits nothing (C2472) and sent by the button's
+``hx-include``, and **Lift the halt**, which posts `lift` (`decisions.lift`: a verified person,
+a reason of three words or more, the halt in force by its id), answered with the card again,
+lifted or refused naming both operands.
 
 The routes' declarations live in their tables (`route_gates.GATES`, `invalidation.DECLARED`,
 `operation_stages.STAGES` and `HISTORY`), placed there by H9 with the card; `gates()`,
@@ -143,6 +152,47 @@ def approve(list_name, decision_id):
     if _htmx():
         return _card(list_name, decision_id, approved=out)
     return _answer(out)
+
+
+def _halt_card(list_name: str, halt_id: str, code: int = 200, **ctx):
+    """A halt's Lift the halt card (board H artboard E's second row, C2471), drawn again with
+    its answer in place: lifted, or the refusal with the reason typed kept. Drawn by the
+    person's own request, so it holds a live redraw until Show it now (`data-holds-live`)."""
+    from modules.heal import decisions
+    from routes.device_v2 import _strict
+
+    try:
+        h = decisions.halt_row(list_name, halt_id)
+    except Exception as exc:
+        h = {}
+        ctx.setdefault("refused", f"{list_name}'s heal decisions cannot be read ({exc})")
+    html = render_template("v2/_heal_halt.html", list_name=list_name, halt_id=halt_id,
+                           device=((h.get("operands") or {}).get("device") or ""), halt=h,
+                           answered=True, **ctx)
+    return _strict(html, code)
+
+
+@bp.route("/network/<list_name>/heal/halt/<halt_id>/lift", methods=["POST"])
+def lift(list_name, halt_id):
+    """Lift the halt in force on a network (board H artboard E, C2471): a verified person and
+    a reason of three words or more, recorded in the network's heal decisions
+    (`decisions.lift`); self-healing on it then runs under its policy again. Sends nothing."""
+    from modules.heal import decisions
+
+    reason = request.form.get("reason") or ""
+    w = _who()
+    try:
+        row = decisions.lift(list_name, halt_id, by=w["actor"],
+                             actor_verified=w["actor_verified"], person=w["person"],
+                             reason=reason)
+    except (decisions.Refused, RuntimeError) as exc:
+        code = 403 if isinstance(exc, decisions.NotAPerson) else 409
+        if _htmx():
+            return _halt_card(list_name, halt_id, code, refused=str(exc), reason=reason)
+        return _answer({"ok": False, "error": str(exc)}, code)
+    if _htmx():
+        return _halt_card(list_name, halt_id, lifted=row)
+    return _answer({"lifted": row})
 
 
 @bp.route("/network/<list_name>/heal/proposal/<decision_id>/decline", methods=["POST"])

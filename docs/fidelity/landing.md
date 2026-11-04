@@ -35,7 +35,16 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `eff778625a86abed48102a468b6c1bccf3194d45bde349d15de15637fbd1553e`
+Templates sha256: `d6301a5476e7a4684fa8be5951377ae48448dd93db30252d4b08c3f7f182639b`
+
+**Compared again 2026-11-04 ~17:3x UTC for board H's artboard E, its second row** (C2471): a
+halted network's row ("Self-healing halted on <network>: <why>") offers **Lift the halt…** on
+its line, which opens the row to its reason and **Lift the halt**, drawn under What to do from
+the row itself (`templates/v2/_heal_halt.html`, its own record docs/fidelity/heal-proposal.md).
+Every other row's line and What to do are unchanged: the template gains a branch taken only by
+a row whose action opens a halt. Compared from `heal-halt-page-1440`, `-1280` and `-390`
+(tests/test_board_shots.py `test_heal_proposal`) against artboard E's second row. Templates
+sha256 before: `eff778625a86abed48102a468b6c1bccf3194d45bde349d15de15637fbd1553e`.
 
 **Compared again 2026-11-04 ~16:4x UTC** (C2448's gate): Review the fix… gains
 `data-next-acts="heal_proposal"`, the opener tests/test_next_steps_act.py holds every next step

@@ -455,6 +455,11 @@ HISTORY = {
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
     "heal_proposal_v2.decline": ("heal",),
+    # Lift the halt (board H artboard E, C2471): kept in the network's heal decisions with who,
+    # when and why; a network's halt, never one device's record.
+    "heal_proposal_v2.lift": ("n/a: a halt lifted is kept in the network's heal decisions "
+                              "(modules/heal/decisions.py) with who, when and why, a "
+                              "network's record, never one device's"),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     # C2003: a page's own stall, kept as a local record and drawn on History › Page stalls.
     "v2.stall_capture": ("page_stalls",),

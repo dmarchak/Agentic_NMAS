@@ -219,6 +219,10 @@ ROW_KINDS = {
     ("heal", "proposal"): ("a fix that needs a person waits (Tier 2, Propose)",
                            "review the fix, then approve it by its hash with a reason, or "
                            "decline it with a reason"),
+    # Board H, H9 (artboard E, C2471; docs/HEAL_TO_INTENT.md section 9's table): self-healing
+    # halted on a network by a guard (a rate cap, a repeat, a rollback) until a person lifts it.
+    ("heal", "halted"): ("self-healing stopped on a network (a rate cap, a repeat, a rollback)",
+                         "read why, then lift the halt with a reason"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -507,7 +511,12 @@ CLEARS = {
                               "what was found on the device"),
     ("heal", "proposal"): (("resolves",),
                            "a person approves it on its card (its heal then runs as them, and "
-                           "History records what it did), or declines it there with a reason"),
+                           "History records what it did), or declines it there with a reason; "
+                           "or self-healing's next read of the device finds it back at intent "
+                           "(withdrawn) or changed again (withdrawn and made again, C2470)"),
+    ("heal", "halted"): (("resolves",),
+                         "a person lifts the halt on this item with a reason (Lift the halt), "
+                         "recorded with their name in the network's heal decisions"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -4907,11 +4916,64 @@ def heal_source(got=None, now=None, found=None) -> dict:
     out += _heal_interrupted_rows(lst, rows, found)
     interrupted_n = len(out) - marked
     out += _heal_proposal_rows(lst, rows)
+    proposals_n = len(out) - marked - interrupted_n
+    try:
+        halted = _heal_halted_rows(lst)
+    except Exception as exc:
+        return source_result("heal", label, read_at=started, took_ms=0,
+                             error=f"whether self-healing on {lst} is halted cannot be read: "
+                                   f"{exc}")
+    out += halted
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
                                   f"{interrupted_n} interrupted heal(s), "
-                                  f"{len(out) - marked - interrupted_n} proposal(s) waiting"))
+                                  f"{proposals_n} proposal(s) waiting, "
+                                  f"{len(halted)} halt(s) in force"))
+
+
+def _heal_halted_rows(lst: str, halt: dict = None, stopped: dict = None) -> list:
+    """Board H, H9 (artboard E, C2471; docs/HEAL_TO_INTENT.md section 9): ONE row while
+    self-healing on *lst* is halted (`decisions.halted`: guards 10, 11 and 14, a rate cap, a
+    repeat or a rolled-back heal, each naming its guard and both operands), until a person lifts
+    it with a reason on the row (`open: heal_halt`, Lift the halt); and ONE row while the
+    installation's kill switch stops it everywhere (`policy.stopped`), whose way out is Resume
+    self-healing… on a network's Self-healing tab. An unreadable halt record raises: the source
+    is then unreadable, never "not halted"."""
+    from modules.heal import decisions as HD
+    from modules.heal import policy
+
+    halt = HD.halted(lst) if halt is None else halt
+    stopped = policy.stopped() if stopped is None else stopped
+    out = []
+    if halt.get("id"):
+        ops = halt.get("operands") or {}
+        host = ops.get("device") or ""
+        out.append(row(
+            source="heal", kind="halted", key=halt["id"], level="danger",
+            devices=[host] if host else [], since=float(halt.get("epoch") or 0) or None,
+            what=f"Self-healing halted on {lst}: {halt.get('name') or 'a guard applied'}",
+            cause=(f"Guard {halt.get('guard')}, {halt.get('name')}: {halt.get('words')}. No "
+                   f"device on {lst} is healed, and no dry-run record is made, until a person "
+                   "lifts the halt; a proposal waiting cannot be approved until then"),
+            action={"label": ("Read why (and the device's History, where a heal is named), "
+                              "then lift the halt with a reason"),
+                    "open": "heal_halt", "list": lst, "halt": halt["id"], "device": host},
+            operands={"list": lst, "halt": halt["id"], "guard": halt.get("guard"),
+                      **{k: v for k, v in ops.items() if k in ("decision", "device")}}))
+    if stopped.get("stopped"):
+        out.append(row(
+            source="heal", kind="halted", key="stopped", level="danger",
+            what=("Self-healing is stopped everywhere: the installation's kill switch"
+                  + (f", by {stopped['by']}" if stopped.get("by") else "")),
+            cause=(f"{stopped.get('words') or 'self-healing is stopped everywhere'}. No device "
+                   "on any network is healed or proposed until a person resumes it"),
+            action={"label": ("Read why, then resume self-healing as previewed with a reason "
+                              f"(Resume self-healing… on {lst}'s Self-healing tab)"),
+                    "href": f"/v2/settings/network/{lst}?tab=heal"},
+            operands={"state": stopped.get("state"), "by": stopped.get("by"),
+                      "at": stopped.get("at")}))
+    return out
 
 
 def _heal_proposal_rows(lst: str, rows: list) -> list:

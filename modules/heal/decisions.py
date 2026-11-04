@@ -23,7 +23,11 @@ with the History step log's screen.
 
 **Halts.** Guards 10, 11 and 14 halt the network's policy (`halt`): self-healing on it stops,
 recorded with the guard and both operands, until a verified person lifts it with a reason
-(`lift`). A halt is read by guard 2 (`halted`). In dry run a guard that would halt records its
+(`lift`: Needs attention's ``heal``/``halted`` row and its Lift the halt, routes/
+heal_proposal_v2.lift, C2471). A halt is read by guard 2 (`halted`).
+
+**Withdrawn** (`withdraw`, C2470): the heal's own pass withdraws a proposal no person has
+taken, its device read back at intent or changed since, in one row. In dry run a guard that would halt records its
 outcome and halts nothing: dry run never stops itself.
 """
 
@@ -42,12 +46,22 @@ OUTCOME_WORDS = {"heal": "healing", "would_heal": "would heal (dry run)",
                  "propose": "proposed for a person", "cant_fix": "can't fix",
                  "nothing": "nothing to heal", "held": "held", "halted": "halted",
                  "off": "off", "deferred": "checked again later"}
+#: A proposal the heal's own pass withdrew (C2470): its row, its two ways, and what it keeps.
+WITHDRAWN = "withdrawn"
+WITHDRAWN_HOW = ("at_intent", "changed")
+WITHDRAWN_KEYS = ("how", "by", "words", "at", "bound", "read")
+#: A lift's reason, its shape (as an approval's, `propose.REASON_WORDS`).
+LIFT_REASON_WORDS = 3
 #: How long a dry-run record waits for its mark on the drift row (`attention.heal_source`).
 MARK_DAYS = 7
 
 
 class Refused(ValueError):
     """A mark, a take or a lift refused, in words."""
+
+
+class NotAPerson(Refused):
+    """A lift refused because the request is not a verified person's."""
 
 
 def _iso(epoch: float) -> str:
@@ -123,6 +137,13 @@ def decisions(network: str) -> list:
             target["taken"] = {k: r.get(k) for k in ("by", "at")}
         elif r.get("row") == "applied":
             target["applied"] = {k: r.get(k) for k in ("outcome", "by", "at", "words")}
+        elif r.get("row") == WITHDRAWN:
+            # One row, so a reader never sees it taken without its outcome (`interrupted.find`
+            # would read that as an approved heal whose job ended first).
+            target["taken"] = {"by": r.get("by"), "at": r.get("at")}
+            target["applied"] = {"outcome": WITHDRAWN, "by": r.get("by"), "at": r.get("at"),
+                                 "words": r.get("words")}
+            target["withdrawn"] = {k: r.get(k) for k in WITHDRAWN_KEYS}
     return list(by.values())
 
 
@@ -143,6 +164,36 @@ def to_apply(network: str) -> list:
 def proposals(network: str) -> list:
     """**H5's seam:** the ``propose`` decisions not yet taken."""
     return [d for d in decisions(network) if d["outcome"] == "propose" and not d.get("taken")]
+
+
+def withdraw(network: str, decision_id: str, *, how: str, by: str, words: str, read: dict,
+             now: float = None) -> dict:
+    """The heal's own pass withdraws a proposal no person has taken (C2470; board H artboard
+    E: "If <device> changes, the proposal is withdrawn and made again"): *how* is ``at_intent`` (its
+    device read back at its golden, which matches its intent) or ``changed`` (read with a
+    departure other than the one it was bound to). ONE row, taken and its outcome together,
+    under the take's lock, so a person's approval and a withdrawal never both take it; a
+    proposal taken already is refused by name. *read* is the read that withdrew it (its time,
+    state and departure: no configuration text)."""
+    from modules import filestore
+
+    now = time.time() if now is None else float(now)
+    if how not in WITHDRAWN_HOW:
+        raise Refused(f"a proposal is withdrawn {' or '.join(WITHDRAWN_HOW)}, not {how!r}")
+    with filestore.PathLock(path(network) + ".take"):
+        d = find(network, decision_id)
+        if d["outcome"] != "propose":
+            raise Refused(f"{decision_id} is {d['outcome']}: only a proposal is withdrawn")
+        if d.get("taken"):
+            raise Refused(f"{decision_id} was taken by {d['taken']['by']} at "
+                          f"{d['taken']['at']}, so it is not withdrawn")
+        _append(network, {"row": WITHDRAWN, "decision": decision_id, "how": how, "by": by,
+                          "words": words, "at": _iso(now),
+                          "bound": {"departure": d.get("departure") or "",
+                                    "at": d.get("at") or ""},
+                          "read": {k: (read or {}).get(k) for k in ("at", "state",
+                                                                     "departure")}})
+    return find(network, decision_id)
 
 
 def take(network: str, decision_id: str, *, by: str, now: float = None) -> dict:
@@ -248,19 +299,48 @@ def last_halt_epoch(network: str) -> float:
                default=0.0)
 
 
+def halt_row(network: str, halt_id: str) -> dict:
+    """The halt *halt_id* as recorded, with ``lifted`` (its lift's who, when and why) once a
+    person lifted it, or ``{}`` for a halt never recorded. An unreadable record raises."""
+    found = {}
+    for r in _rows(network):
+        if r.get("row") == "halt" and r.get("id") == halt_id:
+            found = dict(r)
+        elif r.get("row") == "lift" and found and r.get("halt") == halt_id:
+            found["lifted"] = {k: r.get(k) for k in ("by", "actor_verified", "reason", "at")}
+    return found
+
+
 def lift(network: str, halt_id: str, *, by: str, actor_verified: str, person: bool,
          reason: str, now: float = None) -> dict:
-    """A verified person lifts the halt in force, with a reason ("Lift the halt…")."""
+    """A verified person lifts the halt in force, with a reason of `LIFT_REASON_WORDS` words or
+    more (board H artboard E, "Lift the halt…"; a reason's shape, never its quality, as an
+    approval's). Raises `NotAPerson` or `Refused` naming both operands; nothing is lifted."""
     now = time.time() if now is None else float(now)
     if not by or actor_verified in ("", "none") or not person:
-        raise Refused(f"a halt is lifted by a verified person, and this request is not one "
-                      f"(actor {by or 'none'}, verified {actor_verified or 'none'})")
-    if not (reason or "").strip():
+        raise NotAPerson(f"a halt is lifted by a verified person, and this request is not one "
+                         f"(actor {by or 'none'}, verified {actor_verified or 'none'})")
+    text = (reason or "").strip()
+    if not text:
         raise Refused("a halt is lifted with a recorded reason, and none was given")
-    current = halted(network)
-    if current.get("id") != halt_id:
-        raise Refused(f"the halt in force is {current.get('id') or 'none'}, not {halt_id}: "
+    if len(text.split()) < LIFT_REASON_WORDS:
+        raise Refused(f"a halt is lifted with a reason of {LIFT_REASON_WORDS} words or more, "
+                      f"recorded as the person's statement ({len(text.split())} given): "
                       "nothing was lifted")
-    return _append(network, {"row": "lift", "halt": halt_id, "by": by,
-                             "actor_verified": actor_verified, "reason": reason.strip(),
-                             "at": _iso(now)})
+    from modules import filestore
+
+    # The check and the lift under one lock, across processes: two people lifting at once
+    # record one lift, and the second is told whose it was.
+    with filestore.PathLock(path(network) + ".lift"):
+        current = halted(network)
+        if current.get("id") != halt_id:
+            done = (halt_row(network, halt_id).get("lifted") or {}) if halt_id else {}
+            raise Refused(f"the halt in force is {current.get('id') or 'none'}, not {halt_id}"
+                          + (f" (lifted by {done.get('by')} at {done.get('at')})" if done
+                             else "") + ": nothing was lifted")
+        row = _append(network, {"row": "lift", "halt": halt_id, "by": by,
+                                "actor_verified": actor_verified, "reason": text,
+                                "at": _iso(now)})
+    log.info("heal: %s's halt %s (guard %s) lifted by %s: %s", network, halt_id,
+             current.get("guard"), by, text)
+    return row

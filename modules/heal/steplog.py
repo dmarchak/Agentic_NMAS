@@ -49,7 +49,7 @@ MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",
          "healed": "healed", "symptom_remains": "symptom remains", "partial": "partial",
          "refused": "nothing sent", "rolled_back": "rolled back",
          "failed": "failed after sending", "interrupted": "interrupted",
-         "declined": "declined"}
+         "declined": "declined", "withdrawn": "withdrawn"}
 #: The outcomes that are not a success: drawn amber or red, never as healed.
 NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupted")
 MODE_WORDS = {"auto": "AUTO", "dry_run": "dry run", "off": "off"}

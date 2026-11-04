@@ -217,6 +217,9 @@ GATES = {
     # but a verified person too (modules/heal/propose.py), whatever a service is granted.
     "heal_proposal_v2.approve": _g(C, "approves one self-healing proposal (a Tier 2 fix, board H artboard E) bound to the proposal's hash as previewed, as a verified person with a reason: its program sent through THE apply as that person, holding the device, then the measured process reset it needs (refused until measured), verified, rolled back on failure and recorded", "heal_proposal"),
     "heal_proposal_v2.decline": _g(K, "declines one self-healing proposal as a verified person with a reason: recorded in the network's heal decisions and step log, its incident closed; sends nothing to a device"),
+    # Lift the halt (board H artboard E's second row, C2471): refuses anyone but a verified
+    # person too (modules/heal/decisions.lift), whatever a service is granted.
+    "heal_proposal_v2.lift": _g(K, "lifts the halt in force on one network's self-healing (a rate cap, a repeat or a rolled-back heal), by its id, as a verified person with a reason of three words or more: recorded in the network's heal decisions with who, when and why; self-healing then runs under its policy again; sends nothing to a device"),
     # Settings › Installation › Notifications (board H, artboard B; H9; routes/notify_v2.py):
     # the relay's password, the teams and their destinations, codes and test sends.
     "notify_v2.relay_password": _g(K, "stores the email relay's password a person typed, encrypted in the credential store, never drawn back; recorded with who and when in the installation's settings record"),

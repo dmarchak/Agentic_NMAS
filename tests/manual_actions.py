@@ -337,6 +337,11 @@ NOT_AN_OPERATION = {
                                           "planning nothing, a read",
     ("_fleet_run.html", "Leave it paused"): "returns to the layer, sending nothing more, a read",
     ("_fleet_run.html", "Back to the layers"): "returns to Source of Truth › Intent, a read",
+    # Board H artboard E's second row (C2471): a halted network's two ways to read why.
+    ("_heal_halt.html", "Edit 's intent…"): ("opens the halted heal's device on its Intent tab, "
+                                             "where its editor is, a read"),
+    ("_heal_halt.html", "Open the incident"): ("opens the halted heal's device on its History "
+                                               "tab, where the heal's steps are, a read"),
     # PHASE8_PLAN 16.11 item 3 (board CR): a drafted change record, as text.
     ("_change_record.html", "Copy as text"): ("copies the drafted change record to the "
                                               "clipboard, writing nothing"),

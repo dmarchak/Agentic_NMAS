@@ -14,7 +14,13 @@ processes, refused by name). In it:
    once, the second at least ``heal_grace_seconds`` after the first: 120 s on a network marked
    lab, 900 s otherwise);
 3. each attached member read once: it is still checked, and never healed on its own;
-4. an incident the grace period settles (`grace.SETTLED_STATES`) is made ``ready``.
+4. an incident the grace period settles (`grace.SETTLED_STATES`) is made ``ready``;
+5. each Tier 2 proposal still waiting for a person (`decisions.proposals`) has its device read
+   again once its last read is a grace period old, or a cause trigger arrived after it (C2470;
+   board H artboard E): read back at intent, the proposal is withdrawn and its incident closed;
+   read with another departure than the one it was bound to, it is withdrawn and its incident
+   watching again, so the decision makes it again (`propose.withdraw`). Each withdrawal is
+   recorded in the decisions store and the step log, with the read and the bound state.
 
 **Where H2 ends.** A ready incident is the decision's (H3): `incidents.ready(network)` lists
 them, each whole, and the decision takes one with `incidents.claim`. Nothing here classifies,
@@ -47,7 +53,9 @@ STEPS = (("mode", "Read the network's mode"),
          ("judge", "Judge each incident's grace period"),
          ("read", "Read the device when a read is due"),
          ("members", "Read each attached device once"),
-         ("settle", "Hand each settled incident to the decision"))
+         ("settle", "Hand each settled incident to the decision"),
+         ("proposals", "Read each waiting proposal's device again, and withdraw one it no "
+                       "longer fits"))
 
 _wake = threading.Event()
 _stop = threading.Event()
@@ -112,13 +120,14 @@ def outside_changes(incident: dict) -> list:
 def run(network: str, *, now: float = None, check=None, clock=time.time,
         by: str = "heal to intent") -> dict:
     """One detect pass of *network*: ``{"ran", "network", "mode", "words", "ready", "waiting",
-    "reads", "deferred", "closed", "busy"}``. *check* stands in for `drift_check.check_device`
-    and *clock* for the time a read was made, in a test."""
+    "reads", "deferred", "closed", "busy", "withdrawn"}``. *check* stands in for
+    `drift_check.check_device` and *clock* for the time a read was made, in a test."""
     from modules.heal import incidents, policy
 
     now = clock() if now is None else float(now)
     out = {"ran": False, "network": network, "mode": "off", "words": "", "ready": [],
-           "waiting": [], "reads": 0, "deferred": [], "closed": [], "busy": ""}
+           "waiting": [], "reads": 0, "deferred": [], "closed": [], "busy": "",
+           "withdrawn": []}
     mode = policy.current(network, now)
     out.update(mode=mode["mode"], words=mode["words"])
     if mode["mode"] == "off":
@@ -149,6 +158,7 @@ def run(network: str, *, now: float = None, check=None, clock=time.time,
                     # or sent back): the next pass reads it as it is now.
                     log.info("heal: %s's %s moved during the pass: %s", network, inc["id"],
                              exc)
+            _proposals(network, got["incidents"], out, budget, grace_s, now, by, check, clock)
     except incidents.HealBusy as exc:
         return dict(out, busy=str(exc))
     out["ran"] = True
@@ -200,9 +210,76 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     return budget
 
 
+def _recheck_due(decision: dict, inc: dict, grace_s: float, now: float) -> bool:
+    """Whether a waiting proposal's device is read again now: when its last read (the
+    decision's own, or this step's newest since) is a grace period old, the interval that
+    judges a departure persisted, or a cause trigger (a configuration change, by anyone, or
+    the drift record) arrived after it."""
+    from modules.heal.incidents import CAUSE_KINDS
+
+    last = float(decision.get("epoch") or 0)
+    last = max([last] + [float(r.get("epoch") or 0) for r in inc.get("reads") or []
+                         if float(r.get("epoch") or 0) > last])
+    if now - last >= grace_s:
+        return True
+    return any(t.get("kind") in CAUSE_KINDS and float(t.get("epoch") or 0) > last
+               for t in inc.get("triggers") or [])
+
+
+def _proposals(network, incidents_now, out, budget, grace_s, now, by, check, clock) -> int:
+    """Each waiting proposal's device read again when due (C2470; board H artboard E: "If <device>
+    changes, the proposal is withdrawn and made again. Clears when ... <device> is back at
+    intent"): read back at intent, the proposal is withdrawn and its incident closed; read
+    with a departure other than the one it was bound to, it is withdrawn and its incident
+    sent back to watching, so the decision makes it again by its normal path; otherwise it
+    waits, the read kept on its incident. Shares the pass's read budget; returns what is
+    left."""
+    from modules.heal import decisions, incidents, propose
+
+    out.setdefault("withdrawn", [])
+    try:
+        waiting = decisions.proposals(network)
+    except Exception as exc:
+        log.error("heal: %s's proposals could not be read: %s", network, exc)
+        out["proposals_error"] = str(exc)
+        return budget
+    claimed = {i.get("id"): i for i in incidents_now if i.get("state") == "claimed"}
+    for d in waiting:
+        inc = claimed.get(d.get("incident"))
+        if inc is None or not _recheck_due(d, inc, grace_s, now):
+            continue
+        if budget <= 0:
+            out["deferred"].append(inc["id"])
+            continue
+        budget -= 1
+        r = read_device(network, d["device"], by=by, check=check, clock=clock)
+        out["reads"] += 1
+        if r["state"] == "busy":
+            continue
+        incidents.record_read(network, inc["id"], d["device"], r)
+        how = propose.withdrawn_how(d, r)
+        if not how:
+            continue
+        try:
+            got = propose.withdraw(network, d, r, how=how, now=now, by=by)
+        except decisions.Refused as exc:
+            log.info("heal: %s's proposal %s was taken before it was withdrawn: %s", network,
+                     d["id"], exc)
+            continue
+        out["withdrawn"].append({"decision": d["id"], "device": d["device"], "how": how,
+                                 "words": got["words"]})
+    if out["withdrawn"]:
+        try:
+            from modules import invalidation
+            invalidation.announce(invalidation.ANNOUNCERS["heal-decide"], by="heal-decide")
+        except Exception as exc:
+            log.info("heal: %s's withdrawals recorded, not announced: %s", network, exc)
+    return budget
+
+
 def watching_networks() -> list:
-    """The networks with an incident still watching, or ready for the decision (one read of
-    each network's store)."""
+    """The networks with an incident still watching, ready for the decision, or claimed (a
+    proposal waiting is read again, C2470; one read of each network's store)."""
     from modules.heal import incidents
     from modules.integration_groups import network_names
 
@@ -212,7 +289,7 @@ def watching_networks() -> list:
         if got["state"] == "unreadable":
             log.error("heal: %s", got["error"])
             continue
-        if any(i.get("state") in ("watching", "ready") for i in got["incidents"]):
+        if any(i.get("state") in ("watching", "ready", "claimed") for i in got["incidents"]):
             out.append(name)
     return out
 

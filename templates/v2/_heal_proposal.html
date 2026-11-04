@@ -19,6 +19,14 @@
     <ol class="set-list small">{% for s in declined.steps %}<li><span class="mono">{{ s.step }}</span> ({{ s.result }}): {{ s.words }}</li>{% endfor %}</ol>
   </details>
   <p class="small"><a href="{{ url_for('device_v2.device', name=declined.device, list=declined.network, tab='history') }}">Open {{ declined.device }}'s History</a></p>
+{#- C2470: withdrawn by the heal's own pass, the device read back at intent or changed since;
+    the words name the read and the state the proposal was bound to. -#}
+{%- elif v and v.withdrawn %}
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
+  {%- endif %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Withdrawn, no longer waiting:</strong> {{ v.withdrawn.words | replace('withdrawn: ', '', 1) }}. Recorded {{ stamp(v.withdrawn.at) if v.withdrawn.at else 'at an unrecorded time' }}; nothing was sent to {{ v.device }}{% if v.withdrawn.how == 'changed' %}, and once its grace period settles a new proposal, if one is needed, is its own item here{% endif %}.</p></div>
+  <p class="small"><a href="{{ url_for('device_v2.device', name=v.device, list=list_name, tab='history') }}">Open {{ v.device }}'s History</a></p>
 {%- elif not v %}
   <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Couldn't load the proposal:</strong> {{ gone or refused }}. It is no longer waiting: read the device's History for what became of it.</p></div>
 {%- else %}
@@ -55,7 +63,7 @@
       <a class="btn btn-small btn-outline" data-op="drift-check" href="{{ url_for('device_v2.device', name=host, list=list_name, op='drift_check') }}">Check drift now on {{ host }}</a>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}
     </div>
   </div>
-  <p class="small muted">{{ confirming }} Approving is bound to this proposal's hash (<span class="mono">{{ v.hash }}</span>) and needs a reason. If {{ host }} has changed since it was proposed, the approved run refuses at its plan step and closes the proposal, sending nothing.</p>
+  <p class="small muted">{{ confirming }} Approving is bound to this proposal's hash (<span class="mono">{{ v.hash }}</span>) and to {{ host }} as read {{ stamp(v.at) if v.at else 'when it was proposed' }}, and needs a reason. If {{ host }} changes, the proposal is withdrawn and made again; if it changes after you approve, the run refuses at its plan step and closes the proposal, sending nothing.</p>
   <details class="set-details"><summary>What Mercury found and tried</summary>
     <p class="small">{{ v.words or 'No words are recorded with this decision.' }}</p>
     {%- if v.triggers %}<ul class="set-list small">{% for t in v.triggers %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}

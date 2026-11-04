@@ -315,6 +315,8 @@ DECLARED = {
     # on drift) leaves; the approved heal ANNOUNCES heal-act's keys as it finishes.
     "heal_proposal_v2.approve": ("drift",),
     "heal_proposal_v2.decline": ("drift",),
+    # Lift the halt (C2471): the halted row (`attention.heal_source`, riding on drift) leaves.
+    "heal_proposal_v2.lift": ("drift",),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a
     # setting's companion; teams, destinations, codes and sends move the notifications record.
     "notify_v2.relay_password": ("settings",),

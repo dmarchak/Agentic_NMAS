@@ -48,6 +48,16 @@ access``), through H4's parts (`apply_approved`, `STEPS`):
 ``declined``, its incident closed (a later read may propose again), and its step log's ``act``
 row written as the person; nothing is sent.
 
+**Withdrawn** (`withdraw`, C2470; board H artboard E: "If <device> changes, the proposal is
+withdrawn and made again"): the detect pass reads a waiting proposal's device again
+(`detect._proposals`); read back at its golden, which matched its intent, the proposal is
+withdrawn and its incident closed; read with another departure than the one it was bound to,
+it is withdrawn and its incident watched again, so the decision makes it again by its normal
+path. One row in the decisions store (`decisions.withdraw`, so a person's approval and a
+withdrawal never both take it) and an ``act`` row in the step log, each naming the read and the
+bound state; nothing is sent. Its card says so (`view`'s ``withdrawn``), and its approval is
+refused naming the hash confirmed and both states.
+
 **Where it is drawn** is H9's (board H artboard E: the Needs attention row ``heal``/``proposal``
 with **Approve…** and **Decline…**); the routes are `routes/heal_proposal_v2.py`'s, registered
 with that screen.
@@ -230,7 +240,7 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     Mercury's records, never the device. ``{"network", "decision", "incident", "device",
     "platform", "kind", "kind_words", "tier", "units", "program", "program_hash", "reset",
     "lines", "hash", "refusals", "confirmable", "person", "policy", "triggers", "words", "at",
-    "steps"}``."""
+    "steps", "withdrawn"}``; *withdrawn* is the withdrawal's record (C2470) or None."""
     from modules.heal.kinds import KIND_WORDS
 
     now = time.time() if now is None else float(now)
@@ -242,7 +252,12 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     r = resets_of(d.get("units") or [], dialect=platform, device=device)
     plan = r["plan"] or {}
     refusals = []
-    if d.get("taken"):
+    if d.get("withdrawn"):
+        # C2470: withdrawn by the heal's own pass, its words naming the read and the state the
+        # proposal was bound to.
+        w = d["withdrawn"]
+        refusals.append(f"{decision_id} was {w.get('words')} (recorded at {w.get('at')})")
+    elif d.get("taken"):
         done = (d.get("applied") or {}).get("outcome")
         refusals.append(f"{decision_id} was taken by {d['taken']['by']} at {d['taken']['at']}"
                         + (f" and is {done}" if done else ", and its act is running"))
@@ -265,7 +280,8 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
             "refusals": refusals, "confirmable": not refusals,
             "person": (d.get("person") or {}).get("words") or "", "policy": d.get("policy") or {},
             "triggers": [t for t in d.get("triggers") or [] if t], "words": d.get("words") or "",
-            "at": d.get("at"), "steps": [w for _n, w in STEPS]}
+            "at": d.get("at"), "steps": [w for _n, w in STEPS],
+            "withdrawn": dict(d["withdrawn"]) if d.get("withdrawn") else None}
 
 
 # ── Approve ─────────────────────────────────────────────────────────────────────────────────
@@ -282,6 +298,10 @@ def approve(network: str, decision_id: str, *, confirmed_hash: str, reason: str,
     _person(actor, actor_verified, person, "approving a self-healing proposal")
     reason = _reason(reason, "approving a proposal")
     v = view(network, decision_id, now=now, sources=sources)
+    if v["withdrawn"]:
+        raise Refused(f"not approved: the proposal you confirmed ({confirmed_hash or 'no hash'}"
+                      f"; the proposal's {v['hash']}) is no longer waiting: "
+                      + "; ".join(v["refusals"]) + ". Nothing was taken or sent")
     if v["refusals"]:
         raise Refused("not approved: " + "; ".join(v["refusals"]))
     if (confirmed_hash or "") != v["hash"]:
@@ -577,6 +597,81 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
         return s
 
     return act._judge(device, got, report, src, via, step, finish, symptom)
+
+
+# ── Withdrawn (C2470) ───────────────────────────────────────────────────────────────────────
+
+def withdrawn_how(decision: dict, read: dict) -> str:
+    """Whether *read* (the detect pass's read of a waiting proposal's device: its state and
+    departure, `detect.read_device`'s) withdraws the proposal: ``at_intent`` (read back at its
+    golden, which matched its intent when it was proposed: guard 4), ``changed`` (a departure
+    other than the one the proposal was bound to), or ``""`` (still the departure it was made
+    for, or a read that says nothing of the device: an error, a skip, a busy run)."""
+    state = (read or {}).get("state")
+    if state == "clean":
+        return "at_intent"
+    if state == "drifted" and (read.get("departure") or "") != (decision.get("departure") or ""):
+        return "changed"
+    return ""
+
+
+def withdraw(network: str, decision: dict, read: dict, *, how: str, now: float = None,
+             by: str = "heal to intent") -> dict:
+    """Withdraw one waiting proposal the heal's own pass read its device against (board H
+    artboard E: "If <device> changes, the proposal is withdrawn and made again. Clears when
+    ... <device> is back at intent"): recorded in the decisions store (`decisions.withdraw`, one row, so its
+    Needs attention row leaves) and the step log (an ``act`` row, ``withdrawn``, nothing sent),
+    with the read and the state it was bound to. ``at_intent`` closes its incident; ``changed``
+    sends it back to watching (`incidents.defer`), its grace period restarting at once, so the
+    decision makes it again from the device as it is now, by its normal path. ``{"decision",
+    "device", "how", "words", "records"}``; raises `decisions.Refused` when a person took it
+    first (their approval or decline stands)."""
+    from modules.heal import decisions, incidents, steplog
+
+    now = time.time() if now is None else float(now)
+    device = decision.get("device") or ""
+    bound = (f"it was bound to {device} as read at {decision.get('at') or 'an unrecorded time'}"
+             f" (departure {decision.get('departure') or 'none'})")
+    if how == "at_intent":
+        words = (f"withdrawn: {device} read back at its golden, which matches its intent, at "
+                 f"{read.get('at')}, so nothing is left to fix; {bound}")
+    else:
+        words = (f"withdrawn: {device} changed since it was proposed (read at {read.get('at')}, "
+                 f"departure {read.get('departure') or 'none'}); {bound}. Its grace period "
+                 "starts again, and the decision makes it again from the device as it is now")
+    d = decisions.withdraw(network, decision["id"], how=how, by=by, words=words, read=read,
+                           now=now)
+    records = {"decision": f"withdrawn in {network}'s heal decisions ({decision['id']})"}
+    try:
+        if how == "at_intent":
+            incidents.close(network, decision.get("incident"),
+                            f"{decisions.WITHDRAWN}: {words} (decision {decision['id']})", now)
+            records["incident"] = "closed"
+        else:
+            incidents.defer(network, decision.get("incident"), now,
+                            f"{decisions.WITHDRAWN}: {words} (decision {decision['id']})", now)
+            records["incident"] = "watching again"
+    except Exception as exc:
+        log.error("heal: %s's incident %s after withdrawing %s: %s", network,
+                  decision.get("incident"), decision["id"], exc)
+        records["incident"] = f"not moved: {type(exc).__name__}: {exc}"
+    result = {"decision": decision["id"], "device": device, "outcome": decisions.WITHDRAWN,
+              "how": how, "words": words, "sent": False,
+              "steps": [{"step": "read", "result": read.get("state") or "",
+                         "words": (f"{device} read at {read.get('at')}: departure "
+                                   f"{read.get('departure') or 'none'}")},
+                        {"step": "record", "result": decisions.WITHDRAWN,
+                         "words": f"{words}. Nothing was sent"}],
+              "records": records}
+    try:
+        steplog.record_act(network, d, result, by=by, now=now)
+        records["step_log"] = "written"
+    except Exception as exc:
+        log.error("heal: %s's withdrawn proposal %s is not in the step log: %s", network,
+                  decision["id"], exc)
+        records["step_log"] = f"not written: {type(exc).__name__}: {exc}"
+    log.info("heal: %s's proposal %s for %s %s", network, decision["id"], device, words)
+    return result
 
 
 # ── Decline ─────────────────────────────────────────────────────────────────────────────────

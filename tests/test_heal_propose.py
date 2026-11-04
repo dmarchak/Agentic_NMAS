@@ -606,6 +606,148 @@ class TestDecline:
             approve(d, FakeApproved(R8))
 
 
+# ── Withdrawn (C2470) ───────────────────────────────────────────────────────────────────────
+
+#: Board H artboard E: "If r6 changes, the proposal is withdrawn and made again". R8 changed
+#: again: another router-id, so another departure from the golden.
+R8_AGAIN = changed((" router-id 192.0.2.6\n", " router-id 192.0.2.98\n"))
+
+
+def _dep(running):
+    from modules.drift_check import departure, drift_diff
+
+    return departure(drift_diff(GOLDEN, running, "edge-b"))
+
+
+class _Check:
+    """`drift_check.check_device` as the detect pass calls it: the device read as *running*
+    (its departure from the golden computed by the real comparison), counted."""
+
+    def __init__(self, running=None, error=""):
+        self.running, self.error, self.calls = running, error, []
+
+    def __call__(self, network, device, by):
+        self.calls.append(device)
+        if self.error:
+            return {"ok": False, "state": "unknown", "error": self.error}
+        dep = _dep(self.running)
+        return {"ok": True, "state": "drifted" if dep else "clean", "departure": dep,
+                "changed_lines": 1 if dep else 0, "read_at": None}
+
+
+def _pass(t, check):
+    from modules.heal import detect
+
+    return detect.run("Default", now=t, check=check, clock=lambda: t)
+
+
+def _incident():
+    (inc,) = I.read("Default")["incidents"]
+    return inc
+
+
+class TestWithdrawn:
+    """A waiting proposal's device read again by the heal's own pass: back at intent, it is
+    withdrawn and its incident closed; changed, withdrawn and made again by the normal path."""
+
+    def test_back_at_intent_it_is_withdrawn_recorded_and_its_row_gone(self, lab):
+        from modules import attention
+
+        d = proposed()
+        assert attention._heal_proposal_rows("Default", DS.decisions("Default")), "a row first"
+        out = _pass(T0 + 121, _Check(GOLDEN))
+        assert [w["how"] for w in out["withdrawn"]] == ["at_intent"]
+        assert DS.proposals("Default") == []
+        got = DS.find("Default", d["id"])
+        assert got["applied"]["outcome"] == "withdrawn"
+        w = got["withdrawn"]
+        assert w["how"] == "at_intent" and w["bound"]["departure"] == d["departure"] != ""
+        assert w["read"]["state"] == "clean" and w["read"]["departure"] == ""
+        assert "read back at its golden, which matches its intent" in w["words"]
+        assert d["departure"] in w["words"], "the words name the state it was bound to"
+        inc = _incident()
+        assert inc["state"] == "closed" and inc["closed_why"].startswith("withdrawn: ")
+        (act,) = [r for r in SL.read("Default")["rows"] if r.get("row") == "act"]
+        assert act["outcome"] == "withdrawn" and act["sent"] is False
+        assert attention._heal_proposal_rows("Default", DS.decisions("Default")) == []
+        assert INT.find("Default")["found"] == [], "a withdrawn proposal is never interrupted"
+
+    def test_changed_it_is_withdrawn_and_made_again_by_the_decision(self, lab):
+        d = proposed()
+        out = _pass(T0 + 121, _Check(R8_AGAIN))
+        assert [w["how"] for w in out["withdrawn"]] == ["changed"]
+        w = DS.find("Default", d["id"])["withdrawn"]
+        assert (w["bound"]["departure"], w["read"]["departure"]) == (d["departure"],
+                                                                    _dep(R8_AGAIN))
+        assert d["departure"] in w["words"] and _dep(R8_AGAIN) in w["words"], \
+            "the words name both departures"
+        assert _incident()["state"] == "watching", "sent back to the grace period"
+        assert DS.proposals("Default") == []
+        # The normal path makes it again: two reads the grace apart, then the decision.
+        check = _Check(R8_AGAIN)
+        _pass(T0 + 200, check)
+        out = _pass(T0 + 330, check)
+        assert [r["incident"] for r in out["ready"]] == [d["incident"]], out
+        made = DC.run("Default", now=T0 + 331, sources=Fake(R8_AGAIN, intended=GOLDEN))
+        assert [x["outcome"] for x in made["decided"]] == ["propose"], made
+        (again,) = DS.proposals("Default")
+        assert again["id"] != d["id"] and again["departure"] == _dep(R8_AGAIN)
+
+    def test_the_departure_it_was_made_for_keeps_it_waiting_its_read_kept(self, lab):
+        d = proposed()
+        check = _Check(R8)
+        out = _pass(T0 + 121, check)
+        assert check.calls == ["edge-b"] and out["withdrawn"] == []
+        assert [x["id"] for x in DS.proposals("Default")] == [d["id"]]
+        assert _incident()["state"] == "claimed" and _incident()["reads"][-1]["epoch"] == T0 + 121
+        _pass(T0 + 150, check)
+        assert check.calls == ["edge-b"], "read again only a grace period after its last read"
+
+    def test_not_read_before_it_is_due_unless_a_change_arrives(self, lab):
+        d = proposed()
+        check = _Check(GOLDEN)
+        _pass(T0 + 60, check)
+        assert check.calls == [] and DS.proposals("Default")
+        I.sight("Default", "edge-b", {"kind": "config_change", "key": "cfg:2", "epoch": T0 + 70,
+                                      "at": "x", "attribution": {"by": "outside"},
+                                      "words": "CONFIG_I"}, now=T0 + 70)
+        out = _pass(T0 + 71, check)
+        assert check.calls == ["edge-b"] and [w["decision"] for w in out["withdrawn"]] == [
+            d["id"]]
+
+    def test_a_read_that_could_not_be_made_withdraws_nothing(self, lab):
+        d = proposed()
+        _pass(T0 + 121, _Check(error="timed out"))
+        assert [x["id"] for x in DS.proposals("Default")] == [d["id"]]
+        assert _incident()["state"] == "claimed"
+
+    def test_a_proposal_a_person_took_first_is_not_withdrawn(self, lab, measured):
+        d = proposed()
+        approve(d, FakeApproved(R8))
+        check = _Check(GOLDEN)
+        _pass(T0 + 121, check)
+        assert check.calls == [] and not DS.find("Default", d["id"]).get("withdrawn")
+        with pytest.raises(DS.Refused, match="so it is not withdrawn"):
+            DS.withdraw("Default", d["id"], how="at_intent", by="test", words="w",
+                        read={"state": "clean"})
+        INT.release("Default", d["id"])
+
+    def test_approving_a_withdrawn_proposal_is_refused_naming_both_states(self, lab, measured):
+        d = proposed()
+        v = P.view("Default", d["id"], now=T0 + 1, sources=FakeApproved(R8))
+        _pass(T0 + 121, _Check(R8_AGAIN))
+        later = P.view("Default", d["id"], now=T0 + 122, sources=FakeApproved(R8))
+        assert later["withdrawn"]["how"] == "changed" and not later["confirmable"]
+        with pytest.raises(P.Refused) as exc:
+            P.approve("Default", d["id"], confirmed_hash=v["hash"], reason=REASON,
+                      now=T0 + 123, sources=FakeApproved(R8), starter=lambda *a, **k: "j", **WHO)
+        said = str(exc.value)
+        assert "is no longer waiting" in said and v["hash"] in said
+        assert d["departure"] in said and _dep(R8_AGAIN) in said
+        assert "withdrawn" in said and DS.find("Default", d["id"])["taken"]["by"] == \
+            "heal to intent"
+
+
 # ── Interrupted ─────────────────────────────────────────────────────────────────────────────
 
 class TestInterrupted:
@@ -719,7 +861,8 @@ class TestTheDeclarations:
         mutating = self._mutating(client)
         assert mutating == set(_bp().gates()) == set(_bp().invalidates())
         assert {k: g.kind for k, g in _bp().gates().items()} == {
-            "heal_proposal_v2.approve": "confirm", "heal_proposal_v2.decline": "configure"}
+            "heal_proposal_v2.approve": "confirm", "heal_proposal_v2.decline": "configure",
+            "heal_proposal_v2.lift": "configure"}
         assert all(g.reason and g.kind != NOT_DEVICE for g in _bp().gates().values())
 
     def test_the_invalidations_are_in_the_vocabulary(self):
@@ -741,6 +884,10 @@ class TestTheDeclarations:
         from modules import history_sources
 
         for sources in _bp().history().values():
+            if isinstance(sources, str):
+                # A network's record, not a device's (Lift the halt, C2471), says why.
+                assert sources.startswith("n/a: ") and len(sources) > 30, sources
+                continue
             assert set(sources) <= set(history_sources.SOURCES), sources
 
     def test_not_registered_on_the_app_until_h9_draws_its_screen(self):
@@ -761,7 +908,8 @@ class TestTheDeclarations:
             assert not registered
             return
         assert registered == {
-            "heal_proposal_v2.proposal", "heal_proposal_v2.approve", "heal_proposal_v2.decline"}
+            "heal_proposal_v2.proposal", "heal_proposal_v2.approve", "heal_proposal_v2.decline",
+            "heal_proposal_v2.lift"}
         assert set(_bp().gates()) <= set(route_gates.GATES)
         assert set(_bp().invalidates()) <= set(invalidation.DECLARED)
         assert set(_bp().stages()) <= set(operation_stages.STAGES)

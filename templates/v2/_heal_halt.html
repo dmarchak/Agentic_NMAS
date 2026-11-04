@@ -1,0 +1,28 @@
+{%- from "v2/_macros.html" import icon, how, stamp -%}
+{#- A halted network's Lift the halt, on its Needs attention row (board H, artboard E's second
+    row, approved by the operator 2026-11-03; part H9, C2471; docs/fidelity/heal-proposal.md).
+    Drawn in the row by templates/v2/_attention.html, and again by
+    routes/heal_proposal_v2.lift with its answer in place: lifted, or the refusal (naming both
+    operands) with the reason typed kept. The reason is outside any form, so Enter in it
+    submits nothing (C2472); the button sends it by hx-include. An answered card holds a live
+    redraw of the list (`data-holds-live`, C2001) until Show it now. -#}
+{%- set hid = 'heal-halt-' ~ halt_id -%}
+<div class="heal-halt" id="{{ hid }}"{% if answered %} data-holds-live="review"{% endif %}>
+{%- if lifted %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>Lifted by you:</strong> self-healing on {{ list_name }} runs again under its policy, from its next check. Recorded in {{ list_name }}'s heal decisions at {{ lifted.at }}, with your reason “{{ lifted.reason }}”. This item leaves Needs attention.</p></div>
+  {%- if device %}<p class="small"><a href="{{ url_for('device_v2.device', name=device, list=list_name, tab='history') }}">Open {{ device }}'s History</a></p>{% endif %}
+{%- else %}
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not lifted:</strong> {{ refused }}.</p></div>
+  {%- endif %}
+  {%- if answered and halt and halt.words %}<p class="small">Guard {{ halt.guard }}, {{ halt.name }}: {{ halt.words }}{% if halt.epoch %} (halted {{ stamp(halt.epoch) }}){% endif %}.</p>{% endif %}
+  <label class="heal-field" for="{{ hid }}-why">Reason<input id="{{ hid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ reason or '' }}"></label>
+  <div class="att-action">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.lift', list_name=list_name, halt_id=halt_id) }}" hx-include="#{{ hid }}-why" hx-target="#{{ hid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records your reason with your name; self-healing on {{ list_name }} then runs under its policy again. Sends nothing to a device"{{ gate('configure') }}><span class="op-idle">Lift the halt</span><span class="op-busy">Lifting…</span></button>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}</span>
+    {%- if device %}
+    <a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=device, list=list_name, tab='intent') }}">Edit {{ device }}'s intent…</a>
+    <a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=device, list=list_name, tab='history') }}">Open the incident</a>
+    {%- endif %}
+  </div>
+{%- endif %}
+</div>

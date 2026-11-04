@@ -64,3 +64,44 @@ approved and names the job, and the row leaves Needs attention. The job runs as 
 Type a reason, then press **Decline**. Nothing is sent. The decline is recorded with your
 name and reason, the incident is closed, and the row leaves Needs attention. A later check
 may propose again.
+
+## Withdrawn {#withdrawn}
+
+A proposal is bound to its program's hash and to the device as it was read when it was made.
+While it waits, self-healing reads the device again once a grace period has passed since its
+last read (2 minutes on a network marked lab, 15 otherwise), and at once when a configuration
+change on it is seen. Each of these reads changes nothing on the device:
+
+- the device is back at its golden, which matches its intent: the proposal is **withdrawn**,
+  its incident closed, and the row leaves Needs attention;
+- the device departs from its golden differently from the way it did when the proposal was
+  made: the proposal is **withdrawn and made again**. Its incident is watched again from the
+  device as it is now, and once its grace period settles, the decision makes a new proposal
+  (if one is still needed), a new row of its own;
+- anything else (the same departure, or a read that could not be made) leaves it waiting.
+
+Each withdrawal is recorded in the network's heal decisions and on the device's History,
+naming the read and the state the proposal was bound to. A withdrawn proposal's card says it
+was withdrawn and why, and approving it is refused, naming the hash you confirmed and both
+states. Nothing is sent.
+
+## Lift the halt {#halt}
+
+Self-healing on a network **halts** when a guard says it must stop until a person looks: the
+same fix twice within the repeat window, more heals in an hour than the policy allows, or a
+heal that was rolled back or failed after sending. Self-healing then heals nothing on that
+network, makes no dry-run records and cannot run an approved proposal. The halt is a Critical
+row on **Needs attention**: "Self-healing halted on <network>: <why>", naming its guard and
+both operands. Read why: **Open the incident** opens the device's History, where the heal's
+steps are, and **Edit <device>'s intent…** opens its Intent tab, for a line that belongs in
+intent. Then press **Lift the halt…** on the row's line (or open the row), type a reason of three
+words or more, and press **Lift the halt** (a verified person's). Pressing
+Enter in the reason field sends nothing. Lifting sends nothing to a device. The lift is recorded
+with your name and reason in the network's heal decisions, self-healing runs under its policy
+again from its next check, and the row leaves Needs attention. The lift is refused, naming
+both operands, when you are not a verified person, when the reason is short, or when the halt
+is no longer the one in force (someone lifted it first, and the refusal names who).
+
+The installation's kill switch, **Stop self-healing everywhere**, is a row of its own, "Self-
+healing is stopped everywhere". Its way out is **Resume self-healing…** on a network's
+Self-healing tab, as previewed, with a reason ([Self-healing](settings#self-healing)).
