@@ -352,7 +352,10 @@ Survey of the product (`app.py`, `modules/`, `routes/`, the runtime scripts):
      kept), 3.5.
 - **Five further cuts**, proposed for the operator to choose among. Each keeps a lab
   requirement met; together they save about 5.5:
-  - **B4 is candidate 1,** the cheapest (section 4): saves 1.25.
+  - **B4 is the AI read loop now** (restated by the operator, 2026-11-04): board H's item 3
+    plus the SDN read set (docs/HEAL_TO_INTENT.md section 19.5). It is never cut (that
+    document's cut order, as amended), so section 4's candidate 1 and its 1.25 saving no
+    longer apply.
   - **The analyst reuses Explain** over an SDN collection packed as evidence, with no new AI
     feature: saves 1.5. It loses a planted-issue score of its own.
   - **The model tier is per installation, not per network** (the laptop install runs every
@@ -424,7 +427,8 @@ Candidate 2 is the strongest fallback if the TA wants retrieval. Candidate 3 is 
   agent-days: about 6 h and 18M weighted tokens). Section 3's cut list is withdrawn.
 - **The usage-cut order** applies only if usage tightens:
   1. B5 as two CSV routes;
-  2. B4 as candidate 1;
+  2. B4: restated 2026-11-04 as the AI read loop (board H's item 3 plus the SDN read set,
+     docs/HEAL_TO_INTENT.md section 19.5), which is never cut, so it leaves this order;
   3. reroute through fast-failover only where supported;
   4. the analyst reusing Explain;
   5. last, the model tier per installation.

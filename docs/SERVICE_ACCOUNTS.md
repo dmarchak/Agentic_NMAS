@@ -97,6 +97,14 @@ reads.
      there is a REFUSED delete, kept, recorded and named.
    - This makes NetBox itself refuse to delete an object the NMAS did not tag. Remove already
      deletes only tagged AND recorded objects, so this is a second, independent layer.
+   - **The gap, 2026-11-04 (C2454).** An adviser read this constraint as new, and it was set
+     to null. The operator restored it at about 05:5x UTC. NetBox's changelog records no
+     permission change, so the gap's start rests on the operator's word.
+     - **The evidence:** NetBox's deletes from 2026-11-03 00:00 UTC to the restore (read
+       through Mercury's session, every page) hold one by `nmas`: a tagged console port, not
+       one of this permission's types.
+     - **So** no untagged object of these types was deleted while the constraint was off.
+     - **Keep this constraint.** It is C466's and was measured on 2026-10-05.
    - Never constrain a VIEW permission: a hidden object reads as gone.
 
    **The step (after deploying the C466 fix):** NetBox > Admin > Authentication >
@@ -140,14 +148,27 @@ reads.
    `nmas-managed` on creation (`netbox_guard.TAGGABLE_ENDPOINTS`, through `_nb_post`).
    **It grants no delete.** Retirement's removal deletes the device's console port and its
    cable, each only when tagged and recorded as created, and keeps the console server's port,
-   which serves the next device. Those two deletes are C2445's, the operator's grant: console
-   port delete and cable delete, constrained to `{"tags__slug": "nmas-managed"}`, as
-   `nmas-delete` is.
+   which serves the next device. Those two deletes are permission 8's.
+8. **`nmas-console-delete`** (granted by the operator 2026-11-04, C2445). Actions: **delete**
+   only. Object types: DCIM cable and console port. **Constraint:**
+   `{"tags__slug": "nmas-managed"}`. It is apart from `nmas-delete`, which it leaves
+   unchanged. Retirement's console-path removal (`console_path.remove_console_path`) deletes
+   the device's console port and its cable through it.
+   **Measured 2026-11-04 on a lab device, as `nmas`,** through the removal's own delete call
+   (`_nb_delete`, with C466's read-back): a tagged console port was deleted (read back 404);
+   an untagged one was refused (NetBox's 404, read back 200, named as the constraint's
+   refusal), left for the operator to remove by hand.
+   **The cable, the allowed direction only** (the refusal is the same permission's and
+   constraint's, shown on the console port). A console port, a console-server port and their
+   cable were created through `_nb_post`, each read back tagged. The cable was then deleted
+   (read back 404), then the console port (read back 404). The console-server port was left
+   for the operator to remove by hand (C2445).
 
 **Not granted, by decision:** change on DCIM device role. `scripts/nmas-netbox-role-kind` is
 a one-off maintenance script (C665's migration, already run). The operator runs it under
 their own token if a role ever needs its kind set this way; Mercury only reads
-`mercury_kind` (C2445).
+`mercury_kind` (C2445). The script gets no hidden-prompt option for that token (the
+operator, 2026-11-04).
 
 **Read-only check of these permissions, 2026-11-04** (Mercury's own session on the NMAS host;
 only GET and OPTIONS sent):
