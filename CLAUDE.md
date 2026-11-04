@@ -22,11 +22,15 @@ triage and Core 1.0's sign-off are the operator's, never a recommended option th
   a planned-restart window declared before a restart.
 - **Boards the agent draws count as signed off by the operator, and the agent takes its
   recommended option on a decision;** each is one line in `docs/STANDING_APPROVAL_LOG.md`.
-- Every commit still goes through the gate and is pushed, with CI green before the next.
+- Every commit passes the gate before it's pushed; CI runs on every push and doesn't block
+  the next commit; a red CI is fixed forward before any new work is pushed, and nothing is
+  deployed from a sha CI (GitHub or the local runner) has not passed.
 - **Still the operator's; the agent stops and asks:** (1) any secret value: the operator types
   secrets, and the agent never prints, stores or reads one; (2) anything outside the lab:
-  Cloudflare, DNS, GitHub visibility, anything public; (3) a new third-party package licence;
-  (4) deleting or rotating backups or snapshots.
+  Cloudflare, DNS, GitHub visibility, anything public; (3) the licence of anything shipped in
+  Mercury or its release, and any copyleft licence on it (OS packages and development-only
+  tools never shipped are approved whatever their licence, each listed in
+  docs/THIRD_PARTY_DEV_TOOLS.md); (4) deleting or rotating backups or snapshots.
 - Status to resume from, and anything waiting on the operator: `docs/END_OF_SESSION.md`.
 <!-- phase7-mode: end -->
 
