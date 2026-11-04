@@ -59,6 +59,8 @@ DECLARED = {
     ("routes/health.py", "_commit_loaded"): "the APPLICATION's checkout (its HEAD)",
     ("routes/v2.py", "_subject"): "the APPLICATION's checkout (a release's subject)",
     ("scripts/check_removed_definitions.py", "_git"): "the APPLICATION's checkout (the diff)",
+    ("scripts/nmas-fast-checks", "git"): "the APPLICATION's checkout and nmas-control's "
+        "throwaway worktree of it (the fast checks before a gate)",
     ("scripts/nmas_coverage.py", "measured_files"): "the APPLICATION's checkout",
     ("scripts/nmas_mutation.py", "reach_fresh"): "the APPLICATION's checkout",
     ("scripts/nmas_mutation.py", "git"): "the APPLICATION's checkout",

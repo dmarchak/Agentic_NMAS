@@ -118,6 +118,16 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 - **The fast checks run before every full gate:** the changed tests, the doc, register and
   lab-name and publication scans, and the commit-msg checks on the staged commit. This cuts
   refused gates. There is no linter yet (C2362).
+  - **One script runs them: `scripts/nmas-fast-checks [--message FILE] [FILE ...]`** (the
+    operator, 2026-11-03). It stages the commit's files, its new untracked files named
+    explicitly from `git ls-files --others --exclude-standard`, in a throwaway `nmas-control`
+    worktree, never intent-to-add in the working tree (C2348). It then runs the changed tests
+    and the scans, and judges the message by the parent's hooks and the working tree's own
+    (C2396). The operator's local files (the denylist, `data/lab_hosts.json`) are copied into
+    the throwaway for the run only, so the publication scan reads them as the gate does (C2452).
+    - Cost: about a minute.
+    - Prevents: a scan that reads only tracked files passing blind to a new module (H2 and
+      H3's first gate), and a commit refused in CI by a check it adds (item 5's).
   - **Also, before every gate, the three whole-repo scans that refused H1 and H7's first gate**
     (the operator, 2026-11-03):
     - tests/test_no_get_returns_a_stored_secret.py: every file written under data/ is in a

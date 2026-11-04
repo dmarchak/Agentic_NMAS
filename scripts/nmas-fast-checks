@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""The fast checks before every gate (docs/PHASE8_PLAN.md 0.3, "How the work is run"), run on
+the files a commit will hold, its new untracked files included.
+
+    scripts/nmas-fast-checks [--message FILE] [FILE ...]
+
+FILE ... is the commit's files, as the gate's `--only` takes them; with none, every file that
+differs from HEAD and every untracked file git does not ignore.
+
+1. A throwaway worktree of the current state is made by `scripts/nmas-control` (uncommitted
+   edits and untracked files copied in); the working tree and its index are never written.
+   That worktree stands on nmas-control's snapshot commit, which holds every edit, so its HEAD
+   and index are first set back to the checkout's HEAD (`--base`), keeping its files.
+2. There, the commit's files are staged with `git add`, and every other edit and new file is
+   set back to the base, so the tests run on exactly the tree the gate will test; so the scans that read only what git
+   tracks (tests/test_url_userinfo_masked.py, `git ls-files` scans) see a new file as the gate's
+   snapshot will. The new files are named explicitly from `git ls-files --others
+   --exclude-standard`, never marked intent-to-add in the working tree: an intent-to-add entry
+   stops `git stash create`, and so nmas-control and every control run (C2348).
+3. The commit's changed test files, and SCANS, run (`scripts/nmas-test -n 2`), with the
+   operator's local files (LOCAL_FILES, gitignored, so nmas-control copies none) copied in
+   from the checkout for the run only and removed after it, so the publication scan reads the
+   denylist as the gate does (C2452).
+4. With --message, the commit-msg hooks judge the staged set twice: the parent commit's (as the
+   gate's commit is judged, C2365) and the working tree's own, so a new or tightened message
+   check is met before CI meets it (C2396).
+
+Exit 0 when every step passes, 1 when any refuses (each named), 2 when it cannot run.
+Cost: about a minute. Prevents: a 17-minute gate refused by a scan the changed tests don't
+reach, or a commit refused in CI by a check it adds (2026-11-03: H2 and H3's first gate, three
+whole-repo scans blind to three untracked modules; item 5's commit, C2396).
+"""
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: The scans every gate needs whatever the commit changed: PHASE8_PLAN 0.3's doc, register,
+#: lab-name and publication scans and its three whole-repo scans, and the scans that refused a
+#: gate on files the changed tests did not reach (2026-11-03).
+SCANS = (
+    "tests/test_doc_tests.py",
+    "tests/test_register_hygiene.py",
+    "tests/test_claude_md.py",
+    "tests/test_lab_specifics.py",
+    "tests/test_nothing_personal_is_published.py",
+    "tests/test_no_get_returns_a_stored_secret.py",
+    "tests/test_url_userinfo_masked.py",
+    "tests/test_network_settings_read_for_a_list.py",
+    "tests/test_test_weakening_check.py",
+    "tests/test_hostvars_secrets.py",
+    "tests/test_attention_badge.py",
+    "tests/test_no_duplicate_definitions.py",
+    "tests/test_no_duplicate_dict_keys.py",
+    "tests/test_script_entry_points.py",
+    "tests/test_git_is_pinned_to_its_repository.py",
+    "tests/test_app_interpreter.py",
+    "tests/test_presence_only.py",
+    "tests/test_page_network.py",
+    "tests/test_netbox_census.py",
+    "tests/test_one_home_per_action.py",
+    "tests/test_session_write_guard.py",
+)
+
+#: The operator's local files the publication scan reads (gitignored by design): copied from
+#: the checkout into the throwaway for the run, never staged, removed after it (C2452).
+LOCAL_FILES = ("data/publication_denylist.txt", "data/lab_hosts.json")
+
+
+def git(*args, cwd):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+def untracked(cwd):
+    """The untracked files git does not ignore, named one by one (never intent-to-add)."""
+    out = git("ls-files", "--others", "--exclude-standard", "-z", cwd=cwd).stdout
+    return [p for p in out.split("\0") if p]
+
+
+def commit_files(cwd, given):
+    """The files the commit will hold: *given*, else every changed and every new file."""
+    if given:
+        return list(given)
+    changed = git("diff", "--name-only", "-z", "HEAD", cwd=cwd).stdout.split("\0")
+    return sorted({p for p in changed if p} | set(untracked(cwd)))
+
+
+def tests_of(files, cwd):
+    """The changed test files that exist, then SCANS, each once, in that order."""
+    own = [f for f in files if f.startswith("tests/") and os.path.basename(f).startswith("test_")
+           and f.endswith(".py") and os.path.exists(os.path.join(cwd, f))]
+    return list(dict.fromkeys(own + [s for s in SCANS if os.path.exists(os.path.join(cwd, s))]))
+
+
+def checkout_of(cwd):
+    """The checkout this throwaway worktree was made from: its common git directory's parent
+    (nmas-control refuses an argument naming the working tree, so it is derived, not passed)."""
+    out = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd).stdout.strip()
+    return os.path.dirname(out) if out else ""
+
+
+def judge(cwd, message, base="HEAD"):
+    """[(name, rc)]: the commit-msg hooks on the staged set, the parent's (*base*'s) then this
+    tree's."""
+    results = []
+    scratch = tempfile.mkdtemp(prefix="nmas-fast-judge-")
+    parent = os.path.join(scratch, "parent")
+    try:
+        r = git("worktree", "add", "-q", "--detach", parent, base, cwd=cwd)
+        if r.returncode:
+            print(f"nmas-fast-checks: the parent's worktree: {r.stderr.strip()}")
+            return [("the parent's commit-msg hooks", 2)]
+        for name, root in (("the parent's commit-msg hooks", parent),
+                           ("this tree's commit-msg hooks", cwd)):
+            copy = os.path.join(scratch, "message")
+            shutil.copyfile(message, copy)
+            env = dict(os.environ, NMAS_CHECKS_ROOT=root)
+            print(f"nmas-fast-checks: {name}", flush=True)
+            rc = subprocess.run([os.path.join(root, "scripts", "hooks", "commit-msg"), copy],
+                                cwd=cwd, env=env).returncode
+            results.append((name, rc))
+    finally:
+        git("worktree", "remove", "--force", parent, cwd=cwd)
+        shutil.rmtree(scratch, ignore_errors=True)
+    return results
+
+
+def inside(args):
+    """Steps 2 to 4, run in nmas-control's throwaway worktree (the working directory)."""
+    cwd = os.getcwd()
+    if args.base:
+        # Back to the checkout's HEAD, the files kept: what differs from it is the commit's.
+        r = git("reset", "-q", args.base, cwd=cwd)
+        if r.returncode:
+            print(f"nmas-fast-checks: cannot set the worktree to {args.base}: {r.stderr.strip()}")
+            return 2
+    files = commit_files(cwd, args.files)
+    new = set(untracked(cwd))
+    print(f"nmas-fast-checks: {len(files)} file(s), {len(new & set(files))} of them new; "
+          "staged in the throwaway worktree only")
+    if git("add", "-A", "--", *files, cwd=cwd).returncode:
+        print("nmas-fast-checks: git add refused the files named")
+        return 2
+    # The throwaway now holds exactly the commit's tree, as the gate's snapshot will: every
+    # other edit back to the base, every other new file gone (this worktree only).
+    if git("checkout", "-q", "--", ".", cwd=cwd).returncode or \
+            git("clean", "-fdq", cwd=cwd).returncode:
+        print("nmas-fast-checks: the throwaway could not be set to the commit's tree")
+        return 2
+    results = []
+    tests = tests_of(files, cwd)
+    print(f"nmas-fast-checks: {len(tests)} test file(s)", flush=True)
+    copied, source = [], checkout_of(cwd)
+    try:
+        for rel in LOCAL_FILES:
+            src = os.path.join(source, rel) if source else ""
+            if src and os.path.isfile(src) and not os.path.exists(os.path.join(cwd, rel)):
+                os.makedirs(os.path.dirname(os.path.join(cwd, rel)), exist_ok=True)
+                shutil.copyfile(src, os.path.join(cwd, rel))
+                copied.append(rel)
+        print(f"nmas-fast-checks: local files for the run: {', '.join(copied) or 'none'}")
+        rc = subprocess.run([os.path.join(cwd, "scripts", "nmas-test"), "-n", "2", "-q",
+                             *tests], cwd=cwd).returncode
+    finally:
+        for rel in copied:
+            os.remove(os.path.join(cwd, rel))
+    results.append(("the tests and scans", rc))
+    if args.message:
+        results += judge(cwd, args.message, args.base or "HEAD")
+    for name, rc in results:
+        print(f"nmas-fast-checks: {'ok' if rc == 0 else 'REFUSED'}: {name}")
+    return 0 if all(rc == 0 for _n, rc in results) else 1
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--message", help="the commit message file, judged by both hooks")
+    p.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--base", help=argparse.SUPPRESS)
+    p.add_argument("files", nargs="*")
+    args = p.parse_args()
+    if args.message:
+        args.message = os.path.abspath(args.message)
+        if not os.path.isfile(args.message):
+            print(f"nmas-fast-checks: no message file at {args.message}")
+            return 2
+    if args.inside:
+        return inside(args)
+    base = git("rev-parse", "HEAD", cwd=REPO).stdout.strip()
+    if not base:
+        print("nmas-fast-checks: the checkout's HEAD cannot be read")
+        return 2
+    cmd = [os.path.join(REPO, "scripts", "nmas-control"), "--", "python3",
+           "scripts/nmas-fast-checks", "--inside", "--base", base]
+    if args.message:
+        cmd += ["--message", args.message]
+    return subprocess.run(cmd + list(args.files), cwd=REPO).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
