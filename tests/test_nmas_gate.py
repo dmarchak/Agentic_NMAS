@@ -30,6 +30,11 @@ ENV = dict(os.environ, GIT_AUTHOR_NAME="T", GIT_AUTHOR_EMAIL="t@example.com",
            # is its own (the real one is held by the gate running this test, 2026-10-19).
            NMAS_FULL_LOCK=os.path.join(tempfile.gettempdir(),
                                        f"nmas-gate-test-full-{os.getpid()}.lock"))
+# C2457: a gate's run from the base carries a marker; a base that predates the launcher never
+# takes it out, so a test run inside that gate inherits it, and each gate a test starts would
+# run as "already the base" (C2457's first gate, 2026-11-04: three ratchet tests). The tests'
+# gates never inherit it.
+ENV.pop("NMAS_GATE_FROM_BASE", None)
 
 
 def _git(repo, *args):
@@ -55,8 +60,21 @@ def _suite(lines, rc=0):
     return f"{body}; exit {rc}"
 
 
+def _stage(repo, extra=()):
+    """What the person does before the gate, which stages nothing itself (C2457): the named
+    paths with --only, else every change."""
+    only = list(extra[extra.index("--only") + 1:]) if "--only" in extra else []
+    only = [p for p in only if not p.startswith("--")]
+    if only:
+        _git(repo, "add", "-A", "--", *[p for p in only if not p.startswith("../")])
+    else:
+        _git(repo, "add", "-A")
+
+
 def _gate(repo, tmp_path, *, subject="Docs: two", expect="Docs:", suite=None, browser=None,
-          extra=(), ratchet=None):
+          extra=(), ratchet=None, stage=True):
+    if stage:
+        _stage(repo, extra)
     msg = tmp_path / "msg.txt"
     msg.write_text(f"{subject}\n\nThe suite: @SUITE@\n")
     env = dict(ENV, NMAS_GATE_SUITE=suite or _suite(["....", "12 passed, 1 skipped in 3.10s"]),
@@ -79,7 +97,10 @@ class TestAPassingRunCommits:
         body = _git(repo, "log", "-1", "--format=%B")
         assert body.startswith("Docs: two")
         assert "The suite: 12 passed, 1 skipped in 3.10s" in body and "@SUITE@" not in body
-        assert "1. git add -A" in r.stdout and "7. commit" in r.stdout
+        # C2457 (the operator, 2026-11-04): the gate judges the index as staged and stages
+        # nothing itself, so step 1 says so, where it once said `git add -A`.
+        assert "1. the staged tree, as staged (the gate stages nothing, C2457)" in r.stdout
+        assert "7. commit" in r.stdout
 
     def test_the_suite_runs_in_a_snapshot_and_the_working_tree_stays_free(self, repo, tmp_path):
         """The operator, 2026-10-25: the gate never locks the working tree. The suite runs in
@@ -565,6 +586,7 @@ def test_a_skip_the_list_does_not_declare_refuses_the_gate(repo, tmp_path):
     assert r.returncode == 0, r.stdout
     assert "4d. every skip declared: not run, the suite is a stand-in" in r.stdout
     (repo / "docs" / "a.md").write_text("three\n")
+    _stage(repo)
     msg = tmp_path / "msg.txt"
     env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
                NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]),
@@ -585,6 +607,7 @@ def test_the_tests_of_root_s_real_files_failing_refuse_the_gate(repo, tmp_path):
     _git(repo, "add", "tool.py")
     _git(repo, "commit", "-q", "-m", "a tool")
     (repo / "tool.py").write_text("X = 2\n")
+    _stage(repo)
     msg = tmp_path / "msg.txt"
     msg.write_text("Docs: three\n")
     env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
@@ -634,6 +657,7 @@ class TestCIsInterpreterHoldsWhatCIInstalls:
         _git(repo, "add", "-A")
         _git(repo, "commit", "-q", "-m", "CI's three files")
         (repo / "docs" / "a.md").write_text("three\n")
+        _stage(repo)
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n", encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k != "NMAS_GATE_SUITE"}
@@ -668,6 +692,7 @@ class TestNothingIsPushedOnARedCi:
         return f"echo '{line}'; exit {rc if rc is not None else (0 if state == 'green' else 3)}"
 
     def _run(self, repo, tmp_path, ci, *extra):
+        _stage(repo)
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n")
         env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]), NMAS_GATE_CI_LOG=ci,
@@ -689,8 +714,10 @@ class TestNothingIsPushedOnARedCi:
         assert r.returncode == 1
         assert "REFUSED at CI on main: CI on main is red: #791" in out
         assert "https://ci.example/791" in out and "--fixes-red 791" in out
-        assert "1. git add -A" not in out and _commits(repo) == before
-        assert _git(repo, "diff", "--cached", "--name-only") == ""
+        assert "1. the staged tree" not in out and _commits(repo) == before
+        # The person staged a.md (`_run`); the refused gate leaves the index exactly so: it
+        # stages nothing and unstages nothing (C2457).
+        assert _git(repo, "diff", "--cached", "--name-only") == "docs/a.md"
         assert _git(pushing, "log", "-1", "--format=%s") == "base"
 
     def test_the_fix_forward_names_that_very_run(self, repo, tmp_path, pushing):
@@ -708,6 +735,7 @@ class TestNothingIsPushedOnARedCi:
         assert "GitHub could not be asked" in r.stdout
 
     def test_without_push_ci_is_not_asked(self, repo, tmp_path):
+        _stage(repo)
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n")
         env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
@@ -737,7 +765,8 @@ class TestOnlyNamedPaths:
         before = _commits(two)
         r = _gate(two, tmp_path, extra=("--only", "docs/a.md"))
         assert r.returncode == 0, r.stdout + r.stderr
-        assert "1. git add -A -- docs/a.md" in r.stdout
+        assert ("1. the staged tree, as staged (the gate stages nothing, C2457): 1 file(s), "
+                "each under docs/a.md") in r.stdout
         assert ("nmas-gate: 1b. the commit will contain 1 file(s):\n"
                 "nmas-gate:      M docs/a.md\n"
                 "nmas-gate: 1c. modified and left out of this commit: docs/b.md (check none of "
@@ -872,7 +901,13 @@ def test_with_what_the_parent_s_hook_asks_the_same_commit_is_made(judged):
     assert _git(judged["snap"], "rev-parse", "HEAD^") == judged["parent"]
 
 
-def test_the_parent_s_worktree_is_removed_whatever_happens(judged):
+def test_the_parent_s_worktree_is_removed_whatever_happens(judged, tmp_path, monkeypatch):
+    # Its own temporary folder (C2389's shape): in the shared one, another worker's gate makes
+    # its own judge folder between the commit and the count (2026-11-04, once C2457's gates ran
+    # beside it).
+    own = tmp_path / "own-tmp"
+    own.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(own))
     gate = _gate_module()
     gate.commit_judged_by_parent(judged["repo"], judged["snap"], judged["parent"],
                                  _message(judged["tmp"], "Loosen the hook\n"))
@@ -894,3 +929,134 @@ def test_the_gate_s_commit_step_uses_it():
     plain = [n for n in calls if getattr(n.func, "id", None) == "git" and len(n.args) > 1 and
              isinstance(n.args[1], ast.Constant) and n.args[1].value == "commit"]
     assert plain == [], "a plain git commit runs the working tree's hook (C2365)"
+
+
+# ── C2457: the index as staged, and the gate's own code from the base commit ─────────────────
+
+def _quiet_env(**extra):
+    env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
+               NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]))
+    env.pop("NMAS_GATE_FROM_BASE", None)
+    env.update(extra)
+    return env
+
+
+def _run_gate(gate, repo, tmp_path, *extra, env=None):
+    msg = tmp_path / "msg.txt"
+    msg.write_text("Docs: two\n")
+    return subprocess.run([sys.executable, str(gate), "--repo", str(repo), "--message", str(msg),
+                           "--expect", "Docs:", *extra], capture_output=True, text=True,
+                          env=env or _quiet_env())
+
+
+class TestTheIndexAsStaged:
+    """The gate judges the index exactly as staged and stages nothing itself (C2457, the
+    operator, 2026-11-04): it once ran `git add -A`, which takes in every change, and with
+    --only re-staged each named file whole, undoing a part staged with `git apply --cached`."""
+
+    def test_nothing_staged_is_refused_and_nothing_staged_for_it(self, repo, tmp_path):
+        r = _run_gate(GATE, repo, tmp_path)
+        assert r.returncode == 1 and "REFUSED at stage: nothing is staged" in r.stdout
+        assert _git(repo, "diff", "--cached", "--name-only") == "" and _commits(repo) == 1
+
+    def test_a_named_path_not_staged_is_refused(self, repo, tmp_path):
+        r = _run_gate(GATE, repo, tmp_path, "--only", "docs/a.md")
+        assert r.returncode == 1
+        assert "named by --only and not staged: ['docs/a.md']" in r.stdout and _commits(repo) == 1
+
+    def test_a_part_of_a_file_is_committed_as_staged_and_the_rest_left(self, repo, tmp_path):
+        """The operator's split (2026-11-04): one hunk staged with `git apply --cached`; the
+        commit holds exactly it, and the file's other change stays in the working tree."""
+        body = "".join(f"line {i}\n" for i in range(1, 30))
+        (repo / "docs" / "a.md").write_text(body)
+        _git(repo, "add", "docs/a.md")
+        _git(repo, "commit", "-q", "-m", "thirty lines")
+        (repo / "docs" / "a.md").write_text(body.replace("line 2\n", "line two\n")
+                                            .replace("line 28\n", "line twenty-eight\n"))
+        patch = _git(repo, "diff", "-U1", "--", "docs/a.md")
+        first = patch.split("\n@@", 2)
+        part = tmp_path / "part.patch"
+        part.write_text(first[0] + "\n@@" + first[1] + "\n")
+        _git(repo, "apply", "--cached", str(part))
+        r = _run_gate(GATE, repo, tmp_path, "--only", "docs/a.md")
+        assert r.returncode == 0, r.stdout + r.stderr
+        shown = _git(repo, "show", "HEAD:docs/a.md")
+        assert "line two" in shown and "line twenty-eight" not in shown
+        assert "line twenty-eight" in (repo / "docs" / "a.md").read_text()
+
+
+class TestTheGateRunsTheBaseCommitsCode:
+    """C2457, red then green (the operator's ruling, 2026-11-04): a planted, uncommitted edit
+    that loosens a check in the working tree's gate must not change another commit's verdict.
+    The temporary repository commits a copy of this gate (with stand-ins for the two helpers it
+    loads from its own folder); its working tree's copy is then loosened (`verdict` passes
+    every run) and left unstaged, and a docs change is staged and gated with a failing suite."""
+
+    @pytest.fixture
+    def gated(self, tmp_path):
+        r = tmp_path / "gated"
+        (r / "docs").mkdir(parents=True)
+        (r / "scripts").mkdir()
+        _git(tmp_path, "init", "-q", str(r))
+        (r / "docs" / "a.md").write_text("one\n")
+        (r / "scripts" / "nmas-gate").write_text(open(GATE, encoding="utf-8").read())
+        (r / "scripts" / "nmas-stage-guard").write_text("import sys\nsys.exit(0)\n")
+        (r / "scripts" / "nmas-workers").write_text("def hold_full(who):\n    return None\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-q", "-m", "base")
+        (r / "docs" / "a.md").write_text("two\n")
+        _git(r, "add", "docs/a.md")
+        gate = r / "scripts" / "nmas-gate"
+        src = gate.read_text(encoding="utf-8")
+        loose = src.replace("def verdict(path, rc):\n",
+                            "def verdict(path, rc):\n    return None\n\n\ndef _was(path, rc):\n", 1)
+        assert loose != src
+        gate.write_text(loose)
+        return r
+
+    def _failing(self, **extra):
+        return _quiet_env(NMAS_GATE_SUITE=_suite(["1 failed, 11 passed in 1.00s"], rc=1), **extra)
+
+    def test_a_loosened_working_tree_gate_does_not_change_another_commits_verdict(
+            self, gated, tmp_path):
+        r = _run_gate(gated / "scripts" / "nmas-gate", gated, tmp_path, env=self._failing())
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "0. the gate's own code is the base commit's" in r.stdout
+        assert "REFUSED at the suite" in r.stdout and _commits(gated) == 1
+        assert "return None" in (gated / "scripts" / "nmas-gate").read_text(), "left as it was"
+        assert _git(gated, "diff", "--cached", "--name-only") == "docs/a.md"
+
+    def test_the_control_the_loosened_gate_run_as_itself_passes_the_failing_suite(
+            self, gated, tmp_path):
+        """The planted edit is a real loosening: with the launcher bypassed (the marker the base
+        run carries), the working tree's copy commits over a failing suite."""
+        r = _run_gate(gated / "scripts" / "nmas-gate", gated, tmp_path,
+                      env=self._failing(NMAS_GATE_FROM_BASE="bypassed"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _commits(gated) == 2
+
+    def test_a_commit_changing_the_gate_s_code_gets_a_second_pass_by_its_own(self, gated, tmp_path):
+        """A commit that changes the gate's own code (here its stage guard, now refusing) is
+        named as such, and its own guard, run by the second pass on the commit's tree (here
+        the temporary repository's working tree stands for the snapshot), refuses what the
+        base's passed: a refusal, since CI runs the commit's own code (C2457)."""
+        (gated / "scripts" / "nmas-stage-guard").write_text(
+            "import sys\nprint('own guard: refused')\nsys.exit(1)\n")
+        g = _gate_module()
+        assert g.gate_code_changed(["scripts/nmas-stage-guard", "docs/a.md"]) == [
+            "scripts/nmas-stage-guard"]
+        refusals, flags = g.second_pass(str(gated), str(gated), str(tmp_path / "none.msg"), [],
+                                        sys.executable, ["scripts/nmas-stage-guard"], False)
+        assert any("the commit's own stage guard refuses what the base's passed" in x
+                   and "own guard: refused" in x for x in refusals), refusals
+        assert flags == []
+
+    def test_the_base_run_takes_the_marker_out_of_what_it_starts(self, gated, tmp_path):
+        """The base's run removes its marker from its environment, so a gate its suite starts
+        (the gate's own tests) runs its own launcher again."""
+        seen = tmp_path / "seen"
+        r = _run_gate(gated / "scripts" / "nmas-gate", gated, tmp_path,
+                      env=_quiet_env(NMAS_GATE_SUITE=f"env > {seen}; "
+                                     + _suite(["12 passed in 1.00s"])))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "NMAS_GATE_FROM_BASE" not in seen.read_text()

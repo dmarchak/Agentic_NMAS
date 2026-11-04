@@ -3,10 +3,15 @@
 only in CLAUDE.md and in memory, each behind a past incident). In order, each step able to stop
 everything after it:
 
-  1. stage:         git add -A (the gate tests what it commits, C224); with --only PATH ...,
-                    exactly those paths (`git add -A -- PATH ...`), refused when anything
-                    else is staged, before or after (the operator, 2026-10-26: a commit that
-                    must leave a file out names what it holds, never hides the file);
+  0. the base:      the gate's own code is the base commit's (HEAD), extracted to a throwaway
+                    worktree and run with --repo, never this working tree's (C2457, the
+                    operator, 2026-11-04);
+  1. the index:     the gate judges the index EXACTLY as staged and stages nothing itself
+                    (C2457; it tests what it commits, C224); with --only PATH ..., the staged
+                    set must be exactly under those paths and each must be staged, refused
+                    otherwise (the operator, 2026-10-26: a commit that must leave a file out
+                    names what it holds, never hides the file); a part of a file is staged
+                    with `git apply --cached`, and kept as staged;
   1b. the contents: the files the commit will contain, listed before anything runs; without
                     --only, also each modified tracked file it sweeps in that this session's
                     Edit and Write tools did not touch (the edit ledger, `<git dir>/
@@ -157,7 +162,7 @@ BROWSER_SKIPPED = "no real browser here"
 ROOT_FILES = ("{py} -m pytest -q -p no:cacheprovider -rEfs -m real_root_files "
               "--junitxml={cov}/junit-rootfiles.xml tests/test_update_button.py")
 #: Step 4d (C2412): every skip in the runs' JUnit files is one declared for the gate.
-SKIP_CHECK = "{py} scripts/nmas-skip-check --where gate {files}"
+SKIP_CHECK = "{py} {check} --where gate {files}"
 BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
                  "tests/test_v2_layout_in_a_browser.py tests/test_attention_badge.py "
                  "tests/test_device_capture_v2.py tests/test_device_persist_v2.py "
@@ -232,12 +237,98 @@ SNAPSHOT_LOCAL = (".env", "data/lab_hosts.json", "data/publication_denylist.txt"
 DOC_SHARD = "docs"
 
 
-def _docs_only(snap, changed) -> bool:
-    """Does every one of *changed* lie under docs/, by the snapshot's own rule
-    (tests/doc_tests.py `docs_only`, the one CI's scope job applies through nmas-shards)?"""
+#: The tree this gate's own code came from, once the launcher ran it from the base commit's
+#: throwaway (C2457): its checks and their data are then the base's, never the working tree's.
+#: None in a repository whose base holds no gate: there the snapshot's own rules judge, as
+#: before.
+BASE_TREE = None
+
+
+def own_or_snapshot(rel, snap) -> tuple:
+    """``(path, whose)``: *rel* in the base's tree (the gate's own code, C2457), or, where the
+    base predates it, the snapshot's, said so (the commit that adds a check is judged by it)."""
+    mine = os.path.join(BASE_TREE, rel) if BASE_TREE else ""
+    if mine and os.path.exists(mine):
+        return mine, "the base's"
+    return os.path.join(snap, rel), "the commit's own (the base has none)"
+
+
+#: The gate's own code (C2457): its program, the helpers it loads, its checks and their data,
+#: and the hooks. A commit that changes any of it gets a second pass with its own versions.
+GATE_CODE = ("scripts/nmas-gate", "scripts/nmas-stage-guard", "scripts/nmas-workers",
+             "scripts/nmas-ci-log", "scripts/nmas-skip-check", "tests/skip_reasons.py",
+             "tests/doc_tests.py", "scripts/hooks/", "scripts/nmas-test-weakening-check",
+             "scripts/nmas-red-green", "scripts/nmas-guard-check", "scripts/nmas-bypass-scan",
+             "scripts/nmas-premise-check", "scripts/nmas-host-step-check",
+             "scripts/check_removed_definitions.py", "tests/ratchet_lists.py")
+
+
+def gate_code_changed(changed) -> list:
+    """The paths of *changed* that are the gate's own code."""
+    return sorted(p for p in changed
+                  if any(p == c or (c.endswith("/") and p.startswith(c)) for c in GATE_CODE))
+
+
+def second_pass(repo, snap, message, junits, py, changed, docs_base) -> tuple:
+    """C2457's second pass, for a commit that changes the gate's own code: the commit's OWN
+    stage guard, skip check, docs-only rule and commit-msg hooks, run on the same staged tree
+    and the same runs' results after the base's passed. ``(refusals, flags)``: a refusal where
+    the commit's own version refuses what the base passed (CI runs the commit's own, so it
+    would be red); a flag where they judge otherwise and the base's judgement stands."""
+    refusals, flags = [], []
+
+    def run(argv, **kw):
+        return subprocess.run(argv, capture_output=True, text=True, **kw)
+
+    guard = os.path.join(snap, "scripts", "nmas-stage-guard")
+    if os.path.exists(guard):
+        r = run([sys.executable, guard, "--repo", repo])
+        if r.returncode:
+            refusals.append(f"the commit's own stage guard refuses what the base's passed: "
+                            f"{(r.stdout + r.stderr).strip()[-300:]}")
+    check = os.path.join(snap, "scripts", "nmas-skip-check")
+    if os.path.exists(check) and junits and all(os.path.exists(j) for j in junits):
+        r = run([py, check, "--where", "gate", *junits], cwd=snap)
+        if r.returncode:
+            refusals.append(f"the commit's own skip check refuses what the base's passed: "
+                            f"{(r.stdout.strip().splitlines() or [''])[-1]}")
+    own_docs = _docs_only_by(os.path.join(snap, "tests", "doc_tests.py"), changed)
+    if own_docs != docs_base:
+        flags.append(f"the docs-only rule: the base's says {docs_base}, the commit's own says "
+                     f"{own_docs}; the base's stands")
+    hook = os.path.join(snap, "scripts", "hooks", "commit-msg")
+    if os.path.exists(hook):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".msg", delete=False) as fh:
+            fh.write(open(message, encoding="utf-8").read())
+        try:
+            r = run([hook, fh.name], cwd=repo, env=dict(os.environ, NMAS_CHECKS_ROOT=snap))
+        finally:
+            os.unlink(fh.name)
+        if r.returncode:
+            refusals.append(f"the commit's own commit-msg hooks refuse it: "
+                            f"{(r.stdout + r.stderr).strip()[-300:]}")
+    return refusals, flags
+
+
+def _docs_only_by(path, changed) -> bool:
+    """*changed* judged by the `docs_only` rule in the tests/doc_tests.py at *path*."""
     import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "doc_tests", os.path.join(snap, "tests", "doc_tests.py"))
+    spec = importlib.util.spec_from_file_location("doc_tests_own", path)
+    if spec is None or not os.path.isfile(path):
+        return False
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.docs_only(changed)
+
+
+def _docs_only(snap, changed) -> bool:
+    """Does every one of *changed* lie under docs/, by the BASE commit's rule (C2457; its
+    tests/doc_tests.py `docs_only`, the one CI's scope job applies through nmas-shards), or the
+    snapshot's where the base has none? A commit cannot loosen the rule that judges it."""
+    import importlib.util
+    path, _whose = own_or_snapshot(os.path.join("tests", "doc_tests.py"), snap)
+    spec = importlib.util.spec_from_file_location("doc_tests", path)
     if spec is None or not os.path.isfile(spec.origin):
         return False                                  # no rule there: everything runs
     mod = importlib.util.module_from_spec(spec)
@@ -541,6 +632,50 @@ def forget(gitdir, paths) -> None:
     os.replace(tmp, os.path.join(gitdir, LEDGER))
 
 
+#: Set by the launcher in the gate it runs from the base commit (C2457): that process IS the
+#: base's code, and runs the gate itself.
+FROM_BASE = "NMAS_GATE_FROM_BASE"
+
+
+def from_base(repo, argv, *, has_repo) -> "int | None":
+    """C2457 (the operator, 2026-11-04): the gate runs its own code from the BASE commit, never
+    from the working tree, so an uncommitted edit to the gate, a helper, a hook or a check can
+    neither loosen nor break another commit's verdict. The base (HEAD) is extracted to a
+    throwaway worktree and its own `scripts/nmas-gate` runs with `--repo`: every constant,
+    helper (`HERE`), check and hook is then the base's. None when this process is itself that
+    run, or when the base holds no gate (a repository without one: this one runs, and says so);
+    else the base gate's exit status. The folder is a snapshot folder with its owner, so a killed
+    gate's is swept by `remove_stale_snapshots`."""
+    if os.environ.get(FROM_BASE):
+        # This is the base's run. The marker leaves its environment at once, so nothing it
+        # starts (the suite, whose gate tests start gates of their own) inherits it.
+        os.environ.pop(FROM_BASE)
+        global BASE_TREE
+        BASE_TREE = os.path.dirname(HERE)
+        return None
+    head = git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).stdout.strip()
+    if not head or git(repo, "cat-file", "-e", f"{head}:scripts/nmas-gate",
+                       check=False).returncode:
+        say("0. the base commit holds no gate: this file runs (a repository without one)")
+        return None
+    import tempfile
+    base = tempfile.mkdtemp(prefix=SNAPSHOT_PREFIX + "base-")
+    with open(os.path.join(base, SNAPSHOT_OWNER), "w", encoding="utf-8") as fh:
+        fh.write(str(os.getpid()))
+    tree = os.path.join(base, "tree")
+    try:
+        git(repo, "worktree", "add", "-q", "--detach", tree, head)
+        say(f"0. the gate's own code is the base commit's ({head[:12]}), run from a throwaway "
+            "worktree of it, never this working tree's (C2457)")
+        args = list(argv) + ([] if has_repo else ["--repo", repo])
+        return subprocess.run([sys.executable, os.path.join(tree, "scripts", "nmas-gate"), *args],
+                              env=dict(os.environ, **{FROM_BASE: head})).returncode
+    finally:
+        git(repo, "worktree", "remove", "--force", tree, check=False)
+        shutil.rmtree(base, ignore_errors=True)
+        git(repo, "worktree", "prune", check=False)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--message", required=True, help="the commit message file")
@@ -560,6 +695,9 @@ def main(argv=None):
         ap.error("--expect must name the subject: an empty prefix matches every message")
     repo = a.repo or subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
                                     capture_output=True, text=True).stdout.strip()
+    rc = from_base(repo, argv if argv is not None else sys.argv[1:], has_repo=bool(a.repo))
+    if rc is not None:
+        return rc
     gitdir = git(repo, "rev-parse", "--absolute-git-dir").stdout.strip()
 
     # 6 (checked early as well as at the end: a wrong message should not cost a suite run).
@@ -581,18 +719,23 @@ def main(argv=None):
                        else os.path.normpath(p) for p in a.only})
         if any(p == ".." or p.startswith("../") for p in only):
             refuse("stage", f"--only names a path outside {repo}: {only}")
-        extra = sorted(p for _s, p in staged(repo) if not named(p, only))
+        held = staged(repo)
+        extra = sorted(p for _s, p in held if not named(p, only))
         if extra:
             refuse("stage", f"staged and not named by --only: {extra}; unstage them "
                             "(git reset -q -- <path>) or name them")
-        say(f"1. git add -A -- {' '.join(only)}")
-        git(repo, "add", "-A", "--", *only)
-        extra = sorted(p for _s, p in staged(repo) if not named(p, only))
-        if extra:
-            refuse("stage", f"staged and not named by --only after staging: {extra}")
+        unstaged = sorted(p for p in only if not any(named(s, [p]) for _x, s in held))
+        if unstaged:
+            refuse("stage", f"named by --only and not staged: {unstaged}; the gate judges the "
+                            "index exactly as staged and stages nothing itself (C2457): stage "
+                            "them (git add -- <path>, or git apply --cached for a part)")
+        say(f"1. the staged tree, as staged (the gate stages nothing, C2457): "
+            f"{len(held)} file(s), each under {' '.join(only)}")
     else:
-        say("1. git add -A")
-        git(repo, "add", "-A")
+        if not staged(repo):
+            refuse("stage", "nothing is staged; the gate judges the index exactly as staged and "
+                            "stages nothing itself (C2457): stage the commit's files first")
+        say("1. the staged tree, as staged (the gate stages nothing, C2457)")
     files = staged(repo)
     say(f"1b. the commit will contain {len(files)} file(s):")
     for status, path in files:
@@ -739,13 +882,16 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
                 refuse("the tests of root's real files", why, roots_out)
             junits.append(os.path.join(cov, "junit-rootfiles.xml"))
     skips_out = os.path.join(gitdir, "nmas-gate-skips.out")
+    checker, whose = own_or_snapshot(os.path.join("scripts", "nmas-skip-check"), snap)
     cmd = os.environ.get("NMAS_GATE_SKIP_CHECK") or (
         None if stand_in else SKIP_CHECK.format(
-            py=shlex.quote(a.python), files=" ".join(shlex.quote(j) for j in junits)))
+            py=shlex.quote(a.python), check=shlex.quote(checker),
+            files=" ".join(shlex.quote(j) for j in junits)))
     if cmd is None:
         say("4d. every skip declared: not run, the suite is a stand-in")
     else:
-        say("4d. every skip is one tests/skip_reasons.py declares for the gate (C2412)")
+        say(f"4d. every skip is one the skip list declares for the gate (C2412), by {whose} "
+            "check and list (C2457)")
         rc = run_to_file(cmd, snap, skips_out)
         say(f"    {last_line(skips_out) if os.path.isfile(skips_out) else '(no output)'}")
         if rc:
@@ -779,6 +925,20 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
         say(f"   {browser_line or '(no output)'}")
         if why:
             refuse("the browser tests", why, browser_out)
+
+    touched = gate_code_changed(changed)
+    if touched and not stand_in:
+        say(f"6a. the commit changes the gate's own code ({', '.join(touched)}): a second pass "
+            "with its own versions (C2457)")
+        refusals, flags = second_pass(repo, snap, a.message, junits, a.python, changed,
+                                      docs_only)
+        for f in flags:
+            say(f"    FLAGGED: {f}")
+        if refusals:
+            refuse("the second pass", "; ".join(refusals))
+        say(f"    the commit's own checks agree{' (flagged above)' if flags else ''}")
+    elif touched:
+        say("6a. the second pass: not run, the suite is a stand-in")
 
     say("6. the message")
     if not first_line().startswith(a.expect):
