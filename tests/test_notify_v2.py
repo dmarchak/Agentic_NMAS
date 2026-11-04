@@ -283,3 +283,140 @@ def test_told_about_names_the_networks_that_chose_the_team(n):
     assert r.status_code == 200 and heal_notify.teams_for("Branch", "cant_fix") == [team]
     html = n.client.get(TAB).get_data(as_text=True)
     assert 'href="/v2/settings/network/Branch?tab=heal">Branch</a>' in html
+
+
+# ── The secrets typed here, never drawn, recorded or logged (C2407's hand check) ──────────────
+
+NEW_SECRET = "Hook-Signing-Placeholder-H9-new-9876543210"
+
+
+class _Lines:
+    """The module's own log, read past the masking net: a handler put on the logger's list
+    directly, so `Logger.addHandler`'s masking filter is not on it (C235's lesson: the net masks
+    a value once it is stored, so a test reading through it saw a logged secret masked)."""
+
+    def __init__(self, name):
+        import logging
+        self.lines, self.logger = [], logging.getLogger(name)
+        lines = self.lines
+        self.handler = type("H", (logging.Handler,), {
+            "emit": lambda s, rec: lines.append(rec.getMessage())})()
+        self.level = self.logger.level
+
+    def __enter__(self):
+        import logging
+        self.logger.handlers.append(self.handler)
+        self.logger.setLevel(logging.DEBUG)
+        return self.lines
+
+    def __exit__(self, *exc):
+        self.logger.handlers.remove(self.handler)
+        self.logger.setLevel(self.level)
+
+
+def _record_text():
+    from modules import installation_settings as I
+    import os
+    path = I._path(I.RECORD)
+    return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+
+
+def _webhook(n, team):
+    url = "https://hooks.example.com" + HOOK_PATH
+    r, _tab = _post(n, BASE + "/webhooks", {"team": team, "name": "on-call chat", "url": url,
+                                            "format": "generic", "secret": HOOK_SECRET})
+    assert r.status_code == 200
+    return next(iter(teams.read()["teams"][team]["destinations"]))
+
+
+def test_a_refused_relay_password_is_never_drawn_back(n):
+    """M1, M2: a password the store refuses (two lines) answers 409 in the card with its field
+    open again, neither the field nor the refusal carries what was typed, and the stored
+    password is the one held before."""
+    credentials.set_notify_secret("relay", RELAY_PW)
+    typed = "Refused-Placeholder-Relay-Pw\nsecond-line"
+    r, card = _post(n, BASE + "/relay/password", {"password": typed})
+    assert r.status_code == 409 and 'name="password"' in card
+    assert "Refused-Placeholder-Relay-Pw" not in card and "second-line" not in card
+    assert credentials.get_notify_secret("relay") == RELAY_PW
+
+
+def test_the_relay_password_is_in_no_record_history_draws(n):
+    """M3, M16a: the installation record (History's installation source) names the field
+    replaced, never its value."""
+    r, _card = _post(n, BASE + "/relay/password", {"password": RELAY_PW})
+    assert r.status_code == 200
+    text = _record_text()
+    assert '"relay password"' in text and RELAY_PW not in text
+
+
+def test_a_refused_webhook_add_or_edit_never_draws_the_secret_back(n):
+    """M6, M7: a refused add and a refused edit each answer 409 with the form open, and neither
+    page carries the typed secret."""
+    team = _team()
+    r, tab = _post(n, BASE + "/webhooks", {"team": team, "name": "x", "secret": HOOK_SECRET,
+                                           "url": "http://hooks.example.com/x"})
+    assert r.status_code == 409 and HOOK_SECRET not in tab
+    dest = _webhook(n, team)
+    r, tab = _post(n, f"{BASE}/teams/{team}/{dest}/edit/save",
+                   {"name": "x", "url": "http://hooks.example.com/x", "secret": NEW_SECRET})
+    assert r.status_code == 409 and NEW_SECRET not in tab
+
+
+def test_an_edits_new_secret_is_checked_stored_and_kept_out_of_the_record(n):
+    """M8, M10, M16c: a short secret is refused and the stored one kept; a good one replaces it
+    in the credential store, and the teams' record holds its reference, never the value."""
+    team = _team()
+    dest = _webhook(n, team)
+    r, _tab = _post(n, f"{BASE}/teams/{team}/{dest}/edit/save",
+                    {"name": "on-call chat", "secret": "fifteen-chars!!"})
+    assert r.status_code == 409 and credentials.get_notify_secret(f"webhook/{dest}") == HOOK_SECRET
+    r, tab = _post(n, f"{BASE}/teams/{team}/{dest}/edit/save",
+                   {"name": "on-call chat", "secret": NEW_SECRET})
+    assert r.status_code == 200 and "Saved: secret" in tab
+    assert credentials.get_notify_secret(f"webhook/{dest}") == NEW_SECRET
+    import json as _json
+    held = _json.dumps(teams.read())
+    assert NEW_SECRET not in held and HOOK_SECRET not in held
+
+
+def test_a_refused_edit_keeps_the_stored_secret(n):
+    """M11: an edit the store refuses (a second webhook moved onto the first's URL, which the
+    team already has) changes no secret."""
+    team = _team()
+    first = _webhook(n, team)
+    r, _tab = _post(n, BASE + "/webhooks", {"team": team, "name": "second", "format": "generic",
+                                            "url": "https://hooks.example.com/second",
+                                            "secret": HOOK_SECRET})
+    assert r.status_code == 200
+    second = next(d for d in teams.read()["teams"][team]["destinations"] if d != first)
+    r, _tab = _post(n, f"{BASE}/teams/{team}/{second}/edit/save",
+                    {"name": "second", "url": "https://hooks.example.com" + HOOK_PATH,
+                     "secret": NEW_SECRET})
+    assert r.status_code == 409
+    assert credentials.get_notify_secret(f"webhook/{second}") == HOOK_SECRET
+
+
+def test_a_new_url_drops_the_code_issued_for_the_old_one(n):
+    """M13: a code sent to the old receiver does not verify the new one."""
+    team = _team()
+    dest = _webhook(n, team)
+    assert teams.read()["teams"][team]["destinations"][dest].get("code")
+    r, _tab = _post(n, f"{BASE}/teams/{team}/{dest}/edit/save",
+                    {"name": "on-call chat", "url": "https://hooks.example.com/moved",
+                     "secret": ""})
+    assert r.status_code == 200
+    assert "code" not in teams.read()["teams"][team]["destinations"][dest]
+
+
+def test_no_secret_reaches_the_teams_log_on_an_add_or_an_edit(n):
+    """M14, M15: the add's and the edit's log lines name the destination and what changed,
+    read from the module's own log past the masking net."""
+    team = _team()
+    with _Lines("modules.notify.teams") as lines:
+        dest = _webhook(n, team)
+        _post(n, f"{BASE}/teams/{team}/{dest}/edit/save",
+              {"name": "on-call chat", "secret": NEW_SECRET})
+    text = "\n".join(lines)
+    assert f"destination {dest} added" in text and f"webhook {dest} in team" in text
+    assert HOOK_SECRET not in text and NEW_SECRET not in text

@@ -3567,3 +3567,64 @@ the run's (the worktree held every mutant).
 worktree removed.** M1, M7 and M23 died only after their cases were added (the subject's own
 test, the quoted-printable split, the context's verification), each found by writing the
 mutant list before the run.
+
+## 2026-11-04: the notification secrets a person types on Installation › Notifications, board H's H9 (C2407), by hand
+
+**What changed in the tier:** code that stores a secret value. H9 draws H7's notification
+secrets on a screen. Each is stored by `credentials.set_notify_secret` (encrypted, by
+reference, already checked in H7's entry):
+- **the relay's password,** typed in the relay card (`notify_v2.relay_password`);
+- **a webhook's signing secret,** typed when it is added (`notify_v2.webhook_add`, which calls
+  `teams.add_webhook`) or edited (`notify_v2.webhook_edit`, which calls the new
+  `teams.edit_webhook`; `_check_secret`, at least 16 characters).
+
+**The danger the hand check guards:** a typed secret drawn back on a page (after Save or in a
+refusal), written into a record (the installation record History draws, or the teams store), or
+logged. Also: a secret not stored while the page says it was, replaced by an edit that was
+refused, or carried to a receiver nobody verified (a new URL left on, or its old code kept).
+
+**The method:** as H7's.
+- **The mutants:** the operator approved the list (2026-11-04), with M15 and M16 added to it.
+  Each is one exact replacement of a changed line, required to match once (`--check` first).
+- **The run:** in a `scripts/nmas-control` throwaway worktree (snapshot a4a7e3e5b8 over
+  79696ac9, 2026-11-04 ~06:43 UTC), tests/test_notify_v2.py, test_notify.py,
+  test_route_gates.py and test_no_post_returns_a_stored_secret.py ran with `-x`, two workers,
+  in CI's interpreter, confined (`scratchpad/mut_h9.py`). The file was restored and compared
+  byte for byte after each mutant.
+- **Baseline:** 161 passed.
+- **The control's exit was 3,** naming files the author edited in the checkout during the run
+  (C2412's), after the snapshot, never the run's.
+- **The first run killed 6 of 19.** Each of the 13 survivors got its test in
+  tests/test_notify_v2.py, and the 13 ran again in a fresh throwaway (snapshot 5d86485d70,
+  ~06:50 UTC, baseline 168 passed). The log tests read the module's own log through a handler
+  put on the logger's list directly, past the masking net (C235's lesson).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: Save stores nothing and still answers replaced | killed | `test_the_relays_password_is_stored_never_drawn_and_says_who_set_it` |
+| M1 the typed password drawn back in the relay card | survived, then killed | `test_a_refused_relay_password_is_never_drawn_back` |
+| M2 the typed password drawn back in a refusal | survived, then killed | the same |
+| M3 the installation record holds the value, not the field's name | survived, then killed | `test_the_relay_password_is_in_no_record_history_draws` |
+| M4 a blank Save erases the stored password | killed | `test_the_relays_password_is_stored_never_drawn_and_says_who_set_it` |
+| M5 the relay password's gate removed | killed | the same (the route undeclared) |
+| M6 a refused webhook add redraws the typed secret | survived, then killed | `test_a_refused_webhook_add_or_edit_never_draws_the_secret_back` |
+| M7 a refused webhook edit redraws the typed secret | survived, then killed | the same |
+| M8 an edit's secret not checked (15 characters stored) | survived, then killed | `test_an_edits_new_secret_is_checked_stored_and_kept_out_of_the_record` |
+| M9 an add's secret not checked | killed | `test_notify.py::TestTheSignedWebhook::test_a_short_signing_secret_is_refused` |
+| M10 an edit says "Saved: secret" and never stores it | survived, then killed | `test_an_edits_new_secret_is_checked_stored_and_kept_out_of_the_record` |
+| M11 a refused edit still replaces the stored secret | survived, then killed | `test_a_refused_edit_keeps_the_stored_secret` |
+| M12 a new URL stays verified and on | killed | `test_a_webhook_keeps_its_secret_and_path_out_of_the_page` |
+| M13 a new URL keeps the old code | survived, then killed | `test_a_new_url_drops_the_code_issued_for_the_old_one` |
+| M14 the edit's log line carries the secret | survived, then killed | `test_no_secret_reaches_the_teams_log_on_an_add_or_an_edit` |
+| M15 the add's log line carries the secret | survived, then killed | the same |
+| M16a the relay password in the installation record (History) | survived, then killed | `test_the_relay_password_is_in_no_record_history_draws` |
+| M16b an added webhook's secret kept in its destination record | killed | `test_notify.py::TestTheEgressMask::test_the_secrets_are_stored_by_reference_and_never_in_clear` |
+| M16c an edited webhook's secret kept in its destination record | survived, then killed | `test_an_edits_new_secret_is_checked_stored_and_kept_out_of_the_record` |
+
+**The result:**
+- **19 mutants with the canary;** every one killed, 13 of them once their tests were added.
+- **The file was identical after each,** and both throwaways were removed.
+- **No device was asked.**
+- **M11's first test** asked for a destination the store refuses by its id, so the mutant's
+  write could not land. Its test now moves a second webhook onto the first's URL: a real
+  refused edit, with a real id.
