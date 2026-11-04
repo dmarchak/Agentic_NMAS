@@ -1131,6 +1131,10 @@ with this change):
 - A network carrying a **classification marking** forces AI off with no override
   ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 9). **Planned, not built** (C1720, a
   public-release blocker): no marking exists today, so it is no current safeguard.
+  **Amended 2026-11-04 (the operator; design only, after Labs 9 and 10):** the marking is the
+  installation's, inherited by every network in it, and a US Government installation marked
+  Unclassified may use one shipped provider, GenAI.mil, enforced in the gateway
+  ([GOVERNMENT_PROFILE.md](GOVERNMENT_PROFILE.md) sections 1 and 4).
 
 Offline-first stays the rule for the core path: no feature may depend on a hosted model. A
 feature that does not fit the local profile's context is split or not built, never offered
@@ -5032,6 +5036,7 @@ and each place they left has a one-line pointer.
 | History's AI audit (15.14) | **built** | deployed, tested, walked | n/a | none |
 | The injection defence (C2271 to C2273, C2295) | **built** 2026-11-01: lines withheld at the gateway, raised and acknowledged with a disposition; case 22 recorded in a 3-run screen | 15.12 for case 22; hand-checked (TIER_HAND_CHECK) | 2026-11-01, 3 runs | case 22's 5-run recording |
 | Egress (15.11, 15.16) | **built**: three classes, the egress mask, feature 7's touched sections; the irreversible tier hand-checked | hand-checked; tested | n/a | none |
+| Provider-neutral AI: one gateway with an adapter per provider (Anthropic; OpenAI-compatible, covering GenAI.mil and self-hosted), a model registry of capabilities, JSON-only validation with a bounded retry, qualification per feature and model, a fitness test; GenAI.mil's preset, credits mode and profile rule (docs/GOVERNMENT_PROFILE.md sections 4 and 5; its audit of today's ties is 5.1) | **designed, not built** (the operator, 2026-11-04): after Lab 10 and Lab 9; 8.0 agent-days (5.8), qualification runs on GenAI.mil excluded; its tests (section 7, items 1, 2 and 8 to 11) use a fake built from the operator's measured probes | its section 7 tests, each with its control; the irreversible tier's hand check (it is egress) | none | the probe results; GOVERNMENT_PROFILE 8.1 (the accreditation); NSOT_STAGE10_PLAN 5.3's profile |
 
 ### A.2 The order after workstream 1 (was in 0.3, replaced by the roadmap)
 **The order after workstream 1 (the operator, 2026-11-03 ~06:5x UTC), replacing the numbering

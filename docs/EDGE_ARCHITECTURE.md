@@ -346,6 +346,11 @@ pull into the kit's own branch.
 **Planned, not built** (C1720, a public-release blocker): no code reads or enforces a marking
 today, so this section describes a design, not a current safeguard.
 
+**Amended 2026-11-04 (the operator):** the marking belongs to the installation, not to a
+network: one installation serves one classification domain, and every network in it inherits
+its marking with no override ([GOVERNMENT_PROFILE.md](GOVERNMENT_PROFILE.md) section 1). Read
+"a network" below as "an installation"; the export check and the survey stand.
+
 A network may carry a classification marking. A marked network refuses any destination outside
 its enclave, checked **at the point of export**, the way the publication gate already holds
 secrets: `remote.scan_history_secrets` counts each live secret by kind and salted fingerprint,

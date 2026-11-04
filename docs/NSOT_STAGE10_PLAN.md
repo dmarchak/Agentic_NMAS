@@ -523,6 +523,22 @@ fresh install first could claim it. The code expires when step 1 completes.
 
 The wizard can be left and resumed. Each step is also its Settings screen afterwards.
 
+### 5.3 The use type and the marking (designed 2026-11-04; built after Labs 9 and 10)
+
+The operator's design, [GOVERNMENT_PROFILE.md](GOVERNMENT_PROFILE.md). Stage 10 carries these
+parts; the provider adapter is PHASE8_PLAN's (Appendix A.1).
+
+| Part | What | Its section |
+|---|---|---|
+| **Step 0 of the wizard** | Personal, Commercial or US Government; for US Government, the classification (Unclassified, Secret, Colorless, Other, and the proposed presets); the plain statement that the banner marks and does not accredit | GOVERNMENT_PROFILE 2.1, 2.2, 2.4 |
+| **The lock** | the profile has no write path but the wizard's; a rerun as an admin with a reason, recorded; keys the new profile forbids deleted; a hand-edited profile fails its MAC and reads as most restrictive | 2.3 |
+| **One installation per domain** | every network inherits the installation's marking, no override; several installations on one node, each with its own folder, port and bundled services; a per-installation footprint measured and stated beside 7.4's tiers | 1 |
+| **The banner** | top and bottom of every v2 screen, and on every export and printed report, in the marking's colour | 3 |
+| **Default-deny egress** | on a government profile, update checks, the git remote, external assets and every other destination refused unless an admin allows each with a reason | 4.4 |
+| **The manager link** | a manager and a subordinate exchange profiles; a mismatch is refused on both sides with the reason | 6 |
+
+Its acceptance is GOVERNMENT_PROFILE section 7's tests, each shown able to fail.
+
 ---
 
 ## 6. What comes out, or becomes optional
@@ -1445,6 +1461,10 @@ devices before it reaches production (PHASE8_PLAN 16.8's shared pack library).
   networks.
 - **The release ships the AI OFF by default** (7.1): a provider is the installer's choice,
   never assumed.
+- **On a US Government profile the provider step offers GenAI.mil alone,** and only where its
+  accreditation covers the installation's marking; every other provider's settings are not
+  shown, and the gateway refuses them whatever the settings hold
+  ([GOVERNMENT_PROFILE.md](GOVERNMENT_PROFILE.md) section 4; designed 2026-11-04).
 
 ## 14. Have we outgrown `devices.csv` and `data/key.key`? (RECORDED 2026-10-05, the operator; no work now)
 
