@@ -1051,6 +1051,29 @@ class TestTheGateRunsTheBaseCommitsCode:
                    and "own guard: refused" in x for x in refusals), refusals
         assert flags == []
 
+    def test_c2396_the_commit_s_own_hooks_missing_or_passing_are_said(self, gated, tmp_path,
+                                                                      monkeypatch):
+        """C2396 (the operator, 2026-11-04): the gate judges by the base's hooks and runs the
+        commit's own, flagging them missing; when they pass, the pass is noted, so a refusal by
+        the base's at step 7 says the commit's own are weaker."""
+        g = _gate_module()
+        base = tmp_path / "base"
+        (base / "scripts" / "hooks").mkdir(parents=True)
+        (base / "scripts" / "hooks" / "commit-msg").write_text("#!/bin/sh\nexit 0\n")
+        monkeypatch.setattr(g, "BASE_TREE", str(base))
+        msg = tmp_path / "m.txt"
+        msg.write_text("Docs: two\n")
+        _r, flags = g.second_pass(str(gated), str(gated), str(msg), [], sys.executable,
+                                  ["scripts/hooks/commit-msg"], False)
+        assert any("commit-msg hook is MISSING where the base has one" in f for f in flags)
+        _exe = gated / "scripts" / "hooks" / "commit-msg"
+        _exe.parent.mkdir(parents=True, exist_ok=True)
+        _exe.write_text("#!/bin/sh\nexit 0\n")
+        _exe.chmod(0o755)
+        _r, flags = g.second_pass(str(gated), str(gated), str(msg), [], sys.executable,
+                                  ["scripts/hooks/commit-msg"], False)
+        assert g.OWN_HOOKS_PASSED in flags and not any("MISSING" in f for f in flags)
+
     def test_the_base_run_takes_the_marker_out_of_what_it_starts(self, gated, tmp_path):
         """The base's run removes its marker from its environment, so a gate its suite starts
         (the gate's own tests) runs its own launcher again."""

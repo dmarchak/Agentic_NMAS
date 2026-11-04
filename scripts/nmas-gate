@@ -297,6 +297,11 @@ def second_pass(repo, snap, message, junits, py, changed, docs_base) -> tuple:
         flags.append(f"the docs-only rule: the base's says {docs_base}, the commit's own says "
                      f"{own_docs}; the base's stands")
     hook = os.path.join(snap, "scripts", "hooks", "commit-msg")
+    base_hook = os.path.join(BASE_TREE, "scripts", "hooks", "commit-msg") if BASE_TREE else ""
+    if not os.path.exists(hook) and base_hook and os.path.exists(base_hook):
+        # C2396 (the operator, 2026-11-04): a commit whose own hooks are missing is flagged.
+        flags.append("the commit's own commit-msg hook is MISSING where the base has one; the "
+                     "base's judges it at step 7")
     if os.path.exists(hook):
         import tempfile
         with tempfile.NamedTemporaryFile("w", suffix=".msg", delete=False) as fh:
@@ -308,7 +313,14 @@ def second_pass(repo, snap, message, junits, py, changed, docs_base) -> tuple:
         if r.returncode:
             refusals.append(f"the commit's own commit-msg hooks refuse it: "
                             f"{(r.stdout + r.stderr).strip()[-300:]}")
+        else:
+            flags.append(OWN_HOOKS_PASSED)
     return refusals, flags
+
+
+#: The second pass's note that the commit's own commit-msg hooks passed it: should the base's
+#: refuse it at step 7, the commit's own are WEAKER, and the refusal says so (C2396).
+OWN_HOOKS_PASSED = "the commit's own commit-msg hooks pass it"
 
 
 def _docs_only_by(path, changed) -> bool:
@@ -927,16 +939,19 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
             refuse("the browser tests", why, browser_out)
 
     touched = gate_code_changed(changed)
+    flags = []
     if touched and not stand_in:
         say(f"6a. the commit changes the gate's own code ({', '.join(touched)}): a second pass "
             "with its own versions (C2457)")
         refusals, flags = second_pass(repo, snap, a.message, junits, a.python, changed,
                                       docs_only)
         for f in flags:
-            say(f"    FLAGGED: {f}")
+            if f != OWN_HOOKS_PASSED:
+                say(f"    FLAGGED: {f}")
         if refusals:
             refuse("the second pass", "; ".join(refusals))
-        say(f"    the commit's own checks agree{' (flagged above)' if flags else ''}")
+        shown = [f for f in flags if f != OWN_HOOKS_PASSED]
+        say(f"    the commit's own checks agree{' (flagged above)' if shown else ''}")
     elif touched:
         say("6a. the second pass: not run, the suite is a stand-in")
 
@@ -953,7 +968,9 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
     say("7. commit, in the snapshot, judged by the parent commit's hooks")
     r = commit_judged_by_parent(repo, snap, head, final)
     if r.returncode != 0:
-        refuse("git commit", (r.stderr or r.stdout).strip()[:4000])
+        weaker = (" FLAGGED (C2396): the commit's own commit-msg hooks passed what the base's "
+                  "refuse, so its own are WEAKER" if OWN_HOOKS_PASSED in flags else "")
+        refuse("git commit", (r.stderr or r.stdout).strip()[:4000] + weaker)
     new = git(snap, "rev-parse", "HEAD").stdout.strip()
     committed = git(snap, "rev-parse", f"{new}^{{tree}}").stdout.strip()
     if committed != tree:
