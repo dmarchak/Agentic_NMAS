@@ -437,6 +437,34 @@ Candidate 2 is the strongest fallback if the TA wants retrieval. Candidate 3 is 
   operator's first lab-room visit (~/Documents/nmas-reports/lab9-hardware-checklist.md).
 - **B4:** the operator proposes one of section 4's candidates to a TA this week.
 
+**Decided by the operator, 2026-11-04 ~16:2x UTC: B4's four decisions** (the design and
+estimate: ~/Documents/nmas-reports/2026-11-04-b4-read-set-and-evaluation-design.md):
+- **D1 (a): the fresh blind set decides.** The spent 13 (`blind_cases.json` 11 and
+  `blind_normal_cases.json` 2) are reported only, labelled "spent remainder: reads mostly not
+  captured". With no fresh set by the evaluation, the verdict is "not measured blind".
+- **D2 (a): SDN state is the device state class in both passes:** flows, port stats, link
+  state and path traces. Today's pass-1 flows going out under the topology class are a
+  misclassification (C2493), moved in B4's build (B4-3). After the move, the SDN Responder
+  says which class is off when device state is off. The operator turns the class on for the
+  SDN lab network, with a reason.
+- **D3 (a): the Responder only, for B4's evaluation.** Lab 9's B1, the AI Network Analyst, is
+  planned as its own Lab 9 item (section 2's item 7). If it lands in time, its read loop is a
+  labelled supplement to B4, never part of the deciding result.
+- **D4 (c): Lab 8's fabric decides** (Ryu over OVS on the NMAS host). A few hardware cases are
+  a labelled supplement, reported separately. The operator's capture-session sheet for the
+  fresh set, with its frozen hashes in `b4_plan.json`'s terms, is written with B4-0 (the
+  freeze, after C2305's fix changes the baseline) and B4-6 (the poller it needs).
+- **The recommended split is accepted.** H25's loop core is built generic
+  (`modules/ai/read_loop.py`, with no dependency on H8). H28 is split into the device state
+  class (about 0.5) and the read-only account (about 1.5); B4 needs only the class. Pass 2
+  gets its own prompt-budget pin (C2494: the `sdn_classify` pin's 24,000 tokens cannot hold
+  pass 2 of the largest case). The live controller's read latency is measured (20 GETs per
+  operation, read-only, outside 08:30 to 09:10 UTC) and added to the timing.
+- **Order:** B4's build starts after the Lab 10 blockers (C2467, C2470, C2471, C2472), local
+  CI's host run, H8, test-audit tool (b)'s rework and CI step 3. Its estimate is 6.0
+  agent-days, up to about 10 at the last stage's overrun. A threat to 2026-11-30 is reported
+  as soon as it can be seen.
+
 1. **Identity on the laptop** (a standing rule: no localhost exemption). There are three
    options:
    - **(a) A single-user local provider:** loopback bind enforced, a passphrase set at first
