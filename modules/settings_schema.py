@@ -699,6 +699,14 @@ DEFAULTS: dict = {
     "heal_repeat_halts_hours": 24,
     "heal_max_removed_units": 1,
     "heal_max_units": 1,
+    # Who is told about a network's self-healing (board H, artboard A's "Who is told";
+    # docs/HEAL_TO_INTENT.md section 10's `heal_notify_*`): the team (its id in the teams store,
+    # modules/notify/teams.py) and the events that notify it. Each network's own, never
+    # inherited (`OWN_ONLY`). No team, the default: nothing is told, as every release before it.
+    # Every event on by default, so naming a team tells it all section 10 lists. Written only by
+    # `modules/heal_notify.py` from the Self-healing tab (`CARDLESS`).
+    "heal_notify_team": "",
+    "heal_notify_events": ["cant_fix", "proposal", "halted", "held", "healed", "cleared"],
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -1163,6 +1171,9 @@ SCHEMA: dict = {
         "heal_max_removed_units": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_max_units": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_stopped": _BOOL,
+        "heal_notify_team": {"type": "string", "pattern": r"^(|[0-9a-f]{12})$"},
+        "heal_notify_events": {"type": "array", "uniqueItems": True, "items": {
+            "enum": ["cant_fix", "proposal", "halted", "held", "healed", "cleared"]}},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

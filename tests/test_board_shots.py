@@ -3834,3 +3834,118 @@ def test_dhcp_delegated_prefix(tmp_path, monkeypatch):
         _group_a_page("dhcp-delegated-prefix-card", served, card,
                       ((1440, 1.0), (1280, 1.0), (390, 2.0)))
     assert kea.dels == [], "a shot released a lease"
+
+
+def _heal_world(tmp_path, monkeypatch):
+    """Board H's world (H9): tests/test_heal_tab_v2.py's store with Default marked lab and in
+    dry run (confirmed with a reason), a team told about it holding a verified address, an
+    address whose code waits, and a verified webhook whose last delivery failed (a fake
+    receiver answering 503: no shot touches a network)."""
+    import types
+
+    from modules import heal_notify
+    from modules.heal import policy as H
+    from modules.notify import delivery, teams, webhook
+    from modules.sdn import modes as MD
+    from tests.test_sdn_connections import make_networks
+
+    make_networks(tmp_path, monkeypatch)
+    monkeypatch.setattr(webhook, "POST", lambda url, **kw: types.SimpleNamespace(status_code=503))
+    monkeypatch.setattr(delivery, "SLEEP", lambda s: None)
+    MD.set_stage("Default", "lab", actor="operator@example.com", actor_verified="access",
+                 reason="the course lab's network")
+    p = H.plan("Default", {"heal_mode": "dry_run"})
+    H.apply("Default", {"heal_mode": "dry_run"}, p["fingerprint"],
+            reason="dry run every fix kind before the lab walks", actor="operator@example.com",
+            actor_verified="access", person=True)
+    team = teams.add_team("Default on-call", by="operator@example.com")["team"]
+    for address, verify in (("noc@example.com", True), ("engineer@example.com", False)):
+        dest = teams.add_email(team, address, by="operator@example.com")["destination"]
+        code = teams.issue_code(team, dest, by="operator@example.com")
+        if verify:
+            teams.confirm_code(team, dest, code, by="operator@example.com")
+            teams.set_enabled(team, dest, True, by="operator@example.com")
+    hook = teams.add_webhook(team, "https://192.0.2.40/hooks/ticketing", "S" * 24,
+                             by="operator@example.com", name="ticketing")["destination"]
+    code = teams.issue_code(team, hook, by="operator@example.com")
+    teams.confirm_code(team, hook, code, by="operator@example.com")
+    teams.set_enabled(team, hook, True, by="operator@example.com")
+    delivery.send_test(team, hook, by="operator@example.com")
+    heal_notify.save("Default", team, [k for k, _w, _c in heal_notify.CHOICES],
+                     actor="operator@example.com",
+                     loaded=heal_notify.drawn(heal_notify.read("Default")))
+
+
+def test_heal_tab(tmp_path, monkeypatch):
+    """Board H, artboard A (heal-to-intent.html, 1440) beside Settings · Default › Self-healing
+    at rest (`heal-tab`), and with Change mode… pressed, Auto chosen and its expiry typed, so
+    What this changes and the confirm are drawn in place (`heal-tab-change`)."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _heal_world(tmp_path, monkeypatch)
+    from modules.heal import policy as H
+    p = H.plan("Default", {"heal_kinds_auto": ["added_line"]})
+    H.apply("Default", {"heal_kinds_auto": ["added_line"]}, p["fingerprint"], reason="C3 passed",
+            actor="operator@example.com", actor_verified="access", person=True)
+    page = "/v2/settings/network/Default?tab=heal"
+    until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(time.time() + 5 * 86400))
+
+    def change(b):
+        b.js("document.querySelector('#heal-mode a.btn').click(); return 1")
+        b.wait_for("return !!document.querySelector('#heal-change input[value=auto]')")
+        b.js("var f = document.querySelector('#heal-change-form');"
+             f"f.querySelector('[name=heal_mode_until]').value = '{until}';"
+             "f.querySelector('[name=reason]').value = "
+             "'Lab walks: Tier 1 kinds whose scenarios passed in dry run';"
+             "var r = f.querySelector('input[value=auto]'); r.checked = true;"
+             "r.dispatchEvent(new Event('change', {bubbles: true})); return 1")
+        b.wait_for("return !!document.querySelector('#heal-preview .heal-changes')")
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("heal-tab", "heal-to-intent.html", lambda w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("heal-tab-change", "", lambda w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=change)
+    # The shot's change is the real one: its preview and confirm put Auto in force.
+    import json
+    c = A.app.test_client()
+    data = {"part": "mode", "heal_mode": "auto", "heal_mode_until": until}
+    pv = c.post("/v2/settings/network/Default/heal/preview", data=data).get_json()
+    r = c.post("/v2/settings/network/Default/heal",
+               data=dict(data, fingerprint=pv["fingerprint"], seen=json.dumps(pv["operands"]),
+                         reason="Lab walks: Tier 1 kinds whose scenarios passed in dry run"))
+    assert r.status_code == 200 and H.current("Default")["mode"] == "auto"
+
+
+def test_notifications(tmp_path, monkeypatch):
+    """Board H, artboard B (heal-to-intent.html, 1440) beside Settings › Installation ›
+    Notifications with the relay set, a team of two addresses (one verified, one with its code
+    waiting) and a webhook whose last delivery failed (`notifications`)."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _heal_world(tmp_path, monkeypatch)
+    from modules import credentials
+    from modules.settings_schema import write_settings
+    assert write_settings({"notify_smtp_host": "smtp.example.com",
+                           "notify_smtp_username": "mercury@example.com",
+                           "notify_smtp_from": "mercury@example.com"}, actor="t")["ok"]
+    credentials.set_notify_secret("relay", "Relay-Placeholder-Shot-Pw")
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("notifications", "", lambda w: "/v2/settings/installation?tab=notifications",
+               served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    # The shot's world is the real store: a code typed back verifies the waiting address.
+    from modules.notify import teams
+    team, = teams.read()["teams"]
+    waiting = next(d for d, v in teams.read()["teams"][team]["destinations"].items()
+                   if v.get("code"))
+    code = teams.issue_code(team, waiting, by="operator@example.com")
+    r = A.app.test_client().post(
+        f"/v2/settings/installation/notify/teams/{team}/{waiting}/verify", data={"code": code})
+    assert r.status_code == 200
+    assert teams.read()["teams"][team]["destinations"][waiting]["enabled"]

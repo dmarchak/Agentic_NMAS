@@ -1,0 +1,39 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_preview_parts.html" import preview_parts -%}
+{#- Board H, artboard A: a heal policy change previewed in place (routes/heal_v2.policy_preview,
+    writing nothing), inside the change card's form: What this changes (where, now, after
+    confirm), what the policy does on Auto, each check that refuses it, the six parts one level
+    down, and the confirm, which names the work and sends the preview's fingerprint and what it
+    saw (`seen`), so a confirm after anything moved is refused naming it. From
+    modules/heal_page.preview. -#}
+{%- if refused %}
+<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not previewed:</strong> {{ refused }}. Nothing was saved.</p></div>
+{%- else %}
+<h3 class="heal-h3">What this changes</h3>
+<div class="table-wrap"><table class="table heal-table heal-changes">
+  <thead><tr><th>Where</th><th>Now</th><th>After confirm</th></tr></thead>
+  <tbody>
+    {%- for r in p.rows %}
+    {%- if r.same %}<tr><td>{{ r.where }}</td><td colspan="2">{{ r.now }} <span class="muted">(unchanged)</span></td></tr>
+    {%- else %}<tr><td>{{ r.where }}</td><td>{{ r.now }}</td><td><strong>{{ r.after }}</strong></td></tr>{% endif %}
+    {%- endfor %}
+    <tr><td>Devices it may act on</td><td colspan="2">every device of {{ list_name }}, less any device held, in a planned window or with a golden that departs from intent</td></tr>
+  </tbody>
+</table></div>
+{%- if p.auto %}
+<p class="muted small">Each heal runs the deploy pipeline as you, by this policy: its program and hash recorded first, the device held, verified, rolled back on failure, recorded, and its golden read again.</p>
+{%- endif %}
+{%- if p.stopped.stopped %}
+<p class="small"><strong>Nothing heals yet:</strong> {{ p.stopped.words }}. The policy is saved and takes effect once a person resumes self-healing.</p>
+{%- endif %}
+{%- for r in p.refusals %}
+<div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Not confirmable:</strong> {{ r }}.</p></div>
+{%- endfor %}
+<details class="set-details heal-parts"><summary>The preview's six parts</summary>{{ preview_parts(pv, 'Values that change') }}</details>
+<input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+<input type="hidden" name="seen" value='{{ p.operands | tojson }}'>
+<p class="small muted">{{ pv.confirm.statement }} The confirm is bound to this preview's fingerprint (<span class="mono">{{ p.fingerprint }}</span>) and needs a reason.</p>
+<div class="set-foot">
+  <span class="op-act"><button type="button" class="btn btn-primary" data-op="settings" hx-post="{{ url_for('heal_v2.policy_confirm', list_name=list_name) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this"{% if p.confirmable %}{{ gate('configure') }}{% else %} disabled aria-disabled="true" title="{{ p.refusals | join('; ') }}"{% endif %}><span class="op-idle">{% if p.button == 'kinds' %}Save the fix kinds for {{ list_name }}{% elif p.button == 'guard' %}Set “{{ p.guard_label }}” for {{ list_name }}{% elif p.button == 'auto' %}Turn on Auto for {{ list_name }} until {{ p.until_words }}{% elif p.button == 'dry_run' %}Set {{ list_name }} to dry run{% else %}Turn self-healing off for {{ list_name }}{% endif %}</span><span class="op-busy">Confirming…</span></button>{{ how('settings', 'self-healing', compact=True, op='confirming a policy change') }}</span>
+</div>
+{%- endif %}

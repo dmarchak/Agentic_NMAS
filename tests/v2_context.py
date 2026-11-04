@@ -2786,6 +2786,95 @@ def _sdn_evidence(client, _lab, _mp):
 
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
+def _heal_and_notify(client, _lab, _mp):
+    """Board H's two screens (H9): Lab's Self-healing tab with a team told, a confirmed change
+    in its history, each change card, a preview drawn in place, the kill switch stopped (every
+    network's mode once resumed) and resumed; and Settings › Installation › Notifications with
+    a team holding an address (code sent) and a webhook (verified, its last delivery failed),
+    each form open in turn. The webhook's POST is a fake (no test touches a network); the
+    policy is turned off and the switch resumed before the next provider."""
+    import types
+
+    import pytest
+
+    from modules import heal_notify
+    from modules.heal import policy as H
+    from modules.notify import delivery, teams, webhook
+
+    import json as _json
+
+    from modules import config
+    from modules import settings_schema as S
+
+    hx = {"HX-Request": "true"}
+    mp = pytest.MonkeyPatch()
+    lab_reads = S.get_setting
+
+    def reads(key, default=None):
+        # The lab reads settings from a dict (tests/test_device_v2.lab_setup); the kill switch
+        # is read from the file Stop writes, as _settings_ai reads its keys.
+        if key != "heal_stopped":
+            return lab_reads(key, default)
+        try:
+            with open(config.USER_SETTINGS_FILE, encoding="utf-8") as fh:
+                return _json.load(fh).get(key, default)
+        except (OSError, ValueError):
+            return default
+    try:
+        mp.setattr(S, "get_setting", reads)
+        mp.setattr(webhook, "POST", lambda url, **kw: types.SimpleNamespace(status_code=503))
+        mp.setattr(delivery, "SLEEP", lambda s: None)
+        team = teams.add_team("Lab on-call", by="v2-context")["team"]
+        mail = teams.add_email(team, "noc@example.com", by="v2-context")["destination"]
+        hook = teams.add_webhook(team, "https://hooks.example.com/x/token", "S" * 20,
+                                 by="v2-context", name="on-call chat")["destination"]
+        code = teams.issue_code(team, hook, by="v2-context")
+        teams.confirm_code(team, hook, code, by="v2-context")
+        teams.set_enabled(team, hook, True, by="v2-context")
+        delivery.send_test(team, hook, by="v2-context")                  # its last: failed
+        teams.issue_code(team, mail, by="v2-context")                    # a code waiting
+        heal_notify.save("Lab", team, ["cant_fix", "halted"], actor="v2-context",
+                         loaded=heal_notify.drawn(heal_notify.read("Lab")))
+        p = H.plan("Lab", {"heal_mode": "dry_run"})
+        H.apply("Lab", {"heal_mode": "dry_run"}, p["fingerprint"], reason="dry run first",
+                actor="v2-context", actor_verified="access", person=True)
+        base = "/v2/settings/network/Lab/heal"
+        for url in ("/v2/settings/network/Lab?tab=heal", base + "/tab",
+                    base + "/change?part=mode", base + "/change?part=kinds",
+                    base + "/change?part=heal_grace_seconds",
+                    "/v2/settings/installation/heal/stop/ask?list_name=Lab"):
+            assert client.get(url, headers=hx).status_code == 200, url
+        for data in ({"part": "mode", "heal_mode": "off"},
+                     {"part": "kinds", "heal_kinds_auto": "", "heal_kinds_propose": ""},
+                     # Two Tier 1 kinds at once: drawn, and not confirmable (its refusal).
+                     {"part": "kinds", "heal_kinds_auto": ["", "missing_line", "added_line"]}):
+            assert client.post(base + "/preview", data=data, headers=hx).status_code == 200
+        assert client.post(base + "/preview", data={"part": "mode", "heal_mode": "auto"},
+                           headers=hx).status_code == 409
+        assert client.post("/v2/settings/installation/heal/stop?list_name=Lab",
+                           data={"why": "a drill"}, headers=hx).status_code == 200
+        pv = client.post("/v2/settings/installation/heal/resume/preview?list_name=Lab",
+                         headers=hx)
+        assert pv.status_code == 200
+        H.resume(H.resume_plan()["fingerprint"], reason="drill over", actor="v2-context",
+                 actor_verified="access", person=True)
+        notify = "/v2/settings/installation/notify"
+        for url in ("/v2/settings/installation?tab=notifications",
+                    "/v2/settings/installation/card/relay", notify + "/relay/password/form",
+                    notify + "/relay/test/form", notify + "/teams/new", notify + "/webhooks/new",
+                    f"{notify}/teams/{team}/{hook}/edit",
+                    f"{notify}/teams/{team}/{mail}/remove/ask"):
+            assert client.get(url, headers=hx).status_code == 200, url
+        assert client.post(f"{notify}/teams/{team}/{mail}/verify", data={"code": "x"},
+                           headers=hx).status_code == 409
+    finally:
+        H.turn_off("Lab", actor="v2-context")
+        if H.stopped()["stopped"]:
+            H.resume(H.resume_plan()["fingerprint"], reason="provider's end",
+                     actor="v2-context", actor_verified="access", person=True)
+        mp.undo()
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -2797,7 +2886,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
-                   _ai_spend, _assistant, _oob_onboard, _sdn,
+                   _ai_spend, _assistant, _oob_onboard, _sdn, _heal_and_notify,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).

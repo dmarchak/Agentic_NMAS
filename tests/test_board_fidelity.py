@@ -87,7 +87,11 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_ai_feedback.html": "ai-feedback.md",
               # A change record drafted in the deploy preview (board CR, signed off under the
               # Phase 7 mode 2026-10-28; PHASE8_PLAN 16.11 item 3).
-              "_change_record.html": "change-record.md"}
+              "_change_record.html": "change-record.md",
+              # Board H (heal to intent, approved by the operator 2026-11-03; part H9): a
+              # network's Self-healing tab (artboard A) and Settings › Installation ›
+              # Notifications (artboard B).
+              "_heal.html": "heal-policy.md", "_notify.html": "notifications.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -30,7 +30,7 @@
   <div class="page-title">
     <h1>Settings · {{ v.network }} {{ info('settings') }}</h1>
     <p class="sub">{% if v.is_default %}Default is the base layer: its values are set here, and every network that inherits takes them. Each card names who that is.{% else %}{{ v.network }}'s own settings: each card says where its values come from, and chooses for itself.{% endif %}
-      Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.</p>
+      Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.{% if v.tab == 'heal' %} Self-healing is each network's own: no network inherits it.{% endif %}</p>
   </div>
 </div>
 {% include "v2/_settings_scope.html" %}
@@ -46,9 +46,14 @@
 {%- if v.error %}
 <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>{{ v.network }}'s settings could not be read.</strong> {{ v.error }}. Nothing of {{ v.network }} is drawn as known, and every switch refuses until the file is readable again.</div></div>
 {%- else %}
+{%- if heal %}
+{#- Board H, artboard A (H9): the network's own heal policy and who is told, never inherited. -#}
+{% with h=heal, list_name=v.network, change=None %}{% include "v2/_heal.html" %}{% endwith %}
+{%- else %}
 <div class="set-cards">
   {%- for c in v.cards %}{% with list_name=v.network, is_default=v.is_default, result=None %}{% include "v2/_settings_card.html" %}{% endwith %}{% endfor %}
 </div>
+{%- endif %}
 {%- if sdn %}
 {#- PHASE8_PLAN 17.1 S2's interface (board SdnSettings): the network's own SDN controllers,
     never Default's (C1841), on its own card. -#}

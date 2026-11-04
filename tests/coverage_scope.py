@@ -92,6 +92,9 @@ EXCEPTIONS = {
     "modules/save_page.py": (SUPPORT, "the Save page's model"),
     "modules/saved_views.py": (SUPPORT, "saved views on the pages"),
     "modules/settings_page.py": (SUPPORT, "the Settings page's model"),
+    "modules/heal_page.py": (SUPPORT, "the Self-healing tab's model (board H, H9)"),
+    "modules/notify_page.py": (SUPPORT, "Settings › Installation › Notifications' model (board "
+                                        "H, H9)"),
     "modules/settings_schema.py": (SUPPORT, "the settings' schema"),
     "modules/settings_scope.py": (SUPPORT, "where each setting lives"),
     "modules/topology_layout.py": (SUPPORT, "the Topology page's layout"),

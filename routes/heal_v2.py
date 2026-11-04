@@ -1,77 +1,69 @@
-"""routes/heal_v2.py — heal to intent's policy routes (board H, part H1;
-docs/HEAL_TO_INTENT.md sections 6, 7, 9 and 16).
+"""routes/heal_v2.py — heal to intent's Self-healing tab and its policy routes (board H, parts
+H1 and H9; docs/HEAL_TO_INTENT.md sections 6, 7, 9, 10 and 16).
 
 Each network's heal policy, previewed and confirmed by hash as a verified person with a reason;
-its one-click Turn off; and the installation's kill switch (stop at once, resume previewed and
-confirmed by hash). Every write is `modules/heal/policy.py`'s; nothing here contacts a device.
-Each answers ``{"ok", "error", ...}``; the Self-healing tab that draws and posts them is H9's
-(board H, artboard A), which turns these answers into its fragments.
+its one-click Turn off; who is told about its healing; and the installation's kill switch (stop
+at once, resume previewed and confirmed by hash). Every policy write is `modules/heal/policy.py`'s
+and Who is told's `modules/heal_notify.py`'s; nothing here contacts a device.
+
+The Self-healing tab (board H, artboard A: `templates/v2/_heal.html`, its model
+`modules/heal_page.py`) posts each route with htmx and is answered with its fragment: the tab
+again with the result in place, or the change card again with the refusal and what was typed.
+A request that is not htmx's is answered ``{"ok", "error", ...}`` as H1 built them.
 """
 
 import json
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 log = logging.getLogger(__name__)
 
 bp = Blueprint("heal_v2", __name__, url_prefix="/v2/settings")
 
 
-def gates() -> dict:
-    """The routes' gates, for `modules/route_gates.py`'s GATES. **Not registered until H9:** an
-    endpoint with no page waits for its page (the coordinator's decision, 2026-11-03), so
-    `routes/__init__.py` does not register `bp`, and H9 moves these into GATES, `invalidates`
-    into `invalidation.DECLARED` and `history` into `operation_stages.HISTORY` in the commit
-    that registers it. The policy's confirm and resume
-    refuse anyone but a verified person too, whatever configure's settings allow a service."""
-    from modules.route_gates import Gate
+def _prefix_rows(table: dict) -> dict:
+    return {k: v for k, v in table.items() if k.startswith(bp.name + ".")}
 
-    K, N = "configure", "not_device"
-    return {
-        "heal_v2.policy_preview": Gate(N, "previews a change to one network's heal policy (its mode, AUTO's expiry, the kinds and the hard stops) in the six parts with the fingerprint its confirm sends; writes nothing and sends nothing to a device"),
-        "heal_v2.policy_confirm": Gate(K, "sets one network's heal policy as previewed, bound to the preview's fingerprint, as a verified person with a reason (C2009: AUTO only on a network marked lab, at most 7 days, then dry run); recorded in the network's settings record with the values before and after; sends nothing to a device"),
-        "heal_v2.turn_off": Gate(K, "turns self-healing off for one network at once, one press, no confirm; recorded with who and when; a heal already applying finishes its own verify and rollback"),
-        "heal_v2.stop_everywhere": Gate(K, "stops self-healing on every network at once (the installation's kill switch), one press, no confirm; recorded with who, when and why"),
-        "heal_v2.resume_preview": Gate(N, "previews resuming self-healing: each network's mode once resumed and the fingerprint its confirm sends; writes nothing"),
-        "heal_v2.resume": Gate(K, "resumes self-healing everywhere as previewed, bound to the preview's fingerprint, as a verified person with a reason; recorded in the installation's settings record"),
-    }
+
+def gates() -> dict:
+    """These routes' rows of `modules/route_gates.py`'s GATES, where they are declared (H9
+    moved them there with the tab that posts them)."""
+    from modules.route_gates import GATES
+
+    return _prefix_rows(GATES)
 
 
 def invalidates() -> dict:
-    """What each route invalidates, for `modules/invalidation.py`'s DECLARED (moved there by
-    H9, as `gates` is): the policy and the kill switch are settings."""
-    from modules.invalidation import Nothing
+    """These routes' rows of `modules/invalidation.py`'s DECLARED."""
+    from modules.invalidation import DECLARED
 
-    return {
-        "heal_v2.policy_preview": Nothing("previews a heal policy change; writes nothing"),
-        "heal_v2.policy_confirm": ("settings",),
-        "heal_v2.turn_off": ("settings",),
-        "heal_v2.stop_everywhere": ("settings",),
-        "heal_v2.resume_preview": Nothing("previews resuming self-healing; writes nothing"),
-        "heal_v2.resume": ("settings",),
-    }
+    return _prefix_rows(DECLARED)
 
 
 def history() -> dict:
-    """Where each configure route's record is read later, for `modules/operation_stages.py`'s
-    HISTORY (moved there by H9, as `gates` is): each is kept in a settings record with who,
-    when and why, and none is one device's record."""
-    from modules.operation_stages import NOT_A_DEVICE
+    """These routes' rows of `modules/operation_stages.py`'s HISTORY."""
+    from modules.operation_stages import HISTORY
 
-    return {k: NOT_A_DEVICE for k in ("heal_v2.policy_confirm", "heal_v2.turn_off",
-                                      "heal_v2.stop_everywhere", "heal_v2.resume")}
+    return _prefix_rows(HISTORY)
+
+
+def _htmx() -> bool:
+    return bool(request.headers.get("HX-Request"))
 
 
 def _answer(body: dict, code: int = 200):
     return jsonify(dict({"ok": code == 200, "error": ""}, **body)), code
 
 
-def _refused(exc) -> tuple:
+def _code(exc) -> int:
     from modules.heal import policy as H
 
-    return _answer({"ok": False, "error": str(exc)}, 403 if isinstance(exc, H.NotAPerson)
-                   else 409)
+    return 403 if isinstance(exc, H.NotAPerson) else 409
+
+
+def _refused(exc) -> tuple:
+    return _answer({"ok": False, "error": str(exc)}, _code(exc))
 
 
 def _who() -> dict:
@@ -84,46 +76,107 @@ def _who() -> dict:
             "person": bool(ident is not None and ident.kind == "person")}
 
 
-def _proposed(form) -> dict:
-    """The policy values the form sent, each as its schema's type (a list as JSON). AUTO's
-    expiry is sent as ``heal_mode_until`` (UTC) or as ``auto_hours`` from now."""
-    import time
+def _fragment(template: str, code: int = 200, **ctx):
+    from routes.device_v2 import _strict
 
+    return _strict(render_template(template, **ctx), code)
+
+
+def _tab(list_name: str, code: int = 200, change: dict = None, **ctx):
+    """The Self-healing tab, drawn again with an answer in place (`ctx`), and a change card
+    open when *change* names one."""
+    from modules import heal_page
+
+    for kind in heal_page.ANSWER_KEYS:
+        if ctx.get(kind):
+            ctx[kind] = heal_page.answer(kind, ctx[kind])
+    return _fragment("v2/_heal.html", code, h=heal_page.view(list_name), list_name=list_name,
+                     change=change, **ctx)
+
+
+def _proposed(form) -> dict:
+    """The policy values the form sent, each as its schema's type. A list is sent as one
+    field per item beside an empty one (so none ticked is an empty list), or as JSON. AUTO's
+    expiry is typed as ``2026-11-20 18:00 UTC`` or sent as the policy keeps it."""
+    from modules import heal_page
     from modules.heal import policy as H
     from routes.settings_v2 import _typed
 
-    sent = {k: form.get(k) for k in H.POLICY_KEYS if k in form}
+    lists = (H.KINDS_AUTO_KEY, H.KINDS_PROPOSE_KEY)
+    sent = {k: form.get(k) for k in H.POLICY_KEYS if k in form and k not in lists}
     out = _typed(sent)
-    hours = (form.get("auto_hours") or "").strip()
-    if hours and not out.get(H.UNTIL_KEY):
-        try:
-            out[H.UNTIL_KEY] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                             time.gmtime(time.time() + float(hours) * 3600))
-        except ValueError:
-            raise H.PolicyRefused(f"AUTO's hours are a number, not {hours!r}") from None
+    for k in lists:
+        if k not in form:
+            continue
+        items = form.getlist(k)
+        if len(items) == 1 and items[0].strip().startswith("["):
+            out.update(_typed({k: items[0]}))
+        else:
+            out[k] = [i for i in items if i]
+    if out.get(H.UNTIL_KEY):
+        out[H.UNTIL_KEY] = heal_page.parse_until(out[H.UNTIL_KEY])
     return out
 
+
+def _part(form) -> str:
+    return (form.get("part") or "mode").strip()
+
+
+# ── The tab's reads ─────────────────────────────────────────────────────────────────────────
+
+@bp.route("/network/<list_name>/heal/tab", methods=["GET"])
+def tab(list_name):
+    """The Self-healing tab at rest (Cancel, and Close after an answer)."""
+    return _tab(list_name)
+
+
+@bp.route("/network/<list_name>/heal/change", methods=["GET"])
+def change_card(list_name):
+    """Change mode…, Change fix kinds… or a hard stop's Edit…: the tab with the change card
+    open for that part, holding the stored values; nothing is previewed until a choice is
+    made."""
+    from modules import heal_page
+    from modules.heal import policy as H
+
+    part = (request.args.get("part") or "mode").strip()
+    try:
+        ch = heal_page.change(list_name, part)
+    except H.PolicyRefused as exc:
+        return _tab(list_name, 404, refused=str(exc))
+    return _tab(list_name, change=ch)
+
+
+# ── A change: preview, then confirm ─────────────────────────────────────────────────────────
 
 @bp.route("/network/<list_name>/heal/preview", methods=["POST"])
 def policy_preview(list_name):
     """What the change to the network's heal policy does, in the six parts; writes nothing."""
-    from modules import preview_confirm
+    from modules import heal_page, preview_confirm
     from modules.heal import policy as H
 
     try:
         p = H.plan(list_name, _proposed(request.form))
     except H.PolicyRefused as exc:
+        if _htmx():
+            return _fragment("v2/_heal_preview.html", 409, list_name=list_name,
+                             refused=str(exc))
         return _refused(exc)
+    pv = preview_confirm.heal_policy_preview(p, preview_confirm.confirm_part(request,
+                                                                            "configure"))
+    if _htmx():
+        return _fragment("v2/_heal_preview.html", list_name=list_name,
+                         p=heal_page.preview(list_name, p, _part(request.form)),
+                         pv=heal_page.six_parts(pv))
     return _answer({"network": list_name, "fingerprint": p["fingerprint"],
                     "confirmable": p["confirmable"], "operands": p["operands"],
-                    "preview": preview_confirm.heal_policy_preview(
-                        p, preview_confirm.confirm_part(request, "configure"))})
+                    "preview": pv})
 
 
 @bp.route("/network/<list_name>/heal", methods=["POST"])
 def policy_confirm(list_name):
     """The change as previewed: a verified person, a reason, the preview's fingerprint;
     re-planned and compared, written, recorded."""
+    from modules import heal_page
     from modules.heal import policy as H
 
     form = request.form
@@ -135,7 +188,15 @@ def policy_confirm(list_name):
         out = H.apply(list_name, _proposed(form), form.get("fingerprint") or "",
                       reason=form.get("reason") or "", seen=seen, **_who())
     except H.PolicyRefused as exc:
+        if _htmx():
+            try:
+                ch = heal_page.change(list_name, _part(form), form)
+            except H.PolicyRefused:
+                ch = None
+            return _tab(list_name, _code(exc), change=ch, refused=str(exc))
         return _refused(exc)
+    if _htmx():
+        return _tab(list_name, saved=out)
     return _answer(out)
 
 
@@ -148,8 +209,52 @@ def turn_off(list_name):
     try:
         out = H.turn_off(list_name, actor=who["actor"], actor_verified=who["actor_verified"])
     except H.PolicyRefused as exc:
+        if _htmx():
+            return _tab(list_name, _code(exc), refused=str(exc))
         return _refused(exc)
+    if _htmx():
+        return _tab(list_name, off=out)
     return _answer(out)
+
+
+# ── Who is told ─────────────────────────────────────────────────────────────────────────────
+
+@bp.route("/network/<list_name>/heal/notify", methods=["POST"])
+def notify_save(list_name):
+    """Who is told: the network's team and the events that tell it, compared with what the
+    card drew, written and recorded."""
+    from modules import heal_notify
+
+    who = _who()
+    form = request.form
+    try:
+        loaded = json.loads(form.get("loaded") or "null")
+    except ValueError:
+        loaded = None
+    try:
+        out = heal_notify.save(list_name, form.get("team") or "", form.getlist("events"),
+                               actor=who["actor"], actor_verified=who["actor_verified"],
+                               loaded=loaded)
+    except heal_notify.Refused as exc:
+        return _tab(list_name, 409, told_refused=str(exc))
+    return _tab(list_name, told_saved=out)
+
+
+# ── The installation's kill switch ──────────────────────────────────────────────────────────
+
+def _network() -> str:
+    """The network whose tab asked (its address's ``list_name``, which `list_param` checks):
+    the tab drawn again is that one's."""
+    from modules.list_settings import DEFAULT_LIST
+
+    return (request.args.get("list_name") or DEFAULT_LIST).strip()
+
+
+@bp.route("/installation/heal/stop/ask", methods=["GET"])
+def stop_ask():
+    """Stop self-healing everywhere…: the tab with the stop's card open, asking why (never
+    required: a stop must not wait on typing)."""
+    return _tab(_network(), stopping=True)
 
 
 @bp.route("/installation/heal/stop", methods=["POST"])
@@ -162,7 +267,11 @@ def stop_everywhere():
         out = H.stop(actor=who["actor"], actor_verified=who["actor_verified"],
                      why=request.form.get("why") or "")
     except H.PolicyRefused as exc:
+        if _htmx():
+            return _tab(_network(), _code(exc), stopping=True, refused=str(exc))
         return _refused(exc)
+    if _htmx():
+        return _tab(_network(), stopped_now=out)
     return _answer(out)
 
 
@@ -176,20 +285,38 @@ def resume_preview():
     try:
         p = H.resume_plan()
     except H.PolicyRefused as exc:
+        if _htmx():
+            return _tab(_network(), _code(exc), refused=str(exc))
         return _refused(exc)
+    confirm = preview_confirm.confirm_part(request, "configure")
+    if _htmx():
+        from modules import heal_page
+        return _tab(_network(), resuming=heal_page.resuming(p, confirm))
     return _answer({"networks": p["networks"], "fingerprint": p["fingerprint"],
-                    "stopped": p["stopped"], "why": p["why"],
-                    "confirm": preview_confirm.confirm_part(request, "configure")})
+                    "stopped": p["stopped"], "why": p["why"], "confirm": confirm})
 
 
 @bp.route("/installation/heal/resume", methods=["POST"])
 def resume():
     """Resume self-healing as previewed: a verified person, a reason, the fingerprint."""
+    from modules import preview_confirm
     from modules.heal import policy as H
 
     try:
         out = H.resume(request.form.get("fingerprint") or "",
                        reason=request.form.get("reason") or "", **_who())
     except H.PolicyRefused as exc:
+        if _htmx():
+            try:
+                p = H.resume_plan()
+            except H.PolicyRefused:
+                return _tab(_network(), _code(exc), refused=str(exc))
+            from modules import heal_page
+            return _tab(_network(), _code(exc), refused=str(exc),
+                        resuming=heal_page.resuming(
+                            p, preview_confirm.confirm_part(request, "configure"),
+                            request.form.get("reason") or ""))
         return _refused(exc)
+    if _htmx():
+        return _tab(_network(), resumed=out)
     return _answer(out)

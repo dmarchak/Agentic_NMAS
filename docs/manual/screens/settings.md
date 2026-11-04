@@ -5,6 +5,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 ## A network's page {#network}
 
 - **Its mode**, on the banner: it inherits from Default, or it is standalone and takes nothing from Default, with who made it so and when. The banner's button opens the switch's preview (see [Inherit or stand alone](settings-switch)).
+- **Self-healing**, a third tab, is the network's own heal policy and who is told about it (see [Self-healing](#self-healing)).
 - **One card per group**, on two tabs (Integrations: Grafana, Grafana dashboards, Prometheus, Loki, Kea, Monitoring profile and S3 archive; Network: Verify settle windows, Deploy workers, Deploy failure limit, Golden tags kept, Configuration read timeout, NetBox excluded VRFs, the three Show commands settings (answer cap in KiB, devices read at once, answers kept in days), SDN: escalate an unanswered incident after (minutes) (15 unless set; see [SDN](sdn#responses)), and the Inventory source card). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from. A secret shows as "set", never its value.
 - **The S3 archive** is Mercury's connection to MinIO: Default's values are every network's
   unless a network sets its own. It holds each network's goldens, masked (a community, a
@@ -51,7 +52,7 @@ Default's cards show its values and, on each, who takes them: "inherited by 12 �
 
 ## Installation {#installation}
 
-What every network shares, standalone ones included: these are the installation's own, never a network's or Default's, so a change here changes all of them. Its tabs are Connections, Access and identity, Platforms and roles, Console servers, Diagnostics and AI (the Server card is on Connections; AI and workflow left with the AI family, 2026-10-14, and AI came back as each network's background AI features, 2026-10-27).
+What every network shares, standalone ones included: these are the installation's own, never a network's or Default's, so a change here changes all of them. Its tabs are Connections, Access and identity, Platforms and roles, Console servers, Diagnostics, AI and Notifications (see [Notifications](#notifications); the Server card is on Connections; AI and workflow left with the AI family, 2026-10-14, and AI came back as each network's background AI features, 2026-10-27).
 
 - **Records database** (Connections): the database Mercury's records move to, store by store (receipts first). With no host it is **off**: every store stays on its files, as today. Its card says whether it is **answering** (the last Test passed, with the server's version, when and by whom), **not answering** (the check that failed, named), or **not tested yet**, and when a Save or Replace came after the last Test. **Save** writes the host, port, database and role; it never opens the database, so it works with the database down or the password wrong, and the change is recorded in the installation's settings record. **Test** asks the database six things and names the first that fails: it signs in, the server is PostgreSQL 18, the role owns its database, the role is not a superuser, Mercury reaches it on a loopback address, and a temporary row written and read back is rolled back. The password shows only as set; **Replace…** opens the rotation order: change it on the server first, with the host step `scripts/host-steps/postgres-rotate.sh`, then enter the same password here, and its Test runs at once (see [The records database](records-database)).
 - **Record stores** (Connections): the 24 stores that can move to the records database, its
@@ -149,6 +150,96 @@ each controller is doing is on [SDN](sdn).
   refused when another person changed the same connection since the form was drawn, naming each
   field and both values. A save or a removal is recorded in the network's settings record with
   who, when and the names of what changed, never a credential.
+
+## Self-healing {#self-healing}
+
+A network's own heal policy, on its **Self-healing** tab beside Integrations and Network
+(Default's and every other network's). It is each network's own and never inherited from
+Default: turning healing on for Default turns it on for no other network. Self-healing restores
+a device to its committed intent; nothing on this tab contacts a device.
+
+- **Self-healing on <network>**: the mode now (**Off**, **Dry run**: every step but the apply,
+  each record saying what it would have done, or **Auto**: the Tier 1 kinds allowed below heal
+  without a person until the expiry, then dry run), with why in words ("dry run: AUTO … expired",
+  "off: self-healing is stopped everywhere"); who set it, when and their reason; the network's
+  stage (Auto is allowed only on a network marked lab, until the AUTO production-readiness
+  gate); production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
+  count); and the policy's fingerprint. Values a person did not confirm are not in force, and
+  the chip says **not in force: off**. **History of this policy** opens the network's own
+  records of it: each confirmed change, each Turn off, an Auto that reached its expiry, and Who
+  is told's saves.
+- **Change mode…** opens the change beside the policy: choose **Off**, **Dry run** or **Auto**
+  (drawn disabled on a network not marked lab, saying why), and for Auto its **Auto until**, in
+  UTC (`2026-11-20 18:00 UTC`), at most 7 days away. Each choice is previewed in place, writing
+  nothing: **What this changes** (the mode, the kinds that heal without a person, the kinds
+  proposed, each hard stop that moves; now and after the confirm), each check that refuses it,
+  and the preview's six parts one level down. The confirm names the work: **Turn on Auto for
+  <network> until <time>**, **Set <network> to dry run** or **Turn self-healing off for
+  <network>** (and, for the cards below, **Save the fix kinds for <network>** or **Set
+  “<guard>” for <network>**). It needs a verified person and a **Reason**. It is bound to
+  the preview's fingerprint: if the policy, the network's stage or the kill switch moved since,
+  it is refused naming what moved, and nothing is saved. Its steps are `check`, `re-plan`,
+  `compare`, `write` and `record`. The answer is drawn in the policy's card.
+- **Turn off**: one press, no confirm, effective at once, recorded with who and when (its steps
+  `write` and `record`). Nothing new starts; a heal already applying finishes its own verify and
+  rollback. Turning a network back on is a change, previewed and confirmed as above.
+- **Fix kinds**: each kind's tier, fixed by Mercury (1 heals in Auto, 2 is proposed to a person,
+  3 only alerts, 4 is never automatic). **Change fix kinds…** chooses which Tier 1 kinds heal in
+  Auto (one more at a time, each after its lab scenario passed) and which Tier 2 kinds are
+  proposed, previewed and confirmed as a mode change is.
+- **Hard stops and guards**: each value, where it comes from (set, lab default or default) and
+  its default, with **Edit…**, previewed and confirmed as a mode change is. On a network marked
+  lab the grace period and the hold after a nearby change read 120 s and 60 minutes unless set.
+  Planned work, held devices and no-change windows always stop a heal; a rolled-back heal always
+  halts the policy until a person lifts it.
+- **Who is told**: the team told about this network's healing (its addresses and webhooks are on
+  [Notifications](#notifications)) and the events that tell it: can't fix, a fix waiting for a
+  person, halted or held, every automatic heal, and cleared. **Save** is refused when the team
+  no longer exists or another person changed it since the card was drawn, naming both; its steps
+  are `check`, `write` and `record`. The AI analysis of a can't-fix is not built yet, and the
+  card says so.
+- **Stop self-healing everywhere…** (the installation's kill switch) says what stopping does,
+  asks why (never required) and stops every network at once with **Stop self-healing
+  everywhere**: one press, no confirm, recorded with who, when and why. While stopped, every
+  network's tab says so, and **Resume self-healing…** previews each network's mode once resumed;
+  **Resume self-healing everywhere** needs a verified person and a reason, and is refused if what
+  resuming does moved since the preview.
+
+## Notifications {#notifications}
+
+Settings › Installation › **Notifications**: who Mercury tells, for every network. Each network's
+Self-healing tab chooses which team it tells.
+
+- **Email relay**: the relay host (empty: no email is sent), its port, **Security** (STARTTLS,
+  required; TLS from the start; or none, only to a relay on this host's loopback), the username,
+  the sender (**From**) and Mercury's address for links (what people open Mercury by, so a
+  message's link opens; empty, a message's link is the page's path alone and says so). **Save**
+  writes what you changed, recorded old and new and drawn on History; it is refused when another
+  person changed a field since the card was drawn, naming both values. The password shows only
+  as set, by whom and when; **Replace…** takes a new one, and **Store it** stores it encrypted,
+  never shown. **Test send to…** asks which of the teams' addresses, and **Send the test** sends
+  a test message there through the relay as saved, saying in the card whether it was sent; its
+  head says when mail was last sent.
+- **Webhooks**: each with its team, its URL drawn as its scheme and host only (the rest may be the
+  receiver's token), its format and its last delivery. **Add a webhook…** takes the team, a
+  name, the URL (https, or http only to this host's loopback; IPv4 or IPv6), the format
+  (Generic, signed: JSON with an HMAC-SHA256 signature over its timestamp and body; Slack's,
+  Teams' and PagerDuty's come later) and the signing secret, typed once and never shown; **Add
+  and send a code** adds it unverified and off and sends it a verification code, which you read
+  where it posts and type in its team. **Test send** sends it one message now; **Edit…** changes
+  its name, URL or secret (a new URL is a new receiver, off until its code is typed back);
+  **Remove…** says what removing does first.
+- **Teams**: **Add a team…** and **Add the team**, then each team's addresses and webhooks.
+  **Send a code** sends one to a destination that has none waiting. **Add and send a code**
+  adds an address unverified and off and emails it a code, which expires after 15 minutes; type
+  it and press **Verify**, which verifies the address and turns it on (a wrong code spends one of
+  five tries). **Send again** sends a new code. A verified destination has **Turn off** (it then
+  receives nothing) or **Turn on**. **Remove…** asks first, and says that its delivery log rows
+  stay: press **Remove** to remove it, or **Keep it**. **Told about** names the networks whose Self-healing tab chose the team.
+- **Delivery log**: every attempt is a row in [History](history), kind notification, with its
+  channel, its recipient masked to its domain (a webhook its host), its outcome and error. A
+  failed delivery is tried three times and then raised under Needs attention, with its error. A
+  message carries no configuration line and no secret.
 
 ## What is not here yet {#not-yet}
 

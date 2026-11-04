@@ -116,6 +116,13 @@ def _bodies(v):
         "settings_v2.network_source_refresh": (409, ("form", {}),
                                                "the planted network is its own list: refused, "
                                                "naming it as not NetBox-sourced"),
+        # Board H (H9): a heal policy change's preview and resuming's (routes/heal_v2.py).
+        "heal_v2.policy_preview": (200, ("form", {"heal_mode": "dry_run"}),
+                                   "the planted network's heal policy set to dry run, "
+                                   "previewed: its six parts, nothing written"),
+        "heal_v2.resume_preview": (409, ("form", {}),
+                                   "self-healing is not stopped on the planted store, so there "
+                                   "is nothing to resume: refused, nothing written"),
         "settings_v2.network_create_preview": (200, ("form", {"name": "Swept Net"}),
                                                "a new network's preview: its folder named, "
                                                "nothing created"),

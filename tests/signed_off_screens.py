@@ -156,7 +156,11 @@ SIGNED_OFF = {
                                     "bar and picker (H). Installation (F) is its own page "
                                     "(settings_installation.html, below). Not yet: G's warning "
                                     "on a Default change, board I's creation form (the v1 gap "
-                                    "the operator accepted)"),
+                                    "the operator accepted). Its Self-healing tab: board H, "
+                                    "artboard A (docs/boards/heal-to-intent.html), approved by "
+                                    "the operator 2026-11-03 (docs/STANDING_APPROVAL_LOG.md, "
+                                    "\"Board H approved by the operator\"), built in H9 and "
+                                    "compared, docs/fidelity/heal-policy.md"),
     "settings_installation.html": ("2026-10-09", "Settings › Installation: board F (approved "
                                    "2026-10-05) with board F2, its records database card "
                                    "(approved 2026-10-09 with the operator's three conditions) "
@@ -174,7 +178,11 @@ SIGNED_OFF = {
                                    "(SettingsAiOn) on the mockups canvas's page \"C1843: AI cost "
                                    "safety\", signed off under the Phase 7 mode 2026-10-27 "
                                    "(docs/STANDING_APPROVAL_LOG.md, \"Boards AI1 to AI5\"), "
-                                   "compared, docs/fidelity/settings-ai.md"),
+                                   "compared, docs/fidelity/settings-ai.md. Its Notifications "
+                                   "tab (the email relay, webhooks and teams): board H, "
+                                   "artboard B (docs/boards/heal-to-intent.html), approved by "
+                                   "the operator 2026-11-03, built in H9 and compared, "
+                                   "docs/fidelity/notifications.md"),
     "netbox.html": ("2026-10-10", "Source of truth › NetBox (cutover blocker 2; the operator's "
                                   "decision 5 of 2026-10-05, a v2 board): drawn under the Phase "
                                   "7 operating mode and counted as signed off (docs/STANDING_"

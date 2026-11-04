@@ -40,10 +40,13 @@ log = logging.getLogger(__name__)
 #: Console servers (O8 of out-of-band ZTP, board A of
 #: docs/boards/console-ztp.html): the installation's console-server ports, their keys and host
 #: keys (routes/console_servers_v2.py).
+#: Notifications (board H, artboard B; H9): the email relay, the webhooks and the teams
+#: (modules/notify, templates/v2/_notify.html).
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("console", "Console servers"),
-        ("diagnostics", "Diagnostics"), ("ai", "AI"))
-BUILT_TABS = ("connections", "access", "platforms", "console", "diagnostics", "ai")
+        ("diagnostics", "Diagnostics"), ("ai", "AI"), ("notifications", "Notifications"))
+BUILT_TABS = ("connections", "access", "platforms", "console", "diagnostics", "ai",
+              "notifications")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")
@@ -299,6 +302,10 @@ KINDS = {
     "email": "an email address",
     "usd": "a positive amount in US dollars, up to four decimals, with no maximum",
     "zone": "UTC, or a time zone's name such as America/Denver",
+    # The email relay's (board H, artboard B; H9): each may be empty, which sends no email.
+    "relay_host": "a DNS name or an IPv4 or IPv6 address, or empty for no relay",
+    "sender": "one email address, or empty",
+    "optional": "text on one line, or empty",
 }
 
 
@@ -366,6 +373,30 @@ CARDS = {
         "integration": None, "test": "ai",
         "note": "Test sends one small call to the model, through the mask and the caps, and "
                 "records it under History › AI calls.",
+    },
+    # Notifications' email relay (board H, artboard B; H9): the installation's one relay, on
+    # the Notifications tab beside the webhooks and teams, drawn by its own template
+    # (`template`). Its password is the credential store's (`credentials.set_notify_secret`,
+    # "relay"), never a setting, so `secret` is None and its Replace… and Test send to… are
+    # routes/notify_v2.py's. Empty host: no email is sent.
+    "relay": {
+        "group": "notify_relay", "title": "Email relay", "tab": "notifications",
+        "template": "v2/_notify_relay.html",
+        "fields": (_f("notify_smtp_host", "Relay host", "relay_host",
+                      "empty: no email is sent"),
+                   _f("notify_smtp_port", "Port", "port"),
+                   _f("notify_smtp_tls", "Security", "choice",
+                      "plain only to a relay on this host's loopback",
+                      ("starttls", "implicit", "none")),
+                   _f("notify_smtp_username", "Username", "optional",
+                      "empty: the relay takes mail without a login"),
+                   _f("notify_smtp_from", "From", "sender", "the sender address, one address"),
+                   _f("notify_link_base", "Mercury's address, for links", "url",
+                      "what people open Mercury by (https://mercury.example), no path; empty: "
+                      "a message's link is the page's path alone, and it says so")),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "Uses the relay you choose. Mercury sends only from this host and stores the "
+                "password encrypted.",
     },
 }
 
@@ -685,6 +716,19 @@ def _value(f: dict, raw):
                           + ("; to stop AI, turn hosted AI off; for no cap, choose No cap"
                              if f["key"] == NO_CAP_KEY else ""))
         return float(plain)
+    if kind in ("relay_host", "sender"):
+        from modules.notify import addresses
+        if not text:
+            return text
+        try:
+            return (addresses.check_host(text) if kind == "relay_host"
+                    else addresses.check_email(text))
+        except ValueError:
+            raise no() from None
+    if kind == "optional":
+        if "\n" in text or "\r" in text:
+            raise no()
+        return text
     if kind == "zone":
         from modules.ai import calls
         if not re.fullmatch(r"[A-Za-z0-9_+/-]{1,64}", text) or not calls.valid_boundary(text):

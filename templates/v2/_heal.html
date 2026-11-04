@@ -1,0 +1,181 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Settings · <network> › Self-healing (board H, artboard A, approved by the operator
+    2026-11-03; part H9; docs/fidelity/heal-policy.md). The network's own heal policy, never
+    inherited from Default: at left the mode at rest and the tier per fix kind; at right a change
+    being previewed (when one is open), the hard stops, who is told, and the installation's kill
+    switch. Every control posts routes/heal_v2.py, answered with this tab again and its answer in
+    place; nothing here contacts a device. From modules/heal_page.view (and .change for the
+    change card). -#}
+{%- set cur = h.cur -%}
+{%- set net = h.network -%}
+<div class="heal-tab" id="heal-tab">
+  {%- if refused and not change and not stopping and not resuming %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}. Nothing was changed.</p></div>
+  {%- endif %}
+  {%- if h.stopped.stopped %}
+  <div class="notice notice-danger set-result" role="status" id="heal-stopped">{{ icon('warn', 16) }}<div><p><strong>Self-healing is stopped everywhere.</strong> {{ h.stopped.words }}. No network heals, whatever its mode below, until a person resumes it.</p>
+    {%- if not resuming %}
+    <p class="set-foot"><span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('heal_v2.resume_preview', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this" title="Says what each network does once resumed; nothing resumes until you confirm"{{ gate('configure') }}><span class="op-idle">Resume self-healing…</span><span class="op-busy">Previewing…</span></button>{{ how('settings', 'self-healing', compact=True, op='resuming self-healing') }}</span></p>
+    {%- endif %}</div></div>
+  {%- endif %}
+  {%- if resumed %}
+  <div class="notice notice-{{ 'muted' if resumed.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p><strong>Self-healing resumed everywhere</strong> {{ stamp(resumed.at) }}, with your reason: each network heals as its own mode says.{% if not resumed.recorded %} <strong>Resumed, and its record could not be written.</strong>{% endif %}</p></div>
+  {%- endif %}
+<div class="heal-cols">
+<div class="heal-col">
+  <section class="card set-card heal-card" id="heal-mode" aria-labelledby="h-heal-mode">
+    <div class="card-head"><h2 id="h-heal-mode">Self-healing on {{ net }}</h2>{{ badge(h.chip[0], h.chip[1]) }}</div>
+    {%- if saved %}
+    <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p><strong>Confirmed:</strong> {{ net }}'s self-healing is {{ {'off': 'off', 'dry_run': 'dry run', 'auto': 'Auto'}[saved.mode] }}{% if saved.until %} until {{ saved.until }}, then dry run{% endif %}, policy <span class="mono">{{ saved.policy_fingerprint }}</span>, {{ saved.changes | length }} value(s) changed, recorded with your reason {{ stamp(saved.at) }}. Nothing was sent to a device.{% if not saved.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %}</p></div>
+    {%- endif %}
+    {%- if off %}
+    <div class="notice notice-{{ 'muted' if off.recorded or off.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if off.nothing %}<strong>{{ off.words }}.</strong>{% else %}<strong>Turned off</strong> {{ stamp(off.at) }}: {{ off.words }}.{% if not off.recorded %} <strong>Turned off, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+    {%- endif %}
+    {%- if cur.state != 'ok' %}
+    <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ cur.error }}. A policy that cannot be read is never read as on, and every change is refused until it can be read.</p></div>
+    {%- endif %}
+    <dl class="heal-kv">
+      <dt>Mode</dt><dd><strong>{{ h.means.split(':')[0] }}</strong>:{{ h.means.split(':', 1)[1] }}{% if cur.mode == 'auto' and h.until_words %} ({{ h.until_words }}){% endif %}
+        <span class="set-origin heal-why">Now: {{ cur.words }}</span></dd>
+      <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}</dd>
+      <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }} <span class="muted">(Auto is allowed only on a network marked lab, until the AUTO production-readiness gate)</span></dd>
+      <dt>Production's bar</dt><dd>{{ h.bar }}. <span class="muted">Lab drills never count toward it.</span></dd>
+      <dt>Policy fingerprint</dt><dd class="mono">{{ cur.fingerprint or 'none' }}{% if cur.confirmed.fingerprint and cur.confirmed.fingerprint != cur.fingerprint %} <span class="set-origin">(confirmed {{ cur.confirmed.fingerprint }})</span>{% endif %}</dd>
+    </dl>
+    <div class="set-foot">
+      <span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part='mode') }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change beside the policy: nothing changes until you confirm it">Change mode…</a>{{ how('settings', 'self-healing', compact=True, op='changing the mode') }}</span>
+      {%- if cur.set and cur.set != 'off' %}
+      <span class="op-act"><button type="button" class="btn" data-op="settings" hx-post="{{ url_for('heal_v2.turn_off', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this" title="One press, no confirm: nothing new starts, and a heal already applying finishes its own verify and rollback"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('settings', 'self-healing', compact=True, op='Turn off') }}</span>
+      {%- endif %}
+      {{ how('settings', 'self-healing') }}
+    </div>
+    <details class="set-details" id="heal-history"><summary>History of this policy</summary>
+      {%- if h.history.state == 'unreadable' %}
+      <p class="small">{{ net }}'s settings record could not be read: {{ h.history.error }}.</p>
+      {%- elif not h.history.rows %}
+      <p class="small muted">No change to {{ net }}'s self-healing is recorded yet.</p>
+      {%- else %}
+      <ul class="set-list small">
+        {%- for r in h.history.rows %}
+        <li>{{ stamp(r.at) }} {{ r.who }}: {% if r.kind == 'heal_off' %}turned off (was {{ r.before }}){% elif r.kind == 'heal_auto_expired' %}Auto reached its expiry {{ r.until }}: dry run{% elif r.kind == 'heal_notify' %}Who is told saved{% else %}confirmed {{ r.mode }}{% if r.until %} until {{ r.until }}{% endif %} (policy <span class="mono">{{ r.policy_fingerprint }}</span>), “{{ r.reason }}”{% endif %}</li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+    </details>
+  </section>
+
+  <section class="card set-card heal-card" id="heal-kinds" aria-labelledby="h-heal-kinds">
+    <div class="card-head"><h2 id="h-heal-kinds">Fix kinds</h2><span class="card-head-how">{{ how('settings', 'self-healing') }}</span></div>
+    <p class="muted small heal-lead">A kind's tier is fixed by Mercury. Here you choose whether each Tier 1 kind heals in Auto or stays in dry run, and whether Tier 2 kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
+    <div class="table-wrap"><table class="table heal-table">
+      <thead><tr><th>Fix kind</th><th>Tier</th><th>In Auto</th></tr></thead>
+      <tbody>
+        {%- for k in h.kinds %}
+        <tr><td>{{ k.label }}</td>
+          <td>{{ badge('1 auto', 'ok') if k.tier == 1 else badge('2 propose', 'warn') }}</td>
+          <td><span class="seg heal-seg" aria-label="{{ k.on_words if k.on else k.off_words }}"><span class="seg-btn{{ ' on' if k.on }}">{{ k.on_words }}</span><span class="seg-btn{{ ' on' if not k.on }}">{{ k.off_words }}</span></span></td></tr>
+        {%- endfor %}
+        {%- for label, tier, words, why in h.fixed %}
+        <tr><td>{{ label }}</td><td>{{ badge('3 alert', 'muted') if tier == 3 else badge('4 never', 'danger') }}</td>
+          <td><span class="muted">{{ words }}</span> <span class="set-origin">{{ why }}</span></td></tr>
+        {%- endfor %}
+      </tbody>
+    </table></div>
+    <div class="set-foot"><span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part='kinds') }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change beside the policy: nothing changes until you confirm it">Change fix kinds…</a>{{ how('settings', 'self-healing', compact=True, op='changing the fix kinds') }}</span></div>
+  </section>
+</div>
+
+<div class="heal-col">
+  {%- if change %}{% include "v2/_heal_change.html" %}{% endif %}
+
+  <section class="card set-card heal-card" id="heal-guards" aria-labelledby="h-heal-guards">
+    <div class="card-head"><h2 id="h-heal-guards">Hard stops and guards</h2><span class="card-head-how">{{ how('settings', 'self-healing') }}</span></div>
+    <div class="table-wrap"><table class="table heal-table">
+      <thead><tr><th>Guard</th><th>Value</th><th>Default</th><th><span class="sr-only">Change</span></th></tr></thead>
+      <tbody>
+        {%- for g in h.guards %}
+        <tr><td>{{ g.label }}</td><td>{{ g.value }} <span class="set-origin">{{ g.source }}</span></td><td>{{ g.default }}</td>
+          <td class="set-row-acts"><span class="op-act"><a data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part=g.part) }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change: nothing changes until you confirm it">Edit…</a>{{ how('settings', 'self-healing', compact=True, op='changing a hard stop') }}</span></td></tr>
+        {%- endfor %}
+        {%- for label, words in h.always %}
+        <tr><td>{{ label }}</td><td colspan="2"><span class="muted">{{ words }}</span></td><td></td></tr>
+        {%- endfor %}
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="card set-card heal-card" id="heal-told" aria-labelledby="h-heal-told">
+    <div class="card-head"><h2 id="h-heal-told">Who is told</h2></div>
+    {%- if told_refused %}
+    <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not saved:</strong> {{ told_refused }}.</p></div>
+    {%- endif %}
+    {%- if told_saved %}
+    <div class="notice notice-{{ 'muted' if told_saved.recorded or told_saved.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if told_saved.nothing %}<strong>Nothing changed:</strong> Who is told already held what was sent.{% else %}<strong>Saved:</strong> {{ told_saved.team_name or 'no team' }} is told about {{ net }}'s self-healing, for {{ told_saved.events | length }} event(s), recorded {{ stamp(told_saved.at) }}.{% if not told_saved.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+    {%- endif %}
+    {%- if h.told.state != 'ok' %}
+    <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ h.told.error }}: nobody is told while it cannot be read.</p></div>
+    {%- endif %}
+    {%- if h.teams_state == 'unreadable' %}
+    <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The teams store could not be read ({{ h.teams_error }}): no team can be chosen until it can.</p></div>
+    {%- endif %}
+    {%- if h.team_missing %}
+    <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p>{{ net }} names a team that no longer exists ({{ h.told.team }}), so nobody is told: choose a team, or none, and Save.</p></div>
+    {%- endif %}
+    <form class="heal-told" method="post" action="{{ url_for('heal_v2.notify_save', list_name=net) }}" hx-post="{{ url_for('heal_v2.notify_save', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">
+      <input type="hidden" name="loaded" value='{{ h.told_loaded | tojson }}'>
+      <dl class="heal-kv">
+        <dt><label for="heal-team">Team</label></dt>
+        <dd><select id="heal-team" name="team">
+            <option value=""{% if not h.told.team %} selected{% endif %}>nobody (no team)</option>
+            {%- for t in h.teams %}<option value="{{ t.id }}"{% if t.id == h.told.team %} selected{% endif %}>{{ t.name }}</option>{% endfor %}
+          </select>
+          {%- if h.team %} <span class="muted">{{ h.team.words }}</span>{% endif %}
+          (<a href="{{ url_for('settings_v2.installation', tab='notifications') }}">Settings › Installation › Notifications</a>)</dd>
+        <dt>Sent for</dt>
+        <dd class="heal-events">{%- for key, words, _covers in h.choices %}<label class="set-switch"><input type="checkbox" name="events" value="{{ key }}"{% if key in h.told.choices %} checked{% endif %}> {{ words }}</label>{% endfor %}</dd>
+        <dt>AI analysis of a can't-fix</dt>
+        <dd>{{ badge('off for ' ~ net, 'muted') }} <span class="muted">the advisory analysis is not built yet, so nothing is analysed</span> <a href="{{ url_for('settings_v2.installation', tab='ai') }}">Settings › Installation › AI</a></dd>
+      </dl>
+      <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'self-healing', compact=True, op='saving who is told') }}</span></div>
+    </form>
+  </section>
+
+  <div class="heal-kill" id="heal-kill">
+    {%- if stopped_now %}
+    <div class="notice notice-{{ 'muted' if stopped_now.recorded or stopped_now.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if stopped_now.nothing %}<strong>{{ stopped_now.words }}.</strong>{% else %}<strong>Stopped everywhere</strong> {{ stamp(stopped_now.at) }}: {{ stopped_now.words }}.{% if not stopped_now.recorded %} <strong>Stopped, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+    {%- endif %}
+    {%- if resuming %}
+    {%- set rp = resuming %}
+    <section class="card set-card heal-card" id="heal-resume" aria-labelledby="h-heal-resume">
+      <div class="card-head"><h2 id="h-heal-resume">Resume self-healing everywhere</h2></div>
+      {%- if refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not resumed:</strong> {{ refused }}.</p></div>{% endif %}
+      <p class="small">{{ rp.why }}. Each network, as it will be once resumed:</p>
+      <div class="table-wrap"><table class="table heal-table"><thead><tr><th>Network</th><th>Mode once resumed</th></tr></thead><tbody>
+        {%- for n in rp.networks %}<tr><td>{{ n.network }}</td><td>{{ badge({'off': 'off', 'dry_run': 'dry run', 'auto': 'Auto'}.get(n.mode, n.mode), {'auto': 'ok', 'dry_run': 'info'}.get(n.mode, 'muted')) }} <span class="set-origin">{{ n.words }}</span></td></tr>{% endfor %}
+      </tbody></table></div>
+      <form class="heal-form" method="post" action="{{ url_for('heal_v2.resume', list_name=net) }}" hx-post="{{ url_for('heal_v2.resume', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">
+        <input type="hidden" name="fingerprint" value="{{ rp.fingerprint }}">
+        <label class="heal-field">Reason<textarea name="reason" rows="2" required>{{ resuming.reason or '' }}</textarea></label>
+        <p class="small muted">{{ resuming.statement }}</p>
+        <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Resume self-healing everywhere</span><span class="op-busy">Resuming…</span></button>{{ how('settings', 'self-healing', compact=True, op='resuming self-healing') }}</span>
+          <a class="btn" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">Cancel</a></div>
+      </form>
+    </section>
+    {%- elif stopping and not h.stopped.stopped %}
+    <section class="card set-card heal-card heal-stop" id="heal-stop" aria-labelledby="h-heal-stop">
+      <div class="card-head"><h2 id="h-heal-stop">Stop self-healing everywhere?</h2></div>
+      {%- if refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not stopped:</strong> {{ refused }}.</p></div>{% endif %}
+      <p class="small">Every network stops at once, whatever its mode: nothing new starts, and a heal already applying finishes its own verify and rollback. One press, no confirm, recorded with who, when and why. Resuming is previewed and confirmed by a person with a reason.</p>
+      <form class="heal-form" method="post" action="{{ url_for('heal_v2.stop_everywhere', list_name=net) }}" hx-post="{{ url_for('heal_v2.stop_everywhere', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">
+        <label class="heal-field">Why (asked, never required)<input type="text" name="why" autocomplete="off"></label>
+        <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-danger" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Stop self-healing everywhere</span><span class="op-busy">Stopping…</span></button>{{ how('settings', 'self-healing', compact=True, op='stopping self-healing everywhere') }}</span>
+          <a class="btn" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">Cancel</a></div>
+      </form>
+    </section>
+    {%- elif not h.stopped.stopped %}
+    <div class="heal-kill-btn"><span class="op-act"><a class="btn btn-danger btn-small" data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.stop_ask', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Says what stopping does first: nothing stops until you press Stop">Stop self-healing everywhere…</a>{{ how('settings', 'self-healing', compact=True, op='stopping self-healing everywhere') }}</span></div>
+    {%- endif %}
+  </div>
+</div>
+</div>
+</div>

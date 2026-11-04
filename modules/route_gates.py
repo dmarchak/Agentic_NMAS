@@ -204,6 +204,27 @@ GATES = {
     "settings_v2.sdn_stage": _g(K, "marks one network lab, pilot or production (C2009: SDN responses' AUTO is turned on, and runs, only on a network marked lab until the AUTO production-readiness gate is complete), as a verified person with a reason, refused when the stage moved since the card drew it, recorded in the network's settings record with the stage before and after"),
     "settings_v2.sdn_test": _g(K, "tests an SDN controller connection with the values as typed, its credential among them, for the person configuring it; saves nothing"),
     "settings_v2.sdn_saved_test": _g(K, "tests a saved SDN controller connection with its stored credential, for the person configuring it; changes nothing"),
+    # Heal to intent's policy (board H, parts H1 and H9; routes/heal_v2.py), posted by each
+    # network's Self-healing tab. The confirm and resume refuse anyone but a verified person
+    # too, whatever configure's settings allow a service.
+    "heal_v2.policy_confirm": _g(K, "sets one network's heal policy as previewed, bound to the preview's fingerprint, as a verified person with a reason (C2009: AUTO only on a network marked lab, at most 7 days, then dry run); recorded in the network's settings record with the values before and after; sends nothing to a device"),
+    "heal_v2.turn_off": _g(K, "turns self-healing off for one network at once, one press, no confirm; recorded with who and when; a heal already applying finishes its own verify and rollback"),
+    "heal_v2.notify_save": _g(K, "names the team told about one network's self-healing and the events that tell it (the Self-healing tab's Who is told), refused when the team does not exist or another person changed it since the card drew it; recorded in the network's settings record; sends nothing"),
+    "heal_v2.stop_everywhere": _g(K, "stops self-healing on every network at once (the installation's kill switch), one press, no confirm; recorded with who, when and why"),
+    "heal_v2.resume": _g(K, "resumes self-healing everywhere as previewed, bound to the preview's fingerprint, as a verified person with a reason; recorded in the installation's settings record"),
+    # Settings › Installation › Notifications (board H, artboard B; H9; routes/notify_v2.py):
+    # the relay's password, the teams and their destinations, codes and test sends.
+    "notify_v2.relay_password": _g(K, "stores the email relay's password a person typed, encrypted in the credential store, never drawn back; recorded with who and when in the installation's settings record"),
+    "notify_v2.relay_test": _g(K, "sends one test message through the relay as saved to one of the teams' addresses, the person who asked named in the delivery log"),
+    "notify_v2.team_add": _g(K, "adds a notification team, recorded with who made it"),
+    "notify_v2.email_add": _g(K, "adds an email address to a team, unverified and off, and sends it a verification code (only the code's salted hash is kept)"),
+    "notify_v2.code_send": _g(K, "sends a destination a new verification code, replacing the last"),
+    "notify_v2.code_verify": _g(K, "checks a verification code typed back: right and in time, verifies the destination and turns it on; wrong spends a try"),
+    "notify_v2.dest_enabled": _g(K, "turns a destination off, or on (refused until it is verified)"),
+    "notify_v2.dest_test": _g(K, "sends one test message to one destination, its outcome kept in the delivery log with who asked"),
+    "notify_v2.dest_remove": _g(K, "removes a destination from a team, a webhook's signing secret erased with it; its delivery log rows stay"),
+    "notify_v2.webhook_add": _g(K, "adds a webhook to a team, unverified and off, its signing secret typed by a person stored encrypted in the credential store, and sends it a verification code"),
+    "notify_v2.webhook_edit": _g(K, "changes a webhook's name, URL or signing secret (a new URL is unverified and off again until its code is typed back)"),
     "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),
     "sdn_v2.response_dismiss": _g(K, "dismisses an SDN response awaiting a person, with their reason; nothing is sent, recorded"),
     "sdn_v2.mode_set": _g(K, "turns SDN responses' AUTO mode on (a verified person's reason, expiry and allowed risk) or off for one network (PHASE8_PLAN 17.4), recorded"),
@@ -251,6 +272,8 @@ GATES = {
     "settings_v2.network_source_preview": _g(N, "reads NetBox once with proposed filters for a source change's preview; writes nothing"),
     "settings_v2.network_source_refresh": _g(N, "reads NetBox for a NetBox network now; the schedule does this anyway"),
     "settings_v2.network_create_preview": _g(N, "checks a new network's name and the folder it derives; writes nothing"),
+    "heal_v2.policy_preview": _g(N, "previews a change to one network's heal policy (its mode, AUTO's expiry, the kinds and the hard stops) in the six parts with the fingerprint its confirm sends; writes nothing and sends nothing to a device"),
+    "heal_v2.resume_preview": _g(N, "previews resuming self-healing: each network's mode once resumed and the fingerprint its confirm sends; writes nothing"),
     "settings_v2.network_delete_preview": _g(N, "counts what a network holds and says where its data would go; writes nothing"),
     "settings_v2.records_store_preview": _g(N, "counts a record store's lines, network by network, in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),

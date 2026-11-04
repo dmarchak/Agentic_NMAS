@@ -124,11 +124,34 @@ def add_email(team_id: str, address: str, *, by: str, now=None) -> dict:
                 same=lambda d: d.get("address", "").lower() == address.lower())
 
 
+#: A webhook's signing secret: at least this long, typed by a person.
+SECRET_MIN = 16
+
+
+def _webhook_name(name: str, url: str) -> str:
+    """A webhook's name as kept: the one typed, else the URL's host (H9: the Webhooks card
+    names each one)."""
+    from modules.notify import addresses
+    name = (name or "").strip()
+    if not name:
+        return addresses.url_host(url) or "webhook"
+    if not _NAME.fullmatch(name):
+        raise Refused("a webhook's name is 1 to 60 characters on one line")
+    return name
+
+
+def _check_secret(secret: str) -> None:
+    if not secret or len(secret) < SECRET_MIN:
+        raise Refused(f"a webhook's signing secret is at least {SECRET_MIN} characters, typed "
+                      "by a person")
+
+
 def add_webhook(team_id: str, url: str, secret: str, *, by: str, fmt: str = "generic",
-                now=None) -> dict:
+                name: str = "", now=None) -> dict:
     """A webhook for *team_id*, added unverified and off; its signing *secret*, typed by a
     person, goes to the credential store and only its reference is kept here. A store write
-    that fails takes the secret back out. ``{"ok", "destination"}``."""
+    that fails takes the secret back out. *name* is what the Webhooks card calls it (its URL's
+    host when none is typed). ``{"ok", "destination"}``."""
     from modules import credentials
     from modules.notify import addresses
     if fmt not in FORMATS:
@@ -138,18 +161,69 @@ def add_webhook(team_id: str, url: str, secret: str, *, by: str, fmt: str = "gen
         url = addresses.check_webhook_url(url)
     except ValueError as exc:
         raise Refused(str(exc)) from exc
-    if not secret or len(secret) < 16:
-        raise Refused("a webhook's signing secret is at least 16 characters, typed by a person")
+    name = _webhook_name(name, url)
+    _check_secret(secret)
     dest_id = secrets.token_hex(6)
     ref = f"webhook/{dest_id}"
     credentials.set_notify_secret(ref, secret)
     try:
-        return _add(team_id, {"channel": "webhook", "url": url, "format": fmt,
+        return _add(team_id, {"channel": "webhook", "url": url, "format": fmt, "name": name,
                               "secret_ref": ref}, by=by, now=now, dest_id=dest_id,
                     same=lambda d: d.get("url") == url)
     except BaseException:
         credentials.clear_notify_secret(ref)
         raise
+
+
+def edit_webhook(team_id: str, dest_id: str, *, by: str, name: str = None, url: str = None,
+                 secret: str = None, now=None) -> dict:
+    """Change a webhook's name, URL or signing secret (Edit… on the Webhooks card). A new URL
+    is a new receiver, so it is unverified and off again until a code sent to it is typed
+    back; a new secret replaces the stored one (blank: kept). ``{"ok", "changed",
+    "unverified"}``: what changed, and whether it must be verified again."""
+    from modules import credentials
+    from modules.notify import addresses
+    if not by:
+        raise Refused("an edit names the person who made it")
+    if url is not None:
+        try:
+            url = addresses.check_webhook_url(url)
+        except ValueError as exc:
+            raise Refused(str(exc)) from exc
+    if secret:
+        _check_secret(secret)
+
+    def change(teams):
+        team = _team(teams, team_id)
+        dest = _dest(team, dest_id)
+        if dest.get("channel") != "webhook":
+            raise Refused(f"destination {dest_id} is an email address, not a webhook")
+        changed, unverified = [], False
+        new_url = dest.get("url") if url is None else url
+        if new_url != dest.get("url"):
+            if any(d.get("url") == new_url for k, d in team["destinations"].items()
+                   if k != dest_id):
+                raise Refused(f"team {team.get('name')!r} already has that webhook")
+            dest["url"] = new_url
+            dest.update(verified_at=None, verified_by="", enabled=False)
+            dest.pop("code", None)
+            changed.append("url")
+            unverified = True
+        new_name = dest.get("name", "") if name is None else _webhook_name(name, new_url)
+        if new_name != dest.get("name", ""):
+            dest["name"] = new_name
+            changed.append("name")
+        if secret:
+            changed.append("secret")
+        if changed:
+            dest["edited_by"], dest["edited_at"] = by, _now_iso(now)
+        return {"changed": changed, "unverified": unverified, "ref": dest.get("secret_ref")}
+    out = _write(change)
+    if secret and out["ref"]:
+        credentials.set_notify_secret(out["ref"], secret)
+    log.info("notify: webhook %s in team %s edited by %s: %s", dest_id, team_id, by,
+             ", ".join(out["changed"]) or "nothing")
+    return {"ok": True, "changed": out["changed"], "unverified": out["unverified"]}
 
 
 def _add(team_id, fields, *, by, now, same, dest_id=None) -> dict:

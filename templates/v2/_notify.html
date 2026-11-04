@@ -1,0 +1,131 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Settings › Installation › Notifications (board H, artboard B, approved by the operator
+    2026-11-03; H9; docs/fidelity/notifications.md): the lean first slice of PHASE8_PLAN 20.7.
+    One email relay (its own card, _notify_relay.html), the webhooks, and teams of several
+    destinations, each verified by a code before use and turned on on its own. Every answer
+    is this tab drawn again with it in place; a secret is drawn as set or not, a webhook's URL
+    as its scheme and host, a code never. From modules/notify_page.view. -#}
+{%- macro said(where) -%}
+{%- if answer and answer.where == where %}
+<div class="notice notice-{{ 'muted' if answer.ok else 'danger' }} set-result" role="{{ 'status' if answer.ok else 'alert' }}">{{ icon('tick' if answer.ok else 'warn', 16) }}<p>{% if not answer.ok %}<strong>Not done:</strong> {% endif %}{{ answer.words }}.</p></div>
+{%- endif %}
+{%- endmacro -%}
+{%- set o = open or {} -%}
+<div class="ntf-tab" id="notify-tab">
+  {%- if n.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The teams store could not be read ({{ n.error }}): nothing is drawn as known, and every change is refused until it can be read.</p></div>
+  {%- endif %}
+  {%- if n.log_state == 'unreadable' %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The delivery log could not be read ({{ n.log_error }}): each destination's last outcome below is its own record.</p></div>
+  {%- endif %}
+<div class="ntf-cols">
+  {% with rl=n.rl %}{% include "v2/_notify_relay.html" %}{% endwith %}
+
+  <section class="card set-card ntf-card" id="ntf-webhooks" aria-labelledby="h-ntf-webhooks">
+    <div class="card-head"><h2 id="h-ntf-webhooks">Webhooks</h2>
+      <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.webhook_add_form') }}" hx-target="#notify-tab" hx-swap="outerHTML" title="Opens the webhook's fields: nothing is added until you press Add">Add a webhook…</a>{{ how('settings', 'notifications', compact=True, op='adding a webhook') }}</span></div>
+    {{ said('webhooks') }}
+    {%- if o.what == 'webhook_new' %}
+    <form class="ntf-add" method="post" action="{{ url_for('notify_v2.webhook_add') }}" hx-post="{{ url_for('notify_v2.webhook_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
+      {%- if n.teams %}
+      <label class="heal-field">Team<select name="team">{% for t in n.teams %}<option value="{{ t.id }}"{% if t.id == o.team %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+      <label class="heal-field">Name<input type="text" name="name" value="{{ o.name or '' }}" autocomplete="off" placeholder="on-call chat"></label>
+      <label class="heal-field">URL<input type="text" name="url" class="mono" value="{{ o.url or '' }}" autocomplete="off" placeholder="https://hooks.example.com/…"><span class="set-origin">https, or http only to this host's loopback; IPv4 or IPv6 (bracketed). Drawn afterwards as its scheme and host only.</span></label>
+      <label class="heal-field">Format<select name="format">{% for key, words in n.formats %}<option value="{{ key }}"{% if key not in n.built_formats %} disabled{% endif %}>{{ words }}{% if key not in n.built_formats %} (later){% endif %}</option>{% endfor %}</select></label>
+      <label class="heal-field">Signing secret<input type="password" name="secret" autocomplete="new-password" minlength="{{ n.secret_min }}"><span class="set-origin">At least {{ n.secret_min }} characters, typed once: stored encrypted and never shown. The receiver checks an HMAC-SHA256 signature over the timestamp and body with it.</span></label>
+      <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add and send a code</span><span class="op-busy">Adding…</span></button>{{ how('settings', 'notifications', compact=True, op='adding a webhook') }}</span>
+        <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Cancel</a></div>
+      {%- else %}
+      <p class="small muted">A webhook belongs to a team: add a team under Teams first.</p>
+      {%- endif %}
+    </form>
+    {%- endif %}
+    {%- if n.webhooks %}
+    <div class="table-wrap"><table class="table ntf-table">
+      <thead><tr><th>Name</th><th>Format</th><th>Last</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {%- for d in n.webhooks %}
+        <tr id="ntf-dest-{{ d.id }}"><td>{{ d.label }} <span class="set-origin">{{ d.team_name }}</span><div class="mono faint small" title="the rest of the URL is never drawn: it may be the receiver's token">{{ d.url_shown }}</div></td>
+          <td>{{ d.format_words }} ·</td>
+          <td><span class="muted">last:</span> <span class="{{ {'ok': 'ntf-ok', 'danger': 'ntf-bad'}.get(d.last_words.kind, 'muted') }}">{{ d.last_words.words }}{% if d.last_words.error %}: {{ d.last_words.error }}{% endif %}</span></td>
+          <td class="set-row-acts">
+            <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('notify_v2.dest_test', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Test send</span><span class="op-busy">Sending…</span></button>{{ how('settings', 'notifications', compact=True, op='a test send') }}</span>
+            <span class="op-act"><a data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.webhook_edit_form', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">Edit…</a>{{ how('settings', 'notifications', compact=True, op='editing a webhook') }}</span>
+            <span class="op-act"><a data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.dest_remove_ask', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">Remove…</a>{{ how('settings', 'notifications', compact=True, op='removing a destination') }}</span></td></tr>
+        {%- if answer and answer.where == 'dest:' ~ d.id %}<tr><td colspan="4">{{ said('dest:' ~ d.id) }}</td></tr>{% endif %}
+        {%- if o.what == 'webhook_edit' and o.dest == d.id %}
+        <tr><td colspan="4">
+          <form class="ntf-add" method="post" action="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-post="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
+            <label class="heal-field">Name<input type="text" name="name" value="{{ d.name or '' }}" autocomplete="off"></label>
+            <label class="heal-field">URL<input type="text" name="url" class="mono" value="" autocomplete="off" placeholder="leave empty to keep it"><span class="set-origin">Kept unless you type a new one; a new URL is a new receiver, off until its code is typed back.</span></label>
+            <label class="heal-field">Signing secret<input type="password" name="secret" autocomplete="new-password" placeholder="{{ 'set: type to replace' if d.secret_set else 'not set: type to set' }}"></label>
+            <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'notifications', compact=True, op='editing a webhook') }}</span>
+              <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Cancel</a></div>
+          </form></td></tr>
+        {%- endif %}
+        {%- endfor %}
+      </tbody>
+    </table></div>
+    {%- else %}
+    <p class="small muted">No webhook yet.</p>
+    {%- endif %}
+    <p class="muted small">Formats: Generic, signed (JSON with an HMAC-SHA256 signature over its timestamp and body). Slack-compatible, Teams-compatible and PagerDuty Events v2 come later. A URL or signing secret is typed once and drawn masked.</p>
+    <p class="muted small">A failed delivery is tried three times and then raised under Needs attention, with its error. Each attempt is a row in History, kind notification.</p>
+  </section>
+
+  <section class="card set-card ntf-card" id="ntf-teams" aria-labelledby="h-ntf-teams">
+    <div class="card-head"><h2 id="h-ntf-teams">Teams</h2>
+      <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.team_add_form') }}" hx-target="#notify-tab" hx-swap="outerHTML" title="Opens the team's name: nothing is added until you press Add">Add a team…</a>{{ how('settings', 'notifications', compact=True, op='adding a team') }}</span></div>
+    {{ said('teams') }}
+    {%- if o.what == 'team_new' %}
+    <form class="ntf-inline" method="post" action="{{ url_for('notify_v2.team_add') }}" hx-post="{{ url_for('notify_v2.team_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
+      <label class="sr-only" for="ntf-team-name">The team's name</label><input id="ntf-team-name" class="ntf-input" type="text" name="name" value="{{ o.name or '' }}" placeholder="Default on-call" autocomplete="off" required>
+      <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add the team</span><span class="op-busy">Adding…</span></button>{{ how('settings', 'notifications', compact=True, op='adding a team') }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Cancel</a>
+    </form>
+    {%- endif %}
+    {%- if not n.teams %}<p class="small muted">No team yet: nobody is told about anything.</p>{% endif %}
+    {%- for t in n.teams %}
+    <div class="ntf-team" id="ntf-team-{{ t.id }}">
+      <h3 class="heal-h3">{{ t.name }}</h3>
+      {{ said('team:' ~ t.id) }}
+      {%- if t.dests %}
+      <div class="table-wrap"><table class="table ntf-table"><tbody>
+        {%- for d in t.dests %}
+        <tr><td>{{ d.label }}{% if d.channel == 'webhook' %} <span class="faint">(webhook)</span>{% endif %}</td>
+          <td>{{ badge(d.chip[0], d.chip[1]) }}</td>
+          <td class="set-row-acts">
+            {%- if o.what == 'remove' and o.dest == d.id %}
+            <span class="small">Remove {{ d.label }}? It receives nothing{% if d.channel == 'webhook' %} and its signing secret is erased{% endif %}; its delivery log rows stay in History.</span>
+            <span class="op-act"><button type="button" class="btn btn-small btn-danger" data-op="settings" hx-post="{{ url_for('notify_v2.dest_remove', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button>{{ how('settings', 'notifications', compact=True, op='removing a destination') }}</span>
+            <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Keep it</a>
+            {%- else %}
+            {%- if not d.verified_at %}
+            <form class="ntf-inline" method="post" action="{{ url_for('notify_v2.code_verify', team=t.id, dest=d.id) }}" hx-post="{{ url_for('notify_v2.code_verify', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
+              {%- if d.code_waiting %}
+              <input type="text" name="code" class="ntf-code" placeholder="code" size="7" inputmode="numeric" autocomplete="one-time-code" aria-label="Verification code for {{ d.label }}">
+              <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Verify</span><span class="op-busy">Checking…</span></button>{{ how('settings', 'notifications', compact=True, op='verifying a destination') }}</span>
+              {%- endif %}
+              <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('notify_v2.code_send', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Send again' if d.code_waiting else 'Send a code' }}</span><span class="op-busy">Sending…</span></button>{{ how('settings', 'notifications', compact=True, op='sending a code') }}</span>
+            </form>
+            {%- else %}
+            <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('notify_v2.dest_enabled', team=t.id, dest=d.id) }}" hx-vals='{"on": "{{ '' if d.enabled else 'on' }}"}' hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Turn off' if d.enabled else 'Turn on' }}</span><span class="op-busy">{{ 'Turning off…' if d.enabled else 'Turning on…' }}</span></button>{{ how('settings', 'notifications', compact=True, op='turning a destination off or on') }}</span>
+            {%- endif %}
+            <span class="op-act"><a data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.dest_remove_ask', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">Remove…</a>{{ how('settings', 'notifications', compact=True, op='removing a destination') }}</span>
+            {%- endif %}</td></tr>
+        {%- if answer and answer.where == 'dest:' ~ d.id and d.channel == 'email' %}<tr><td colspan="3">{{ said('dest:' ~ d.id) }}</td></tr>{% endif %}
+        {%- endfor %}
+      </tbody></table></div>
+      {%- else %}<p class="small muted">No address or webhook yet.</p>{% endif %}
+      <form class="ntf-inline" method="post" action="{{ url_for('notify_v2.email_add', team=t.id) }}" hx-post="{{ url_for('notify_v2.email_add', team=t.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
+        <label class="sr-only" for="ntf-add-{{ t.id }}">Add an address to {{ t.name }}</label><input id="ntf-add-{{ t.id }}" class="ntf-input" type="text" name="address" value="{{ typed if answer and answer.where == 'team:' ~ t.id and typed else '' }}" placeholder="add an address" autocomplete="off">
+        <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add and send a code</span><span class="op-busy">Adding…</span></button>{{ how('settings', 'notifications', compact=True, op='adding an address') }}</span>
+      </form>
+      <p class="small"><span class="muted">Told about:</span> {% if t.told_about %}{% for net in t.told_about %}<a href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}">{{ net }}</a>{{ ', ' if not loop.last }}{% endfor %} (from each one's Self-healing tab){% else %}no network yet: choose it on a network's Self-healing tab{% endif %}</p>
+    </div>
+    {%- endfor %}
+    <p class="small"><a href="{{ url_for('v2.history_page', kind='notifications') }}">Delivery log (History › notification)</a></p>
+    <p class="muted small">A code expires after {{ n.code_minutes }} minutes. An unverified address receives nothing but its code. A message carries no configuration line and no secret: each change is said by kind, with a link.</p>
+  </section>
+</div>
+</div>

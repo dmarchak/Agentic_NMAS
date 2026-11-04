@@ -298,6 +298,26 @@ DECLARED = {
     # C2009: the SDN controllers card draws the stage; SDN › Responses' Mode card says it and
     # whether Turn AUTO on may be pressed.
     "settings_v2.sdn_stage": ("settings", "sdn"),
+    # Heal to intent (board H, H1 and H9; routes/heal_v2.py): the policy, who is told and the
+    # kill switch are settings.
+    "heal_v2.policy_confirm": ("settings",),
+    "heal_v2.turn_off": ("settings",),
+    "heal_v2.notify_save": ("settings",),
+    "heal_v2.stop_everywhere": ("settings",),
+    "heal_v2.resume": ("settings",),
+    # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a
+    # setting's companion; teams, destinations, codes and sends move the notifications record.
+    "notify_v2.relay_password": ("settings",),
+    "notify_v2.relay_test": ("notifications",),
+    "notify_v2.team_add": ("notifications", "settings"),
+    "notify_v2.email_add": ("notifications",),
+    "notify_v2.code_send": ("notifications",),
+    "notify_v2.code_verify": ("notifications",),
+    "notify_v2.dest_enabled": ("notifications",),
+    "notify_v2.dest_test": ("notifications",),
+    "notify_v2.dest_remove": ("notifications",),
+    "notify_v2.webhook_add": ("notifications",),
+    "notify_v2.webhook_edit": ("notifications",),
     # The Test keeps its answer, which the card draws for every viewer (board F2).
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),
@@ -444,6 +464,8 @@ DECLARED = {
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.sdn_test": Nothing("tests an SDN controller with the values as typed and answers beside Test; saves nothing"),
     "settings_v2.sdn_saved_test": Nothing("tests a saved SDN controller and answers on its row; changes nothing"),
+    "heal_v2.policy_preview": Nothing("previews a heal policy change; writes nothing"),
+    "heal_v2.resume_preview": Nothing("previews resuming self-healing; writes nothing"),
     "sdn_v2.controller_test": Nothing("tests a saved SDN controller and answers on its card; the card's state stays the reader's"),
     "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),

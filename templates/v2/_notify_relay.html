@@ -1,0 +1,79 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Settings › Installation › Notifications, the Email relay card (board H, artboard B; H9;
+    docs/fidelity/notifications.md): the installation's one relay, its fields saved by
+    settings_v2.install_save (the "relay" card of installation_settings.CARDS: checked, written,
+    recorded old and new, R17's `loaded`), its password set or not with who and when (never
+    drawn) and Replace…, and Test send to… one of the teams' addresses. From
+    notify_page.relay_view (`rl`). -#}
+{%- set r = rl.relay -%}
+{%- set k = rl.card -%}
+<section class="card set-card ntf-card" id="card-relay" aria-labelledby="h-relay">
+  <div class="card-head"><h2 id="h-relay">{{ k.title }}</h2>{{ badge(r.chip[0], r.chip[1]) }}</div>
+  {%- if r.record_state == 'unreadable' %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The installation's settings record could not be read, so who set the password and when is not shown.</p></div>
+  {%- endif %}
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}. Nothing was changed.</p></div>
+  {%- endif %}
+  {%- if saved %}
+  <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>
+    {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}. Recorded in the installation's settings record, old and new, and drawn on History.{% if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</p></div>
+  {%- endif %}
+  {%- if replaced %}
+  <div class="notice notice-{{ 'muted' if replaced.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p><strong>Password replaced</strong> by {{ replaced.actor_label }} {{ stamp(replaced.at_iso) }}: stored encrypted, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Test send to… says whether the relay takes it.</p></div>
+  {%- endif %}
+  {%- if tested %}
+  <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<p><strong>Test {{ 'sent' if tested.ok else tested.outcome }}</strong>{% if tested.error %}: {{ tested.error }}{% endif %}. Kept in the delivery log, kind notification.</p></div>
+  {%- endif %}
+  {%- if r.host and r.problem %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>Nothing can be sent yet: {{ r.problem }}.</p></div>
+  {%- endif %}
+  <form class="set-form ntf-form" id="form-relay" method="post" action="{{ url_for('settings_v2.install_save', name='relay') }}"
+        hx-post="{{ url_for('settings_v2.install_save', name='relay') }}" hx-target="#card-relay" hx-swap="outerHTML">
+    <input type="hidden" name="loaded" value='{{ k.loaded | tojson }}'>
+    {%- for f in k.fields %}
+    {%- set fid = 'f-relay-' ~ f.key %}
+    {%- if f.key == 'notify_smtp_from' %}
+    <span class="set-label">Password</span>
+    <div>{%- if replacing %}
+      <span class="ntf-inline"><label class="sr-only" for="f-relay-password">The relay's new password</label><input id="f-relay-password" type="password" name="password" form="relay-password" autocomplete="new-password" placeholder="type the new password">
+      <span class="op-act"><button type="submit" class="btn btn-small btn-primary" form="relay-password" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Store it</span><span class="op-busy">Storing…</span></button>{{ how('settings', 'notifications', compact=True, op="replacing the relay's password") }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('settings_v2.install_card', name='relay') }}" hx-target="#card-relay" hx-swap="outerHTML">Cancel</a></span>
+      <span class="set-origin">Stored encrypted, never shown or read back; the relay's login reads it at each send.</span>
+      {%- else %}
+      <span class="ntf-inline">{%- if r.password_set %}{{ badge('set' ~ ((' ' ~ r.password_by.day ~ ' by ' ~ r.password_by.who) if r.password_by else '') ~ ', never shown', 'muted') }}{% else %}{{ badge('not set', 'warn') }}{% endif %}
+      <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.relay_password_form') }}" hx-target="#card-relay" hx-swap="outerHTML" title="Opens the password's field: nothing is stored until you press Store it">Replace…</a>{{ how('settings', 'notifications', compact=True, op="replacing the relay's password") }}</span></span>
+      {%- endif %}</div>
+    {%- endif %}
+    {%- if f.kind == 'choice' %}
+    <label for="{{ fid }}">{{ f.label }}</label>
+    <div><select id="{{ fid }}" name="{{ f.key }}">{% for ch in f.choices %}<option value="{{ ch }}"{% if ch == f.value %} selected{% endif %}>{{ rl.tls_words.get(ch, ch) }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- else %}
+    <label for="{{ fid }}">{{ f.label }}</label>
+    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('relay_host', 'port', 'url') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else 'text' }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.note %}<span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- endif %}
+    {%- endfor %}
+    <div class="set-foot">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'notifications', compact=True, op='saving the relay') }}</span>
+      {%- if not testing %}
+      <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.relay_test_form') }}" hx-target="#card-relay" hx-swap="outerHTML" title="Choose one of the teams' addresses: a test message goes there through the relay as saved">Test send to…</a>{{ how('settings', 'notifications', compact=True, op='a test send') }}</span>
+      {%- endif %}
+      {{ how('settings', 'notifications') }}
+    </div>
+  </form>
+  {%- if replacing %}<form id="relay-password" class="sr-only" method="post" action="{{ url_for('notify_v2.relay_password') }}" hx-post="{{ url_for('notify_v2.relay_password') }}" hx-target="#card-relay" hx-swap="outerHTML"></form>{% endif %}
+  {%- if testing %}
+  <form class="ntf-inline ntf-test" method="post" action="{{ url_for('notify_v2.relay_test') }}" hx-post="{{ url_for('notify_v2.relay_test') }}" hx-target="#card-relay" hx-swap="outerHTML">
+    {%- if rl.emails %}
+    <label class="small" for="relay-to">Test send to</label>
+    <select id="relay-to" name="to">{% for d in rl.emails %}<option value="{{ d.to }}">{{ d.label }} ({{ d.team_name }})</option>{% endfor %}</select>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Send the test</span><span class="op-busy">Sending…</span></button>{{ how('settings', 'notifications', compact=True, op='a test send') }}</span>
+    {%- else %}
+    <span class="small muted">No team has an address yet: add one under Teams, then test the relay with it.</span>
+    {%- endif %}
+    <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('settings_v2.install_card', name='relay') }}" hx-target="#card-relay" hx-swap="outerHTML">Cancel</a>
+  </form>
+  {%- endif %}
+  <p class="muted small ntf-note">{{ k.note }}</p>
+</section>

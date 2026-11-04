@@ -2824,3 +2824,59 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 @media (max-width: 900px) {
   .cr-sec { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 }
+/* Board H, artboard A (H9): Settings · <network> › Self-healing. Two columns at a desktop's
+   width (the policy and the kinds at left; the change, the hard stops, who is told and the
+   kill switch at right), one at phone width; every table scrolls inside its card. */
+.heal-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.heal-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1100px) { .heal-cols { grid-template-columns: minmax(0, 1fr); } }
+.heal-kv { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+.heal-kv dt { color: var(--ink-2); }
+.heal-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .heal-kv { grid-template-columns: minmax(0, 1fr); } .heal-kv dd { margin-bottom: 6px; } }
+.heal-why { display: block; margin-top: 2px; }
+.heal-lead { margin: 0; }
+.heal-seg { font-size: 12.5px; }
+.heal-seg .seg-btn { padding: 3px 9px; white-space: nowrap; }
+.heal-form { display: flex; flex-direction: column; gap: 10px; }
+.heal-what { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.heal-radio { display: flex; gap: 16px; font-size: 13px; align-items: center; flex-wrap: wrap; }
+.heal-radio label { display: inline-flex; align-items: center; gap: 4px; }
+.heal-auto-off { margin: 0; }
+.heal-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.heal-field input, .heal-field select, .heal-field textarea { font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); box-sizing: border-box; max-width: 100%; }
+.heal-kind-pick { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.heal-kind-pick .set-switch, .heal-events .set-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.heal-events { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.heal-preview { display: flex; flex-direction: column; gap: 8px; }
+.heal-h3 { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.heal-parts summary { font-size: 12.5px; }
+.heal-told { display: flex; flex-direction: column; gap: 10px; }
+.heal-told select { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); color: var(--ink); max-width: 100%; }
+.heal-kill { display: flex; flex-direction: column; gap: 10px; }
+.heal-kill-btn { display: flex; justify-content: flex-end; }
+/* Board H, artboard B (H9): Settings › Installation › Notifications, three cards across where
+   they fit (the relay, the webhooks, the teams), stacked at phone width. */
+.ntf-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 14px; align-items: start; }
+.ntf-form { grid-template-columns: 110px minmax(0, 1fr); }
+.ntf-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ntf-input, .ntf-code, .ntf-test select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); color: var(--ink); min-width: 0; max-width: 100%; box-sizing: border-box; }
+.ntf-code { width: 7em; }
+.ntf-note { margin: 0; }
+.ntf-add { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.ntf-team { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
+/* A destination is a row of a card a third of the page wide: its name across the row, then
+   its chip, format, last delivery and actions wrapping beneath (never a squeezed column). */
+.ntf-table thead { display: none; }
+.ntf-table tr { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 0;
+  border-bottom: 1px solid var(--line-2); }
+.ntf-table td { display: block; border: 0; padding: 0; overflow-wrap: normal; }
+.ntf-table td:first-child { flex: 1 1 100%; overflow-wrap: anywhere; }
+.ntf-table td[colspan] { flex: 1 1 100%; }
+.ntf-table .set-row-acts { white-space: normal; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ntf-form > .set-foot { grid-column: 1 / -1; }
+.ntf-ok { color: var(--ok); }
+.ntf-bad { color: var(--danger); }

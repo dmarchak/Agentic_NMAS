@@ -29,7 +29,11 @@ log = logging.getLogger(__name__)
 #: A's host-wide tabs (AI, Server, Security posture, Diagnostics) are Installation's (F).
 INTEGRATIONS = ("grafana", "grafana_roles", "prometheus", "loki", "kea", "monitoring_profile",
                 "s3_archive")
-TABS = (("integrations", "Integrations"), ("network", "Network"))
+#: Self-healing (board H, artboard A; H9) is each network's own heal policy and who is told,
+#: drawn by its own tab (`templates/v2/_heal.html`, `modules/heal_page.py`): no generic card.
+TABS = (("integrations", "Integrations"), ("network", "Network"), ("heal", "Self-healing"))
+#: Tabs drawn by their own template, holding no generic card.
+OWN_TABS = ("heal",)
 
 #: A chip's colour for each state (the page's tokens): a state to act on leads in colour.
 STATE_KIND = {"own": "ok", "inherited": "info", "not_configured": "warn",
@@ -59,6 +63,8 @@ def tab_groups(tab: str) -> tuple:
     from modules.settings_scope import network_groups
 
     groups = network_groups()
+    if tab in OWN_TABS:
+        return ()
     if tab == "network":
         return tuple(g for g in groups if g not in INTEGRATIONS)
     return tuple(g for g in INTEGRATIONS if g in groups)

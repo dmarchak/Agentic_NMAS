@@ -74,6 +74,14 @@ NETWORK_FREE = {
                         "chosen in the tab, never the page's",
     "console_servers_v2.*": ("the installation's console servers (Settings › Installation › "
                              "Console servers): every network's, no one's"),
+    # Board H (H9): the kill switch stops and resumes every network at once; the Self-healing
+    # tab it answers with names its network itself, in `list_name` (checked by list_param).
+    "heal_v2.stop*": ("the installation's kill switch: every network's healing stopped at once; "
+                      "the tab drawn again names its network in `list_name`"),
+    "heal_v2.resume*": ("resuming the installation's kill switch: every network's, no one's; the "
+                        "tab drawn again names its network in `list_name`"),
+    "notify_v2.*": ("Settings › Installation › Notifications (the relay, the webhooks and the "
+                    "teams): every network's, no one's"),
     "v2.help_page": "the manual: the same for every network",
     "v2.help_panel": "the manual, in the help panel: the same for every network",
     "v2.about": "Help > About, a page of the manual: the software, the same for every network",

@@ -51,8 +51,16 @@ SDN controllers card (board SdnSettings, `_sdn_settings.html`) at the foot of th
 tab, below the group cards, spanning the tab. The card is compared region by region in its own
 record, docs/fidelity/sdn-settings.md, from tests/test_board_shots.py's `test_sdn`
 (`sdn-settings-page-1440`); nothing else on the page moved, so every other verdict stands.
+
+**Compared again 2026-11-03 (board H, part H9):** `settings.html` draws a third tab,
+**Self-healing**, from its own template (`_heal.html`, compared region by region in its own
+record, docs/fidelity/heal-policy.md, from tests/test_board_shots.py's `test_heal_tab`), in
+place of the group cards on that tab, and on that tab only its subtitle adds "Self-healing is
+each network's own: no network inherits it." (board H's own words). The Integrations and
+Network tabs render as before; every other verdict stands.
+Templates sha256 before: `522b41d09272a03d10ad7508be0fc483670041accb734ea6932379a46fa1f8de`.
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html
-Templates sha256: `522b41d09272a03d10ad7508be0fc483670041accb734ea6932379a46fa1f8de`
+Templates sha256: `e34da497422812f0ca947625e27ca014c8854d50b6f5d91d3194f61b2376feb3`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

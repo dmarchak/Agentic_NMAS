@@ -83,6 +83,17 @@ NOT_AN_OPERATION = {
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
     ("_sdn_settings.html", "Cancel"): "draws the SDN controllers card again (leaving Edit or "
                                       "Remove…), writing nothing",
+    # Board H's Self-healing tab and Notifications (H9).
+    ("_heal.html", "Cancel"): "draws the Self-healing tab again without the stop's or the "
+                              "resume's card: nothing was stopped or resumed",
+    ("_heal_change.html", "Cancel"): "draws the Self-healing tab again without the change: "
+                                     "nothing was previewed into the policy or saved",
+    ("_notify_relay.html", "Cancel"): "draws the Email relay card again without the password's "
+                                      "field or Test send to…: nothing was stored or sent",
+    ("_notify.html", "Cancel"): "opens Notifications again without the form: nothing was added "
+                                "or changed",
+    ("_notify.html", "Keep it"): "opens Notifications again without the removal's question: "
+                                 "nothing was removed",
     ("_sdn_view.html", "Edit connection"): "opens Settings › Integrations, where the "
                                            "connection is changed: a page of its own",
     ("_sdn_view.html", "Show"): "narrows SDN › Flows to words and the controller's own flows, "

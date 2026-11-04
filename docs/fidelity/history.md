@@ -32,7 +32,14 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `8bdfcb069539fad0d6c111eeba65cf3591ed89e50af0cef68e93f270acbc4e9b`
+Templates sha256: `af5e85f45135f9432a225da354e46aa49d25fec8c39cb262dbf895b657923416`
+
+**Compared again 2026-11-03 (C2384, board H's H9):** `_history_timeline.html`'s `hx-trigger`
+gained `nmas:notifications from:body`, so the timeline re-reads when a notification's delivery
+is recorded (`modules/notify/delivery.py` announces `notifications`). As on 2026-10-25, the
+attribute is the template's only change and draws nothing: the page and every fragment render
+the same bytes but that attribute. No region's verdict changed.
+Templates sha256 before: `8bdfcb069539fad0d6c111eeba65cf3591ed89e50af0cef68e93f270acbc4e9b`.
 
 Compared again 2026-11-02 (C2268, PHASE8_PLAN 21.2 (4)), by the template and a real browser
 (tests/test_live_refresh_history.py): Verify and Push now say their answer in a slot under the

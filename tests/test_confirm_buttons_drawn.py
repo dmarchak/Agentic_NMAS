@@ -1787,6 +1787,36 @@ class TestSdnFlowsCards(_Cards):
         return self._lost(request)
 
 
+# ── Board H's Self-healing tab (H9): resuming the kill switch ─────────────────────────────────
+
+class TestHealCards(_Cards):
+    """Settings · <network> › Self-healing on tests/test_heal_tab_v2.py's store: self-healing
+    stopped everywhere, Resume self-healing… previewed (each network's mode once resumed), its
+    confirm Resume self-healing everywhere; blocked: a verified service, whom `may` refuses,
+    draws it disabled."""
+    from tests import test_heal_tab_v2 as _ht
+    networks = hosted(_ht.networks)
+
+    CASES = {"resume": ("_heal.html", "Resume self-healing everywhere",
+                        r"Resume self-healing everywhere", "viewer")}
+
+    def _resume(self, request):
+        from modules.heal import policy as H
+        n = request.getfixturevalue("networks")
+        H.stop(actor="op@example.com", actor_verified="access", why="a drill")
+        html = _text(n["client"].post("/v2/settings/installation/heal/resume/preview"
+                                      "?list_name=Default", headers={"HX-Request": "true"}))
+        assert "Each network, as it will be once resumed" in html, "floor: the resume card"
+        return html
+
+    def drawn_resume(self, request):
+        return self._resume(request)
+
+    def blocked_resume(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._resume(request)
+
+
 # ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
 
 class TestSdnOperationCards(_Cards):
@@ -1949,9 +1979,10 @@ class TestThePopulation:
         and Go on, C2283, 2026-11-02; 73 until its Approve and commit: nothing to send, the
         same day; 74 until Bulk intent's own screen, and its Commit the change to N devices'
         intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307; 73 until a
-        watched large-packet stream's Rate-limit this source…, C2313, 2026-11-03)."""
+        watched large-packet stream's Rate-limit this source…, C2313, 2026-11-03; 74 until board
+        H's Resume self-healing everywhere, H9, the same day)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 74, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 75, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

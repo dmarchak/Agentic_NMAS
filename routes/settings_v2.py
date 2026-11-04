@@ -54,7 +54,9 @@ def installation():
         tab = "connections"
     v = {"scope": dict(settings_page.scope_bar(listref.active().name), is_installation=True),
          "mode_words": ""}
-    cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
+    # A card with its own template (the relay's) is drawn by its tab's own template.
+    cards = [I.card(name) for name, spec in I.CARDS.items()
+             if spec["tab"] == tab and not spec.get("template")]
     diag = {}
     if tab == "platforms":
         from modules import platform_maps as P
@@ -72,6 +74,10 @@ def installation():
     if tab == "console":
         from routes.console_servers_v2 import view as console_servers
         diag = {"cs": console_servers()}
+    if tab == "notifications":
+        # Board H, artboard B (H9): the relay (its card in `cards`), the webhooks and the teams.
+        from modules import notify_page
+        diag = {"n": notify_page.view()}
     if tab == "ai":
         from modules.ai import feedback, settings_view
         # The AI (hosted) card is in `cards` (moved here whole from Connections, C1953).
@@ -357,6 +363,11 @@ def _install(name: str, status: int = 200, **ctx):
     if name not in I.CARDS:
         return _fragment("v2/_settings_refused.html", 404, list_name="", group="",
                          why=f"{name!r} is not an Installation card: {', '.join(I.CARDS)}")
+    if I.CARDS[name].get("template"):
+        # The email relay's card (board H, artboard B) is drawn by its own template, from
+        # notify_page's view of it.
+        from modules import notify_page
+        return _fragment(I.CARDS[name]["template"], status, rl=notify_page.relay_view(), **ctx)
     return _fragment("v2/_install_card.html", status, k=I.card(name), **ctx)
 
 
@@ -865,7 +876,12 @@ def network(list_name):
     if v.get("tab") == "integrations" and not v.get("error"):
         from modules import sdn_page
         sdn = sdn_page.card(list_name)
-    return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn)
+    heal = None
+    if v.get("tab") == "heal" and not v.get("error"):
+        # Board H, artboard A (H9): the network's Self-healing tab, its own template.
+        from modules import heal_page
+        heal = heal_page.view(list_name)
+    return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal)
 
 
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])

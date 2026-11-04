@@ -687,13 +687,8 @@ EMPTY_IN_FIXTURE = {
     "v2/_preview_parts.html (t.program.notes or ())": _PREVIEW_PARTS,
     "v2/_preview_parts.html d.lines": _PREVIEW_PARTS,
     "v2/_preview_parts.html n.lines": _PREVIEW_PARTS,
-    "v2/_preview_parts.html pv.targets": _PREVIEW_PARTS,
-    "v2/_preview_parts.html pv.what_not['items']": _PREVIEW_PARTS,
     "v2/_preview_parts.html r.did_not['items']": _PREVIEW_PARTS,
-    "v2/_preview_parts.html t.gates": _PREVIEW_PARTS,
-    "v2/_preview_parts.html t.operands": _PREVIEW_PARTS,
     "v2/_preview_parts.html t.program.lines": _PREVIEW_PARTS,
-    "v2/_preview_parts.html t.program.lines #2": _PREVIEW_PARTS,
     "v2/_preview_parts.html w.lines": _PREVIEW_PARTS,
     "v2/_profile_op.html q.changes": _OP + " (Propose from the connectors' preview)",
     "v2/_profile_table.html p.rows": "Monitoring › Profile's sections: the lab's network has no committed monitoring profile",
@@ -879,7 +874,10 @@ EMPTY_IN_FIXTURE = {
 #: map carries and draws nowhere, a finding of its own, so the loop is declared with the rest.
 #: 365 with board FC's layer provenance (C2283, 2026-11-02): its provider gives r3's Deploy…
 #: card a line to send, so the card's failing gates draw.
-EMPTY_IN_FIXTURE_CEILING = 365
+#: 360 with board H's Self-healing tab (H9, 2026-11-03): its provider previews a policy change
+#: in place, so the shared preview parts' targets, gates, operands, what it does not do and a
+#: short program draw.
+EMPTY_IN_FIXTURE_CEILING = 360
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

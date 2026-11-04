@@ -461,6 +461,19 @@ HISTORY = {
     "ai_feedback_v2.review": NOT_A_DEVICE,
     # C2009: a network's stage, kept in its settings record with who, before, after and why.
     "settings_v2.sdn_stage": NOT_A_DEVICE,
+    # Heal to intent's policy (board H, H1 and H9): each kept in a settings record with who,
+    # when and why (the network's, or the installation's for the kill switch); none is one
+    # device's record.
+    "heal_v2.policy_confirm": NOT_A_DEVICE,
+    "heal_v2.turn_off": NOT_A_DEVICE,
+    "heal_v2.notify_save": NOT_A_DEVICE,
+    "heal_v2.stop_everywhere": NOT_A_DEVICE,
+    "heal_v2.resume": NOT_A_DEVICE,
+    # Notifications (board H, artboard B; H9): the installation's teams store and delivery log,
+    # never one device's record (a send's row is History's notifications source).
+    **{f"notify_v2.{e}": NOT_A_DEVICE for e in (
+        "relay_password", "relay_test", "team_add", "email_add", "code_send", "code_verify",
+        "dest_enabled", "dest_test", "dest_remove", "webhook_add", "webhook_edit")},
     "settings_v2.sdn_test": NOT_A_DEVICE,
     "settings_v2.sdn_saved_test": NOT_A_DEVICE,
     "sdn_v2.controller_test": NOT_A_DEVICE,

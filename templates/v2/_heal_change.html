@@ -1,0 +1,56 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board H, artboard A's right column: a change to the network's heal policy, opened by Change
+    mode…, Change fix kinds… or a hard stop's Edit… (`change.part`). A choice previews in place
+    (routes/heal_v2.policy_preview, writing nothing): What this changes, then the confirm, bound
+    to the preview's fingerprint and needing a verified person and a reason. Included by
+    _heal.html with `change` from modules/heal_page.change. -#}
+{%- set c = change -%}
+{%- set net = c.network -%}
+<section class="card set-card heal-card heal-change" id="heal-change" aria-labelledby="h-heal-change">
+  <div class="card-head"><h2 id="h-heal-change">{% if c.part == 'mode' %}Change self-healing on {{ net }}{% elif c.part == 'kinds' %}Change the fix kinds on {{ net }}{% else %}Change “{{ c.guard.label }}” on {{ net }}{% endif %}</h2></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not saved:</strong> {{ refused }}. Nothing was changed; what you chose is kept below.</p></div>
+  {%- endif %}
+  {#- Enter in a field previews (the form's submit); only the confirm button below saves. -#}
+  <form class="heal-form" id="heal-change-form" method="post" action="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-post="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-trigger="submit" hx-target="#heal-preview" hx-swap="innerHTML">
+    <input type="hidden" name="part" value="{{ c.part }}">
+    <fieldset class="heal-what" hx-post="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-trigger="change" hx-target="#heal-preview" hx-swap="innerHTML">
+      <legend class="sr-only">What changes</legend>
+      {%- if c.part == 'mode' %}
+      <div class="heal-radio" role="radiogroup" aria-label="Mode">
+        <label><input type="radio" name="heal_mode" value="off"{% if c.mode == 'off' %} checked{% endif %}> Off</label>
+        <label><input type="radio" name="heal_mode" value="dry_run"{% if c.mode == 'dry_run' %} checked{% endif %}> Dry run</label>
+        <label{% if c.auto_refused %} title="{{ c.auto_refused }}"{% endif %}><input type="radio" name="heal_mode" value="auto"{% if c.mode == 'auto' %} checked{% endif %}{% if c.auto_refused %} disabled{% endif %}> Auto</label>
+      </div>
+      {%- if c.auto_refused %}
+      <p class="small muted heal-auto-off">Auto is turned on only on a network marked lab until the AUTO production-readiness gate is complete; {{ net }} is {{ ('marked ' ~ c.cur.stage.stage) if c.cur.stage.stage else 'not marked' }}.</p>
+      {%- endif %}
+      <label class="heal-field">Auto until
+        <input type="text" name="heal_mode_until" value="{{ c.until }}" placeholder="2026-11-20 18:00 UTC" autocomplete="off">
+        <span class="set-origin">Required for Auto, at most 7 days away, in UTC. At its end the mode returns to dry run, and History of this policy says so.</span></label>
+      {%- elif c.part == 'kinds' %}
+      <p class="small muted">Allow a kind in Auto only after its lab scenario has passed: one more Tier 1 kind at a time.</p>
+      <input type="hidden" name="heal_kinds_auto" value="">
+      <input type="hidden" name="heal_kinds_propose" value="">
+      <div class="heal-kind-pick">
+        {%- for k in c.kinds %}
+        <label class="set-switch"><input type="checkbox" name="{{ 'heal_kinds_auto' if k.tier == 1 else 'heal_kinds_propose' }}" value="{{ k.kind }}"{% if k.on %} checked{% endif %}> {{ k.on_words }}: {{ k.label }}</label>
+        {%- endfor %}
+      </div>
+      {%- else %}
+      {%- for key in c.guard['keys'] %}
+      <label class="heal-field">{{ c.guard_words[key] | capitalize }}
+        <input type="number" name="{{ key }}" value="{{ c.guard['values'][key] }}" min="0" autocomplete="off"></label>
+      {%- endfor %}
+      <p class="small muted">Default {{ c.guard.default }}.</p>
+      {%- endif %}
+    </fieldset>
+    <label class="heal-field">Reason
+      <textarea name="reason" rows="2" required>{{ c.reason }}</textarea></label>
+    <div class="heal-preview" id="heal-preview">
+      {%- if refused %}<p class="small muted">Choose again, or press Enter in a field, to preview what it changes.</p>
+      {%- else %}<p class="small muted">Choose what to change: what it changes is drawn here before anything is saved.</p>{% endif %}
+    </div>
+    <div class="set-foot"><a class="btn" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">Cancel</a></div>
+  </form>
+</section>

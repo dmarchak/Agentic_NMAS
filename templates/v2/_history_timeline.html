@@ -15,7 +15,7 @@
 {%- else %}
 <section class="card hist-timeline" id="hist-timeline"
          hx-get="{{ url_for('v2.history_timeline', before=f.before or None, call=f.call or None, **keep) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body, nmas:netbox from:body, nmas:ai_calls from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body, nmas:netbox from:body, nmas:ai_calls from:body, nmas:notifications from:body" hx-swap="outerHTML">
   {%- if f.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>Not applied: {{ f.error }}.</p></div>
   {%- endif %}
