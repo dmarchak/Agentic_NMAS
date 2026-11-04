@@ -13,7 +13,7 @@ Each tool is committed, and each run's raw output is committed beside it under
 | Tool | What it lists | How |
 |---|---|---|
 | **(a) Deletion** | every test that still passes with the product functions it covers stubbed out | for each test, the functions its run executes (the coverage nightly's per-test contexts, `scripts/nmas_mutation.py`'s `load_reach`); each replaced by a stub raising `NotImplementedError`, in a throwaway worktree; the test run alone |
-| **(b) Mutation, per test** | each test that kills zero mutants of the code it covers, with every test's kills | mutmut, one mutant at a time, each mutant's killing tests recorded. **Full** on deploy, credentials and secrets, drift, Needs attention, SDN detect and respond, egress, and every Phase 8 module (`modules/ai/`, `modules/sdn/`); **sampled** elsewhere (a recorded seed, a stated share) |
+| **(b) Mutation, per test** | each test that kills zero mutants of the code it covers, with every test's kills | mutmut 3.8.0's mutants, one at a time, each run once against all the tests the map says cover its function, every failure recorded, so each mutant's killing tests are all named (`scripts/nmas-test-audit-mutation`). **Full** on deploy, credentials and secrets, drift, Needs attention, SDN detect and respond, egress, and every Phase 8 module (`modules/ai/`, `modules/sdn/`); **sampled** elsewhere (a recorded seed, a stated share) |
 | **(c) Static patterns** | tautologies, assertion-free tests, mocks of the module under test, swallowed exceptions, status-only asserts | parsing each test file (`ast`), never matching text |
 | **(d) Dead** | always skipped or xfail, uncollected, shadowed names | pytest's own collection (`--collect-only`) against the parsed definitions; a skip read from its decorator or call |
 | **(e) Fakes** | each fake whose answers differ from a recording of the real service it stands for | each fake (`tests/*fake*`, the classes and functions tests use in place of a client) asked the recording's requests, its answers compared field by field |
@@ -82,7 +82,23 @@ No classification and no fixes:
   Each one's outputs are under `docs/test_audit/<tool>/2026-11-03/`.
 - **The combined suspects list:** 1,730 of 21,154 tests, in
   `docs/test_audit/suspects/2026-11-03/`.
-- **Not built: (b), mutation with per-test kills.**
+- **(b), mutation with per-test kills: built and canaried (2026-11-04 ~10:0x UTC), not yet run
+  on a real module.**
+  - **The tool:** `scripts/nmas-test-audit-mutation`, the operator's option (1) below:
+    - mutmut 3.8.0's mutants, made once by `--generate` and committed to a file;
+    - the weekly run's canaries first, a must-die canary and a null canary;
+    - per function: a baseline, a reach check (the body raising) and each mutant;
+    - each in one pytest run holding all the covering tests, every failure recorded;
+    - tool (a)'s throwaway copies, each module restored and compared byte for byte.
+  - **Its canary:** `docs/test_audit/mutation/2026-11-04/canary.md`. All 6 tests of the
+    canary function have their exact kill sets. The planted weak test is the only one listed.
+  - **The narrowed first target cannot be estimated from run #36's map:**
+    - `detect.mark_replies` and `gateway.mask_typed` have moved since that map was made;
+    - `detect.transfer` is not in that map at all;
+    - `--estimate` leaves all three out, as stale or missing.
+
+    It needs a coverage nightly made after their last change. The arithmetic, with the
+    staleness set aside, is in the canary's record.
   - **What the weekly run gives:** the mutation workflow ran green on Phase 8 functions
     (run #69: both canaries held, 217 of 273 killed on 5 functions, C2354).
   - **What (b) needs beyond it:** mutmut stops a mutant at its first failing test, so its

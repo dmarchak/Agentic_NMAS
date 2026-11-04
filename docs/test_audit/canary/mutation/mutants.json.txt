@@ -1,0 +1,76 @@
+{
+ "functions": {
+  "canarypkg/fees.py::fee": {
+   "hash": "369ff729ba89c1ded0d4ecbc72c0c36877cad9ef35eab08ee1fc48dbbde14863",
+   "mutants": [
+    {
+     "end": 19,
+     "lines": [
+      "    if amount <= 100:\n"
+     ],
+     "n": 1,
+     "start": 19
+    },
+    {
+     "end": 19,
+     "lines": [
+      "    if amount < 101:\n"
+     ],
+     "n": 2,
+     "start": 19
+    },
+    {
+     "end": 20,
+     "lines": [
+      "        return 4\n"
+     ],
+     "n": 3,
+     "start": 20
+    },
+    {
+     "end": 21,
+     "lines": [
+      "    return 1\n"
+     ],
+     "n": 4,
+     "start": 21
+    }
+   ]
+  },
+  "canarypkg/fees.py::must_die": {
+   "hash": "5fefe167fd2a14c2d7cd7de8b64713f0be5829220f196d6dd8a96a52a1a9966f",
+   "mutants": [
+    {
+     "end": 8,
+     "lines": [
+      "    return n - 1\n"
+     ],
+     "n": 1,
+     "start": 8
+    },
+    {
+     "end": 8,
+     "lines": [
+      "    return n + 2\n"
+     ],
+     "n": 2,
+     "start": 8
+    }
+   ]
+  },
+  "canarypkg/fees.py::untested": {
+   "hash": "2b10b797cb4d2e044bd74af93cbb2ec3c0548e7d245d7be49dbc80aa851bd2c7",
+   "mutants": [
+    {
+     "end": 14,
+     "lines": [
+      "    return a + b\n"
+     ],
+     "n": 1,
+     "start": 14
+    }
+   ]
+  }
+ },
+ "generator": "mutmut 3.8.0"
+}

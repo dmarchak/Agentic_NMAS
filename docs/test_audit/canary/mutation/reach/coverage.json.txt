@@ -1,0 +1,27 @@
+{
+  "data": "per test",
+  "modules": {
+    "canarypkg/fees.py": {
+      "path": "canarypkg/fees.py",
+      "test_files": ["tests/test_fees.py", "tests/test_plant_import_time.py"],
+      "function_list": [
+        {"name": "must_die", "line": 5, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_fees.py::test_plant_must_die"],
+         "other_tests": []},
+        {"name": "untested", "line": 11, "covered_unit": false, "covered_any": false,
+         "unit_tests": [], "other_tests": []},
+        {"name": "fee", "line": 17, "covered_unit": true, "covered_any": true,
+         "unit_tests": ["tests/test_fees.py::test_plant_fee_kills_all",
+                        "tests/test_fees.py::test_plant_fee_kills_one",
+                        "tests/test_fees.py::test_plant_fee_kills_none",
+                        "tests/test_fees.py::test_plant_fee_fails_unmutated",
+                        "tests/test_plant_import_time.py::test_plant_killed_in_collection"],
+         "other_tests": ["tests/test_fees.py::test_plant_fee_in_a_child_kills_three"]}
+      ]
+    }
+  },
+  "tiers": {"unit": 6, "spawns": 1},
+  "unclassified": [],
+  "stale_exceptions": [],
+  "assertion_free": []
+}

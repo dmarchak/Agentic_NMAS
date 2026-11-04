@@ -1,0 +1,1026 @@
+#!/usr/bin/env python3
+"""The existing-test audit's tool (b), mutation per test (docs/TEST_AUDIT.md): each mutant of a
+function is run once against ALL the tests the coverage nightly measured to run that function,
+every failure recorded (never stopping at the first, as mutmut's own run does), so each
+mutant's killing tests are all named and each test's own kills are known. Every test that kills
+none of the mutants it was run against is listed. It lists suspects only: it never says whether
+a finding is real.
+
+    scripts/nmas-test-audit-mutation --reach DIR (--commit SHA | --then DIR) --mutants FILE
+        [--generate] [--estimate] [--root DIR] [--scope PATH ...] [--functions KEY ...]
+        [--suspects TSV] [--canary KEY=TESTS ...] [--null-canary KEY=TESTS ...]
+        [--python PY] [--jobs N] [--timeout S] [--logging] [--mutate-harness]
+        [--times JUNIT ...] [--seconds-per-test S] [--startup S] [--workdir DIR]
+        [--out FILE] [--mutants-out FILE]
+
+**The reach map and the scope** are tool (a)'s (`scripts/nmas-test-audit-deletion`, whose
+functions this loads): `--reach` is the coverage nightly's `coverage-drilldown`, read by
+`scripts/nmas_mutation.py`'s `load_reach` (`{path::qualname: [test id]}`); the functions audited
+are the map's functions in `--scope` (default the operator's named modules, DEFAULT_SCOPE),
+narrowed to `--functions` (keys) and to the functions `--suspects`' tests reach (a TSV whose
+first column is a test id: the combined suspects list), the harness (a function every test in
+the map reaches) left out unless `--mutate-harness`, the canaries always left out. A function
+asked for by `--functions` that the map lacks is named in the output. A selection of no
+function is refused (exit 1): a scan with nothing in it says nothing.
+
+**The mutants** are mutmut 3.8.0's, the generator the weekly run and the irreversible tier's
+hand check use (docs/TIER_HAND_CHECK.md, "The method"), made by `--generate` into `--mutants`
+and read from it otherwise, so a run needs no mutmut. `--generate` runs mutmut as a program,
+as scripts/nmas-mutation does (`--python -m mutmut run`, requirements-mutation.txt's mutmut on
+that interpreter's path), in a throwaway folder holding only the modules (so no test runs), and
+reads its copy of each module back from `mutants/`; this script imports nothing of mutmut or
+libcst (tests/test_requirements_lock.py). For each function: its text's hash
+(`nmas_mutation.function_hash`) and each mutant as mutmut numbers it (`module.x_f__mutmut_<n>`,
+`nmas_mutation.mangled`) with the lines it replaces (`start` to `end`, 1-based, inclusive) and
+their replacement. A mutant whose lines fall outside its function, or whose module does not
+parse, is refused by name. mutmut mutates only module-level functions and the methods of
+module-level classes, never a decorated one but for `staticmethod` and `classmethod`: any other
+function has no mutants, and is named.
+
+**Staleness.** A function whose text moved since the map (tool (a)'s `stale_functions`, against
+`--commit` or `--then`), or since its mutants were made (the hash in `--mutants` against
+`--root` now), is `stale` and is not run.
+
+**The canaries, first** (`nmas_mutation`'s, the weekly run's): every mutant of each `--canary`
+function must be killed by its tests (default `tests/mutation_canary.py`'s `in_process` and
+`in_child`, the second reached only in a child process: a mutant is written to the copy's file,
+so a child runs it too), and no mutant of a `--null-canary` function may be (default
+`untested`, run against all of `tests/test_mutation_canary.py`). `KEY=TESTS`: a function key and
+comma-separated test ids or files. A canary broken stops the run before any audited mutant
+runs, and no result stands (exit 3).
+
+**Per function, in a throwaway copy** (tool (a)'s: `--root`'s tracked files copied into one
+folder per job, outside `--root`, removed at the end; the working tree is only read):
+1. **The baseline:** the function's covering tests run once, unmutated. Only the tests that
+   pass then are judged (`fails unmutated`, `skipped unmutated` otherwise). A test the copy's
+   collection does not list is `not collected`.
+2. **The reach check:** the body replaced by RAISE (tool (a)'s `stub_source`); the tests that
+   do not fail are named per test. When none fails, the function is `void`: its tests do not
+   reach it in the copy, and its mutants are not run.
+3. **Each mutant, one at a time:** written into the copy's module, the judged tests run in one
+   pytest process (`-v --tb=no -rfE --continue-on-collection-errors`, no `-x`), each test's
+   outcome read (a test file that does not collect fails its tests, and the asked tests it
+   left unrun, which pytest then never starts, run again in a second process); the module
+   written back from its original and compared byte for byte (a
+   difference stops the job: a tool error). A logging call's mutant (`nmas_mutation.classify`)
+   is not run unless `--logging`, as the weekly run never runs one; a mutant in
+   `tests/mutation_equivalent.py` is not run. A mutant's run is bounded at 2.5 times its
+   baseline's measured wall, at least MUTANT_TIMEOUT_FLOOR_S; past it the mutant is `timed out`
+   (killed, as mutmut counts it), the tests seen failing before it credited and the rest given no
+   verdict for it. A run giving no test outcome is `no outcome`, crediting nothing.
+
+**Per test, per mutant:** failed or errored (in setup, call, teardown, or its file's collection)
+is a kill; passed is judged and not killed; anything else is no verdict.
+
+**Results** per test: `kills none` (judged against at least one mutant, killed none: the
+listed), `kills some`, `fails unmutated`, `skipped unmutated`, `no verdict` (no mutant judged:
+its functions void, without mutants, or every mutant not run), `stale`, `not collected`.
+
+**Output:** `--out`, a TSV `test_id<TAB>functions<TAB>judged<TAB>killed<TAB>result<TAB>detail`
+(killed: per function, the mutant numbers, `path::qualname: 1, 3`; detail: the test's tier, the
+reach check, the counts); `--mutants-out`, a TSV
+`mutant<TAB>function<TAB>kind<TAB>result<TAB>killed by<TAB>was<TAB>now` (every killing test
+named). Then `#` lines: the scope, the selection, the canaries, the counts, the stale and void
+functions, the measured times (each run's startup and its tests' in-process seconds, from
+`--durations`), and any tool error.
+
+**`--estimate`** runs nothing: from the map and the mutants file, per function its mutants to
+run (M), its covering tests (T) and the pytest runs (M + 2: the baseline and the reach check);
+then the test executions (sum of (M + 2) x T) and the seconds: each run's start-up (`--startup`)
+plus each test execution's in-process time, from `--times` (CI's JUnit files: each test's
+`time`) where a test is in them and `--seconds-per-test` where not, each source and count said.
+
+Exit 0; 1 when the selection is empty, the copy's collection did not run, or a tool error was
+met; 2 for a bad argument; 3 when a canary is broken.
+"""
+import argparse
+import collections
+import difflib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import queue
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import xml.etree.ElementTree as ET
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def _load_script(name, path):
+    """A script without `.py`, loaded as a module (its `adopt` does nothing under a name that
+    is not `__main__`)."""
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+#: Tool (a): the map, the scope, the harness, staleness, the copy, the collection, the stub.
+deletion = _load_script("nmas_test_audit_deletion",
+                        os.path.join(REPO, "scripts", "nmas-test-audit-deletion"))
+nm = deletion.nm
+pydefs = deletion.pydefs
+public = deletion.public
+DEFAULT_SCOPE = deletion.DEFAULT_SCOPE
+
+#: The reach check's body: a function no covering test notices raising is not reached.
+RAISE = 'raise RuntimeError("the mutation audit\'s reach check: this function must not pass")'
+#: The weekly run's canaries (scripts/nmas_mutation.py, CANARY_IN_PROCESS and CANARY_IN_CHILD,
+#: and CANARY_UNTESTED the other way), with their tests.
+DEFAULT_CANARIES = (
+    f"{nm.CANARY_FILE}::in_process={nm.CANARY_TESTS}::test_in_process",
+    f"{nm.CANARY_FILE}::in_child={nm.CANARY_TESTS}::test_in_child")
+DEFAULT_NULL_CANARIES = (f"{nm.CANARY_FILE}::untested={nm.CANARY_TESTS}",)
+WANT = {"killed": "to be killed", "survived": "to survive"}
+RESULTS = ("kills none", "kills some", "fails unmutated", "skipped unmutated", "no verdict",
+           "stale", "not collected")
+MUTANT_RESULTS = ("killed", "survived", "timed out", "no outcome", "not run: logging",
+                  "not run: equivalent", "not run: its function void", "refused")
+#: The baseline's bound: the suite's own per-process bound (scripts/nmas-test), as tool (a)'s.
+TIMEOUT_S = deletion.TIMEOUT_S
+#: A mutant's run is bounded at 2.5 times its baseline's wall (CLAUDE.md, "Bounds"), never under
+#: this: the repository's pytest start-up alone measured about 1.2 s a run (tool (a)'s 6,195
+#: tests, 2.43 s for two runs each, 2026-11-03), and a run of a few tests would otherwise be
+#: bounded at a few seconds, inside the start-up's own spread on a loaded laptop.
+MUTANT_TIMEOUT_FLOOR_S = 30
+#: tool (a)'s measured wall a test run alone (docs/TEST_AUDIT.md, "Its cost"): the per-test
+#: seconds `--estimate` uses where `--times` has none. It holds a start-up, so with `--startup`
+#: added too it bounds the time from above.
+SECONDS_PER_TEST = 1.31
+#: The start-up of one pytest run of the repository, from the same measurement: about half of
+#: a lone test's 2.43 s for two runs.
+STARTUP_S = 1.2
+_VERBOSE = re.compile(r"^(?P<id>\S.*?::.+?) (?P<o>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)"
+                      r"(?:\s.*)?$")
+_DURATION = re.compile(r"^\s*(?P<s>\d+(?:\.\d+)?)s (?:setup|call|teardown)\s+(?P<id>\S.*)$")
+_SUMMARY_HEAD = re.compile(r"^=+ (short test summary info|slowest .*durations.*) =+$")
+
+
+# --- the mutants ----------------------------------------------------------------------------
+
+def hunk_of(before, after):
+    """`{"start", "end", "lines"}`: lines `start` to `end` of *before* (1-based, inclusive;
+    `end` = `start` - 1 for a pure insertion) replaced by `lines` give *after*."""
+    a, b = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    p = 0
+    while p < min(len(a), len(b)) and a[p] == b[p]:
+        p += 1
+    s = 0
+    while s < min(len(a), len(b)) - p and a[len(a) - 1 - s] == b[len(b) - 1 - s]:
+        s += 1
+    return {"start": p + 1, "end": len(a) - s, "lines": b[p:len(b) - s]}
+
+
+def apply_hunk(source, hunk):
+    lines = source.splitlines(keepends=True)
+    return "".join(lines[:hunk["start"] - 1] + list(hunk["lines"]) + lines[hunk["end"]:])
+
+
+def span_of(source, qualname):
+    """`(first line, last line)` of the counted definition of *qualname*, its decorators
+    included, or None."""
+    import ast
+    tree = ast.parse(source)
+    nodes = {(n.lineno, n.name): n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for d in pydefs.definitions(source):
+        if d.qualname == qualname and d.counted:
+            node = nodes.get((d.lineno, d.name))
+            first = min([d.lineno] + [x.lineno for x in getattr(node, "decorator_list", [])])
+            return first, d.end_lineno
+    return None
+
+
+def function_text(source, qualname):
+    span = span_of(source, qualname)
+    if span is None:
+        return ""
+    return "\n".join(source.splitlines()[span[0] - 1:span[1]])
+
+
+def mutant_source(source, qualname, hunk):
+    """`(mutated module, why not)`: *source* with *hunk* applied, refused when its lines fall
+    outside the function's or the result does not parse."""
+    import ast
+    span = span_of(source, qualname)
+    if span is None:
+        return None, "the function is not defined in the module"
+    first, last = span
+    if not (first <= hunk["start"] <= last + 1 and hunk["end"] <= last):
+        return None, (f"its lines {hunk['start']} to {hunk['end']} are outside the function's "
+                      f"{first} to {last}")
+    new = apply_hunk(source, hunk)
+    try:
+        ast.parse(new)
+    except SyntaxError as e:
+        return None, f"the mutated module does not parse: {e.msg}, line {e.lineno}"
+    if new == source:
+        return None, "the mutant changes nothing"
+    return new, ""
+
+
+def mutant_name(key, n):
+    path, qualname = key.split("::", 1)
+    return f"{nm.mangled(path, qualname)}__mutmut_{n}"
+
+
+def describe(source, key, mutated, compared, equivalent):
+    """`(kind, was, now, equivalent's reason)` of one mutant (the weekly run's words)."""
+    path, qualname = key.split("::", 1)
+    orig, new = function_text(source, qualname), function_text(mutated, qualname)
+    kind = nm.classify(orig, new, compared) if orig and new else "verdict"
+    diff = "\n".join(difflib.unified_diff(orig.splitlines(), new.splitlines(), lineterm="", n=0))
+    was, now = nm.diff_lines(diff)
+    why = nm.is_equivalent(nm.dotted((path, qualname)), was, now, equivalent)
+    return kind, was, now, why
+
+
+#: One `mutmut run` making the mutants of a generation folder's modules (it then stops at its
+#: stats run, which collects no test there: "failed to collect stats", exit 1). Measured
+#: (2026-11-04): the canary about 1 s; mask_typed and mark_replies, the rest of their modules
+#: fenced, 5 s; every function of modules/ai/gateway.py, unfenced, MEASURED_GENERATE_S, the
+#: largest. The bound is about 2.5 times that, and a run past it is said by name.
+MEASURED_GENERATE_S = 133
+GENERATE_TIMEOUT_S = 330
+NONE_WHY = ("mutmut made none: it mutates module-level functions and module-level classes' "
+            "methods only, never a decorated one but for staticmethod and classmethod")
+
+
+def _mutmut_version(python, env):
+    """mutmut's version from the metadata on the path *python* runs with (no import of it)."""
+    from importlib import metadata
+    paths = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p] + sys.path
+    for dist in metadata.distributions(path=paths):
+        if (dist.metadata.get("Name") or "").lower() == "mutmut":
+            return f"mutmut {dist.version}"
+    return f"mutmut (no version found on {python}'s path)"
+
+
+def mutants_from_copy(source, qualname, mutated_module):
+    """`[(n, hunk)]` of *qualname*'s mutants in mutmut's copy of its module (*mutated_module*,
+    the trampolined file `mutmut run` writes under `mutants/`): each mutant function
+    (`x_f__mutmut_<n>`, or `xǁClassǁm__mutmut_<n>`) against mutmut's copy of the original
+    (`..._orig`), named back, put at the function's own lines and indentation. None when that
+    copy of the original is not the function as the source holds it."""
+    import textwrap
+    funcs = nm.mutated_functions(mutated_module)
+    base = nm.mangled("m.py", qualname).split(".", 1)[1] + "__mutmut"
+    short = qualname.rsplit(".", 1)[-1]
+
+    def named_back(text, name):
+        return text.replace(f"def {name}(", f"def {short}(", 1).splitlines()
+
+    if base + "_orig" not in funcs:
+        return []
+    span = span_of(source, qualname)
+    lines = source.splitlines(keepends=True)
+    own = "".join(lines[span[0] - 1:span[1]])
+    if any(not ln.endswith("\n") or ln.endswith("\r\n") for ln in lines[span[0] - 1:span[1]]):
+        return None
+    dedented = textwrap.dedent(own).splitlines()
+    orig = named_back(funcs[base + "_orig"], base + "_orig")
+    if orig != dedented:
+        return None
+    first = own.splitlines()[0]
+    indent = first[:len(first) - len(first.lstrip())]
+    out = []
+    n = 1
+    while f"{base}_{n}" in funcs:
+        mut = named_back(funcs[f"{base}_{n}"], f"{base}_{n}")
+        rel = hunk_of("".join(x + "\n" for x in orig), "".join(x + "\n" for x in mut))
+        out.append((n, {"start": span[0] + rel["start"] - 1, "end": span[0] + rel["end"] - 1,
+                        "lines": [(indent + x if x.strip() else x) for x in rel["lines"]]}))
+        n += 1
+    return out
+
+
+def generate(root, keys, python=None, workdir=None):
+    """`{"generator", "functions": {key: {"hash", "mutants": [{"n", "start", "end",
+    "lines"}], "why none"}}}` for *keys*, by mutmut's own generator on `--root`'s text now, run
+    as a program (`<python> -m mutmut run`, as scripts/nmas-mutation runs it) in a folder holding
+    only the modules, so no test runs; mutmut's copy of each module is read back from its
+    `mutants/` tree (`nmas_mutation.mutated_functions`). Nothing of mutmut is imported here."""
+    python = python or sys.executable
+    env = {k: v for k, v in os.environ.items()
+           if k not in deletion._DROP_ENV and not k.startswith("COV_CORE_")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    out = {"generator": _mutmut_version(python, env), "functions": {}}
+    by_path = collections.defaultdict(set)
+    for k in keys:
+        path, q = k.split("::", 1)
+        by_path[path].add(q)
+    sources = {p: deletion.read_now(root, p) for p in by_path}
+    for path, qs in sorted(by_path.items()):
+        if sources[path] is None:
+            for q in sorted(qs):
+                out["functions"][f"{path}::{q}"] = {"hash": "", "mutants": [],
+                                                    "why none": "the module is not in --root"}
+    present = sorted(p for p in by_path if sources[p] is not None)
+    if not present:
+        return out
+    folder = tempfile.mkdtemp(prefix="nmas-mutation-audit-generate-", dir=workdir)
+    try:
+        for p in present:
+            dst = os.path.join(folder, *p.split("/"))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            # Every other function fenced off, as the weekly run does (`nmas_mutation.fence`:
+            # comments only, every line keeps its number): unfenced, modules/ai/gateway.py alone
+            # took mutmut 133 s and a 21 MB copy (2026-11-04).
+            with open(dst, "w", encoding="utf-8") as fh:
+                fh.write(nm.fence(sources[p], by_path[p]))
+        # The weekly run's configuration (scripts/nmas-mutation's setup.cfg): the modules, no
+        # `do_not_mutate_patterns`.
+        with open(os.path.join(folder, "setup.cfg"), "w", encoding="utf-8") as fh:
+            fh.write("[mutmut]\nsource_paths =\n" + "".join(f"    {p}\n" for p in present))
+        try:
+            r = subprocess.run([python, "-m", "mutmut", "run", "--max-children", "1"],
+                               cwd=folder, env=env, capture_output=True, text=True,
+                               errors="replace", timeout=GENERATE_TIMEOUT_S)
+            said = (r.stdout + r.stderr).strip().splitlines()[-1:] or [f"exit {r.returncode}"]
+        except subprocess.TimeoutExpired:
+            raise SystemExit(f"mutmut's generation passed its {GENERATE_TIMEOUT_S} s bound "
+                             f"({MEASURED_GENERATE_S} s measured) on {', '.join(present)}")
+        for path in present:
+            copy = os.path.join(folder, "mutants", *path.split("/"))
+            if not os.path.isfile(copy):
+                raise SystemExit(f"mutmut wrote no copy of {path} ({said[0][:200]})")
+            with open(copy, encoding="utf-8") as fh:
+                mutated = fh.read()
+            for q in sorted(by_path[path]):
+                key = f"{path}::{q}"
+                entry = {"hash": nm.function_hash(sources[path], q), "mutants": []}
+                found = mutants_from_copy(sources[path], q, mutated) if entry["hash"] else []
+                if found is None:
+                    entry["why none"] = ("mutmut's copy of the function is not the function as "
+                                         "the source holds it")
+                    out["functions"][key] = entry
+                    continue
+                for n, hunk in found:
+                    _new, why = mutant_source(sources[path], q, hunk)
+                    entry["mutants"].append(dict(n=n, **hunk, **({"refused": why} if why else {})))
+                if not entry["mutants"]:
+                    entry["why none"] = (NONE_WHY if entry["hash"]
+                                         else "not a counted function of the module")
+                out["functions"][key] = entry
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    return out
+
+
+def load_mutants(path):
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data.get("functions"), dict):
+        raise SystemExit(f"{path} holds no mutants (no `functions`)")
+    return data
+
+
+def load_equivalent(root):
+    path = os.path.join(root, "tests", "mutation_equivalent.py")
+    if not os.path.isfile(path):
+        return []
+    spec = importlib.util.spec_from_file_location("mutation_equivalent_of_root", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return list(getattr(mod, "EQUIVALENT", []))
+
+
+# --- the selection --------------------------------------------------------------------------
+
+def parse_canaries(specs):
+    """`[(key, [test id or file])]` from `KEY=TESTS` specs."""
+    out = []
+    for s in specs:
+        key, sep, tests = s.partition("=")
+        if not sep or "::" not in key or not tests.strip():
+            raise ValueError(f"a canary is KEY=TESTS (path::qualname=test,...): {s!r}")
+        out.append((key, [t for t in tests.split(",") if t]))
+    return out
+
+
+def suspect_tests(path):
+    with open(path, encoding="utf-8") as fh:
+        return {ln.split("\t", 1)[0] for ln in fh
+                if "::" in ln.split("\t", 1)[0] and not ln.startswith("#")}
+
+
+def select(reach, scope, functions=(), suspects=None, canary_keys=(), mutate_harness=False):
+    """`{"keys": [path::qualname], "harness", "missing", "tests_of": {key: [test id]}}`."""
+    funcs = reach["functions"]
+    tests = deletion.by_test(funcs)
+    held = [] if mutate_harness else deletion.harness(funcs, tests)
+    keys = {k for k, t in funcs.items()
+            if t and deletion.in_scope(k.split("::", 1)[0], scope)}
+    keys -= set(held) | set(canary_keys)
+    missing = sorted(set(functions) - set(funcs))
+    if functions:
+        keys &= set(functions)
+    if suspects is not None:
+        keys &= set().union(*(tests.get(t, set()) for t in suspects))
+    return {"keys": sorted(keys), "harness": held, "missing": missing,
+            "tests_of": {k: sorted(set(funcs[k])) for k in keys}}
+
+
+# --- one pytest run -------------------------------------------------------------------------
+
+def parse_run(text, asked):
+    """`({test id: "failed"|"passed"|"skipped"}, {test id: in-process seconds},
+    [file whose collection failed])` from one run's output (`-v --tb=no -rfE --durations=0`).
+    A file that did not collect fails every asked test in it."""
+    outcomes, seconds = {}, collections.defaultdict(float)
+    in_summary = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if _SUMMARY_HEAD.match(line):
+            in_summary = True
+        d = _DURATION.match(line)
+        if d:
+            seconds[d.group("id").strip()] += float(d.group("s"))
+            continue
+        if in_summary:
+            continue
+        m = _VERBOSE.match(line)
+        if m:
+            o = m.group("o")
+            word = ("failed" if o in ("FAILED", "ERROR") else
+                    "passed" if o in ("PASSED", "XPASS") else "skipped")
+            was = outcomes.get(m.group("id"))
+            if was != "failed" and not (was == "passed" and word == "skipped"):
+                outcomes[m.group("id")] = word
+    files = []
+    for t in nm.failing_tests(text):
+        if "::" in t:
+            outcomes[t] = "failed"
+        else:
+            files.append(t)
+    for t in asked:
+        if t.split("::", 1)[0] in files:
+            outcomes[t] = "failed"
+    return outcomes, dict(seconds), files
+
+
+def run_tests(copy, python, ids, env, timeout):
+    """`{"outcomes", "seconds", "collection_errors", "wall", "timed_out", "exit", "last"}` of
+    *ids* run in one pytest process in *copy*, every failure recorded. pytest given a test id
+    whose file does not collect runs nothing at all ("found no collectors", even with
+    `--continue-on-collection-errors`: the canary's first run, 2026-11-04), so the asked tests
+    left without an outcome, outside the files that did not collect, run again in a second
+    process, and so on while a run names a new such file."""
+    r = _run_once(copy, python, ids, env, timeout)
+    while not r["timed_out"]:
+        left = [t for t in ids if t not in r["outcomes"]
+                and t.split("::", 1)[0] not in r["collection_errors"]]
+        if not left or not r["collection_errors"]:
+            break
+        again = _run_once(copy, python, left, env, timeout)
+        if not set(again["collection_errors"]) - set(r["collection_errors"]) \
+                and not again["outcomes"]:
+            break
+        r = {"outcomes": {**r["outcomes"], **again["outcomes"]},
+             "seconds": {**r["seconds"], **again["seconds"]},
+             "collection_errors": sorted(set(r["collection_errors"])
+                                         | set(again["collection_errors"])),
+             "wall": r["wall"] + again["wall"], "timed_out": again["timed_out"],
+             "exit": again["exit"], "last": again["last"]}
+    return r
+
+
+def _run_once(copy, python, ids, env, timeout):
+    cmd = [python, "-m", "pytest", "-v", "-p", "no:cacheprovider", "--tb=no", "-rfE",
+           "--continue-on-collection-errors", "--durations=0", "--durations-min=0", *ids]
+    t0 = time.monotonic()
+    timed_out, code = False, None
+    try:
+        r = subprocess.run(cmd, cwd=copy, env=env, capture_output=True, text=True,
+                           errors="replace", timeout=timeout)
+        text, code = r.stdout + r.stderr, r.returncode
+    except subprocess.TimeoutExpired as e:
+        # The partial output arrives as BYTES even with text=True (CPython; C832).
+        parts = [x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
+                 for x in (e.stdout, e.stderr)]
+        text, timed_out = "".join(parts), True
+    wall = time.monotonic() - t0
+    outcomes, seconds, files = parse_run(text, ids)
+    last = [x for x in text.replace(copy, "<copy>").splitlines() if x.strip()][-1:] or [""]
+    return {"outcomes": outcomes, "seconds": seconds, "collection_errors": files, "wall": wall,
+            "timed_out": timed_out, "exit": code, "last": " ".join(last[0].split())[:160]}
+
+
+# --- the audit ------------------------------------------------------------------------------
+
+class ToolError(Exception):
+    pass
+
+
+def audit(root, reach_folder, mutants_file, commit=None, then=None, scope=DEFAULT_SCOPE,
+          functions=(), suspects=None, canaries=DEFAULT_CANARIES,
+          null_canaries=DEFAULT_NULL_CANARIES, python=None, jobs=2, timeout=TIMEOUT_S,
+          run_logging=False, mutate_harness=False, workdir=None, progress=None):
+    root = os.path.abspath(root)
+    python = python or sys.executable
+    reach = nm.load_reach(reach_folder)
+    if reach is None:
+        raise SystemExit(f"no coverage.json in {reach_folder}")
+    tiers = reach.get("tiers") or {}
+    canaries, null_canaries = parse_canaries(canaries), parse_canaries(null_canaries)
+    sel = select(reach, scope, functions, suspects, [k for k, _ in canaries + null_canaries],
+                 mutate_harness)
+    data = load_mutants(mutants_file)
+    stale = deletion.stale_functions(sel["keys"], root, deletion.reader_then(root, commit, then))
+    out = {"selection": sel, "stale": dict(stale), "generator": data.get("generator", ""),
+           "rows": [], "mutant_rows": [], "canaries": [], "canary_broken": [], "errors": [],
+           "void": {}, "none": {}, "runs": [], "collected": None, "wall": 0.0}
+    if not sel["keys"]:
+        return out
+    for k in sel["keys"]:
+        entry = data["functions"].get(k)
+        if k in stale:
+            continue
+        if entry is None:
+            out["stale"][k] = "not in the mutants file"
+        elif entry.get("hash") != nm.function_hash(deletion.read_now(root, k.split("::")[0]),
+                                                   k.split("::", 1)[1]):
+            out["stale"][k] = "its text moved since its mutants were made"
+    for k, _t in canaries + null_canaries:
+        if k not in data["functions"]:
+            raise SystemExit(f"the canary {k} is not in the mutants file {mutants_file}")
+    equivalent = load_equivalent(root)
+    files = deletion.tracked_files(root)
+    env = deletion.child_env(root)
+    base = tempfile.mkdtemp(prefix="nmas-mutation-audit-", dir=workdir)
+    lock = threading.Lock()
+    try:
+        copies = [deletion.make_copy(root, files, os.path.join(base, f"copy-{i}"))
+                  for i in range(jobs)]
+        originals = {}
+
+        def original(path):
+            if path not in originals:
+                originals[path] = deletion.read_now(copies[0], path)
+            return originals[path]
+
+        live = [k for k in sel["keys"] if k not in out["stale"]]
+        for k in live + [k for k, _ in canaries + null_canaries]:
+            original(k.split("::", 1)[0])
+        asked = sorted({t for k in live for t in sel["tests_of"][k]})
+        test_files = sorted(f for f in {t.split("::", 1)[0] for t in asked}
+                            if os.path.isfile(os.path.join(copies[0], *f.split("/"))))
+        collected = deletion.collect(copies[0], python, test_files, env) if test_files else set()
+        if collected is None:
+            return out
+        out["collected"] = len(collected)
+
+        def write(copy, path, text):
+            with open(os.path.join(copy, *path.split("/")), "w", encoding="utf-8") as fh:
+                fh.write(text)
+
+        def restore(copy, path):
+            write(copy, path, original(path))
+            with open(os.path.join(copy, *path.split("/")), "rb") as fh:
+                if fh.read() != original(path).encode("utf-8"):
+                    raise ToolError(f"{path} in {os.path.basename(copy)} is not its original, "
+                                    "byte for byte, after its restore")
+
+        def run(copy, ids, bound, path=None, text=None):
+            try:
+                if path is not None:
+                    write(copy, path, text)
+                r = run_tests(copy, python, ids, env, bound)
+            finally:
+                if path is not None:
+                    restore(copy, path)
+            with lock:
+                out["runs"].append((len(ids), r["wall"], sum(r["seconds"].values())))
+            return r
+
+        def mutants_of(key, source):
+            """`[(n, mutated source or None, kind, was, now, why not run)]`."""
+            compared = nm.compared_strings(source)
+            res = []
+            for m in data["functions"][key]["mutants"]:
+                if m.get("refused"):
+                    res.append((m["n"], None, "", "", "", f"refused: {m['refused']}"))
+                    continue
+                new, why = mutant_source(source, key.split("::", 1)[1], m)
+                if new is None:
+                    res.append((m["n"], None, "", "", "", f"refused: {why}"))
+                    continue
+                kind, was, now, eq = describe(source, key, new, compared, equivalent)
+                skip = ("not run: logging" if kind == "logging" and not run_logging else
+                        "not run: equivalent" if eq else "")
+                res.append((m["n"], new, kind, was, now, skip))
+            return res
+
+        # The canaries, first, in the first copy: a broken one stops the run.
+        for key, ids, want in ([(k, i, "killed") for k, i in canaries]
+                               + [(k, i, "survived") for k, i in null_canaries]):
+            path = key.split("::", 1)[0]
+            base_run = run(copies[0], ids, timeout)
+            passing = sorted(t for t, o in base_run["outcomes"].items() if o == "passed")
+            bad = []
+            if not passing:
+                bad.append("no test of it passes unmutated")
+            bound = max(MUTANT_TIMEOUT_FLOOR_S, 2.5 * base_run["wall"])
+            if data["functions"][key].get("hash") != nm.function_hash(original(path),
+                                                                      key.split("::", 1)[1]):
+                bad.append("its text moved since its mutants were made")
+            for n, new, _kind, was, now, skip in mutants_of(key, original(path)):
+                if new is None:
+                    bad.append(f"mutant {n} {skip}")
+                    continue
+                r = run(copies[0], passing, bound, path, new)
+                killers = sorted(t for t in passing if r["outcomes"].get(t) == "failed")
+                killed = bool(killers) or r["timed_out"]
+                if want == "killed" and not killed:
+                    bad.append(f"mutant {n} survived ({was} -> {now})")
+                if want == "survived" and killed:
+                    bad.append(f"mutant {n} was killed by {', '.join(killers) or 'its timeout'}")
+            n_mutants = len(data["functions"][key]["mutants"])
+            out["canaries"].append((key, want, n_mutants, len(passing), bad))
+            if bad or not n_mutants:
+                out["canary_broken"].append(
+                    f"{key} (every mutant {WANT[want]}): "
+                    + ("; ".join(bad) or "it has no mutants"))
+        if out["canary_broken"]:
+            return out
+
+        per_test = collections.defaultdict(lambda: {"judged": 0, "killed": {}, "base": {},
+                                                    "reach": {}})
+        work = queue.Queue()
+        for k in live:
+            work.put(k)
+
+        def one(copy, key):
+            path, qualname = key.split("::", 1)
+            ids = [t for t in sel["tests_of"][key] if t in collected]
+            base_run = run(copy, ids, timeout) if ids else None
+            passing = [t for t in ids if base_run and base_run["outcomes"].get(t) == "passed"]
+            with lock:
+                for t in ids:
+                    per_test[t]["base"][key] = (base_run["outcomes"].get(t, "no outcome")
+                                                if base_run else "no outcome")
+            muts = mutants_of(key, original(path))
+            if not muts:
+                with lock:
+                    out["none"][key] = data["functions"][key].get("why none", "no mutants")
+                return
+            reached = []
+            if passing:
+                stubbed, refused = deletion.stub_source(original(path), {qualname}, stub=RAISE)
+                if stubbed is None:
+                    raise ToolError(f"{key}: the reach check's body: {refused}")
+                r = run(copy, passing, timeout, path, stubbed)
+                reached = [t for t in passing if r["outcomes"].get(t) == "failed"]
+                with lock:
+                    for t in passing:
+                        per_test[t]["reach"][key] = t in reached
+            void = not reached
+            if void:
+                with lock:
+                    out["void"][key] = ("no covering test passes unmutated" if not passing else
+                                        "its reach check survived every covering test")
+            bound = max(MUTANT_TIMEOUT_FLOOR_S, 2.5 * (base_run["wall"] if base_run else 0))
+            for n, new, kind, was, now, skip in muts:
+                name = mutant_name(key, n)
+                if not skip and void:
+                    skip = "not run: its function void"
+                if skip or new is None:
+                    res = "refused" if skip.startswith("refused") else skip
+                    with lock:
+                        out["mutant_rows"].append((name, key, kind, res, skip if res == "refused"
+                                                   else "", was, now))
+                    continue
+                r = run(copy, passing, bound, path, new)
+                killers = sorted(t for t in passing if r["outcomes"].get(t) == "failed")
+                if r["timed_out"]:
+                    res = "timed out"
+                elif killers:
+                    res = "killed"
+                elif not r["outcomes"]:
+                    res = "no outcome"
+                else:
+                    res = "survived"
+                with lock:
+                    for t in passing:
+                        o = r["outcomes"].get(t)
+                        if o in ("failed", "passed"):
+                            per_test[t]["judged"] += 1
+                        if o == "failed":
+                            per_test[t]["killed"].setdefault(key, []).append(n)
+                    out["mutant_rows"].append((name, key, kind, res, ", ".join(killers), was,
+                                               now))
+            if progress:
+                progress(key)
+
+        def worker(copy):
+            while True:
+                try:
+                    key = work.get_nowait()
+                except queue.Empty:
+                    return
+                try:
+                    one(copy, key)
+                except ToolError as e:
+                    with lock:
+                        out["errors"].append((key, str(e)))
+                    return               # this copy is no longer known to be the original
+                except Exception as e:  # noqa: BLE001 - said in the output, and exit 1
+                    with lock:
+                        out["errors"].append((key, repr(e)))
+
+        t0 = time.monotonic()
+        threads = [threading.Thread(target=worker, args=(c,)) for c in copies]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        out["wall"] = time.monotonic() - t0
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+    # Per test, over every audited function the map says it reaches.
+    tests_of_test = collections.defaultdict(set)
+    for k in sel["keys"]:
+        for t in sel["tests_of"][k]:
+            tests_of_test[t].add(k)
+    for t, keys in sorted(tests_of_test.items()):
+        p = per_test.get(t)
+        fresh = sorted(k for k in keys if k not in out["stale"])
+        tier = (tiers.get(t) or {}).get("tier", "")
+        detail = [f"tier {tier}"] if tier else []
+        if not fresh:
+            result = "stale"
+            detail.append("moved: " + ", ".join(sorted(keys)))
+        elif t not in collected:
+            result = "not collected"
+        else:
+            base = p["base"] if p else {}
+            if p and p["judged"]:
+                result = "kills some" if p["killed"] else "kills none"
+            elif base and all(v == "failed" for v in base.values()):
+                result = "fails unmutated"
+            elif base and all(v == "skipped" for v in base.values()):
+                result = "skipped unmutated"
+            else:
+                result = "no verdict"
+            if p:
+                n_reach = sum(p["reach"].values())
+                if p["reach"]:
+                    missed = sorted(k for k, v in p["reach"].items() if not v)
+                    detail.append(f"reach check failed it in {n_reach} of {len(p['reach'])} "
+                                  "functions" + (f" (passed under: {', '.join(missed)})"
+                                                 if missed else ""))
+                odd = sorted(f"{k}: {v}" for k, v in base.items() if v != "passed")
+                if odd:
+                    detail.append("unmutated: " + ", ".join(odd))
+        killed = "; ".join(f"{k}: {', '.join(str(n) for n in sorted(ns))}"
+                           for k, ns in sorted((p["killed"] if p else {}).items()))
+        n_killed = sum(len(v) for v in (p["killed"] if p else {}).values())
+        if p and p["judged"]:
+            detail.append(f"killed {n_killed} of {p['judged']} judged")
+        out["rows"].append(tuple(public(x) for x in (
+            t, ", ".join(sorted(keys)), str(p["judged"] if p else 0), killed, result,
+            "; ".join(detail))))
+    out["mutant_rows"] = sorted(tuple(public(x) for x in r) for r in out["mutant_rows"])
+    return out
+
+
+# --- the estimate ---------------------------------------------------------------------------
+
+def junit_times(paths):
+    """`{test id: seconds}` from JUnit files (pytest's: `classname` the module's dotted path and
+    any classes, `name` the test with its parameters; `time` all its phases)."""
+    out = {}
+    for p in paths:
+        for case in ET.parse(p).getroot().iter("testcase"):
+            parts = (case.get("classname") or "").split(".")
+            # The module is the longest prefix that is a test file: tests.test_x.TestY.
+            for i in range(len(parts), 0, -1):
+                if parts[i - 1].startswith("test_") or parts[i - 1] == "conftest":
+                    mod, classes = "/".join(parts[:i]) + ".py", parts[i:]
+                    break
+            else:
+                continue
+            out["::".join([mod, *classes, case.get("name") or ""])] = float(case.get("time")
+                                                                             or 0)
+    return out
+
+
+def estimate(reach_folder, mutants_file, root=REPO, scope=DEFAULT_SCOPE, functions=(),
+             suspects=None, canaries=DEFAULT_CANARIES, null_canaries=DEFAULT_NULL_CANARIES,
+             run_logging=False, mutate_harness=False, times=None,
+             seconds_per_test=SECONDS_PER_TEST, startup=STARTUP_S, commit=None, then=None):
+    """The run's cost, from the map and the mutants file, nothing run. A function stale since
+    the map (with *commit* or *then*) or since its mutants is left out, as the run leaves it."""
+    reach = nm.load_reach(reach_folder)
+    if reach is None:
+        raise SystemExit(f"no coverage.json in {reach_folder}")
+    cs, ns = parse_canaries(canaries), parse_canaries(null_canaries)
+    sel = select(reach, scope, functions, suspects, [k for k, _ in cs + ns], mutate_harness)
+    data = load_mutants(mutants_file)
+    stale = (dict(deletion.stale_functions(sel["keys"], root,
+                                           deletion.reader_then(root, commit, then)))
+             if commit or then else {})
+    times = times or {}
+    rows, logging_n, missing = [], 0, []
+    for k in sel["keys"]:
+        entry = data["functions"].get(k)
+        if entry is None:
+            missing.append(k)
+            continue
+        source = deletion.read_now(root, k.split("::", 1)[0]) or ""
+        if k not in stale and entry.get("hash") != nm.function_hash(source, k.split("::", 1)[1]):
+            stale[k] = "its text moved since its mutants were made"
+        if k in stale:
+            continue
+        m = 0
+        for mu in entry["mutants"]:
+            if mu.get("refused"):
+                continue
+            if not run_logging and source:
+                new, _why = mutant_source(source, k.split("::", 1)[1], mu)
+                if new is not None and nm.classify(function_text(source, k.split("::", 1)[1]),
+                                                   function_text(new, k.split("::", 1)[1]),
+                                                   nm.compared_strings(source)) == "logging":
+                    logging_n += 1
+                    continue
+            m += 1
+        tests = sel["tests_of"][k]
+        measured = [times[t] for t in tests if t in times]
+        secs = sum(measured) + seconds_per_test * (len(tests) - len(measured))
+        rows.append((k, m, len(tests), len(measured), (m + 2) * (startup + secs)))
+    return {"selection": sel, "rows": rows, "logging": logging_n, "missing": missing,
+            "stale": stale, "seconds_per_test": seconds_per_test, "startup": startup,
+            "timed": bool(times)}
+
+
+def estimate_lines(e, scope):
+    rows = e["rows"]
+    runs = sum(m + 2 for _k, m, _t, _mt, _s in rows)
+    execs = sum((m + 2) * t for _k, m, t, _mt, _s in rows)
+    measured = sum((m + 2) * mt for _k, m, _t, mt, _s in rows)
+    secs = sum(s for *_x, s in rows)
+    lines = ["function\tmutants to run\tcovering tests\ttimed tests\tseconds"]
+    lines += [f"{k}\t{m}\t{t}\t{mt}\t{s:.0f}" for k, m, t, mt, s in rows]
+    lines += [f"# estimate, nothing run; scope: {', '.join(scope)}",
+              f"# functions: {len(rows)} ({len(e['missing'])} not in the mutants file: "
+              f"{', '.join(e['missing']) or 'none'}); logging mutants not run: {e['logging']}",
+              f"# stale, left out: {len(e['stale'])}"]
+    lines += [f"#   {k}: {w}" for k, w in sorted(e["stale"].items())]
+    lines += ["# asked for and not in the map: "
+              + (", ".join(e["selection"]["missing"]) or "none"),
+              f"# pytest runs: {runs} (each function's mutants, its baseline and its reach "
+              "check), the canaries' aside",
+              f"# test executions: {execs}, {measured} of them at a time from --times, the rest "
+              f"at {e['seconds_per_test']} s each",
+              f"# seconds: {runs} runs x {e['startup']} s start-up + the executions = {secs:.0f} s"
+              f" ({secs / 3600:.1f} h) serial; divide by --jobs"]
+    return lines
+
+
+# --- the report -----------------------------------------------------------------------------
+
+def report_lines(out, scope, commit):
+    sel = out["selection"]
+    counts = collections.Counter(r[4] for r in out["rows"])
+    mcounts = collections.Counter(r[3] for r in out["mutant_rows"])
+    lines = [f"# scope: {', '.join(scope)}; the map's sources: "
+             + (f"commit {commit}" if commit else "the folder given as --then"),
+             f"# functions selected: {len(sel['keys'])}; asked for and not in the map: "
+             + (", ".join(sel["missing"]) or "none"),
+             "# harness (every test in the map reaches it, not mutated): "
+             + (", ".join(sel["harness"]) or "none"),
+             f"# mutants: {out['generator'] or 'generator not named'}"]
+    for key, want, n, passing, bad in out["canaries"]:
+        lines.append(f"# canary {key}: {n} mutants, every one {WANT[want]}, against "
+                     f"{passing} tests passing unmutated: " + ("held" if not bad else "BROKEN"))
+    lines += [f"# CANARY BROKEN, no result stands: {b}" for b in out["canary_broken"]]
+    lines += [f"# stale (not run): {len(out['stale'])}"]
+    lines += [f"#   {k}: {w}" for k, w in sorted(out["stale"].items())]
+    lines += [f"# void (not run): {len(out['void'])}"]
+    lines += [f"#   {k}: {w}" for k, w in sorted(out["void"].items())]
+    lines += [f"# without mutants: {len(out['none'])}"]
+    lines += [f"#   {k}: {w}" for k, w in sorted(out["none"].items())]
+    lines += ["# results: " + ", ".join(f"{r} {counts.get(r, 0)}" for r in RESULTS),
+              "# mutants: " + ", ".join(f"{r} {mcounts.get(r, 0)}" for r in MUTANT_RESULTS)]
+    if out["runs"]:
+        n = len(out["runs"])
+        tests = sum(r[0] for r in out["runs"])
+        wall = sum(r[1] for r in out["runs"])
+        inproc = sum(r[2] for r in out["runs"])
+        lines.append(f"# measured: {n} pytest runs, {tests} test executions, {wall:.0f} s of "
+                     f"runs; start-up {max(wall - inproc, 0) / n:.2f} s a run, in-process "
+                     f"{inproc / max(tests, 1):.3f} s a test execution; wall {out['wall']:.0f} s")
+    lines += [f"# TOOL ERROR {k}: {e}" for k, e in out["errors"]]
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="The test audit's mutation per test, tool (b).")
+    ap.add_argument("--reach", required=True, help="the coverage-drilldown folder")
+    ap.add_argument("--root", default=REPO, help="the tree whose tests run (default: this "
+                    "checkout)")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--commit", help="the map's commit, read in --root by git show")
+    src.add_argument("--then", help="a folder holding the sources as the map measured them")
+    ap.add_argument("--mutants", required=True, help="the mutants file (written by --generate)")
+    ap.add_argument("--generate", action="store_true", help="make the mutants file with "
+                    "mutmut and stop")
+    ap.add_argument("--estimate", action="store_true", help="print the run's cost, run nothing")
+    ap.add_argument("--scope", nargs="+", default=list(DEFAULT_SCOPE))
+    ap.add_argument("--functions", nargs="+", default=[])
+    ap.add_argument("--suspects", help="a TSV whose first column is a test id")
+    ap.add_argument("--canary", nargs="+", default=list(DEFAULT_CANARIES))
+    ap.add_argument("--null-canary", nargs="+", default=list(DEFAULT_NULL_CANARIES))
+    ap.add_argument("--python", default=sys.executable)
+    ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_S)
+    ap.add_argument("--logging", action="store_true", help="run logging calls' mutants too")
+    ap.add_argument("--mutate-harness", action="store_true")
+    ap.add_argument("--times", nargs="+", default=[], help="JUnit files (--estimate)")
+    ap.add_argument("--seconds-per-test", type=float, default=SECONDS_PER_TEST)
+    ap.add_argument("--startup", type=float, default=STARTUP_S)
+    ap.add_argument("--workdir", help="where the copies are made (default: the system's "
+                    "temporary folder)")
+    ap.add_argument("--out", help="write the tests' table here as well as to stdout")
+    ap.add_argument("--mutants-out", help="write the mutants' table here")
+    a = ap.parse_args(argv)
+    if a.jobs < 1:
+        ap.error("--jobs must be at least 1")
+    try:
+        parse_canaries(a.canary + a.null_canary)
+    except ValueError as e:
+        ap.error(str(e))
+    suspects = suspect_tests(a.suspects) if a.suspects else None
+    if a.generate:
+        reach = nm.load_reach(a.reach)
+        if reach is None:
+            ap.error(f"no coverage.json in {a.reach}")
+        cs = parse_canaries(a.canary + a.null_canary)
+        sel = select(reach, tuple(a.scope), a.functions, suspects, [k for k, _ in cs],
+                     a.mutate_harness)
+        if not sel["keys"]:
+            print("nmas-test-audit-mutation: the selection holds no function", file=sys.stderr)
+            return 1
+        data = generate(a.root, sel["keys"] + [k for k, _ in cs], a.python, a.workdir)
+        with open(a.mutants, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        n = sum(len(v["mutants"]) for v in data["functions"].values())
+        none = sorted(k for k, v in data["functions"].items() if not v["mutants"])
+        print(f"# {data['generator']}: {n} mutants of {len(data['functions'])} functions; "
+              f"without any: {len(none)}" + "".join(f"\n#   {k}" for k in none))
+        return 0
+    if a.estimate:
+        e = estimate(a.reach, a.mutants, a.root, tuple(a.scope), a.functions, suspects,
+                     a.canary, a.null_canary, a.logging, a.mutate_harness,
+                     junit_times(a.times) if a.times else None, a.seconds_per_test, a.startup,
+                     a.commit, a.then)
+        if not e["selection"]["keys"]:
+            print("nmas-test-audit-mutation: the selection holds no function", file=sys.stderr)
+            return 1
+        sys.stdout.write("\n".join(estimate_lines(e, a.scope)) + "\n")
+        return 0
+
+    def progress(key):
+        print(f"nmas-test-audit-mutation: {key} done", file=sys.stderr, flush=True)
+
+    out = audit(a.root, a.reach, a.mutants, a.commit, a.then, tuple(a.scope), a.functions,
+                suspects, a.canary, a.null_canary, a.python, a.jobs, a.timeout, a.logging,
+                a.mutate_harness, a.workdir, progress)
+    if not out["selection"]["keys"]:
+        print("nmas-test-audit-mutation: the selection holds no function", file=sys.stderr)
+        return 1
+    if out["collected"] is None and not out["canary_broken"]:
+        print("nmas-test-audit-mutation: the copy's collection did not run", file=sys.stderr)
+        return 1
+    tail = report_lines(out, a.scope, a.commit)
+    text = "\n".join(["test_id\tfunctions\tjudged\tkilled\tresult\tdetail"]
+                     + ["\t".join(r) for r in out["rows"]] + tail) + "\n"
+    sys.stdout.write(text)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    if a.mutants_out:
+        with open(a.mutants_out, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(["mutant\tfunction\tkind\tresult\tkilled by\twas\tnow"]
+                               + ["\t".join(r) for r in out["mutant_rows"]]) + "\n")
+    if out["canary_broken"]:
+        return 3
+    return 1 if out["errors"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,21 @@
+"""The mutation canary's package (docs/TEST_AUDIT.md, tool (b)): one function audited, one the
+run's canary that must die, one no test calls, whose mutants must all survive."""
+
+
+def must_die(n):
+    """The run's canary: every mutant of it is killed by tests/test_fees.py's
+    `test_plant_must_die`, or no result of the run stands."""
+    return n + 1
+
+
+def untested(a, b):
+    """No test calls this: every mutant of it must survive the canary's tests, or the run kills
+    what nothing tests and no result of it stands."""
+    return a - b
+
+
+def fee(amount):
+    """The fee on *amount*: 3 below 100, nothing from 100."""
+    if amount < 100:
+        return 3
+    return 0

@@ -1,0 +1,47 @@
+"""The mutation canary's plants (docs/TEST_AUDIT.md, tool (b)). `fee` has four mutants (mutmut
+3.8.0): 1 `amount <= 100`, 2 `amount < 101`, 3 `return 4`, 4 `return 1`. Each test's kills are
+in its name and docstring."""
+import os
+import subprocess
+import sys
+
+from canarypkg import fees
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def test_plant_must_die():
+    """The run's canary's test: kills both of `must_die`'s mutants."""
+    assert fees.must_die(1) == 2
+
+
+def test_plant_fee_kills_all():
+    """Both sides of the boundary, both results: kills 1, 2, 3 and 4."""
+    assert fees.fee(99) == 3
+    assert fees.fee(100) == 0
+
+
+def test_plant_fee_kills_one():
+    """Below the boundary only: kills 3 alone."""
+    assert fees.fee(50) == 3
+
+
+def test_plant_fee_kills_none():
+    """The planted weak test: it calls `fee`, so it fails when `fee` raises, but it asserts only
+    that the fee is not negative, which every mutant keeps: kills none, and is listed."""
+    assert fees.fee(500) >= 0
+
+
+def test_plant_fee_in_a_child_kills_three():
+    """Reaches `fee` only in a child process, at the boundary: kills 1, 2 and 4 (the mutant is
+    in the copy's file, so the child runs it)."""
+    got = subprocess.run([sys.executable, "-c",
+                          "from canarypkg.fees import fee; print(fee(100))"],
+                         cwd=ROOT, capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stderr
+    assert got.stdout.strip() == "0"
+
+
+def test_plant_fee_fails_unmutated():
+    """Wrong about `fee` as it is: fails unmutated, so it is never judged."""
+    assert fees.fee(100) == 3

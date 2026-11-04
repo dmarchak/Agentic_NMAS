@@ -1,0 +1,12 @@
+"""A mutation canary plant (docs/TEST_AUDIT.md, tool (b)): the module asserts on `fee` at its
+import, so under mutants 1, 2 and 4 the file does not collect, and its test is killed in
+collection."""
+from canarypkg import fees
+
+assert fees.fee(100) == 0
+
+
+def test_plant_killed_in_collection():
+    """Asserts nothing any mutant changes: its file's import does the asserting, so it kills
+    1, 2 and 4, each in collection."""
+    assert fees.fee(500) >= 0
