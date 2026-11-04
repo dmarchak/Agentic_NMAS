@@ -182,6 +182,35 @@ class TestConfigChange:
         assert t["person"]["address"] == "192.0.2.50"
         assert "the account alice on vty0 from 192.0.2.50" in t["words"]
 
+    def test_a_real_line_read_by_logs_tail_opens_its_devices_incident(self, world, monkeypatch):
+        """C2467: end to end on a real capture, never typed data. The lab Loki's s3 lines
+        (tests/fixtures/loki/lines_s3.json, two `%SYS-5-CONFIG_I` among them) read by the
+        logs-tail reader itself, its value handed to the trigger as the reader job hands it."""
+        from modules import attention as A
+        from modules.nsot import blast_radius as BR
+        from tests import test_logs_tail as LT
+
+        with open(os.path.join(LT.LOKI, "lines_s3.json"), encoding="utf-8") as fh:
+            streams = json.load(fh)["answer"]["data"]["result"]
+        assert streams, "floor: the capture holds s3's lines"
+        value = LT.T.read("Default", loki=LT.FakeLoki(streams), clock=lambda: LT.NOW)
+        real = [l for l in value["lines"] if l["mn"] == "%SYS-5-CONFIG_I"]
+        assert len(real) == 2 and {l["dev"] for l in real} == {"s3"}, real
+        # s3 joins Default's devices; the capture's masked addresses (192.0.2.1) are not
+        # Mercury's host in this test.
+        held = dict(A._device_networks(), s3=["Default"])
+        monkeypatch.setattr(A, "_device_networks", lambda: dict(held))
+        names, by_ip = A._inventory()[0]
+        monkeypatch.setattr(A, "_inventory", lambda: ((names | {"s3"}, dict(
+            by_ip, **{"192.0.2.99": {"s3"}})), ""))
+        monkeypatch.setattr(BR, "host_networks", lambda: ["198.51.100.0/30"])
+        got = T.from_logs_tail("logs-tail", value, now=LT.NOW)
+        assert got["sighted"] == 2, got
+        (inc,) = [i for i in stored() if i["device"] == "s3"]
+        assert (inc["cause"], inc["state"]) == ("change", "watching")
+        assert {t["kind"] for t in inc["triggers"]} == {"config_change"}
+        assert all(t["attribution"]["by"] == AT.OUTSIDE for t in inc["triggers"])
+
     def test_mercurys_own_line_is_no_trigger(self, world, monkeypatch):
         monkeypatch.setattr("modules.nsot.device_ops.holder", lambda n, d: {
             "operation": "deploy", "actor": "op@example.com", "started": T0 - 10})

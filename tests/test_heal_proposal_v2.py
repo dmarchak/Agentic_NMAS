@@ -268,6 +268,65 @@ def test_decline_without_a_reason_is_refused_in_place(app_client):
     assert len(_rows()) == 1
 
 
+# ── Enter in the reason field (C2472) ───────────────────────────────────────────────────────
+
+def test_enter_in_the_reason_field_approves_nothing_and_approve_pressed_does(
+        app_client, measured, monkeypatch):
+    """C2472, in a real browser: on a confirmable card, a person types a reason and presses
+    Enter (perhaps meaning to decline). Nothing is approved and the card keeps what was typed;
+    pressing Approve then approves, once."""
+
+    import time
+
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+    from modules import attention
+
+    monkeypatch.setattr(attention, "SOURCES", [attention.heal_source])
+    d = proposed()
+    field = f"#heal-prop-{d['id']}-why"
+    try:
+        with browser.Served(A.app) as served, browser.Browser() as b:
+            b.go(served.url("/v2/"))
+            b.wait_for(f"return !!document.querySelector('a.att-jump[href=\"#heal-prop-"
+                       f"{d['id']}\"]')", 15)
+            b.js(f"document.querySelector('a.att-jump[href=\"#heal-prop-{d['id']}\"]').click();"
+                 " return 1")
+            b.wait_for(f"return !!document.querySelector('{field}')", 15)
+            approve = f"#heal-prop-{d['id']} button.btn-primary[data-op=heal-proposal]"
+            assert b.js(f"return !document.querySelector('{approve}').disabled"), \
+                "floor: the card is confirmable, so Approve is enabled"
+            # Every request the page issues, and a mark a native submission (a navigation)
+            # would wipe.
+            b.js("window.__sent = []; window.__same_page = 1; document.body.addEventListener("
+                 "'htmx:beforeRequest', function (e) { window.__sent.push("
+                 "e.detail.requestConfig.verb + ' ' + e.detail.requestConfig.path); }); "
+                 "return 1")
+            b.type(field, REASON + "\ue007")                 # WebDriver's Enter key
+            # Bounded: Enter's submission, if any, is issued at once; 3 s is far past it.
+            until = time.monotonic() + 3
+            while time.monotonic() < until and b.js(
+                    "return window.__same_page === 1 && window.__sent.length === 0"):
+                time.sleep(0.1)
+            assert b.js("return window.__same_page === 1 ? window.__sent : 'navigated'") == [], \
+                "Enter in the reason field submitted something"
+            assert app_client.started == [], "Enter in the reason field approved"
+            assert b.js(f"return document.querySelector('{field}').value") == REASON, \
+                "the card keeps what was typed"
+            b.click(approve)
+            b.wait_for(f"return /Approved by you/.test(document.querySelector("
+                       f"'#heal-prop-{d['id']}').textContent)", 15)
+            posts = [s for s in b.js("return window.__sent") if s.startswith("post ")]
+            assert posts == [f"post {_base(d)}/approve"], posts    # then the panels re-fetch
+        (approval,) = app_client.started
+        assert approval["reason"] == REASON
+    finally:
+        _release(d)
+
+
 # ── Registered ──────────────────────────────────────────────────────────────────────────────
 
 def test_the_routes_are_the_apps_and_gated_as_declared():

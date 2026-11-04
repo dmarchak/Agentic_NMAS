@@ -14,7 +14,15 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html
-Templates sha256: `25d325220732c92edb793543311273758c7f0a2a63888bbb2417d5d6539ea0d1`
+Templates sha256: `fa9d59fd5bc3ecf2749320235e5acfe01f36f0c898ab3354f38811f71d37b11b`
+
+**Compared again 2026-11-04 ~17:3x UTC (C2472):** the card's `<form>` became a `div` of the same
+class, so Enter in the reason field submits nothing (measured first in a real browser: on a form
+it posted Approve). Approve and Decline each post themselves, with the hash and the reason by
+`hx-include`, Approve carrying the hash it confirms in its own `hx-vals` (an attribute nothing
+draws). The shots were taken again at 1440, 1280 and 390, and every region draws as
+before; only the proposal's hash and decision id differ, as they do in every run. Templates
+sha256 before: `25d325220732c92edb793543311273758c7f0a2a63888bbb2417d5d6539ea0d1`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

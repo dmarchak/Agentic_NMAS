@@ -41,17 +41,20 @@
   {%- for r in v.refusals %}
   <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Not confirmable:</strong> {{ r }}.</p></div>
   {%- endfor %}
-  {#- The form posts Approve (bound to the hash it carries); Decline posts the same reason from
-      its own button, which htmx sends with its form's fields. -#}
-  <form class="heal-form" hx-post="{{ url_for('heal_proposal_v2.approve', list_name=list_name, decision_id=v.decision) }}" hx-target="#{{ pid }}" hx-swap="outerHTML">
+  {#- No form element (C2472): Enter in the reason field submits nothing, because a field with
+      no form has no implicit submission (on a form, Enter pressed Approve, its default
+      button). Approve and Decline each post themselves, sending the reason by hx-include;
+      Approve carries the hash it confirms in its own hx-vals (tests/test_v2_one_confirm.py's
+      pattern). Only a press of either acts. -#}
+  <div class="heal-form" hx-target="#{{ pid }}" hx-swap="outerHTML">
     <input type="hidden" name="hash" value="{{ v.hash }}">
     <label class="heal-field" for="{{ pid }}-why">Reason<input id="{{ pid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ reason or '' }}"></label>
     <div class="att-action">
-      <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="heal-proposal" hx-disabled-elt="this"{% if v.confirmable %}{{ gate('confirm') }}{% else %} disabled aria-disabled="true" title="{{ v.refusals | join('; ') }}"{% endif %}><span class="op-idle">Approve and run on {{ host }}</span><span class="op-busy">Approving…</span></button>{{ how('heal-proposal', compact=True, op='approving a proposal') }}</span>
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-disabled-elt="this" title="Records your reason and closes the incident; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.approve', list_name=list_name, decision_id=v.decision) }}" hx-vals='{"hash": "{{ v.hash }}"}' hx-include="closest .heal-form" hx-disabled-elt="this"{% if v.confirmable %}{{ gate('confirm') }}{% else %} disabled aria-disabled="true" title="{{ v.refusals | join('; ') }}"{% endif %}><span class="op-idle">Approve and run on {{ host }}</span><span class="op-busy">Approving…</span></button>{{ how('heal-proposal', compact=True, op='approving a proposal') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-include="closest .heal-form" hx-disabled-elt="this" title="Records your reason and closes the incident; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
       <a class="btn btn-small btn-outline" data-op="drift-check" href="{{ url_for('device_v2.device', name=host, list=list_name, op='drift_check') }}">Check drift now on {{ host }}</a>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}
     </div>
-  </form>
+  </div>
   <p class="small muted">{{ confirming }} Approving is bound to this proposal's hash (<span class="mono">{{ v.hash }}</span>) and needs a reason. If {{ host }} has changed since it was proposed, the approved run refuses at its plan step and closes the proposal, sending nothing.</p>
   <details class="set-details"><summary>What Mercury found and tried</summary>
     <p class="small">{{ v.words or 'No words are recorded with this decision.' }}</p>

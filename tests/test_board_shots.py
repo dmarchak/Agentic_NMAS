@@ -3989,8 +3989,8 @@ def test_heal_proposal(tmp_path, monkeypatch):
     def review(b):
         b.js(f"document.querySelector('a.att-jump[href=\"#heal-prop-{d['id']}\"]').click(); "
              "return 1")
-        b.wait_for("return !!document.querySelector('.heal-prop form [name=reason]')")
-        b.js("document.querySelector('.heal-prop form [name=reason]').value = "
+        b.wait_for("return !!document.querySelector('.heal-prop .heal-form [name=reason]')")
+        b.js("document.querySelector('.heal-prop .heal-form [name=reason]').value = "
              "'the duplicate router-id from the console change'; return 1")
 
     import app as A
