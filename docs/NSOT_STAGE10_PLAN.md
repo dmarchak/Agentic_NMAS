@@ -530,7 +530,7 @@ parts; the provider adapter is PHASE8_PLAN's (Appendix A.1).
 
 | Part | What | Its section |
 |---|---|---|
-| **Step 0 of the wizard** | Personal, Commercial or US Government; for US Government, the classification (Unclassified, Secret, Colorless, Other, and the proposed presets); the plain statement that the banner marks and does not accredit | GOVERNMENT_PROFILE 2.1, 2.2, 2.4 |
+| **Step 0 of the wizard** | Personal, Commercial or US Government; for US Government, the classification (the eight presets the operator decided 2026-11-04: UNCLASSIFIED, CUI, CONFIDENTIAL, SECRET, TOP SECRET, TS//SCI, COLORLESS, and Other); the plain statement that the banner marks and does not accredit | GOVERNMENT_PROFILE 2.1, 2.2, 2.4 |
 | **The lock** | the profile has no write path but the wizard's; a rerun as an admin with a reason, recorded; keys the new profile forbids deleted; a hand-edited profile fails its MAC and reads as most restrictive | 2.3 |
 | **One installation per domain** | every network inherits the installation's marking, no override; several installations on one node, each with its own folder, port and bundled services; a per-installation footprint measured and stated beside 7.4's tiers | 1 |
 | **The banner** | top and bottom of every v2 screen, and on every export and printed report, in the marking's colour | 3 |

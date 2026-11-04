@@ -80,16 +80,21 @@ asks the classification next.
 
 ### 2.2 The classification (US Government only)
 
+The presets, decided by the operator 2026-11-04 (8.2):
+
 | Preset | Colour | Notes |
 |---|---|---|
-| **Unclassified** | green | |
-| **Secret** | red | |
-| **Colorless** | grey | marks the transport network's instance and the devices that run it |
+| **UNCLASSIFIED** | green | |
+| **CUI** | purple | |
+| **CONFIDENTIAL** | blue | |
+| **SECRET** | red | |
+| **TOP SECRET** | orange | |
+| **TS//SCI** | yellow | |
+| **COLORLESS** | grey | marks the transport network's instance and the devices that run it |
 | **Other** | chosen with a colour picker | a free-text marking; the text is drawn exactly as typed |
 
-Proposed extra presets (an open question, 8.2): **CUI** (purple), **Confidential** (blue),
-**Top Secret** (orange) and **TS//SCI** (yellow). A picked colour is checked for contrast against
-its banner text in both themes, and refused below WCAG AA (4.5:1), naming both colours.
+A picked colour is checked for contrast against its banner text in both themes, and refused below
+WCAG AA (4.5:1), naming both colours.
 
 ### 2.3 Locked after setup
 
@@ -131,7 +136,10 @@ On the classification step, in plain words:
   - the first and last line of every CSV or text export;
   - the header and footer of every page of a PDF or printed report (the print stylesheet repeats
     both strips on each page);
-  - the subject and first line of every notification (an open question, 8.3).
+  - every email: a subject prefix (`[CUI] `, say) and a banner line at the top of the body, in
+    the marking's words (decided 2026-11-04, 8.3);
+  - every webhook payload: a `marking` field holding the installation's marking, beside the
+    event (decided 2026-11-04, 8.3).
 - **Personal and Commercial installations draw no banner.**
 - **One composition:** the marking's text and colour come from the profile through one helper,
   read by the layout, the exports and the notifier alike.
@@ -143,11 +151,15 @@ On the classification step, in plain words:
 | Use type and marking | Providers |
 |---|---|
 | Personal, Commercial | every provider, as today (PHASE8_PLAN 15.3, NSOT_STAGE10_PLAN 13) |
-| US Government, Unclassified | **GenAI.mil only** |
-| US Government, CUI (if shipped) | GenAI.mil only, if its accreditation covers CUI (8.1); otherwise AI is off |
-| US Government, Secret | **AI is off;** GenAI.mil is refused |
-| US Government, Confidential, Top Secret, TS//SCI (if shipped) | AI is off |
-| US Government, Colorless or Other | AI is off, unless GenAI.mil's accreditation is confirmed to cover the marking (8.1) |
+| US Government, UNCLASSIFIED | **GenAI.mil only** |
+| US Government, CUI | **GenAI.mil only** |
+| US Government, CONFIDENTIAL, SECRET, TOP SECRET, TS//SCI | **AI is off;** GenAI.mil is refused |
+| US Government, COLORLESS | **AI is off;** GenAI.mil is refused |
+| US Government, Other | **AI is off;** GenAI.mil is refused |
+
+**Decided by the operator, 2026-11-04 (8.1):** GenAI.mil is accredited for UNCLASSIFIED and CUI
+only. The operator will give more detail later, and the table may widen then; any widening comes
+through the shipped provider list and a release (below), never through Settings.
 
 **The list is shipped in code, never set in Settings.**
 - The government providers and the markings each one's accreditation covers are a table in
@@ -197,6 +209,9 @@ who allowed it. From EDGE_ARCHITECTURE section 9.3's survey, the ones named by t
 - **External assets** (fonts, CDNs). v2 vendors every library under its strict CSP (CLAUDE.md),
   so the work is a test that keeps it so on a government profile, plus the manual's and the
   exports' own assets.
+- **Notifications** (decided 2026-11-04, 8.3): each mail relay and each webhook target is a
+  destination under this rule, refused until an admin allows it with a reason. A notice to a
+  destination not allowed is not sent, and the delivery log says why.
 
 Every other path in 9.3's table (integrations, the golden archive, NetBox) is held by the same
 allowlist. A destination is an exact scheme, host and port, never a pattern.
@@ -520,27 +535,30 @@ Each test is shown able to fail by a control that removes its property (CLAUDE.m
     "couldn't answer";** a strict-schema model is never retried for shape.
 11. **A feature is offered only the models whose declared capabilities meet its need,** and an
     unqualified model is drawn as untested or below the bar, never as qualified.
+12. **A CUI installation allows GenAI.mil:** a call under the CUI marking reaches the GenAI.mil
+    adapter (its fake), recorded under the profile.
+13. **A COLORLESS installation refuses GenAI.mil:** the call is refused in the gateway, no
+    provider request is made, and the AI controls are drawn off with the reason.
+14. **Every email and every webhook carries the installation's marking:** the subject prefix and
+    the body's banner line on each email the notifier sends, and the `marking` field in each
+    webhook payload, over every notice kind the notifier has; and on a government profile a relay
+    or target not allowed under 4.4 sends nothing, its delivery log saying why.
 
-## 8. Open questions for the operator
+## 8. The operator's answers (2026-11-04)
 
-1. **GenAI.mil's exact accreditation, and whether it covers Colorless.**
-   - **Recommendation:** ship it as covering Unclassified only, until the operator has its
-     authorisation documents in hand. Then add CUI to `GOVERNMENT_PROVIDERS` at the exact
-     impact level those documents state. Public announcements describe the service as
-     authorised for CUI at Impact Level 5; that is a claim to confirm, never to ship on.
-   - **For Colorless, keep AI off.** A colourless transport carries other domains' encrypted
-     traffic, and its own configurations are often handled at the level of what it carries.
-     Allow it only on a written statement that the accreditation covers the transport's
-     marking.
-2. **Which extra presets to ship.**
-   - **Recommendation:** ship CUI (purple), Confidential (blue), Top Secret (orange) and TS//SCI
-     (yellow). They are the conventional banner colours, so an installation never needs Other
-     for a standard marking.
-   - AI is off for Confidential and above by the rule in 4.1, and for CUI until 8.1 is settled.
-     Other stays for markings with caveats.
-3. **Raised while designing: do notifications carry the marking?** An email or webhook leaves
-   the installation just as an export does.
-   - **Recommendation:** yes. The marking goes in the subject and the first line of every email,
-     and in a field of every webhook.
-   - A notification destination is an egress path under 4.4, allowed per destination with a
-     reason.
+1. **GenAI.mil's accreditation: UNCLASSIFIED and CUI only.** On a government profile GenAI.mil is
+   allowed when the installation is marked UNCLASSIFIED or CUI. AI is off on every other marking:
+   CONFIDENTIAL, SECRET, TOP SECRET, TS//SCI, COLORLESS and Other (4.1).
+   - **Recorded as decided.** The operator will give more detail later, and the policy table may
+     widen then.
+   - **Any change goes through the shipped provider list (`GOVERNMENT_PROVIDERS`) and a release,**
+     never through Settings.
+2. **The presets:** UNCLASSIFIED (green), CUI (purple), CONFIDENTIAL (blue), SECRET (red), TOP
+   SECRET (orange), TS//SCI (yellow), COLORLESS (grey), and Other (free text and a colour
+   picker) (2.2).
+3. **Emails and webhooks carry the marking** (3 and 4.4):
+   - every email: a subject prefix and a banner line in its body;
+   - every webhook payload: a `marking` field;
+   - on a government profile, mail relays and webhook targets fall under default-deny egress.
+
+   Tests 12 to 14 in section 7 hold these.
