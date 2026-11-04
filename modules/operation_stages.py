@@ -343,6 +343,28 @@ MISSING_CEILING = 2
 
 
 # ---------------------------------------------------------------------------
+# Operations that change a device with NO route (docs/HEAL_TO_INTENT.md section 11): a job the
+# app starts itself, on a person's standing decision. The same five stages, each a reference
+# that resolves (`hash` is a field the named function reads); tests/test_operation_stages.py
+# holds every one.
+# ---------------------------------------------------------------------------
+
+JOBS = {
+    # The automatic heal (board H, H4): the preview is the program from the heal's own read,
+    # masked and recorded before anything is sent (`decide.program`, the decision's record);
+    # the confirm is the network's policy, confirmed by its fingerprint as a verified person,
+    # and each heal's program hash recomputed at apply and refused if it moved; verify is the
+    # pipeline's and then the heal's (intent, a removed feature's symptom); rollback the
+    # pipeline's, and after verify `roll_back_after`; the record the receipt, the decision's
+    # outcome and the incident closed.
+    "heal_to_intent": Stages(
+        "modules.heal.decide.program", "program_hash in modules.heal.act.apply_decision",
+        "modules.pipeline._stage_verify", "modules.pipeline.roll_back_after",
+        "modules.heal.decisions.applied"),
+}
+
+
+# ---------------------------------------------------------------------------
 # Where each operation's record is READ LATER (C359, the operator, 2026-10-03: a persist was
 # readable now, on its result, and not later, in the device's History). Every gated route
 # that can change a device or its record (confirm, approve, configure) names the

@@ -18,4 +18,11 @@ H3 is the decision: `kinds` (the intersection rule, N13's units, the tier table)
 its hash, recorded, its incident closed, deferred or kept for H4 and H5) and `decisions` (the
 record, the dry run's Right / Wrong, the halts). H4 takes a heal with `decisions.to_apply` and
 `decisions.take`, and recomputes `decide.program` from its own read.
+
+H4 is `act`: a taken heal applied as the policy through THE plan and THE apply
+(`routes.deploy.plan_devices` and `apply_batch`, with the heal's read as their capture source,
+so stage 4 compares the device with it), each removal carrying the policy's words as its
+stated reason (N9, C2402), verified by the pipeline, then each healed unit at intent and a
+removed feature's symptom gone (N13) before its save, the golden read again, and the outcome
+recorded (`decisions.applied`, `incidents.close`); one job per incident.
 """

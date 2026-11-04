@@ -88,6 +88,49 @@ def test_the_operations_that_change_a_device_have_every_stage(app):
         assert not any(v.startswith(("MISSING", "n/a")) for v in S.STAGES[ep]), ep
 
 
+def job_problems(jobs):
+    """Every stage of a routeless operation (`S.JOBS`) a reference that resolves: ``hash`` a
+    field the named function reads, the rest an importable function; none ``n/a`` or
+    ``MISSING``, since a job that changes a device has every stage."""
+    out = []
+    for name, st in jobs.items():
+        for stage, value in st._asdict().items():
+            if value.startswith(("n/a", "MISSING")):
+                out.append(f"{name}.{stage}: {value!r}, and a job that changes a device has it")
+                continue
+            if stage == "hash":
+                field, _, where = value.partition(" in ")
+                try:
+                    src = inspect.getsource(_resolve(where)) if where else ""
+                except (ImportError, AttributeError, ValueError) as exc:
+                    out.append(f"{name}.hash: {where} does not resolve ({exc})")
+                    continue
+                if f'"{field}"' not in src and f"'{field}'" not in src:
+                    out.append(f"{name}.hash: {field!r} is not read by {where or 'nothing'}")
+                continue
+            try:
+                _resolve(value)
+            except (ImportError, AttributeError, ValueError) as exc:
+                out.append(f"{name}.{stage}: {value} does not resolve ({exc})")
+    return out
+
+
+def test_the_heal_a_job_with_no_route_declares_its_five_stages():
+    """Board H, section 11: the automatic heal has no route, so it is held here, by name."""
+    assert set(S.JOBS) >= {"heal_to_intent"}
+    assert job_problems(S.JOBS) == []
+
+
+def test_a_job_reference_to_nothing_and_a_gap_are_found():
+    jobs = {"heal_to_intent": S.JOBS["heal_to_intent"]._replace(
+        hash="no_such_field in modules.heal.act.apply_decision",
+        record="modules.heal.decisions.no_such_function", rollback="n/a: not built yet here")}
+    got = job_problems(jobs)
+    assert any(p.startswith("heal_to_intent.hash: 'no_such_field'") for p in got), got
+    assert any(p.startswith("heal_to_intent.record:") for p in got), got
+    assert any(p.startswith("heal_to_intent.rollback:") for p in got), got
+
+
 class TestTheControls:
     def test_an_undeclared_gated_route_is_found(self, app):
         stages = dict(S.STAGES)

@@ -135,8 +135,10 @@ def program(golden: str, running: str, units: list, removal_ids: list, *, mgmt_i
     """The heal's exact program and its hash: the golden's own lines for each missing or
     changed unit, merged (`deploy.merge_commands` through the deploy's `_program`), then the
     measured removals the units name (`removal.with_removals`). ``{"commands", "hash",
-    "removal_commands", "refused"}``. In memory only: a record keeps masked lines and the
-    hash."""
+    "removal_commands", "refused", "fragment", "keys", "ids"}``: *fragment* is what the merge
+    merges from (the apply's capture source, H4), *keys* each removal's line as an
+    authorisation names it (each needs a stated reason) and *ids* the removed units' ids. In
+    memory only: a record keeps masked lines and the hash."""
     from modules.heal.kinds import _stored
     from modules.nsot.deploy import command_fingerprint
     from modules.nsot.removal import _subtree_fragment
@@ -151,7 +153,8 @@ def program(golden: str, running: str, units: list, removal_ids: list, *, mgmt_i
     got = _program(fragment, _stored(running), list(removal_ids), {"ip": mgmt_ip}, platform)
     commands = list(got["commands"])
     return {"commands": commands, "removal_commands": list(got.get("removal_commands") or []),
-            "refused": list(got.get("refused") or []),
+            "refused": list(got.get("refused") or []), "fragment": fragment,
+            "keys": list(got.get("keys") or []), "ids": list(got.get("ids") or []),
             "hash": command_fingerprint(commands, selected=tuple(removal_ids))}
 
 

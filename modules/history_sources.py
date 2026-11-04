@@ -247,6 +247,7 @@ def _log(ctx, paths, *extra, follow=False, count=None):
 
 #: How an ``Actor-Verified:`` value is said beside the actor.
 VERIFIED_WORDS = {"access": "", "host-shell": "host login, not verified",
+                  "policy": "by the policy they confirmed",
                   "none": "not verified", "": "before verification was recorded"}
 
 

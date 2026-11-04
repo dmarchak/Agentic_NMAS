@@ -22,7 +22,8 @@ plans, guards (but the grace period) or sends.
 
 **The runner** (`start`): one thread in the app's process, a pass over every network with a
 watching or ready incident each `PASS_SECONDS`, and at once when a trigger was sighted
-(`wake`); after each network's pass, the decision (`decide.run`, H3) takes what it settled.
+(`wake`); after each network's pass, the decision (`decide.run`, H3) takes what it settled,
+and each heal it made is started as its own job (`act.run`, H4).
 An incident the decision deferred (`incidents.defer`) is not read before its time, and its
 grace period restarts there.
 """
@@ -242,6 +243,13 @@ def _loop() -> None:
                 decide.run(name)
             except Exception as exc:
                 log.error("heal: %s's decision failed: %s: %s", name, type(exc).__name__, exc)
+            try:
+                # H4: each heal the decision made is taken once and run as its own job.
+                from modules.heal import act
+                act.run(name)
+            except Exception as exc:
+                log.error("heal: %s's heals could not start: %s: %s", name,
+                          type(exc).__name__, exc)
         _wake.wait(PASS_SECONDS)
         _wake.clear()
 

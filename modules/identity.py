@@ -409,6 +409,9 @@ def actor_verification(actor: str) -> str:
       `identify()` made for a route whose gate did not run, B2);
     - ``host-shell``: a CLI on the host, where SSH to the host is the
       authentication (the process never installed the gate);
+    - ``policy``: a background job acting on a standing policy a verified person
+      confirmed by its fingerprint (board H, H4: an automatic heal, `carried_policy`),
+      only for that person, the policy's setter, who is accountable for it;
     - ``none``: anything else, including the app's background threads and a
       request whose recorded actor is not the one its assertion verified.
 
@@ -434,6 +437,10 @@ def actor_verification(actor: str) -> str:
         ok = (ident.is_identified and actor and actor != UNVERIFIED
               and ident.actor == actor)
         return "access" if ok else "none"
+    # A job acting on a confirmed policy (`carried_policy`): the policy's setter, and no one else.
+    policy = getattr(_CARRIED, "policy", None)
+    if policy is not None:
+        return "policy" if actor and actor != UNVERIFIED and actor == policy["actor"] else "none"
     from modules import route_gates
     return "none" if route_gates.installed() else "host-shell"
 
@@ -483,6 +490,21 @@ def carried(ident):
         yield
     finally:
         _CARRIED.ident = before
+
+
+@_contextlib.contextmanager
+def carried_policy(actor: str, fingerprint: str):
+    """Inside a job acting on a standing policy (board H, H4: an automatic heal): commits
+    naming *actor*, the policy's setter, read ``Actor-Verified: policy``. *fingerprint* is the
+    confirmed policy the authority stands on; with no setter or no fingerprint nothing is
+    carried, so the commit reads ``none``, which is true."""
+    before = getattr(_CARRIED, "policy", None)
+    _CARRIED.policy = ({"actor": actor, "fingerprint": fingerprint}
+                       if actor and fingerprint else None)
+    try:
+        yield
+    finally:
+        _CARRIED.policy = before
 
 
 def viewer(request=None) -> "Identity":

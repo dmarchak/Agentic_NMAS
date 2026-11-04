@@ -97,6 +97,21 @@ class TestTheVerdict:
             assert capture_job.wait(job_id, 10)
             assert capture_job.get(job_id)["payload"] == want, job_id
 
+    def test_a_job_on_a_confirmed_policy_is_policy_for_its_setter_alone(self, app_process):
+        """Board H, H4: an automatic heal acts on a policy a verified person confirmed by its
+        fingerprint, so its commits name that person and say ``policy``: true, and saying
+        more than ``none``. Anyone else named there, or a policy with no fingerprint, is
+        ``none``; once the job's block ends, nothing is carried."""
+        with identity.carried_policy("ops@example.com", "fp-1"):
+            assert identity.actor_verification("ops@example.com") == "policy"
+            assert identity.actor_verification("someone@example.com") == "none"
+            assert identity.actor_verification(identity.UNVERIFIED) == "none"
+            msg = R.with_actor_verification("golden: r1\n\nActor: ops@example.com\n")
+            assert msg.endswith("Actor-Verified: policy\n")
+        with identity.carried_policy("ops@example.com", ""):
+            assert identity.actor_verification("ops@example.com") == "none"
+        assert identity.actor_verification("ops@example.com") == "none"
+
     def test_install_marks_the_app_process(self, monkeypatch):
         monkeypatch.setattr(route_gates, "_installed", False)
         route_gates.install(Flask(__name__))

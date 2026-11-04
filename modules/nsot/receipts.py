@@ -351,8 +351,26 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # verify, and why this end was rolled back when its far end or the link failed.
             # Only on a pair's rows; a row without it is a single device's.
             **({"pair": _pair_record(result["pair"])} if result.get("pair") else {}),
+            # A heal (board H, H4): the decision and incident it acts on, the policy it ran as
+            # (its fingerprint, the person who confirmed it and their reason), the person whose
+            # change it healed (N12), and its check after verify. Only on a heal's rows.
+            **({"heal": _masked(result["heal"])} if result.get("heal") else {}),
         })
     return rows
+
+
+def _masked(value):
+    """Every string in *value* masked by the one redactor, its shape kept: a heal's facts are
+    words and hashes, and a word that carried a line would carry it masked."""
+    from modules.redact import redact_text
+
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {k: _masked(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_masked(v) for v in value]
+    return value
 
 
 def _pair_record(pair: dict) -> dict:

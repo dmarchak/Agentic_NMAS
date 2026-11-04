@@ -728,20 +728,25 @@ def _repo(list_name: str) -> str:
     return os.path.join(get_list_data_dir(list_name), "config_repo")
 
 
-def _close(ctx) -> None:
+def close_kept(ctx) -> None:
+    """Close a kept run's sessions (a pair's end, or a heal's device after its check after
+    verify): its pool is that run's, and nothing else closes it (C97)."""
     from modules.connection import close_persistent_connection
     for ip in list(ctx.connections_pool):
         close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
 
 
-def _roll_back(list_name: str, host: str, result: dict, ctx, reason: str) -> None:
+def roll_back_end(list_name: str, host: str, result: dict, ctx, reason: str,
+                  stage: str = "pair") -> None:
     """Roll back an end whose own run passed (``paired_rollback``), and say what it achieved on
-    its result, as `_deploy_one` says it for a run that rolled back by itself."""
+    its result, as `_deploy_one` says it for a run that rolled back by itself. *stage* names
+    what failed after the run: ``pair`` (the far end or the link), or ``after_verify`` (a heal's
+    symptom or intent, `routes.deploy._settle_after_verify`)."""
     from modules import pipeline
     from modules.nsot.deploy import FAILED as FAILED_OUTCOME
     from modules.nsot.repo import clear_post_deploy_staging
 
-    result.update(outcome=FAILED_OUTCOME, stage="pair", reason=reason, golden_pending=[])
+    result.update(outcome=FAILED_OUTCOME, stage=stage, reason=reason, golden_pending=[])
     if ctx is None:
         # Nothing was sent to it (its intent was already on it): nothing to undo.
         result.update(rolled_back=False, rollback_outcome={
@@ -749,9 +754,9 @@ def _roll_back(list_name: str, host: str, result: dict, ctx, reason: str) -> Non
             "detail": "nothing was sent to it, so there was nothing to undo"})
         return
     try:
-        pipeline.roll_back_after(ctx, reason)
+        pipeline.roll_back_after(ctx, reason, stage=stage)
     finally:
-        _close(ctx)
+        close_kept(ctx)
     ip = (ctx.selected_devices[0] or {}).get("ip", "") if ctx.selected_devices else ""
     result.update(
         rolled_back=ctx.rollback_performed,
@@ -864,7 +869,7 @@ def settle(report: dict, link: dict, order: list, *, contexts: dict, devices: di
         if r is None:
             continue
         if reason and r.get("outcome") == DEPLOYED:
-            _roll_back(list_name, host, r, contexts.get(host), reason)
+            roll_back_end(list_name, host, r, contexts.get(host), reason)
             rolled.append(host)
         elif reason and r.get("outcome") == UNATTEMPTED:
             r["reason"] = (f"not sent: {failed} did not deploy, and both ends of the link "
@@ -884,7 +889,7 @@ def settle(report: dict, link: dict, order: list, *, contexts: dict, devices: di
             try:
                 saved = pipeline.save_held(ctx)
             finally:
-                _close(ctx)
+                close_kept(ctx)
             ip = (ctx.selected_devices[0] or {}).get("ip", "") if ctx.selected_devices else ""
             r["saved_startup"] = dict(saved.get(ip) or {})
             r["warnings"] = list(ctx.warnings)

@@ -485,11 +485,33 @@ def _effects_and_declared(list_name: str, hostname: str, commands, raw, intents=
     return effects, declared, problems
 
 
+def _capture_source(capture: dict, scope: str) -> dict:
+    """*capture* checked (board H, H4): ``{hostname: {"text", "intended"}}``, the read a program
+    is computed against in place of the stored capture, and the configuration it merges from in
+    place of the rendered intent. A heal's program is the golden's own lines for the units it
+    heals, so it is never scoped; a scope with a capture source is refused, never combined."""
+    capture = capture or {}
+    if capture and scope:
+        raise ValueError(f"a capture source is the heal's, and a scoped plan ({scope}) is not "
+                         "one: the two are never combined")
+    for host, source in capture.items():
+        if not (source or {}).get("text") or "intended" not in (source or {}):
+            raise ValueError(f"{host}'s capture source holds no read or nothing to merge from")
+    return capture
+
+
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
-                 remove: dict = None, scope: str = "", declare: dict = None) -> list:
+                 remove: dict = None, scope: str = "", declare: dict = None,
+                 capture: dict = None) -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
     holds back. THE plan, for the device page's Deploy… and the v2 batch preview (P.9
-    d2) alike. Reads captured configs only; contacts no device."""
+    d2) alike. Reads captured configs only; contacts no device.
+
+    *capture* (board H, H4; `_capture_source`): a device the heal plans is planned against the
+    heal's OWN read, not its stored capture (a drifted device has moved since its capture by
+    definition, C78), and its program merges the golden's lines for the units healed, not the
+    whole rendered intent, which is still prepared, so every refusal it carries still applies,
+    and is still what the merge-only check holds the program to at apply."""
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
                                      dangerous_in, merge_diff,
@@ -498,6 +520,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
 
     authorise = authorise or {}
     remove = remove or {}
+    capture = _capture_source(capture, scope)
     devices = []
     intents_once = None
     for hostname in hostnames:
@@ -509,6 +532,9 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             continue
 
         artifact, captured, _device = built
+        source = capture.get(hostname)
+        if source is not None:
+            captured = source["text"]
         entry = {**artifact.summary(),
                  "capture_hash": _capture_hash(captured)}
         # A profile section this device's template cannot render (C565): named, never
@@ -533,7 +559,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             entry["shares_key"] = diff["shares_key"]
             # Scoped to the profile, the program is built from the scoped
             # intended config: the profile's missing lines and nothing else.
-            intended = prepared["config"]
+            intended = prepared["config"] if source is None else source["intended"]
             if scope:
                 sc = _scoped(scope, list_name, hostname, artifact, intended, captured, _device)
                 intended = sc.pop("config")
@@ -677,12 +703,25 @@ def _refused_operands(entry: dict, list_name: str, hostname: str) -> None:
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
                 actor: str, actor_kind: str, on_device=None,
-                declare: dict = None, pair: dict = None, stop_at_first: bool = False) -> dict:
+                declare: dict = None, pair: dict = None, stop_at_first: bool = False,
+                capture: dict = None, after_verify=None, heal: dict = None,
+                hold_detail: str = "") -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     failed devices). THE apply, for the device page's Deploy… and the v2 batch
     confirm (P.9 d2), each run as a job: the actor and how it was verified come
     in as arguments, since a job's thread has no request to read them from.
+
+    **The heal's apply** (board H, H4; `modules/heal/act.py`), the same apply with four
+    arguments: *capture* (`_capture_source`) plans each device against the heal's own read, so
+    stage 4 compares the device with THAT read (C78: a device changed again since is refused
+    with nothing sent); *after_verify* (``(host, result, ctx) -> {"rollback", "record"}``) runs
+    once a device's pipeline verified, with its save to startup held, as the paired deploy's
+    link verify does: a ``rollback`` reason rolls the device back by the pipeline's own
+    rollback (`pipeline.roll_back_after`, which re-adds removed lines from the pre-change read),
+    and otherwise the held save runs; *heal* (``{host: facts}``) rides on each device's result
+    into its receipt (``heal``, masked), with *after_verify*'s ``record``; *hold_detail* names
+    the operation on the device's hold.
 
     *pair* (``{"device", "port", "far", "far_port"}``; C1908, C1909): the two devices are both
     ends of one link, deployed as ONE change (`modules.nsot.paired_deploy`): both or neither
@@ -698,6 +737,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
 
     authorise = authorise or {}
     remove = remove or {}
+    capture = _capture_source(capture, scope)
+    if after_verify is not None and pair:
+        raise ValueError("a check after verify is the heal's, and a paired deploy has its "
+                         "link's: the two are never combined")
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused, templates_sent = [], {}
     # The pair's programs as recomputed here (the confirmed ones): what verify's link checks are
@@ -716,11 +759,16 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                                        "Nothing was sent.")})
             continue
         artifact, captured, device = built
+        source = capture.get(hostname)
+        if source is not None:
+            captured = source["text"]
 
         expected = command_hashes.get(hostname)
         if expected is not None:
             try:
                 intended = prepare_device(artifact)["config"]
+                if source is not None:
+                    intended = source["intended"]
                 if scope:
                     sc = _scoped(scope, list_name, hostname, artifact, intended,
                                  captured, device)
@@ -844,7 +892,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         artifacts = []
     # Held as what it is (C364): a scoped batch is its scope's operation, never "deploy".
     held, busy = device_ops.acquire_many(
-        list_name, [a.device for a in artifacts], operation(scope), actor)
+        list_name, [a.device for a in artifacts], operation(scope), actor,
+        **({"detail": hold_detail} if hold_detail else {}))
     if pair and busy:
         device_ops.release_many(list_name, held)
         held, busy, artifacts = [], paired_deploy.refused_both(pair, refused + busy), []
@@ -861,7 +910,11 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             batch = {"to_deploy": [], "skipped": []}
 
         extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {}),
-                 **({"declare": declare} if declare else {})}
+                 **({"declare": declare} if declare else {}),
+                 **({"capture": capture} if capture else {})}
+        # A device whose check after verify is still to run keeps its run's context, its save
+        # held, as a pair's end does (`_settle_after_verify`); its receipt row waits for it.
+        kept = bool(pair) or after_verify is not None
         record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
                                             actor=actor, actor_kind=actor_kind, scope=scope)
         contexts, ran = {}, []
@@ -886,11 +939,14 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                                                      first=bool(order) and name == order[0])
                          if pair else None)
             result = _deploy_one(entry, list_name, device_rows, authorise, **extra,
-                                 **({"keep": contexts} if pair else {}),
+                                 **({"keep": contexts} if kept else {}),
                                  **({"transient": transient} if transient else {}))
+            if heal and name in heal:
+                result["heal"] = dict(heal[name])
             # A pair's receipt rows are written once the pair has settled (each end may yet be
-            # rolled back for the other): a pending row records its outcome as final.
-            result = result if pair else record(result)
+            # rolled back for the other): a pending row records its outcome as final. A heal's
+            # once its check after verify has run, for the same reason.
+            result = result if kept else record(result)
             if on_device:
                 on_device("done", name, result)
             return result
@@ -917,6 +973,11 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                     record(r)
                     if on_device:
                         on_device("done", r["device"], r)
+        if after_verify is not None:
+            _settle_after_verify(report, contexts, after_verify, list_name)
+            for r in report.get("results") or []:
+                if r.get("device") in ran:
+                    record(r)
         if templates:
             report["templates_sent"] = templates_sent
 
@@ -929,6 +990,46 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     finally:
         device_ops.release_many(list_name, held)
     return report
+
+
+def _settle_after_verify(report: dict, contexts: dict, after_verify, list_name: str) -> dict:
+    """Each device whose pipeline verified, checked once more by *after_verify* (the heal's
+    symptom and intent, board H, H4) while it is still held and its save to startup held: a
+    ``rollback`` reason rolls it back by the pipeline's own rollback, as a paired deploy rolls
+    an end back for its link (`paired_deploy.roll_back_end`), its stage ``after_verify``; no
+    reason, and the held save runs. Either way ``record`` rides on the result's ``heal``. A
+    check that raises rolls back, naming why: an unanswered check never passes. Mutates and
+    returns *report*, its totals derived again from its rows."""
+    from modules import pipeline
+    from modules.nsot import paired_deploy
+    from modules.nsot.deploy import DEPLOYED
+
+    for r in report.get("results") or []:
+        host = r.get("device", "")
+        ctx = contexts.get(host)
+        if r.get("outcome") != DEPLOYED or ctx is None:
+            continue
+        try:
+            verdict = after_verify(host, r, ctx) or {}
+        except Exception as exc:                  # said, and rolled back
+            log.exception("deploy: the check after verify raised for %s", host)
+            verdict = {"rollback": (f"the check after verify could not be made "
+                                    f"({type(exc).__name__}: {exc}), and a check that cannot be "
+                                    "made never passes")}
+        if verdict.get("record"):
+            r["heal"] = {**(r.get("heal") or {}), **verdict["record"]}
+        if verdict.get("rollback"):
+            paired_deploy.roll_back_end(list_name, host, r, ctx, verdict["rollback"],
+                                        stage="after_verify")
+            continue
+        try:
+            saved = pipeline.save_held(ctx)
+        finally:
+            paired_deploy.close_kept(ctx)
+        ip = (ctx.selected_devices[0] or {}).get("ip", "") if ctx.selected_devices else ""
+        r["saved_startup"] = dict(saved.get(ip) or {})
+        r["warnings"] = list(ctx.warnings)
+    return paired_deploy.refold(report)
 
 
 # Today's deploy wizard's two routes, POST /deploy/plan and POST /deploy/apply, left at 7.8 on
@@ -1246,13 +1347,15 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
                 scope: str = "", declare: dict = None, keep: dict = None,
-                transient: dict = None) -> dict:
+                transient: dict = None, capture: dict = None) -> dict:
     """Run the pipeline for a single device. The only path that connects. *keep* (the paired
     deploy, `modules.nsot.paired_deploy`): the run's context is kept there by hostname, its save
     to startup held (`PipelineContext.hold_save`) until the link verifies, so a device whose own
     run passed can still be rolled back when its far end or the link fails. *transient* (the
     paired deploy, C1964; `paired_deploy.transient_for`): what of the link this end's own
-    verify leaves to the link's verify after both ends (`PipelineContext.pair_transient`)."""
+    verify leaves to the link's verify after both ends (`PipelineContext.pair_transient`).
+    *capture* (board H, H4; `_capture_source`): the program merges the heal's lines, against
+    the heal's read (``entry["fresh"]``), and is still held merge-only to the rendered intent."""
     import threading
 
     from modules.nsot.deploy import (DEPLOYED, FAILED, SKIPPED_DRIFTED, DeviceMoved,
@@ -1276,6 +1379,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     captured = entry.get("fresh") or ""
     from modules.nsot import authorisation as _auth
     intended = prepared["config"]
+    source = (capture or {}).get(hostname)
+    if source is not None:
+        intended = source["intended"]
     if scope:
         # The profile's lines only, computed AGAIN here: this is the path that
         # connects, and it holds the truthful renders (P.9 step b).

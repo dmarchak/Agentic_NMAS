@@ -188,6 +188,9 @@ ANNOUNCERS = {
     # modules/heal/decide.py (board H, H3): a pass's decisions recorded; a dry-run record
     # rides on its device's drift row (`attention.heal_source`).
     "heal-decide": ("drift",),
+    # modules/heal/act.py (board H, H4): a heal's job ended, sent through THE apply or refused:
+    # what a deploy changes on its one device.
+    "heal-act": ("drift", "goldens", "remote", "baselines", "device_state", "rolled_back"),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

@@ -96,6 +96,10 @@ ENTRY_POINTS = {
         __import__("modules.heal.kinds", fromlist=["masked_unit"]).masked_unit(
             {"op": "add", "chain": [], "lines": [], "add": [(None, PLANTED)],
              "remove": [(None, PLANTED)]})["add"]),
+    # A heal's facts on its receipt row, every string masked (board H, H4).
+    "modules/nsot/receipts.py:_masked": lambda: "\n".join(
+        __import__("modules.nsot.receipts", fromlist=["_masked"])._masked(
+            {"words": [PLANTED]})["words"]),
     # The notifier's egress mask on every message it sends (board H, H7).
     "modules/notify/message.py:mask": lambda: (
         __import__("modules.notify.message", fromlist=["mask"]).mask(PLANTED)),

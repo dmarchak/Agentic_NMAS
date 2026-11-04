@@ -2431,19 +2431,21 @@ def save_held(ctx: PipelineContext) -> dict:
     return dict(ctx.saved_startup)
 
 
-def roll_back_after(ctx: PipelineContext, reason: str) -> PipelineContext:
+def roll_back_after(ctx: PipelineContext, reason: str, stage: str = "pair") -> PipelineContext:
     """Roll back a device whose OWN run passed, because the change it is half of did not (the
     paired deploy, C1908 and C1909: the far end's apply or verify, or the link's verify,
-    failed). The same two steps a failed stage takes (`run`): what landed read back first
+    failed), or because a heal's check after verify did not pass (board H, H4: the symptom of
+    a removed feature still there, N13, or a unit not at intent; *stage* ``after_verify``).
+    The same two steps a failed stage takes (`run`): what landed read back first
     (`_capture_failure_state`), then the rollback stage (`_stage_rollback`), which builds the
-    undo from this run's own pre-change read, reads the device back after it, and marks the
-    device's intent rolled back (`_note_rolled_back_intent`), the single-device path's own
-    record of a change that did not land. *reason* is recorded as the run's error and the
-    note's reason."""
+    undo from this run's own pre-change read (a removal's lines re-added from it), reads the
+    device back after it, and marks the device's intent rolled back
+    (`_note_rolled_back_intent`), the single-device path's own record of a change that did not
+    land. *reason* is recorded as the run's error and the note's reason."""
     ctx.error = reason
     ctx.final_status = "failed"
-    ctx.stages_failed.append("pair")
-    log.warning("pipeline: rolling back a verified change, its pair failed: %s", reason)
+    ctx.stages_failed.append(stage)
+    log.warning("pipeline: rolling back a verified change (%s): %s", stage, reason)
     _capture_failure_state(ctx)
     _stage_rollback(ctx)
     return ctx
