@@ -665,11 +665,110 @@ never left to chance.
 
 ### 9.7 The inventory of outbound call sites and phone-homes
 
-To be filled by a read-only survey, once an agent slot is free: every outbound call site in
-Mercury's code (file and line, and what it contacts), and every phone-home in its stack's
-configurations (NetBox, Grafana, Prometheus, Loki, Kea, and the containers' base images; the
-setting, and what it contacts). EDGE_ARCHITECTURE section 9.3's table of the paths by which data
-leaves a host is its starting point.
+A read-only survey, 2026-11-04 ~22:5x UTC, over the repository (agents' worktrees skipped), from
+EDGE_ARCHITECTURE section 9.3's table. "Fixed public" is a public host written in the code;
+"configured" is a destination an admin sets.
+
+**What matters first:**
+- **Hosted AI is called today:** `api.anthropic.com`, gated by `ai_hosted` (off by default) and a
+  stored key. `egress_classes.classification_marking` answers "" for every network, so no marking
+  can force it off yet (C1720). EDGE_ARCHITECTURE 9.3's sentence saying none was called is
+  corrected.
+- **Three readers reach public or remote hosts with no switch:**
+  - `ci_verdict` (every 900 s) and `ci_agreement` (every 900 s) call `api.github.com`;
+  - `app_pushed` (every 300 s) runs `git ls-remote origin`;
+  - all three are registered unconditionally (`modules/reader_job.py`); C2512.
+- **Nothing in the repository turns off a phone-home** for NetBox, Grafana, Loki or Alloy (C2513).
+
+#### Table A: Mercury's own outbound call sites
+
+| Where | Kind (count) | What it contacts | Configured or fixed |
+|---|---|---|---|
+| `modules/nsot/remote.py:282` `check_key_scope` | `ssh -T` (1) | the list's git remote | configured |
+| `modules/nsot/remote.py:306, 354, 363, 460, 1224, 1233, 1244, 1248` | git ls-remote (4), push (4) | the list's git remote | configured |
+| `modules/nsot/remote.py:389-398` `check_private` | urllib GET (2) | `api.github.com`, `github.com` | **fixed public** |
+| `modules/nsot/archive.py:39, 160, 188` | ls-remote (1), push (2) | the list's git remote | configured |
+| `modules/readers/remote_publication.py:134` | ls-remote, every 120 s | the list's git remote | configured |
+| `modules/readers/app_pushed.py:50, 269` | ls-remote and fetch, every 300 s | Mercury's own checkout's origin | configured |
+| `modules/readers/ci_verdict.py:93, 121` (through `scripts/nmas-deploy` `github_get`) | HTTPS, every 900 s | `api.github.com` | **fixed public** |
+| `modules/readers/ci_agreement.py:45-51` | HTTPS, every 900 s | `api.github.com` | **fixed public** |
+| `modules/ai/anthropic_adapter.py:214, 286, 364, 367` | HTTPS (4: messages, count_tokens, batches) | `api.anthropic.com` | **fixed public**, off by default |
+| `modules/integrations/base.py:125, 146`; `grafana.py`, `kea.py`, `loki.py`, `prometheus.py`, `proxmox.py`, `netbox.py` | HTTP (6) | each integration's configured URL | configured |
+| `modules/netbox_client.py:86` and its calls | HTTP (9) | `netbox_url` | configured |
+| `modules/integrations/s3_archive.py:158` | boto3 (1) | the S3 endpoint (MinIO) | configured |
+| `modules/integrations/monitoring_profile.py:38, 53-62` | UDP/123, a TCP connect | `ntp_servers`, the telemetry receiver | configured |
+| `modules/readers/credential_health.py:195-196` | TLS handshake, hourly | `proxmox_url` | configured |
+| `modules/identity.py:257` (URL at `:203`) | JWKS GET (1) | the Access team domain's certificate URL (a Cloudflare host in practice) | configured |
+| `modules/notify/webhook.py:93`; `modules/notify/relay.py:111, 113` | HTTP POST (1); SMTP (2) | webhook targets; the mail relay | configured |
+| `modules/sdn/drivers/base.py:854, 894` | HTTP (1) | the SDN controller | configured |
+| `modules/records_db.py:179, 283, 314, 391` | PostgreSQL (3), getaddrinfo (1) | the records database (its Test requires loopback); a DNS lookup when its host is a name | configured |
+| `modules/connection.py:515, 577, 614, 836-848`; `modules/pipeline.py:990`; `modules/readers/reachability.py:78-90`; `modules/nsot/reload_op.py:375` | SSH, NETCONF, ICMP and TCP/22 | managed devices | configured (devices) |
+| `modules/nsot/console_transport.py:405` | raw TCP | console servers | configured |
+| `modules/nsot/ztp.py:277`; `ztp_relayed.py:393`; `tftp_once.py:64-88`; `ztp_responder.py:376, 442-470` | a broadcast DNS probe for `nmas-ztp-probe.invalid` on the local segment; unicast DNS to relay targets; TFTP replies | the local segment; relay helpers; requesting devices | local and configured |
+| `scripts/nmas-deploy:452, 709, 737, 791, 1266`; `deploy/update/nmas-update:371, 392` | HTTPS; git fetch | `api.github.com`; origin | **fixed public**; configured |
+| `scripts/nmas-ci-log:119, 131`; `scripts/nmas-ci-dispatch:38, 114`; `scripts/host-steps/c725-config-pipeline.sh:85` | HTTPS | `api.github.com` (and GitHub's redirect host) | **fixed public**, the laptop's and host steps' |
+| `scripts/nmas-gate:1046`; `scripts/nmas-rollback:121` | git push | the default remote | configured |
+| `scripts/nmas-local-ci` (its fetch, and its jobs online on Docker's bridge) | git fetch; the jobs' pip, setup-python and action downloads | the configured origin; PyPI and GitHub | configured; **fixed public** |
+| `scripts/nmas-vendor:38, 83-84` | HTTPS | `registry.npmjs.org` | **fixed public**, a developer's tool |
+| `scripts/host-steps/venv-1-build.sh:81-82, 94`; `scripts/nmas-ci-env:36-39` | curl, pip | `pypi.org`, `files.pythonhosted.org` | **fixed public** |
+| `scripts/host-steps/postgres-6a.sh`, the Loki host steps, `scripts/nmas-netbox-restore-test:83` | docker pull (an absent image), apt-get | Docker Hub (Docker's default); the host's apt sources | **fixed public** |
+| `scripts/nmas-heartbeat-rules:172, 268, 593` | HTTP (3) | Grafana and Prometheus; Loki on loopback | configured |
+| `scripts/nmas-netbox-backup:532-580` | rsync over ssh, rclone (3) | the hypervisor; the rclone remote | configured |
+| `scripts/nmas-host:73, 128`; `scripts/nmas-lab-tunnel`; `lab/clab-sync/clab-targets:122` | TCP/22, ssh | the lab hosts, falling back to a Cloudflare tunnel | configured (the laptop's and the lab's) |
+| `deploy/local-ci/runner.Dockerfile`; `lab/sdn/ryu/Dockerfile`; `lab/lab9/patch-lab9.py`; `lab/pinning/cpuset.diff` | build-time apt, curl, pip; image references | Ubuntu's archive, `ftp.mozilla.org`, `github.com`, Docker Hub, PyPI, `ghcr.io` | **fixed public** (build and lab only) |
+
+Not outbound:
+- the calls to 127.0.0.1 in `nmas-deploy`, `nmas-job-finished` and the host steps;
+- `evidence_pack.py`'s local `clone --shared`;
+- the vendored front end (`templates/v2/base.html`);
+- a `github.com` link a person clicks (`templates/v2/_attention.html`);
+- the pricing URLs in `modules/ai/profiles.py`, which are text, never fetched.
+
+**Counts:**
+- about 25 HTTP(S) sites in the app;
+- 22 git or ssh calls to a remote;
+- 16 raw socket, ICMP or DNS sites;
+- 8 device-session sites;
+- 2 SMTP;
+- the rest in developer tools, host steps and builds.
+
+**Fixed public hosts:** `api.github.com`, `github.com`, `api.anthropic.com`,
+`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `ftp.mozilla.org`, `ghcr.io` (lab
+only), Docker Hub (by default), and Cloudflare (the Access certificate URL and the tunnel).
+
+#### Table B: the bundled stack's phone-homes
+
+None of these is set in this repository. Each product's own settings file lives on the host, so
+every default below is the product's documented default, read from its documentation and not
+from a file, to be confirmed against the installed version.
+
+| Product | Setting | Contacts | Default |
+|---|---|---|---|
+| NetBox | `CENSUS_REPORTING_ENABLED` | NetBox Labs' census endpoint | on |
+| NetBox | `RELEASE_CHECK_URL` | GitHub's releases API, when set | off (unset) |
+| NetBox | the plugin catalogue (`PLUGIN_CATALOG_URL`) | NetBox Labs' plugin API | on |
+| NetBox | `ISOLATED_DEPLOYMENT` | turns the above off | off |
+| Grafana | `[analytics] reporting_enabled` | `stats.grafana.org` | on |
+| Grafana | `check_for_updates`, `check_for_plugin_updates` | `grafana.com` | on |
+| Grafana | `[news] news_feed_enabled` | grafana.com's blog feed | on |
+| Grafana | `[security] disable_gravatar` | `secure.gravatar.com`, from the browser | gravatar on |
+| Grafana | `[plugins] plugin_admin_enabled` (the catalogue) | grafana.com's plugin API | on |
+| Grafana | `[snapshots] external_enabled` | `snapshots.raintank.io`, only on a share | on |
+| Loki (`grafana/loki:3.3.2`) | `analytics.reporting_enabled` | `stats.grafana.org` | on |
+| Grafana Alloy | usage reporting (`--disable-reporting`) | `stats.grafana.org` | on |
+| Prometheus, snmp_exporter | none | none | none |
+| Kea | none | none | none |
+| Oxidized | none built in; any git hook is host-side | — | — |
+| the containers' images | pulls of an absent image; the job image's build-time apt and curl | Docker Hub, Ubuntu's archive, `ftp.mozilla.org`, `github.com` | at pull or build only |
+
+**Not determined from the repository:**
+- the products' own settings files (Grafana's `grafana.ini`, Loki's configuration, NetBox's
+  `configuration.py`, Alloy's, Prometheus's, Oxidized's), all host-side;
+- MinIO's update and call-home behaviour;
+- the host OS's own timers (motd news, NTP, snap, apt);
+- whether a configured address is a name that needs a DNS lookup, which depends on the site.
+
+Each is a reading for the build, from the host's files, never from memory.
 
 ### 9.8 Required tests (written when it is built)
 

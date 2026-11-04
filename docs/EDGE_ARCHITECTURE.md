@@ -395,11 +395,15 @@ cannot see and the deploying team must audit.
 
 Two that do not leave: the records database is checked to be on a loopback address by its Test
 (`modules/records_db.TEST_STEPS`, "loopback"), and Kea's reservations are files in Kea's own
-configuration folder on the host (`modules/dhcp_reservations.py`). **No AI or cloud model is
-called today:** the AI family left on 2026-10-14 (D15, named in
-`modules/installation_settings.py`'s `TABS` comment), and Phase 8 brings back a local responder
-(docs/PHASE8_PLAN.md). A marked network refuses any cloud model when one exists; the local model
-is BRINGUP_FROM_DOCUMENTS.md's.
+configuration folder on the host (`modules/dhcp_reservations.py`).
+
+**A hosted AI model IS called today** (corrected 2026-11-04 by the outbound inventory,
+docs/GOVERNMENT_PROFILE.md 9.7): Phase 8's gateway sends requests to `api.anthropic.com`
+(`modules/ai/anthropic_adapter.py`). It is gated by the admin's `ai_hosted` setting (off by
+default) and a stored key. The sentence here said none was, because the AI family left on
+2026-10-14 (D15). Note that `egress_classes.classification_marking` is a seam that answers ""
+for every network, so no marking can force AI off yet (C1720). The local model is
+BRINGUP_FROM_DOCUMENTS.md's.
 
 ## 10. Offline prerequisites
 
