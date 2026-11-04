@@ -99,6 +99,15 @@ GUARDS = {
     "tests/test_nmas_gate.py": WHOLE,
     "tests/ratchet_lists.py": WHOLE,
     "tests/coverage_baseline.json": WHOLE,
+    # C2456 (the operator, 2026-11-04): the Claude Code hooks' tests. The hooks themselves are
+    # scripts/hooks/'s; an agent never loosens a test of its own guardrail without approval.
+    "tests/test_claude_heredoc_hook.py": WHOLE,
+    "tests/test_claude_md_edit_hook.py": WHOLE,
+    "tests/test_claude_host_writes_hook.py": WHOLE,
+    "tests/test_claude_config_reads.py": WHOLE,
+    "tests/test_claude_prose_edit_hook.py": WHOLE,
+    "tests/test_claude_record_edits_hook.py": WHOLE,
+    "tests/test_claude_restore_hook.py": WHOLE,
     "CLAUDE.md": WHOLE,
     "docs/TESTING.md": RULES,
 }
