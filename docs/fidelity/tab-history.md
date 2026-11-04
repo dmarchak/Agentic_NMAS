@@ -20,7 +20,14 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `7b314ecadcf851d85bb1abafb3d3b80f90f5a142fa6374ae78dd59b6d4cac273`
+Templates sha256: `214dd296b96752a04e1d7201319a31afb959325adff9fdbc5157dba1292b8814`
+
+Compared again 2026-11-04 (board H, H6), by the template diff: `_timeline.html`'s kind table
+gains `heal` ("self-healing", info, danger when the heal rolled back, failed after sending or
+was interrupted); a device's History tab draws its own heal rows as every row is drawn, opening
+to the step log's record. Board D draws no heal kind: **deviation** (log: History's Kind menu
+gains Self-healing). No other region of this tab moved. Templates sha256 before:
+`7b314ecadcf851d85bb1abafb3d3b80f90f5a142fa6374ae78dd59b6d4cac273`.
 
 Compared again 2026-11-02 (C2003), by the template diff: `_timeline.html`'s kind table gains
 `stall`; a device's History never draws one (a stall is a page's, not a device's), so nothing

@@ -17,7 +17,9 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `1764e1558dda7af726c72b61ea22b6469642e3d018c5a785c8106fced6697c97`
+Templates sha256: `32bec95dbec13a023b57669e9e328e31b9d2d5bb39da4b1c5253fa8dcdcb2bf3`
+(2026-11-04, board H, H6: `_history_body.html`'s identity line counts a commit made under a
+confirmed policy under its own words; nothing on this page moved. Before: `1764e1558dda7af726c72b61ea22b6469642e3d018c5a785c8106fced6697c97`.)
 (2026-11-02, C2268: `_history_body.html` draws a hidden answer slot under History's remote
 header, where Verify and Push say their answer; nothing on this page moved. Before:
 `9b1448aa55855c13669659cd1e792b18a846bc5788302a4c2e71a9b0e1a44687`.)

@@ -17,7 +17,7 @@
                  'credential': ('credential profile', 'muted'),
                  'expected': ('expected island', 'muted'), 'netbox': ('NetBox', 'muted'),
                  'grafana': ('Grafana', 'muted'), 'ai_call': ('AI call', 'muted'),
-                 'stall': ('page stall', 'danger')} -%}
+                 'stall': ('page stall', 'danger'), 'heal': ('self-healing', 'info')} -%}
 {#- The whole timeline: the states said once above the rows, the rows, and Load more at their
     foot (15.14 part B). *more_url* is the next page's fragment (the rows older than the last
     one shown, `h.next`) and *page_url* the page's own address with that place, pushed so Back
@@ -54,7 +54,8 @@
                      or (e.kind == 'breakglass' and e.outcome == 'not_intact')
                      or (e.kind == 'netbox' and e.outcome in ('failed', 'partial'))
                      or (e.kind == 'grafana' and e.outcome == 'failed')
-                     or (e.kind == 'ai_call' and e.outcome and e.outcome != 'ok') %}
+                     or (e.kind == 'ai_call' and e.outcome and e.outcome != 'ok')
+                     or (e.kind == 'heal' and e.outcome in ('rolled_back', 'failed', 'interrupted')) %}
     {#- The row's id is its address (`#<id>`) and Load more's cursor (15.14 part B); an AI
         call's is its own id, which a feature's "in History" link opens. -#}
     <details class="hist-row tl-row" id="{{ e.id }}" data-kind="{{ e.kind }}" data-keep="tl-{{ e.id }}"{% if opened and e.call == opened %} open{% endif %}>

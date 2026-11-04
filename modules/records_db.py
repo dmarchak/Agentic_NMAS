@@ -62,7 +62,7 @@ STORES = ("receipts", "acknowledgements", "restarts", "restart_windows", "restar
           "network_settings_record", "onboarding_runs", "inventory_edits", "approval_queue",
           "rollback_blocks", "retry_log", "netbox_created", "netbox_modified", "netbox_adopted",
           "interrupted_holds", "reader_values", "ai_calls", "evidence_packs", "alert_history",
-          "flow_intent", "explain_answers", "alert_rule_changes", "ai_feedback")
+          "flow_intent", "explain_answers", "alert_rule_changes", "ai_feedback", "heal_steps")
 STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements",
                "restarts": "Restarts seen", "restart_windows": "Planned-restart windows",
                "restart_window_ends": "Planned-restart windows ended early",
@@ -84,7 +84,8 @@ STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgeme
                "evidence_packs": "Alert evidence packs", "alert_history": "Alert history",
                "flow_intent": "SDN flow intent", "explain_answers": "Explain answers",
                "alert_rule_changes": "Alert rule changes in Grafana",
-               "ai_feedback": "AI answers said right or wrong"}
+               "ai_feedback": "AI answers said right or wrong",
+               "heal_steps": "Self-healing step log"}
 FILE, POSTGRES = "file", "postgres"
 
 

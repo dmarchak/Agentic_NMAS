@@ -108,7 +108,9 @@ SOURCE_WORDS = {"save_all": "Save All", "capture": "a capture", "pipeline": "a d
                 "onboarding": "onboarding",
                 "adopt": "adoption", "approval": "an approval", "manual": "a save",
                 "repair": "a repair", "extraction": "an extraction", "ai": "the agent",
-                "intent-edit": "an intent edit"}
+                "intent-edit": "an intent edit",
+                # Board H, H6: a heal's golden commit (routes.deploy.HEAL_SOURCE).
+                "heal_to_intent": "self-healing"}
 
 
 def _split(text: str) -> list:

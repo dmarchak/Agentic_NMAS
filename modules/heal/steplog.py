@@ -1,0 +1,289 @@
+"""The heal step log: every heal and dry-run decision's steps, and what the act did, masked
+(board H, part H6; docs/HEAL_TO_INTENT.md sections 4, 8 and 9).
+
+**One store, Mercury's records** (MERCURY_CHARTER, "Mercury's own records"): a line store kept
+per network (``heal_steps.jsonl`` in the network's folder, owner-only), or the records database
+once moved (`records_db.STORES`' ``heal_steps``, its switch ``records_store_heal_steps``),
+written and read through `records_migrate.store_append` and `store_rows` as every other line
+store. Append-only, one line per event, never rewritten.
+
+**The rows** (`ROWS`), each naming its decision, incident and device:
+- ``decision``: the decision's own steps (`decide.STEPS`), each its result and words, the
+  outcome, the mode, the guard that applied, the masked program and its hash (`decide.run`
+  writes it once the decision is recorded);
+- ``started``: the act's steps up to its apply, with the masked program and its hash, written
+  BEFORE anything is sent (section 4: "written to the step log before anything is sent"); the
+  act refuses a heal whose ``started`` row cannot be written;
+- ``act``: the act's every step (`act.STEPS`), the outcome, and its records: the golden commit,
+  the deploy receipt's decision, the golden re-check, the change record (deterministic, no AI
+  call: `modules/heal/change_record.py`) and the NetBox journal entry (`modules/heal/journal.py`);
+- ``raised``: the act's job raised before it recorded an outcome (its exception's words);
+- ``interrupted``: a heal whose job ended before it recorded its outcome, found and recorded by
+  `modules/heal/interrupted.py`.
+
+**Masked:** every string a row carries passes through `redact.redact_text` before it is kept
+(a secret's position and value never reach the store), and again on the way out (History).
+
+**The seams it leaves.** H8's AI analysis of a can't-fix reads an incident's steps through
+`incident` (what Mercury tried, in Mercury's words) and never writes here; the heal loop never
+reads the analysis. H5's approved proposal writes its rows through `record_started` and
+`record_act` as H4's apply does, its ``by`` the person who approved it. H9's History step log
+draws `incidents`.
+"""
+
+import logging
+import os
+import time
+import uuid
+
+log = logging.getLogger(__name__)
+
+STORE = "heal_steps"
+FILE_NAME = "heal_steps.jsonl"
+ROWS = ("decision", "started", "act", "raised", "interrupted")
+#: Each outcome as History marks it (section 8: healed, would heal, proposed, can't fix, held
+#: and halted), the decision's and the act's.
+MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",
+         "cant_fix": "can't fix", "held": "held", "halted": "halted", "off": "off",
+         "nothing": "nothing to heal", "deferred": "checked again later",
+         "healed": "healed", "symptom_remains": "symptom remains", "partial": "partial",
+         "refused": "nothing sent", "rolled_back": "rolled back",
+         "failed": "failed after sending", "interrupted": "interrupted"}
+#: The outcomes that are not a success: drawn amber or red, never as healed.
+NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupted")
+MODE_WORDS = {"auto": "AUTO", "dry_run": "dry run", "off": "off"}
+
+
+class Refused(ValueError):
+    """A row refused (no network, an unknown row), in words."""
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _path(network: str) -> str:
+    from modules.config import list_data_path
+
+    return os.path.join(list_data_path(network), FILE_NAME)
+
+
+def _network(network: str) -> str:
+    """The store's network: the list's folder name, verbatim, as every per-network store names
+    it (never re-slugged)."""
+    return os.path.basename(os.path.dirname(_path(network)))
+
+
+def masked(value):
+    """Every string in *value* masked by the one redactor, its shape kept."""
+    from modules.redact import redact_text
+
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {k: masked(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [masked(v) for v in value]
+    return value
+
+
+def append(network: str, row: dict, now: float = None) -> dict:
+    """Append one row, masked, with its id and time. Raises naming why when it is not kept: a
+    network that does not exist (a write creates no network), an unknown row, or the store's
+    own failure (`records_migrate.store_append`'s)."""
+    from modules import records_migrate
+    from modules.nsot import listref
+
+    if not network or not listref.exists(network):
+        raise Refused(f"{network or 'no network'} is no network, so no step is recorded")
+    if row.get("row") not in ROWS:
+        raise Refused(f"a step log row is one of {', '.join(ROWS)}, not {row.get('row')!r}")
+    now = time.time() if now is None else float(now)
+    kept = masked(dict(row, id="hs-" + uuid.uuid4().hex[:12], network=network, at=_iso(now),
+                       epoch=now))
+    records_migrate.store_append(STORE, _path(network), kept, network=_network(network))
+    return kept
+
+
+def read(network: str) -> dict:
+    """*network*'s rows, oldest first: ``{"state": "ok"|"absent"|"unreadable", "rows",
+    "error"}``. Absent (nothing recorded yet) and unreadable are different answers, and a read
+    creates nothing."""
+    from modules import records_migrate
+
+    if not network:
+        return {"state": "unreadable", "rows": [], "error": "no network was named"}
+    got = records_migrate.store_rows(STORE, _path(network), network=_network(network))
+    if got["state"] == "unreadable":
+        log.error("heal: %s's step log is unreadable (%s)", network, got["error"])
+    return got
+
+
+# ── The writers ─────────────────────────────────────────────────────────────────────────────
+
+def _of(decision: dict) -> dict:
+    """The fields every row names: the decision, its incident and device, its mode, policy."""
+    pol = decision.get("policy") or {}
+    return {"decision": decision.get("id") or "", "incident": decision.get("incident") or "",
+            "device": decision.get("device") or "", "mode": decision.get("mode") or "",
+            "kind": decision.get("kind") or "", "tier": decision.get("tier") or 0,
+            "policy": {"fingerprint": pol.get("fingerprint") or "", "by": pol.get("by") or "",
+                       "reason": pol.get("reason") or ""}}
+
+
+def decision_steps(decision: dict) -> list:
+    """The decision's steps (`decide.STEPS`): each step it passed, then the step it ended on
+    (its outcome and words), then the record."""
+    steps = [dict(s) for s in decision.get("steps") or []]
+    steps.append({"step": decision.get("phase") or "decide",
+                  "result": decision.get("outcome") or "", "words": decision.get("words") or ""})
+    steps.append({"step": "record", "result": "ok",
+                  "words": f"decision {decision.get('id') or '?'} recorded"})
+    return steps
+
+
+def record_decision(network: str, decision: dict, now: float = None) -> dict:
+    """The ``decision`` row for one recorded decision (`decisions.record`'s, its id held)."""
+    guard = decision.get("guard") or {}
+    return append(network, dict(
+        _of(decision), row="decision", outcome=decision.get("outcome") or "",
+        words=decision.get("words") or "", steps=decision_steps(decision),
+        guard={k: guard.get(k) for k in ("guard", "name", "words")} if guard else {},
+        program=list(decision.get("program") or []),
+        program_hash=decision.get("program_hash") or "",
+        units=[u.get("words") for u in decision.get("units") or []],
+        triggers=[t for t in decision.get("triggers") or [] if t],
+        person=(decision.get("person") or {}).get("words") or ""), now)
+
+
+def record_started(network: str, decision: dict, steps: list, program: list,
+                   program_hash: str, *, by: str, now: float = None) -> dict:
+    """The ``started`` row: the act's steps so far and the program (masked) and its hash,
+    BEFORE anything is sent. Raises when it is not kept: the act then refuses the heal."""
+    return append(network, dict(_of(decision), row="started", steps=list(steps),
+                                program=list(program), program_hash=program_hash, by=by), now)
+
+
+def record_act(network: str, decision: dict, result: dict, *, by: str,
+               now: float = None) -> dict:
+    """The ``act`` row: the act's every step, its outcome and words, and its records."""
+    return append(network, dict(
+        _of(decision), row="act", outcome=result.get("outcome") or "",
+        words=result.get("words") or "", steps=list(result.get("steps") or []),
+        sent=bool(result.get("sent")), records=dict(result.get("records") or {}), by=by), now)
+
+
+def record_raised(network: str, decision: dict, words: str, now: float = None) -> dict:
+    """The ``raised`` row: the act's job raised before it recorded an outcome."""
+    return append(network, dict(_of(decision), row="raised", words=words), now)
+
+
+def record_interrupted(network: str, decision: dict, words: str, *, halted: bool, by: str,
+                       now: float = None) -> dict:
+    """The ``interrupted`` row (`modules/heal/interrupted.py`)."""
+    return append(network, dict(_of(decision), row="interrupted", outcome="interrupted",
+                                words=words, halted=bool(halted), by=by,
+                                steps=[{"step": "record", "result": "interrupted",
+                                        "words": words}]), now)
+
+
+# ── The readers ─────────────────────────────────────────────────────────────────────────────
+
+def _fold(rows: list) -> list:
+    """*rows* folded into one entry per incident, oldest first (section 8: one record per
+    incident; an incident checked again later holds each of its decisions)."""
+    by = {}
+    for r in rows:
+        key = r.get("incident") or r.get("decision") or r.get("id")
+        e = by.get(key)
+        if e is None:
+            e = by[key] = {"incident": r.get("incident") or "", "device": r.get("device") or "",
+                           "network": r.get("network") or "", "decisions": [], "steps": [],
+                           "program": [], "program_hash": "", "records": {}, "outcome": "",
+                           "words": "", "mode": "", "kind": "", "policy": {}, "by": "",
+                           "first_at": r.get("at"), "at": r.get("at"),
+                           "epoch": float(r.get("epoch") or 0), "state": "decided",
+                           "units": [], "triggers": [], "person": "", "guard": {}}
+        if r.get("decision") and r["decision"] not in e["decisions"]:
+            e["decisions"].append(r["decision"])
+        e["at"], e["epoch"] = r.get("at"), float(r.get("epoch") or 0)
+        for k in ("mode", "kind"):
+            if r.get(k):
+                e[k] = r[k]
+        if (r.get("policy") or {}).get("fingerprint"):
+            e["policy"] = r["policy"]
+        row = r.get("row")
+        steps = [dict(s, row=row, decision=r.get("decision") or "") for s in r.get("steps") or []]
+        if row == "decision":
+            e.update(outcome=r.get("outcome") or "", words=r.get("words") or "",
+                     state="decided", guard=r.get("guard") or {}, units=r.get("units") or [],
+                     triggers=r.get("triggers") or [], person=r.get("person") or "")
+            e["steps"] += steps
+            if r.get("program_hash"):
+                e.update(program=list(r.get("program") or []), program_hash=r["program_hash"])
+        elif row == "started":
+            # The steps the act row repeats once it ends: kept only until then.
+            e["started"] = steps
+            e.update(state="applying", by=r.get("by") or e["by"])
+            if r.get("program_hash"):
+                e.update(program=list(r.get("program") or []), program_hash=r["program_hash"])
+        elif row == "act":
+            e.pop("started", None)
+            e["steps"] += steps
+            e.update(outcome=r.get("outcome") or "", words=r.get("words") or "", state="done",
+                     records=dict(r.get("records") or {}), by=r.get("by") or e["by"])
+        elif row == "raised":
+            e["raised"] = r.get("words") or ""
+        elif row == "interrupted":
+            e["steps"] += e.pop("started", [])
+            e["steps"] += steps
+            e.update(outcome="interrupted", words=r.get("words") or "", state="interrupted",
+                     halted=bool(r.get("halted")), by=r.get("by") or e["by"])
+    out = []
+    for e in by.values():
+        if "started" in e:
+            e["steps"] += e.pop("started")
+        out.append(e)
+    return out
+
+
+def incidents(network: str, device: str = "") -> dict:
+    """*network*'s step log, one entry per incident, oldest first: ``{"state", "entries",
+    "error"}``; *device* keeps one device's. Each entry: its incident and device, its decisions,
+    every step (``step``, ``result``, ``words`` and the ``row`` and ``decision`` it came from),
+    the program (masked) and its hash, the outcome and words, the mode, the policy, its records,
+    and its ``state``: ``decided``, ``applying`` (its act started and has not ended), ``done``
+    or ``interrupted``."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "entries": [], "error": got["error"]}
+    entries = _fold(got["rows"])
+    if device:
+        entries = [e for e in entries if e["device"] == device]
+    return {"state": got["state"], "entries": entries, "error": ""}
+
+
+def incident(network: str, incident_id: str) -> dict:
+    """One incident's entry (**H8's seam**: what Mercury tried, in its own words), or ``{}``.
+    Raises when the store cannot be read: an analysis of what is unread is never made."""
+    got = incidents(network)
+    if got["state"] == "unreadable":
+        raise RuntimeError(f"{network}'s heal step log cannot be read: {got['error']}")
+    return next((e for e in got["entries"] if e["incident"] == incident_id), {})
+
+
+def of_decision(network: str, decision_id: str) -> dict:
+    """``{"state", "rows", "started", "raised", "last", "error"}`` for one decision: its rows,
+    whether its act wrote ``started`` (so something may have been sent), the last ``raised``
+    words, and the last step any row recorded."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "rows": [], "started": None, "raised": "", "last": {},
+                "error": got["error"]}
+    rows = [r for r in got["rows"] if r.get("decision") == decision_id]
+    steps = [s for r in rows for s in r.get("steps") or []]
+    raised = [r.get("words") or "" for r in rows if r.get("row") == "raised"]
+    return {"state": got["state"], "rows": rows,
+            "started": any(r.get("row") == "started" for r in rows),
+            "raised": raised[-1] if raised else "", "last": steps[-1] if steps else {},
+            "error": ""}

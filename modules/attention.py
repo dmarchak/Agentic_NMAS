@@ -196,6 +196,11 @@ ROW_KINDS = {
     # dry run, carried by the device's drift row (it attaches there, keeping the row's action).
     ("heal", "would_heal"): ("self-healing, in dry run, would have healed a device",
                              "read what it would have done, then mark it right or wrong"),
+    # Board H, H6 (H4's finding): a heal whose job ended before it recorded its outcome, which
+    # left its decision taken and its incident claimed with nothing to show it.
+    ("heal", "interrupted"): ("a heal's job ended before it recorded what it did",
+                              "read its step log, read the device against its golden, then "
+                              "acknowledge with what you found"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -466,6 +471,10 @@ CLEARS = {
     ("heal", "would_heal"): (("resolves", "time"),
                              "a person marks the record right or wrong, or 7 days pass "
                              "(decisions.MARK_DAYS)"),
+    ("heal", "interrupted"): (("resolves", "acknowledge"),
+                              "a later decision finds the device with nothing to heal, or a "
+                              "later heal of it is healed and verified; or acknowledged with "
+                              "what was found on the device"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -541,7 +550,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # printing them in another form (C1542): that deploy only.
                                ("deploys", "read_back"),
                                # One console run (O6a): that run only, by its id.
-                               ("console_ztp", "not_blank"), ("console_ztp", "failed")})
+                               ("console_ztp", "not_blank"), ("console_ztp", "failed"),
+                               # One interrupted heal (board H, H6), by its decision's id.
+                               ("heal", "interrupted")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -4652,7 +4663,7 @@ def notify_source(got=None) -> dict:
                                   if got["state"] == "ok" else "no notification team is set"))
 
 
-def heal_source(got=None, now=None) -> dict:
+def heal_source(got=None, now=None, found=None) -> dict:
     """What self-healing would have done, in dry run (board H, H3; docs/HEAL_TO_INTENT.md
     section 7: "the device's ordinary drift row carries it (`attach_to`), so a person resolving
     the drift sees what the heal would have done"). ONE row per dry-run record of the network
@@ -4696,9 +4707,66 @@ def heal_source(got=None, now=None) -> dict:
                 attach_to=f"drift:{lst}:drifted:{host}" if host else None)
         r["attach_action"] = False
         out.append(r)
+    marked = len(out)
+    out += _heal_interrupted_rows(lst, rows, found)
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
-                         checked=f"list {lst}: {len(out)} dry-run record(s) to mark")
+                         checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
+                                  f"{len(out) - marked} interrupted heal(s)"))
+
+
+def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
+    """Board H, H6: ONE row per heal whose job ended before it recorded its outcome, recorded
+    (`interrupted.reap`, outcome ``interrupted``) or found at this read and not yet recorded
+    (`interrupted.find`, a read), until a later decision finds its device with nothing to heal
+    or a later heal of it is healed, or a person acknowledges it with what they found."""
+    from modules.heal import decisions as HD
+    from modules.heal import interrupted
+
+    later = {}
+    for d in rows:
+        done = (d.get("outcome") == "nothing"
+                or (d.get("applied") or {}).get("outcome") == "healed")
+        if done:
+            later[d.get("device")] = max(later.get(d.get("device"), 0.0),
+                                         float(d.get("epoch") or 0))
+    if found is None:
+        got = interrupted.find(lst)
+        found = got["found"] if got["state"] == "ok" else []
+    pending = {d["id"]: d for d in found}
+    out = []
+    for d in rows:
+        recorded = (d.get("applied") or {}).get("outcome") == interrupted.OUTCOME
+        if not recorded and d.get("id") not in pending:
+            continue
+        host = d.get("device") or ""
+        at = float(d.get("epoch") or 0)
+        if later.get(host, 0.0) > at:
+            continue
+        said = ((d.get("applied") or {}).get("words") if recorded else
+                interrupted.words(lst, pending[d["id"]], {"state": "ok"}))
+        try:
+            halt = HD.halted(lst)
+        except Exception as exc:
+            halt = {"words": f"whether it is halted cannot be read ({exc})", "id": "?"}
+        halted = (f" Self-healing on {lst} is halted (guard {halt.get('guard')}): nothing more "
+                  "is healed there until the halt is lifted." if halt.get("id") else "")
+        out.append(row(
+            source="heal", kind="interrupted", key=d.get("id") or "?", level="danger",
+            event=d.get("id"), devices=[host] if host else [], since=at or None,
+            what=(f"Self-healing on {lst}: the heal of {host} was interrupted, and what reached "
+                  "the device is not known"),
+            cause=((said or "its job ended before it recorded its outcome")
+                   + (". Mercury recorded it and closed its incident." if recorded else
+                      ". Found at this read; the heal runner records it at its next pass.")
+                   + halted),
+            action={"label": (f"Read the heal's steps on {host}'s History, read {host} against "
+                              "its golden (Check drift now on its page), then acknowledge with "
+                              "what you found"),
+                    "href": f"/v2/device/{host}?tab=history"},
+            operands={"list": lst, "decision": d.get("id"), "incident": d.get("incident"),
+                      "recorded": recorded}))
+    return out
 
 
 def reload_unverified_source(found=None) -> dict:
@@ -5654,7 +5722,9 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 # start, and this map lacked it, so every acknowledgement was refused (C2295).
                 "ai_withheld": "ai_withheld_source",
                 # A destination's last failed delivery (board H, H7).
-                "notify": "notify_source"}
+                "notify": "notify_source",
+                # An interrupted heal (board H, H6).
+                "heal": "heal_source"}
 
 #: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
 #: instructions are a true positive (someone aimed them at the model: investigate), benign or

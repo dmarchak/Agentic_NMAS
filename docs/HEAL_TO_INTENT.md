@@ -430,8 +430,15 @@ file fallback (`receipts.on_database`'s pattern), so one store holds Mercury's r
   and a link to the incident. Never a configuration value.
 - **Never deleted.** A journal entry is recorded as created, and deleting a list never deletes
   NetBox objects (tests/test_list_delete_never_touches_netbox.py).
-- **Before building:** whether `_with_managed_tag` applies to a journal entry is read from the
-  lab's NetBox API first (`netbox_client.missing_views`'s pattern), never assumed.
+- **Tagged `nmas-managed`** (C2437, read before building: the lab NetBox 4.6.9 answers OPTIONS
+  on `extras/journal-entries/` with a writable, optional `tags`, 2026-11-04), so
+  `_with_managed_tag` applies (`netbox_guard.TAGGABLE_ENDPOINTS`) and an entry it cannot tag
+  is never sent.
+- **Its first line names the heal**, `Mercury heal <decision id>` (`journal.HEAL_LINE`), and
+  the NetBox census reconciles the journal with the step log: every entry added between two
+  snapshots matches a heal step on the same device with the same heal, and every heal step
+  in the window that wrote the journal has its entry (`scripts/nmas-netbox-census`,
+  docs/SERVICE_ACCOUNTS.md 1.6).
 
 ---
 

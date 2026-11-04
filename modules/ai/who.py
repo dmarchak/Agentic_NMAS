@@ -50,6 +50,8 @@ ACTION_KINDS = ("receipt", "reload", "intent", "golden", "window")
 #: How an ``Actor-Verified:`` value is said (`history_sources.VERIFIED_WORDS`' meanings); a
 #: value it does not name is not verified, as History counts it.
 HOW = {"access": "verified sign-in", "host-shell": "host login, not verified",
+       # Board H, H6: a heal's commit, made under a policy a verified person confirmed.
+       "policy": "by the policy a verified person confirmed",
        "none": "not verified", "": "before verification was recorded"}
 #: A log line recording a configuration change, any severity: IOS and IOS-XE's CONFIG_I and
 #: CONFIG_P, and IOS-XE's DMI (NETCONF and RESTCONF) CONFIG_I.

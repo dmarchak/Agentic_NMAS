@@ -80,10 +80,26 @@ def _intent_rows(network):
     return flow_intent.read(network)["rows"]
 
 
+def _steps(network, n):
+    """A self-healing decision's step log row (board H, H6), through its owner's writer."""
+    from modules.heal import steplog
+    steplog.record_decision(network, {"id": f"hd-{n:012x}", "incident": f"hi-{n}",
+                                      "device": f"d{n}", "outcome": "would_heal",
+                                      "mode": "dry_run", "words": "would heal",
+                                      "steps": [{"step": "claim", "result": "ok",
+                                                 "words": "taken"}], "phase": "decide"})
+
+
+def _steps_rows(network):
+    from modules.heal import steplog
+    return steplog.read(network)["rows"]
+
+
 #: Each store: its writer and its owner's read for one network, newest first or oldest first
 #: as the owner answers.
 CASES = {
     "flow_intent": (_intent, lambda net: _intent_rows(net)),
+    "heal_steps": (_steps, lambda net: _steps_rows(net)),
     "network_settings_record": (_settings, lambda net: list_settings.changes(net)["rows"]),
     "onboarding_runs": (_run, lambda net: onboard.read_runs(
         os.path.join(_folder(net), "config_repo"))["rows"]),

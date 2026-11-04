@@ -8,6 +8,13 @@ device roles, set from Mercury's role map. Read-only unless --apply names this p
 A role NetBox already classifies keeps its kind (NetBox's wins); a role the map does not name
 stays unclassified, and is listed. Needs NetBox writes on (netbox_allow_writes). Exit 0 done or
 nothing to do, 1 refused or not read back, 2 NetBox could not be read.
+
+**A one-off maintenance script, never run by Mercury** (the operator, 2026-11-04; C2445). Its
+migration ran once (C665): `mercury_kind` exists on device roles, and Mercury only reads it.
+Mercury's NetBox account `nmas` holds no change on device roles, and is not given one. A run
+under Mercury's token is therefore refused at the role update. The operator runs it, under
+their own token, when a role needs its kind set this way; the role's own NetBox edit does the
+same.
 """
 
 import argparse

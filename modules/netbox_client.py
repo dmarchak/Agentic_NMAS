@@ -396,6 +396,35 @@ def _nb_post(session: requests.Session, base: str, path: str, payload: dict) -> 
     return obj
 
 
+#: A NetBox journal entry's kinds (NetBox's ``JournalEntryKindChoices``).
+JOURNAL_KINDS = ("info", "success", "warning", "danger")
+JOURNAL_ENDPOINT = "extras/journal-entries/"
+
+
+def add_journal_entry(session: requests.Session, base: str, device_id: int, kind: str,
+                      comments: str) -> dict:
+    """Add a journal entry to NetBox device *device_id* (board H, H6; C2376): through the
+    `_nb_post` chokepoint, so it is refused unless writes are allowed (``netbox_allow_writes``)
+    and the caller declared its authority (`netbox_guard.for_list(..., authority=...)`, C155),
+    and recorded as created with its actor and authority. *comments* is masked by the one
+    redactor before it leaves (it is a record's words, never a configuration value). The
+    entry carries ``nmas-managed`` (`netbox_guard.TAGGABLE_ENDPOINTS`, C2437: `_nb_post`
+    adds it, refusing an entry it cannot tag), and no remover walks ``extras/``
+    (`_REMOVAL_ORDER`), so Mercury never deletes an entry it wrote."""
+    from modules.redact import redact_text
+
+    if kind not in JOURNAL_KINDS:
+        raise ValueError(f"a journal entry's kind is one of {', '.join(JOURNAL_KINDS)}, not "
+                         f"{kind!r}")
+    if isinstance(device_id, bool) or not isinstance(device_id, int) or device_id <= 0:
+        raise ValueError(f"a journal entry names a NetBox device by its id, not {device_id!r}")
+    if not (comments or "").strip():
+        raise ValueError("a journal entry says something, and its comments are empty")
+    return _nb_post(session, base, JOURNAL_ENDPOINT,
+                    {"assigned_object_type": "dcim.device", "assigned_object_id": device_id,
+                     "kind": kind, "comments": redact_text(comments)})
+
+
 def _nb_patch(session: requests.Session, base: str, path: str, payload: dict) -> dict:
     """PATCH a payload to a NetBox endpoint (id embedded in path).
 

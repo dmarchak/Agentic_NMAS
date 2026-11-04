@@ -69,17 +69,19 @@ reads.
    - DCIM: cable, device, device role, device type, interface, manufacturer, platform,
      region, site;
    - IPAM: IP address, prefix, role, VLAN, VRF;
-   - Extras: config template, custom field, tag;
+   - Extras: config template, custom field, tag (journal entries' view is `nmas-journal-append`'s,
+     permission 5);
    - VPN: tunnel, tunnel termination;
    - Core: **object change** (the change log: the drift reader's source, and what
      `nmas-netbox-untagged` and `nmas-netbox-deletions` read);
-   - Users: **token** (view only: the credential-health reader reads the token's own row,
-     `GET /api/users/tokens/`, for its expiry; added 2026-10-05 by the C100 survey).
+   - Users | token: **moved to `nmas-own-token`** (permission 6) on 2026-11-04. It was here
+     unconstrained, which listed every user's token row, the operator's included (C2444).
 2. **`nmas-add`**. Actions: **add**. Object types:
    - DCIM: cable, device, device role, device type, interface, manufacturer, platform,
      region, site;
    - IPAM: IP address, prefix, role, VLAN, VRF;
-   - Extras: config template, custom field, tag;
+   - Extras: config template, custom field, tag (journal entries' add is
+     `nmas-journal-append`'s, permission 5);
    - VPN: tunnel, tunnel termination.
 3. **`nmas-change`**. Actions: **change**. Object types, the six the NMAS updates:
    - DCIM: device, interface, site;
@@ -113,9 +115,50 @@ reads.
    Expect `create 201`, then `delete 404 | read back 200`: the constraint refused it, and the
    region is still there. Then delete `c466-probe` by hand in NetBox's interface (Organization
    > Regions). `delete 204` would mean the constraint is not applied.
+5. **`nmas-journal-append`** (added by the operator, 2026-11-04). Actions: **view** and
+   **add** only. Object type: Extras | journal entry. A heal's NetBox journal entry
+   (`modules/heal/journal.py`, board H's H6) is a record of what Mercury did. So the account
+   may append and read entries, and never change or delete one: the journal stays
+   append-only, so the record can't be rewritten. The census reconciles every entry added
+   between two snapshots with the heal's step log. An entry may carry tags on creation
+   (OPTIONS, measured 2026-11-04: `tags` writable; C2437), and Mercury tags its entries
+   `nmas-managed` (tag view comes from permission 1).
+6. **`nmas-own-token`** (added by the operator, 2026-11-04). Actions: **view** only. Object
+   type: Users | token. **Constraint:** `{"user": "$user"}`. The credential-health reader
+   reads the tool's own token row for its expiry, matching the row by its v2 key
+   (`modules/readers/credential_health.py`). Unconstrained, the view listed every user's
+   token row (C2444). Constrained to the account's own, `GET /api/users/tokens/` lists one row,
+   `nmas`'s, and the reader still finds it (measured 2026-11-04). This is the one VIEW
+   permission that is constrained. The rule above ("never constrain a VIEW permission")
+   guards the census's types, and the census only reads, never compares, tokens.
+
+7. **`mercury-console`** (granted by the operator 2026-10-22, C1535; listed here 2026-11-04).
+   Actions: **view**, **add** and **change**. Object types: DCIM console port, console-server
+   port, console port template, console-server port template. Out-of-band ZTP's console path
+   (`modules/nsot/console_path.py`) reads them. Its create makes a device's console port, the
+   console server's port and their cable (cables are `nmas-add`'s). Every one is tagged
+   `nmas-managed` on creation (`netbox_guard.TAGGABLE_ENDPOINTS`, through `_nb_post`).
+   **It grants no delete.** Retirement's removal deletes the device's console port and its
+   cable, each only when tagged and recorded as created, and keeps the console server's port,
+   which serves the next device. Those two deletes are C2445's, the operator's grant: console
+   port delete and cable delete, constrained to `{"tags__slug": "nmas-managed"}`, as
+   `nmas-delete` is.
+
+**Not granted, by decision:** change on DCIM device role. `scripts/nmas-netbox-role-kind` is
+a one-off maintenance script (C665's migration, already run). The operator runs it under
+their own token if a role ever needs its kind set this way; Mercury only reads
+`mercury_kind` (C2445).
+
+**Read-only check of these permissions, 2026-11-04** (Mercury's own session on the NMAS host;
+only GET and OPTIONS sent):
+- `extras/journal-entries/` answers 200;
+- `users/tokens/` lists one row, `nmas`'s;
+- devices, sites, interfaces, tags, object changes, IP addresses, prefixes, platforms, device
+  roles, cables, custom fields, config templates, tunnels, VLANs and VRFs each answer 200.
 
 **What it deliberately does NOT grant:** anything under Authentication (permissions,
-users), anything under Users but token view, and any delete of a tag. Remove must never delete its own tag; that rule was
+users), anything under Users but its own token's view, any change or delete of a journal
+entry, and any delete of a tag. Remove must never delete its own tag; that rule was
 enforced only by omission, and now NetBox enforces it too.
 
 ### 1.4 Create the token
@@ -158,6 +201,17 @@ scripts/nmas-netbox-census --compare /tmp/census-before-switch.json
   identity, that the old one saw. Exit 1 names the type that differs. Exit 2 names a type it
   could not read at all (a missing view). Since C467 it walks every type the tool reads, so a
   baseline must be taken by the same version of the script.
+- **The journal is reconciled, not compared** (board H, H6; the operator, 2026-11-04). The
+  census reads `extras/journal-entries/` whole (the account needs view on journal entries) and
+  keeps each entry's id, the device it is on and the heal its first line names (`Mercury heal
+  <decision id>`, never the entry's text). Against the heal step log of every network, read
+  where the census runs (each network's `heal_steps.jsonl`, or the records store once moved):
+  every entry added since the baseline must match a step record that wrote the journal on the
+  same NetBox device with the same heal, one entry per step, and every such step recorded
+  between the baseline's `taken_at` and this census's stamp must have its entry. An unmatched
+  entry (a person's journal entry added during the run counts) or a missing one exits 1,
+  naming the entry and the step compared. A step log or network registry that cannot be read,
+  or a baseline taken before the census read the journal, exits 2: unproven, never a pass.
 - **Then, at the next real NetBox write** (an import or an onboarding): C8's report names any
   refused write per device and per write. A 403 there names the object type whose add or
   change permission is missing. It is never silent.

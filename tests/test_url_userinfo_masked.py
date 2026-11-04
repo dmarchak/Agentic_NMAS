@@ -100,6 +100,10 @@ ENTRY_POINTS = {
     "modules/nsot/receipts.py:_masked": lambda: "\n".join(
         __import__("modules.nsot.receipts", fromlist=["_masked"])._masked(
             {"words": [PLANTED]})["words"]),
+    # Every string a heal's step log row keeps, masked before it is stored (board H, H6).
+    "modules/heal/steplog.py:masked": lambda: "\n".join(
+        __import__("modules.heal.steplog", fromlist=["masked"]).masked(
+            {"steps": [{"words": PLANTED}]})["steps"][0]["words"].splitlines()),
     # The notifier's egress mask on every message it sends (board H, H7).
     "modules/notify/message.py:mask": lambda: (
         __import__("modules.notify.message", fromlist=["mask"]).mask(PLANTED)),

@@ -18,6 +18,14 @@ touch is the tagged one** — so the tagged before/after is the number that
 actually tests the provenance gate. A total that matched while the tagged set
 drifted would be a pass hiding a failure.
 
+**The journal is reconciled, not compared** (board H, H6; the operator, 2026-11-04). It grows
+with every heal, so `extras/journal-entries/` is read whole and checked against the heal step
+log read where the census runs (`modules/heal/steplog.py`): every entry added between the two
+snapshots must match a step record on the same NetBox device with the same heal (the entry's
+first line, `modules/heal/journal.py`'s `HEAL_LINE`), and every heal step in the window that
+wrote the journal must have its entry. Either mismatch is a difference; a step log that cannot
+be read, or a baseline taken before the journal was read, is unproven.
+
 Read-only. It performs GETs and nothing else.
 
     python scripts/nmas-netbox-census                     # print + snapshot
@@ -110,6 +118,15 @@ NOT_COUNTED = {
                         "(C1492), and never writes one",
 }
 
+#: The journal: read whole and RECONCILED, never compared as a type (board H, H6; the
+#: operator, 2026-11-04, in place of an exclusion). It grows with every heal, so a compare by
+#: identity would fail every census taken across one; instead every entry added between the two
+#: snapshots must match a heal step record (same NetBox device, same heal), and every heal step
+#: in the window that wrote the journal must have its entry (`reconcile_journal`).
+JOURNAL = ("journal-entries", "extras/journal-entries/")
+#: The assigned object a heal's entry is on (`netbox_client.add_journal_entry`).
+JOURNAL_DEVICE = "dcim.device"
+
 
 class CensusUnreadable(RuntimeError):
     """A type the census must read was refused or failed: the census is UNPROVEN, never a
@@ -173,7 +190,140 @@ def take(verbose: bool = False) -> dict:
                               "tagged": len(tagged), "tagged_objects": tagged}
         if verbose:
             print(f"  {name:15s} {len(ids):5d} total  {len(tagged):5d} tagged")
+    try:
+        # Every page (`_nb_get` follows `next`), never one: a read of exactly a page is cut.
+        entries = _nb_get(session, base, JOURNAL[1])
+    except Exception as exc:
+        raise CensusUnreadable(f"{JOURNAL[1]} could not be read ({_http_reason(exc)})") from exc
+    out["journal"] = journal_snapshot(entries)
     return out
+
+
+def journal_entry(obj: dict) -> dict:
+    """One journal entry as the census keeps it: its id, the object it is on, and the heal its
+    comments' first line names (`modules.heal.journal.heal_id`; ``""`` for any other entry).
+    Never its text: the snapshot is a file."""
+    from modules.heal.journal import heal_id
+
+    return {"id": obj.get("id"), "object_type": obj.get("assigned_object_type") or "",
+            "object_id": obj.get("assigned_object_id"), "heal": heal_id(obj.get("comments"))}
+
+
+def journal_snapshot(objects) -> dict:
+    """The journal as a snapshot keeps it: every entry (`journal_entry`), by id."""
+    kept = sorted((journal_entry(o) for o in objects or []), key=lambda e: str(e["id"]))
+    return {"total": len(kept), "entries": kept}
+
+
+def read_heal_steps() -> dict:
+    """Every heal step record that wrote a journal entry, from every network's step log, read
+    where the census runs (the data folder, or the records store once moved: `steplog.read`):
+    ``{"state": "ok"|"unreadable", "steps", "networks", "error"}``. A registry or a step log
+    that cannot be read is UNREADABLE, naming which, never no steps; an absent log is a
+    network with no heals. Each step: its row id, network, device, heal (its decision), time,
+    and the entry's id and NetBox device as the write returned them."""
+    from modules.heal import steplog
+    from modules.nsot import listref
+
+    try:
+        networks = listref.names()
+    except Exception as exc:
+        return {"state": "unreadable", "steps": [], "networks": 0,
+                "error": f"the network registry could not be read ({type(exc).__name__}: "
+                         f"{exc})"}
+    steps = []
+    for net in networks:
+        got = steplog.read(net)
+        if got["state"] == "unreadable":
+            return {"state": "unreadable", "steps": [], "networks": len(networks),
+                    "error": f"{net}'s heal step log could not be read ({got['error']})"}
+        for r in got["rows"]:
+            wrote = (r.get("records") or {}).get("journal") or {}
+            if r.get("row") == "act" and wrote.get("state") == "written":
+                steps.append({"step": r.get("id") or "", "network": net,
+                              "device": r.get("device") or "", "heal": r.get("decision") or "",
+                              "at": r.get("at") or "", "entry": wrote.get("id"),
+                              "device_id": wrote.get("device_id")})
+    return {"state": "ok", "steps": steps, "networks": len(networks), "error": ""}
+
+
+def _entry_key(e: dict) -> tuple:
+    on = e.get("object_id") if e.get("object_type") == JOURNAL_DEVICE else None
+    return on, e.get("heal") or ""
+
+
+def _step_key(s: dict) -> tuple:
+    return s.get("device_id"), s.get("heal") or ""
+
+
+def _entry_words(e: dict) -> str:
+    on = (f"NetBox device {e.get('object_id')}" if e.get("object_type") == JOURNAL_DEVICE
+          else f"{e.get('object_type') or 'no object'} {e.get('object_id')}")
+    return f"journal entry {e.get('id')} (on {on}, heal {e.get('heal') or 'none named'})"
+
+
+def _step_words(s: dict) -> str:
+    return (f"heal step {s.get('step')} ({s.get('network')}, {s.get('device')}, heal "
+            f"{s.get('heal') or 'none'}, at {s.get('at')}: wrote entry {s.get('entry')} on "
+            f"NetBox device {s.get('device_id')})")
+
+
+def reconcile_journal(before: dict, after: dict, heal: dict, until: str = "") -> tuple:
+    """``(findings, unproven, lines)``: the journal reconciled with the heal step log.
+
+    Every entry ADDED (in *after*, its id not in *before*) must match a step record on the same
+    NetBox device with the same heal, one entry per step (a step that names its entry's id
+    matches only that entry). Every step in the window (at or after the baseline's
+    ``taken_at``, at or before *until*, this census's stamp; either bound absent is open) that
+    wrote the journal must have its entry in *after*. Each mismatch is a finding naming both
+    operands. ``unproven`` is the reason nothing could be said: a baseline with no journal (it
+    predates this read), or a step log that could not be read (*heal*'s state)."""
+    bj, aj = (before or {}).get("journal"), (after or {}).get("journal")
+    if not isinstance(bj, dict):
+        return [], ("the baseline holds no journal entries (it was taken before the census "
+                    "read them), so which entries were added cannot be said"), []
+    if not isinstance(aj, dict):
+        return [], "this census holds no journal entries", []
+    heal = heal or {}
+    if heal.get("state") != "ok":
+        return [], f"the heal step log is unreadable: {heal.get('error') or 'no answer'}", []
+    since = (before or {}).get("taken_at") or ""
+    known = {e.get("id") for e in bj.get("entries") or []}
+    held = aj.get("entries") or []
+    added = [e for e in held if e.get("id") not in known]
+    steps = heal.get("steps") or []
+    findings, used = [], set()
+    for e in added:
+        fits = [s for s in steps if s["step"] not in used and _step_key(s) == _entry_key(e)
+                and s.get("entry") in (e.get("id"), None)]
+        if fits:
+            used.add(sorted(fits, key=lambda s: s.get("entry") != e.get("id"))[0]["step"])
+            continue
+        named = [s for s in steps if s.get("entry") == e.get("id")]
+        if named:
+            findings.append(f"journal: {_entry_words(e)} was ADDED, and the step that names it "
+                            f"is another device or heal: {_step_words(named[0])}")
+        else:
+            findings.append(
+                f"journal: {_entry_words(e)} was ADDED, and no heal step record matches it: "
+                f"none of the {len(steps)} step(s) that wrote the journal, read across "
+                f"{heal.get('networks', 0)} network(s), is on that device with that heal")
+    window = [s for s in steps if (not since or (s.get("at") or "") >= since)
+              and (not until or (s.get("at") or "") <= until)]
+    for s in window:
+        has = [e for e in held if _entry_key(e) == _step_key(s)
+               and (s.get("entry") is None or e.get("id") == s.get("entry"))]
+        if not has:
+            same = [e for e in held if e.get("id") == s.get("entry")]
+            found = (f"entry {s.get('entry')} is {_entry_words(same[0])}" if same else
+                     f"entry {s.get('entry')} is not among them")
+            findings.append(f"journal: {_step_words(s)}, and this census's {len(held)} journal "
+                            f"entr(ies) hold none on that device for that heal ({found})")
+    lines = [f"journal entries: {len(held)} held, {len(added)} added since the baseline; "
+             f"{len(steps)} heal step(s) wrote the journal across {heal.get('networks', 0)} "
+             f"network(s), {len(window)} of them in the window "
+             f"({since or 'all time'} to {until or 'now'})"]
+    return findings, "", lines
 
 
 def _print(census: dict) -> None:
@@ -187,6 +337,9 @@ def _print(census: dict) -> None:
     print("-" * 33)
     print(f"{'ALL':16s} {total:7d} {tagged:7d}")
     print(f"\ntagged with: {census['tag']}")
+    if isinstance(census.get("journal"), dict):
+        print(f"{JOURNAL[0]}: {census['journal']['total']} read, reconciled with the heal step "
+              "log on --compare (never compared as a type)")
     print("\nNOT counted by this census — absence here is not a claim of "
           "'unchanged':")
     for what, why in census.get("not_counted", {}).items():
@@ -378,6 +531,8 @@ def main() -> int:
         print("\nread (the account must be able to), never compared:")
         for name, path in READ_ONLY:
             print(f"  {name:16s} {path}")
+        print("\nreconciled with the heal step log, never compared:")
+        print(f"  {JOURNAL[0]:16s} {JOURNAL[1]}")
         print("\nNOT counted:")
         for what, why in NOT_COUNTED.items():
             print(f"  {what:28s} {why}")
@@ -419,15 +574,25 @@ def main() -> int:
 
     if args.compare:
         findings = compare(before, census)
+        # The step log AFTER NetBox's read: a step recorded by then wrote its entry before it.
+        j_findings, j_unproven, j_lines = reconcile_journal(
+            before, census, read_heal_steps(), until=started)
+        findings += j_findings
         _print(census)
         print()
         print(f"baseline taken: {before.get('taken_at') or 'unrecorded'}")
         mod_status, mod_lines = _modification_report(
             since=before.get("taken_at") or "", before=before)
-        for line in mod_lines:
+        for line in mod_lines + j_lines:
             print(line)
         print()
 
+        if not findings and j_unproven:
+            print(f"UNPROVEN - the journal cannot be reconciled: {j_unproven}")
+            print("Every counted type holds the objects it held, and that is NOT a pass: an "
+                  "entry added with no heal behind it, or a heal with no entry, cannot be "
+                  "ruled out.")
+            return EXIT_UNPROVEN
         if not findings:
             # WHICH CLAIM. "PASS" used to be read as "nothing changed" and has
             # only ever meant "nothing was created or destroyed" -- so it is

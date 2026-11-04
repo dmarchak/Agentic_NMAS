@@ -46,9 +46,19 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
 **One job per incident** (`run`, `start`): each heal decision is taken at once and run as a
 job (`capture_job.start`, kind ``heal``), so the detect runner is never held by an apply.
 
-**What it leaves** (H5, H6): `apply_decision` returns the steps it ran (``steps``, each its
-name, its result and its words, masked) and the batch's report, which H6's step log keeps
-(nothing here stores them beyond the decision's ``applied`` row and the receipt). H5's
+**The records** (H6, `modules/heal/steplog.py`): before the apply, the steps so far and the
+program (masked) and its hash are written to the step log (``started``), and a heal whose row
+cannot be written is refused with nothing sent; at the end, its every step, its outcome and
+its records (``act``): the golden commit, which reads ``Source: heal_to_intent`` and
+``Actor-Verified: policy`` with a ``Heal-Decision:`` trailer; the receipt naming the decision;
+the golden re-check; the deterministic change record (`modules/heal/change_record.py`); and the
+NetBox journal entry (`modules/heal/journal.py`), each said when it is not made. Each act holds
+its decision's mark (`modules/heal/interrupted.py`) from before its take until its outcome is
+recorded, so a job that ends first is found, recorded ``interrupted`` and raised in Needs
+attention (`run` records them at each pass).
+
+**What it leaves** (H5, H8): `apply_decision` returns the steps it ran (``steps``, each its
+name, its result, its words, masked, and its time), its ``records`` and the batch's report. H5's
 approved proposal is a different program (intent's router-id and a measured reset), so it
 plans its own and reuses the parts: `apply_batch`'s ``capture``, ``after_verify`` and
 ``heal``, `units_left`, `read_symptom`, `policy_reason`'s shape for its person's reason, and
@@ -77,12 +87,16 @@ STEPS = (("take", "Take the heal decision, once"),
          ("saved", "Saved to startup once verified, the device released"),
          ("golden", "Read the device again against its new golden"),
          ("record", "Record the outcome and close the incident"))
-#: What an applied heal did (`decisions.applied`); ``rolled_back`` and ``failed`` halt.
-OUTCOMES = ("healed", "symptom_remains", "partial", "refused", "rolled_back", "failed")
+#: What an applied heal did (`decisions.applied`); ``rolled_back`` and ``failed`` halt, and so
+#: does ``interrupted`` once its act had written its program to the step log
+#: (`modules/heal/interrupted.py`, H6, which records it for a job that ended first).
+OUTCOMES = ("healed", "symptom_remains", "partial", "refused", "rolled_back", "failed",
+            "interrupted")
 OUTCOME_WORDS = {"healed": "healed and verified",
                  "symptom_remains": "healed configuration; symptom remains",
                  "partial": "healed, partly shown", "refused": "nothing was sent",
-                 "rolled_back": "rolled back", "failed": "failed after sending"}
+                 "rolled_back": "rolled back", "failed": "failed after sending",
+                 "interrupted": "interrupted: its job ended before it recorded its outcome"}
 #: Each symptom's settle bound, in seconds: about 2.5 times what the symptom needs to clear
 #: once the configuration is right. An adjacency: a dead timer (40 s) and two of the routing
 #: scrapes the adjacencies reader judges by (a minute apart, `adjacencies.PERSIST_READS`),
@@ -160,6 +174,11 @@ class Sources:
     def symptom(self, device, triggers, since) -> dict:
         return read_symptom(self.network, device, triggers, since, clock=self.clock,
                             sleep=self.sleep)
+
+    def journal(self, device, dev, decision, outcome) -> dict:
+        from modules.heal import journal
+
+        return journal.write(self.network, device, dev, decision, outcome)
 
 
 # ── The symptom (section 4 step 4 (a)) ──────────────────────────────────────────────────────
@@ -345,6 +364,56 @@ def _moved(decision: dict, units: list, prog: dict, departure: str) -> str:
     return "; ".join(parts) or "the program's lines, though its size and units are the same"
 
 
+# ── The records an act leaves (H6) ──────────────────────────────────────────────────────────
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _records(network: str, decision: dict, result: dict, src, held: dict, now: float) -> dict:
+    """What the step log's ``act`` row keeps beside the steps (section 8, board H artboard C):
+    the golden commit, the receipt (it names the decision), the golden re-check, the change
+    record (deterministic, `modules/heal/change_record.py`) and the NetBox journal entry
+    (`modules/heal/journal.py`). Each is said, never raised: the heal's outcome is recorded
+    already, and a record that could not be made says why."""
+    from modules.heal import change_record, journal
+
+    device = decision["device"]
+    report = result.get("report") or {}
+    commit = (report.get("golden") or {}).get("commit") or ""
+    recheck = next((s for s in reversed(result["steps"]) if s.get("step") == "golden"), {})
+    out = {"golden": commit,
+           "receipt": (f"the deploy receipt naming decision {decision['id']}" if report
+                       else "none: nothing reached the deploy's apply"),
+           "recheck": (f"{recheck.get('result')}: {recheck.get('words')}" if recheck
+                       else "not read: the heal did not reach its golden re-check")}
+    pol = decision.get("policy") or {}
+    until = ""
+    try:
+        mode = src.mode(now)
+        if mode.get("fingerprint") == pol.get("fingerprint"):
+            until = mode.get("until") or ""
+    except Exception as exc:
+        log.info("heal: %s's policy could not be read for the change record: %s", network, exc)
+    out["change_record"] = change_record.build(
+        network, decision, result, host=device, platform=held.get("platform") or "",
+        prog=held.get("prog"), read=held.get("read") or "", entry=held.get("entry") or {},
+        authorise=held.get("authorise") or [], policy=pol,
+        golden_before=held.get("golden_before") or "", golden_commit=commit, until=until,
+        at=_iso(now))
+    write = getattr(src, "journal", None)
+    try:
+        out["journal"] = (write(device, held.get("dev") or {}, decision, result["outcome"])
+                          if write is not None else
+                          journal.write(network, device, held.get("dev") or {}, decision,
+                                        result["outcome"]))
+    except Exception as exc:
+        log.error("heal: %s's journal entry for %s failed: %s", network, device, exc)
+        out["journal"] = {"state": "failed", "id": None,
+                          "words": f"the write failed: {type(exc).__name__}: {exc}"}
+    return out
+
+
 # ── The act ─────────────────────────────────────────────────────────────────────────────────
 
 def _incident(network: str, incident_id: str) -> dict:
@@ -395,16 +464,45 @@ def _stops(src, network: str, decision: dict, now: float) -> str:
 
 def act_one(network: str, decision_id: str, *, now: float = None, sources=None,
             by: str = "heal to intent") -> dict:
-    """Take *decision_id* once, then apply it (`apply_decision`)."""
-    from modules.heal import decisions
+    """Take *decision_id* once, then apply it (`apply_decision`), its mark held from before the
+    take until its outcome is recorded (`interrupted.Mark`, H6)."""
+    from modules.heal import decisions, interrupted
 
     now = time.time() if now is None else float(now)
+
+    def refused(words):
+        return {"decision": decision_id, "outcome": "", "words": words, "steps": [
+            {"step": "take", "result": "refused", "words": words}], "sent": False}
+
     try:
-        taken = decisions.take(network, decision_id, by=f"{by}: the apply", now=now)
-    except decisions.Refused as exc:
-        return {"decision": decision_id, "outcome": "", "words": str(exc), "steps": [
-            {"step": "take", "result": "refused", "words": str(exc)}], "sent": False}
-    return apply_decision(network, taken, now=now, sources=sources)
+        mark = interrupted.Mark(network, decision_id, by=by).acquire()
+    except interrupted.Busy as exc:
+        return refused(str(exc))
+    try:
+        try:
+            taken = decisions.take(network, decision_id, by=f"{by}: the apply", now=now)
+        except decisions.Refused as exc:
+            return refused(str(exc))
+        return _guarded(network, taken, lambda: apply_decision(network, taken, now=now,
+                                                               sources=sources))
+    finally:
+        mark.release()
+
+
+def _guarded(network: str, decision: dict, work):
+    """*work* (the act), its raising recorded in the step log (``raised``, H6) before it
+    propagates, so the interrupted heal it leaves says why (`interrupted.reap`)."""
+    from modules.heal import steplog
+
+    try:
+        return work()
+    except Exception as exc:
+        try:
+            steplog.record_raised(network, decision, f"{type(exc).__name__}: {exc}")
+        except Exception as again:
+            log.error("heal: %s's raised act %s is not in the step log: %s", network,
+                      decision.get("id"), again)
+        raise
 
 
 def apply_decision(network: str, decision: dict, *, now: float = None, sources=None,
@@ -412,7 +510,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     """Apply one taken heal decision, verify it and record it (the module's steps 2 to 9):
     ``{"decision", "device", "outcome", "words", "steps", "sent", "report"}``."""
     from modules import identity, pipeline
-    from modules.heal import decide, decisions, incidents, kinds
+    from modules.heal import decide, decisions, incidents, kinds, steplog
     from modules.nsot import authorisation
     from modules.redact import redact_text
 
@@ -423,9 +521,14 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     setter = pol.get("by") or ""
     via = f"heal to intent (policy set by {setter or 'nobody recorded'})"
     steps = [{"step": "take", "result": "ok", "words": f"taken by {via}"}]
+    # What the records need once the act ends (H6: the change record, the journal entry), as
+    # each becomes known.
+    held = {"dev": {}, "prog": None, "read": "", "entry": {}, "authorise": [], "platform": "",
+            "golden_before": ""}
 
     def step(name, result, words):
-        steps.append({"step": name, "result": result, "words": redact_text(words)})
+        steps.append({"step": name, "result": result, "words": redact_text(words),
+                      "at": _iso(time.time())})
 
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
@@ -446,8 +549,16 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             log.error("heal: %s's incident %s was not closed: %s", network,
                       decision.get("incident"), exc)
         log.info("heal: %s on %s: %s: %s", network, device, outcome, words)
-        return {"decision": decision["id"], "device": device, "outcome": outcome,
-                "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
+        result = {"decision": decision["id"], "device": device, "outcome": outcome,
+                  "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
+        result["records"] = _records(network, decision, result, src, held, now)
+        try:
+            steplog.record_act(network, decision, result, by=via, now=now)
+            result["records"]["step_log"] = "written"
+        except Exception as exc:
+            log.error("heal: %s's act on %s is not in the step log: %s", network, device, exc)
+            result["records"]["step_log"] = f"not written: {type(exc).__name__}: {exc}"
+        return result
 
     def refuse(name, words):
         step(name, "refused", words)
@@ -463,8 +574,10 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     if not text:
         return refuse("read", f"the read of {device} at apply could not be made ({error})")
     step("read", "ok", f"{device} read again")
+    held.update(dev=dev, read=text)
 
     golden = src.golden(device, dev)
+    held["golden_before"] = golden.get("commit") or ""
     if golden.get("state") != "at_intent" or not golden.get("text"):
         return refuse("plan", f"{device}'s golden is not at its intent now ("
                               f"{golden.get('words') or golden.get('state')})")
@@ -490,6 +603,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
                               f"{(prog['refused'] or [{}])[0].get('reason') or c.get('blocked')}")
     step("plan", "ok", f"the program recomputed from the read: {len(prog['commands'])} line(s), "
                        f"hash {prog['hash']}, the decision's")
+    held.update(prog=prog, platform=platform)
 
     dangerous = pipeline.dangerous_commands(prog["commands"])
     if dangerous:
@@ -500,6 +614,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
               "stated reason (N9, C2402)"))
     reason = policy_reason(network, pol)
     authorise = [{"line": k, "reason": reason} for k in prog["keys"]]
+    held["authorise"] = authorise
     step("authorise", "ok", (f"{len(authorise)} removal(s), each with the policy's words as its "
                              "stated reason" if authorise else "nothing that needs a reason"))
 
@@ -507,6 +622,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     plan_kw = {"authorise": {device: authorise}, "remove": {device: list(c["removal_ids"])},
                "capture": capture}
     entry = src.plan(device, **plan_kw)
+    held["entry"] = entry
     if entry.get("refused") or entry.get("error"):
         return refuse("plan", f"the deploy's plan refused it: "
                               f"{entry.get('refused') or entry.get('error')}")
@@ -556,6 +672,17 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
              "policy": {"fingerprint": pol.get("fingerprint"), "by": setter,
                         "reason": pol.get("reason") or ""},
              "person": dict(decision.get("person") or {}), "program_hash": prog["hash"]}
+    # Section 4: the program and its hash are written to the step log BEFORE anything is sent,
+    # so a heal whose job ends mid-apply leaves what it was sending (H6).
+    try:
+        steplog.record_started(network, decision, steps + [{
+            "step": "apply", "result": "running",
+            "words": f"as the policy set by {setter}, holding {device}"}],
+            [redact_text(x) for x in prog["commands"]], prog["hash"], by=via, now=now)
+    except Exception as exc:
+        return refuse("apply", (f"the program could not be written to the step log before it "
+                                f"is sent ({type(exc).__name__}: {exc}), and a heal sends "
+                                "nothing it has not recorded"))
     step("apply", "running", f"as the policy set by {setter}, holding {device}")
     with identity.carried_policy(setter, pol.get("fingerprint") or ""):
         report = src.apply(
@@ -640,13 +767,20 @@ def _judge(device, r, report, src, via, step, finish, symptom):
 
 def start(network: str, decision: dict, sources=None) -> str:
     """Run one taken heal decision as a job (`capture_job.start`, kind ``heal``), its setter
-    the actor, announcing what a heal changes at its end. Returns the job's id."""
+    the actor, announcing what a heal changes at its end. Returns the job's id. The mark `run`
+    took for the decision (`interrupted.hold`) is released once the job's outcome is recorded,
+    or it raised (H6)."""
+    from modules.heal import interrupted
     from modules.nsot import capture_job
 
     setter = (decision.get("policy") or {}).get("by") or "heal to intent"
 
     def work(_job):
-        return {"ok": True, "result": apply_decision(network, decision, sources=sources)}
+        try:
+            return {"ok": True, "result": _guarded(network, decision, lambda: apply_decision(
+                network, decision, sources=sources))}
+        finally:
+            interrupted.release(network, decision["id"])
 
     return capture_job.start(network, f"healing {decision['device']}", setter, work, kind=KIND,
                              announce_keys=DONE_KEYS, announcer=ANNOUNCER,
@@ -656,19 +790,40 @@ def start(network: str, decision: dict, sources=None) -> str:
 def run(network: str, *, now: float = None, starter=None, by: str = "heal to intent") -> dict:
     """Each heal decision of *network* not yet taken (`decisions.to_apply`), taken once here
     and started as its own job (*starter*, `start` unless given). ``{"network", "started":
-    [{"decision", "job"}], "refused", "failed"}``."""
-    from modules.heal import decisions, incidents
+    [{"decision", "job"}], "refused", "failed", "interrupted"}``.
+
+    First, each heal whose job ended before it recorded its outcome is recorded
+    (`interrupted.reap`, H6), so its incident is closed and Needs attention raises it. Each
+    decision's mark (`interrupted.hold`) is taken BEFORE it is taken, so a taken heal with no
+    outcome and no mark held is one whose job ended."""
+    from modules.heal import decisions, incidents, interrupted
 
     now = time.time() if now is None else float(now)
-    out = {"network": network, "started": [], "refused": [], "failed": []}
+    out = {"network": network, "started": [], "refused": [], "failed": [], "interrupted": []}
+    reaped = interrupted.reap(network, now=now, by=by)
+    out["interrupted"] = [r["decision"] for r in reaped["reaped"]]
+    out["failed"] += reaped["failed"]
+    if out["interrupted"]:
+        try:
+            from modules import invalidation
+            invalidation.announce(invalidation.ANNOUNCERS[ANNOUNCER], by=ANNOUNCER)
+        except Exception as exc:
+            log.info("heal: %s's interrupted heals recorded, not announced: %s", network, exc)
     try:
         pending = decisions.to_apply(network)
     except Exception as exc:
-        return dict(out, failed=[f"{network}'s heal decisions cannot be read: {exc}"])
+        return dict(out, failed=out["failed"] + [f"{network}'s heal decisions cannot be read: "
+                                                 f"{exc}"])
     for d in pending:
+        try:
+            interrupted.hold(network, d["id"], d.get("device") or "", by)
+        except (interrupted.Busy, OSError) as exc:
+            out["refused"].append(str(exc))
+            continue
         try:
             taken = decisions.take(network, d["id"], by=f"{by}: the apply", now=now)
         except decisions.Refused as exc:
+            interrupted.release(network, d["id"])
             out["refused"].append(str(exc))
             continue
         try:
@@ -679,6 +834,7 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
             decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
             incidents.close(network, d["incident"], f"refused: {words} (decision {d['id']})",
                             now)
+            interrupted.release(network, d["id"])
             out["failed"].append(f"{d['device']}: {type(exc).__name__}: {exc}")
             continue
         out["started"].append({"decision": d["id"], "job": job})

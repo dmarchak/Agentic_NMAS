@@ -123,7 +123,9 @@ class TestEveryKindSaysHowItClears:
                                      # The newest AI call that withheld a line (C2272).
                                      ("ai_withheld", "withheld"),
                                      # A destination's last failed delivery (board H, H7).
-                                     ("notify", "failed")}
+                                     ("notify", "failed"),
+                                     # One interrupted heal, by its decision (board H, H6).
+                                     ("heal", "interrupted")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

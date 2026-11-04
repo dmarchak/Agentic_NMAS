@@ -28,7 +28,9 @@ to watching until then (`incidents.defer`); every other outcome closes it, namin
 **What is recorded** (`decisions.record`): the outcome and mode, the first guard that applied
 with both operands, each unit by kind and tier with its lines masked, the program masked and
 its hash, the departure, the policy's fingerprint and who confirmed it, the person a change was
-from (N12: a person's change is healed, the person named), and the words a person reads.
+from (N12: a person's change is healed, the person named), and the words a person reads. Its
+steps (`STEPS`, each passed with its words, then the one it ended on) go to the step log
+(H6, `steplog.record_decision`), never to the decision's own store.
 
 **The program, one computation** (`program`): H4 calls it on its own read at apply and refuses
 unless the hash is the decision's, so what was decided is what is sent, byte for byte.
@@ -231,7 +233,16 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
             "person": _person(incident), "settled": (incident.get("settled") or {}).get("how"),
             "guard": None, "units": [], "kind": "", "tier": 0, "program": [],
             "program_hash": "", "removal_ids": [], "departure": "", "until": None,
-            "triggers": [t.get("words") for t in (incident.get("triggers") or [])[-5:]]}
+            "triggers": [t.get("words") for t in (incident.get("triggers") or [])[-5:]],
+            # The step log's (H6, `steplog.decision_steps`): each step passed, and the step
+            # the decision is on, which a return ends with its outcome.
+            "steps": [{"step": "claim", "result": "ok",
+                       "words": f"incident {incident['id']} on {device} taken"}],
+            "phase": "stops"}
+
+    def passed(name, words, then):
+        base["steps"].append({"step": name, "result": "ok", "words": words})
+        base["phase"] = then
 
     def stop(g):
         return dict(base, outcome=g["outcome"], guard={k: g[k] for k in
@@ -246,11 +257,15 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
               guards.g3_planned(network, device, now)):
         if g:
             return stop(g)
+    passed("stops", f"no kill switch, the mode {mode.get('mode')}, no halt, no planned work",
+           "approved")
     dev = src.device(device)
     golden = src.golden(device, dev)
     g = guards.g4_golden(golden)
     if g:
         return stop(g)
+    passed("approved", (f"the golden {(golden.get('commit') or '')[:10] or '(no commit)'} is the "
+                        f"approved state: {golden.get('words') or golden.get('state')}"), "guards")
     try:
         rows = decisions.decisions(network)
         last_halt = decisions.last_halt_epoch(network)
@@ -275,7 +290,10 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
                                 value(mode, "heal_repeat_halts_hours"))):
         if g:
             return stop(g)
+    passed("guards", "no topology hold, not many devices at once, no person working, the grace "
+                     "period settled, under every rate", "read")
     if base["settled"] == "at_golden":
+        base["phase"] = "decide"
         symptom = _symptom(incident)
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
@@ -296,6 +314,8 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
                     words=(f"{device} changed since its grace period settled (departure "
                            f"{settled_dep}, now {now_dep or 'none: at its golden'}): its grace "
                            "period starts again"))
+    passed("read", f"{device} read again: the departure the grace period settled on "
+                   f"({now_dep or 'none'})", "classify")
     platform = src.platform(device, dev)
     intended = src.intended(device, platform)
     if not intended.get("text"):
@@ -306,6 +326,7 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     base.update(units=[kinds.masked_unit(u) for u in c["units"]], kind=c["kind"],
                 tier=c["tier"], left_out=c["left_out"])
     if not c["units"]:
+        base["phase"] = "decide"
         return dict(base, outcome="nothing",
                     words=(f"nothing to heal: what departed is not from the approved state "
                            f"({c['left_out']['intent_only']} line(s) only intent holds: an "
@@ -344,6 +365,10 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         base["verify"] = {"read_back": len(prog["commands"]),
                           "symptom": [t for t in base["triggers"] if t][:2],
                           "intent": "intent_match on the read after the change"}
+    passed("classify", (f"{len(c['units'])} unit(s), {c['kind']} (Tier {c['tier']})"
+                        + (f"; the program {len(base['program'])} line(s), hash "
+                           f"{base['program_hash']}" if base["program_hash"] else "")),
+           "decide")
     outcome, words = _outcome(mode, c, list(mode.get("kinds_auto") or []),
                               list(mode.get("kinds_propose") or []))
     if base.get("person"):
@@ -368,6 +393,19 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
                                              f"{d['id']})", now)
 
 
+def _log_steps(network: str, d: dict, now: float) -> None:
+    """The decision's row in the step log (H6, `steplog.record_decision`). A failure is logged,
+    never raised: the decision is recorded in its own store, and a heal's act writes its own
+    ``started`` row before anything is sent, refusing the heal when it cannot."""
+    from modules.heal import steplog
+
+    try:
+        steplog.record_decision(network, d, now)
+    except Exception as exc:
+        log.error("heal: %s's decision %s is not in the step log: %s: %s", network,
+                  d.get("id"), type(exc).__name__, exc)
+
+
 def run(network: str, *, now: float = None, sources=None, by: str = "heal to intent") -> dict:
     """Decide every ready incident of *network* under its heal lock. ``{"ran", "decided":
     [{"incident", "decision", "outcome"}], "busy", "failed"}``."""
@@ -385,9 +423,11 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
             for inc in ready:
                 claimed = incidents.claim(network, inc["id"], by=by, now=now)
                 try:
-                    d = decisions.record(network, decide_one(network, claimed, now=now,
-                                                             sources=sources), now)
+                    made = decide_one(network, claimed, now=now, sources=sources)
+                    steps, phase = made.pop("steps", []), made.pop("phase", "decide")
+                    d = decisions.record(network, made, now)
                     _act(network, claimed, d, now)
+                    _log_steps(network, dict(d, steps=steps, phase=phase), now)
                 except Exception as exc:
                     log.error("heal: %s's decision on %s failed: %s: %s", network,
                               inc["device"], type(exc).__name__, exc)

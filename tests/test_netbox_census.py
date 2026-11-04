@@ -50,12 +50,32 @@ def records(tmp_path, monkeypatch):
         monkeypatch.setattr(netbox_guard, name, str(tmp_path / f"{name.strip('_').lower()}.json"))
 
 
-def _snapshot(**types):
-    """``{name: (objects, tagged_objects)}`` → a census-shaped dict."""
+def _snapshot(*journal, **types):
+    """``{name: (objects, tagged_objects)}`` → a census-shaped dict; *journal* its journal
+    entries as the census keeps them (`_entry`), none by default."""
     return {"tag": "nmas-managed",
             "types": {name: {"total": len(objs), "objects": sorted(objs),
                              "tagged": len(tag), "tagged_objects": sorted(tag)}
-                      for name, (objs, tag) in types.items()}}
+                      for name, (objs, tag) in types.items()},
+            "journal": {"total": len(journal), "entries": list(journal)}}
+
+
+HEAL = "hd-0123456789ab"
+
+
+def _entry(id=77, object_id=41, heal=HEAL, object_type="dcim.device"):
+    """One journal entry as the census keeps it (`journal_entry`'s shape)."""
+    return {"id": id, "object_type": object_type, "object_id": object_id, "heal": heal}
+
+
+def _step(step="hs-1", device_id=41, heal=HEAL, entry=77, at="2026-01-04T10:00:00Z"):
+    """One heal step that wrote the journal, as `read_heal_steps` keeps it."""
+    return {"step": step, "network": "Default", "device": "edge-b", "heal": heal, "at": at,
+            "entry": entry, "device_id": device_id}
+
+
+def _heal(*steps, state="ok", error="", networks=1):
+    return {"state": state, "steps": list(steps), "networks": networks, "error": error}
 
 
 class TestItCanSayNo:
@@ -169,7 +189,7 @@ class TestTheEdgeOfTheClaimIsStated:
         src = io.open(os.path.join(ROOT, "modules", "netbox_client.py"),
                       encoding="utf-8").read()
         used = set(re.findall(r'"((?:dcim|ipam|extras|vpn)/[a-z-]+/)"', src))
-        counted = {path for _n, path in census.ENDPOINTS}
+        counted = {path for _n, path in census.ENDPOINTS} | {census.JOURNAL[1]}
         known = counted | {f"{k}/" for k in census.NOT_COUNTED}
         # Not vacuous: 15 endpoints, measured. A regex that matched nothing
         # would make this assertion true and meaningless -- five can't-fail
@@ -247,11 +267,14 @@ class TestATeardownThatCannotBeMeasuredHasNotPassed:
     while leaving them behind -- worse than having none.
     """
 
-    def _main(self, census, monkeypatch, argv, taken=None):
+    def _main(self, census, monkeypatch, argv, taken=None, heal=None):
         monkeypatch.setattr(census, "take",
                             lambda *a, **k: taken if taken is not None
                             else pytest.fail("a census was taken before the "
                                              "baseline was validated"))
+        # The heal step log is planted, never the suite's shared data folder's.
+        monkeypatch.setattr(census, "read_heal_steps",
+                            lambda: heal if heal is not None else _heal())
         monkeypatch.setattr(census.sys, "argv", ["nmas-netbox-census"] + argv)
         return census.main()
 
@@ -469,3 +492,238 @@ class TestATeardownThatCannotBeMeasuredHasNotPassed:
         assert self._main(census, monkeypatch, ["--compare", str(p)],
                           taken=snap) == census.EXIT_PASS
         assert "baseline taken: unrecorded" in capsys.readouterr().out
+
+
+class TestTheJournalIsReconciled:
+    """**The journal is reconciled with the heal step log, never excluded** (board H, H6; the
+    operator, 2026-11-04): every journal entry added between two snapshots matches a heal step
+    record (same NetBox device, same heal), and every heal step in the window that wrote the
+    journal has its entry. An unmatched entry or a missing entry fails, naming both operands;
+    a step log that cannot be read is unproven, never a pass.
+
+    IPv6 is irrelevant here: an entry and a step are matched by a NetBox device id and a heal
+    id, and no address is parsed, formatted, compared or connected to."""
+
+    BEFORE = "2026-01-04T09:00:00Z"
+    UNTIL = "2026-01-04T11:00:00Z"
+
+    def _rec(self, census, before_entries=(), after_entries=(), steps=(), heal=None):
+        before = _snapshot(*before_entries, sites=(["a"], []))
+        before["taken_at"] = self.BEFORE
+        after = _snapshot(*after_entries, sites=(["a"], []))
+        return census.reconcile_journal(before, after, heal or _heal(*steps), until=self.UNTIL)
+
+    def test_the_exclusion_is_gone(self, census):
+        assert "extras/journal-entries" not in census.NOT_COUNTED
+        assert census.JOURNAL[1] == "extras/journal-entries/"
+
+    def test_a_matched_pair_passes(self, census):
+        """The floor: a reconciliation that refused everything would satisfy every test
+        below."""
+        findings, unproven, lines = self._rec(census, after_entries=[_entry()],
+                                              steps=[_step()])
+        assert (findings, unproven) == ([], ""), findings
+        assert "1 added since the baseline" in lines[0] and "1 of them in the window" in lines[0]
+
+    def test_a_step_that_did_not_name_its_entry_matches_by_device_and_heal(self, census):
+        findings, unproven, _ = self._rec(census, after_entries=[_entry()],
+                                          steps=[_step(entry=None)])
+        assert (findings, unproven) == ([], "")
+
+    def test_a_planted_extra_entry_fails_naming_both_operands(self, census):
+        findings, unproven, _ = self._rec(
+            census, after_entries=[_entry(), _entry(id=78, object_id=52, heal="")],
+            steps=[_step()])
+        assert unproven == ""
+        (f,) = findings
+        assert "journal entry 78 (on NetBox device 52, heal none named) was ADDED" in f, f
+        assert "no heal step record matches it" in f and "none of the 1 step(s)" in f
+
+    def test_a_planted_heal_with_no_entry_fails_naming_both_operands(self, census):
+        findings, unproven, _ = self._rec(census, after_entries=[], steps=[_step()])
+        assert unproven == ""
+        (f,) = findings
+        assert f"heal step hs-1 (Default, edge-b, heal {HEAL}" in f, f
+        assert "wrote entry 77 on NetBox device 41" in f
+        assert "0 journal entr(ies) hold none on that device for that heal" in f
+        assert "entry 77 is not among them" in f
+
+    def test_an_entry_on_another_device_than_its_step_fails_both_ways(self, census):
+        findings, _, _ = self._rec(census, after_entries=[_entry(object_id=52)],
+                                   steps=[_step()])
+        assert len(findings) == 2, findings
+        assert "the step that names it is another device or heal" in findings[0]
+        assert "entry 77 is journal entry 77 (on NetBox device 52" in findings[1]
+
+    def test_an_entry_for_another_heal_fails(self, census):
+        findings, _, _ = self._rec(census, after_entries=[_entry(heal="hd-ffffffffffff")],
+                                   steps=[_step()])
+        assert findings and "heal hd-ffffffffffff" in findings[0], findings
+
+    def test_two_entries_for_one_heal_fail(self, census):
+        """One entry per step: a second entry naming the same heal on the same device is
+        unmatched."""
+        findings, _, _ = self._rec(census, after_entries=[_entry(), _entry(id=78)],
+                                   steps=[_step(entry=None)])
+        (f,) = findings
+        assert "journal entry 78" in f and "no heal step record matches it" in f, f
+
+    def test_an_entry_held_at_the_baseline_needs_no_step(self, census):
+        findings, unproven, _ = self._rec(census, before_entries=[_entry(heal="")],
+                                          after_entries=[_entry(heal="")])
+        assert (findings, unproven) == ([], "")
+
+    def test_a_step_outside_the_window_needs_no_new_entry_and_one_inside_does(self, census):
+        early = _step(step="hs-0", at="2026-01-04T08:59:59Z")
+        late = _step(step="hs-9", at="2026-01-04T11:00:01Z")
+        assert self._rec(census, steps=[early, late])[0] == []
+        edge = _step(step="hs-5", at=self.BEFORE)
+        (f,) = self._rec(census, steps=[edge])[0]
+        assert "heal step hs-5" in f, "a step in the baseline's own second is in the window"
+
+    def test_an_unreadable_step_log_is_unproven_never_a_pass(self, census):
+        findings, unproven, _ = self._rec(
+            census, after_entries=[_entry()],
+            heal=_heal(state="unreadable", error="Default's heal step log could not be read "
+                                                 "(OSError: denied)"))
+        assert findings == []
+        assert "the heal step log is unreadable: Default's heal step log" in unproven
+
+    def test_a_baseline_without_the_journal_is_unproven(self, census):
+        before = {"tag": "nmas-managed", "types": {"sites": {
+            "total": 1, "objects": ["a"], "tagged": 0, "tagged_objects": []}}}
+        findings, unproven, _ = census.reconcile_journal(before, _snapshot(), _heal())
+        assert findings == [] and "baseline holds no journal entries" in unproven
+
+    # ── The command: exit codes ─────────────────────────────────────────────────────────────
+
+    def _compare(self, census, monkeypatch, tmp_path, after_entries, heal):
+        before = _snapshot(sites=(["a"], []))
+        before["taken_at"] = self.BEFORE
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(before), encoding="utf-8")
+        return TestATeardownThatCannotBeMeasuredHasNotPassed()._main(
+            census, monkeypatch, ["--compare", str(p)],
+            taken=_snapshot(*after_entries, sites=(["a"], [])), heal=heal)
+
+    def test_the_command_passes_a_matched_pair(self, census, monkeypatch, tmp_path, capsys):
+        assert self._compare(census, monkeypatch, tmp_path, [_entry()],
+                             _heal(_step())) == census.EXIT_PASS
+        assert "journal entries: 1 held, 1 added" in capsys.readouterr().out
+
+    def test_the_command_fails_a_planted_extra(self, census, monkeypatch, tmp_path, capsys):
+        assert self._compare(census, monkeypatch, tmp_path, [_entry(), _entry(id=78)],
+                             _heal(_step())) == census.EXIT_DIFFERS
+        assert "journal entry 78" in capsys.readouterr().out
+
+    def test_the_command_fails_a_heal_with_no_entry(self, census, monkeypatch, tmp_path,
+                                                    capsys):
+        assert self._compare(census, monkeypatch, tmp_path, [],
+                             _heal(_step())) == census.EXIT_DIFFERS
+        assert "heal step hs-1" in capsys.readouterr().out
+
+    def test_the_command_is_unproven_on_an_unreadable_step_log(self, census, monkeypatch,
+                                                               tmp_path, capsys):
+        code = self._compare(census, monkeypatch, tmp_path, [_entry()],
+                             _heal(state="unreadable", error="the records database: down"))
+        assert code == census.EXIT_UNPROVEN
+        out = capsys.readouterr().out
+        assert "UNPROVEN - the journal cannot be reconciled" in out and "PASS" not in out
+
+    # ── The reads ────────────────────────────────────────────────────────────────────────────
+
+    def test_the_census_reads_every_entry_and_its_heal_from_the_written_text(
+            self, census, monkeypatch):
+        """The writer's text, read back: the heal id the census keeps is the one
+        `journal.comments` wrote on the first line; a person's entry names none."""
+        from modules.heal import journal
+
+        text = journal.comments("Default", "edge-b", {"id": HEAL, "incident": "hi-1"},
+                                "healed", link="http://mercury.invalid/h")
+        rows = [{"id": 77, "assigned_object_type": "dcim.device", "assigned_object_id": 41,
+                 "comments": text},
+                {"id": 3, "assigned_object_type": "dcim.device", "assigned_object_id": 41,
+                 "comments": "A person's note: replaced the PSU."}]
+
+        def get(session, base, path, **params):
+            return rows if path == census.JOURNAL[1] else []
+
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", type("S", (), {"get": lambda *a, **k: type(
+                                "R", (), {"raise_for_status": lambda self: None})()})(),
+                                     "http://nb.invalid"))
+        monkeypatch.setattr("modules.netbox_client._nb_get", get)
+        got = census.take()["journal"]
+        assert got["total"] == 2
+        assert {e["id"]: e["heal"] for e in got["entries"]} == {3: "", 77: HEAL}
+        assert all("comments" not in e for e in got["entries"]), "never the text"
+
+    def test_a_refused_journal_read_is_unproven_naming_it(self, census, monkeypatch, capsys):
+        import requests
+
+        class _Resp:
+            status_code = 403
+
+            def json(self):
+                return {"detail": "You do not have permission to perform this action."}
+
+        def get(session, base, path, **params):
+            if path == census.JOURNAL[1]:
+                raise requests.HTTPError(response=_Resp())
+            return []
+
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", type("S", (), {"get": lambda *a, **k: type(
+                                "R", (), {"raise_for_status": lambda self: None})()})(),
+                                     "http://nb.invalid"))
+        monkeypatch.setattr("modules.netbox_client._nb_get", get)
+        monkeypatch.setattr(census.sys, "argv", ["nmas-netbox-census"])
+        assert census.main() == census.EXIT_UNPROVEN
+        assert "extras/journal-entries/ could not be read (HTTP 403" in capsys.readouterr().out
+
+    def test_the_heal_line_round_trips_and_nothing_else_parses(self):
+        from modules.heal import journal
+
+        text = journal.comments("Default", "edge-b", {"id": HEAL}, "healed", link="x")
+        assert text.splitlines()[0] == f"Mercury heal {HEAL}"
+        assert journal.heal_id(text) == HEAL
+        assert journal.heal_id(f"Mercury heal {HEAL}\r\nmore") == HEAL
+        for other in ("", None, f"Mercury heal {HEAL} and more", f"A note. Mercury heal {HEAL}",
+                      f"note\nMercury heal {HEAL}"):
+            assert journal.heal_id(other) == "", other
+
+    def test_the_step_log_s_written_rows_are_read_from_every_network(self, census, monkeypatch):
+        from modules.heal import steplog
+
+        written = {"state": "written", "id": 77, "device_id": 41, "heal": HEAL, "words": "w"}
+        rows = {"Default": [
+            {"row": "act", "id": "hs-1", "decision": HEAL, "device": "edge-b",
+             "at": "2026-01-04T10:00:00Z", "records": {"journal": written}},
+            {"row": "act", "id": "hs-2", "decision": "hd-2", "device": "edge-b",
+             "records": {"journal": {"state": "not_written", "id": None}}},
+            {"row": "started", "id": "hs-3", "decision": HEAL, "device": "edge-b"}],
+            "Lab": []}
+        monkeypatch.setattr("modules.nsot.listref.names", lambda: sorted(rows))
+        monkeypatch.setattr(steplog, "read", lambda net: {
+            "state": "ok" if rows[net] else "absent", "rows": rows[net], "error": ""})
+        got = census.read_heal_steps()
+        assert got["state"] == "ok" and got["networks"] == 2
+        assert got["steps"] == [_step()], got["steps"]
+
+    def test_an_unreadable_network_or_registry_makes_the_read_unreadable(self, census,
+                                                                       monkeypatch):
+        from modules.heal import steplog
+
+        monkeypatch.setattr("modules.nsot.listref.names", lambda: ["Default", "Lab"])
+        monkeypatch.setattr(steplog, "read", lambda net: (
+            {"state": "unreadable", "rows": [], "error": "OSError: denied"} if net == "Lab"
+            else {"state": "ok", "rows": [], "error": ""}))
+        got = census.read_heal_steps()
+        assert got["state"] == "unreadable" and "Lab's heal step log could not be read" in \
+            got["error"] and "OSError: denied" in got["error"]
+
+        def broken():
+            raise OSError("the registry is unreadable")
+        monkeypatch.setattr("modules.nsot.listref.names", broken)
+        got = census.read_heal_steps()
+        assert got["state"] == "unreadable" and "network registry" in got["error"]

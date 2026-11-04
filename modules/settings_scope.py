@@ -145,7 +145,7 @@ SCOPES: dict = {
              "records_store_ai_calls", "records_store_evidence_packs",
              "records_store_alert_history", "records_store_flow_intent",
              "records_store_explain_answers", "records_store_alert_rule_changes",
-             "records_store_ai_feedback"),
+             "records_store_ai_feedback", "records_store_heal_steps"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
     **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day",
            "ai_cap_day_boundary",

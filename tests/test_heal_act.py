@@ -644,6 +644,8 @@ class TestThroughTheRealApply:
         row = {"hostname": self.DEVICE, "ip": self.IP, "device_type": "cisco_ios",
                "username": "u", "password": "p", "secret": "s", "device_uid": self.DEVICE}
         monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        # The step log's folder (H6): the list's own, as every per-network store resolves it.
+        monkeypatch.setattr("modules.config.list_data_path", lambda name: str(list_dir))
         monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
         monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
         monkeypatch.setattr("modules.device.get_current_device_list",
@@ -653,10 +655,11 @@ class TestThroughTheRealApply:
         monkeypatch.setattr("modules.nsot.hostvars.hydrate_secrets",
                             lambda hv, host, ln="": {**hv, "secrets": dict(secrets)})
         monkeypatch.setattr("modules.heal.incidents._dir", lambda n: str(list_dir / "heal"))
+        commits = []
         monkeypatch.setattr(RD, "_commit_batch_golden",
-                            lambda *a, **k: {"ok": True, "commit": "c" * 40, "devices": [
-                                self.DEVICE]})
-        state = {"device": None, "post": None, "rolled": [], "seen": []}
+                            lambda *a, **k: commits.append(k) or {
+                                "ok": True, "commit": "c" * 40, "devices": [self.DEVICE]})
+        state = {"device": None, "post": None, "rolled": [], "seen": [], "commits": commits}
 
         def push(dev, cmds, pool, lock):
             state["seen"].append(list(cmds))
@@ -766,6 +769,9 @@ class TestThroughTheRealApply:
         (auth,) = row["authorised"]
         assert auth["reason"].startswith("heal to intent on Lab: the line was added outside")
         assert row["heal"]["intent"]["left"] == []
+        # H6: the golden commit names its workflow, its actor the policy's setter.
+        (commit,) = wired["state"]["commits"]
+        assert (commit["source"], commit["actor"]) == ("heal_to_intent", SETTER)
 
     def test_a_missing_line_is_merged_and_held_merge_only_to_intent(self, wired):
         line = "logging host 10.255.1.10"

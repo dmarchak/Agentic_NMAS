@@ -1177,10 +1177,15 @@ def get_current_actor() -> str:
 #: (NetBox 4.6.9's OPTIONS, tests/fixtures/netbox/console_shapes.json), and a console path
 #: Mercury creates is removable only when tagged AND recorded, its cable included. Tagging
 #: cables also tags the import's CDP/LLDP cables from now on (they were created untagged).
+#: A heal's journal entry (board H, H6; C2437): the lab NetBox 4.6.9 answers OPTIONS on
+#: ``extras/journal-entries/`` with a writable, optional ``tags`` (measured 2026-11-04), so it
+#: carries ``nmas-managed`` like every object Mercury creates. Tagged is not removable: no
+#: remover walks ``extras/`` (`netbox_client._REMOVAL_ORDER`).
 TAGGABLE_ENDPOINTS = (
     "dcim/regions/", "dcim/sites/", "dcim/devices/", "dcim/interfaces/",
     "ipam/vrfs/", "ipam/prefixes/", "ipam/vlans/", "ipam/ip-addresses/",
     "vpn/tunnels/", "dcim/console-ports/", "dcim/console-server-ports/", "dcim/cables/",
+    "extras/journal-entries/",
 )
 
 

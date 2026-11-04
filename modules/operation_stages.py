@@ -356,11 +356,12 @@ JOBS = {
     # and each heal's program hash recomputed at apply and refused if it moved; verify is the
     # pipeline's and then the heal's (intent, a removed feature's symptom); rollback the
     # pipeline's, and after verify `roll_back_after`; the record the receipt, the decision's
-    # outcome and the incident closed.
+    # outcome, the incident closed and the step log's act row (H6: its steps, the change record
+    # and the NetBox journal entry).
     "heal_to_intent": Stages(
         "modules.heal.decide.program", "program_hash in modules.heal.act.apply_decision",
         "modules.pipeline._stage_verify", "modules.pipeline.roll_back_after",
-        "modules.heal.decisions.applied"),
+        "modules.heal.steplog.record_act"),
 }
 
 
@@ -565,6 +566,10 @@ HISTORY = {
 #: and the break-glass export's reveal route. Each says which.
 WRITTEN_ELSEWHERE = {
     "interrupted": "a process that ended while it held the device (device_ops)",
+    "heal": "the self-healing step log (modules/heal/steplog.py), written by the heal's "
+            "decision and its act, jobs the app starts itself (JOBS' heal_to_intent), and by "
+            "the record of a heal whose job ended first (modules/heal/interrupted.py); no "
+            "route writes it (board H, H6)",
     "notifications": "each attempt to deliver a notification, written by the sender "
                      "(modules/notify/delivery.py) whoever asked: a heal's incident event, a "
                      "Test send or a verification code (board H, H7)",

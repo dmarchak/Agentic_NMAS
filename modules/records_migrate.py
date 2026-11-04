@@ -710,6 +710,12 @@ def _ai_feedback_path() -> str:
 LINE_STORES["ai_feedback"] = _installation_store("ai_feedback", "AI answers said right or wrong",
                                                  "verdicts and reviews", _ai_feedback_path)
 
+# The self-healing step log (board H, H6; docs/HEAL_TO_INTENT.md section 8): one file per
+# network, one line per decision, act or interruption, every step masked, through
+# `store_append` and `store_rows` (`modules/heal/steplog.py`).
+LINE_STORES["heal_steps"] = _network_store("heal_steps", "Self-healing step log", "steps",
+                                           "heal_steps.jsonl")
+
 
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 

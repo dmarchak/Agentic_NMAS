@@ -983,7 +983,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
 
         report["golden"] = _commit_batch_golden(
             list_name, report, actor=actor or "",
-            **({"label": SCOPE_DONE.get(scope, "after a scoped deploy")} if scope else {}))
+            **({"label": SCOPE_DONE.get(scope, "after a scoped deploy")} if scope else {}),
+            # A heal's golden commit names its workflow (board H, H6; section 8): `Source:
+            # heal_to_intent`, its actor the policy's setter, `Actor-Verified: policy`.
+            **({"source": HEAL_SOURCE} if heal else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes, actor=actor,
                                              actor_kind=actor_kind, pending=pending, scope=scope)
@@ -1668,9 +1671,18 @@ def _write_restored_intent(list_name: str, report: dict,
             "skipped": skipped, "ref": source_ref}
 
 
+#: The `Source:` of a heal's golden commit (board H, H6; docs/HEAL_TO_INTENT.md section 8): the
+#: workflow is self-healing, the mechanism the deploy's.
+HEAL_SOURCE = "heal_to_intent"
+
+
 def _commit_batch_golden(list_name: str, report: dict, label: str = "",
-                         source_ref: str = "", actor: str = "") -> dict:
+                         source_ref: str = "", actor: str = "", source: str = "") -> dict:
     """One commit for the batch, naming exactly the devices that succeeded.
+
+    *source* names the workflow when it is not a deploy's or a restore's (`HEAL_SOURCE`, a
+    heal's apply); each healed device's decision rides as a ``Heal-Decision:`` trailer, the
+    link from the commit to the step log.
 
     A batch is an event, and the record should say so. Three per-device commits
     are not wrong — each is truthful — but they leave no single reference for
@@ -1683,6 +1695,7 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     only from a report someone has to still be holding.
     """
     import os as _os
+    import re
 
     from modules.config import get_list_data_dir
     from modules.nsot.deploy import DEPLOYED
@@ -1731,6 +1744,11 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     for entry in results:
         if entry.get("program_hash") and entry.get("device") in succeeded:
             trailers.append(f"Program-Hash: {entry['device']}={entry['program_hash']}")
+    for entry in results:
+        decision = str((entry.get("heal") or {}).get("decision") or "")
+        if source == HEAL_SOURCE and entry.get("device") in succeeded and \
+                re.fullmatch(r"hd-[0-9a-f]{12}", decision):
+            trailers.append(f"Heal-Decision: {entry['device']}={decision}")
 
     # Device and intent are ONE UNIT per device, so the restored intent is part
     # of this commit, not a second one after it. A restore path names
@@ -1756,7 +1774,8 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     # recorded `pipeline`, the mechanism both paths share, so C70's premise
     # ("no commit carries Source: restore") held whether or not a restore
     # had ever run: a lookup that could not miss.
-    result = save_golden(list_name, items, source="restore" if source_ref else "pipeline",
+    result = save_golden(list_name, items,
+                         source=source or ("restore" if source_ref else "pipeline"),
                          # The person carried in by a job (deploy_job): outside a
                          # request `request_actor()` reads `unauthenticated`, and
                          # the commit would record nobody behind the deploy.

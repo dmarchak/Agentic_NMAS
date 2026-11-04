@@ -400,14 +400,21 @@ def _from_commit(r, kind, what, devices, **kw):
 
 
 #: The identity line's words for each Actor-Verified value other than a verified sign-in.
+#: ``policy`` (board H, H6): a job acting on a standing policy a verified person confirmed by
+#: its fingerprint, its actor that person (`identity.carried_policy`): counted under its own
+#: words, never as not verified, and never as a sign-in.
 IDENTITY_KINDS = (("host-shell", "host login"), ("none", "not verified"),
+                  ("policy", "by the policy a verified person confirmed"),
                   ("", "before verification was recorded"))
+#: The values that are an identity a person established: a sign-in, or a policy they confirmed.
+ESTABLISHED = ("access", "policy")
 
 
 def identity(events) -> dict:
     """The 7.5 line for the commits in *events* (the window the filters draw): ``{commits,
-    verified, others: [(words, n)], unverified}``. A value the table does not name counts as
-    not verified."""
+    verified, policy, others: [(words, n)], unverified}``. *verified* counts sign-ins,
+    *policy* the commits made under a confirmed policy, and *unverified* the rest. A value
+    the table does not name counts as not verified."""
     # One commit can be two events (a Save All's measurement and its baseline decision, the
     # same sha; measured on the host 2026-10-11): each commit is counted once.
     seen, commits = set(), []
@@ -417,11 +424,13 @@ def identity(events) -> dict:
             commits.append(e)
     counts = {}
     for e in commits:
-        v = e["verified"] if e["verified"] in ("access", "host-shell", "") else "none"
+        v = (e["verified"] if e["verified"] in ("access", "host-shell", "policy", "")
+             else "none")
         counts[v] = counts.get(v, 0) + 1
     return {"commits": len(commits), "verified": counts.get("access", 0),
+            "policy": counts.get("policy", 0),
             "others": [(w, counts.get(k, 0)) for k, w in IDENTITY_KINDS],
-            "unverified": len(commits) - counts.get("access", 0)}
+            "unverified": len(commits) - sum(counts.get(k, 0) for k in ESTABLISHED)}
 
 
 def _renames(ctx, folder):
@@ -679,7 +688,9 @@ def receipts(ctx):
                            ("Rollback", rb.get("state") if rb.get("performed") else ""),
                            ("Commit", (r.get("golden_commit") or "")[:12]),
                            ("Intent deployed", _intent_words(r)),
-                           ("Source ref", m(r.get("source_ref")))])
+                           ("Source ref", m(r.get("source_ref"))),
+                           # A heal's receipt (board H, H6): the decision its step log keeps.
+                           ("Heal decision", m((r.get("heal") or {}).get("decision")))])
         e["pending"] = pending
         # C1775: the intent commit it deployed, the link to it and back (`?commit=`).
         if re.fullmatch(r"[0-9a-f]{40}", str(r.get("intent_commit") or "")):
@@ -1953,6 +1964,62 @@ def notifications(ctx):
     return _out(events)
 
 
+def heal(ctx):
+    """Self-healing's step log (board H, H6; docs/HEAL_TO_INTENT.md sections 8 and 9;
+    modules/heal/steplog.py): ONE row per incident, its line the newest outcome (healed, would
+    heal, proposed, can't fix, held, halted, interrupted) with the mode on it ("dry run" is
+    never read as AUTO), opening to every step Mercury took, the program (masked) and its hash,
+    and the records: the golden commit (its own row, linked by its sha), the deploy receipt
+    (its own row, naming the decision), the golden re-check, the change record and the NetBox
+    journal entry. The network's own store: a device's History draws its device's rows. Every
+    text masked again on the way out."""
+    from modules.heal import steplog
+    from modules.redact import redact_text
+
+    def m(value):
+        return redact_text(str(value)) if value not in (None, "") else ""
+
+    got = steplog.incidents(ctx["ref"].name, device=ctx["device"])
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the self-healing step log could not be read: {got['error']}"])
+    events = []
+    for e in reversed(got["entries"]):
+        host = e["device"]
+        if not _mine(ctx, host) or not _recent(ctx, e["at"]):
+            continue
+        outcome = e["outcome"]
+        mode = steplog.MODE_WORDS.get(e["mode"], e["mode"] or "no mode recorded")
+        mark = steplog.MARKS.get(outcome, outcome.replace("_", " "))
+        rec = e.get("records") or {}
+        cr = rec.get("change_record") or {}
+        journal = rec.get("journal") or {}
+        pol = e.get("policy") or {}
+        steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
+                 for i, s in enumerate(e["steps"], 1)]
+        events.append(_event(
+            e["at"], "heal", f"Self-healing ({mode}): {host} {mark}", [host],
+            who=e.get("by") or pol.get("by") or "", detail=m(e.get("words")),
+            sha=rec.get("golden") or "", outcome=outcome,
+            marks=[mark, mode] + (["halted"] if e.get("halted") else [])
+            + (["applying"] if e["state"] == "applying" else []),
+            record=[("Incident", e["incident"]), ("Decisions", ", ".join(e["decisions"])),
+                    ("Mode", mode), ("Fix", e.get("kind")),
+                    ("Policy", (f"{pol.get('fingerprint')} confirmed by {pol.get('by')}"
+                                if pol.get("fingerprint") else "")),
+                    ("Program", (f"{len(e['program'])} line(s), hash {e['program_hash']}"
+                                 if e["program_hash"] else "")),
+                    ("Program lines (masked)", "; ".join(m(x) for x in e["program"])),
+                    ("Golden commit", (rec.get("golden") or "")[:12]),
+                    ("Receipt", m(rec.get("receipt"))),
+                    ("Golden re-check", m(rec.get("recheck"))),
+                    ("Change record", m(cr.get("words"))),
+                    ("NetBox journal", m(journal.get("words")))] + steps))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]
+                if len(events) >= ctx["limit"] else [])
+
+
 #: A console run's outcome, as History says it (modules/nsot/console_ztp.py's outcomes).
 CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in",
                     "done": "done, verified", "unverified": "done, not verified",
@@ -2180,7 +2247,7 @@ SOURCES = {
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
-    "page_stalls": page_stalls, "notifications": notifications,
+    "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2197,7 +2264,8 @@ KIND_GROUPS = (
                               ("console", "Console surveys and kick-starts", ("console",)),
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
-                              ("retries", "Retries authorised", ("retry",)))),
+                              ("retries", "Retries authorised", ("retry",)),
+                              ("heal", "Self-healing", ("heal",)))),
     ("What happened to a device", (("restarts", "Restarts", ("restart",)),
                                    ("windows", "Planned windows", ("window",)))),
     ("Decisions and records", (("approvals", "Approvals", ("approval",)),
@@ -2329,7 +2397,7 @@ SOURCE_KINDS = {
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
-    "page_stalls": ("stall",), "notifications": ("notification",),
+    "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their
@@ -2582,7 +2650,7 @@ def _kept(reads, ctx, device, person, wanted, unverified, call, before, reused) 
         events = [e for e in events if str(e.get("sha") or "").startswith(c)
                   or str(e.get("intent_commit") or "").startswith(c)]
     if unverified:
-        events = [e for e in events if "verified" in e and e["verified"] != "access"]
+        events = [e for e in events if "verified" in e and e["verified"] not in ESTABLISHED]
     # Newest first; rows of one time keep their stores' order (a stable sort), as before paging.
     events.sort(key=lambda e: epoch(e["at"]), reverse=True)
     if before:

@@ -77,8 +77,8 @@
 <p class="hist-identity small" role="status" id="hist-identity">
   {%- if f.identity %}{{ idn.commits }} commit{{ 's' if idn.commits != 1 }} {{ where }} {{ 'are' if idn.commits != 1 else 'is' }} not verified{% if idn.commits %} ({% for w, n in idn.others if n %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}. <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds) }}">Show every identity</a>
   {%- elif not idn.commits %}No commit {{ where }}, so no identity to count.
-  {%- elif not idn.unverified %}<span class="hist-identity-ok">{{ 'All ' ~ idn.commits ~ ' commits' if idn.commits != 1 else 'The one commit' }} {{ where }} {{ 'carry' if idn.commits != 1 else 'carries' }} a verified identity.</span>
-  {%- else %}<strong>{{ idn.verified }} of {{ idn.commits }} commits</strong> {{ where }} carry a verified identity (signed in through the access proxy). {% for w, n in idn.others if n %}{{ badge(n ~ ' ' ~ w, 'muted' if w.startswith('before') else 'warn') }} {% endfor %}<a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds, identity='unverified') }}">Show only these {{ idn.unverified }}</a>
+  {%- elif not idn.unverified %}<span class="hist-identity-ok">{{ 'All ' ~ idn.commits ~ ' commits' if idn.commits != 1 else 'The one commit' }} {{ where }} {{ 'carry' if idn.commits != 1 else 'carries' }} a verified identity{% if idn.policy %} ({{ idn.policy }} by the policy a verified person confirmed){% endif %}.</span>
+  {%- else %}<strong>{{ idn.verified }} of {{ idn.commits }} commits</strong> {{ where }} carry a verified identity (signed in through the access proxy). {% for w, n in idn.others if n %}{{ badge(n ~ ' ' ~ w, 'muted' if w.startswith('before') or w.startswith('by the policy') else 'warn') }} {% endfor %}<a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds, identity='unverified') }}">Show only these {{ idn.unverified }}</a>
   {%- endif %}
 </p>
 {%- endif %}

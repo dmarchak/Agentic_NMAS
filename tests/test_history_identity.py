@@ -42,6 +42,7 @@ def test_each_value_is_counted_under_its_words():
     got = HS.identity(events)
     assert got["commits"] == 6 and got["verified"] == 2 and got["unverified"] == 4
     assert got["others"] == [("host login", 1), ("not verified", 2),
+                             ("by the policy a verified person confirmed", 0),
                              ("before verification was recorded", 1)]
 
 

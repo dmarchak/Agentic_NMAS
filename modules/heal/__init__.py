@@ -25,4 +25,11 @@ so stage 4 compares the device with it), each removal carrying the policy's word
 stated reason (N9, C2402), verified by the pipeline, then each healed unit at intent and a
 removed feature's symptom gone (N13) before its save, the golden read again, and the outcome
 recorded (`decisions.applied`, `incidents.close`); one job per incident.
+
+H6 is the records: `steplog` (every heal and dry-run decision's steps, masked, a records
+store kept per network, read by History's ``heal`` source), the golden commit's
+``Source: heal_to_intent`` and ``Actor-Verified: policy``, `change_record` (deterministic, no
+AI call), `journal` (the NetBox journal entry, under the master switch and the policy's
+declared authority) and `interrupted` (a heal whose job ended before it recorded its outcome:
+found by its mark, recorded, its incident closed, raised in Needs attention).
 """
