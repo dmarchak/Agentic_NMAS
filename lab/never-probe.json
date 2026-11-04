@@ -1,0 +1,6 @@
+{
+  "why": "The lab's devices no measured probe runs on (CLAUDE.md, standing facts about this lab). Read by scripts/nmas-revert-probe, which refuses a device named here before anything is sent; the product names no device.",
+  "devices": {
+    "s3": "CPU-starved, and it carries the management path for the fleet (C93): staged runs and probes never run on it"
+  }
+}

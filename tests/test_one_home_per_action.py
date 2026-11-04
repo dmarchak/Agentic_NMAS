@@ -40,6 +40,9 @@ DECLARED_DYNAMIC = {
     ("modules/heal/propose.py", "reset"): ("ospf process reset",),
     # The Tier 2 probe sends each measured command once (scripts/nmas-tier2-probe, STEPS).
     ("scripts/nmas-tier2-probe", "measure"): ("tier 2 probe",),
+    # C2458: the revert-timer probe sends its fixed, previewed program (the revert timer and the
+    # port bounce) and its repair, one batch each, holding the device (scripts/nmas-revert-probe).
+    ("scripts/nmas-revert-probe", "send"): ("revert probe",),
 }
 
 #: Config-mode sends, by the task each serves: config mode is a CHANNEL, not an
