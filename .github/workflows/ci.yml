@@ -260,8 +260,13 @@ jobs:
           NMAS_TEST_TIMEOUT: "1470"
           NMAS_REQUIRE_PG: "1"
           NMAS_REQUIRE_BROWSER: ${{ startsWith(matrix.shard, 'browser') && '1' || '' }}
+        # --dist worksteal (CI step 3, part 1, decided by measurement, the operator 2026-11-04):
+        # on branches, three runs each, worksteal's median to a verdict was 773 s against
+        # loadgroup-with-groups' 808 s, with less module setup duplicated across workers (327 to
+        # 459 s against 615 to 805 s); C2497.
         run: >
-          scripts/nmas-test -q -p no:cacheprovider -n auto -o faulthandler_timeout=270
+          scripts/nmas-test -q -p no:cacheprovider -n auto --dist worksteal
+          -o faulthandler_timeout=270
           --cov=modules --cov=routes --cov=app --cov-report=
           --junitxml=junit-${{ matrix.shard }}.xml
           $(python scripts/nmas-shards ${{ matrix.shard }})

@@ -102,7 +102,8 @@ SHARDS = ("browser1", "browser2", "browser3", "a", "b")
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
          "COVERAGE_FILE={cov}/.coverage.{shard} NMAS_TEST_TIERS={cov}/tiers "
          "NMAS_TEST_TIMEOUT={bound} NMAS_REQUIRE_PG=1 NMAS_REQUIRE_BROWSER={req} "
-         "scripts/nmas-test -q -p no:cacheprovider -n {n} -o faulthandler_timeout=270 "
+         "scripts/nmas-test -q -p no:cacheprovider -n {n} --dist worksteal "
+         "-o faulthandler_timeout=270 "
          "--cov=modules --cov=routes "
          "--cov=app --cov-report= --junitxml={cov}/junit-{shard}.xml -rEfs "
          "$({py} scripts/nmas-shards {shard})")
