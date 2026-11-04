@@ -53,31 +53,8 @@ kept current as each feature's status changes (the operator, 2026-11-02), last 2
 
 ### 0.2 The features
 
-| Feature | Status (evidence) | Bar | Last measurement | Depends on |
-|---|---|---|---|---|
-| P7, the toolbar assistant (A1, 16.10) | **stage 1 part built** 2026-11-03 (16.10, stage 1's build: the task, its checks, the ask route and gap record, the top bar's AI Assistant and its panel, how-to from the manual; Explain this screen, the gaps list, the per-person cap and its recorded cases next); its retrieval built 2026-11-02 (16.10, stage 1's retrieval: BM25 with aliases and the screen boost over the manual's passages, a floor answering "the manual doesn't cover this"; recall@5 22 of 24 on the recorded cases, 4 of 4 off-manual questions gapped); board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 71 pages, 519 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
-| P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
-| Explain (P1) | **measured: the recorded set at its bar, the blind set below it** (8 cases from 5 of 19 scenarios captured): **blind, 2026-11-02** (v4, 10 runs, `msgbatch_01Cp4TFwAUEYxUqa297vr9EU` for cases 1 to 7, $1.35, and `msgbatch_01LRfmXnPGcCBMuH42vgX3ti` for case 8, added under the operator's key amendment A1, $0.22): **4 of 8 cases reliable (50%, the blind bar 85%: criterion 2 of Explain's done criteria)**, 65 of 80 runs pass, none confidently wrong raw or guarded; the failed runs by category only (the operator's blind discipline): wrong lead 14 (case 3: 5, case 4: 1, case 6: 1, case 8: 7), other 1 (case 6), none refused by validation or declined; the other scenarios come from sessions 6 to 11, and they are the test of any fix (fixes are made on the recorded cases). **Recorded (its bar 90%):** the 10-run round on 2026-11-02 (v4, the new pack, two batches of 5 runs, `msgbatch_012bhmoR8GKwYkaxk1Zj7jVC` and `msgbatch_01RHHqsvaErD5siGPUjJny5d`, $4.83, $0.0221 a successful answer): **20 of 22 recorded cases reliable (90.9%, the bar 90%)**, 209 of 220 runs pass, not reliable case 8 (9 of 10) and case 19 (0 of 10, C2141); the held-out case 10 of 10; none confidently wrong as Mercury keeps it. Before it: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
-| Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
-| Ask in words, metrics (feature 1) | **measured, below its bar**: v10 live; main 23 of 23 reliable, held-out set 4 27 of 30 (90.0%) | 95% | 2026-10-27, 10 runs (run m10cmp-202610270145) | a held-out round after C1887 (closed) |
-| Ask in words, logs | **measured, near its bar**: v4 live; 20 of 20, blind sets 10 of 10 and 10 of 10 at 5 runs | 95% at 10 runs, about 30 held-out | 2026-10-26, 5 runs | the 10-run round and a held-out set of about 30 |
-| Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
-| Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
-| Expected effects (A2.2) | deterministic effects **built and deployed** (C506; board PS parts 1 and 2, e02b77c8, live 2026-11-02 02:55 UTC: the planned state on the header, Devices and Topology, and the Reload card's Expected effects, tested on B2's replay; C2274 open), not walked (the operator's walk on a planned Reload after session 11); the AI proposal **not built** | 15.12 for the AI part | none | the walk; the AI proposal's board |
-| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; no A row open (C2237 closed 2026-11-02 on the recorded captures: a victim's replies never named a flood's source on MAC-only flows); C2277 closed 2026-11-01; C2278 closed 2026-11-02 (17.9: a transfer is High packet rate, not a flood); C2279 closed 2026-11-02 (17.10: one attack on one target, classified once); C2238 closed 2026-11-02 by S-HR, built whole (17.8: High packet rate never classified or proposed, joined to its flood or ended, drawn on SDN › Responses and Needs attention; the walk's 17 fallback cases retired, C2309) | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
-| The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
-| Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
-| The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
-| The pre-send review on every deploy preview | **not built** (the 2026-11-01 brief, item 11: code checks first, then an advisory AI review folding in the change record and expected effects, never blocking alone; R5 its first case) | 15.12 | none | P5's board; A2.2, A2.3 |
-| AI pipeline checks: a new pre-deploy check proposed when an issue slipped through | **not built** (section 6 rank 6, "a pipeline check proposed after an escape"; the brief's learning loop: each miss proposes a code check, reviewed before it joins the pipeline) | 15.12, and a person's review of each check | none | the pre-send review; recorded escapes (R5 the first) |
-| Save as a script: an AI Action's sequence or an Explain fix, reviewed, saved as a reusable hard-coded script | **not built** (16.7 item 8, "Save as action": a procedure of Mercury's gated operations, parameterised, preconditions re-checked each run, the operator's review before it enters the library, replayed with no AI call) | the operator's review; a replay with no AI call | none | P5; the action library |
-| The open-loop to closed-loop proposal: Mercury proposes when an item has earned closed loop | **not built**, and nothing in the plan or code yet (registered with this road map); the proposal only, enabling closed loop stays a later phase (15.2) | a proposal that names the evidence it rests on (its runs, its misses), walked | none | the feedback loop; the pipeline checks' record |
-| AI features greyed and marked when AI is off | **built** (15.13: one AI mark, each control drawn disabled with its reason, `modules/ai/controls.py`); **the AI-off walk not done** (0.1.3) | the AI-off walk | n/a | none |
-| The spend tracker (18.3) | **built** (C1843 closed: the chip, the panel, Settings › AI, spend history) | deployed, tested, walked | n/a | none |
-| The AI budget QoS (the 2026-11-01 brief, item 10) | **not built**; board and simulator only until the operator signs off | the operator's walk (a replay and an SDN flood, security served) | none | C2039's reservations (built) |
-| History's AI audit (15.14) | **built** | deployed, tested, walked | n/a | none |
-| The injection defence (C2271 to C2273, C2295) | **built** 2026-11-01: lines withheld at the gateway, raised and acknowledged with a disposition; case 22 recorded in a 3-run screen | 15.12 for case 22; hand-checked (TIER_HAND_CHECK) | 2026-11-01, 3 runs | case 22's 5-run recording |
-| Egress (15.11, 15.16) | **built**: three classes, the egress mask, feature 7's touched sections; the irreversible tier hand-checked | hand-checked; tested | n/a | none |
+Moved to Appendix A.1, at the end of this plan (the operator, 2026-11-04: section 0 holds what a
+fresh start reads; the feature table is opened on demand).
 
 ### 0.3 The workstreams, in order
 
@@ -227,32 +204,8 @@ produce green.
 - **The output:** one table per tool, a combined suspects list, the total test count. No
   classification and no fixes: a reviewer outside the agent's context classifies.
 
-**The order after workstream 1 (the operator, 2026-11-03 ~06:5x UTC), replacing the numbering
-above where they differ:**
-1. **P7, stage 1, to its end:** (c)'s round, Explain this screen, the gaps list, the per-person
-   cap, the cost before sending.
-2. **P5:** its board first, then the drain-and-replace walk (0.1.4).
-3. **Incident correlation (A2.4):** its first recorded cases are the blind sessions' chains, a
-   change, then an adjacency, then a device unreachable (R3, R8, C4 and C1; C2318).
-4. **The rest,** in the order above.
-
-Within the SDN slice, **C2305 (a benign detection always answered a threat) is the priority
-fix** (the operator, the same message). **Then a fresh SDN blind set** (the operator,
-2026-11-03): the current one is spent (10 of its 13 cases already used once to decide).
-- **The draw:** about 20 new scenarios drawn from the candidate list at random, with a recorded
-  seed.
-- **The key:** locked, the operator's expectations, before any run.
-- **The sheets:** written for one capture session in three sittings, as sessions 1 to 3 of
-  2026-10-29 were (scans, floods, flow injections).
-- **The length:** about 50 to 55 minutes a sitting, 2 h 45 min in all, measured from those
-  sittings (18 scenarios in about 150 minutes).
-- **After it:** a fresh context builds the cases, which are then scored on the batch path
-  against the 85% blind floor.
-
-A measured feature below its bar ships labelled beta with its gap stated (0.1.1). **Beta, the
-operator's agreement of 2026-11-03:** Ask in words (metrics first, then logs), Change it in
-words, Explain and change records (shown as unmeasured), each with its gap on its screen and
-manual page. The SDN classifier stays held, not shipped as beta, until C2305 is fixed.
+"The order after workstream 1" (2026-11-03 ~06:5x UTC), which the roadmap above replaced, is
+in Appendix A.2.
 
 ### 0.4 Needs the operator (each report's first section, batched)
 
@@ -290,54 +243,9 @@ reading, the credit starting partway through 10-29, or the price table against t
 about $161 is left to spend.** Lifetime Phase 8 spend before the credit, from the same ledger,
 went to the paid balance: 10-25 $0.2882, 10-26 $17.5531, 10-27 $27.7538, 10-28 $83.7209,
 **$129.32**; none is recorded for 10-24 (the record's first row is 2026-10-25 07:37 UTC).
-**Corrected 2026-11-02:** from 2026-11-01 the reports carried the 10-29 overnight report's
-"$104.93 left" forward as if it were spend, so "$111.6", "$111.7" and "$118" spent were wrong
-(C2310). **A report's running total is computed from the ledger each time it is stated, never
-carried forward by hand, and checked against the console when the operator gives a reading.**
 
-**Corrected again 2026-11-03 ~06:5x UTC (C2344):** the overnight report and a summary at about
-06:4x set the ledger's lifetime total ($158.12) against the $190, as "$31.88 left". The $190 is
-against the credit, and only the credit's span counts. **From the ledger, read on the host at
-2026-11-03 ~06:5x UTC** (`scripts/nmas-ai-ledger --since 2026-10-26`):
-
-| UTC day | Calls | Dollars | Running |
-|---|---|---|---|
-| 10-26 | 2,433 | $17.5531 | $17.5531 |
-| 10-27 | 5,940 | $27.7538 | $45.3069 |
-| 10-28 | 7,429 | $83.7209 | $129.0278 |
-| 10-29 | 1,585 | $15.3843 | $144.4121 |
-| 10-30 | 2 | $0.1069 | $144.5190 |
-| 11-01 | 347 | $6.7922 | $151.3112 |
-| 11-02 | 910 | $6.5238 | $157.8350 |
-| 11-03 (to ~06:5x) | 20 | $0.0077 | $157.8427 |
-
-- **The reconciliation:** the console read $28.59 used of the credit at 2026-11-02 ~20:30 UTC.
-  The ledger from 10-29 to 11-02 is $28.81. From 10-26 it is $157.84, which the console's
-  figure cannot hold. So the credit's bill matches the spend from 10-29, though the credit was
-  granted 10-26 (the operator). 10-26 to 10-28 ($129.03) went to the paid balance or is
-  otherwise outside the credit's reading; which, is the operator's console to say.
-- **Against the $190:** the spend since 10-29 is **$28.81, so $161.19 is left** (the ledger's
-  `--since 2026-10-29 --budget 190`: $28.8148 and $161.1852; the per-day rows above are each
-  rounded to the cent's hundredth, so their running sum differs in the fourth place).
-- **Lifetime,** never set against the $190: **$158.13** (every day the record holds, 10-25 to
-  11-03).
-- **The tool now names both figures** (`scripts/nmas-ai-ledger`: "lifetime, … never a budget's
-  figure", and "of the $190.00 budget for the spend since <day>"), so a span is always stated.
-
-By workstream, each an estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
-2026-11-01 and 2026-10-27), shown before its round:
-- 2, evaluation: sdn_classify's 20 blind × 10 runs (its cost per call measured on the first
-  run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**. **Re-estimated
-  2026-11-02 from its first run:** sdn_classify's blind round cost $0.1173 for 360 calls on the
-  batch path ($0.000326 a call), so the set's rounds are about $0.15 each and the line about
-  $2;
-- 4, Explain: a 10-run round on 22 recorded and 5 blind (about $7); one candidate screen if
-  asked (about $2): **about $9**;
-- 5, P7: about 30 recorded and a blind set at 10 runs: **about $8**;
-- 3 and 7: the SDN classify after S-HR, feature 7's scope, change records' first run, the
-  pre-send review: **about $8**;
-- 8: the digest and correlation's cases: **about $4**;
-- held back for walks, the demo and reruns: **about $5**.
+The two corrections to the spend figures (2026-11-02, and 2026-11-03 for C2344) are in
+Appendix A.3.
 
 **Each workstream's real cost is measured on its first run and its line re-estimated from it**
 (the operator, 2026-11-01). If a line will overrun by more than half, a budget request goes into
@@ -5091,3 +4999,114 @@ own intent or a layer every ticked device takes (with how many it reaches beyond
 card draws the change across the ticked (each step, each device's file that takes it) and its
 approval carries the selection; the run card is titled for it. Not yet: the device page's
 Actions offer for its groups; FC1's Make a group of these N… (a NetBox tag write, C2304).
+
+## Appendix A. Moved from section 0 (the operator, 2026-11-04)
+
+These three parts moved here so that section 0 holds what a fresh start reads. They are unchanged,
+and each place they left has a one-line pointer.
+
+### A.1 The features (was 0.2)
+
+| Feature | Status (evidence) | Bar | Last measurement | Depends on |
+|---|---|---|---|---|
+| P7, the toolbar assistant (A1, 16.10) | **stage 1 part built** 2026-11-03 (16.10, stage 1's build: the task, its checks, the ask route and gap record, the top bar's AI Assistant and its panel, how-to from the manual; Explain this screen, the gaps list, the per-person cap and its recorded cases next); its retrieval built 2026-11-02 (16.10, stage 1's retrieval: BM25 with aliases and the screen boost over the manual's passages, a floor answering "the manual doesn't cover this"; recall@5 22 of 24 on the recorded cases, 4 of 4 off-manual questions gapped); board P7 approved 2026-11-01; the manual index (`modules/ai/manual_index.py`, 71 pages, 519 sections); prerequisites met (C1844 manual truth, C1845 the typed-text mask, both closed) | 15.12, about 30 recorded and a blind set | none | its stage 1 prompt, schema, panel and cases (C1798) |
+| P5, AI Actions and the action library (16.7) | **not built** (board P5's plan editor first; C1747 to C1749) | the drain-and-replace walk (0.1.4) | none | FC phase 2 (f) and its first run on a lab device (phase 1 and phase 2 (a) to (e) live since 2026-11-02, e7494edc); PS's walk |
+| Explain (P1) | **measured: the recorded set at its bar, the blind set below it** (8 cases from 5 of 19 scenarios captured): **blind, 2026-11-02** (v4, 10 runs, `msgbatch_01Cp4TFwAUEYxUqa297vr9EU` for cases 1 to 7, $1.35, and `msgbatch_01LRfmXnPGcCBMuH42vgX3ti` for case 8, added under the operator's key amendment A1, $0.22): **4 of 8 cases reliable (50%, the blind bar 85%: criterion 2 of Explain's done criteria)**, 65 of 80 runs pass, none confidently wrong raw or guarded; the failed runs by category only (the operator's blind discipline): wrong lead 14 (case 3: 5, case 4: 1, case 6: 1, case 8: 7), other 1 (case 6), none refused by validation or declined; the other scenarios come from sessions 6 to 11, and they are the test of any fix (fixes are made on the recorded cases). **Recorded (its bar 90%):** the 10-run round on 2026-11-02 (v4, the new pack, two batches of 5 runs, `msgbatch_012bhmoR8GKwYkaxk1Zj7jVC` and `msgbatch_01RHHqsvaErD5siGPUjJny5d`, $4.83, $0.0221 a successful answer): **20 of 22 recorded cases reliable (90.9%, the bar 90%)**, 209 of 220 runs pass, not reliable case 8 (9 of 10) and case 19 (0 of 10, C2141); the held-out case 10 of 10; none confidently wrong as Mercury keeps it. Before it: live v4; 2026-11-01's 3-run screens on the new pack (schema 8): 17 of 21 recorded reliable, then 20 of 21 counting the re-screens of cases 1 and 6 (C2275's fixes) and case 9 revised (C2276), case 19 the one left; the targeted 10-run round adopted nothing | 90% reliability at 10 runs, recorded and blind | 2026-11-01, 3 runs; 10 runs on cases 6, 8, 10, 11, 13 | the 5 blind cases scored; a 10-run round on the whole set |
+| Explain in Needs attention (20.6) | **built and deployed, not walked**: board NA-R part 1 (by severity, one line each; e02b77c8, live 2026-11-02 02:55 UTC) and part 2 (an alert's item shows Monitoring's kept Explain answer, no call on opening; Mercury's own findings say Why this happened; 21e40bbc, live 04:15); the operator's walk between sessions (2026-11-02) | built, tested, walked | n/a (no AI call of its own) | the operator's walk; 20.5's one row per cause |
+| Ask in words, metrics (feature 1) | **measured, below its bar**: v10 live; main 23 of 23 reliable, held-out set 4 27 of 30 (90.0%) | 95% | 2026-10-27, 10 runs (run m10cmp-202610270145) | a held-out round after C1887 (closed) |
+| Ask in words, logs | **measured, near its bar**: v4 live; 20 of 20, blind sets 10 of 10 and 10 of 10 at 5 runs | 95% at 10 runs, about 30 held-out | 2026-10-26, 5 runs | the 10-run round and a held-out set of about 30 |
+| Change it in words (feature 7) | **measured, below its bar**: main51 44 of 51 (86.3%), held_out_3 30 of 30, Sonnet; users outside its scope (C2290) | 95% | 2026-10-27, 10 runs | C2290's scope; the two-ended judge (C1908) |
+| Change records (A2.3) | **built, not measured**: on the deploy preview (board CR, 2026-10-29); 10 recorded cases written, not run | 15.12 | none | a held-out set; the first run |
+| Expected effects (A2.2) | deterministic effects **built and deployed** (C506; board PS parts 1 and 2, e02b77c8, live 2026-11-02 02:55 UTC: the planned state on the header, Devices and Topology, and the Reload card's Expected effects, tested on B2's replay; C2274 open), not walked (the operator's walk on a planned Reload after session 11); the AI proposal **not built** | 15.12 for the AI part | none | the walk; the AI proposal's board |
+| The SDN slice (17) | **built, partly measured**: the loop, detection, incidents and HITL (AUTO is built for the lab's network marked lab only, and is not in Phase 8: 17.4); classify's recorded and held-out cases written, not scored; the blind set: 18 of 20 captured (2026-10-29; N1 and N2 in session 6), its cases built 2026-11-02 by a fresh context (37 cases; BS4 by `any_of`) and **measured, below its bar**: 10 of 36 cases reliable at 10 runs (134 of 360 runs; `msgbatch_01Rmo6YhEGHjpsrTcna8ggTN`, `nmas-sdn-cases --batch`, $0.1173), BS4 after it 0 of 10 runs (`msgbatch_01McpzJVh8M5DkCYXtkRF643`); the 26 cases whose misses the prompt's author read moved to the recorded set (`recorded_from_blind.json`, the operator's blind discipline), so the blind set holds 11 (the 10 reliable, BS4) and N1 and N2 to come, and its next fair measure is the fresh cases; on the moved ones: every benign detection answered a threat (C2305), a flood's severity medium (C2306), BU1 and BU2 on packs kept before C2245's fix; no A row open (C2237 closed 2026-11-02 on the recorded captures: a victim's replies never named a flood's source on MAC-only flows); C2277 closed 2026-11-01; C2278 closed 2026-11-02 (17.9: a transfer is High packet rate, not a flood); C2279 closed 2026-11-02 (17.10: one attack on one target, classified once); C2238 closed 2026-11-02 by S-HR, built whole (17.8: High packet rate never classified or proposed, joined to its flood or ended, drawn on SDN › Responses and Needs attention; the walk's 17 fallback cases retired, C2309) | 17.1's slice bars, HITL | 2026-11-01, the recorded captures replayed (no AI) | the 20 blind cases; S-HR; C2279 |
+| The daily digest (A2.5) | **not built** | 15.12 | none | 18.3 (built); the QoS budget |
+| Incident correlation (A2.4) | **not built** (SDN's own incidents exist, C1999) | 15.12 | none | 20.5 |
+| The feedback loop, "Was this right?" (A2.1) | **built** (board C1611, 2026-10-28); not measured as a loop | walked; candidate cases reviewed | none | none |
+| The pre-send review on every deploy preview | **not built** (the 2026-11-01 brief, item 11: code checks first, then an advisory AI review folding in the change record and expected effects, never blocking alone; R5 its first case) | 15.12 | none | P5's board; A2.2, A2.3 |
+| AI pipeline checks: a new pre-deploy check proposed when an issue slipped through | **not built** (section 6 rank 6, "a pipeline check proposed after an escape"; the brief's learning loop: each miss proposes a code check, reviewed before it joins the pipeline) | 15.12, and a person's review of each check | none | the pre-send review; recorded escapes (R5 the first) |
+| Save as a script: an AI Action's sequence or an Explain fix, reviewed, saved as a reusable hard-coded script | **not built** (16.7 item 8, "Save as action": a procedure of Mercury's gated operations, parameterised, preconditions re-checked each run, the operator's review before it enters the library, replayed with no AI call) | the operator's review; a replay with no AI call | none | P5; the action library |
+| The open-loop to closed-loop proposal: Mercury proposes when an item has earned closed loop | **not built**, and nothing in the plan or code yet (registered with this road map); the proposal only, enabling closed loop stays a later phase (15.2) | a proposal that names the evidence it rests on (its runs, its misses), walked | none | the feedback loop; the pipeline checks' record |
+| AI features greyed and marked when AI is off | **built** (15.13: one AI mark, each control drawn disabled with its reason, `modules/ai/controls.py`); **the AI-off walk not done** (0.1.3) | the AI-off walk | n/a | none |
+| The spend tracker (18.3) | **built** (C1843 closed: the chip, the panel, Settings › AI, spend history) | deployed, tested, walked | n/a | none |
+| The AI budget QoS (the 2026-11-01 brief, item 10) | **not built**; board and simulator only until the operator signs off | the operator's walk (a replay and an SDN flood, security served) | none | C2039's reservations (built) |
+| History's AI audit (15.14) | **built** | deployed, tested, walked | n/a | none |
+| The injection defence (C2271 to C2273, C2295) | **built** 2026-11-01: lines withheld at the gateway, raised and acknowledged with a disposition; case 22 recorded in a 3-run screen | 15.12 for case 22; hand-checked (TIER_HAND_CHECK) | 2026-11-01, 3 runs | case 22's 5-run recording |
+| Egress (15.11, 15.16) | **built**: three classes, the egress mask, feature 7's touched sections; the irreversible tier hand-checked | hand-checked; tested | n/a | none |
+
+### A.2 The order after workstream 1 (was in 0.3, replaced by the roadmap)
+**The order after workstream 1 (the operator, 2026-11-03 ~06:5x UTC), replacing the numbering
+above where they differ:**
+1. **P7, stage 1, to its end:** (c)'s round, Explain this screen, the gaps list, the per-person
+   cap, the cost before sending.
+2. **P5:** its board first, then the drain-and-replace walk (0.1.4).
+3. **Incident correlation (A2.4):** its first recorded cases are the blind sessions' chains, a
+   change, then an adjacency, then a device unreachable (R3, R8, C4 and C1; C2318).
+4. **The rest,** in the order above.
+
+Within the SDN slice, **C2305 (a benign detection always answered a threat) is the priority
+fix** (the operator, the same message). **Then a fresh SDN blind set** (the operator,
+2026-11-03): the current one is spent (10 of its 13 cases already used once to decide).
+- **The draw:** about 20 new scenarios drawn from the candidate list at random, with a recorded
+  seed.
+- **The key:** locked, the operator's expectations, before any run.
+- **The sheets:** written for one capture session in three sittings, as sessions 1 to 3 of
+  2026-10-29 were (scans, floods, flow injections).
+- **The length:** about 50 to 55 minutes a sitting, 2 h 45 min in all, measured from those
+  sittings (18 scenarios in about 150 minutes).
+- **After it:** a fresh context builds the cases, which are then scored on the batch path
+  against the 85% blind floor.
+
+A measured feature below its bar ships labelled beta with its gap stated (0.1.1). **Beta, the
+operator's agreement of 2026-11-03:** Ask in words (metrics first, then logs), Change it in
+words, Explain and change records (shown as unmeasured), each with its gap on its screen and
+manual page. The SDN classifier stays held, not shipped as beta, until C2305 is fixed.
+
+### A.3 The corrections to the spend figures (were in 0.5)
+**Corrected 2026-11-02:** from 2026-11-01 the reports carried the 10-29 overnight report's
+"$104.93 left" forward as if it were spend, so "$111.6", "$111.7" and "$118" spent were wrong
+(C2310). **A report's running total is computed from the ledger each time it is stated, never
+carried forward by hand, and checked against the console when the operator gives a reading.**
+
+**Corrected again 2026-11-03 ~06:5x UTC (C2344):** the overnight report and a summary at about
+06:4x set the ledger's lifetime total ($158.12) against the $190, as "$31.88 left". The $190 is
+against the credit, and only the credit's span counts. **From the ledger, read on the host at
+2026-11-03 ~06:5x UTC** (`scripts/nmas-ai-ledger --since 2026-10-26`):
+
+| UTC day | Calls | Dollars | Running |
+|---|---|---|---|
+| 10-26 | 2,433 | $17.5531 | $17.5531 |
+| 10-27 | 5,940 | $27.7538 | $45.3069 |
+| 10-28 | 7,429 | $83.7209 | $129.0278 |
+| 10-29 | 1,585 | $15.3843 | $144.4121 |
+| 10-30 | 2 | $0.1069 | $144.5190 |
+| 11-01 | 347 | $6.7922 | $151.3112 |
+| 11-02 | 910 | $6.5238 | $157.8350 |
+| 11-03 (to ~06:5x) | 20 | $0.0077 | $157.8427 |
+
+- **The reconciliation:** the console read $28.59 used of the credit at 2026-11-02 ~20:30 UTC.
+  The ledger from 10-29 to 11-02 is $28.81. From 10-26 it is $157.84, which the console's
+  figure cannot hold. So the credit's bill matches the spend from 10-29, though the credit was
+  granted 10-26 (the operator). 10-26 to 10-28 ($129.03) went to the paid balance or is
+  otherwise outside the credit's reading; which, is the operator's console to say.
+- **Against the $190:** the spend since 10-29 is **$28.81, so $161.19 is left** (the ledger's
+  `--since 2026-10-29 --budget 190`: $28.8148 and $161.1852; the per-day rows above are each
+  rounded to the cent's hundredth, so their running sum differs in the fourth place).
+- **Lifetime,** never set against the $190: **$158.13** (every day the record holds, 10-25 to
+  11-03).
+- **The tool now names both figures** (`scripts/nmas-ai-ledger`: "lifetime, … never a budget's
+  figure", and "of the $190.00 budget for the spend since <day>"), so a span is always stated.
+
+By workstream, each an estimate from a measured cost per answer where one exists (Explain $0.0257, feature 7 $0.00205,
+2026-11-01 and 2026-10-27), shown before its round:
+- 2, evaluation: sdn_classify's 20 blind × 10 runs (its cost per call measured on the first
+  run, then estimated) and Explain's 5 × 10 (about $1.30): **about $4**. **Re-estimated
+  2026-11-02 from its first run:** sdn_classify's blind round cost $0.1173 for 360 calls on the
+  batch path ($0.000326 a call), so the set's rounds are about $0.15 each and the line about
+  $2;
+- 4, Explain: a 10-run round on 22 recorded and 5 blind (about $7); one candidate screen if
+  asked (about $2): **about $9**;
+- 5, P7: about 30 recorded and a blind set at 10 runs: **about $8**;
+- 3 and 7: the SDN classify after S-HR, feature 7's scope, change records' first run, the
+  pre-send review: **about $8**;
+- 8: the digest and correlation's cases: **about $4**;
+- held back for walks, the demo and reruns: **about $5**.
