@@ -1483,9 +1483,11 @@ a person's allowlist. A request is run only when it passes both checks:
 **How the allow-list matches (the operator, N21; OWASP LLM06:2025, Excessive Agency):**
 - **The whole command is matched,** verb, words and arguments, against one shape. A command
   with any word the shape does not name is refused.
-- **Output modifiers are limited to `include`, `exclude`, `begin` and `section`.** `| redirect`,
-  `| tee`, `| append` and any other modifier are refused, because on IOS they write the output
-  to flash or another host. `| count` is refused here too: it is not one of the four.
+- **Output modifiers are limited to `include`, `exclude`, `begin`, `section` and `count`:** one
+  list for a person's reads and the model's, `readonly_commands.SAFE_MODIFIERS`, which `AI_READS`
+  (H24) reuses rather than holding a second (the operator, 2026-11-04, C2423: `count` only
+  counts lines and writes nothing). `| redirect`, `| tee`, `| append` and any other modifier
+  are refused, because on IOS they write the output to flash or another host.
 - **Arguments match strict patterns:** an interface name in the platform's interface-name shape
   that the device's golden holds; one IPv4 or IPv6 address, checked by `ipaddress`; one prefix,
   checked the same way; a peer address intent names; a MAC in dotted MAC shape.
@@ -1498,7 +1500,8 @@ a person's allowlist. A request is run only when it passes both checks:
   - a later segment that could be one of them (`| include a|redirect x`);
   - newlines ("one command per entry, no line breaks") and control characters;
   - `?` and any URL.
-- **It allows `| count`.** `SAFE_MODIFIERS` holds begin, count, exclude, include and section.
+- **It allows `| count`,** as `AI_READS` now does too: `SAFE_MODIFIERS` holds begin, count,
+  exclude, include and section, the one list (C2423).
 - **It does not check a `show` command's arguments.** It is verb-shaped by design (C61), and
   only ping, traceroute, dir, more and verify have their arguments checked. So `show interfaces
   GigabitEthernet4 extra junk words`, `show interfaces Gi4; reload` and `show ip route
@@ -1509,7 +1512,7 @@ a person's allowlist. A request is run only when it passes both checks:
 **The Diagnose… runbooks (item 1) take the same pipe rule now, as a test, not a second path.**
 - Their commands are code templates whose arguments come from intent, never typed.
 - A test (H14's) renders every command every runbook can produce, for each platform, and holds
-  each to `AI_READS`' matcher with the four modifiers. The only exceptions are the reads the AI
+  each to `AI_READS`' matcher with `SAFE_MODIFIERS`' five modifiers. The only exceptions are the reads the AI
   set leaves out on purpose, which the runbooks never use.
 - **Cost:** one test. **Prevents:** a runbook template gaining `| count` or a writing modifier
   unseen.
@@ -1522,8 +1525,8 @@ request is refused, and each allowed form passes):
 | `show interfaces GigabitEthernet4 \| redirect flash:x` | refused: a modifier that writes |
 | `show interfaces GigabitEthernet4 \| tee flash:x` | refused: a modifier that writes |
 | `show interfaces GigabitEthernet4 \| append flash:x` | refused: a modifier that writes |
-| `show interfaces GigabitEthernet4 \| count up` | refused: not one of include, exclude, begin, section |
-| `show interfaces GigabitEthernet4 \| format x` | refused: not one of the four |
+| `show interfaces GigabitEthernet4 \| count up` | allowed: `count` is one of `SAFE_MODIFIERS`, one list for people and the model (the operator, 2026-11-04, C2423) |
+| `show interfaces GigabitEthernet4 \| format x` | refused: not one of `SAFE_MODIFIERS`' five |
 | `show version \| include a\|redirect x` | refused: a later segment that could be a writing modifier |
 | `show interfaces GigabitEthernet4` with a newline, then `show running-config` | refused: a newline |
 | `show interfaces GigabitEthernet4` with a control character | refused: a control character |
@@ -1731,7 +1734,7 @@ Each part's tests are written with it, red then green (section 14). **The measur
 | H21 | The BGP clears (N16): `clear-bgp-peer` (hard, one named neighbour, not Established in two reads) and `clear-bgp-soft` (an Established session), each measured on r3 or r4, run through `privileged.py` by the policy on a lab network and as a proposal elsewhere | 1.0 | A | H5 (the policy path), H19 |
 | H22 | The dampening proposal: intent's `dampening` field, template line, parser round trip, the measured `interface.dampening` shape, the one-hash intent commit and deploy, its `CLEARS` entry; **intent's configuration archive** (`archive.path`): its field, template line and parser round trip, which 13f needs | 2.0 | A | H5 (the proposal routes), H6; the intent editor (built) |
 | H23 | The actions' History marks, rows, notices, change records and manual; the scenario replays; I5's sheet written from the operator's trial (19.6) | 1.0 | A | H20 to H22, H9, H11, H12; the operator's trial |
-| H24 | `AI_READS`: the allow-list matching the whole command (N21): its shapes, the four modifiers, strict argument patterns (interfaces, addresses, prefixes, peers, MACs), the device scope, each refusal's words; `show running-config` routed to the configuration class | 1.0 | B | the allowlist (built); can start first |
+| H24 | `AI_READS`: the allow-list matching the whole command (N21): its shapes, `SAFE_MODIFIERS`' five modifiers (C2423), strict argument patterns (interfaces, addresses, prefixes, peers, MACs), the device scope, each refusal's words; `show running-config` routed to the configuration class | 1.0 | B | the allowlist (built); can start first |
 | H28 | **The read-only device account, item 3's prerequisite:** the credential chain's read role, the Credentials card, the device-side account in intent (an account added), its shape measured on r2 and s1, credential health, retirement; the reads engine signs AI reads in with it and refuses a device without one; the device state egress class (N20) and its per-network switch | 2.0 | B | the credential chain and the reads engine (built); the operator's credential operation for the password |
 | H25 | The loop: pass 1's `reads`, the check, the reads as kind `ai_analysis`, the cap per answer, pass 2's schema and the extended check, the cap check before each pass, `calls_per_finding` 2; **the required tests of 19.5** (each planted refused form refused, each allowed form passing), written first | 1.25 | B | H8, H24, H28 |
 | H26 | The loop's History rows (15.14), every send logged, the step-log step, the loop-never-read test, the egress hand check | 0.75 | B | H25, H6 |
