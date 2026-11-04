@@ -536,6 +536,7 @@ parts; the provider adapter is PHASE8_PLAN's (Appendix A.1).
 | **The banner** | top and bottom of every v2 screen, and on every export and printed report, in the marking's colour | 3 |
 | **Default-deny egress** | on a government profile, update checks, the git remote, external assets and every other destination refused unless an admin allows each with a reason | 4.4 |
 | **The manager link** | a manager and a subordinate exchange profiles; a mismatch is refused on both sides with the reason | 6 |
+| **Air-gapped mode** (on with a US Government profile; any profile may choose it) | one outbound door that checks an allow-list before resolving any name, with a fitness test against any other socket, session or network subprocess; the stack's phone-homes off; no runtime fetches; install and update from signed bundles only (C2370); a configurable CA bundle, internal NTP, no telemetry; the acceptance test in a namespace with no route out, PASS at zero logged attempts | 9 |
 
 Its acceptance is GOVERNMENT_PROFILE section 7's tests, each shown able to fail.
 

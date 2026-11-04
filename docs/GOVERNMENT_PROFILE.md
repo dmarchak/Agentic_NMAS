@@ -562,3 +562,123 @@ Each test is shown able to fail by a control that removes its property (CLAUDE.m
    - on a government profile, mail relays and webhook targets fall under default-deny egress.
 
    Tests 12 to 14 in section 7 hold these.
+
+## 9. Air-gapped mode (the operator, 2026-11-04; design only, built after both labs)
+
+**The requirement.** On a classified network, public sites, GitHub included, are unavailable and
+must never be attempted, not even by a DNS lookup, because an attempt is logged as a security
+event. Default-deny that refuses after trying (4.4) is not enough: the attempt itself is the
+event.
+
+**Who has it.**
+- A US Government profile turns air-gapped mode on, set by the wizard and locked like the
+  marking (2.3).
+- Any profile may choose it: the edge-kit case (EDGE_ARCHITECTURE), a lab, a commercial enclave.
+  Turning it off needs the wizard rerun, as the marking does.
+
+**Why it is safe to rely on.** Interconnected systems on separate classification domains are
+expected to send nothing but what their accreditation names (NIST SP 800-53 SC-7, boundary
+protection, and AC-4, information flow enforcement). A refusal made after a resolve or a connect
+attempt has already crossed the boundary, so the check must come before any name is resolved.
+
+### 9.1 One outbound door
+
+- **The client.** Every outbound connection Mercury makes goes through one client, the outbound
+  door. Before it resolves any name or opens any socket, it checks the destination against the
+  installation's allow-list of configured hosts.
+  - **The allow-list holds:**
+    - the integrations' configured URLs (NetBox, Grafana, Prometheus, Loki, Kea, the mail
+      relay, webhook targets);
+    - the AI provider's preset where 4.1 allows one;
+    - the managed networks' prefixes, for device sessions, pings and traceroutes;
+    - the internal NTP server, the internal DNS resolver, and the internal registry or mirror
+      (9.4).
+  - **Each entry is exact:** a scheme, host and port, or an address prefix; never a pattern.
+- **A refusal is immediate and clear,** never a timeout. For example: "air-gapped: <host> is not
+  on this installation's allow-list; nothing was sent, not even a DNS lookup". It is recorded as
+  every refusal is, and shown in place on the screen that asked.
+- **Subprocesses go through it too.** git, ssh, ping, traceroute and the update runner each take
+  their destination from the door, which refuses it the same way before the process starts.
+  - The git remote is a configured internal server, or none.
+  - The CI-verdict reader asks GitHub only where the allow-list names it, which it never does in
+    air-gapped mode.
+- **A fitness test fails if any code opens a socket, an HTTP session or a subprocess network call
+  outside the door.**
+  - It parses the code for `socket`, `requests`, `urllib`, `http.client`, `httpx`, `smtplib`,
+    `paramiko`, `netmiko` sessions, and `subprocess` calls whose program is a network one (git
+    with a remote, ssh, scp, curl, ping, traceroute).
+  - It is shaped like tests/test_ai_boundary.py, with planted cases.
+  - The door's own module, and the test harness's guard (tests/test_network_guard.py), are its
+    only exceptions.
+
+### 9.2 The stack's phone-homes are off
+
+On an air-gapped install, every phone-home in the stack Mercury bundles is turned off in the
+configuration the install writes, and checked by its own test. Among them:
+- NetBox's release check;
+- Grafana's update checks, usage reporting, plugin catalogue and news feed;
+- any other the inventory (9.7) finds: Loki's usage report, the base images' package
+  managers, and so on.
+
+A setting the stack cannot turn off is named, and its traffic is refused at the namespace (9.6),
+never left to chance.
+
+### 9.3 No runtime fetches
+
+- Every JavaScript, CSS and font asset is served by Mercury itself, with no CDN and no Google
+  Fonts.
+- Every v2 page already runs under `csp.STRICT_POLICY`, whose `script-src`, `style-src` and
+  `font-src` are `'self'`, and libraries are vendored (CLAUDE.md).
+- What remains is the rest of the stack's own pages, the manual's and the exports' assets, and a
+  test that fails on any external URL in a served asset.
+
+### 9.4 Install and update only from signed bundles
+
+- **The source:** images, wheels and releases come only as signed bundles: on media, or from an
+  internal registry or mirror the allow-list names. Nothing is pulled from the internet.
+- **This ties in C2370,** an offline Mercury that cannot update today because the update gates on
+  GitHub's CI verdict. Air-gapped, the verdict comes with the bundle:
+  - a signed record of the CI run that passed the release;
+  - and, where the installation keeps one, its own local runner's verdict (docs/LOCAL_CI.md).
+- **The bundle's signature** is checked against a key the installation pins at setup. An unsigned
+  or mismatched bundle is refused, naming both keys.
+
+### 9.5 Trust, time and telemetry
+
+- **A configurable CA bundle:** for example the DoD PKI roots, used by every TLS connection the
+  door makes; the system's public roots are not trusted unless the admin keeps them.
+- **Internal NTP only:** the host's time source is the configured internal server, and a public
+  pool is never asked.
+- **No external telemetry or crash reporting,** from Mercury or its stack. Mercury sends none
+  today, and a test keeps it so.
+
+### 9.6 The acceptance test
+
+- **The setup:** Mercury and its stack run in a lab network namespace with no route out. A
+  logging rule records any packet, or any DNS query, to a destination not on the allow-list.
+- **The walk:** every page and every feature, the manual's list of screens and operations
+  (docs/manual/) as the checklist, including an update from a bundle and a notification to an
+  allowed relay.
+- **PASS is zero logged attempts.**
+  - Any logged attempt fails it, named by its source and destination.
+  - The fix goes through the door or the stack's configuration, never by widening the rule.
+
+### 9.7 The inventory of outbound call sites and phone-homes
+
+To be filled by a read-only survey, once an agent slot is free: every outbound call site in
+Mercury's code (file and line, and what it contacts), and every phone-home in its stack's
+configurations (NetBox, Grafana, Prometheus, Loki, Kea, and the containers' base images; the
+setting, and what it contacts). EDGE_ARCHITECTURE section 9.3's table of the paths by which data
+leaves a host is its starting point.
+
+### 9.8 Required tests (written when it is built)
+
+1. The door refuses a destination not on the allow-list before any resolve or connect: a planted
+   call under a resolver and a socket stub that record any use sees neither used, and the
+   refusal's words name the host.
+2. The fitness test of 9.1, with planted sockets, sessions and network subprocesses outside the
+   door.
+3. Each phone-home of 9.2 is off in the configuration an air-gapped install writes.
+4. No served asset names an external URL (9.3).
+5. A bundle that is unsigned, or signed by another key, is refused (9.4).
+6. The acceptance test of 9.6, as a recorded walk with its packet and DNS log.
