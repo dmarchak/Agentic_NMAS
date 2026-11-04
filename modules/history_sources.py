@@ -2013,7 +2013,9 @@ def heal(ctx):
                     ("Receipt", m(rec.get("receipt"))),
                     ("Golden re-check", m(rec.get("recheck"))),
                     ("Change record", m(cr.get("words"))),
-                    ("NetBox journal", m(journal.get("words")))] + steps))
+                    ("NetBox journal", m(journal.get("words")))]
+            # A Tier 2 proposal a person approved or declined (board H, H5): who, and why.
+            + ([("Approval", m(rec["approval"]))] if rec.get("approval") else []) + steps))
         if len(events) >= ctx["limit"]:
             break
     return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]

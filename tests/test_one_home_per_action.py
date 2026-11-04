@@ -35,6 +35,9 @@ DECLARED_DYNAMIC = {
     ("modules/nsot/credential_rotation.py", "push_rotation"): ("rotation",),
     # Tier 2: the confirmed command from COMMANDS, sent once (modules/nsot/privileged.py).
     ("modules/nsot/privileged.py", "apply"): ("tier 2",),
+    # H5 (board H): an approved proposal's OSPF process reset, its measured prompt answered and
+    # the neighbour table polled (privileged.send_reset), sent once inside the approved apply.
+    ("modules/heal/propose.py", "reset"): ("ospf process reset",),
     # The Tier 2 probe sends each measured command once (scripts/nmas-tier2-probe, STEPS).
     ("scripts/nmas-tier2-probe", "measure"): ("tier 2 probe",),
 }

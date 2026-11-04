@@ -175,10 +175,10 @@ class Sources:
         return read_symptom(self.network, device, triggers, since, clock=self.clock,
                             sleep=self.sleep)
 
-    def journal(self, device, dev, decision, outcome) -> dict:
+    def journal(self, device, dev, decision, outcome, approval=None) -> dict:
         from modules.heal import journal
 
-        return journal.write(self.network, device, dev, decision, outcome)
+        return journal.write(self.network, device, dev, decision, outcome, approval=approval)
 
 
 # ── The symptom (section 4 step 4 (a)) ──────────────────────────────────────────────────────
@@ -370,12 +370,14 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
-def _records(network: str, decision: dict, result: dict, src, held: dict, now: float) -> dict:
+def _records(network: str, decision: dict, result: dict, src, held: dict, now: float,
+             approval: dict = None) -> dict:
     """What the step log's ``act`` row keeps beside the steps (section 8, board H artboard C):
     the golden commit, the receipt (it names the decision), the golden re-check, the change
     record (deterministic, `modules/heal/change_record.py`) and the NetBox journal entry
     (`modules/heal/journal.py`). Each is said, never raised: the heal's outcome is recorded
-    already, and a record that could not be made says why."""
+    already, and a record that could not be made says why. *approval* (H5): the person who
+    approved a Tier 2 proposal, named in the change record and the journal entry."""
     from modules.heal import change_record, journal
 
     device = decision["device"]
@@ -400,13 +402,15 @@ def _records(network: str, decision: dict, result: dict, src, held: dict, now: f
         prog=held.get("prog"), read=held.get("read") or "", entry=held.get("entry") or {},
         authorise=held.get("authorise") or [], policy=pol,
         golden_before=held.get("golden_before") or "", golden_commit=commit, until=until,
-        at=_iso(now))
+        at=_iso(now), approval=approval)
     write = getattr(src, "journal", None)
+    approved = {"approval": approval} if approval else {}
     try:
-        out["journal"] = (write(device, held.get("dev") or {}, decision, result["outcome"])
+        out["journal"] = (write(device, held.get("dev") or {}, decision, result["outcome"],
+                                **approved)
                           if write is not None else
                           journal.write(network, device, held.get("dev") or {}, decision,
-                                        result["outcome"]))
+                                        result["outcome"], **approved))
     except Exception as exc:
         log.error("heal: %s's journal entry for %s failed: %s", network, device, exc)
         out["journal"] = {"state": "failed", "id": None,

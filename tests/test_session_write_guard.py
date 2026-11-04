@@ -211,6 +211,11 @@ def test_the_steps_that_take_long_report_progress():
 #: because their caller holds it. Each with its caller. Only shrinks.
 HELD_BY_CALLER = {
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
+    # H5 (board H; C2453): the reset runs in propose.apply_approved's after_verify, inside
+    # routes/deploy.py's apply_batch, which holds the device for the whole approved apply; a
+    # second hold there would be refused by name (one operation per device).
+    "modules/heal/propose.py:reset": "propose.apply_approved's after_verify, inside apply_batch, "
+                                     "which holds the device for the approved apply",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
     "modules/commands.py:_run": "run_device_command's body (C272); its callers send reads (its "
                                 "one caller that held a non-read, /run_command, left at 7.8), "

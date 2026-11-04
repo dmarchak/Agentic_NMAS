@@ -26,6 +26,18 @@ Rollback does not apply, and every preview says why: what these commands clear c
 and the device rebuilds it by itself (counters count again, ARP relearns, a buffer fills).
 
 The agent never runs one (T2-3): no tool of the agent's reaches this module.
+
+**The OSPF process resets** (board H, part H5; docs/HEAL_TO_INTENT.md section 5, N17, 19.8's
+"process clear"): `PROCESS_RESETS`, the same six steps for one more kind of command, which is
+NOT on the Actions menu (`COMMANDS`): a process reset drops every adjacency of the process, so
+it is sent only inside a heal a person approved (a router-id that takes effect only through
+it, R8's proposal) or, later, on a router with exactly one OSPF adjacency (N17, `reset_plan`'s
+``single_adjacency``). Its prompt, its answer and its settle time are a PLATFORM MEASUREMENT
+(`privileged_measured.json`, `reset_measured`), and a reset with no row there is refused as
+not measured, naming why: nothing is answered by resemblance. It is sent on the session the
+heal's apply holds (`send_reset`), between the pipeline's verify and the save to startup; its
+before-state is kept; its verify reads the neighbour table again until the adjacencies formed
+before are formed again, within about 2.5 times the measured settle time.
 """
 
 import hashlib
@@ -463,3 +475,267 @@ def start(list_name: str, hostname: str, key: str, arg: str, *, actor: str,
                             kind="privileged command", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER)
     return {"job": job, "run": run_id}
+
+
+# --------------------------------------------------------------------------- the process resets
+
+#: The OSPF process resets (board H, H5; the module's docstring): each the routing process's
+#: header it resets (its process id one token of digits), the command, the neighbour table it
+#: reads before and after, and what it affects. IPv4's OSPF and OSPFv3 (both of IOS's forms) are
+#: different processes with their own resets.
+PROCESS_RESETS = {
+    "clear-ospf-process": {
+        "label": "reset the OSPF process", "protocol": "OSPF",
+        "header": r"router ospf (\S+)", "command": "clear ip ospf {process} process",
+        "read": "show ip ospf neighbor"},
+    "clear-ipv6-ospf-process": {
+        "label": "reset the OSPFv3 process", "protocol": "OSPFv3",
+        "header": r"ipv6 router ospf (\S+)", "command": "clear ipv6 ospf {process} process",
+        "read": "show ipv6 ospf neighbor"},
+    "clear-ospfv3-process": {
+        "label": "reset the OSPFv3 process", "protocol": "OSPFv3",
+        "header": r"router ospfv3 (\S+)", "command": "clear ospfv3 {process} process",
+        "read": "show ospfv3 neighbor"},
+}
+RESET_AFFECTS = ("every {protocol} adjacency of process {process} on {device} drops and forms "
+                 "again, and the routes learned through them are withdrawn until it does")
+RESET_NOT_DOING = "the reset changes no configuration, and no other routing process is reset"
+RESET_ROLLBACK = ("a reset cannot be undone: the adjacencies it dropped form again by "
+                  "themselves, or they do not, and Verify reads which")
+#: A routing process Mercury never resets, and why.
+NEVER_RESET = {
+    r"router bgp \S+": ("a BGP router-id takes effect only once every session of the process "
+                        "resets, and Mercury never sends `clear ip bgp *`: a person resets it"),
+}
+#: Why a reset is sent (N17): ``router_id``, a router-id that takes effect only through it,
+#: inside a heal a person approved (R8); ``single_adjacency``, a router with exactly one OSPF
+#: adjacency, where the reset drops only that one.
+RESET_PURPOSES = ("router_id", "single_adjacency")
+RESET_MEASURED_FILE = os.path.join(os.path.dirname(__file__), "privileged_measured.json")
+#: A reset's verify waits about this many times its measured settle time (CLAUDE.md, bounds).
+SETTLE_FACTOR = 2.5
+#: How often the neighbour table is read again while the verify waits.
+RESET_POLL_S = 5
+
+
+def reset_for(section: str) -> dict:
+    """The reset a routing process's *section* header needs: ``{"key", "process", "refused"}``.
+    A process id is one token of digits; BGP, and anything else, is refused, naming why."""
+    text = (section or "").strip()
+    for key, spec in PROCESS_RESETS.items():
+        m = re.fullmatch(spec["header"], text)
+        if m:
+            if not m.group(1).isdigit():
+                return {"key": key, "process": "", "refused": (
+                    f"{text!r} names its process {m.group(1)!r}, and a process id spliced into "
+                    "a command is one token of digits")}
+            return {"key": key, "process": m.group(1), "refused": ""}
+    for pattern, why in NEVER_RESET.items():
+        if re.fullmatch(pattern, text):
+            return {"key": "", "process": "", "refused": why}
+    return {"key": "", "process": "", "refused": (
+        f"{text or 'no section'!r} is not a routing process Mercury resets (it resets: "
+        "router ospf, ipv6 router ospf and router ospfv3)")}
+
+
+def reset_measured() -> dict:
+    """``{"state": absent|unreadable|ok, "by_dialect", "unmeasured", "error"}``: the resets'
+    platform record. Absent and unreadable are different answers, and neither allows
+    anything."""
+    if not os.path.exists(RESET_MEASURED_FILE):
+        return {"state": "absent", "by_dialect": {}, "unmeasured": {}, "error": ""}
+    try:
+        with open(RESET_MEASURED_FILE, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        return {"state": "ok", "by_dialect": doc.get("by_dialect") or {},
+                "unmeasured": doc.get("unmeasured") or {}, "error": ""}
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "by_dialect": {}, "unmeasured": {},
+                "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _measured_row(row) -> str:
+    """Why *row* is not a whole measurement, or ``""``."""
+    if not isinstance(row, dict):
+        return "it is not a record"
+    if "prompt" not in row or not (row["prompt"] is None or isinstance(row["prompt"], str)):
+        return "it holds no prompt (null when the reset asked nothing)"
+    if row["prompt"] and not isinstance(row.get("answer"), str):
+        return "it holds a prompt and no answer to it"
+    if not isinstance(row.get("settle_s"), (int, float)) or row["settle_s"] <= 0:
+        return "it holds no settle time in seconds"
+    if not row.get("device") or not row.get("at"):
+        return "it names no device or time it was measured on"
+    return ""
+
+
+def neighbours(text: str):
+    """The OSPF or OSPFv3 neighbour table's states, one per row, or None when *text* holds no
+    table header (a read whose shape was not recognised). A blank read is an empty table."""
+    lines = (text or "").splitlines()
+    if not any(ln.strip() for ln in lines):
+        return []
+    i = next((n for n, ln in enumerate(lines) if ln.lstrip().startswith("Neighbor ID")), None)
+    if i is None:
+        return None
+    out = []
+    for ln in lines[i + 1:]:
+        m = re.match(r"^\s*\S+\s+\d+\s+(\S+)\s", ln)
+        if m:
+            out.append(m.group(1))
+    return out
+
+
+def adjacencies(text: str):
+    """How many OSPF neighbours the table lists, in any state; None when unreadable."""
+    got = neighbours(text)
+    return None if got is None else len(got)
+
+
+def formed(text: str):
+    """How many adjacencies the table shows formed (FULL, or 2WAY between two DROTHERs);
+    None when unreadable."""
+    got = neighbours(text)
+    return None if got is None else sum(1 for s in got if s.startswith(("FULL", "2WAY")))
+
+
+def reset_verify(before: str, after: str) -> dict:
+    """``{"ok": True|False|None, "words"}``: the adjacencies formed before are formed again,
+    and at least one; None decides nothing (an after-read whose shape was not recognised)."""
+    b, a = formed(before), formed(after)
+    if a is None:
+        return {"ok": None, "words": "the read after the reset holds no neighbour table, so "
+                                     "whether the adjacencies formed again is unknown"}
+    want = max(b or 0, 1)
+    said = f"{a} adjacency(ies) formed after the reset (before it: " + (
+        f"{b})" if b is not None else "the table was not read)")
+    return {"ok": a >= want, "words": said}
+
+
+def reset_plan(key: str, process: str, *, dialect: str, device: str = "",
+               purpose: str = "router_id", before: str = "") -> dict:
+    """What the reset would send and why it would refuse (the six steps' ``refuse``): reads
+    only the measurement record and *before* (the neighbour table, for N17's one adjacency);
+    never the device. ``{"ok", "refused", "key", "process", "command", "read", "prompt",
+    "answer", "settle_s", "bound_s", "affects", "not_doing", "rollback", "measured"}``."""
+    import math
+
+    out = {"ok": False, "refused": "", "key": key, "process": process, "purpose": purpose,
+           "dialect": dialect, "device": device, "command": "", "read": "", "prompt": None,
+           "answer": "", "settle_s": None, "bound_s": None, "measured": {},
+           "not_doing": RESET_NOT_DOING, "rollback": RESET_ROLLBACK, "affects": "",
+           "label": ""}
+
+    def refuse(words):
+        out["refused"] = words + ". Nothing was sent"
+        return out
+
+    spec = PROCESS_RESETS.get(key)
+    if spec is None:
+        return refuse(f"{key!r} is not a process reset here (they are: "
+                      f"{', '.join(sorted(PROCESS_RESETS))})")
+    if purpose not in RESET_PURPOSES:
+        return refuse(f"a reset is sent for {' or '.join(RESET_PURPOSES)}, not {purpose!r}")
+    if not (process or "").isdigit():
+        return refuse(f"the process id {process!r} is not one token of digits")
+    fill = {"process": process, "protocol": spec["protocol"], "device": device or "the device"}
+    out.update(command=spec["command"].format(**fill), read=spec["read"],
+               affects=RESET_AFFECTS.format(**fill), label=spec["label"])
+    if purpose == "single_adjacency":
+        n = adjacencies(before)
+        if n is None:
+            return refuse(f"{out['read']} could not be read as a neighbour table, so whether "
+                          f"{fill['device']} has exactly one adjacency is unknown (N17)")
+        if n != 1:
+            return refuse(f"{fill['device']} has {n} {spec['protocol']} adjacencies, and the "
+                          "process reset drops every one: it stays Alert unless the router "
+                          "has exactly one (N17)")
+    rec = reset_measured()
+    name = os.path.basename(RESET_MEASURED_FILE)
+    if rec["state"] == "absent":
+        return refuse(f"the resets' measurement record ({name}) is absent, and an unmeasured "
+                      "reset is never sent")
+    if rec["state"] == "unreadable":
+        return refuse(f"the resets' measurement record ({name}) cannot be read ({rec['error']}),"
+                      " and an unmeasured reset is never sent")
+    row = (rec["by_dialect"].get(dialect) or {}).get(key)
+    if row is None:
+        why = (rec["unmeasured"].get(dialect) or {}).get(key) or "no run of it is recorded"
+        return refuse(f"`{out['command']}` is not measured on {dialect or 'an unknown platform'}"
+                      f" ({why}): what it asks, what answers it and how long the adjacencies "
+                      f"take to form again are measured on a real device first ({name})")
+    bad = _measured_row(row)
+    if bad:
+        return refuse(f"the measurement of `{out['command']}` on {dialect} is incomplete: {bad}")
+    out.update(ok=True, prompt=row["prompt"], answer=row.get("answer") or "",
+               settle_s=row["settle_s"], bound_s=int(math.ceil(row["settle_s"] * SETTLE_FACTOR)),
+               measured={"device": row["device"], "at": row["at"]})
+    return out
+
+
+def send_reset(plan: dict, *, read, send, clock=time.time, sleep=time.sleep) -> dict:
+    """Send a planned reset on a session the caller holds (the six steps' ``send`` and
+    ``verify``): *read(cmd)* and *send(text)* answer masked text. The before-state is read and
+    KEPT; the command is sent once; the MEASURED prompt alone is answered with the MEASURED
+    answer, and any other question is not answered (the caller closes the session, which
+    abandons the command); then the table is read until the verify passes or its bound ends.
+    ``{"state": "done"|"not_back"|"unverified"|"refused"|"rejected", "why", "before",
+    "printed", "after", "verify", "waited_s"}``: *refused* and *rejected* reset nothing."""
+    if not plan.get("ok"):
+        return {"state": "refused", "why": plan.get("refused") or "the reset is not planned"}
+    before = read(plan["read"])
+    out = {"before": before[:KEEP_BYTES], "before_cut": len(before.encode()) > KEEP_BYTES,
+           "command": plan["command"], "why": ""}
+    first = send(plan["command"])
+    out["printed"] = first
+    last = _last_line(first)
+    if plan.get("prompt"):
+        if last != plan["prompt"]:
+            out.update(state="refused", why=(f"the device asked {last!r}, not the measured "
+                                             f"prompt {plan['prompt']!r}; it was not answered"))
+            return out
+        out["answered"] = plan["prompt"]
+        out["printed"] += send(plan["answer"])
+    elif last.endswith(("]", "?", ":")) and not re.search(r"[#>]\s*$", last):
+        out.update(state="refused", why=f"the device asked {last!r}, and the measurement "
+                                        "records no question; it was not answered")
+        return out
+    if re.search(r"^%", out["printed"], re.M):
+        out.update(state="rejected", why=next(ln for ln in out["printed"].splitlines()
+                                              if ln.startswith("%")))
+        return out
+    started = clock()
+    deadline = started + float(plan.get("bound_s") or 0)
+    after = read(plan["read"])
+    v = reset_verify(before, after)
+    while v["ok"] is not True and clock() < deadline:
+        sleep(RESET_POLL_S)
+        after = read(plan["read"])
+        v = reset_verify(before, after)
+    out.update(after=after[:KEEP_BYTES], verify=v, waited_s=round(clock() - started, 1),
+               state="done" if v["ok"] else "unverified" if v["ok"] is None else "not_back")
+    return out
+
+
+#: A reset's own states as a Tier 2 run's record names them (History's `privileged` source).
+RESET_RECORD_STATE = {"done": "done", "unverified": "unverified", "not_back": "failed",
+                      "refused": "refused", "rejected": "failed"}
+
+
+def reset_record(list_name: str, plan: dict, got: dict, *, actor: str, reason: str,
+                 hash_: str, decision: str, started: float, run_id: str = "") -> dict:
+    """The reset's record (the six steps' ``record``), as every Tier 2 run's: written as the
+    person who approved it, with their reason, the before-state kept, what the device printed
+    and the verdict; History shows it (`history_sources.privileged`)."""
+    from modules.nsot import reads
+
+    rec = {"id": run_id or reads.new_id(), "list": list_name, "device": plan.get("device"),
+           "key": plan.get("key"), "command": plan.get("command"), "actor": actor,
+           "reason": (reason or "").strip(), "started_at": started, "finished_at": time.time(),
+           "hash": hash_, "decision": decision, "purpose": plan.get("purpose"),
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
+           "reset_state": got.get("state"),
+           "state": RESET_RECORD_STATE.get(got.get("state"), "failed")}
+    rec.update({k: got[k] for k in ("why", "before", "before_cut", "printed", "answered",
+                                    "after", "verify", "waited_s") if k in got})
+    return record(list_name, rec)

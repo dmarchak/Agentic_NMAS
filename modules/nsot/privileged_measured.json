@@ -1,0 +1,19 @@
+{
+  "_about": "The OSPF process resets' platform record (modules/nsot/privileged.py, PROCESS_RESETS; board H section 5 and N17): per dialect and reset, what the device ASKED when the reset was sent (`prompt`, or null when it asked nothing), what answered it (`answer`), how long its adjacencies took to form again (`settle_s`, seconds), and where and when it was measured (`device`, `at`). Written from a run on a real device, never typed from memory. A reset with no row here is refused, naming why (`unmeasured`), and allows nothing. Whether an empty neighbour table prints nothing or a header is part of the same measurement.",
+  "by_dialect": {
+    "cisco_ios": {},
+    "cisco_iosxe": {}
+  },
+  "unmeasured": {
+    "cisco_ios": {
+      "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
+      "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
+      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first"
+    },
+    "cisco_iosxe": {
+      "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
+      "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
+      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first"
+    }
+  }
+}

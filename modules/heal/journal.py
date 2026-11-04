@@ -70,19 +70,23 @@ def netbox_id(network: str, device: str, dev: dict):
     return None
 
 
-def comments(network: str, device: str, decision: dict, outcome: str, *, link: str) -> str:
-    """The entry's text, in Mercury's words only (the module's docstring)."""
+def comments(network: str, device: str, decision: dict, outcome: str, *, link: str,
+             approval: dict = None) -> str:
+    """The entry's text, in Mercury's words only (the module's docstring). *approval* (H5): a
+    Tier 2 proposal a person approved, named in place of the policy."""
     from modules.heal import act
     from modules.heal.kinds import KIND_WORDS
 
     pol = decision.get("policy") or {}
     kind = decision.get("kind") or ""
+    under = (f"proposed and approved by {approval.get('by')}" if approval else
+             f"under the policy {pol.get('fingerprint') or '(none)'} confirmed by "
+             f"{pol.get('by') or 'nobody'}")
     return (HEAL_LINE.format(heal=decision.get("id") or "(none)") + "\n\n"
             f"Mercury self-healing on {network}: {device} {act.OUTCOME_WORDS.get(outcome, outcome)}"
             f". The fix: {KIND_WORDS.get(kind, kind) or 'no kind recorded'}, program "
             f"{(decision.get('program_hash') or '')[:12] or '(none)'} "
-            f"({len(decision.get('program') or [])} line(s)), under the policy "
-            f"{pol.get('fingerprint') or '(none)'} confirmed by {pol.get('by') or 'nobody'}. "
+            f"({len(decision.get('program') or [])} line(s)), {under}. "
             f"Incident {decision.get('incident')}, decision {decision.get('id')}. "
             f"The step log, the receipt and the golden commit: {link}")
 
@@ -92,9 +96,11 @@ def not_written(words: str) -> dict:
 
 
 def write(network: str, device: str, dev: dict, decision: dict, outcome: str, *,
-          ready=None, nb_id=None) -> dict:
+          ready=None, nb_id=None, approval: dict = None) -> dict:
     """Write the journal entry for one heal: ``{"state": "written"|"not_written"|"failed",
-    "id", "words"}``. Never raised. *ready* is `netbox_client._nb_ready` unless given."""
+    "id", "words"}``. Never raised. *ready* is `netbox_client._nb_ready` unless given.
+    *approval* (H5): an approved Tier 2 proposal is written as the person who approved it,
+    under the authority "heal proposal <decision> approved by <person>"."""
     from modules import netbox_client, netbox_guard
     from modules.notify.message import link_url
 
@@ -113,13 +119,20 @@ def write(network: str, device: str, dev: dict, decision: dict, outcome: str, *,
     if not ok:
         return not_written(err)
     pol = decision.get("policy") or {}
-    by = pol.get("by") or ""
-    if not by or not pol.get("fingerprint"):
-        return not_written("no person is recorded as having confirmed the policy, so the "
-                           "write has no authority to declare")
+    if approval:
+        by = approval.get("by") or ""
+        if not by:
+            return not_written("no person is recorded as having approved the proposal, so the "
+                               "write has no authority to declare")
+        authority = f"heal proposal {decision.get('id')} approved by {by}"
+    else:
+        by = pol.get("by") or ""
+        if not by or not pol.get("fingerprint"):
+            return not_written("no person is recorded as having confirmed the policy, so the "
+                               "write has no authority to declare")
+        authority = f"heal policy {pol['fingerprint']} confirmed by {by}"
     url, _said = link_url(f"/v2/device/{device}?tab=history")
-    text = comments(network, device, decision, outcome, link=url)
-    authority = f"heal policy {pol['fingerprint']} confirmed by {by}"
+    text = comments(network, device, decision, outcome, link=url, approval=approval)
     try:
         with netbox_guard.list_writer(network, f"the heal journal entry for {device}", by), \
                 netbox_guard.for_list(network, actor=by, authority=authority):

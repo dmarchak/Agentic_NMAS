@@ -10,8 +10,9 @@ first, then unlock, then the file removed). The kernel releases a `flock` when i
 ends (`device_ops`' and `incidents.HealLock`'s pattern), so the mark is held exactly while the
 act's process lives.
 
-**What is interrupted** (`find`, a READ: it writes nothing): a ``heal`` decision TAKEN, with no
-``applied`` row, whose mark is not held. Its mark file says which way it ended: a record left
+**What is interrupted** (`find`, a READ: it writes nothing): a ``heal`` decision, or a
+``propose`` decision a person approved (H5), TAKEN, with no ``applied`` row, whose mark is not
+held. Its mark file says which way it ended: a record left
 (``left``: the process ended while it ran: a restart, an update, a crash) or none (``none``:
 its job ended without recording an outcome, having raised, `steplog.record_raised`). The mark
 is probed before the decisions are read again, so a heal that finished between the two reads
@@ -26,7 +27,10 @@ incident, so the device may take a new one; and it writes the ``interrupted`` ro
 log. Needs attention raises it (`attention.heal_source`, ``heal``/``interrupted``) until a later
 decision finds the device at intent, or a person acknowledges it with what they found.
 
-**The seam for H5:** an approved proposal's apply holds the same mark (`hold`, `release`).
+**H5's approved proposal** (`modules/heal/propose.py`) holds the same mark (`hold`, `release`)
+from before its take until its outcome is recorded, so an approval whose job ended first is
+found and recorded here as a heal's is. A declined proposal records its outcome as it is taken,
+so it is never found.
 """
 
 import json
@@ -156,11 +160,15 @@ def mark_state(network: str, decision_id: str) -> tuple:
     return "left", record if isinstance(record, dict) else {}
 
 
+#: The decisions an act takes: a heal (H4) and an approved proposal (H5).
+TAKEN_OUTCOMES = ("heal", "propose")
+
+
 def _open_takes(network: str) -> list:
     from modules.heal import decisions
 
     return [d for d in decisions.decisions(network)
-            if d.get("outcome") == "heal" and d.get("taken") and not d.get("applied")]
+            if d.get("outcome") in TAKEN_OUTCOMES and d.get("taken") and not d.get("applied")]
 
 
 def find(network: str) -> dict:

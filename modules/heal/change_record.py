@@ -47,8 +47,12 @@ def _step(steps: list, name: str) -> dict:
 
 
 def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dict,
-             golden_commit: str = "", until: str = "", at: str = "") -> str:
-    """The record as text, every section Mercury's (the module's docstring)."""
+             golden_commit: str = "", until: str = "", at: str = "",
+             approval: dict = None) -> str:
+    """The record as text, every section Mercury's (the module's docstring). *approval* (H5,
+    `modules/heal/propose.py`): a Tier 2 proposal a verified person approved, ``{"by",
+    "verified", "reason", "hash", "at", "reset"}``; its Window and approver name the person,
+    and a process reset sent is in its Implementation and its Rollback plan."""
     from modules.heal import act
     from modules.heal.kinds import KIND_WORDS
 
@@ -58,7 +62,11 @@ def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dic
     kind = decision.get("kind") or ""
     units = [u.get("words") for u in decision.get("units") or [] if u.get("words")]
     person = (decision.get("person") or {}).get("words") or ""
-    out = [f"# Change record: {host}, healed to intent by Mercury's self-healing", "",
+    approval = approval or {}
+    reset = approval.get("reset") or {}
+    title = (f"returned to intent on {approval.get('by')}'s approval" if approval else
+             "healed to intent by Mercury's self-healing")
+    out = [f"# Change record: {host}, {title}", "",
            f"Mercury's record of decision {decision.get('id')}, incident "
            f"{decision.get('incident')}: deterministic, written by Mercury's code, no AI call. "
            f"Program {f['program_hash'][:12]}: the program is the change.", "",
@@ -80,10 +88,15 @@ def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dic
            "## Implementation", "",
            f"Program {f['program_hash'][:12]}, {len(f['lines'])} line(s), recomputed from "
            f"Mercury's own read of {host} at apply and compared by its hash with the decision's, "
-           f"sent merge-only as the policy, holding {host}:", "", "```"] + list(f["lines"]) \
-        + ["```", ""]
+           f"sent merge-only as "
+           + (f"{approval.get('by')}, who approved it," if approval else "the policy,")
+           + f" holding {host}:", "", "```"] + list(f["lines"]) + ["```", ""]
     for r in f["reasons"]:
         out.append(f"The stated reason for `{r['line']}`: \"{r['reason']}\".")
+    if reset:
+        out.append(f"Then, still holding {host} and before its save to startup, the measured "
+                   f"process reset `{reset.get('command')}`: {reset.get('words') or 'not sent'}"
+                   ".")
     out += ["", "## Verification", "",
             f"{f['verify_scope']['scope'].upper()}: {f['verify_scope']['why']}."]
     for name, label in (("intent", "Each healed unit at intent"),
@@ -99,16 +112,27 @@ def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dic
             "says what it achieved:", "", "```"] + list(f["rollback"]) + ["```", ""]
     if f.get("rollback_error"):
         out.append(f"The rollback could not be computed: {f['rollback_error']}.")
+    if reset:
+        from modules.nsot.privileged import RESET_ROLLBACK
+
+        out.append(f"The process reset is not in that rollback: {RESET_ROLLBACK}.")
     if f["golden"]:
         out.append(f"A manual back-out: restore {host}'s golden {f['golden']} from its History "
                    "tab.")
-    out += ["", "## Window and approver", "",
-            (f"The standing policy {policy.get('fingerprint') or '(no fingerprint)'} for "
-             f"{network}, confirmed by {policy.get('by') or 'nobody recorded'} ("
-             f"{policy.get('reason') or 'no reason recorded'})"
-             + (f", AUTO until {until}" if until else "")
-             + ": a verified person previewed and confirmed it by its fingerprint, and this "
-               "heal's program was decided under it."), "",
+    window = (f"The standing policy {policy.get('fingerprint') or '(no fingerprint)'} for "
+              f"{network}, confirmed by {policy.get('by') or 'nobody recorded'} ("
+              f"{policy.get('reason') or 'no reason recorded'})"
+              + (f", AUTO until {until}" if until else "")
+              + ": a verified person previewed and confirmed it by its fingerprint, and this "
+                "heal's program was decided under it.")
+    if approval:
+        window = (f"Approved by {approval.get('by')} (verified: {approval.get('verified')}) at "
+                  f"{approval.get('at')}, confirming proposal {approval.get('hash')}, with the "
+                  f"stated reason \"{approval.get('reason')}\": a Tier 2 fix waits for a person, "
+                  "who decides its moment. The proposal was made under the policy "
+                  f"{policy.get('fingerprint') or '(no fingerprint)'} confirmed by "
+                  f"{policy.get('by') or 'nobody recorded'}.")
+    out += ["", "## Window and approver", "", window, "",
             "## Status", "",
             (f"{act.OUTCOME_WORDS.get(outcome, outcome)}"
              + (f" at {at}" if at else "") + f": {result.get('words') or ''}"
@@ -119,9 +143,10 @@ def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dic
 def build(network: str, decision: dict, result: dict, *, host: str, platform: str,
           prog: dict, read: str, entry: dict, authorise: list, policy: dict,
           golden_before: str = "", golden_commit: str = "", until: str = "",
-          at: str = "") -> dict:
+          at: str = "", approval: dict = None) -> dict:
     """``{"state": "made"|"none"|"failed", "words", "markdown", "risk"}``: the record of one
-    heal, or why there is none. Never raised: a record that could not be made is said."""
+    heal, or why there is none. Never raised: a record that could not be made is said.
+    *approval*: a person's approval of a Tier 2 proposal (`markdown`'s)."""
     from modules.redact import redact_text
 
     if not prog or not prog.get("commands"):
@@ -134,7 +159,8 @@ def build(network: str, decision: dict, result: dict, *, host: str, platform: st
                   effects=(entry or {}).get("expected_effects") or {}, authorise=authorise,
                   removals=len(prog.get("ids") or []), golden_before=golden_before)
         text = redact_text(markdown(network, decision, result, f, policy=policy,
-                                    golden_commit=golden_commit, until=until, at=at))
+                                    golden_commit=golden_commit, until=until, at=at,
+                                    approval=approval))
     except Exception as exc:
         log.error("heal: %s's change record for %s could not be made: %s", network, host, exc)
         return {"state": "failed", "markdown": "", "risk": "",
