@@ -767,7 +767,9 @@ class TestTheShippedScripts:
         # reader's announcement, PHASE8_PLAN 17.1 S11).
         # +1 2026-11-03: scheduled_jobs (Needs attention redraws on the scheduled-jobs
         # reader's announcement, C2347).
-        assert len(keys) == 52
+        # +1 2026-11-03: ci_agreement (Needs attention redraws on the ci-agreement reader's
+        # announcement, workstream 0).
+        assert len(keys) == 53
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

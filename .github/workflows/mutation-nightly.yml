@@ -209,7 +209,13 @@ jobs:
             || { echo "::error::the unpacked server is not PostgreSQL 18"; exit 1; }
           python -c "import psycopg; print('psycopg', psycopg.__version__, 'libpq', psycopg.pq.version())"
 
+      # Under act (the local CI runner, docs/LOCAL_CI.md) the job is a container on the host,
+      # and a host kernel setting is never a job's to change. Skipping it cannot pass a run:
+      # the Mutate step's own `unshare -rn` fails unless the namespace can be made (C46).
       - name: Allow a network namespace for the tests (this VM only)
+        if: ${{ !env.ACT }}
+        env:
+          NMAS_ACT_NOT_GATING: "a job container must never change the host kernel's setting, and the Mutate step's unshare still fails without the namespace"
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # A labelled run takes its own group's newest record first (so a function the budget cut

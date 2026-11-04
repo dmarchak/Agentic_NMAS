@@ -89,7 +89,8 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False, host_check=None, operations=None, to=None, setup=None, units=None):
+         wait=False, host_check=None, operations=None, to=None, setup=None, units=None,
+         store=None, override=None):
     """*units*: ``(restart_unit, unit_of)`` for the checkout's other units (C1404); by default
     none is installed here, as on a host without the ZTP responder."""
     mod = _script()
@@ -164,14 +165,16 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
         return 200, {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else [])
-                    + (["--wait"] if wait else []) + (["--to", to] if to else []),
+                    + (["--wait"] if wait else []) + (["--to", to] if to else [])
+                    + (["--override-ci-red", override] if override is not None else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
                     ready=lambda: ready, host_check=host_check or (lambda repo: None),
                     operations=operations or (lambda: ("clear", [])),
                     restart_unit=(units or (None, None))[0] or (lambda u: pytest.fail(u)),
                     unit_of=(units or (None, None))[1] or (lambda u: {"MainPID": 0, "start": "",
-                                                                      "load": "not-found"}))
+                                                                      "load": "not-found"}),
+                    store=store)
     return code, restarted, calls
 
 
@@ -1161,3 +1164,274 @@ class TestHoldsTheServiceCannotRead:
         out = capsys.readouterr().out
         assert code == 0 and _head(world) == sha and restarted
         assert "(the service is not answering (" in out and "continuing" in out
+
+
+# ---------------------------------------------------------------------------
+# Workstream 0 (docs/LOCAL_CI.md): the local CI runner's verdict, beside GitHub's
+# ---------------------------------------------------------------------------
+
+def _local_store(tmp_path):
+    """A store laid out as the host step makes it, owned by this test's user (root on the
+    host): the store's owner is part of the store, so nothing here needs root."""
+    root = tmp_path / "local-ci"
+    (root / "verdicts").mkdir(parents=True)
+    os.chmod(root, 0o755)
+    os.chmod(root / "verdicts", 0o755)
+    return {"path": str(root), "owner": os.getuid()}
+
+
+def _local_record(store, world, sha, state, tree=None, duration=600.0, ended="2026-11-03T10:00:00Z",
+                  failed=None):
+    """A record as scripts/nmas-local-ci writes it (tests/test_local_ci.py holds the two to one
+    shape through the runner's own writer)."""
+    rec = {"schema": 1, "kind": "push", "sha": sha,
+           "tree": tree or _git(world.dev, "rev-parse", f"{sha}^{{tree}}"),
+           "state": state, "started_at": "2026-11-03T09:50:00Z", "ended_at": ended,
+           "duration_s": duration,
+           "runner": {"sha256": "ab" * 32, "installed_from": "cd" * 20},
+           "jobs": [{"name": "test (a)", "result": "failure" if state == "failed" else "success",
+                     "steps": [{"name": "Tests (R1, R4), confined to loopback, measured by tier",
+                                "result": "failure" if state == "failed" else "success",
+                                "duration_s": 500.0}]}],
+           "failed": failed or ([{"job": "test (a)", "step": "Tests (R1, R4), confined to "
+                                  "loopback, measured by tier", "result": "failure",
+                                  "log": "/var/lib/nmas-local-ci/runs/x/test-a/12.log"}]
+                                if state == "failed" else [])}
+    path = os.path.join(store["path"], "verdicts", f"{sha}.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(rec, fh)
+    os.chmod(path, 0o644)
+    return path
+
+
+def _audit_rows(world):
+    with open(os.path.join(world.host, "data", "deploy_audit.jsonl"), encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh]
+
+
+class TestTheLocalRunnersVerdict:
+    """Workstream 0 (the operator, 2026-11-03: "the safe-deploy script and the in-app updater
+    accept a green verdict from either the local runner or GitHub, and say which"; "deploys
+    don't wait for it"). Each case is driven through `main()` against real repositories."""
+
+    @staticmethod
+    def _pending(sha):
+        return _run_entry(sha, conclusion=None, status="in_progress")
+
+    def test_a_local_green_deploys_while_github_still_runs_and_says_so(self, world, tmp_path,
+                                                                       capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted, out
+        assert f"LOCAL CI passed for {sha[:10]}" in out and "GitHub's own run: run #" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "local"
+
+    def test_a_local_green_deploys_when_github_cannot_be_asked(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, _, _ = _run(world, {}, reachable=False, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "LOCAL CI passed" in out and "could not ask GitHub (URLError" in out
+
+    def test_a_github_green_deploys_with_no_local_record_and_says_so(self, world, tmp_path,
+                                                                     capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert f"CI passed for {sha[:10]}" in out and "LOCAL CI passed" not in out
+        assert f"The local runner: no record for {sha[:10]}" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "github"
+
+    def test_neither_green_is_not_deployed(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store)
+        assert code == 7 and _head(world) == world.base and not restarted
+        assert "The local runner: no record" in capsys.readouterr().err
+
+    def test_a_local_red_refuses_a_github_green_naming_the_step(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "failed")
+        code, restarted, calls = _run(world, {sha: _run_entry(sha)}, store=store)
+        err = capsys.readouterr().err
+        assert code == 1 and _head(world) == world.base and not restarted, err
+        assert "the local CI runner failed it" in err
+        assert "step 'Tests (R1, R4), confined to loopback, measured by tier' in test (a)" in err
+        assert calls == [], "a local red is final: GitHub is not asked"
+
+    def test_a_local_green_with_github_red_is_refused_naming_both(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, restarted, _ = _run(world, {sha: _run_entry(sha, conclusion="failure")},
+                                  store=store)
+        err = capsys.readouterr().err
+        assert code == 1 and _head(world) == world.base and not restarted, err
+        assert "the two CI runners DISAGREE" in err and "the local runner passed it" in err
+        assert "GitHub's CI failed it (run #" in err
+
+    @pytest.mark.parametrize("local, github", [("passed", "failure"), ("failed", "success")])
+    def test_the_operators_override_deploys_on_the_green_and_is_recorded(
+            self, world, tmp_path, capsys, local, github):
+        """The operator, 2026-11-03: "My override, with a reason, is recorded on the deploy"."""
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, local)
+        reason = "the GitHub runner image lost its Firefox"
+        code, _, _ = _run(world, {sha: _run_entry(sha, conclusion=github)}, store=store,
+                          override=reason)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "OVERRIDDEN: the two CI runners DISAGREE" in out and reason in out
+        row = _audit_rows(world)[-1]
+        assert row["ci_source"] == "override"
+        assert row["override"]["reason"] == reason and row["override"]["by"] == row["user"]
+        assert "OVERRIDDEN" in row["override"]["verdict"]
+
+    def test_an_override_never_deploys_a_red_with_no_green(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "failed")
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store,
+                                  override="deploy it anyway please")
+        err = capsys.readouterr().err
+        assert code == 1 and _head(world) == world.base and not restarted, err
+        assert "Not overridden: GitHub has not passed it either" in err
+
+    def test_an_override_without_a_reason_is_refused_before_anything(self, world, tmp_path,
+                                                                     capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, restarted, calls = _run(world, {sha: _run_entry(sha)}, store=store,
+                                      override="ok")
+        assert code == 4 and _head(world) == world.base and not restarted and calls == []
+        assert "needs a reason of at least 3 words" in capsys.readouterr().err
+
+    def test_a_missing_github_verdict_is_never_waited_for_on_a_local_green(self, world,
+                                                                           tmp_path, capsys):
+        """"Never wait for a missing GitHub verdict": no run at all on GitHub yet."""
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, _, calls = _run(world, {}, store=store, wait=True)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "GitHub's own run: no run yet" in out
+        assert sum("head_sha=" in c for c in calls) == 1, calls
+
+    def test_a_local_run_in_progress_is_pending_even_when_github_cannot_be_asked(
+            self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "running")
+        code, _, _ = _run(world, {}, reachable=False, store=store)
+        err = capsys.readouterr().err
+        assert code == 7 and _head(world) == world.base, err
+        assert "PENDING: the local runner is running" in err
+
+    @pytest.mark.parametrize("spoil", ["group-writable record", "another owner",
+                                       "writable store", "another tree", "not json",
+                                       "another sha", "a link"])
+    def test_a_record_that_cannot_be_trusted_or_read_is_never_green(self, world, tmp_path,
+                                                                    capsys, spoil):
+        store = _local_store(tmp_path)
+        sha = world.advance({"app.py": "v = 2\n"})
+        path = _local_record(store, world, sha, "passed",
+                             tree=("0" * 40 if spoil == "another tree" else None))
+        if spoil == "group-writable record":
+            os.chmod(path, 0o664)
+        elif spoil == "another owner":
+            store = dict(store, owner=os.getuid() + 1)
+        elif spoil == "writable store":
+            os.chmod(store["path"], 0o777)
+        elif spoil == "not json":
+            with open(path, "w") as fh:
+                fh.write('{"schema": 1, "state": "passed"')
+        elif spoil == "another sha":
+            rec = json.load(open(path))
+            rec["sha"] = "f" * 40
+            with open(path, "w") as fh:
+                json.dump(rec, fh)
+        elif spoil == "a link":
+            real = path + ".real"
+            os.rename(path, real)
+            os.symlink(real, path)
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store)
+        err = capsys.readouterr().err
+        assert code == 7 and _head(world) == world.base and not restarted, err
+        assert "LOCAL CI passed" not in err
+        want = {"group-writable record": "writable by others", "another owner": "owned by uid",
+                "writable store": "writable by others", "another tree": "not this commit's",
+                "not json": "could not be read", "another sha": "could not be read",
+                "a link": "could not be read"}[spoil]
+        assert want in err, err
+
+    def test_an_offline_rollback_takes_its_twins_local_verdict(self, world, tmp_path, capsys):
+        store = _local_store(tmp_path)
+        bad = world.advance({"docs/a.md": "x\n"}, "bad")
+        assert _run(world, {bad: _run_entry(bad)}, store=store)[0] == 0, "floor: bad deployed"
+        _git(world.dev, "revert", "--no-edit", bad)
+        _git(world.dev, "push", "-q", "origin", "main")
+        rev = _git(world.dev, "rev-parse", "HEAD")
+        capsys.readouterr()
+        # rev's tree is base's, and the host's checkout was at base (its clone started there),
+        # so base is a twin this host ran; its local verdict is the one GitHub cannot replace.
+        _local_record(store, world, world.base, "passed")
+        code, _, _ = _run(world, {}, reachable=False, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == rev, out
+        assert "LOCAL CI's verdict REUSED" in out and world.base[:10] in out
+
+    def test_no_store_on_the_host_says_nothing_of_a_local_runner(self, world, tmp_path, capsys):
+        store = {"path": str(tmp_path / "absent"), "owner": os.getuid()}
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, store=store)
+        out = capsys.readouterr().out
+        assert code == 0 and "local runner" not in out, out
+
+
+class TestWhichRunnerASentenceNames:
+    def test_each_opening_names_its_source(self):
+        mod = _script()
+        assert mod.verdict_source(f"{mod.LOCAL_PASSED} for abc: x") == "local"
+        assert mod.verdict_source(f"{mod.LOCAL_REUSED}: x") == "local"
+        assert mod.verdict_source(f"{mod.LOCAL_FAILED} for abc: x") == "local"
+        assert mod.verdict_source("PENDING: the local runner is running for abc") == "local"
+        assert mod.verdict_source(f"{mod.BOTH_DISAGREE} for abc") == "both"
+        assert mod.verdict_source(f"{mod.OVERRIDDEN} ('why') for abc") == "override"
+        assert mod.verdict_source("CI passed for abc: run #3, https://x") == "github"
+        assert mod.verdict_source("CI's verdict REUSED: abc") == "github"
+
+
+class TestTheLocalWaitBound:
+    """`--wait` on a local run: about 2.5 times its last ten finished runs' median, never below
+    GitHub's bound (a run measured is the bound's basis; CLAUDE.md, bounds from measurement)."""
+
+    def test_the_median_of_the_last_ten_finished_push_runs(self, world, tmp_path):
+        mod = _script()
+        store = _local_store(tmp_path)
+        shas = [world.advance({"app.py": f"v = {i}\n"}) for i in range(12)]
+        for i, sha in enumerate(shas):
+            # The two oldest are long (and fall outside the last ten); the rest take 1,000 s.
+            _local_record(store, world, sha, "passed" if i % 3 else "failed",
+                          duration=(9_000.0 if i < 2 else 1_000.0),
+                          ended=f"2026-11-03T{10 + i:02d}:00:00Z")
+        assert mod.local_wait_bound(store) == 2_500
+
+    def test_no_finished_run_or_short_runs_keep_githubs_bound(self, world, tmp_path):
+        mod = _script()
+        store = _local_store(tmp_path)
+        assert mod.local_wait_bound(store) == mod.WAIT_BOUND_S
+        sha = world.advance({"app.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed", duration=60.0)
+        assert mod.local_wait_bound(store) == mod.WAIT_BOUND_S
+        _local_record(store, world, sha, "running", duration=99_999.0)
+        assert mod.local_wait_bound(store) == mod.WAIT_BOUND_S

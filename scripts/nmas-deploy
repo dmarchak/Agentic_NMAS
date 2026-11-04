@@ -63,6 +63,15 @@ only when every file changed since the last commit CI passed matches the
 workflow's own `paths-ignore`, read from .github/workflows/ci.yml rather than
 copied, so the two cannot disagree.
 
+TWO VERDICTS, either one green (docs/LOCAL_CI.md, workstream 0). The local CI
+runner on this host (scripts/nmas-local-ci, a root-owned service) records a
+verdict per commit in a root-owned store; GitHub Actions runs on every push.
+A green verdict from EITHER deploys, and the sentence says which ("LOCAL CI
+passed ..." or "CI passed ..."); a red from EITHER refuses, naming it, since
+two runners of one workflow that disagree are a finding, never a coin toss.
+A local green does not wait for GitHub: GitHub's own run for the target is
+asked once, and only a FAILED answer changes the outcome.
+
 Every run appends one row to data/deploy_audit.jsonl (0600): who, from, to,
 how the target was verified, the verdict and the exit code.
 """
@@ -448,25 +457,301 @@ def tree_twin(repo, target, slug, get):
     return None, None, tree
 
 
-def ci_verdict(repo, target, get=github_get):
-    """(exit code, sentence naming the SHA and what was found). A target whose own CI has not
-    concluded, and whose tree is that of a commit this checkout was deployed at and CI passed,
-    takes that verdict (a rollback, C1669), naming both; a target whose own CI FAILED is
-    refused whatever its twin's said."""
+# ---------------------------------------------------------------------------
+# The local CI runner's verdicts (docs/LOCAL_CI.md)
+# ---------------------------------------------------------------------------
+
+#: The local runner's store: root-owned, world-readable (the host step makes it). A store
+#: is a dict so a test can name its own folder and owner; nothing else ever passes one.
+LOCAL_CI_STORE = {"path": "/var/lib/nmas-local-ci", "owner": 0}
+#: How each source's sentence begins: `verdict_source` reads them, the one place.
+LOCAL_PASSED = "LOCAL CI passed"
+LOCAL_REUSED = "LOCAL CI's verdict REUSED"
+LOCAL_FAILED = "FAILED: the local CI runner failed it"
+BOTH_DISAGREE = "FAILED: the two CI runners DISAGREE"
+OVERRIDDEN = "OVERRIDDEN: the two CI runners DISAGREE, deployed on the operator's reason"
+#: The rule when the two disagree (the operator, 2026-11-03: "keep refuse, scoped. Refuse only
+#: when a GitHub red is known at deploy time; never wait for a missing GitHub verdict ... My
+#: override, with a reason, is recorded on the deploy"): a red KNOWN at deploy time refuses,
+#: whichever runner it came from; a missing verdict is never waited for when the other is
+#: green; `--override-ci-red "<reason>"` deploys over a red only when the other runner is
+#: green, and the reason, the person and both verdicts go in the audit row. A GitHub red that
+#: arrives after the deploy is the ci-agreement reader's Needs attention row.
+OVERRIDE_MIN_WORDS = 3
+#: The record's states (scripts/nmas-local-ci writes them): two verdicts, and the rest.
+LOCAL_STATES = ("queued", "running", "passed", "failed", "error", "skipped", "incomplete")
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+#: A record is a few kilobytes (about 60 steps); a larger file is not one.
+LOCAL_RECORD_MAX = 1 << 20
+
+
+def _untrusted(st, owner) -> str:
+    """Why a store entry cannot be trusted, or "": it must be owned by *owner* (root) and
+    writable by nobody else, or anyone who can write it can write a green verdict."""
+    if st.st_uid != owner:
+        return f"owned by uid {st.st_uid}, not {owner}"
+    if st.st_mode & 0o022:
+        return f"writable by others (mode {st.st_mode & 0o777:o})"
+    return ""
+
+
+def local_verdict(repo, sha, store=None) -> dict:
+    """``{"state", "words", "record"}``: the local runner's verdict for *sha*, read from
+    `<store>/verdicts/<sha>.json` and judged here.
+
+    *state* is ``absent`` (no store on this host: said nowhere), ``none`` (no record for this
+    commit), ``unreadable`` (a record that cannot be read or does not parse: never a pass),
+    ``untrusted`` (the store or record is not root's alone), ``other-tree`` (the record names
+    another tree than git does for *sha*: not this commit's verdict), or the record's own
+    state: ``queued``, ``running``, ``passed``, ``failed``, ``error`` (the runner could not run
+    the workflow, so no verdict), ``skipped`` (superseded by a newer commit's run)."""
+    store = store or LOCAL_CI_STORE
+    root, owner, short = store["path"], store["owner"], sha[:10]
+    if not os.path.lexists(root):
+        return {"state": "absent", "words": "", "record": None}
+    if not _SHA_RE.match(sha or ""):
+        return {"state": "unreadable", "words": f"{sha!r} is not a full commit sha",
+                "record": None}
+    folder = os.path.join(root, "verdicts")
+    path = os.path.join(folder, f"{sha}.json")
+    try:
+        for p in (root, folder):
+            st = os.stat(p, follow_symlinks=False)
+            why = _untrusted(st, owner)
+            if why:
+                return {"state": "untrusted", "words": f"{p} is {why}, so its verdicts are not "
+                        "read", "record": None}
+        if not os.path.lexists(path):
+            return {"state": "none", "words": f"no record for {short} in {folder}",
+                    "record": None}
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as fh:
+            st = os.fstat(fh.fileno())
+            why = _untrusted(st, owner)
+            if why:
+                return {"state": "untrusted", "words": f"{path} is {why}, so it is not read",
+                        "record": None}
+            raw = fh.read(LOCAL_RECORD_MAX + 1)
+        if len(raw) > LOCAL_RECORD_MAX:
+            raise ValueError(f"larger than {LOCAL_RECORD_MAX} bytes")
+        rec = json.loads(raw.decode("utf-8"))
+        if not isinstance(rec, dict) or rec.get("schema") != 1 or rec.get("sha") != sha \
+                or rec.get("state") not in LOCAL_STATES:
+            raise ValueError("not a version-1 record of this commit with a known state")
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "words": f"{path} could not be read ({exc}): never a "
+                "pass", "record": None}
+    try:
+        tree = git(repo, "rev-parse", f"{sha}^{{tree}}")
+    except RuntimeError as exc:
+        return {"state": "unreadable", "words": f"git could not name {short}'s tree ({exc})",
+                "record": rec}
+    if rec.get("tree") != tree:
+        return {"state": "other-tree", "words": f"{path} names tree "
+                f"{str(rec.get('tree'))[:10]}, and git names {short}'s {tree[:10]}: not this "
+                "commit's verdict", "record": rec}
+    return {"state": rec["state"], "words": local_words(rec, path), "record": rec}
+
+
+def local_words(rec: dict, path: str) -> str:
+    """A record, in a sentence: which runner, what ran, how long, where its record and logs
+    are, and for a failure the first step that failed."""
+    runner = rec.get("runner") or {}
+    by = (f"runner {str(runner.get('sha256') or '?')[:12]}, installed from "
+          f"{str(runner.get('installed_from') or 'an unrecorded commit')[:10]}")
+    steps = [s for j in rec.get("jobs") or [] for s in j.get("steps") or []]
+    ran = [s for s in steps if s.get("result") not in ("skipped", None)]
+    took = rec.get("duration_s")
+    took = f" in {int(took // 60)}m{int(took % 60):02d}s" if isinstance(took, (int, float)) else ""
+    state = rec.get("state")
+    if state == "passed":
+        return (f"{len(ran)} step(s) of {len(rec.get('jobs') or [])} job(s) passed{took} "
+                f"({by}; record {path})")
+    if state == "failed":
+        first = (rec.get("failed") or [{}])[0]
+        return (f"step '{first.get('step', '?')}' in {first.get('job', '?')} "
+                f"{first.get('result', 'failed')}{took}, log {first.get('log', '?')} ({by}; "
+                f"record {path})")
+    if state == "incomplete":
+        missing = rec.get("not_run") or [{}]
+        return (f"NOT GREEN: {len(rec.get('not_run') or [])} step(s) act did not run, the first "
+                f"'{missing[0].get('step', '?')}' in {missing[0].get('job', '?')} "
+                f"({missing[0].get('why', '?')}) ({by}; record {path})")
+    if state in ("queued", "running"):
+        done = [s for s in ran if s.get("result")]
+        return (f"{state} since {rec.get('started_at') or rec.get('queued_at') or '?'}, "
+                f"{len(done)} step(s) done ({by})")
+    return f"{state}: {rec.get('reason') or 'no reason recorded'} (record {path})"
+
+
+def verdict_source(sentence: str) -> str:
+    """Which runner a `ci_verdict` sentence says judged it: "local", "github" or "both" (they
+    disagreed). The prefixes are this file's constants, the one owner of the words."""
+    s = sentence or ""
+    if s.startswith(OVERRIDDEN):
+        return "override"
+    if s.startswith(BOTH_DISAGREE):
+        return "both"
+    if s.startswith((LOCAL_PASSED, LOCAL_REUSED, LOCAL_FAILED)):
+        return "local"
+    if s.startswith("PENDING: the local runner"):
+        return "local"
+    return "github"
+
+
+def local_wait_bound(store=None, floor=None) -> int:
+    """`--wait`'s bound when the local runner may be the one waited for: about 2.5 times the
+    median length of its last ten finished push runs (each record's `duration_s`), never
+    below *floor* (WAIT_BOUND_S, GitHub's). With no finished run recorded, the floor."""
+    import statistics
+
+    floor = WAIT_BOUND_S if floor is None else floor
+    store = store or LOCAL_CI_STORE
+    folder = os.path.join(store["path"], "verdicts")
+    took = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return floor
+    recs = []
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if (isinstance(rec, dict) and rec.get("kind") == "push"
+                and rec.get("state") in ("passed", "failed")
+                and isinstance(rec.get("duration_s"), (int, float))):
+            recs.append(rec)
+    recs.sort(key=lambda r: str(r.get("ended_at") or ""))
+    took = [r["duration_s"] for r in recs[-10:]]
+    if not took:
+        return floor
+    return max(floor, int(2.5 * statistics.median(took)))
+
+
+def local_twin(repo, target, store=None):
+    """``(sha, verdict)``: a commit this checkout was deployed at whose TREE is *target*'s and
+    whose LOCAL verdict passed (a rollback, C1669, judged by the local runner's record), else
+    ``(None, None)``. Asks nothing of GitHub, so an offline rollback finds it too."""
+    try:
+        tree = git(repo, "rev-parse", f"{target}^{{tree}}")
+    except RuntimeError:
+        return None, None
+    for sha in deployed_shas(repo):
+        if sha == target or git(repo, "rev-parse", f"{sha}^{{tree}}", check=False) != tree:
+            continue
+        lv = local_verdict(repo, sha, store)
+        if lv["state"] == "passed":
+            return sha, lv
+    return None, None
+
+
+def ci_verdict(repo, target, get=github_get, store=None, override=None):
+    """(exit code, sentence naming the SHA, which runner judged it, and what was found).
+
+    Two runners, one workflow (docs/LOCAL_CI.md): the local runner's record for *target*
+    (`local_verdict`, from the root-owned store *store*) and GitHub Actions'. A red KNOWN now
+    refuses, whichever runner gave it; a missing verdict is never waited for when the other is
+    green (the operator's scoped rule, `OVERRIDE_MIN_WORDS`' comment):
+    * the local runner FAILED it: refused, naming the step, without asking GitHub;
+    * the local runner PASSED it: deployed, whatever GitHub is doing, unless GitHub's own run
+      for *target* (asked once, never waited for) has already FAILED it: refused, naming both;
+    * otherwise GitHub's verdict (`github_verdict`, below), with the local runner's state said
+      when this host has a store; a local run still queued or running while GitHub is pending,
+      cancelled or cannot be asked is PENDING, so `--wait` follows whichever ends first.
+    *override* (the operator's reason, `--override-ci-red`) deploys over a known red only when
+    the OTHER runner passed the commit: never green over nothing."""
+    short = target[:10]
+    lv = local_verdict(repo, target, store)
+    if lv["state"] == "failed":
+        refusal = f"{LOCAL_FAILED} for {short}: {lv['words']}."
+        if not override:
+            return CI_REFUSED, refusal + " Do not deploy this commit."
+        code, sentence = github_verdict(repo, target, get, store)
+        if code != OK:
+            return CI_REFUSED, (refusal + f" Not overridden: GitHub has not passed it either "
+                                f"({sentence.rstrip('.')}), and an override needs one green.")
+        return OK, (f"{OVERRIDDEN} ({override!r}) for {short}: the local runner failed it "
+                    f"({lv['words']}); GitHub: {sentence}")
+    if lv["state"] == "passed":
+        own, words = github_own(repo, target, get)
+        if own == "FAILED":
+            if override:
+                return OK, (f"{OVERRIDDEN} ({override!r}) for {short}: GitHub's CI failed it "
+                            f"({words}); the local runner passed it ({lv['words']})")
+            return CI_REFUSED, (f"{BOTH_DISAGREE} for {short}: the local runner passed it "
+                                f"({lv['words']}), and GitHub's CI failed it ({words}). Refused: "
+                                "rerun GitHub's run once (a green rerun clears it), or deploy "
+                                "with --override-ci-red \"<reason>\".")
+        return OK, f"{LOCAL_PASSED} for {short}: {lv['words']}. GitHub's own run: {words}"
+    code, sentence = github_verdict(repo, target, get, store)
+    said = "" if lv["state"] == "absent" else f" The local runner: {lv['words']}."
+    if (lv["state"] in ("queued", "running")
+            and code in (COULD_NOT_ASK, CI_PENDING, CI_CANCELLED)):
+        return CI_PENDING, (f"PENDING: the local runner is {lv['state']} for {short} "
+                            f"({lv['words']}). GitHub: {sentence} Wait, or run "
+                            "`nmas-deploy --wait`.")
+    if code == OK or not said:
+        return code, sentence + said
+    return code, sentence.rstrip(".") + "." + said
+
+
+def github_own(repo, target, get=github_get):
+    """``(state, words)`` of GitHub's OWN runs for *target*: PASSED, FAILED, PENDING,
+    CANCELLED, NO RUN or COULD NOT ASK. One request, no walk and no twin: the question a local
+    green asks of GitHub is only "did GitHub fail this commit?"."""
+    try:
+        slug = slug_of(git(repo, "remote", "get-url", "origin"))
+    except (RuntimeError, ValueError) as exc:
+        return "COULD NOT ASK", f"could not ask GitHub ({exc})"
+    _status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={target}&event=push"
+                                f"&per_page=20")
+    if body is None:
+        return "COULD NOT ASK", f"could not ask GitHub ({reason})"
+    runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+    if not runs:
+        return "NO RUN", "no run yet"
+    state, run, _all = verdict_of_runs(runs)
+    return state, (f"run #{run.get('run_number', '?')} {state.lower()}, "
+                   f"{run.get('html_url', '')}").rstrip(", ")
+
+
+def github_verdict(repo, target, get=github_get, store=None):
+    """(exit code, sentence) from GitHub Actions alone. A target whose own CI has not
+    concluded, and whose tree is that of a commit this checkout was deployed at and CI passed
+    (on GitHub, or by the local runner's record), takes that verdict (a rollback, C1669),
+    naming both; a target whose own CI FAILED is refused whatever its twin's said."""
     short = target[:10]
     try:
         slug = slug_of(git(repo, "remote", "get-url", "origin"))
     except (RuntimeError, ValueError) as exc:
+        twin, lv = local_twin(repo, target, store)
+        if twin:
+            return OK, (f"{LOCAL_REUSED}: {short}'s tree is that of {twin[:10]}, which this "
+                        f"checkout was deployed at and the local runner passed ({lv['words']}); "
+                        f"GitHub could not be asked about {short} ({exc})")
         return COULD_NOT_ASK, f"could not ask CI about {short}: {exc}"
 
     status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={target}&event=push&per_page=20")
     if body is None:
+        twin, lv = local_twin(repo, target, store)
+        if twin:
+            return OK, (f"{LOCAL_REUSED}: {short}'s tree is that of {twin[:10]}, which this "
+                        f"checkout was deployed at and the local runner passed ({lv['words']}); "
+                        f"GitHub could not be asked about {short} ({reason})")
         return COULD_NOT_ASK, (f"could not ask CI about {short} ({reason}). Refused: an "
                                "unverified commit is never deployed. Retry, or run "
                                "`nmas-deploy --offline` to run the suite here.")
     runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
     own = verdict_of_runs(runs)[0] if runs else "NO RUN"
     if own not in ("PASSED", "FAILED"):
+        twin, lv = local_twin(repo, target, store)
+        if twin:
+            return OK, (f"{LOCAL_REUSED}: {short}'s tree is that of {twin[:10]}, which this "
+                        f"checkout was deployed at and the local runner passed ({lv['words']}); "
+                        f"{short}'s own CI: {own.lower()}")
         twin, trun, tree = tree_twin(repo, target, slug, get)
         if twin:
             return OK, (f"CI's verdict REUSED: {short}'s tree {tree[:10]} is that of {twin[:10]}, "
@@ -808,7 +1093,7 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
          clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None,
-         operations=None, restart_unit=None, unit_of=None) -> int:
+         operations=None, restart_unit=None, unit_of=None, store=None) -> int:
     # In the order it happened: over SSH stdout was block-buffered and the
     # verdict (stderr) printed first, above the lines that led to it.
     if hasattr(sys.stdout, "reconfigure"):
@@ -828,7 +1113,16 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     ap.add_argument("--to", metavar="SHA",
                     help="deploy EXACTLY this commit (it must be on origin/main) instead of "
                          "origin/main's tip; the CI gate is the same")
+    ap.add_argument("--override-ci-red", metavar="REASON", default=None,
+                    help="the operator's override when the two CI runners disagree on the "
+                         "target (one passed it, the other failed it): deploys on the green, "
+                         "recording REASON in the audit row; never over a red with no green")
     args = ap.parse_args(argv)
+    if args.override_ci_red is not None and (
+            len(args.override_ci_red.split()) < OVERRIDE_MIN_WORDS):
+        print(f"--override-ci-red needs a reason of at least {OVERRIDE_MIN_WORDS} words, the "
+              f"operator's own; given {args.override_ci_red!r}. Refused.", file=sys.stderr)
+        return LOCAL_REFUSED
     repo = args.repo
     # started_at is when the RUN began, ended_at when its row is written: two
     # instants, millisecond resolution, so neither can be read as the other.
@@ -850,7 +1144,7 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                               "again when it has finished (Help > About shows the last update)")
     try:
         code = _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
-                       ready, operations, restart_unit, unit_of)
+                       ready, operations, restart_unit, unit_of, store)
     finally:
         os.close(lock)
     # LAST on screen: the host steps, when the checkout is at the target (a
@@ -957,7 +1251,7 @@ def take_lock(repo):
 
 
 def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready,
-            operations=None, restart_unit=None, unit_of=None):
+            operations=None, restart_unit=None, unit_of=None, store=None):
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)
@@ -992,11 +1286,17 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                      f"({target[:10]}) is not a fast-forward of "
                                      f"HEAD ({head[:10]}). Refused.")
 
+    override = getattr(args, "override_ci_red", None)
     code, message = (offline_verdict(repo, target, run) if args.offline
-                     else ci_verdict(repo, target, get))
+                     else ci_verdict(repo, target, get, store, override))
     print(message)
     if args.wait and not args.offline and code == CI_PENDING:
-        code, message = _wait_for_ci(repo, target, get, clock, sleep, row)
+        code, message = _wait_for_ci(repo, target, get, clock, sleep, row, store, override)
+    if not args.offline:
+        row["ci_source"] = verdict_source(message)      # which runner's verdict this was
+        if row["ci_source"] == "override":
+            # The operator's override, recorded on the deploy (the operator, 2026-11-03).
+            row["override"] = {"reason": override, "by": row.get("user"), "verdict": message}
     if code != OK:
         return finish(code, message)
 
@@ -1118,30 +1418,37 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                       + pruned)
 
 
-def _wait_for_ci(repo, target, get, clock, sleep, row):
+def _wait_for_ci(repo, target, get, clock, sleep, row, store=None, override=None):
     """Follow a PENDING verdict for the SAME target until it is anything else,
     or the bound. Each poll prints what the run is doing and how long this has
     waited against the measured typical, so a wait going slowly can be told
     from one going wrong. Any other verdict (passed, failed, cancelled,
     could-not-ask) ends the wait at once and is returned unchanged: the gate
-    is the same gate, only the retrying moved from the person to the tool."""
+    is the same gate, only the retrying moved from the person to the tool.
+
+    While the run waited for is the LOCAL runner's (its PENDING sentence), the bound is
+    `local_wait_bound`: about 2.5 times its own measured runs, never below GitHub's."""
     start = clock()
     code, message = CI_PENDING, ""
     while True:
         waited = clock() - start
-        if waited >= WAIT_BOUND_S:
+        local = verdict_source(message) == "local"
+        bound = local_wait_bound(store) if local else WAIT_BOUND_S
+        basis = ("~2.5x the local runner's median run" if local and bound > WAIT_BOUND_S
+                 else "~2.5x the measured p90")
+        if waited >= bound:
             row["waited_s"] = round(waited)
             return CI_PENDING, (f"still PENDING after waiting {round(waited)} s (the bound, "
-                                f"{WAIT_BOUND_S} s, is ~2.5x the measured p90): {message} "
+                                f"{bound} s, is {basis}): {message} "
                                 "Not deployed. Look at the run before waiting again.")
         sleep(WAIT_POLL_S)
-        code, message = ci_verdict(repo, target, get)
+        code, message = ci_verdict(repo, target, get, store, override)
         waited = clock() - start
         if code != CI_PENDING:
             row["waited_s"] = round(waited)
             print(f"waited {round(waited)} s: {message}")
             return code, message
-        print(f"waiting {round(waited)} s of at most {WAIT_BOUND_S} s ({MEASURED_TYPICAL}): "
+        print(f"waiting {round(waited)} s of at most {bound} s ({MEASURED_TYPICAL}): "
               f"{message.split('. Wait,')[0]}")
 
 

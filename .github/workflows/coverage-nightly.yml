@@ -128,7 +128,13 @@ jobs:
             || { echo "::error::the unpacked server is not PostgreSQL 18"; exit 1; }
           python -c "import psycopg; print('psycopg', psycopg.__version__, 'libpq', psycopg.pq.version())"
 
+      # Under act (the local CI runner, docs/LOCAL_CI.md) the job is a container on the host,
+      # and a host kernel setting is never a job's to change. Skipping it cannot pass a run:
+      # the tests step still refuses unless the suite's namespace can be made (C46).
       - name: Allow a network namespace for the suite (this VM only)
+        if: ${{ !env.ACT }}
+        env:
+          NMAS_ACT_NOT_GATING: "a job container must never change the host kernel's setting, and the tests step still refuses without the suite's namespace"
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: A folder for each test's tier

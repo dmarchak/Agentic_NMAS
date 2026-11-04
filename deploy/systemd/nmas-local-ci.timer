@@ -1,0 +1,13 @@
+# TEMPLATE (2026-11-03): render it with scripts/nmas-render-units, never copy it. A PROTECTED
+# GUARD (scripts/nmas-guard-check). Polls origin every 2 minutes after the last run ENDED, so
+# runs never overlap and a push waits at most about 2 minutes plus the run in progress.
+[Unit]
+Description=NMAS: poll for a commit or a scheduled workflow for the local CI runner
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

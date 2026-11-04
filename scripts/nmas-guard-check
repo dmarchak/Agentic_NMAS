@@ -84,6 +84,11 @@ GUARDS = {
     "scripts/nmas-red-green": WHOLE,
     "scripts/nmas-bypass-scan": WHOLE,   # board TI item 3, a gate script (2026-11-03)
     "scripts/nmas-premise-check": WHOLE,  # board TI item 5, a gate script (2026-11-03)
+    # Workstream 0 (the operator, 2026-11-03: "its script and unit are protected guards"): the
+    # local CI runner, whose verdict a deploy accepts, and the units that run it as root.
+    "scripts/nmas-local-ci": WHOLE,
+    "deploy/systemd/nmas-local-ci.service": WHOLE,
+    "deploy/systemd/nmas-local-ci.timer": WHOLE,
     "scripts/nmas-guard-check": WHOLE,
     # C2358 (the operator, 2026-11-03): what runs the checks, and the checks' own tests.
     ".github/workflows/ci.yml": WHOLE,

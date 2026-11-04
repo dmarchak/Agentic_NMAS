@@ -56,7 +56,11 @@ GUARD_PATHS = ["scripts/hooks/commit-msg", "scripts/hooks/a-new-hook", "scripts/
                "tests/test_guard_check.py", "tests/test_red_green.py",
                "tests/test_test_weakening_check.py", "tests/test_bypass_scan.py",
                "tests/test_premise_check.py", "tests/test_host_step_check.py",
-               "tests/test_stage_guard.py", "tests/test_nmas_gate.py"]
+               "tests/test_stage_guard.py", "tests/test_nmas_gate.py",
+               # Workstream 0 (the operator, 2026-11-03: "its script and unit are protected
+               # guards"): the local CI runner and its unit templates.
+               "scripts/nmas-local-ci", "deploy/systemd/nmas-local-ci.service",
+               "deploy/systemd/nmas-local-ci.timer"]
 
 TESTING = """# What the test suite checks
 

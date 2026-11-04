@@ -60,6 +60,13 @@ def state_of(mod, code) -> str:
             mod.CI_PENDING: "pending", mod.CI_CANCELLED: "cancelled"}.get(code, f"code {code}")
 
 
+def source_of(mod, sentence: str) -> str:
+    """Which CI runner judged it, by the script's own `verdict_source` ("local", "github",
+    "both", "override"); "github" from a script that predates the local runner."""
+    fn = getattr(mod, "verdict_source", None)
+    return fn(sentence) if fn else "github"
+
+
 #: The run a verdict's sentence names, in each of `ci_verdict()`'s forms: ", #373, concluded"
 #: (a run of its own), "run #373" (still running; an ancestor's run), "(#373)" (an ancestor
 #: still running). The first match is the run judged: the other runs are listed after it.
@@ -112,7 +119,8 @@ def read(commit=None, verdict=None) -> dict:
         raise RuntimeError(f"the loaded commit is unknown: {health._COMMIT_ERROR}")
     mod = deploy_script()
     code, sentence = (verdict or mod.ci_verdict)(ROOT, commit)
-    return {"commit": commit, "code": code, "state": state_of(mod, code), "sentence": sentence}
+    return {"commit": commit, "code": code, "state": state_of(mod, code), "sentence": sentence,
+            "source": source_of(mod, sentence)}
 
 
 READER = reader_job.register(reader_job.Reader(

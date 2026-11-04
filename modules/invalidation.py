@@ -112,6 +112,8 @@ VOCABULARY = {
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
     "scheduled_jobs": "each scheduled workflow's newest scheduled runs, as the scheduled-jobs "
                       "reader last stored them",
+    "ci_agreement": "whether GitHub's CI and the local runner agree on each recent commit, as "
+                    "the ci-agreement reader last stored it",
     "app_version": "whether the running commit is what is pushed (origin/main), as the "
                    "app-pushed reader last stored it",
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",

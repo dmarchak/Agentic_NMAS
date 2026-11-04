@@ -445,7 +445,17 @@ def person_ci(ci: dict, target: str = "") -> str:
         n = CV.run_of(ci.get("sentence"))["number"]
         return ("CI failed for this release" + (f" (run #{n})" if n else "")
                 + ": it will not be installed. A fix needs a new release")
-    return CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
+    words = CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
+    if ci.get("state") == "verified" and ci.get("source") in CI_SOURCE_WORDS:
+        # Which runner passed it (workstream 0, the operator: "accept a green verdict from
+        # either the local runner or GitHub, and say which").
+        words += f" ({CI_SOURCE_WORDS[ci['source']]})"
+    return words
+
+
+#: Which CI runner a verdict came from, in a person's words (`nmas-deploy`'s `verdict_source`).
+CI_SOURCE_WORDS = {"local": "the local CI runner on this host", "github": "GitHub's CI",
+                   "override": "the operator's override of the two runners' disagreement"}
 
 
 #: A CI verdict's badge, in words (the operator: "could_not_ask" leaked as text).

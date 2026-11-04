@@ -1,0 +1,27 @@
+name: probe2
+on: push
+jobs:
+  soft:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fails but non-gating
+        continue-on-error: true
+        run: exit 3
+      - name: Skipped by its if
+        if: ${{ false }}
+        run: echo never
+      - name: Skipped under act
+        if: ${{ !env.ACT }}
+        run: echo never
+      - name: Runs after
+        run: echo after
+  hard:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fails
+        run: exit 4
+      - name: Never reached
+        run: echo never
+      - name: Always runs
+        if: ${{ always() }}
+        run: echo always

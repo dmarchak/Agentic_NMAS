@@ -50,9 +50,19 @@ EXEMPT = {
     # library only.
     "scripts/nmas-restart-readers": "run from stdin",
     # A root-installed copy, run `/usr/bin/python3 -I`: it never imports the user-writable
-    # checkout, so it cannot import the helper.
+    # checkout, so it cannot import the helper. Exempt from the helper only to be held to
+    # `root_copy_problems` below, which every "a root-installed copy" entry must pass.
     "scripts/nmas-oxidized-cred": "a root-installed copy",
+    # Workstream 0: the local CI runner (docs/LOCAL_CI.md), the same rule.
+    "scripts/nmas-local-ci": "a root-installed copy",
 }
+#: The copies root runs: each is held to its own root-owned interpreter and to importing nothing
+#: from the checkout, instead of to the app's interpreter.
+ROOT_COPIES = sorted(rel for rel, why in EXEMPT.items() if why == "a root-installed copy")
+#: Packages outside the standard library a root copy may import: the system's own, installed
+#: root-owned under /usr/lib/python3/dist-packages by apt, never the checkout's or a venv's.
+SYSTEM_PACKAGES = {"yaml": "python3-yaml (nmas-local-ci's self-test names it when absent)"}
+ROOT_INTERPRETER = "/usr/bin/python3 -I"
 #: Loaded as a module by root's updater from a copy beside no checkout, so its call is the first
 #: statement of its `__main__` block; allowed only because nothing outside the standard library
 #: is imported at its top level.
@@ -184,6 +194,152 @@ def test_the_main_block_form_is_held_to_no_early_import():
     assert problems("scripts/nmas-deploy", ok) == []
     assert problems("scripts/nmas-deploy", "import yaml\n" + ok)
     assert problems("scripts/nmas-deploy", ok.replace("    adopt(__name__)\n", ""))
+
+
+# --- the root-installed copies ------------------------------------------------------------------
+# The operator, 2026-11-04: the root CI runner is exempt from the app-interpreter test, replaced by
+# a test that it uses its root-owned interpreter and imports nothing from the checkout.
+
+def checkout_names(root=ROOT):
+    """Every top-level name an import could find in the checkout: its root's modules and
+    folders. Found from the tree itself, not from the copies' imports."""
+    out = set()
+    for name in os.listdir(root):
+        if name.startswith("."):
+            continue
+        if name.endswith(".py"):
+            out.add(name[:-3])
+        elif os.path.isdir(os.path.join(root, name)):
+            out.add(name)
+    return out
+
+
+def _dotted(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+#: Calls that load code by name or from a file, or widen the import path.
+LOADERS = {"__import__", "exec", "compile", "eval", "importlib.import_module",
+           "importlib.__import__", "importlib.util.spec_from_file_location",
+           "importlib.machinery.SourceFileLoader", "importlib.machinery.ExtensionFileLoader",
+           "runpy.run_path", "runpy.run_module", "site.addsitedir", "sys.path.insert",
+           "sys.path.append", "sys.path.extend", "sys.path_hooks.append",
+           "sys.meta_path.append", "sys.meta_path.insert"}
+
+
+def root_copy_problems(rel, text, units, names):
+    """What keeps *rel* from running on root's own interpreter alone: its shebang, every unit in
+    *units* ({file: text}) that runs it, and every import and loader call in its whole tree
+    (inside functions too: the runner imports yaml in three)."""
+    out = []
+    first = text.split("\n", 1)[0]
+    if first != f"#!{ROOT_INTERPRETER}":
+        out.append(f"{rel}: its shebang is {first!r}, not '#!{ROOT_INTERPRETER}'")
+    base = os.path.basename(rel)
+    for unit, body in sorted(units.items()):
+        for line in body.splitlines():
+            line = line.strip()
+            if line.startswith("ExecStart") and base in line:
+                cmd = line.split("=", 1)[1].lstrip("-@:+!")
+                if not cmd.startswith(ROOT_INTERPRETER + " "):
+                    out.append(f"{unit}: runs {base} as {cmd!r}, not by {ROOT_INTERPRETER}")
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.ImportFrom):
+            mods = [None if node.level else node.module]
+        elif isinstance(node, ast.Import):
+            mods = [a.name for a in node.names]
+        else:
+            mods = []
+        for mod in mods:
+            top = mod.split(".")[0] if mod else None
+            if top is None:
+                out.append(f"{rel}:{node.lineno}: a relative import")
+            elif top in names:
+                out.append(f"{rel}:{node.lineno}: imports {mod}, a name the checkout holds")
+            elif top not in sys.stdlib_module_names and top not in SYSTEM_PACKAGES:
+                out.append(f"{rel}:{node.lineno}: imports {mod}, neither the standard "
+                           "library's nor a declared system package")
+        if isinstance(node, ast.Call) and _dotted(node.func) in LOADERS:
+            out.append(f"{rel}:{node.lineno}: calls {_dotted(node.func)}")
+        targets = (node.targets if isinstance(node, ast.Assign)
+                   else [node.target] if isinstance(node, (ast.AugAssign, ast.AnnAssign)) else [])
+        for t in targets:
+            if _dotted(t.value if isinstance(t, ast.Subscript) else t) == "sys.path":
+                out.append(f"{rel}:{node.lineno}: assigns sys.path")
+    return out
+
+
+def _units():
+    out = {}
+    for path in tracked("deploy/systemd"):
+        with open(path, encoding="utf-8") as fh:
+            out[os.path.relpath(path, ROOT)] = fh.read()
+    return out
+
+
+def test_every_root_copy_runs_on_roots_interpreter_and_imports_nothing_from_the_checkout():
+    # Floors, measured 2026-11-04: the two root copies; the checkout's names include its
+    # packages and the root's two modules; the local CI runner's unit names it in ExecStart.
+    assert ROOT_COPIES == ["scripts/nmas-local-ci", "scripts/nmas-oxidized-cred"], ROOT_COPIES
+    names = checkout_names()
+    assert {"modules", "routes", "app", "telnetlib"} <= names, sorted(names)
+    units = _units()
+    assert any("ExecStart=/usr/bin/python3 -I /usr/local/lib/nmas-local-ci/nmas-local-ci" in u
+               for u in units.values()), sorted(units)
+    bad = []
+    for rel in ROOT_COPIES:
+        with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+            bad += root_copy_problems(rel, fh.read(), units, names)
+    assert bad == []
+
+
+ROOT_GOOD = ("#!/usr/bin/python3 -I\nimport json\nimport sys\n\n\ndef tick():\n"
+             "    import yaml\n    import importlib.util\n"
+             "    return importlib.util.find_spec('yaml'), json, sys, yaml\n")
+UNIT = {"deploy/systemd/x.service": "[Service]\nExecStart=/usr/bin/python3 -I "
+                                    "/usr/local/lib/x/nmas-x tick\n"}
+
+
+@pytest.mark.parametrize("text, units, why", [
+    # The control the operator asked for: an import from the checkout, planted.
+    (ROOT_GOOD + "from modules import redact\n", UNIT, "imports modules, a name the checkout"),
+    (ROOT_GOOD.replace("    import yaml\n", "    import modules.config\n"), UNIT,
+     "imports modules.config, a name the checkout"),
+    # A checkout module that shadows a standard library name is the checkout's all the same.
+    (ROOT_GOOD + "import telnetlib\n", UNIT, "imports telnetlib, a name the checkout"),
+    (ROOT_GOOD + "import requests\n", UNIT, "neither the standard library's"),
+    (ROOT_GOOD + "from . import x\n", UNIT, "a relative import"),
+    (ROOT_GOOD + "sys.path.insert(0, '/srv/checkout')\n", UNIT, "calls sys.path.insert"),
+    (ROOT_GOOD + "sys.path[:0] = ['/srv/checkout']\n", UNIT, "assigns sys.path"),
+    (ROOT_GOOD + "import importlib\nimportlib.import_module('modules.redact')\n", UNIT,
+     "calls importlib.import_module"),
+    (ROOT_GOOD + "import runpy\nrunpy.run_path('/srv/checkout/app.py')\n", UNIT,
+     "calls runpy.run_path"),
+    (ROOT_GOOD.replace("#!/usr/bin/python3 -I", "#!/usr/bin/env python3"), UNIT,
+     "its shebang is"),
+    (ROOT_GOOD, {"deploy/systemd/x.service": "ExecStart=/opt/mercury-venv/bin/python "
+                                              "/usr/local/lib/x/nmas-x tick\n"},
+     "not by /usr/bin/python3 -I"),
+])
+def test_the_root_copy_check_finds_a_planted_breach(text, units, why):
+    names = checkout_names()
+    assert root_copy_problems("scripts/nmas-x", ROOT_GOOD, UNIT, names) == []
+    found = root_copy_problems("scripts/nmas-x", text, units, names)
+    assert found and any(why in f for f in found), found
+
+
+def test_the_checkout_names_are_found_from_the_tree(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "shim.py").write_text("")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "README.md").write_text("")
+    assert checkout_names(str(tmp_path)) == {"pkg", "shim"}
 
 
 # --- the helper itself ---------------------------------------------------------------------------

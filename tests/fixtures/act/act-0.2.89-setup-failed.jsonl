@@ -1,0 +1,2 @@
+{"dryrun":false,"job":"probe2/soft","jobID":"soft","level":"info","matrix":{},"msg":"  ❌  Failure - Set up job","step":"Set up job","stepResult":"failure","stepid":["--setup-job"],"time":"2026-11-03T23:24:24Z"}
+{"dryrun":false,"job":"probe2/soft","jobID":"soft","jobResult":"failure","level":"info","matrix":{},"msg":"🏁  Job failed","time":"2026-11-03T23:24:24Z"}

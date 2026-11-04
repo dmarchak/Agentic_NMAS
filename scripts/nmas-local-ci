@@ -1,0 +1,1008 @@
+#!/usr/bin/python3 -I
+"""THE LOCAL CI RUNNER (workstream 0; docs/LOCAL_CI.md): GitHub's own workflow files, run on this
+host by act (nektos/act) in Docker, with a verdict recorded per commit.
+
+    nmas-local-ci tick              # the timer's: fetch, run main's tip if it has no verdict,
+                                    # then any scheduled workflow whose cron has come due
+    nmas-local-ci run SHA [--before SHA]   # one commit, by hand (the operator's walk)
+    nmas-local-ci self-test         # what this host lacks to run it, each by name, and the
+                                    # job image's Firefox and geckodriver, started
+    nmas-local-ci status            # the newest verdicts, one line each
+    nmas-local-ci seccomp-profile --from DOCKER_DEFAULT.json --out PROFILE.json
+                                    # the jobs' seccomp profile, from Docker's own default
+                                    # (the host step's; section "Confinement" below)
+
+**One pipeline definition** (the operator, 2026-11-03: "don't replicate ci.yml in a separate
+script (two definitions drift). Use act ... to run ci.yml itself"). Nothing here knows a step:
+act runs `.github/workflows/ci.yml` at the commit, and this wrapper only fetches, starts act,
+reads act's own per-step results (`--json`) and writes the record. A step act did not run is
+recorded "not run", named, and the verdict is then not green, unless the workflow itself
+declares that step non-gating (`continue-on-error: true`, GitHub's own declaration).
+
+**Installed ROOT-OWNED** (its install is the operator's host step, docs/LOCAL_CI.md) as
+/usr/local/lib/nmas-local-ci/nmas-local-ci, run by `nmas-local-ci.service` as
+`/usr/bin/python3 -I`: standard library only, and it never imports the user-writable checkout
+(the updater's rule, docs/UPDATE.md). It is a protected guard (scripts/nmas-guard-check). The
+jobs' isolation is act's: each runs in a throwaway container from a runner image pinned by
+digest (NMAS_LOCAL_CI_PLATFORM; built from deploy/local-ci/runner.Dockerfile), never pulled at
+run time (`--pull=false`, and the self-test refuses a run when the image is absent: act pulls
+a missing image even then, measured 2026-11-03).
+
+**Confinement** (the operator's answers 1, 3 and 4, 2026-11-03; docs/LOCAL_CI.md section 9):
+- **a seccomp profile, least privilege:** Docker's own default profile plus ONE rule, letting
+  `unshare` make a user and a network namespace (the suite's `unshare -rn`, scripts/nmas-test)
+  and no other namespace, without CAP_SYS_ADMIN. Never privileged, no capability added;
+- **online, on Docker's bridge:** never act's default `--network host`, which would put a job
+  on the host's loopback beside Mercury and its stores; act's artifact and cache servers bind
+  to the bridge's gateway, not act's default of the host's LAN address;
+- **no CPU or memory limit yet:** set after the first measured run (CONTAINER_LIMITS).
+
+**The store** (/var/lib/nmas-local-ci, root 0755, files 0644): `verdicts/<sha>.json` (what
+`scripts/nmas-deploy`'s `local_verdict` reads, keyed by sha and judged by tree),
+`runs/<sha>/` (act's whole log, one text log per job, the artifacts act's server kept),
+`scheduled/<workflow>/<UTC stamp>.json`, `state.json` (the last tip run, each schedule's last
+start), `mirror.git` (a bare mirror of the origin). Every record is written whole, then renamed
+into place (atomic); a record that exists and cannot be read is never overwritten blind.
+
+Environment (set by the root-owned unit, never by a commit):
+  NMAS_LOCAL_CI_ORIGIN     the repository to fetch (https:// or file://)
+  NMAS_LOCAL_CI_PLATFORM   act's -P value, image pinned by digest: the job image built on
+                           the host, by its ID, ubuntu-24.04=sha256:<image ID>
+                           (or a pulled one, ubuntu-24.04=<image>@sha256:<digest>)
+  NMAS_LOCAL_CI_QUIET      a UTC window no run starts in, HH:MM-HH:MM (empty: none)
+  NMAS_LOCAL_CI_SECCOMP    the jobs' seccomp profile, root's (`seccomp-profile` writes it)
+  NMAS_LOCAL_CI_STORE      the store (default /var/lib/nmas-local-ci)
+"""
+
+import argparse
+import calendar
+import datetime
+import fcntl
+import glob
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
+
+STORE = "/var/lib/nmas-local-ci"
+INSTALLED = "/usr/local/lib/nmas-local-ci"
+WORKFLOW = ".github/workflows/ci.yml"
+#: Every program this runs, by ABSOLUTE path (the updater's lesson, C246): a minimal PATH for
+#: a root process, and a name resolved through it, is how a root job breaks or is hijacked.
+BINARIES = {"git": "/usr/bin/git", "act": "/usr/local/bin/act", "docker": "/usr/bin/docker"}
+SHA = re.compile(r"^[0-9a-f]{40}$")
+#: The schema `scripts/nmas-deploy`'s `local_verdict` reads (LOCAL_STATES there).
+SCHEMA = 1
+STATES = ("queued", "running", "passed", "failed", "error", "skipped", "incomplete")
+
+#: act's `--json` log fields, in one place, as act 0.2.89 writes them (captured 2026-11-03,
+#: tests/fixtures/act/): logrus JSON lines, a step's result as `stepResult` beside `jobID`,
+#: `stepID` (a list), `stage` and `step`; act's own "Set up job" and "Complete job" as
+#: `stepid` (lower case) with their `stepResult`; a job's result as `jobResult`; a step's
+#: output as `raw_output` lines; `executionTime` in nanoseconds; `time` with the clock's offset.
+#: A step skipped by its `if:` is logged ONLY at debug level ("Skipping step ... due to ...",
+#: `stepResult: skipped`), so act runs `--verbose` (act_argv). Any field that differs in a
+#: later act is corrected here, the only place that names them.
+F = {"job": "job", "job_id": "jobID", "step": "step", "step_id": "stepID", "stage": "stage",
+     "step_result": "stepResult", "job_result": "jobResult", "raw": "raw_output", "msg": "msg",
+     "time": "time", "matrix": "matrix", "took": "executionTime", "phase_id": "stepid"}
+#: act -v logs every step's whole environment ("setupEnv => map[...]"). No secret is passed to
+#: act, but the store is world-readable, so those lines are not kept.
+ENV_DUMP = re.compile(r"^setupEnv\b")
+
+#: A run's bound: the workflow's own job bounds summed (ci.yml: 3 + 5 x 26 + 10 = 143 min, its
+#: jobs one after another here) and about a quarter more for act's container starts, until the
+#: host's own runs are measured (each record's `duration_s`); then 2.5x their median.
+RUN_BOUND_MIN = 180
+
+#: A skipped test whose reason says the runner image lacks the browser is a step not run: the
+#: browser tests skip, never fail, without Firefox (tests/browser.py, `available`: its three
+#: reasons, held by tests/test_local_ci.py), and a run whose browser tests all skipped is not
+#: the run GitHub's image makes.
+ENV_SKIPS = (re.compile(r"no (firefox|geckodriver)", re.I),
+             re.compile(r"firefox could not start", re.I))
+
+#: CPU and memory limits on act's containers: NONE yet (the operator's answer 4, 2026-11-03:
+#: "after the first measured run"). What sets them: docs/LOCAL_CI.md, "The first measured
+#: run", its peak CPU and memory of the job containers against what the host has free beside
+#: Mercury. Then this holds e.g. "--cpus=4 --memory=8g", and each record says it.
+CONTAINER_LIMITS = ""
+LIMITS_UNSET = ("unset: CPU and memory limits are set after the first measured run "
+                "(docs/LOCAL_CI.md, \"The first measured run\"), the operator's answer 4")
+#: The jobs' network (the operator's answer 3, "online for now"): Docker's bridge, so pip,
+#: setup-python and the cache-miss downloads reach the internet as on GitHub; never act's
+#: default `--network host`. Offline (a wheelhouse, setup-python's tool cache) is later.
+NETWORK = "bridge"
+
+#: The namespace flags of clone(2) and unshare(2) (the kernel's uapi/linux/sched.h). Docker's
+#: default profile allows them only with CAP_SYS_ADMIN; the jobs' profile lets the suite's two
+#: (`unshare -rn`, scripts/nmas-test) through `unshare` alone.
+CLONE_NS = {"NEWNS": 0x00020000, "NEWCGROUP": 0x02000000, "NEWUTS": 0x04000000,
+            "NEWIPC": 0x08000000, "NEWUSER": 0x10000000, "NEWPID": 0x20000000,
+            "NEWNET": 0x40000000}
+SUITE_NS = CLONE_NS["NEWUSER"] | CLONE_NS["NEWNET"]
+#: Syscalls a least-privilege profile never allows with no condition (each lets a process
+#: make or join namespaces, or mount).
+GUARDED_SYSCALLS = ("clone", "clone3", "unshare", "setns", "mount", "umount2", "open_tree",
+                    "move_mount", "fsmount")
+
+#: A step the workflow skips under act (`if: ${{ !env.ACT }}`; act sets ACT=true in every job,
+#: its README's way to skip a step locally) is NOT RUN here, never a pass, unless the same step
+#: names why it need not run in its `env:` under this key (one definition: the declaration is
+#: in the workflow, beside the step). E.g. the AppArmor sysctl, which only GitHub's throwaway VM
+#: may change: `env: {NMAS_ACT_NOT_GATING: "the runner gives the namespace itself"}`.
+ACT_GUARD = re.compile(r"!\s*env\.ACT\b")
+ACT_NOT_GATING = "NMAS_ACT_NOT_GATING"
+
+
+def iso(epoch=None) -> str:
+    return datetime.datetime.fromtimestamp(time.time() if epoch is None else epoch,
+                                           tz=datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_iso(text):
+    """Epoch seconds of an ISO time, its offset honoured (act writes the clock's own, e.g.
+    -07:00, captured 2026-11-03); a time with no offset is UTC. None when it is not one."""
+    try:
+        t = datetime.datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if t.tzinfo is None:
+        return calendar.timegm(t.timetuple())
+    return int(t.timestamp())
+
+
+# ---------------------------------------------------------------------------
+# The record: written whole and renamed into place
+# ---------------------------------------------------------------------------
+
+def write_record(path: str, rec: dict) -> None:
+    """*rec* as JSON at *path*, atomically: a temporary file in the same folder, flushed and
+    synced, 0644, renamed over the old one, the folder synced. A reader sees the old record or
+    the new one, never a part. A record already there that cannot be read is refused, never
+    overwritten blind (an unreadable store refuses writes, CLAUDE.md)."""
+    if os.path.lexists(path):
+        read_record(path)                      # raises when it cannot be read
+    write_record_json(path, rec)
+
+
+def write_record_json(path: str, rec: dict) -> None:
+    """*rec* as JSON at *path*, whole: a temporary file in the same folder, synced, 0644,
+    renamed into place, the folder synced."""
+    folder = os.path.dirname(os.path.abspath(path))
+    os.makedirs(folder, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".rec.", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh, sort_keys=True, indent=1)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    dfd = os.open(folder, os.O_RDONLY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+
+
+class Unreadable(Exception):
+    """A record that exists and cannot be read: never a pass, never overwritten blind."""
+
+
+def read_record(path: str) -> dict:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as fh:
+            rec = json.loads(fh.read().decode("utf-8"))
+    except (OSError, ValueError) as exc:
+        raise Unreadable(f"{path} could not be read ({exc})") from exc
+    if not isinstance(rec, dict) or rec.get("schema") != SCHEMA or rec.get("state") not in STATES:
+        raise Unreadable(f"{path} is not a version-{SCHEMA} record with a known state")
+    return rec
+
+
+def verdict_path(store: str, sha: str) -> str:
+    if not SHA.match(sha or ""):
+        raise ValueError(f"{sha!r} is not a full commit sha")
+    return os.path.join(store, "verdicts", f"{sha}.json")
+
+
+# ---------------------------------------------------------------------------
+# act's log, read
+# ---------------------------------------------------------------------------
+
+def read_act_log(lines) -> dict:
+    """act's `--json` lines, read into ``{"jobs": {key: job}, "raw": {key: [line]}, "bad": n}``.
+    A job's key is its jobID with its matrix values (``test (a)``); a step's key its stepID.
+    Each step is ``{"name", "result", "stage", "started", "ended", "took_s"}``, its Main stage's
+    result kept, a Post stage's failure kept over a Main success."""
+    jobs, raw, bad = {}, {}, 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except ValueError:
+            bad += 1
+            continue
+        if not isinstance(e, dict) or not e.get(F["job_id"]):
+            continue
+        matrix = e.get(F["matrix"]) or {}
+        vals = ", ".join(str(v) for _k, v in sorted(matrix.items())) if isinstance(matrix,
+                                                                                  dict) else ""
+        key = f"{e[F['job_id']]} ({vals})" if vals else str(e[F["job_id"]])
+        job = jobs.setdefault(key, {"job_id": e[F["job_id"]], "matrix": matrix,
+                                    "name": e.get(F["job"]) or key, "steps": {},
+                                    "phases": {}, "result": None})
+        at = _parse_iso(e.get(F["time"]))
+        if e.get(F["raw"]):
+            raw.setdefault(key, []).append(str(e.get(F["msg"]) or ""))
+        if e.get(F["job_result"]):
+            job["result"] = e[F["job_result"]]
+        pid = e.get(F["phase_id"])
+        if pid is not None and e.get(F["step_result"]):
+            # act's own "Set up job" / "Complete job": a failure there is the job's failure.
+            pid = ".".join(str(s) for s in pid) if isinstance(pid, list) else str(pid)
+            job["phases"][pid] = {"name": e.get(F["step"]) or pid,
+                                  "result": e[F["step_result"]]}
+        sid = e.get(F["step_id"])
+        if sid is None:
+            continue
+        sid = ".".join(str(s) for s in sid) if isinstance(sid, list) else str(sid)
+        step = job["steps"].setdefault(sid, {"name": e.get(F["step"]) or sid, "result": None,
+                                             "stage": None, "started": at, "ended": at,
+                                             "took_s": None})
+        if at is not None:
+            step["started"] = at if step["started"] is None else min(step["started"], at)
+            step["ended"] = at if step["ended"] is None else max(step["ended"], at)
+        result, stage = e.get(F["step_result"]), e.get(F["stage"]) or "Main"
+        if result:
+            if stage == "Main" or (result == "failure" and step["result"] != "failure"):
+                step["result"], step["stage"] = result, stage
+            took = e.get(F["took"])
+            if isinstance(took, (int, float)) and stage == "Main":
+                step["took_s"] = round(took / 1e9, 3)       # act logs nanoseconds
+    return {"jobs": jobs, "raw": raw, "bad": bad}
+
+
+def _step_id(i: int, step: dict) -> str:
+    """The id act gives a step: its `id:`, else its index (act's `stepID`)."""
+    return str(step.get("id")) if step.get("id") else str(i)
+
+
+def _step_name(i: int, step: dict) -> str:
+    return step.get("name") or (f"Run {step['uses']}" if step.get("uses") else
+                                f"step {i + 1} ({step.get('id') or 'unnamed'})")
+
+
+def judge(workflow: dict, act: dict, junit_skips=None) -> dict:
+    """The verdict of one act run against the workflow it ran.
+
+    Every job of the workflow must appear in act's log (each of its matrix runs act reported);
+    every step of every reported job must have a result. A step or job missing is NOT RUN,
+    named. A step act ran and failed is FAILED, unless the workflow declares it non-gating
+    (`continue-on-error: true` on the step or its job). "skipped" is act's own answer to a
+    step's `if:`, as GitHub's. Returns ``{"state", "jobs", "failed", "not_run"}``: passed (all
+    ran, none failed), failed (a gating failure), incomplete (none failed, something not run)."""
+    jobs_doc = workflow.get("jobs") or {}
+    out, failed, not_run = [], [], []
+    seen_ids = {j["job_id"] for j in act["jobs"].values()}
+    for job_id, jdoc in jobs_doc.items():
+        if job_id not in seen_ids:
+            not_run.append({"job": job_id, "step": "(the whole job)",
+                            "why": "act's log reports nothing of this job"})
+    for key, job in sorted(act["jobs"].items()):
+        jdoc = jobs_doc.get(job["job_id"]) or {}
+        job_soft = bool(jdoc.get("continue-on-error") is True)
+        steps = []
+        # act's own phases: a "Set up job" that failed (the image absent, Docker refusing the
+        # container) is the job's failure, and its steps never started.
+        setup_failed = False
+        for _pid, phase in sorted((job.get("phases") or {}).items()):
+            if phase["result"] not in ("success", "skipped") and not job_soft:
+                failed.append({"job": key, "step": phase["name"], "result": phase["result"]})
+                setup_failed = setup_failed or "set up" in phase["name"].lower()
+        for i, sdoc in enumerate(jdoc.get("steps") or []):
+            sid = _step_id(i, sdoc)
+            got = job["steps"].get(sid)
+            soft = job_soft or sdoc.get("continue-on-error") is True
+            name = _step_name(i, sdoc)
+            if got is None or not got.get("result"):
+                steps.append({"name": name, "step_id": sid, "result": "not run",
+                              "non_gating": soft, "duration_s": None})
+                if not soft and not setup_failed:
+                    not_run.append({"job": key, "step": name,
+                                    "why": "act's log has no result for this step"})
+                continue
+            took = got["took_s"]
+            if took is None and got["started"] is not None and got["ended"] is not None:
+                took = float(got["ended"] - got["started"])
+            if got["result"] == "skipped" and ACT_GUARD.search(str(sdoc.get("if") or "")):
+                # Skipped BECAUSE it runs under act (`if: ${{ !env.ACT }}`): not run here, said
+                # by name; gating unless the workflow says why it need not be (ACT_NOT_GATING).
+                why = (sdoc.get("env") or {}).get(ACT_NOT_GATING)
+                steps.append({"name": name, "step_id": sid, "result": "not run (act)",
+                              "non_gating": bool(why), "duration_s": took,
+                              "why": why or ""})
+                if not why:
+                    not_run.append({"job": key, "step": name,
+                                    "why": f"the workflow skips it under act, and its env "
+                                           f"names no {ACT_NOT_GATING}"})
+                continue
+            steps.append({"name": name, "step_id": sid, "result": got["result"],
+                          "non_gating": soft, "duration_s": took})
+            if got["result"] not in ("success", "skipped") and not soft:
+                failed.append({"job": key, "step": name, "result": got["result"]})
+        out.append({"name": key, "job_id": job["job_id"], "matrix": job["matrix"],
+                    "result": job["result"] or "not reported", "steps": steps})
+    for skip in junit_skips or []:
+        not_run.append(skip)
+    state = "failed" if failed else ("incomplete" if not_run else "passed")
+    return {"state": state, "jobs": out, "failed": failed, "not_run": not_run}
+
+
+def junit_env_skips(folder: str) -> list:
+    """Every test the JUnit files under *folder* (the artifacts act's server kept, zipped or
+    not) record as skipped for a reason ENV_SKIPS names: each a "not run" entry, the test by
+    name. A browser shard whose browser tests skipped is not GitHub's run."""
+    import xml.etree.ElementTree as ET
+
+    found = []
+    texts = []
+    for path in glob.glob(os.path.join(folder, "**", "*"), recursive=True):
+        if path.endswith(".xml"):
+            try:
+                with open(path, "rb") as fh:
+                    texts.append((path, fh.read()))
+            except OSError:
+                continue
+        elif path.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(path) as z:
+                    texts += [(f"{path}!{n}", z.read(n)) for n in z.namelist()
+                              if n.endswith(".xml")]
+            except (OSError, zipfile.BadZipFile):
+                continue
+    for where, data in texts:
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError:
+            continue
+        for case in root.iter("testcase"):
+            for sk in case.findall("skipped"):
+                why = (sk.get("message") or "") + " " + (sk.text or "")
+                if any(rx.search(why) for rx in ENV_SKIPS):
+                    found.append({"job": os.path.basename(where.split("!")[-1]),
+                                  "step": f"{case.get('classname')}::{case.get('name')}",
+                                  "why": f"skipped: {why.strip()[:160]}"})
+    return found
+
+
+# ---------------------------------------------------------------------------
+# Running act
+# ---------------------------------------------------------------------------
+
+def act_argv(event: str, workflow: str, event_file: str, checkout: str, platform: str,
+             artifacts: str, cache: str, actions: str, seccomp: str = "",
+             bind: str = "") -> list:
+    """act's command line: the workflow file at the commit, the event, the runner image pinned
+    by digest and never pulled, the actions from their cache once fetched, act's own artifact
+    and cache servers in the run's folders bound to *bind* (Docker's bridge gateway), the jobs
+    on Docker's bridge under the seccomp profile *seccomp* (and CONTAINER_LIMITS, once set),
+    verbose (a step skipped by its `if:` is logged only at debug level), every container
+    removed after."""
+    opts = " ".join(o for o in ((f"--security-opt seccomp={seccomp}" if seccomp else ""),
+                                CONTAINER_LIMITS) if o)
+    argv = [BINARIES["act"], event, "-W", workflow, "-e", event_file, "-C", checkout,
+            "-P", platform, "--pull=false", "--action-offline-mode",
+            "--action-cache-path", actions, "--artifact-server-path", artifacts,
+            "--cache-server-path", cache, "--network", NETWORK, "--json", "--verbose", "--rm"]
+    if bind:
+        argv += ["--artifact-server-addr", bind, "--cache-server-addr", bind]
+    if opts:
+        argv += ["--container-options", opts]
+    return argv
+
+
+def bridge_gateway(run=subprocess.run) -> str:
+    """Docker's bridge network's gateway address, where act's artifact and cache servers bind
+    so the jobs (on the bridge) reach them and the LAN does not. Raises when Docker cannot say."""
+    out = run([BINARIES["docker"], "network", "inspect", NETWORK, "--format",
+               "{{(index .IPAM.Config 0).Gateway}}"], capture_output=True, text=True, timeout=60)
+    gw = (out.stdout or "").strip()
+    if out.returncode != 0 or not re.match(r"^[0-9a-fA-F.:]+$", gw):
+        raise RuntimeError(f"Docker's {NETWORK} network has no gateway it would name "
+                           f"(docker network inspect: exit {out.returncode}, "
+                           f"{(out.stderr or gw or 'nothing said').strip()[:200]})")
+    return gw
+
+
+def drop_env_dumps(path: str) -> int:
+    """act's log at *path* without its environment dumps (ENV_DUMP), rewritten whole and
+    renamed into place. Returns how many lines were dropped."""
+    kept, dropped = [], 0
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                kept.append(line)
+                continue
+            if isinstance(e, dict) and ENV_DUMP.match(str(e.get(F["msg"]) or "")):
+                dropped += 1
+                continue
+            kept.append(line)
+    fd, tmp = tempfile.mkstemp(prefix=".act.", dir=os.path.dirname(path))
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.writelines(kept)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+    return dropped
+
+
+def _sha256_of(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# The jobs' seccomp profile (the operator's answer 1: least privilege)
+# ---------------------------------------------------------------------------
+
+class ProfileShape(Exception):
+    """Docker's default profile is not of the shape the jobs' profile is derived from."""
+
+
+def _masked_rule(rule: dict) -> int:
+    """The mask of a one-argument SCMP_CMP_MASKED_EQ rule on argument 0, else -1."""
+    args = rule.get("args") or []
+    if (len(args) == 1 and args[0].get("op") == "SCMP_CMP_MASKED_EQ"
+            and args[0].get("index") == 0 and not args[0].get("valueTwo")):
+        return int(args[0].get("value") or 0)
+    return -1
+
+
+def seccomp_profile(default: dict) -> dict:
+    """The jobs' seccomp profile: Docker's own *default* profile, unchanged, plus ONE rule.
+    `unshare` is allowed without CAP_SYS_ADMIN when its flags ask for a user namespace, a
+    network namespace, both or neither, and no other namespace (the default's own clone mask,
+    less those two flags). That is what the suite's `unshare -rn` needs and nothing more;
+    clone and clone3 keep the default's rules.
+
+    Refuses (ProfileShape), never guesses, when *default* is not the shape this reads: an
+    error default action, one clone rule masked on argument 0 for the processes without
+    CAP_SYS_ADMIN, its mask covering every namespace flag, and `unshare` allowed only with
+    CAP_SYS_ADMIN."""
+    if not isinstance(default, dict) or default.get("defaultAction") != "SCMP_ACT_ERRNO":
+        raise ProfileShape("its default action is not SCMP_ACT_ERRNO")
+    rules = default.get("syscalls") or []
+    clone = [r for r in rules if r.get("names") == ["clone"] and _masked_rule(r) >= 0
+             and "CAP_SYS_ADMIN" in ((r.get("excludes") or {}).get("caps") or [])]
+    if len(clone) != 1:
+        raise ProfileShape(f"it has {len(clone)} clone rule(s) masked on argument 0 for "
+                           "processes without CAP_SYS_ADMIN, not 1")
+    mask = _masked_rule(clone[0])
+    every_ns = 0
+    for flag in CLONE_NS.values():
+        every_ns |= flag
+    if mask & every_ns != every_ns:
+        raise ProfileShape(f"its clone mask {mask:#x} does not cover every namespace flag "
+                           f"({every_ns:#x})")
+    for r in rules:
+        if "unshare" in (r.get("names") or []) and r.get("action") == "SCMP_ACT_ALLOW" and \
+                "CAP_SYS_ADMIN" not in ((r.get("includes") or {}).get("caps") or []):
+            raise ProfileShape("it already allows unshare without CAP_SYS_ADMIN")
+    out = json.loads(json.dumps(default))
+    out["syscalls"].append({
+        "names": ["unshare"], "action": "SCMP_ACT_ALLOW",
+        "args": [{"index": 0, "value": mask & ~SUITE_NS, "op": "SCMP_CMP_MASKED_EQ"}],
+        "excludes": {"caps": ["CAP_SYS_ADMIN"]},
+        "comment": "nmas-local-ci: the suite's unshare -rn (a user and a network namespace, "
+                   "no other), without CAP_SYS_ADMIN (docs/LOCAL_CI.md)"})
+    return out
+
+
+def profile_problems(path: str, owner: int = 0) -> list:
+    """What makes the jobs' profile at *path* unusable, each by name; [] when it is root's
+    alone, parses, errors by default and allows no guarded syscall with no condition."""
+    if not path:
+        return ["NMAS_LOCAL_CI_SECCOMP names no seccomp profile (the host step writes it with "
+                "`nmas-local-ci seccomp-profile`)"]
+    try:
+        st = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return [f"the seccomp profile {path} does not exist"]
+    problems = []
+    if st.st_uid != owner or st.st_mode & 0o022 or not os.path.isfile(path):
+        problems.append(f"the seccomp profile {path} is not root's alone")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            prof = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return problems + [f"the seccomp profile {path} could not be read ({exc})"]
+    if not isinstance(prof, dict) or prof.get("defaultAction") != "SCMP_ACT_ERRNO":
+        problems.append(f"the seccomp profile {path} allows by default (defaultAction "
+                        f"{prof.get('defaultAction') if isinstance(prof, dict) else '?'}): "
+                        "not least privilege")
+        return problems
+    for r in prof.get("syscalls") or []:
+        names = sorted(set(r.get("names") or []) & set(GUARDED_SYSCALLS))
+        if (names and r.get("action") == "SCMP_ACT_ALLOW" and not r.get("args")
+                and not (r.get("includes") or {}).get("caps")):
+            problems.append(f"the seccomp profile {path} allows {', '.join(names)} with no "
+                            "condition: not least privilege")
+    return problems
+
+
+def push_event(sha: str, before: str, slug: str) -> dict:
+    """The push event GitHub sends for main, with the fields ci.yml reads (`github.event.before`,
+    the sha) and the repository's name."""
+    return {"ref": "refs/heads/main", "before": before or "0" * 40, "after": sha,
+            "head_commit": {"id": sha}, "repository": {"full_name": slug,
+                                                       "default_branch": "main"}}
+
+
+def _git(repo, *args, check=True, run=subprocess.run):
+    """git, by absolute path, with no system or user configuration, and only the https and
+    file transports allowed (root fetches a commit's history; it never runs a transport's
+    helper)."""
+    env = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
+           "LANG": "C.UTF-8"}
+    out = run([BINARIES["git"], "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+               "-c", "protocol.file.allow=always", *(["-C", repo] if repo else []), *args],
+              capture_output=True, text=True, env=env, timeout=600)
+    if check and out.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args[:2])}: {(out.stderr or '').strip()[:300]}")
+    return (out.stdout or "").strip()
+
+
+def own_identity() -> dict:
+    """This runner, as installed: its file's sha256 and the commit it was installed from (the
+    host step writes `installed-from`)."""
+    with open(os.path.abspath(__file__), "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()
+    try:
+        with open(os.path.join(INSTALLED, "installed-from"), encoding="utf-8") as fh:
+            src = fh.read().strip()
+    except OSError:
+        src = ""
+    return {"sha256": digest, "installed_from": src, "path": os.path.abspath(__file__)}
+
+
+def confinement(seccomp: str) -> dict:
+    """What a record says of the jobs' confinement: the profile and its sha256, the network
+    ("online": Docker's bridge, the operator's answer 3), and the limits (none yet, said so)."""
+    return ({"seccomp": seccomp, "seccomp_sha256": _sha256_of(seccomp) if seccomp else "",
+             "docker_network": NETWORK},
+            "online", CONTAINER_LIMITS or LIMITS_UNSET)
+
+
+def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: str,
+               run=subprocess.run, clock=time.time, workflow_file: str = WORKFLOW,
+               seccomp: str = "") -> dict:
+    """One push run of *sha*: a fresh clone at it, act over the workflow, the record. Returns
+    the record written. The clone and act's containers are removed whatever happens."""
+    import yaml                                  # the system's python3-yaml (root's, -I)
+
+    vpath = verdict_path(store, sha)
+    rundir = os.path.join(store, "runs", sha)
+    if os.path.isdir(rundir):
+        shutil.rmtree(rundir)                    # this runner's own folder for this sha
+    os.makedirs(rundir, mode=0o755)
+    started = clock()
+    conf, network, limits = confinement(seccomp)
+    rec = {"schema": SCHEMA, "kind": "push", "sha": sha, "before": before, "tree": "",
+           "state": "running", "started_at": iso(started), "ended_at": None,
+           "duration_s": None, "runner": own_identity(), "platform": platform,
+           "confinement": conf, "network": network, "limits": limits,
+           "workflow": workflow_file, "log_dir": rundir, "jobs": [], "failed": [],
+           "not_run": [], "reason": ""}
+    work = tempfile.mkdtemp(prefix="nmas-local-ci-")
+    try:
+        bind = bridge_gateway(run)
+        mirror = os.path.join(store, "mirror.git")
+        clone = os.path.join(work, "checkout")
+        # A full, self-contained clone: act copies the folder into the job's container, where
+        # a worktree's `.git` file, or a shared clone's alternates, would point at nothing.
+        _git(None, "clone", "-q", "--no-local", "--no-checkout", mirror, clone, run=run)
+        _git(clone, "checkout", "-q", "--detach", sha, run=run)
+        rec["tree"] = _git(clone, "rev-parse", f"{sha}^{{tree}}", run=run)
+        with open(os.path.join(clone, workflow_file), encoding="utf-8") as fh:
+            text = fh.read()
+        rec["workflow_sha256"] = hashlib.sha256(text.encode()).hexdigest()
+        workflow = yaml.safe_load(text) or {}
+        write_record(vpath, rec)
+        event_file = os.path.join(work, "event.json")
+        with open(event_file, "w", encoding="utf-8") as fh:
+            json.dump(push_event(sha, before, origin_slug), fh)
+        artifacts = os.path.join(rundir, "artifacts")
+        argv = act_argv("push", workflow_file, event_file, clone, platform, artifacts,
+                        os.path.join(store, "cache"), os.path.join(store, "actions"),
+                        seccomp=seccomp, bind=bind)
+        log = os.path.join(rundir, "act.jsonl")
+        with open(log, "w", encoding="utf-8") as fh:
+            try:
+                proc = run(argv, stdout=fh, stderr=subprocess.STDOUT, text=True,
+                           timeout=RUN_BOUND_MIN * 60, cwd=clone)
+                code = proc.returncode
+            except subprocess.TimeoutExpired:
+                code = None
+        drop_env_dumps(log)
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            act = read_act_log(fh)
+        for key, lines in act["raw"].items():
+            with open(os.path.join(rundir, re.sub(r"[^\w.-]+", "_", key) + ".log"), "w",
+                      encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+        verdict = judge(workflow, act, junit_env_skips(artifacts))
+        rec.update(verdict)
+        for f in rec["failed"]:
+            f["log"] = os.path.join(rundir, re.sub(r"[^\w.-]+", "_", f["job"]) + ".log")
+        if code is None:
+            rec.update(state="failed", reason=f"act ran past the run's bound, {RUN_BOUND_MIN} "
+                       "min, and was stopped")
+            rec["failed"].append({"job": "(the run)", "step": "(the bound)",
+                                  "result": "timed_out", "log": log})
+        elif not act["jobs"]:
+            rec.update(state="error", reason=f"act exited {code} and reported no job: it could "
+                       f"not run the workflow (its log: {log})")
+        elif code != 0 and rec["state"] == "passed":
+            rec.update(state="incomplete", reason=f"act exited {code} though every step it "
+                       "reported passed: read its log")
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        rec.update(state="error", reason=f"{type(exc).__name__}: {exc}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    ended = clock()
+    rec.update(ended_at=iso(ended), duration_s=round(ended - started, 1))
+    write_record(vpath, rec)
+    return rec
+
+
+# ---------------------------------------------------------------------------
+# Schedules: each workflow's own `schedule:` crons
+# ---------------------------------------------------------------------------
+
+def _cron_field(spec: str, value: int, lo: int, hi: int) -> bool:
+    for part in spec.split(","):
+        step = 1
+        if "/" in part:
+            part, step = part.split("/", 1)
+            step = int(step)
+        if part == "*":
+            a, b = lo, hi
+        elif "-" in part:
+            a, b = (int(x) for x in part.split("-", 1))
+        else:
+            a = b = int(part)
+        if a <= value <= b and (value - a) % step == 0:
+            return True
+    return False
+
+
+def cron_matches(cron: str, epoch: float) -> bool:
+    """Whether the five-field *cron* fires in the UTC minute of *epoch* (POSIX: a day matches
+    on its day of the month OR its weekday when both are restricted; Sunday is 0 or 7)."""
+    minute, hour, dom, month, dow = cron.split()
+    t = time.gmtime(epoch)
+    wd = (t.tm_wday + 1) % 7
+    day_ok_dom = _cron_field(dom, t.tm_mday, 1, 31)
+    day_ok_dow = _cron_field(dow, wd, 0, 7) or (wd == 0 and _cron_field(dow, 7, 0, 7))
+    if dom != "*" and dow != "*":
+        day = day_ok_dom or day_ok_dow
+    else:
+        day = day_ok_dom and day_ok_dow
+    return (_cron_field(minute, t.tm_min, 0, 59) and _cron_field(hour, t.tm_hour, 0, 23)
+            and _cron_field(month, t.tm_mon, 1, 12) and day)
+
+
+def last_fire(cron: str, now: float, within_s: int = 8 * 86400):
+    """The most recent minute at or before *now* that *cron* fires in, looked for back over
+    *within_s* (a weekly cron's period and a day); None when none."""
+    t = int(now // 60) * 60
+    for back in range(0, within_s, 60):
+        if cron_matches(cron, t - back):
+            return t - back
+    return None
+
+
+def due_schedules(workflows: dict, last_started: dict, now: float) -> list:
+    """``[(file, cron, fired_at)]``: each workflow (``{file: doc}``) with a `schedule:` cron that
+    has fired since its last local start. ci.yml has none: it runs on every push."""
+    due = []
+    for name, doc in sorted(workflows.items()):
+        on = doc.get("on", doc.get(True)) if isinstance(doc, dict) else None
+        crons = [s.get("cron") for s in ((on or {}).get("schedule") or [])
+                 if isinstance(on, dict) and isinstance(s, dict) and s.get("cron")]
+        fires = [(c, last_fire(c, now)) for c in crons]
+        fires = [(c, f) for c, f in fires if f is not None]
+        if not fires:
+            continue
+        cron, fired = max(fires, key=lambda cf: cf[1])
+        if (last_started.get(name) or 0) < fired:
+            due.append((name, cron, fired))
+    return due
+
+
+def in_quiet(window: str, now: float) -> bool:
+    """Whether *now* (UTC) is inside *window*, "HH:MM-HH:MM" (empty: never)."""
+    m = re.match(r"^(\d\d):(\d\d)-(\d\d):(\d\d)$", (window or "").strip())
+    if not m:
+        return False
+    t = time.gmtime(now)
+    cur = t.tm_hour * 60 + t.tm_min
+    a, b = int(m.group(1)) * 60 + int(m.group(2)), int(m.group(3)) * 60 + int(m.group(4))
+    return a <= cur < b if a <= b else (cur >= a or cur < b)
+
+
+# ---------------------------------------------------------------------------
+# The command line
+# ---------------------------------------------------------------------------
+
+def _slug(origin: str) -> str:
+    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$", origin or "")
+    return f"{m.group(1)}/{m.group(2)}" if m else ""
+
+
+def _lock(store: str):
+    fd = os.open(os.path.join(store, "lock"), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    return fd
+
+
+#: The deep self-test's browser check, run in the job image with no network: both must start.
+BROWSERS = "firefox --version && geckodriver --version"
+
+
+def self_test(store: str, env: dict, run=subprocess.run, owner: int = 0,
+              deep: bool = False) -> list:
+    """What this host lacks, each by name; [] when it can run. *deep* (the `self-test`
+    command, not each run) also starts Firefox and geckodriver in the job image."""
+    problems = []
+    for name, path in BINARIES.items():
+        try:
+            st = os.stat(path)
+        except OSError:
+            problems.append(f"{name}: {path} is not there")
+            continue
+        if st.st_uid != owner or st.st_mode & 0o022:
+            problems.append(f"{name}: {path} is not root's alone")
+    try:
+        st = os.stat(store, follow_symlinks=False)
+        if st.st_uid != owner or st.st_mode & 0o022:
+            problems.append(f"the store {store} is not root's alone")
+    except OSError:
+        problems.append(f"the store {store} does not exist")
+    problems += profile_problems(env.get("NMAS_LOCAL_CI_SECCOMP", ""), owner)
+    origin, platform = env.get("NMAS_LOCAL_CI_ORIGIN", ""), env.get("NMAS_LOCAL_CI_PLATFORM", "")
+    if not re.match(r"^(https|file)://", origin):
+        problems.append("NMAS_LOCAL_CI_ORIGIN is not an https:// or file:// URL")
+    # A pulled image is pinned by its registry digest (<image>@sha256:...); the job image built
+    # on the host has none, and is pinned by its image ID (sha256:...), content-addressed too
+    # (act 0.2.89 runs `-P ubuntu-24.04=sha256:<id>` with --pull=false, measured 2026-11-03).
+    if not re.match(r"^[\w.-]+=(\S+@)?sha256:[0-9a-f]{64}$", platform):
+        problems.append("NMAS_LOCAL_CI_PLATFORM does not pin its image by digest "
+                        "(<label>=<image>@sha256:<64 hex>, or <label>=sha256:<the image ID>)")
+    else:
+        image = platform.split("=", 1)[1]
+        out = run([BINARIES["docker"], "image", "inspect", "--format", "{{.Size}}", image],
+                  capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            problems.append(f"the runner image {image} is not in Docker's store here (it is "
+                            "never pulled at run time)")
+        elif deep:
+            out = run([BINARIES["docker"], "run", "--rm", "--network", "none", image,
+                       "sh", "-c", BROWSERS], capture_output=True, text=True, timeout=120)
+            if out.returncode != 0:
+                said = ((out.stderr or "") + (out.stdout or "")).strip()[:200]
+                problems.append(f"the runner image {image} cannot start Firefox and geckodriver "
+                                f"(exit {out.returncode}: {said or 'nothing said'}); the browser "
+                                "tests would skip, so every verdict would be incomplete")
+    import importlib.util
+    if importlib.util.find_spec("yaml") is None:          # the system's python3-yaml
+        problems.append("python3-yaml is not installed")
+    return problems
+
+
+def tick(store: str, env: dict, run=subprocess.run, clock=time.time) -> int:
+    """The timer's run: fetch; main's tip, if it has no verdict; each due schedule. One at a
+    time (a lock), nothing started inside the quiet window."""
+    import yaml
+
+    if in_quiet(env.get("NMAS_LOCAL_CI_QUIET", ""), clock()):
+        print(f"nmas-local-ci: inside the quiet window {env.get('NMAS_LOCAL_CI_QUIET')} UTC: "
+              "nothing started")
+        return 0
+    lock = _lock(store)
+    if lock is None:
+        print("nmas-local-ci: another run holds the lock: nothing started")
+        return 0
+    try:
+        origin, platform = env["NMAS_LOCAL_CI_ORIGIN"], env["NMAS_LOCAL_CI_PLATFORM"]
+        mirror = os.path.join(store, "mirror.git")
+        if not os.path.isdir(mirror):
+            _git(None, "init", "-q", "--bare", mirror, run=run)
+        _git(mirror, "fetch", "-q", "--prune", origin, "+refs/heads/*:refs/heads/*", run=run)
+        tip = _git(mirror, "rev-parse", "refs/heads/main", run=run)
+        state_path = os.path.join(store, "state.json")
+        try:
+            with open(state_path, encoding="utf-8") as fh:
+                state = json.load(fh)
+        except (OSError, ValueError):
+            state = {}
+        seccomp = env.get("NMAS_LOCAL_CI_SECCOMP", "")
+        if not os.path.lexists(verdict_path(store, tip)):
+            rec = run_commit(store, tip, state.get("last_tip") or "", _slug(origin), platform,
+                             run=run, clock=clock, seccomp=seccomp)
+            state["last_tip"] = tip
+            print(f"nmas-local-ci: {tip[:10]} {rec['state']}")
+        workflows = {}
+        for name in _git(mirror, "ls-tree", "--name-only", f"{tip}:.github/workflows",
+                         run=run).split():
+            if name.endswith(".yml") and name != os.path.basename(WORKFLOW):
+                workflows[name] = yaml.safe_load(_git(mirror, "show",
+                                                      f"{tip}:.github/workflows/{name}",
+                                                      run=run)) or {}
+        for name, cron, fired in due_schedules(workflows, state.get("schedules") or {},
+                                               clock()):
+            state.setdefault("schedules", {})[name] = clock()
+            rec = run_scheduled(store, tip, name, cron, fired, platform, run=run, clock=clock,
+                                seccomp=seccomp)
+            print(f"nmas-local-ci: scheduled {name} at {tip[:10]} {rec['state']}")
+        write_state(state_path, state)
+    finally:
+        os.close(lock)
+    return 0
+
+
+def write_state(path: str, state: dict) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=".state.", dir=os.path.dirname(path))
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, sort_keys=True)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def run_scheduled(store, sha, name, cron, fired, platform, run=subprocess.run, clock=time.time,
+                  seccomp=""):
+    """One scheduled workflow at main's tip: act's `schedule` event, recorded under
+    `scheduled/<workflow>/` (not a deploy's verdict: the scheduled-jobs reader's, once moved)."""
+    import yaml
+
+    stamp = iso(clock()).replace(":", "")
+    path = os.path.join(store, "scheduled", name.rsplit(".", 1)[0], f"{stamp}.json")
+    work = tempfile.mkdtemp(prefix="nmas-local-ci-")
+    rundir = os.path.join(store, "runs", f"{name.rsplit('.', 1)[0]}-{stamp}")
+    os.makedirs(rundir, mode=0o755, exist_ok=True)
+    started = clock()
+    conf, network, limits = confinement(seccomp)
+    rec = {"schema": SCHEMA, "kind": "schedule", "workflow": f".github/workflows/{name}",
+           "sha": sha, "cron": cron, "fired_at": iso(fired), "state": "running",
+           "started_at": iso(started), "runner": own_identity(), "platform": platform,
+           "confinement": conf, "network": network, "limits": limits,
+           "log_dir": rundir, "jobs": [], "failed": [], "not_run": [], "reason": ""}
+    try:
+        bind = bridge_gateway(run)
+        clone = os.path.join(work, "checkout")
+        _git(None, "clone", "-q", "--no-local", "--no-checkout",
+             os.path.join(store, "mirror.git"), clone, run=run)
+        _git(clone, "checkout", "-q", "--detach", sha, run=run)
+        with open(os.path.join(clone, rec["workflow"]), encoding="utf-8") as fh:
+            workflow = yaml.safe_load(fh) or {}
+        event_file = os.path.join(work, "event.json")
+        with open(event_file, "w", encoding="utf-8") as fh:
+            json.dump({"schedule": cron}, fh)
+        log = os.path.join(rundir, "act.jsonl")
+        with open(log, "w", encoding="utf-8") as fh:
+            proc = run(act_argv("schedule", rec["workflow"], event_file, clone, platform,
+                                os.path.join(rundir, "artifacts"), os.path.join(store, "cache"),
+                                os.path.join(store, "actions"), seccomp=seccomp, bind=bind),
+                       stdout=fh, stderr=subprocess.STDOUT, text=True,
+                       timeout=RUN_BOUND_MIN * 60 * 2, cwd=clone)
+        drop_env_dumps(log)
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            act = read_act_log(fh)
+        rec.update(judge(workflow, act, junit_env_skips(os.path.join(rundir, "artifacts"))))
+        if not act["jobs"]:
+            rec.update(state="error", reason=f"act exited {proc.returncode} and reported no job")
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        rec.update(state="error", reason=f"{type(exc).__name__}: {exc}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    rec.update(ended_at=iso(clock()), duration_s=round(clock() - started, 1))
+    write_record(path, rec)
+    return rec
+
+
+def main(argv=None, env=None) -> int:
+    env = os.environ if env is None else env
+    store = env.get("NMAS_LOCAL_CI_STORE") or STORE
+    ap = argparse.ArgumentParser(prog="nmas-local-ci", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("tick")
+    one = sub.add_parser("run")
+    one.add_argument("sha")
+    one.add_argument("--before", default="")
+    sub.add_parser("self-test")
+    sub.add_parser("status")
+    prof = sub.add_parser("seccomp-profile")
+    prof.add_argument("--from", dest="src", required=True,
+                      help="Docker's default seccomp profile, the version the host's Docker "
+                           "vendors (docs/LOCAL_CI.md, section 11)")
+    prof.add_argument("--out", required=True)
+    args = ap.parse_args(argv)
+    if args.cmd == "seccomp-profile":
+        try:
+            with open(args.src, encoding="utf-8") as fh:
+                default = json.load(fh)
+            out = seccomp_profile(default)
+        except (OSError, ValueError, ProfileShape) as exc:
+            print(f"nmas-local-ci: no profile written: {args.src}: {exc}", file=sys.stderr)
+            return 1
+        write_record_json(args.out, out)
+        print(f"nmas-local-ci: {args.out} written: Docker's default from {args.src} "
+              f"(sha256 {_sha256_of(args.src)[:12]}), one rule added (unshare: a user and a "
+              f"network namespace, no other); sha256 {_sha256_of(args.out)[:12]}")
+        return 0
+    if args.cmd == "self-test":
+        problems = self_test(store, env, deep=True)
+        for p in problems:
+            print(f"nmas-local-ci: {p}")
+        print("nmas-local-ci: self-test " + ("FAILED" if problems else "passed"))
+        return 1 if problems else 0
+    if args.cmd == "status":
+        for path in sorted(glob.glob(os.path.join(store, "verdicts", "*.json")),
+                           key=os.path.getmtime)[-10:]:
+            try:
+                rec = read_record(path)
+            except Unreadable as exc:
+                print(f"UNREADABLE {exc}")
+                continue
+            print(f"{rec['sha'][:10]} {rec['state']:<10} {rec.get('ended_at') or '-'} "
+                  f"{len(rec.get('failed') or [])} failed, {len(rec.get('not_run') or [])} "
+                  "not run")
+        return 0
+    problems = self_test(store, env)
+    if problems:
+        print("nmas-local-ci: cannot run here: " + "; ".join(problems), file=sys.stderr)
+        return 78
+    if args.cmd == "tick":
+        return tick(store, env)
+    lock = _lock(store)
+    if lock is None:
+        print("nmas-local-ci: another run holds the lock", file=sys.stderr)
+        return 75
+    try:
+        rec = run_commit(store, args.sha, args.before, _slug(env["NMAS_LOCAL_CI_ORIGIN"]),
+                         env["NMAS_LOCAL_CI_PLATFORM"],
+                         seccomp=env.get("NMAS_LOCAL_CI_SECCOMP", ""))
+    finally:
+        os.close(lock)
+    print(f"nmas-local-ci: {args.sha[:10]} {rec['state']}: {len(rec['failed'])} failed, "
+          f"{len(rec['not_run'])} not run; record {verdict_path(store, args.sha)}")
+    return 0 if rec["state"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

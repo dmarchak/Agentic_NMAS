@@ -1,0 +1,34 @@
+name: probe
+on: push
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      shards: ${{ steps.pick.outputs.shards }}
+    steps:
+      - id: pick
+        name: Pick the shards
+        run: echo 'shards=["a","b"]' >> "$GITHUB_OUTPUT"
+  test:
+    needs: scope
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.scope.outputs.shards) }}
+    steps:
+      - name: Say the shard
+        run: echo "shard ${{ matrix.shard }}"
+      - name: Skipped under act
+        if: ${{ !env.ACT }}
+        env:
+          NMAS_ACT_NOT_GATING: "a probe"
+        run: echo never
+      - name: Fails but non-gating
+        continue-on-error: true
+        run: exit 3
+      - name: Fails on b
+        run: test "${{ matrix.shard }}" != b
+      - name: Only on a
+        if: matrix.shard == 'a'
+        run: echo only a

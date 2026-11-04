@@ -127,6 +127,14 @@ ROW_KINDS = {
                                     "period", "find why its schedule has not run or passed"),
     ("scheduled_jobs", "unread"): ("a scheduled quality job's runs could not be read",
                                    "read what GitHub answered"),
+    # Workstream 0 (docs/LOCAL_CI.md): the two CI runners on one commit.
+    ("ci_agreement", "red-after-deploy"): ("GitHub's CI failed the running commit after it was "
+                                           "deployed on the local runner's green",
+                                           "rerun GitHub's run once, or roll back"),
+    ("ci_agreement", "disagree"): ("the local CI runner and GitHub's CI disagree on a commit",
+                                   "read where the red one failed, and rerun it once"),
+    ("ci_agreement", "unread"): ("the local CI runner's record of a commit could not be trusted "
+                                 "or read", "read why, and repair the runner's store"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
     # C1693: a hand-formatted document cannot be patched (Change it in words, bulk intent).
     ("intent-format", "hand"): ("a device's committed intent does not round-trip through "
@@ -400,6 +408,13 @@ CLEARS = {
                                     "(read every 30 minutes)"),
     ("scheduled_jobs", "unread"): (("resolves",), "the reader's next read (every 30 minutes) "
                                    "gets the workflow's runs from GitHub"),
+    ("ci_agreement", "red-after-deploy"): (("resolves",), "GitHub's latest run for the commit "
+                                           "passes (a green rerun), or the host runs another "
+                                           "commit (read every 15 minutes)"),
+    ("ci_agreement", "disagree"): (("resolves",), "the two agree (a rerun), or a newer commit's "
+                                   "two verdicts agree (read every 15 minutes)"),
+    ("ci_agreement", "unread"): (("resolves",), "the record reads, root's alone, for that "
+                                 "commit's tree (read every 15 minutes)"),
     ("redaction", "unhealthy"): (("resolves",), "every log handler masks the canary and no "
                                  "redaction has failed: read again at each read of this page"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
@@ -2534,6 +2549,78 @@ def scheduled_jobs_source(cached=None, now: float = None) -> dict:
                          value_at=value_at, stale_after_seconds=promise, reader=SJ.NAME,
                          checked=(f"{len(v.get('workflows') or [])} workflow(s) with a schedule, "
                                   f"their scheduled runs on main: " + ("; ".join(said) or "none")))
+
+
+def ci_agreement_source(cached=None, now: float = None) -> dict:
+    """The two CI runners on one commit (workstream 0, the operator's rule, 2026-11-03): one row
+    per commit at most, from `ci_agreement.judge` over the reader's stored value.
+    * red-after-deploy (DANGER): the running commit was deployed on the local green and GitHub's
+      CI has since failed it, naming where; rerun once, or roll back (`scripts/nmas-rollback`);
+    * disagree (WARNING): a commit the host does not run, one green and one red;
+    * unread (WARNING): the local runner's record for a commit cannot be trusted or read."""
+    from modules import reader_job
+    from modules.readers import ci_agreement as CA
+    from modules.readers import ci_verdict as CV
+
+    started = time.time() if now is None else now
+    label = "The two CI runners"
+    got = reader_job.read_cached(CA.NAME) if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000) if now is None else 0
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("ci_agreement", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    rows = []
+    for r in CA.judge(v):
+        short, run = r["sha"][:10], r.get("run") or {}
+        where = CV.failed_words({"failed_at": r.get("failed_at")})
+        cause = f"GitHub {r.get('github', '?').lower()}, the local runner {r.get('local', '?')}"
+        link = ({"run_url": run["url"], "run": str(run.get("number") or "")}
+                if run.get("url") else {})
+        if r["kind"] == "red-after-deploy":
+            back = r.get("rollback_to")
+            rows.append(row(
+                source="ci_agreement", kind="red-after-deploy", key=r["sha"], level="danger",
+                cause=cause,
+                what=(f"GitHub's CI failed {short}, which this host runs (deployed on the local "
+                      f"runner's green): run #{run.get('number')}, attempt "
+                      f"{run.get('attempt')}" + (f"; failed at {where}" if where else "")),
+                action=dict(link, label=(
+                    ("The developer reruns GitHub's run once (a green rerun clears this); "
+                     if r.get("rerun_left") else "The rerun is spent; ")
+                    + (f"if it stays red, roll back: scripts/nmas-rollback {back[:10]} --push, "
+                       "then Update" if back else
+                       "roll back to the release before it with scripts/nmas-rollback, then "
+                       "Update")))))
+        elif r["kind"] == "disagree":
+            rows.append(row(
+                source="ci_agreement", kind="disagree", key=r["sha"], level="warning",
+                cause=cause,
+                what=(f"The two CI runners disagree on {short}: GitHub "
+                      f"{r['github'].lower()} (run #{run.get('number')}), the local runner "
+                      f"{r['local']}" + (f"; GitHub failed at {where}" if where else "")
+                      + (f"; the local runner: {r['local_words']}" if r.get("local_words")
+                         else "")),
+                action=dict(link, label="The developer reads where the red one failed and "
+                                        "reruns it once; a newer commit both pass clears this")))
+        else:
+            rows.append(row(
+                source="ci_agreement", kind="unread", key=r["sha"], level="warning",
+                cause=f"the local runner's record: {r.get('local')}",
+                what=f"The local CI runner's record of {short} is not usable: {r['local_words']}",
+                action={"label": "Read why: the store and its records must be root's alone, "
+                                 "for the commit's own tree", "known": False}))
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    return source_result("ci_agreement", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=value_at, stale_after_seconds=promise, reader=CA.NAME,
+                         checked=(f"{len(v.get('commits') or [])} commit(s) on main with a "
+                                  f"GitHub run, each against the local runner's record; "
+                                  f"{len(rows)} need attention"))
 
 
 # ---------------------------------------------------------------------------
@@ -5453,6 +5540,7 @@ def ai_spend_source(now=None) -> dict:
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, scheduled_jobs_source,
+           ci_agreement_source,
            redaction_source, reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, restart_source,
@@ -5483,6 +5571,7 @@ SOURCE_KEYS = {
     "integrations_source": ("integration_health",),
     "ci_source": ("ci_verdict",),
     "scheduled_jobs_source": ("scheduled_jobs",),
+    "ci_agreement_source": ("ci_agreement",),
     # Redaction changes only inside this process (a handler added unfiltered); it is measured
     # at each read of the page, and a settings change is the nearest a change announces.
     "redaction_source": ("settings",),

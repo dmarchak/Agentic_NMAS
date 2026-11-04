@@ -180,6 +180,7 @@ def _verdict(root, sha, now, verdict=None, jobs=None) -> dict:
         mod = CV.deploy_script()
         code, sentence = (verdict or mod.ci_verdict)(root, sha)
         e = {"tip": sha, "state": CV.state_of(mod, code), "sentence": sentence,
+             "source": CV.source_of(mod, sentence),
              "asked_at": _iso(now)}
         if e["state"] == "failed":
             # Where it failed (C418): the Needs attention row leads with it. Asked once,
