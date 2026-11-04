@@ -148,9 +148,21 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 
 **Cost and estimates (the operator, 2026-11-03, after the calibration of C2380):**
 - **The main thread stays lean.**
-  - It keeps a written handoff (state, open items, next steps), and a fresh session starts
-    from it at each natural break: at least daily, or when the context passes about 200k
-    tokens.
+  - It keeps a written handoff (state, open items, next steps). A fresh session starts from it
+    at a natural break, never because of a token count: Claude Code's automatic compaction
+    handles a long context (the operator, 2026-11-04).
+  - **A fresh start is cheap.** The handoff's section 0 alone is enough to resume: under about
+    3k tokens, holding the current step, the commit order, the approvals given with their
+    quotes and the open questions, with links to the rest. A new session reads section 0 and
+    CLAUDE.md, and opens anything else on demand (the operator, 2026-11-04).
+    - Cost: section 0 kept current at each step.
+    - Prevents: a startup that re-reads the whole handoff and the plan before working.
+  - **Long reads go to an agent that returns only the lines that matter,** within the
+    two-agent limit: full gate logs, CI logs, multi-page changelogs, the whole register (the
+    operator, 2026-11-04).
+    - Cost: an agent's start for each long read.
+    - Prevents: a long read's text staying in the main thread's context, re-read on every
+      later call.
   - Code reading and surveys go to agents, and their summaries are kept short.
   - Every report gives the main thread's weighted tokens.
   - Cost: the handoff's upkeep and a session start at each break.
