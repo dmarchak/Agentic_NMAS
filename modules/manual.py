@@ -89,6 +89,8 @@ PAGES = (
      "how-it-works/intent-in-words.md"),
     ("path-trace", "A path trace: the path packets take", H, "how-it-works/path-trace.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
+    ("heal-proposal", "Approve or decline a self-healing proposal", H,
+     "how-it-works/heal-proposal.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -219,6 +221,8 @@ OPERATIONS = {
     "ask-in-words": ("modules.ai.nl_query", "STEPS"),
     "intent-in-words": ("modules.ai.intent_words", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
+    # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
+    "heal-proposal": ("modules.heal.propose", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
     "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),

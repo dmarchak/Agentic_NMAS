@@ -70,6 +70,15 @@ STAGES = {
         "privileged_v2.preview", "hash", "modules.nsot.privileged.verify",
         "n/a: what Tier 2 clears cannot be put back; the device rebuilds it (counters, ARP, "
         "the log buffer), and the preview says so", "modules.nsot.privileged.record"),
+    # Heal to intent's Tier 2 (board H, parts H5 and H9, artboard E; routes/heal_proposal_v2):
+    # a self-healing proposal approved by its hash on its Needs attention card. The preview is
+    # the card's read of the proposal; verify the pipeline's, then the reset's measured rule;
+    # rollback the pipeline's after verify (`roll_back_after`, the change put back when the
+    # reset was not made); the record the step log's act row, beside the receipt and the
+    # reset's Tier 2 record.
+    "heal_proposal_v2.approve": Stages(
+        "heal_proposal_v2.proposal", "hash", "modules.nsot.privileged.reset_verify",
+        "modules.pipeline.roll_back_after", "modules.heal.steplog.record_act"),
     "device_v2.persist_confirm": Stages(
         "device_v2.persist", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
@@ -442,6 +451,10 @@ HISTORY = {
     # The columns ignored when grouping a run (C580): recorded on that run, drawn on its row.
     "reads_v2.show_commands_ignore": ("show_commands",),
     "privileged_v2.confirm": ("privileged",),
+    # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
+    # the reset's Tier 2 record; declined, its step log alone.
+    "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
+    "heal_proposal_v2.decline": ("heal",),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     # C2003: a page's own stall, kept as a local record and drawn on History › Page stalls.
     "v2.stall_capture": ("page_stalls",),

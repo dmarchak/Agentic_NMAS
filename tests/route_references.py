@@ -265,3 +265,47 @@ def resolves(app_module, request: str, method: str) -> bool:
         if ok:
             return True
     return False
+
+
+def route_modules() -> list:
+    """Every module under ``routes/`` (one per tracked ``.py`` file), imported."""
+    import importlib
+
+    out = []
+    for path in tracked("routes", suffix=".py"):
+        name = os.path.splitext(os.path.relpath(path, ROOT))[0].replace(os.sep, ".")
+        if name.endswith(".__init__"):
+            name = name[:-len(".__init__")]
+        out.append(importlib.import_module(name))
+    return out
+
+
+def built_endpoints(modules=None) -> dict:
+    """{endpoint: module name} for every route a blueprint DEFINED in *modules* (default: every
+    module under ``routes/``) builds, read by Flask itself: each blueprint, found as a module
+    attribute whose ``import_name`` is that module (so one imported from elsewhere is counted
+    once, where it is made), is registered on a scratch app carrying the app's own URL
+    converters, and its rules' endpoints are read back. Nothing is registered on the real app.
+    What this cannot see, stated: a route added to the real app by a function call outside a
+    blueprint (``app.py``'s own routes, which are registered by being written there)."""
+    import flask
+
+    from modules.nsot import reads
+
+    out = {}
+    for mod in route_modules() if modules is None else modules:
+        for value in vars(mod).values():
+            if not isinstance(value, flask.Blueprint) or value.import_name != mod.__name__:
+                continue
+            scratch = flask.Flask("built_endpoints")
+            scratch.url_map.converters["run_id"] = reads.url_converter()
+            scratch.register_blueprint(value)
+            for rule in scratch.url_map.iter_rules():
+                if rule.endpoint != "static":
+                    out[rule.endpoint] = mod.__name__
+    return out
+
+
+def registered_endpoints(app_module) -> set:
+    """Every endpoint the app serves."""
+    return {r.endpoint for r in app_module.app.url_map.iter_rules()}

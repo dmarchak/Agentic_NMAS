@@ -1817,6 +1817,42 @@ class TestHealCards(_Cards):
         return self._resume(request)
 
 
+# ── Board H's artboard E (H9): a self-healing proposal's card on Needs attention ──────────────
+
+class TestHealProposalCards(_Cards):
+    """On tests/test_heal_propose.py's lab: a real proposal on edge-b made by the real decision
+    (R8's changed router-id), its card read by the real route; its reset measured by the test
+    record, Approve and run on edge-b is pressable. Blocked: the shipped record measures no
+    reset, so the proposal itself refuses and Approve is drawn disabled saying why."""
+    from tests import test_heal_decide as _hd, test_heal_propose as _hp
+    from tests import test_sdn_connections as _sc
+    networks, lab, measured = hosted(_sc.networks), hosted(_hd.lab), hosted(_hp.measured)
+
+    CASES = {"approve": ("_heal_proposal.html", "Approve and run on {{ host }}",
+                         r"Approve and run on edge-b",
+                         "data: the reset is not measured, so the proposal refuses")}
+
+    def _card(self, request, monkeypatch):
+        import app as A
+        from tests.test_heal_propose import R8, FakeApproved, proposed
+        request.getfixturevalue("lab")
+        monkeypatch.setattr("modules.heal.propose.Sources", lambda net: FakeApproved(R8))
+        d = proposed()
+        html = _text(A.app.test_client().get(f"/v2/network/Default/heal/proposal/{d['id']}",
+                                             headers={"HX-Request": "true"}))
+        assert 'name="hash"' in html, "floor: the proposal's card is drawn"
+        return html
+
+    def drawn_approve(self, request):
+        request.getfixturevalue("measured")
+        return self._card(request, request.getfixturevalue("monkeypatch"))
+
+    def blocked_approve(self, request, monkeypatch):
+        html = self._card(request, monkeypatch)
+        assert "is not measured" in html, "floor: the unmeasured reset's refusal"
+        return html
+
+
 # ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
 
 class TestSdnOperationCards(_Cards):
@@ -1980,9 +2016,10 @@ class TestThePopulation:
         same day; 74 until Bulk intent's own screen, and its Commit the change to N devices'
         intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307; 73 until a
         watched large-packet stream's Rate-limit this source…, C2313, 2026-11-03; 74 until board
-        H's Resume self-healing everywhere, H9, the same day)."""
+        H's Resume self-healing everywhere, H9, the same day; 75 until board H's Approve and run
+        on <device>, artboard E, H9, 2026-11-04)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 75, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 76, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -116,6 +116,125 @@ KNOWN_UNREACHABLE: dict = {}
 # GET /drift/settings, GET /device_lists and POST /templates/preview/<host>.
 CEILING = 0
 
+#: Routes BUILT in routes/ and not yet registered on the app, each waiting for the screen that
+#: will post it (C2448; the operator, 2026-11-04: one list, each with the artboard it waits for).
+#: An endpoint with no page waits for its page (the coordinator's decision of 2026-11-03, as
+#: H1's routes waited for H9's tab), and its tests put its blueprint on an app of their own.
+#: endpoint -> (the board file under docs/boards/, the artboard, the fidelity record under
+#: docs/fidelity/ whose existence means that artboard's screen is built, the reason).
+#:
+#: "After its artboard's commit" is the record existing: a board-built screen is done only once
+#: it is compared with its board (CLAUDE.md, "A board-built screen is compared with its board
+#: before it is called done"; tests/test_board_fidelity.py holds every record), so the commit
+#: that draws the artboard writes its record, and a listed route still unregistered then fails.
+#: A listed route that is registered fails too, so the list only shrinks
+#: (tests/ratchet_lists.py, `shrinks`); every built route not registered must be on it.
+#:
+#: 2026-11-04, three entries: H5's proposal read, approve and decline (routes/heal_proposal_v2.py),
+#: waiting for board H's artboard E. They left the same day, with artboard E drawn
+#: (docs/fidelity/heal-proposal.md).
+PENDING_SCREEN: dict = {}
+
+
+def pending_problems(pending: dict, built: dict, registered: set, record_exists) -> list:
+    """What is wrong with *pending* against what routes/ builds (*built*, {endpoint: module})
+    and the app registers (*registered*); *record_exists* answers whether a fidelity record is
+    there. Empty when the list is exactly the built-and-unregistered set and no listed route's
+    artboard is drawn yet."""
+    wrong = []
+    unregistered = set(built) - set(registered)
+    for e in sorted(unregistered - set(pending)):
+        wrong.append(f"{e} ({built[e]}) is built and not registered on the app, and is not on "
+                     "PENDING_SCREEN: register it, or list it with the artboard it waits for")
+    for e in sorted(set(pending) & set(registered)):
+        wrong.append(f"{e} is registered on the app now: remove it from PENDING_SCREEN")
+    for e in sorted(set(pending) - set(built)):
+        wrong.append(f"{e} is on PENDING_SCREEN and no blueprint in routes/ builds it")
+    for e, (_board, artboard, record, _why) in sorted(pending.items()):
+        if e in unregistered and record_exists(record):
+            wrong.append(f"{e} waits for {artboard}, whose record docs/fidelity/{record} "
+                         "exists (the artboard is drawn), and it is still not registered: "
+                         "register it in routes/__init__.py with its declarations")
+    return wrong
+
+
+def _record_exists(record: str) -> bool:
+    return os.path.isfile(os.path.join(ROOT, "docs", "fidelity", record))
+
+
+@pytest.fixture(scope="module")
+def built():
+    from tests.route_references import built_endpoints
+
+    return built_endpoints()
+
+
+@pytest.fixture(scope="module")
+def registered():
+    import app as A
+
+    from tests.route_references import registered_endpoints
+
+    return registered_endpoints(A)
+
+
+class TestBuiltNotRegistered:
+    """C2448: a route built in routes/ is registered on the app, or listed in PENDING_SCREEN
+    with the artboard it waits for, until that artboard's record exists."""
+
+    def test_the_scan_saw_the_blueprints(self, built, registered):
+        """Floors: measured 2026-11-04, 36 route modules whose blueprints build 417 endpoints."""
+        assert len(set(built.values())) >= 30, sorted(set(built.values()))
+        assert len(built) >= 300, len(built)
+        # Anchors each way: a registered blueprint's route is seen as built, and is registered.
+        assert built.get("heal_v2.tab") == "routes.heal_v2" and "heal_v2.tab" in registered
+        assert "heal_proposal_v2.approve" in built
+
+    def test_the_list_is_exactly_what_waits(self, built, registered):
+        assert pending_problems(PENDING_SCREEN, built, registered, _record_exists) == []
+
+    def test_each_entry_names_its_board_artboard_record_and_reason(self):
+        for e, (board, artboard, record, why) in PENDING_SCREEN.items():
+            assert os.path.isfile(os.path.join(ROOT, "docs", "boards", board)), (e, board)
+            assert artboard and record.endswith(".md") and "/" not in record, e
+            assert len(why) >= 30, e
+
+    def test_a_planted_unregistered_route_is_found(self):
+        """The scan on a planted module: a blueprint with a route nobody registers is built and
+        unregistered, so an empty list fails naming it; listed, it passes."""
+        import types
+
+        import flask
+
+        from tests.route_references import built_endpoints
+
+        mod = types.ModuleType("routes.planted_v2")
+        bp = flask.Blueprint("planted_v2", "routes.planted_v2")
+        bp.add_url_rule("/v2/planted/<x>/approve", "approve", lambda x: "", methods=["POST"])
+        mod.bp = bp
+        mod.borrowed = flask.Blueprint("elsewhere", "routes.elsewhere")    # not this module's
+        got = built_endpoints([mod])
+        assert got == {"planted_v2.approve": "routes.planted_v2"}
+        (said,) = pending_problems({}, got, set(), lambda r: False)
+        assert "planted_v2.approve (routes.planted_v2) is built and not registered" in said
+        entry = {"planted_v2.approve": ("heal-to-intent.html", "board H, artboard Z",
+                                        "planted.md", "a planted route waiting for its screen")}
+        assert pending_problems(entry, got, set(), lambda r: False) == []
+
+    def test_a_listed_route_still_unregistered_after_its_artboard_is_drawn_fails(self):
+        got = {"planted_v2.approve": "routes.planted_v2"}
+        entry = {"planted_v2.approve": ("heal-to-intent.html", "board H, artboard Z",
+                                        "planted.md", "a planted route waiting for its screen")}
+        (said,) = pending_problems(entry, got, set(), lambda r: r == "planted.md")
+        assert "whose record docs/fidelity/planted.md exists" in said
+
+    def test_a_listed_route_that_is_registered_fails(self):
+        got = {"planted_v2.approve": "routes.planted_v2"}
+        entry = {"planted_v2.approve": ("heal-to-intent.html", "board H, artboard Z",
+                                        "planted.md", "a planted route waiting for its screen")}
+        (said,) = pending_problems(entry, got, {"planted_v2.approve"}, lambda r: False)
+        assert "is registered on the app now: remove it from PENDING_SCREEN" in said
+
 
 @pytest.fixture(scope="module")
 def reach():

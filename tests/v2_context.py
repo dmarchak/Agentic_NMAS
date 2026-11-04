@@ -2875,6 +2875,90 @@ def _heal_and_notify(client, _lab, _mp):
         mp.undo()
 
 
+def _heal_proposal(client, _lab, _mp):
+    """Board H, artboard E (H9): a self-healing proposal's Needs attention row and its card, in
+    each state the card draws: the proposal confirmable, a refusal in place (the reason typed
+    kept, an unmeasured reset's refusal beside it), approved, declined, and no longer held. The
+    decision store and propose's reads and writes are planted for this provider alone (the
+    store's writers are tests/test_heal_proposal_v2.py's), then undone."""
+    import time as _time
+
+    import pytest
+
+    from modules.heal import decisions as HD
+    from modules.heal import propose as P
+
+    hx = {"HX-Request": "true"}
+    net, did, host = "Lab", "hd-0123456789ab", "r3"
+    d = {"id": did, "row": "decision", "outcome": "propose", "device": host,
+         "epoch": _time.time() - 540, "kind": "process_reset", "tier": 2, "mode": "dry_run",
+         "program_hash": "0123456789abcdef", "words": "a fix that needs a person: "
+         "process_reset (Tier 2)", "units": [{"words": "a fix that takes effect only through a "
+                                             "process reset (Tier 2): set 1 line(s) in router "
+                                             "ospf 1"}]}
+    reset = {"key": "clear-ospf-process", "label": "reset the OSPF process",
+             "command": "clear ip ospf 1 process", "read": "show ip ospf neighbor",
+             "affects": "every OSPF adjacency of process 1 on r3 drops and forms again",
+             "not_doing": "the reset changes no configuration",
+             "rollback": "a reset cannot be undone", "bound_s": 100,
+             "measured": {"device": "r2", "at": "2026-11-10T00:00:00Z"},
+             "refused": ""}
+    view = {"network": net, "decision": did, "incident": "hi-0123456789", "device": host,
+            "platform": "cisco_iosxe", "kind": "process_reset",
+            "kind_words": "a fix that takes effect only through a process reset", "tier": 2,
+            "units": [d["units"][0]["words"]], "program": ["router ospf 1",
+                                                           " router-id 192.0.2.16"],
+            "program_hash": d["program_hash"], "reset": reset,
+            "lines": ["router ospf 1", " router-id 192.0.2.16", reset["command"]],
+            "hash": "fedcba9876543210", "refusals": [], "confirmable": True,
+            "person": "lab (vty0), 18:02", "policy": {"fingerprint": "pol-3f9c2a81",
+                                                      "by": "v2-context", "reason": "dry run"},
+            "triggers": ["r3 logged a configuration change from vty0 by lab"],
+            "words": d["words"], "at": "2026-11-04T18:12:30Z", "steps": [w for _k, w in P.STEPS]}
+    refused = dict(view, confirmable=False, reset=dict(reset, measured={}, bound_s=None,
+                                                       refused="not measured"),
+                   refusals=["`clear ip ospf 1 process` is not measured on cisco_iosxe"])
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(HD, "decisions", lambda n: [d] if n == net else [])
+        state = {"v": view}
+
+        def read(n, i, **_kw):
+            if i != did:
+                raise P.Refused(f"no heal decision {i} is held for {n}")
+            return state["v"]
+        mp.setattr(P, "view", read)
+        r = client.get(f"/v2/attention?list={net}")
+        assert r.status_code == 200 and "Review the fix" in r.get_data(as_text=True)
+        base = f"/v2/network/{net}/heal/proposal/{did}"
+        assert client.get(base, headers=hx).status_code == 200
+        state["v"] = refused
+
+        def no(*_a, **_kw):
+            raise P.Refused("not approved: the proposal is not the one you confirmed (confirmed "
+                            "fedcba9876543210, now 0000000000000000)")
+        mp.setattr(P, "approve", no)
+        assert client.post(base + "/approve", data={"hash": view["hash"], "reason": "the lab's "
+                           "drill now"}, headers=hx).status_code == 409
+        mp.setattr(P, "approve", lambda n, i, **kw: {"ok": True, "network": n, "decision": i,
+                                                     "device": host, "job": "j-1",
+                                                     "hash": view["hash"]})
+        assert client.post(base + "/approve", data={"hash": view["hash"], "reason": "the lab's "
+                           "drill now"}, headers=hx).status_code == 200
+        mp.setattr(P, "decline", lambda n, i, **kw: {
+            "ok": True, "network": n, "decision": i, "device": host, "outcome": "declined",
+            "words": "declined by v2-context: not during the lab", "sent": False,
+            "steps": [{"step": "take", "result": "ok", "words": "taken to decline it"},
+                      {"step": "record", "result": "declined", "words": "nothing was sent"}],
+            "records": {"approval": "declined by v2-context (access)", "step_log": "written"}})
+        assert client.post(base + "/decline", data={"reason": "not during the lab"},
+                           headers=hx).status_code == 200
+        gone = client.get(f"/v2/network/{net}/heal/proposal/hd-000000000000", headers=hx)
+        assert gone.status_code == 404
+    finally:
+        mp.undo()
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -2887,6 +2971,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _heal_and_notify,
+                   _heal_proposal,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).

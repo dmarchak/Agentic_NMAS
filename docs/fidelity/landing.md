@@ -35,7 +35,21 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `4befa3244b1c2b8057d53182059c8f99649351766efd702aeff0b7fc8553ce4d`
+Templates sha256: `eff778625a86abed48102a468b6c1bccf3194d45bde349d15de15637fbd1553e`
+
+**Compared again 2026-11-04 ~16:4x UTC** (C2448's gate): Review the fix… gains
+`data-next-acts="heal_proposal"`, the opener tests/test_next_steps_act.py holds every next step
+to. An attribute nothing draws: no region moves, so no shot was taken again. Templates sha256
+before: `e95e8e52736b0c4616a046c93cff2f49a8d52b0e2a6afc014fe316449ad8a3d8`.
+
+**Compared again 2026-11-04 ~09:0x UTC for board H's artboard E** (H9, C2448): a self-healing
+proposal's row ("A fix waits for a person on <device>") offers **Review the fix…** on its line,
+which opens the row to the proposal's card, read when the row is opened and drawn under What to
+do (its own record, docs/fidelity/heal-proposal.md). Every other row's line and What to do are
+unchanged: the template gains a branch taken only by a row whose action opens a proposal.
+Compared from `heal-proposal-page-1440`, `-1280` and `-390` (tests/test_board_shots.py
+`test_heal_proposal`) against artboards D (the row's line) and E (the row opened). Templates
+sha256 before: `4befa3244b1c2b8057d53182059c8f99649351766efd702aeff0b7fc8553ce4d`.
 
 **Compared again 2026-11-03 ~02:0x UTC for C2316** (the operator's rule for acknowledgements):
 a band row's Acknowledge… form (an adjacency logged down, a chronic alert's series) gains one

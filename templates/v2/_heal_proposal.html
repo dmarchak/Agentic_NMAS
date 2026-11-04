@@ -1,0 +1,67 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- A self-healing proposal's card, on its Needs attention row (board H, artboard E, approved by
+    the operator 2026-11-03; parts H5 and H9; docs/fidelity/heal-proposal.md). Read when the row
+    is opened (routes/heal_proposal_v2.proposal, from modules/heal/propose.view: Mercury's own
+    records, never the device): what approving does and on which device, the program as
+    recorded (masked) and the measured process reset it needs, what that affects, how it is
+    verified and why rollback cannot undo a reset, and the proposal's hash the approval sends.
+    Approve and Decline post with the reason typed here, each answered with this card again,
+    its answer in place; a refusal keeps the reason typed. A card drawn by the person's own
+    request holds a live redraw of the list (`data-holds-live`, C2001) until Show it now. -#}
+{%- set pid = 'heal-prop-' ~ decision_id -%}
+<div class="heal-prop" id="{{ pid }}" data-holds-live="review">
+{%- if approved and approved.ok %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>Approved by you:</strong> its heal runs as you on {{ approved.device }} (job <span class="mono">{{ approved.job }}</span>), bound to the proposal's hash <span class="mono">{{ approved.hash }}</span>. Each step and its result are recorded on {{ approved.device }}'s History; this item leaves Needs attention.</p></div>
+  <p class="small"><a href="{{ url_for('device_v2.device', name=approved.device, list=approved.network, tab='history') }}">Open {{ approved.device }}'s History</a></p>
+{%- elif declined and declined.ok %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ declined.outcome | capitalize }}:</strong> {{ declined.words }}. {{ 'Nothing was sent' if not declined.sent else 'Lines were sent' }} to {{ declined.device }}; its incident is closed and a later check may propose again. Recorded: {{ declined.records.approval }}; the step log {{ declined.records.step_log or 'not written' }}.</p></div>
+  <details class="set-details"><summary>The steps recorded</summary>
+    <ol class="set-list small">{% for s in declined.steps %}<li><span class="mono">{{ s.step }}</span> ({{ s.result }}): {{ s.words }}</li>{% endfor %}</ol>
+  </details>
+  <p class="small"><a href="{{ url_for('device_v2.device', name=declined.device, list=declined.network, tab='history') }}">Open {{ declined.device }}'s History</a></p>
+{%- elif not v %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Couldn't load the proposal:</strong> {{ gone or refused }}. It is no longer waiting: read the device's History for what became of it.</p></div>
+{%- else %}
+  {%- set host = v.device %}
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
+  {%- endif %}
+  <p class="heal-lead">Approve to {{ v.kind_words }} on <strong>{{ host }}</strong>: the program below, sent through the deploy pipeline as you{% if v.reset %}, then {{ v.reset.label }} (<span class="mono" title="Mercury's reset {{ v.reset.key }}{% if v.reset.refused %}: {{ v.reset.refused }}{% endif %}">{{ v.reset.command }}</span>). {{ v.reset.affects[:1] | upper }}{{ v.reset.affects[1:] }}, so choose the moment{% endif %}.</p>
+  <pre class="op-diff">{% for l in v.program %}{{ l }}
+{% endfor %}{% if v.reset %}! then: {{ v.reset.command }}{% if v.reset.measured %} (its prompt measured on {{ v.reset.measured.device }}, {{ v.reset.measured.at }}){% else %} (not measured){% endif %}{% endif %}</pre>
+  <dl class="heal-kv">
+    <dt>Fix</dt><dd>{{ v.kind_words }} · {{ badge('Propose', 'warn') }} (Tier {{ v.tier }}){% for u in v.units %}<span class="set-origin heal-why">{{ u }}</span>{% endfor %}</dd>
+    <dt>Program</dt><dd><span class="mono">{{ v.program_hash or 'no hash' }}</span> · proposed {{ stamp(v.at) if v.at else 'at an unrecorded time' }}, {{ v.lines | length }} line(s) on {{ host }} ({{ v.platform or 'platform unknown' }})</dd>
+    <dt>Expected effects</dt><dd>{% if v.reset %}{{ v.reset.affects }}{% else %}the program's lines on {{ host }}; no process is reset{% endif %}</dd>
+    <dt>Verify reads</dt><dd>the deploy's verify of each line{% if v.reset %}, then <span class="mono">{{ v.reset.read }}</span> until the adjacencies formed before form again{% if v.reset.bound_s %}, within {{ v.reset.bound_s }} s{% endif %}{% endif %}; the symptom read again once {{ host }} is released</dd>
+    <dt>Rollback</dt><dd>the change put back if a step fails{% if v.reset %}, or if the reset is not made; {{ v.reset.rollback }}{% endif %}</dd>
+    {%- if v.reset %}<dt>It will not</dt><dd>{{ v.reset.not_doing }}</dd>{% endif %}
+    <dt>Proposal hash</dt><dd class="mono">{{ v.hash }}</dd>
+  </dl>
+  {%- for r in v.refusals %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Not confirmable:</strong> {{ r }}.</p></div>
+  {%- endfor %}
+  {#- The form posts Approve (bound to the hash it carries); Decline posts the same reason from
+      its own button, which htmx sends with its form's fields. -#}
+  <form class="heal-form" hx-post="{{ url_for('heal_proposal_v2.approve', list_name=list_name, decision_id=v.decision) }}" hx-target="#{{ pid }}" hx-swap="outerHTML">
+    <input type="hidden" name="hash" value="{{ v.hash }}">
+    <label class="heal-field" for="{{ pid }}-why">Reason<input id="{{ pid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ reason or '' }}"></label>
+    <div class="att-action">
+      <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="heal-proposal" hx-disabled-elt="this"{% if v.confirmable %}{{ gate('confirm') }}{% else %} disabled aria-disabled="true" title="{{ v.refusals | join('; ') }}"{% endif %}><span class="op-idle">Approve and run on {{ host }}</span><span class="op-busy">Approving…</span></button>{{ how('heal-proposal', compact=True, op='approving a proposal') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-disabled-elt="this" title="Records your reason and closes the incident; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
+      <a class="btn btn-small btn-outline" data-op="drift-check" href="{{ url_for('device_v2.device', name=host, list=list_name, op='drift_check') }}">Check drift now on {{ host }}</a>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}
+    </div>
+  </form>
+  <p class="small muted">{{ confirming }} Approving is bound to this proposal's hash (<span class="mono">{{ v.hash }}</span>) and needs a reason. If {{ host }} has changed since it was proposed, the approved run refuses at its plan step and closes the proposal, sending nothing.</p>
+  <details class="set-details"><summary>What Mercury found and tried</summary>
+    <p class="small">{{ v.words or 'No words are recorded with this decision.' }}</p>
+    {%- if v.triggers %}<ul class="set-list small">{% for t in v.triggers %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}
+    {%- if v.person %}<p class="small">The change it would fix: {{ v.person }}.</p>{% endif %}
+    <p class="small muted">Proposed under {{ v.network }}'s policy <span class="mono">{{ v.policy.fingerprint or 'with no fingerprint recorded' }}</span>{% if v.policy.by %}, confirmed by {{ v.policy.by }}{% if v.policy.reason %} (“{{ v.policy.reason }}”){% endif %}{% endif %}; decision <span class="mono">{{ v.decision }}</span>{% if v.incident %}, incident <span class="mono">{{ v.incident }}</span>{% endif %}.</p>
+    <p class="small"><a href="{{ url_for('device_v2.device', name=host, list=list_name, tab='history') }}">Its record on {{ host }}'s History</a></p>
+  </details>
+  <details class="set-details"><summary>What approving runs ({{ v.steps | length }} steps)</summary>
+    <ol class="set-list small">{% for s in v.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+  </details>
+{%- endif %}
+</div>

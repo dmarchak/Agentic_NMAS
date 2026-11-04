@@ -307,7 +307,11 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
 
 - **The condition resolves.** Most rows: the source reads the thing fixed (a later drift check
   finds the device matching, a job's next run reads ok, a device answers again). Doing the
-  row's action is how you make that happen; the row leaves at the source's next read.
+  row's action is how you make that happen; the row leaves at the source's next read. A
+  self-healing proposal ("A fix waits for a person on <device>") leaves once a person decides
+  on its card: **Review the fix…** opens the row to it, with **Approve and run on <device>**
+  (by the proposal's hash, with a reason) and **Decline** (with a reason; nothing is sent)
+  ([Approve or decline a self-healing proposal](heal-proposal)).
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
   new host keys a planned window kept, a deploy whose verify could not read back lines the

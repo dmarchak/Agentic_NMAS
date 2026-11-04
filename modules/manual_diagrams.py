@@ -1417,6 +1417,38 @@ def privileged():
     ])
 
 
+def heal_proposal():
+    return svg(540, (
+        "Approve a self-healing proposal: self-healing found a fix that needs a person and "
+        "recorded it with its program and hash, sending nothing; its card on Needs attention "
+        "shows the program, the measured process reset it needs, what that affects and the "
+        "proposal's hash; you approve by that hash with a reason, or decline with a reason, "
+        "which sends nothing; approved, a job takes the proposal once and, holding the device "
+        "as you, reads it again, recomputes the program and refuses if its hash moved, applies "
+        "it through the deploy pipeline, then sends the measured reset and reads the "
+        "adjacencies back; a failure before the reset puts the change back; the outcome is "
+        "recorded and History shows it."), [
+        lanes(20, 534),
+        doc("box", 14, 40, 186, 36, "The proposal", "its program and hash"), num(14, 40, 1),
+        t(14, 92, "recorded; nothing sent", "sm"),
+        doc("box", 14, 110, 186, 36, "Its card", "the reset, its effects"), num(14, 110, 2),
+        person(14, 160, 186, 30, "You approve, with a reason"), num(14, 160, 3),
+        t(14, 206, "or decline: nothing is sent", "sm"),
+        band(222, 150, "The heal · a job, as you, the device held"),
+        device(262, 300, 118, 120, "The device", "the fix", top=True),
+        *rows([
+            (262, "read", 4, "Read again, hash compared", "a moved hash sends nothing"),
+            (312, None, 5, "Applied as you", "the deploy's nine stages"),
+            (352, None, 6, "The measured reset", "only its prompt answered"),
+        ]),
+        store(14, 400, 186, 40, "The outcome's record", "who, why, each step"), num(14, 400, 7),
+        t(14, 464, "History shows it.", "sm"),
+        t(14, 490, "Rollback: the change put back if a step", "sm"),
+        t(14, 503, "fails before the reset; a reset", "sm"),
+        t(14, 516, "cannot be undone.", "sm"),
+    ])
+
+
 def sdn_flows():
     return svg(520, (
         "A change to an SDN switch's flows, a person's or a response's: the plan reads the "
@@ -1823,6 +1855,7 @@ DIAGRAMS = {
     "intent-in-words": intent_in_words,
     "path-trace": path_trace,
     "privileged": privileged,
+    "heal-proposal": heal_proposal,
     "sdn-flows": sdn_flows,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,

@@ -212,6 +212,11 @@ GATES = {
     "heal_v2.notify_save": _g(K, "names the team told about one network's self-healing and the events that tell it (the Self-healing tab's Who is told), refused when the team does not exist or another person changed it since the card drew it; recorded in the network's settings record; sends nothing"),
     "heal_v2.stop_everywhere": _g(K, "stops self-healing on every network at once (the installation's kill switch), one press, no confirm; recorded with who, when and why"),
     "heal_v2.resume": _g(K, "resumes self-healing everywhere as previewed, bound to the preview's fingerprint, as a verified person with a reason; recorded in the installation's settings record"),
+    # Heal to intent's Tier 2 (board H, parts H5 and H9, artboard E; routes/heal_proposal_v2.py),
+    # posted by a proposal's card on its Needs attention row. Approve and decline refuse anyone
+    # but a verified person too (modules/heal/propose.py), whatever a service is granted.
+    "heal_proposal_v2.approve": _g(C, "approves one self-healing proposal (a Tier 2 fix, board H artboard E) bound to the proposal's hash as previewed, as a verified person with a reason: its program sent through THE apply as that person, holding the device, then the measured process reset it needs (refused until measured), verified, rolled back on failure and recorded", "heal_proposal"),
+    "heal_proposal_v2.decline": _g(K, "declines one self-healing proposal as a verified person with a reason: recorded in the network's heal decisions and step log, its incident closed; sends nothing to a device"),
     # Settings › Installation › Notifications (board H, artboard B; H9; routes/notify_v2.py):
     # the relay's password, the teams and their destinations, codes and test sends.
     "notify_v2.relay_password": _g(K, "stores the email relay's password a person typed, encrypted in the credential store, never drawn back; recorded with who and when in the installation's settings record"),

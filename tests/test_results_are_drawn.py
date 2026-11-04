@@ -188,6 +188,12 @@ PAGE_RECORD = {
         "v2.history_page"),
     "privileged_v2.confirm": ("templates/v2/_privileged.html",
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
+    # Board H, artboard E (H9): a self-healing proposal approved on its Needs attention card,
+    # its answer in place (the job it started, the hash it was bound to); the heal's steps and
+    # outcome read on the device's History (`history_sources.heal`).
+    "heal_proposal_v2.approve": ("templates/v2/_heal_proposal.html",
+                                 ('data-holds-live="review"', "approved.job", "approved.hash"),
+                                 "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
                                   ('id="device-op"', "c.outcome", "c.record"), "device_v2.history"),
     # C906's re-key: the result in place of the card; the key kept, and the one it replaced,

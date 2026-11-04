@@ -19,7 +19,7 @@ C2374), no network, no device.
 - **Decline:** a verified person and a reason; recorded, the incident closed, nothing sent.
 - **Interrupted:** an approved proposal whose job ended first is found and recorded as a
   heal's is.
-- **The routes,** on a test app of their own until H9 draws their screen and registers them:
+- **The routes,** on a test app of their own (H9 drew their screen and registered them):
   their gates, invalidations, stages and History declarations hold the tables' own checks.
 
 The reset's measurement record in these tests is a test record, not a measurement: its prompt
@@ -744,10 +744,28 @@ class TestTheDeclarations:
             assert set(sources) <= set(history_sources.SOURCES), sources
 
     def test_not_registered_on_the_app_until_h9_draws_its_screen(self):
+        """The property both ways (C2448): while artboard E's screen is undrawn (its fidelity
+        record absent) the routes are not the app's; once H9 drew it (the record exists) the
+        three are registered and their declarations are in the tables."""
+        import os
+
         import app as A
 
-        assert not {r.endpoint for r in A.app.url_map.iter_rules()
-                    if r.endpoint.startswith("heal_proposal_v2.")}
+        from modules import invalidation, operation_stages, route_gates
+
+        drawn = os.path.exists(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "docs", "fidelity", "heal-proposal.md"))
+        registered = {r.endpoint for r in A.app.url_map.iter_rules()
+                      if r.endpoint.startswith("heal_proposal_v2.")}
+        if not drawn:
+            assert not registered
+            return
+        assert registered == {
+            "heal_proposal_v2.proposal", "heal_proposal_v2.approve", "heal_proposal_v2.decline"}
+        assert set(_bp().gates()) <= set(route_gates.GATES)
+        assert set(_bp().invalidates()) <= set(invalidation.DECLARED)
+        assert set(_bp().stages()) <= set(operation_stages.STAGES)
+        assert set(_bp().history()) <= set(operation_stages.HISTORY)
 
     def test_history_draws_who_approved(self, lab, measured):
         from modules import history_sources as HS

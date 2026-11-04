@@ -82,6 +82,11 @@ OPENERS = {
     # new key).
     "rekey_card": ("document.querySelector('#device-op h2') && /Re-key r2/"
                    ".test(document.querySelector('#device-op h2').textContent)"),
+    # A self-healing proposal's Review the fix… (board H, H9, C2448): its card drawn in place on
+    # the opened row, Approve bound to the proposal's hash (pressed in a browser by
+    # tests/test_board_shots.py's test_heal_proposal).
+    "heal_proposal": ("document.querySelector('.heal-prop .heal-lead') && "
+                      "document.querySelector('.heal-prop input[name=hash]')"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,

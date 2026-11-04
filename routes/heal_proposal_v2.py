@@ -1,81 +1,82 @@
 """routes/heal_proposal_v2.py — a self-healing proposal's preview, approve and decline (board H,
-part H5; docs/HEAL_TO_INTENT.md sections 9 (artboard E) and 11; `modules/heal/propose.py`).
+parts H5 and H9; docs/HEAL_TO_INTENT.md sections 9 (artboard E) and 11; `modules/heal/propose.py`).
 
 A Tier 2 fix waits for a person: the proposal is read (its program, the process reset it needs,
 what that affects and why rollback cannot undo it, whether it is measured, and the hash an
 approval confirms); approved by that hash as a verified person with a reason, which starts its
 act as a job as that person; or declined as a verified person with a reason, which sends
-nothing. Every write is `modules/heal/propose.py`'s. Each answers ``{"ok", "error", ...}``.
+nothing. Every write is `modules/heal/propose.py`'s.
 
-**Not registered until H9.** An endpoint with no page waits for its page (the coordinator's
-decision of 2026-11-03, as H1's routes waited): the Needs attention row ``heal``/``proposal``
-with **Approve…** and **Decline…** (board H, artboard E) is H9's, and the commit that draws it
-registers `bp` (`routes/__init__.py`) and moves `gates` into `route_gates.GATES`, `invalidates`
-into `invalidation.DECLARED`, `stages` into `operation_stages.STAGES` and `history` into
-`operation_stages.HISTORY`. Until then the tests put the blueprint on their own app.
+**Where it is drawn** (board H, artboard E; H9): the Needs attention row ``heal``/``proposal``
+(`attention.heal_source`) opens to this proposal's card (`templates/v2/_heal_proposal.html`),
+read by `proposal` when the row is opened; its **Approve and run on <device>** and **Decline**
+post `approve` and `decline` with htmx, and each is answered with the card again, its answer
+in place (approved and its job, declined, or the refusal with the reason typed kept). A request
+that is not htmx's is answered ``{"ok", "error", ...}`` as H5 built them.
+
+The routes' declarations live in their tables (`route_gates.GATES`, `invalidation.DECLARED`,
+`operation_stages.STAGES` and `HISTORY`), placed there by H9 with the card; `gates()`,
+`invalidates()`, `stages()` and `history()` are views of those tables.
 """
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 log = logging.getLogger(__name__)
 
 bp = Blueprint("heal_proposal_v2", __name__, url_prefix="/v2")
 
 
-def gates() -> dict:
-    """The routes' gates, for `modules/route_gates.py`'s GATES (placed by H9). Approve and
-    decline refuse anyone but a verified person too, whatever a service is granted."""
-    from modules.route_gates import Gate
+def _prefix_rows(table: dict) -> dict:
+    return {k: v for k, v in table.items() if k.startswith(bp.name + ".")}
 
-    return {
-        "heal_proposal_v2.approve": Gate("confirm", "approves one self-healing proposal (a Tier 2 fix, board H artboard E) bound to the proposal's hash as previewed, as a verified person with a reason: its program sent through THE apply as that person, holding the device, then the measured process reset it needs (refused until measured), verified, rolled back on failure and recorded", "heal_proposal"),
-        "heal_proposal_v2.decline": Gate("configure", "declines one self-healing proposal as a verified person with a reason: recorded in the network's heal decisions and step log, its incident closed; sends nothing to a device"),
-    }
+
+def gates() -> dict:
+    """These routes' rows of `modules/route_gates.py`'s GATES. Approve and decline refuse
+    anyone but a verified person too, whatever a service is granted."""
+    from modules.route_gates import GATES
+
+    return _prefix_rows(GATES)
 
 
 def invalidates() -> dict:
-    """What each route invalidates, for `modules/invalidation.py`'s DECLARED (placed by H9)."""
-    from modules.invalidation import Nothing
+    """These routes' rows of `modules/invalidation.py`'s DECLARED."""
+    from modules.invalidation import DECLARED
 
-    return {
-        "heal_proposal_v2.approve": Nothing("starts the approved heal as a job and answers at "
-                                            "once; the heal ANNOUNCES heal-act's keys as it "
-                                            "finishes (ANNOUNCERS)"),
-        "heal_proposal_v2.decline": ("drift",),
-    }
+    return _prefix_rows(DECLARED)
 
 
 def stages() -> dict:
-    """The approve route's five stages, for `modules/operation_stages.py`'s STAGES (placed by
-    H9): the preview is this blueprint's read of the proposal; the hash the proposal's; verify
-    the pipeline's and then the reset's measured rule; rollback the pipeline's after verify
-    (`roll_back_after`, the change put back when the reset was not made); the record the step
-    log's act row, beside the receipt and the reset's Tier 2 record."""
-    from modules.operation_stages import Stages
+    """The approve route's five stages, its row of `modules/operation_stages.py`'s STAGES."""
+    from modules.operation_stages import STAGES
 
-    return {"heal_proposal_v2.approve": Stages(
-        "heal_proposal_v2.proposal", "hash", "modules.nsot.privileged.reset_verify",
-        "modules.pipeline.roll_back_after", "modules.heal.steplog.record_act")}
+    return _prefix_rows(STAGES)
 
 
 def history() -> dict:
-    """Where each route's record is read later, for `operation_stages.HISTORY` (placed by H9):
-    the step log, the receipt and golden, and the reset's Tier 2 record."""
-    return {"heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
-            "heal_proposal_v2.decline": ("heal",)}
+    """Where each route's record is read later, its rows of `operation_stages.HISTORY`."""
+    from modules.operation_stages import HISTORY
+
+    return _prefix_rows(HISTORY)
+
+
+def _htmx() -> bool:
+    return bool(request.headers.get("HX-Request"))
 
 
 def _answer(body: dict, code: int = 200):
     return jsonify(dict({"ok": code == 200, "error": ""}, **body)), code
 
 
-def _refused(exc) -> tuple:
+def _code(exc) -> int:
     from modules.heal import propose
 
-    return _answer({"ok": False, "error": str(exc)},
-                   403 if isinstance(exc, propose.NotAPerson) else 409)
+    return 403 if isinstance(exc, propose.NotAPerson) else 409
+
+
+def _refused(exc) -> tuple:
+    return _answer({"ok": False, "error": str(exc)}, _code(exc))
 
 
 def _who() -> dict:
@@ -88,11 +89,33 @@ def _who() -> dict:
             "person": bool(ident is not None and ident.kind == "person")}
 
 
+def _card(list_name: str, decision_id: str, code: int = 200, **ctx):
+    """The proposal's card, read again, with an answer in place (`ctx`). A proposal no longer
+    held (declined, approved or never there) is drawn as that, never as an empty card."""
+    from modules import preview_confirm
+    from modules.heal import propose
+    from routes.device_v2 import _strict
+
+    try:
+        v = propose.view(list_name, decision_id)
+        gone = ""
+    except propose.Refused as exc:
+        v, gone = None, str(exc)
+    html = render_template("v2/_heal_proposal.html", v=v, gone=gone, list_name=list_name,
+                           decision_id=decision_id,
+                           confirming=preview_confirm.confirm_part(request,
+                                                                   "confirm")["statement"],
+                           **ctx)
+    return _strict(html, code if v is not None or ctx else 404)
+
+
 @bp.route("/network/<list_name>/heal/proposal/<decision_id>", methods=["GET"])
 def proposal(list_name, decision_id):
     """The proposal as a person reads it before deciding; reads only Mercury's records."""
     from modules.heal import propose
 
+    if _htmx():
+        return _card(list_name, decision_id)
     try:
         v = propose.view(list_name, decision_id)
     except propose.Refused as exc:
@@ -113,7 +136,12 @@ def approve(list_name, decision_id):
                               reason=form.get("reason") or "",
                               ident=identity.verified_identity(), **_who())
     except propose.Refused as exc:
+        if _htmx():
+            return _card(list_name, decision_id, _code(exc), refused=str(exc),
+                         reason=form.get("reason") or "")
         return _refused(exc)
+    if _htmx():
+        return _card(list_name, decision_id, approved=out)
     return _answer(out)
 
 
@@ -122,9 +150,15 @@ def decline(list_name, decision_id):
     """Decline the proposal: a verified person and a reason; nothing is sent."""
     from modules.heal import propose
 
+    form = request.form
     try:
-        out = propose.decline(list_name, decision_id, reason=request.form.get("reason") or "",
+        out = propose.decline(list_name, decision_id, reason=form.get("reason") or "",
                               **_who())
     except propose.Refused as exc:
+        if _htmx():
+            return _card(list_name, decision_id, _code(exc), refused=str(exc),
+                         reason=form.get("reason") or "")
         return _refused(exc)
+    if _htmx():
+        return _card(list_name, decision_id, declined=out)
     return _answer(out)

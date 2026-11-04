@@ -65,6 +65,12 @@ NOT_DIRECT = {
     "intent_layers_v2.change_go_on": "runs only the paused run's planned devices, each "
                                      "controller-managed one already refused in its plan",
     "onboard_v2.abandon": "abandoning removes a pending device's records; nothing is sent",
+    # Board H, H9 (C2448): the request names a recorded proposal, never a device; its device
+    # is the proposal's own, one drift_check read and compared with its intent. Whether the
+    # heal's run should ask this module itself is C2477.
+    "heal_proposal_v2.approve": "the request names a recorded proposal, not a device; its "
+                                "device is the proposal's own, read from its record, one "
+                                "the drift check read and compared with its intent",
     "adopt_v2.confirm": "adoption names an address, not an inventory device",
     "oob_onboard_v2.confirm": "out-of-band onboarding names a console port, not an inventory "
                               "device",

@@ -308,6 +308,11 @@ DECLARED = {
     "heal_v2.notify_save": ("settings",),
     "heal_v2.stop_everywhere": ("settings",),
     "heal_v2.resume": ("settings",),
+    # A self-healing proposal (board H, H5 and H9, artboard E): approve and decline each take
+    # the decision at once, so its Needs attention row (`attention.heal_source`, which rides
+    # on drift) leaves; the approved heal ANNOUNCES heal-act's keys as it finishes.
+    "heal_proposal_v2.approve": ("drift",),
+    "heal_proposal_v2.decline": ("drift",),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a
     # setting's companion; teams, destinations, codes and sends move the notifications record.
     "notify_v2.relay_password": ("settings",),

@@ -207,6 +207,10 @@ ROW_KINDS = {
     ("heal", "interrupted"): ("a heal's job ended before it recorded what it did",
                               "read its step log, read the device against its golden, then "
                               "acknowledge with what you found"),
+    # Board H, H5 and H9 (artboard E): a Tier 2 fix waits for a person, its card on the row.
+    ("heal", "proposal"): ("a fix that needs a person waits (Tier 2, Propose)",
+                           "review the fix, then approve it by its hash with a reason, or "
+                           "decline it with a reason"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -486,6 +490,9 @@ CLEARS = {
                               "a later decision finds the device with nothing to heal, or a "
                               "later heal of it is healed and verified; or acknowledged with "
                               "what was found on the device"),
+    ("heal", "proposal"): (("resolves",),
+                           "a person approves it on its card (its heal then runs as them, and "
+                           "History records what it did), or declines it there with a reason"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -4811,10 +4818,41 @@ def heal_source(got=None, now=None, found=None) -> dict:
         out.append(r)
     marked = len(out)
     out += _heal_interrupted_rows(lst, rows, found)
+    interrupted_n = len(out) - marked
+    out += _heal_proposal_rows(lst, rows)
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
-                                  f"{len(out) - marked} interrupted heal(s)"))
+                                  f"{interrupted_n} interrupted heal(s), "
+                                  f"{len(out) - marked - interrupted_n} proposal(s) waiting"))
+
+
+def _heal_proposal_rows(lst: str, rows: list) -> list:
+    """Board H, H5 and H9 (artboard E): ONE row per Tier 2 proposal not yet taken
+    (`decisions.proposals`' rule, read from the rows already read: outcome ``propose`` and no
+    take), until a person approves or declines it on its card. Its action opens the card in
+    place (`open: heal_proposal`), which reads the proposal when the row is opened; the row
+    itself reads nothing more."""
+    out = []
+    for d in rows:
+        if d.get("outcome") != "propose" or d.get("taken"):
+            continue
+        host = d.get("device") or ""
+        units = "; ".join(u.get("words", "") for u in d.get("units") or [] if u.get("words"))
+        out.append(row(
+            source="heal", kind="proposal", key=d.get("id") or "?", level="warning",
+            devices=[host] if host else [], since=float(d.get("epoch") or 0) or None,
+            what=(f"A fix waits for a person on {host}" + (f": {units}" if units else "")),
+            cause=(f"{d.get('words') or 'a fix that needs a person'}; program "
+                   f"{d.get('program_hash') or '?'}. Nothing is sent until a person approves "
+                   f"it by its hash with a reason (self-healing on {lst}, Tier 2: Propose)"),
+            action={"label": (f"Review the fix for {host}, then approve it by its hash with a "
+                              "reason, or decline it with a reason"),
+                    "open": "heal_proposal", "list": lst, "decision": d.get("id"),
+                    "device": host},
+            operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
+                      "tier": d.get("tier"), "mode": d.get("mode")}))
+    return out
 
 
 def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:

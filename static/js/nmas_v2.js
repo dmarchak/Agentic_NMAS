@@ -1589,8 +1589,10 @@
   }
 
   function citeClicked(e) {
-    // An SDN piece's own references (_evidence_pack.html's `cite`) jump the same way.
-    var a = e.target && e.target.closest ? e.target.closest('a.cite-chip, a.pack-cite') : null;
+    // An SDN piece's own references (_evidence_pack.html's `cite`) jump the same way, and so
+    // does a Needs attention row's Review the fix… (`att-jump`, board H artboard D): its row
+    // opened, which loads the proposal's card, and the card focused.
+    var a = e.target && e.target.closest ? e.target.closest('a.cite-chip, a.pack-cite, a.att-jump') : null;
     if (!a) return;
     if (jumpToCite(root.document, citeTarget(a.getAttribute('href')))) e.preventDefault();
   }

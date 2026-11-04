@@ -16,6 +16,9 @@
     opening the row. Its full set, with each How does this work?, is under What to do. -#}
 {%- macro primary(r, nets) -%}
 {%- if r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
+{#- Board H, artboard D and E: a proposal's Review the fix… opens the row to its card (nmas_v2.js
+    `citeClicked`, `a.att-jump`: every section holding the card opened, the card focused). -#}
+{%- elif r.action.open == 'heal_proposal' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_proposal" href="#heal-prop-{{ r.action.decision }}">Review the fix…</a>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
 {%- elif r.devices %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
 {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
@@ -79,11 +82,18 @@
             chip does (nmas_v2.js `aiSpendOpen`; the link's fragment opens it on a page loaded
             with it); a feature's row keeps Settings › AI beside it. -#}
         {%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}{% if r.action.href and r.action.href.startswith('/v2/') %} <a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
+        {#- A self-healing proposal's controls are on its card, drawn below. -#}
+        {%- elif r.action.open == 'heal_proposal' %}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
         {%- if r.action.run_url and r.action.run_url.startswith('https://github.com/') %}<a class="btn btn-small btn-outline" href="{{ r.action.run_url }}" target="_blank" rel="noopener noreferrer">Open {{ ('run #' ~ r.action.run) if r.action.run else 'the run' }} on GitHub</a>{% endif %}
       </div>
+      {#- Board H, artboard E: a self-healing proposal's card, read when the row is opened
+          (routes/heal_proposal_v2.proposal), with Approve and Decline. -#}
+      {%- if r.action.open == 'heal_proposal' %}
+      <div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:closest details.att" hx-swap="outerHTML"><p class="small muted">Drawn when this item is open: the proposal as Mercury recorded it, with Approve and Decline.</p></div>
+      {%- endif %}
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason

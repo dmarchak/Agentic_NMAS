@@ -3949,3 +3949,61 @@ def test_notifications(tmp_path, monkeypatch):
         f"/v2/settings/installation/notify/teams/{team}/{waiting}/verify", data={"code": code})
     assert r.status_code == 200
     assert teams.read()["teams"][team]["destinations"][waiting]["enabled"]
+
+
+def test_heal_proposal(tmp_path, monkeypatch):
+    """Board H, artboard E (heal-to-intent.html, 1440) beside Needs attention holding a real
+    proposal on edge-b (tests/test_heal_propose.py's R8: a changed OSPF router-id, its reset
+    measured by the test record), Review the fix… pressed so the card is read and drawn in the
+    row with a reason typed (`heal-proposal`). Only heal's source is read, so the shot is the
+    row and its card."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import json
+
+    from modules import attention
+    from modules.nsot import privileged
+    from tests.test_heal_policy import confirm, mark
+    from tests.test_heal_propose import PLATFORM, R8, FakeApproved, proposed
+    from tests.test_sdn_connections import make_networks
+    # tests/test_heal_decide.py's `lab`: Default marked lab, in dry run, nothing held.
+    make_networks(tmp_path, monkeypatch)
+    mark("Default")
+    confirm("Default", heal_mode="dry_run")
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+                          ("modules.nsot.device_ops.holder", lambda n, d: None),
+                          ("modules.change_windows.holding", lambda now=None, given=None: None),
+                          ("modules.heal.detect.wake", lambda: None),
+                          ("modules.heal.propose.Sources", lambda net: FakeApproved(R8))):
+        monkeypatch.setattr(target, value)
+    rows = {k: {"prompt": "Reset OSPF process 1? [no]:", "answer": "yes", "settle_s": 40,
+                "device": "r2", "at": "2026-11-10T00:00:00Z"} for k in privileged.PROCESS_RESETS}
+    record = tmp_path / "privileged_measured.json"
+    record.write_text(json.dumps({"by_dialect": {PLATFORM: rows}, "unmeasured": {}}))
+    monkeypatch.setattr(privileged, "RESET_MEASURED_FILE", str(record))
+    d = proposed()
+    monkeypatch.setattr(attention, "SOURCES", [attention.heal_source])
+
+    def review(b):
+        b.js(f"document.querySelector('a.att-jump[href=\"#heal-prop-{d['id']}\"]').click(); "
+             "return 1")
+        b.wait_for("return !!document.querySelector('.heal-prop form [name=reason]')")
+        b.js("document.querySelector('.heal-prop form [name=reason]').value = "
+             "'the duplicate router-id from the console change'; return 1")
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("heal-proposal", "", lambda w: "/v2/", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=review)
+    # The shot's card is the real one: its hash, sent with a reason, is what Approve binds to.
+    started = []
+    monkeypatch.setattr("modules.heal.propose.start",
+                        lambda n, taken, approval, **kw: started.append(approval) or "j-1")
+    from modules.heal import propose
+    v = propose.view("Default", d["id"])
+    r = A.app.test_client().post(f"/v2/network/Default/heal/proposal/{d['id']}/approve",
+                                 data={"hash": v["hash"], "reason": "the duplicate router-id"
+                                       " from the console change"})
+    assert r.status_code == 200 and started[0]["hash"] == v["hash"]

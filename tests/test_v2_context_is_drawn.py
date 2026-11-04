@@ -522,7 +522,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_ask.html c.compare.lines": _OP + " (Ask the device's comparison of two answers)",
     "v2/_ask.html c.recent.rows": "Ask the device's recent reads: no read has run on the walk's store",
     "v2/_ask.html c.sets": "Ask the device's saved sets: no saved set exists on the walk's store",
-    "v2/_attention.html (r.attached or ())": _ATTENTION,
     "v2/_attention.html a.acknowledged": _ATTENTION,
     "v2/_attention.html a.in_force": _ATTENTION,
     "v2/_breakglass_check.html c.devices": _OP + " (a break-glass file checked)",
@@ -877,7 +876,9 @@ EMPTY_IN_FIXTURE = {
 #: 360 with board H's Self-healing tab (H9, 2026-11-03): its provider previews a policy change
 #: in place, so the shared preview parts' targets, gates, operands, what it does not do and a
 #: short program draw.
-EMPTY_IN_FIXTURE_CEILING = 360
+#: 359 with board H's artboard E (H9, 2026-11-04): its provider's render of Needs attention for
+#: Lab drew a row's "Also:" lines (an attached row), measured.
+EMPTY_IN_FIXTURE_CEILING = 359
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

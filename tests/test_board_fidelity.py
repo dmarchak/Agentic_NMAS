@@ -91,7 +91,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               # Board H (heal to intent, approved by the operator 2026-11-03; part H9): a
               # network's Self-healing tab (artboard A) and Settings › Installation ›
               # Notifications (artboard B).
-              "_heal.html": "heal-policy.md", "_notify.html": "notifications.md"}
+              "_heal.html": "heal-policy.md", "_notify.html": "notifications.md",
+              # Board H, artboards D and E (H9, C2448): a self-healing proposal's row on Needs
+              # attention and its card, with Approve and Decline.
+              "_heal_proposal.html": "heal-proposal.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -58,6 +58,8 @@ RATCHETS = (
     ("tests/test_ai_explain_cases.py", "AWAITING", "shrinks"),
     ("tests/test_app_interpreter.py", "EXEMPT", "shrinks"),
     ("tests/test_blueprint_reachability.py", "KNOWN_UNREACHABLE", "shrinks"),
+    # C2448: routes built and not yet registered, each waiting for its artboard.
+    ("tests/test_route_reachability.py", "PENDING_SCREEN", "shrinks"),
     ("tests/test_board_fidelity.py", "UNCHECKED", "shrinks"),
     ("tests/test_concepts_are_taught.py", "PENDING", "shrinks"),
     ("tests/test_confirm_buttons_drawn.py", "EXCUSED", "shrinks"),
