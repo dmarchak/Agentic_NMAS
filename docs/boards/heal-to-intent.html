@@ -91,6 +91,16 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 .toggle span.on{background:var(--accent);color:var(--on-accent)}
 .scope{display:flex;gap:10px;align-items:center;font-size:13px}
 .scope select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+/* The amendment of 2026-11-03 (docs/HEAL_TO_INTENT.md section 19): a board annotation, like the
+   yellow callouts, never part of the screen. Each region it adds is outlined and tagged. */
+.amend{outline:2px dashed #0E7C86;outline-offset:3px}
+tr.amend td{background:#EAF6F6;color:#15191E}
+.amendtag{display:inline-block;font-size:11px;font-weight:600;color:#0E5C63;background:#E2F4F5;border:1px dashed #0E7C86;border-radius:4px;padding:0 6px;margin-right:6px;white-space:nowrap;vertical-align:middle}
+.menu{border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 4px 14px rgba(0,0,0,.12);padding:6px;display:flex;flex-direction:column;min-width:240px}
+.menu a{padding:6px 10px;border-radius:5px;color:var(--ink);text-decoration:none;font-size:13px}
+.menu .hr{border-top:1px solid var(--line-2);margin:4px 0}
+.hyp td:first-child{width:24px;font-weight:600}
+.diverge td{background:var(--danger-soft)}
 </style>
 </head>
 <body>
@@ -98,6 +108,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <div class="boardhead">
 <h1>Heal to intent (board H): board for the operator's review</h1>
 <div>The operator's direction of 2026-11-03, for Lab 10: a self-healing application that heals a device back to its committed intent, deterministic and with no AI in the loop. A can't-fix notification carries an advisory AI analysis (the addition of the same day). The design, the tier table, the guards, the demo plan, the estimate and the schedule are in <span class="mono">docs/HEAL_TO_INTENT.md</span>. Seven artboards at 1440 wide, then the decisions. Yellow dashed notes are the board's annotations, not part of the screen. Every other link and control is one the built screen will have. <strong>Not self-signed:</strong> the operator reviews this before anything is built.</div>
+<div class="amend" style="margin-top:10px;padding:8px 10px;background:#F2FAFA"><span class="amendtag">amendment, for review</span><strong>The amendment of 2026-11-03, the course's troubleshooting lecture's additions</strong> (docs/HEAL_TO_INTENT.md section 19; not approved, not built). Each region it adds has a teal dashed outline or a teal row and this tag: inserts in artboards A (three fix kinds, the flap and bounce guards) and G (two calls a finding), and five new artboards: <strong>I</strong> Diagnose… on a device and on an alert; <strong>J</strong> a diagnosis's ranked hypotheses with their evidence; <strong>K</strong> History: a bounce that did not take, and a session clear in dry run; <strong>L</strong> Needs attention: the dampening proposal, and the notice with Mercury's diagnosis; <strong>M</strong> History: the AI analysis's read requests and its second pass; <strong>N</strong> the read loop's prerequisites, the read-only account and the device state class; <strong>O</strong> the SDN Responder's read requests and B4's frozen evaluation plan (Lab 9's B4, approved). Then decisions N14 to N24. <strong>Tiers are shown by name on every screen</strong> (Auto, Propose, Alert, Never; the numbers 1 to 4 stay in code and in the design document), so the approved artboards' tier labels are amended too.</div>
 </div>
 
 <!-- ============================================================ A -->
@@ -146,17 +157,20 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 
 <section class="card" aria-label="Fix kinds and their tiers">
 <div class="card-head"><h2>Fix kinds</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
-<p class="muted" style="margin:0;font-size:12.5px">A kind's tier is fixed by Mercury. Here you choose whether each Tier 1 kind heals in Auto or stays in dry run, and whether Tier 2 kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
+<p class="muted" style="margin:0;font-size:12.5px">A kind's tier is fixed by Mercury. Here you choose whether each kind of the Auto tier heals in Auto mode or stays in dry run, and whether the Propose tier's kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
 <table><thead><tr><th>Fix kind</th><th>Tier</th><th>In Auto</th><th>Lab scenario</th></tr></thead><tbody>
-<tr><td>Missing line: re-apply intent's line (merge)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>M6 dry run passed 14 Nov · auto <span class="faint">not yet</span></td></tr>
-<tr><td>Changed line: set intent's value (merge)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
-<tr><td>Added line: remove it (a measured shape, one removal unit)</td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>C3 dry run passed 14 Nov</td></tr>
-<tr><td>Admin down where intent says up: <span class="mono">no shutdown</span></td><td><span class="chip ok">1 auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
-<tr><td>Takes effect through a process reset (router-id)</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td>R8 proposed 14 Nov</td></tr>
-<tr><td>QoS policy</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">removal shapes not measured: can't fix until they are</span></td></tr>
-<tr><td>A secret added back</td><td><span class="chip warn">2 propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">none run</span></td></tr>
-<tr><td>Physical or link down while admin up; unknown cause</td><td><span class="chip">3 alert</span></td><td><span class="muted">Alert only</span> <span class="tip">Configuration cannot fix a cable, an optic or a far end</span></td><td>I5</td></tr>
-<tr><td>Security ACL · credentials and AAA · Mercury's management path · multi-device</td><td><span class="chip danger">4 never</span></td><td><span class="muted">Never automatic</span></td><td>C4</td></tr>
+<tr><td>Missing line: re-apply intent's line (merge)</td><td><span class="chip ok">Auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>M6 dry run passed 14 Nov · auto <span class="faint">not yet</span></td></tr>
+<tr><td>Changed line: set intent's value (merge)</td><td><span class="chip ok">Auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr><td>Added line: remove it (a measured shape, one removal unit)</td><td><span class="chip ok">Auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>C3 dry run passed 14 Nov</td></tr>
+<tr><td>Admin down where intent says up: <span class="mono">no shutdown</span></td><td><span class="chip ok">Auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr><td>Takes effect through a process reset (router-id)</td><td><span class="chip warn">Propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td>R8 proposed 14 Nov</td></tr>
+<tr><td>QoS policy</td><td><span class="chip warn">Propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">removal shapes not measured: can't fix until they are</span></td></tr>
+<tr><td>A secret added back</td><td><span class="chip warn">Propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td><span class="faint">none run</span></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>Port down while admin up, its far end up: bounce it once; the same bounce resets one stuck OSPF adjacency on its interface <span class="muted">(an action: configuration unchanged)</span></td><td><span class="chip ok">Auto</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td>I5 (revised) <span class="faint">not yet run</span></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>A BGP neighbour in intent not Established in two reads in a row, its peer answering: a hard clear of that one neighbour, once <span class="muted">(an action; Auto on a network marked lab, Propose elsewhere; an Established session only a soft clear; clear ip bgp * Never)</span></td><td><span class="chip ok">Auto</span> <span class="muted" style="font-size:12px">on lab</span></td><td><span class="toggle"><span>Heal</span><span class="on">Dry run only</span></span></td><td><span class="faint">replay test only: no lab scenario yet</span></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>Still flapping after its one bounce: propose dampening <span class="muted">(a change to intent, a person's)</span></td><td><span class="chip warn">Propose</span></td><td><span class="toggle"><span class="on">Propose</span><span>Alert only</span></span></td><td>I5 (revised)</td></tr>
+<tr><td>Physical or link down while admin up; unknown cause <span class="amendtag">amendment, for review</span><span class="muted">diagnosed first, then alert</span></td><td><span class="chip">Alert</span></td><td><span class="muted">Alert only</span> <span class="tip">Configuration cannot fix a cable, an optic or a far end</span></td><td>I5</td></tr>
+<tr><td>Security ACL · credentials and AAA · Mercury's management path · multi-device</td><td><span class="chip danger">Never</span></td><td><span class="muted">Never automatic</span></td><td>C4</td></tr>
 </tbody></table>
 <div style="display:flex;gap:10px"><a class="btn" href="#">Change fix kinds…</a></div>
 </section>
@@ -169,7 +183,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <label class="field">Auto until
 <input type="text" value="2026-11-20 18:00 UTC"><span class="hint">Required, at most 7 days. At its end the mode returns to dry run, and History says so.</span></label>
 <label class="field">Reason
-<textarea rows="2">Lab walks: Tier 1 kinds whose scenarios passed in dry run</textarea></label>
+<textarea rows="2">Lab walks: Auto-tier kinds whose scenarios passed in dry run</textarea></label>
 <h3>What this changes</h3>
 <table><thead><tr><th>Where</th><th>Now</th><th>After confirm</th></tr></thead><tbody>
 <tr><td>Mode</td><td>Dry run</td><td><strong>Auto until 20 Nov 18:00 UTC</strong>, then dry run</td></tr>
@@ -193,6 +207,9 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <tr><td>Hold after a change or re-cabling nearby</td><td>60 min</td><td>60 min</td><td><a href="#">Edit…</a></td></tr>
 <tr><td>A person working: outside changes</td><td>3 in 10 min</td><td>3 in 10 min</td><td><a href="#">Edit…</a></td></tr>
 <tr><td>Largest heal</td><td>one removal unit (an added line; R3's pair is one unit, N13), or one section re-applied</td><td>1</td><td><a href="#">Edit…</a></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>A flap: transitions of one interface within</td><td>3 in 10 min</td><td>3 in 10 min</td><td><a href="#">Edit…</a></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>A port is bounced at most</td><td>once an hour</td><td>once an hour; a second need within 24 h is a proposal</td><td><a href="#">Edit…</a></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>Before a bounce or a clear</td><td colspan="2"><span class="muted">always: the far end read up and not held; the state read again just before sending; never Mercury's path</span></td><td></td></tr>
 <tr><td>Planned work, held devices, no-change windows</td><td colspan="2"><span class="muted">always: never during them</span></td><td></td></tr>
 <tr><td>A rolled-back heal</td><td colspan="2"><span class="muted">always halts the policy until a person lifts it</span></td><td></td></tr>
 </tbody></table>
@@ -306,7 +323,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <div class="scope">Kind <select aria-label="Kind"><option>Heal</option></select> Device <select aria-label="Device"><option>every device</option></select> Outcome <select aria-label="Outcome"><option>every outcome</option></select> <select aria-label="Range"><option>last 7 days</option></select> <input type="search" placeholder="Search" aria-label="Search" style="font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px"></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip ok">healed 5</span><span class="chip at">would heal 7</span><span class="chip warn">proposed 1</span><span class="chip danger">can't fix 3</span><span class="chip warn">held 1</span><span class="chip danger">halted 1</span></div>
 <section class="card" aria-label="An incident, opened">
-<div class="card-head"><div><h2>r4 healed: a static route added outside intent removed <span class="chip ok">healed · verified</span> <span class="chip">Auto · Tier 1 · added line</span></h2>
+<div class="card-head"><div><h2>r4 healed: a static route added outside intent removed <span class="chip ok">healed · verified</span> <span class="chip">Auto mode · Auto tier · added line</span></h2>
 <div class="muted" style="font-size:13px">16 Nov 15:02:41 to 15:05:58 UTC · policy pol-3f9c2a81, set by operator@example.com · incident hi-0c41e7</div></div>
 <a class="btn sm" href="#">Download the change record (.md)</a></div>
 <table class="steps"><thead><tr><th>#</th><th>Step</th><th>Read</th><th>Result</th><th>At</th></tr></thead><tbody>
@@ -314,7 +331,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <tr><td>2</td><td>Guards</td><td>the kill switch, the mode, planned work, holds, no-change windows, recent changes, devices departing (1 of 3), a person working (1 change in 10 min)</td><td class="ok-t">all clear</td><td>15:00:40</td></tr>
 <tr><td>3</td><td>Read r4 (Check drift now's read), then again after 120 s</td><td><span class="mono">show running-config</span>, twice</td><td>the same both times; 1 line differs from its golden</td><td>15:02:41</td></tr>
 <tr><td>4</td><td>Compare with intent and the last golden that matched it</td><td>committed intent at c81d03e; golden golden/r4/20261114T2210Z (intent: matching)</td><td>1 unit departs from both: an added static route</td><td>15:02:42</td></tr>
-<tr><td>5</td><td>Classify</td><td>shape global.ip-route on cisco_iosxe: measured exact (s1, 2026-10-07); not a route to the manager</td><td>Tier 1, added line: allowed in Auto</td><td>15:02:42</td></tr>
+<tr><td>5</td><td>Classify</td><td>shape global.ip-route on cisco_iosxe: measured exact (s1, 2026-10-07); not a route to the manager</td><td>Auto tier, added line: allowed in Auto mode</td><td>15:02:42</td></tr>
 <tr><td>6</td><td>Program and its hash</td><td>expected effects: no interface shut, no reach lost</td><td><span class="mono">prog-8d21f0c4</span>, 1 line (below)</td><td>15:02:43</td></tr>
 <tr><td>7</td><td>Apply, holding r4</td><td>r4 read again before sending: the same as step 3</td><td>sent 1 line; startup saved</td><td>15:03:20</td></tr>
 <tr><td>8</td><td>Verify (the deploy's)</td><td>neighbours, routes, interfaces; the line read back</td><td class="ok-t">passed: the line is gone; OSPF 3 of 3</td><td>15:04:12</td></tr>
@@ -332,7 +349,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <p class="callout">Step 3's reads and the program are masked, as every record is. A heal that verified its configuration while the symptom remained reads amber, "healed configuration; symptom remains", and notifies as a can't-fix. A heal whose golden re-check differs reads partial (amber). Neither is ever green.</p>
 </section>
 <section class="card" aria-label="A dry-run record">
-<div class="card-head"><div><h3>r3 would have healed: the EEM applet NMAS-HEARTBEAT re-applied (3 lines) <span class="chip at">dry run · Tier 1 · missing line</span></h3>
+<div class="card-head"><div><h3>r3 would have healed: the EEM applet NMAS-HEARTBEAT re-applied (3 lines) <span class="chip at">dry run · Auto tier · missing line</span></h3>
 <div class="muted" style="font-size:13px">14 Nov 10:12 UTC · program prog-51aa09e2 · verify would read: the lines back, the next heartbeat within 300 s</div></div>
 <div style="display:flex;gap:8px;align-items:center"><span class="muted" style="font-size:13px">Was this the right fix?</span><a class="btn sm" href="#">Right</a><a class="btn sm" href="#">Wrong…</a><a href="#">Open</a></div></div>
 </section>
@@ -367,7 +384,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <div class="na open">
 <span class="chip danger">critical</span>
 <div>
-<strong>Self-healing will not fix r6: a security ACL was added outside intent, on the interface Mercury reaches r6 by</strong> <span class="muted">· 4 min · Tier 4</span>
+<strong>Self-healing will not fix r6: a security ACL was added outside intent, on the interface Mercury reaches r6 by</strong> <span class="muted">· 4 min · Never</span>
 <div class="sub"><h3>What to do</h3>
 <p style="margin:4px 0">Decide whether the ACL belongs. If it does, adopt it into r6's intent. If it does not, it must be removed by a person: Mercury does not remove lines on the interface it reaches a device by, because no repair route independent of that path is built yet. The other alert, r7 unreachable, is folded in here: it is in r6's blast radius.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Edit r6's intent…</a><a class="btn sm" href="#">Capture r6…</a><a class="btn sm" href="#">Check drift now on r6</a><a class="btn sm" href="#">Acknowledge…</a></div>
@@ -378,7 +395,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <tr><td>2</td><td>Guards clear: no planned work, r6 not held, 1 device departing</td></tr>
 <tr><td>3</td><td>18:04:11 r6 read twice, 120 s apart: 4 lines differ from its golden, the same both times</td></tr>
 <tr><td>4</td><td>Against intent: an extended ACL defined (3 lines) and applied inbound on Gi2 (1 line), none in intent</td></tr>
-<tr><td>5</td><td>Classified: a security ACL (Tier 4, never automatic); Gi2 holds r6's management address (Mercury's path)</td></tr>
+<tr><td>5</td><td>Classified: a security ACL (Never: never automatic); Gi2 holds r6's management address (Mercury's path)</td></tr>
 <tr><td>6</td><td>Nothing sent. r7's "Device unreachable", 18:06, folded in (r7 is reached through r6)</td></tr>
 <tr><td>7</td><td>Notified Default on-call: 2 delivered</td></tr>
 </tbody></table>
@@ -395,14 +412,14 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 </div>
 <div class="na">
 <span class="chip danger">critical</span>
-<div><strong>Self-healing cannot fix r3 Gi4: down while administratively up, configuration at intent (physical or link)</strong> <span class="muted">· 2 min · Tier 3 · r4 held: a person appears to be working on it (11 changes in 10 min)</span>
+<div><strong>Self-healing cannot fix r3 Gi4: down while administratively up, configuration at intent (physical or link)</strong> <span class="muted">· 2 min · Alert · r4 held: a person appears to be working on it (11 changes in 10 min)</span>
 <div class="muted" style="font-size:12.5px;margin-top:2px"><span class="aimark">AI</span>AI analysis: pending (requested 18:41:02; the notice went without it at 18:42:02, and a follow-up is sent when it arrives)</div></div>
 <a class="btn sm" href="#">Open…</a>
 </div>
 <div class="sec">Warning · 1</div>
 <div class="na">
 <span class="chip warn">warning</span>
-<div><strong>A fix waits for a person: r6's OSPF router-id differs from intent (it takes effect through an OSPF process reset)</strong> <span class="muted">· 9 min · Tier 2</span></div>
+<div><strong>A fix waits for a person: r6's OSPF router-id differs from intent (it takes effect through an OSPF process reset)</strong> <span class="muted">· 9 min · Propose</span></div>
 <a class="btn sm" href="#">Review the fix…</a>
 </div>
 <p class="callout">The analysis's other states, each said in place of the block, never a silent absence: "AI analysis: not run, off for this network (Settings › Installation › AI)"; "not run, its cap for today is reached ($1.00)"; "couldn't analyse: an answer cited tried:9, which was not sent"; "the provider did not answer within 90 s". Analyse again… is a person's press behind its cost confirm, and replaces the stored analysis (the old one stays in History).</p>
@@ -410,7 +427,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 </div>
 
 <!-- ============================================================ E -->
-<div class="artlabel"><strong>E · Needs attention: a Tier 2 proposal waiting (R8), opened; and a halted policy (the failed-verify case)</strong>: the program and its hash, what the reset does, Approve… by hash with a reason, Decline…; and Lift the halt…</div>
+<div class="artlabel"><strong>E · Needs attention: a proposal waiting (R8, the Propose tier), opened; and a halted policy (the failed-verify case)</strong>: the program and its hash, what the reset does, Approve… by hash with a reason, Decline…; and Lift the halt…</div>
 <div class="art">
 <nav class="side" aria-label="Main">
 <div class="brand">Mercury</div>
@@ -436,7 +453,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <div class="na open" style="grid-template-columns:80px 1fr">
 <span class="chip warn">warning</span>
 <div>
-<strong>A fix waits for a person: r6's OSPF router-id differs from intent</strong> <span class="muted">· 9 min · Tier 2, process reset</span>
+<strong>A fix waits for a person: r6's OSPF router-id differs from intent</strong> <span class="muted">· 9 min · Propose, process reset</span>
 <div class="sub"><h3>What to do</h3>
 <p style="margin:4px 0">Approve to set r6's router-id back to intent and reset its OSPF process. The reset drops every OSPF adjacency on r6 (2) until they form again, so choose the moment.</p>
 <pre class="prog">router ospf 1
@@ -446,6 +463,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 <dt>Expected effects</dt><dd>OSPF to r4 and r7 drops and forms again; r7 out of reach until then (blast radius)</dd>
 <dt>Verify reads</dt><dd>both adjacencies FULL within 120 s; no duplicate router-id logged on r4</dd>
 <dt>Rollback</dt><dd>the router-id back; a reset cannot be undone, and its adjacencies form again by themselves</dd></dl>
+<div class="amend" style="padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:6px;font-size:13px"><span class="amendtag">amendment, for review</span><strong>Mercury's diagnosis, run before this was offered</strong> (16 reads on r6, r4 and r7, 18:12:10): 1. r6 uses router-id 192.0.2.14, which is r4's, a duplicate (decisive; <a href="#">show ip ospf</a> on both; intent: r6's is 192.0.2.16); 2. r6's adjacencies to r4 and r7 flap at each reset (strong; Loki). The fix proposed addresses hypothesis 1. <a href="#">The diagnosis</a></div>
 <label class="field">Reason<input type="text" placeholder="at least three words"></label>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Approve and run on r6</a><a class="btn sm" href="#">Decline…</a><a class="btn sm" href="#">Check drift now on r6</a></div>
 <p class="muted" style="margin:6px 0 0;font-size:12.5px">Bound to this program's hash and to r6 as read at 18:12:30. If r6 changes, the proposal is withdrawn and made again. Clears when approved and verified, or r6 is back at intent, or declined with a reason.</p></div>
@@ -505,7 +523,7 @@ thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surf
 X-Mercury-Timestamp: 1763491322
 X-Mercury-Signature: sha256=&lt;hex of HMAC(secret, timestamp + "." + body)&gt;
 {"incident": "hi-77d2a0", "network": "Default", "device": "r6",
- "event": "cant_fix", "tier": 4, "kind": "security_acl",
+ "event": "cant_fix", "tier": 4, "tier_name": "never", "kind": "security_acl",
  "summary": "a security ACL added outside intent, on the management interface",
  "steps": ["guards clear", "read twice: 4 lines differ",
            "inbound ACL added on Gi2, 4 lines, content withheld", "nothing sent"],
@@ -558,12 +576,433 @@ X-Mercury-Signature: sha256=&lt;hex of HMAC(secret, timestamp + "." + body)&gt;
 <dt>Calls a day</dt><dd>about 5 <span class="muted">(estimate: 23 can't-fix incidents on Default in the last 5 days, the dry-run walk's, 1 call each)</span></dd>
 <dt>Cost per call</dt><dd>$0.08, the worst case <span class="muted">(this feature has no sent calls yet, so its per-call cap stands in; Explain's measured $0.0257 is a different prompt)</span></dd>
 <dt>Dollars</dt><dd>about $0.40 a day, $12.00 a month at worst <span class="muted">(estimate; the provider bills, not Mercury)</span></dd>
+</dl>
+<dl class="kv amend" style="padding:6px 0">
+<dt><span class="amendtag">amendment, for review</span>Calls a finding</dt><dd>up to 2: a second pass after the reads it asks for (at most 3, each checked by Mercury) <span class="muted">(estimate: about $0.06 a finding, so about $0.30 a day; at worst $0.80 a day, $24.00 a month, and the month's cap below stops it first)</span></dd>
+</dl>
+<dl class="kv">
 <dt>Caps</dt><dd><input type="text" value="$1.00" size="6" aria-label="Day cap"> a day · <input type="text" value="$10.00" size="6" aria-label="Month cap"> a month <span class="muted">(within the installation's $15.00 a day)</span></dd>
 <dt>What is sent</dt><dd>the incident's evidence pack and what Mercury tried, configuration lines by kind only. The configuration class is off on every network until the classification marking is built</dd>
 <dt>For</dt><dd>14 days, then it asks again</dd>
 </dl>
 <div style="display:flex;gap:10px;align-items:center"><a class="btn primary" href="#">Turn on for Default with this estimate</a><a class="btn" href="#">Cancel</a></div>
 <p class="callout">The confirm is bound to this estimate's digest: if the estimate moves before the press, it is refused, naming both. Turning it off is one click here or in the spend panel, and stops new calls at once. The 50% and 80% warnings, the cap's stop and its Needs attention row are the existing rules.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ I (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>I · Diagnose… on a device and on an alert</strong>: at left, r4's Actions menu with the new Diagnose…, and its dialog: the runbook, its target from intent, every read it will make and on which device, and the worst-case time. At right, an alert's card on Monitoring with Diagnose… beside Explain. Reads only; nothing is changed.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#" class="on">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div style="display:flex;justify-content:space-between;align-items:center"><h1 class="page">r4 <span class="chip">cisco_iosxe</span> <span class="chip ok">at intent</span></h1><a class="btn" href="#">Actions ▾</a></div>
+<nav class="tabs" aria-label="r4 views"><a class="tab on" href="#">Overview</a><a class="tab" href="#">Intent</a><a class="tab" href="#">History</a><a class="tab" href="#">Monitoring</a><a class="tab" href="#">Logs</a><a class="tab" href="#">NetBox</a><a class="tab" href="#">Neighbours</a><a class="tab" href="#">Ask the device</a></nav>
+<div class="cols">
+<div style="display:flex;flex-direction:column;gap:14px">
+<div class="menu" aria-label="Actions" style="align-self:flex-start">
+<a href="#">Plan a deploy…</a><a href="#">Remove lines (Mode B)…</a><a href="#">Revert intent…</a>
+<div class="hr"></div>
+<a href="#">Run a privileged command…</a><a href="#">Reload…</a>
+<div class="hr"></div>
+<a href="#">Check drift now…</a>
+<a href="#" class="amend" style="font-weight:600">Diagnose…</a>
+<div class="hr"></div>
+<a href="#">Re-key…</a><a href="#">Retire…</a>
+</div>
+<section class="card" aria-label="An alert, on Monitoring">
+<div class="card-head"><div><h3>Interface down · r4 GigabitEthernet4</h3><div class="muted" style="font-size:12.5px">firing since 18:41:02 UTC · port down while administratively up · Monitoring › Alerts</div></div><span class="chip danger">firing</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><a class="btn sm" href="#"><span class="aimark">AI</span>Explain</a><a class="btn sm amend" href="#">Diagnose…</a><a href="#">Open the evidence pack</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="callout">Diagnose… on an alert opens the same dialog, its runbook and target taken from the alert: an interface or adjacency alert offers "An adjacency is down"; "Device unreachable" offers "Can't reach" with the unreachable device as the target. A can't-fix row on Needs attention carries Diagnose… too, the Never tier's included (N14).</p>
+</section>
+</div>
+<section class="card" aria-label="Diagnose r4">
+<div class="card-head"><h2>Diagnose r4</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<div class="field">What is wrong
+<div class="radio" role="radiogroup" aria-label="Runbook" style="flex-direction:column;align-items:flex-start;gap:6px">
+<label><input type="radio" name="rb" checked> <strong>An adjacency is down</strong> with both ends at intent</label>
+<label><input type="radio" name="rb"> <strong>Can't reach</strong> a device or an address from r4</label></div></div>
+<label class="field">Which adjacency
+<select><option>r3 over GigabitEthernet4: OSPF, area 0 (intent)</option><option>r6 over GigabitEthernet2: OSPF, area 0 (intent)</option><option>192.0.2.3: BGP (intent)</option></select>
+<span class="hint">From r4's intent. For Can't reach: a device of Default, or an IPv4 or IPv6 address, checked as one address.</span></label>
+<h3>What it reads</h3>
+<table><thead><tr><th>Device</th><th>Reads (each on the read-only allowlist)</th><th>At most</th></tr></thead><tbody>
+<tr><td>r4</td><td class="mono">show interfaces GigabitEthernet4 (twice, 10 s apart) · show ip interface GigabitEthernet4 · show ip ospf interface GigabitEthernet4 · show ip ospf neighbor GigabitEthernet4 detail · show cdp neighbors GigabitEthernet4 detail · ping (to r3 on the link, and at intent's MTU with df-bit)</td><td>8 reads; its two pings 74 s at worst</td></tr>
+<tr><td>r3</td><td class="mono">the same, for GigabitEthernet4</td><td>8 reads; 74 s at worst</td></tr>
+<tr><td>Loki</td><td>both devices' logs since 18:11: adjacency changes and their reasons, UPDOWN, configuration changes</td><td>one query</td></tr>
+</tbody></table>
+<p class="muted" style="margin:0;font-size:12.5px">Read only: nothing is sent to either device but these reads, and nothing is changed. Each device is held while it is read, so a deploy waits; a device another operation holds is skipped and named. Both ends are read at once; the run takes about 40 s, at most 90 s (an estimate until it is measured).</p>
+<p class="amend muted" style="margin:0;font-size:12.5px;padding:4px 6px"><span class="amendtag">amendment, for review</span>One diagnosis at a time per device, and at most 70 device commands per diagnosis; this one asks 16. If r4 or r3 is already in a diagnosis, the button is replaced by "r4 is in diagnosis dg-41a7 (started 18:40 by the incident hi-5be1c0); Diagnose… is offered when it ends".</p>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn primary" href="#">Run the diagnosis</a><a class="btn" href="#">Cancel</a></div>
+<p class="callout">The button is busy on itself until the diagnosis is drawn in its place (artboard J). Every read is a run on History › Reads, as Show commands' are; the diagnosis is a record on History, kind diagnosis, and on r4's History tab.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ J (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>J · A diagnosis, drawn in place</strong>: at left, I5 revised, "an adjacency is down with both ends at intent", the hypotheses ranked with their evidence and what was ruled out. At right, C4 on demand, "can't reach r7", the path hop by hop and the first hop that diverges from intent.</div>
+<div class="art amend">
+<main>
+<div class="cols">
+<section class="card" aria-label="Diagnosis: adjacency down">
+<div class="card-head"><div><h2>Diagnosis: r4 GigabitEthernet4 ↔ r3 GigabitEthernet4, OSPF down</h2>
+<div class="muted" style="font-size:13px">18:42:10 to 18:42:51 UTC · automatic, incident hi-5be1c0 (Alert tier) · 16 reads on 2 devices, 1 Loki query</div></div><span class="chip warn">3 hypotheses · the first decisive</span></div>
+<table class="hyp"><thead><tr><th>#</th><th>Hypothesis</th><th>Layer · strength</th><th>Evidence (masked)</th><th>Would rule it out</th></tr></thead><tbody>
+<tr><td>1</td><td><strong>A physical fault on r4's side:</strong> r4 Gi4 is down while administratively up, and r3 Gi4, the far end, is up</td><td>physical · <span class="danger-t">decisive</span></td><td><a href="#">r4 show interfaces Gi4</a>: "GigabitEthernet4 is down, line protocol is down"; <a href="#">r3 show interfaces Gi4</a>: "is up, line protocol is up"; intent: up on both</td><td>r4 Gi4 up and stable after one bounce</td></tr>
+<tr><td>2</td><td><strong>The link flaps</strong>, with no configuration change on either end</td><td>link · strong</td><td>Loki: 3 UPDOWN transitions on r4 Gi4 in 10 min; no CONFIG_I on r4 or r3 since 18:11</td><td>no transition across the stability window</td></tr>
+<tr><td>3</td><td>MTU across the link not tested <span class="chip">evidence incomplete</span></td><td>link · circumstantial</td><td>the df-bit ping could not run: r4 Gi4 is down. Intent: 1500 on both; read: 1500 on both</td><td>the df-bit ping passing once the link is up</td></tr>
+</tbody></table>
+<details open><summary><strong>Ruled out (9)</strong></summary>
+<p class="muted" style="font-size:12.5px;margin:4px 0 0">OSPF area 0 on both (intent 0) · hello 10 s and dead 40 s on both · network point-to-point on both · authentication none on both (intent none) · subnet 192.0.2.32/30 on both · no ACL bound on either end · CDP: r3 Gi4 last seen on r4 Gi4, as intent cables it · input errors 0 across the two reads · no outside configuration change on either end</p></details>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn sm" href="#">Run again</a><a href="#">Open in History</a><a href="#">16 reads on History › Reads</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="callout">Ranked by the rule table in code: decisive before strong before circumstantial; within a strength, bottom-up by layer; then by how many reads agree. An incomplete hypothesis ranks below every complete one of its strength. Hypothesis 1 is the port bounce's precondition, so on an incident the action follows (artboard K); a diagnosis on demand acts on nothing. With no rule firing it reads "no cause found in what Mercury reads", then the ruled-out list.</p>
+</section>
+
+<section class="card" aria-label="Diagnosis: can't reach">
+<div class="card-head"><div><h2>Diagnosis: r4 can't reach r7 (192.0.2.17)</h2>
+<div class="muted" style="font-size:13px">18:07:30 UTC · on demand by operator@example.com, from r7's "Device unreachable" · 9 reads on 2 devices</div></div><span class="chip danger">diverges at r6</span></div>
+<table><thead><tr><th>Hop</th><th>Read</th><th>Against intent</th></tr></thead><tbody>
+<tr><td>0 · r4</td><td><span class="mono">ping 192.0.2.17 repeat 5 timeout 2</span>: 0 of 5</td><td class="danger-t">fails</td></tr>
+<tr><td>1 · r4</td><td>route: OSPF via 192.0.2.21 on Gi2; next hop resolved (ARP); Gi2 up, 0 errors; no ACL bound</td><td class="ok-t">as intent: the r4–r6 link, an expected OSPF adjacency</td></tr>
+<tr class="diverge"><td>2 · r6</td><td>ingress Gi2: <span class="mono">Inbound access list is</span> &lt;an ACL&gt;; its counters: deny matches rising</td><td class="danger-t"><strong>diverges here:</strong> intent binds no ACL on r6 Gi2</td></tr>
+<tr><td>3 · r7</td><td class="faint">not read: hops after r6 are not read</td><td></td></tr>
+</tbody></table>
+<table class="hyp"><thead><tr><th>#</th><th>Hypothesis</th><th>Layer · strength</th><th>Evidence</th></tr></thead><tbody>
+<tr><td>1</td><td><strong>An inbound ACL on r6 Gi2 that intent does not hold</strong> drops the traffic (it permits TCP and UDP only)</td><td>policy · <span class="danger-t">decisive</span></td><td><a href="#">r6 show ip interface Gi2</a>; <a href="#">r6 show ip access-lists</a> (counters); intent: none bound. Self-healing classed it Never at 18:04</td></tr>
+<tr><td>2</td><td>r7's own state is unknown <span class="chip">evidence incomplete</span></td><td>network · circumstantial</td><td>r7 cannot be read past r6</td></tr>
+</tbody></table>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn sm" href="#">Open r6's can't-fix row</a><a class="btn sm" href="#">Run again</a><a href="#">Open in History</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="callout">The board's example draws r4 as r6's neighbour on Gi2's link; the built walk takes it from the lab's intent. Each hop's checks, in order: the egress interface and its errors, the next hop's resolution, the MAC and spanning-tree port on any switch between, the route's source against intent, the ACL bindings at egress and at the next hop's ingress. It stops at the first divergence and says which hops it did not read. IPv6 targets follow <span class="mono">show ipv6 cef</span>; until that is built the dialog says "Can't reach reads IPv4 forwarding only" for an IPv6 address.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ K (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>K · History, kind heal: an action that did not take, and a session clear in dry run</strong>: I5 revised (its sheet a draft until the operator's trial is measured), r4 Gi4 bounced once, still flapping, so a dampening change is proposed. Every step and its result, the diagnosis attached, the program and hash, verify with the stability window, and the records. Below it, a dry-run session clear with Right and Wrong.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">History</h1></div>
+<div class="scope">Kind <select aria-label="Kind"><option>Heal</option></select> Device <select aria-label="Device"><option>r4</option></select> Outcome <select aria-label="Outcome"><option>every outcome</option></select> <select aria-label="Range"><option>last 7 days</option></select> <input type="search" placeholder="Search" aria-label="Search" style="font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip ok">healed 5</span><span class="chip warn">bounced, still flapping 1</span><span class="chip at">would heal 7</span><span class="chip at">would clear 1</span><span class="chip warn">proposed 2</span><span class="chip danger">can't fix 3</span><span class="chip">diagnosed 4</span></div>
+<section class="card" aria-label="An action incident, opened">
+<div class="card-head"><div><h2>r4 Gi4 bounced once: still flapping; a dampening change waits for a person <span class="chip warn">bounced · still flapping</span> <span class="chip">Auto mode · Auto tier · port bounce</span></h2>
+<div class="muted" style="font-size:13px">16 Nov 18:41:02 to 18:53:04 UTC · policy pol-3f9c2a81, set by operator@example.com · incident hi-5be1c0</div></div>
+<a class="btn sm" href="#">Download the change record (.md)</a></div>
+<table class="steps"><thead><tr><th>#</th><th>Step</th><th>Read</th><th>Result</th><th>At</th></tr></thead><tbody>
+<tr><td>1</td><td>Trigger</td><td>r4's alert "Interface down" (Gi4 down, admin up); r4's log: 3 UPDOWN transitions on Gi4 in 10 min</td><td>a flap (3 of 3 transitions in 10 min)</td><td>18:41:02</td></tr>
+<tr><td>2</td><td>Guards</td><td>the kill switch, the mode, planned work, holds, recent changes, devices departing (1 of 3), a person working on r4 or on the far end r3 (0 changes in 10 min)</td><td class="ok-t">all clear</td><td>18:41:03</td></tr>
+<tr><td>3</td><td>Compare with intent</td><td>r4 and r3 read; intent at c81d03e</td><td>both at intent: the Alert tier, configuration cannot fix it</td><td>18:42:08</td></tr>
+<tr><td>4</td><td>Diagnose: an adjacency is down with both ends at intent</td><td>16 reads on r4 and r3; Loki</td><td>3 hypotheses; first: a physical fault on r4 Gi4, the far end up (decisive). <a href="#">The diagnosis</a></td><td>18:42:51</td></tr>
+<tr><td>5</td><td>Choose an action</td><td>hypothesis 1 is the port bounce's precondition; port bounce allowed in Auto mode on Default (marked lab); r4 Gi4 bounced in the last hour: none</td><td>port bounce, Auto tier</td><td>18:42:51</td></tr>
+<tr class="amend"><td>6</td><td>Mercury's path and the only path <span class="amendtag">amendment, for review</span></td><td>r4's management address is on Gi1, not Gi4; <span class="mono">show ip cef 192.0.2.250</span> on r4 (Mercury's source address): egress Gi1, not Gi4; blast radius of shutting Gi4: no device loses reach</td><td class="ok-t">Gi4 is not on Mercury's path to r4 and not r4's only path</td><td>18:42:52</td></tr>
+<tr class="amend"><td>7</td><td>A repair route on r4 <span class="amendtag">amendment, for review</span></td><td>r4's intent holds the configuration archive (path flash:mercury-archive); the revert timer measured on cisco_iosxe (r4's trial, its date); the bounce's measured settle time 44 s</td><td class="ok-t">revert timer 2 minutes (2.5 × 44 s, rounded up to the timer's unit)</td><td>18:42:52</td></tr>
+<tr><td>8</td><td>Program and its hash</td><td>expected effects: no reach lost; shutdown authorised by the policy's port bounce</td><td><span class="mono">prog-7a90c3d1</span>, the revert timer and 3 lines (below)</td><td>18:42:52</td></tr>
+<tr><td>9</td><td>Apply, holding r4</td><td>precondition read again: Gi4 down, admin up; the far end r3 Gi4 up</td><td>sent 3 lines in one batch</td><td>18:42:58</td></tr>
+<tr class="amend"><td>10</td><td>Confirm on r4 <span class="amendtag">amendment, for review</span></td><td>a new session to r4 at +14 s; post-check: Gi4 up, the running configuration equal to step 3's read</td><td class="ok-t">configure confirm sent at +41 s; the revert timer stopped</td><td>18:43:39</td></tr>
+<tr><td>11</td><td>Verify the bounce</td><td>Gi4's state; the running configuration against step 3's read; OSPF to r3</td><td class="ok-t">up at +4 s; configuration did not move; OSPF to r3 FULL at +38 s</td><td>18:43:41</td></tr>
+<tr><td>12</td><td>Stability window, 10 min</td><td>r4's log for Gi4</td><td class="warn-t">2 more transitions (18:47:12 down, 18:47:26 up): still flapping</td><td>18:52:58</td></tr>
+<tr><td>13</td><td>Propose</td><td>a second bounce would be a repeat: a proposal instead</td><td class="warn-t">dampening on r4 Gi4, the Propose tier, a change to intent: <a href="#">its row</a></td><td>18:53:01</td></tr>
+<tr><td>14</td><td>Record and notify</td><td>receipt; golden re-check; NetBox journal on r4; Default on-call; the AI analysis requested</td><td>no golden committed (configuration unchanged; re-check: at its golden); journal written (warning); 2 delivered</td><td>18:53:04</td></tr>
+</tbody></table>
+<pre class="prog">configure terminal revert timer 2
+interface GigabitEthernet4
+ shutdown
+ no shutdown
+end
+! after a new session and the post-check, only then:
+configure confirm</pre>
+<dl class="kv">
+<dt>Receipt</dt><dd><a href="#">deploy receipt r4 18:42:58</a> (actor operator@example.com, by policy)</dd>
+<dt>Golden</dt><dd>none: the configuration did not change (re-check at 18:53:02: at its golden; intent: matching)</dd>
+<dt>NetBox</dt><dd><a href="#">journal entry on r4</a> (warning)</dd>
+<dt>Notices</dt><dd><a href="#">2 in the delivery log</a></dd>
+</dl>
+<p class="callout">The three lines go as one batch, so a cut session never leaves shutdown alone; if the read after showed shutdown, rollback sends no shutdown and says so. A bounce is never repeated: a second need within 24 h is the proposal. Never with the far end down or held. The verify reads the running configuration equal to the pre-read, line for line. The same bounce resets one stuck OSPF adjacency, only on an interface with exactly one OSPF neighbour (N17).</p>
+<div class="amend" style="padding:8px 10px;background:var(--danger-soft);border-radius:6px;font-size:13px"><span class="amendtag">amendment, for review</span><strong>Steps 6 and 7's refusals, as History and Needs attention draw them</strong> (nothing sent; the path refusals are Never, the archive and timer refusals say what to add or measure):
+<ul style="margin:4px 0 0 18px;padding:0">
+<li>"Not bounced: r4 reaches Mercury (192.0.2.250) out of GigabitEthernet4 (<span class="mono">show ip cef 192.0.2.250</span> on r4: egress Gi4), so a bounce would cut Mercury's own session to r4."</li>
+<li>"Not bounced: GigabitEthernet4 holds 192.0.2.4, the address Mercury reaches r4 on."</li>
+<li>"Not bounced: GigabitEthernet4 is r4's only path: shutting it leaves r4 and 2 devices behind it unreachable (blast radius)."</li>
+<li>"Not bounced: r4 has no configuration archive in its intent, so it cannot revert a bounce by itself if Mercury's session is lost. Add the archive's path to r4's intent (host_vars, archive.path) and deploy it." <a href="#">Edit r4's intent…</a></li>
+<li>"Not bounced: the revert timer is not measured on cisco_ios (the operator's trial has not run on s1), so a lost session could not be undone on the device."</li>
+<li>"Bounce not confirmed: Mercury did not reach r4 again within the 2-minute revert timer, so r4 reverted on its own at 18:44:58; Gi4 is as it was before the bounce." (the step log's words when the session is lost)</li>
+<li>"OSPF adjacency not reset: GigabitEthernet2 has 3 OSPF neighbours (<span class="mono">show ip ospf neighbor GigabitEthernet2</span>), and a bounce would reset all 3. Alert, with the diagnosis."</li>
+</ul></div>
+</section>
+<section class="card" aria-label="A dry-run session clear">
+<div class="card-head"><div><h3>r4 would have cleared its BGP session to 192.0.2.3 <span class="chip at">dry run · Auto tier on a lab network · session clear</span></h3>
+<div class="muted" style="font-size:13px">15 Nov 21:14 UTC · not Established in two reads in a row (Idle, 21:12 and 21:13); 192.0.2.3 answers from Loopback0, 5 of 5; no configuration cause found · would send <span class="mono">clear ip bgp 192.0.2.3</span>, one named neighbour, before-state kept · verify would read: Established within 90 s. On a network not marked lab this is a proposal for a person; an Established session gets only a soft clear; <span class="mono">clear ip bgp *</span> is Never. <span class="amendtag">amendment, for review</span>Never cleared, raising drift or Alert instead: a peer in Idle (Admin), an administratively shut neighbour, or a wrong remote AS ("Not cleared: 192.0.2.3's last reset was a bad peer AS; intent says 64500, the peer sends 64501").</div></div>
+<div style="display:flex;gap:8px;align-items:center"><span class="muted" style="font-size:13px">Was this the right fix?</span><a class="btn sm" href="#">Right</a><a class="btn sm" href="#">Wrong…</a><a href="#">Open</a></div></div>
+</section>
+</main>
+</div>
+
+<!-- ============================================================ L (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>L · Needs attention: the dampening proposal, opened; and the notice carrying Mercury's diagnosis</strong>: a change to intent in the Propose tier, its edit and program under one hash, Approve… commits and deploys as the person, Decline…. At right, I5's email, with Mercury's diagnosis before the AI analysis.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#" class="on">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<h1 class="page">Needs attention</h1>
+<div class="cols">
+<div class="na open" style="grid-template-columns:80px 1fr">
+<span class="chip warn">warning</span>
+<div>
+<strong>A change waits for a person: dampening on r4 GigabitEthernet4, still flapping after one bounce</strong> <span class="muted">· 1 min · Propose, a change to intent</span>
+<div class="sub"><h3>What to do</h3>
+<p style="margin:4px 0">Approve to add dampening to r4 Gi4's intent and deploy it: while Gi4 keeps flapping it is held down, and it is released once it is stable, by the platform's defaults. This is a change to intent, committed as you; self-healing does not make it.</p>
+<pre class="prog">host_vars/r4.yml
+  interfaces:
+    GigabitEthernet4:
++     dampening: true</pre>
+<pre class="prog">interface GigabitEthernet4
+ dampening</pre>
+<dl class="kv"><dt>Proposal</dt><dd class="mono">prog-c40e19b7 · the edit on intent c81d03e · r4 read at 18:53:02</dd>
+<dt>Expected effects</dt><dd>none while Gi4 is stable; while it flaps, Gi4 is suppressed and OSPF to r3 stays down until it is released</dd>
+<dt>Verify reads</dt><dd>the line read back; <span class="mono">show interfaces dampening</span> lists Gi4</dd>
+<dt>Rollback</dt><dd><span class="mono">no dampening</span> (shape interface.dampening, measured exact on cisco_iosxe and cisco_ios)</dd></dl>
+<label class="field">Reason<input type="text" placeholder="at least three words"></label>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary sm" href="#">Approve: commit and deploy on r4</a><a class="btn sm" href="#">Decline…</a><a class="btn sm" href="#">Open in the intent editor</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="muted" style="margin:6px 0 0;font-size:12.5px">Bound to this edit's and this program's hash, and to r4 as read at 18:53:02. Clears when approved and verified, when declined with a reason, or when Gi4 has been stable for 24 hours (said so).</p></div>
+<div class="sub"><a href="#">What Mercury found and tried (14 steps), and the diagnosis</a></div>
+</div>
+</div>
+
+<div class="mail" aria-label="The I5 email, with Mercury's diagnosis">
+<div class="mh"><span>From</span><div>Mercury &lt;mercury@example.com&gt;</div><span>To</span><div>noc@example.com, engineer@example.com</div><span>Subject</span><div><strong>[Mercury · Default] r4 Gi4 bounced once, still flapping: a change waits for a person</strong></div></div>
+<div class="mb">
+<div><strong>Detected</strong> 18:41:02 UTC: r4 GigabitEthernet4 down while administratively up; 3 transitions in 10 minutes. r4 and r3 are at intent.</div>
+<div><strong>Mercury's diagnosis</strong> (read-only; 16 reads on r4 and r3)
+<ol><li>A physical fault on r4's side: Gi4 down while administratively up, the far end (r3) up (decisive).</li>
+<li>The link flaps, with no configuration change on either end (strong).</li>
+<li>MTU not tested while the link is down (evidence incomplete).</li></ol>
+<span class="muted">Ruled out: OSPF area, timers, network type and authentication alike; same subnet; no ACL; cabled as intent says; no input errors.</span></div>
+<div><strong>What Mercury did</strong>
+<ol><li>Bounced r4 Gi4 once (configuration unchanged): up after 4 s.</li>
+<li>Watched 10 minutes: 2 more transitions, so still flapping.</li>
+<li>Proposed dampening on r4 Gi4: it waits for a person.</li></ol></div>
+<div class="advisory"><strong>AI analysis: Advisory (beta), a person should confirm</strong> <span class="muted">first pass: Mercury is running the 2 reads it asked for; the second pass follows on this thread</span>
+<div><strong>Hypothesis:</strong> the fault is on r4's port or its link, not the configuration: r3's end stays up while r4's goes down.</div></div>
+<div><a href="#">Open the incident in Mercury</a> · incident hi-5be1c0</div>
+<div class="faint" style="font-size:12px">No configuration line or secret is sent in a notice. Mercury's diagnosis is its own reads, not the AI's.</div>
+</div></div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ M (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>M · History, kind AI calls: the analysis's read requests and its second pass</strong>: pass 1, the three reads it asked for (two run, one refused, each with its reason and its run), pass 2. At right, the analysis as the can't-fix row shows it, and pass 1's call opened.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><a href="#" class="aichip"><span class="aimark">AI</span>$0.21 today · 1 background on</a></div>
+<div><h1 class="page">History</h1></div>
+<div class="scope">Kind <select aria-label="Kind"><option>AI calls</option></select> Feature <select aria-label="Feature"><option>Self-healing analysis</option></select> <select aria-label="Range"><option>last 7 days</option></select> <input type="search" placeholder="Search" aria-label="Search" value="hi-5be1c0" style="font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px"></div>
+<div class="cols">
+<section class="card" aria-label="The analysis's calls and reads">
+<div class="card-head"><div><h2>AI analysis of incident hi-5be1c0 (r4 Gi4)</h2><div class="muted" style="font-size:13px">2 calls · $0.06 · 3 reads asked for: 2 run, 1 refused · background, turned on for Default by operator@example.com · device state class: on for Default · reads as the read-only account</div></div><span class="chip ok">checked: passed</span></div>
+<table><thead><tr><th>At</th><th>What</th><th>Result</th><th></th></tr></thead><tbody>
+<tr><td>18:53:10</td><td><span class="aimark">AI</span><strong>Pass 1</strong> · heal_analysis v2 · trigger background (job hj-5be1c0)</td><td>$0.026 · checked: passed · asked for 3 reads</td><td><a href="#">Open</a></td></tr>
+<tr><td>18:53:24</td><td style="padding-left:28px">Read 1 · r4 <span class="mono">show interfaces GigabitEthernet4</span><div class="faint">why: "count resets and input errors on the side that flaps"</div></td><td class="ok-t">run as the read-only account · <a href="#">History › Reads rd-91f2</a> · 1.9 KiB sent as device state, masked, 0 lines dropped</td><td></td></tr>
+<tr><td>18:53:24</td><td style="padding-left:28px">Read 2 · r3 <span class="mono">show ip ospf neighbor GigabitEthernet4 detail</span><div class="faint">why: "whether r3 saw r4 go down, and when"</div></td><td class="ok-t">run as the read-only account · <a href="#">History › Reads rd-91f3</a> · 1.1 KiB sent as device state, masked, 0 lines dropped</td><td></td></tr>
+<tr><td>18:53:24</td><td style="padding-left:28px">Read 3 · r4 <span class="mono">show running-config interface GigabitEthernet4</span><div class="faint">why: "check carrier-delay on the port"</div></td><td class="danger-t">refused: it prints configuration, which goes only where the configuration class is on, through its masking; the configuration class is off for Default. Returned to pass 2 as refused</td><td></td></tr>
+<tr><td>18:53:41</td><td><span class="aimark">AI</span><strong>Pass 2</strong> · no reads may be asked</td><td>$0.034 · checked: passed (cites read:1, read:2, diag:1, tried:9)</td><td><a href="#">Open</a></td></tr>
+</tbody></table>
+<div class="amend" style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;font-size:13px"><span class="amendtag">amendment, for review</span><strong>How a request is matched (N21):</strong> the whole command against one shape; output modifiers only include, exclude, begin and section; arguments against strict patterns (an interface the device's golden holds, one address, one prefix, a peer intent names). Refusals as drawn: "refused: | redirect writes the output to flash or another host"; "refused: | tee writes the output"; "refused: | count is not one of include, exclude, begin, section"; "refused: 'extra' is a word the shape show interfaces &lt;interface&gt; does not name"; "refused: a line break: one command per request".</div>
+<p class="callout">Each request is checked by code before it runs: the read-only allowlist whole, then the AI read set the tool enforces (state reads, each argument one token of its shape from Mercury's own records), a device the incident names, not held, at most 3. A refusal names its comparison and both operands. Nothing runs on a device until its read-only account resolves; without one the request is refused, "no read-only account for r4". Each read is held, masked, recorded; each answer is capped at 4 KiB for the model, and every send is logged here. With the device state class off for a network, no read answer leaves the host and pass 1 is the whole analysis. The gateway checks the feature's switch and caps before each pass; at a cap, pass 2 is refused with no provider request, and pass 1's answer is shown saying so.</p>
+</section>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div class="advisory" aria-label="The analysis on the can't-fix row">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><strong><span class="aimark">AI</span>AI analysis: Advisory (beta), a person should confirm</strong><span class="chip ai" title="Measured with the read loop: 3 recorded cases, 10 runs each, two passes.">3 of 3 recorded cases reliable (two passes, 10 runs each)</span></div>
+<div><strong>Hypothesis:</strong> a fault on r4's port or its link: r4 Gi4 reset 9 times with 0 input errors, while r3 Gi4 stayed up and logged the adjacency down only on its dead timer. <span class="muted">Cites: read:1, read:2, diag:1, tried:9</span></div>
+<div><strong>Recommended next step:</strong> check r4 Gi4's port or cable; if it keeps flapping, approve the dampening proposal. <span class="muted">Confirm with <span class="mono">show interfaces GigabitEthernet4</span> on r4 (on Show commands' allowlist).</span></div>
+<div class="muted" style="font-size:12.5px">Asked Mercury for 3 reads: 2 run, 1 refused (<a href="#">History</a>). 2 background calls, $0.06. Nothing in self-healing reads this answer.</div>
+<div style="display:flex;gap:8px;align-items:center"><a class="btn sm" href="#"><span class="aimark">AI</span>Analyse again…</a><span class="muted" style="font-size:12.5px">Was this right?</span><a class="btn sm" href="#">Yes</a><a class="btn sm" href="#">No…</a></div>
+</div>
+<section class="card" aria-label="Pass 1, opened">
+<h3>Pass 1, opened</h3>
+<dl class="kv"><dt>Feature</dt><dd>Self-healing analyses what it could not fix (heal_analysis v2)</dd><dt>Trigger</dt><dd>background: incident hi-5be1c0's analysis job</dd><dt>Cost</dt><dd>$0.026 (estimate from the price table dated in code; the provider bills)</dd></dl>
+<details><summary>Sent to the model <span class="muted">(4 parts, folded)</span></summary><pre class="prog">… the evidence pack, Mercury's diagnosis and what Mercury tried, masked …</pre></details>
+<p style="margin:0;font-size:13px;font-weight:600">Received</p>
+<pre class="prog">{"hypotheses": [...], "needs_human": true,
+ "reads": [
+  {"device": "r4", "command": "show interfaces GigabitEthernet4", "why": "…", "hypothesis": 1},
+  {"device": "r3", "command": "show ip ospf neighbor GigabitEthernet4 detail", "why": "…", "hypothesis": 1},
+  {"device": "r4", "command": "show running-config interface GigabitEthernet4", "why": "…", "hypothesis": 2}]}</pre>
+<p class="muted" style="margin:0;font-size:12px">Secrets are masked: this is the prompt as it left the host.</p>
+</section>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ N (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>N · The AI read loop's two prerequisites</strong>: at left, Credentials: a profile's read-only account, which every AI read runs as (item 3 runs on no device without it). At right, Settings · Default › Network: the AI's data classes, with the new device state class, off by default and turned on per network.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#" class="on">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="cols">
+<section class="card" aria-label="A profile's read-only account">
+<div class="card-head"><h2>Credentials · profile default</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<dl class="kv">
+<dt>Deploy account</dt><dd>admin · password set 2 Nov, never shown · used by device-changing operations</dd>
+<dt>Read-only account</dt><dd><strong>mercury-ro</strong> · password set 3 Nov by operator@example.com, never shown · <span class="chip ok">on 11 of 11 devices</span></dd>
+<dt>What it may run</dt><dd>the AI read set's show commands and bounded ping and traceroute, at a low privilege level (its device-side shape measured on both dialects)</dd>
+<dt>Used by</dt><dd>the AI analysis's reads (required); diagnosis, collection and drift reads may move to it later (a register row)</dd>
+</dl>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a class="btn sm" href="#">Set the read-only account…</a><a class="btn sm" href="#">Replace its password…</a><a href="#">Which devices hold it</a></div>
+<p class="callout">The account reaches the devices as an intent change (an account added, never changed: the deploy rule), deployed by a person; the operator types its password. A device where it does not resolve is named on Needs attention, and the AI's reads refuse that device, naming it. Retirement removes it with the device's other artefacts.</p>
+</section>
+<section class="card" aria-label="The AI's data classes">
+<div class="card-head"><h2>Settings · Default › Network: what AI may send</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<table><thead><tr><th>Class</th><th>What</th><th>State</th><th></th></tr></thead><tbody>
+<tr><td>Allowed</td><td>alert labels, metric series, masked log lines, intent diffs</td><td><span class="chip ok">on where AI is on</span></td><td></td></tr>
+<tr><td>Topology</td><td>the network model's slice: devices, links, adjacencies</td><td><span class="chip ok">on</span></td><td><a href="#">Turn off</a></td></tr>
+<tr class="amend"><td><span class="amendtag">amendment, for review</span>Device state</td><td>answers to the AI read set's show commands (state, not configuration), masked, a secret-shaped line dropped whole</td><td><span class="chip">off</span></td><td><a class="btn sm" href="#">Turn on…</a></td></tr>
+<tr><td>Configuration</td><td>configuration lines, through the configuration masking</td><td><span class="chip">off: the classification marking is not built</span></td><td></td></tr>
+</tbody></table>
+<label class="field">Reason, to turn device state on for Default<input type="text" placeholder="at least three words"></label>
+<p class="callout">Device state is off by default and turned on per network by an admin with a reason, recorded with who and when, the configuration class's pattern. Turning it off is one click and stops new sends at once. Every send is logged in History › AI calls with its bytes and dropped lines.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ O (amendment) -->
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>O · History, kind AI calls: the SDN Responder's read requests (Lab 9's B4)</strong>: the same loop as artboard M, against the controller. Each read is a named operation mapped to a GET; a write is refused in code whatever the request; arguments are checked against the topology read at that moment.</div>
+<div class="art amend">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">3</span></a>
+<a href="#">Devices</a>
+<a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">History</h1></div>
+<div class="scope">Kind <select aria-label="Kind"><option>AI calls</option></select> Feature <select aria-label="Feature"><option>SDN: the loop classifies each detection</option></select> Network <select aria-label="Network"><option>sdn_lab</option></select> <select aria-label="Range"><option>last 7 days</option></select></div>
+<div class="cols">
+<section class="card" aria-label="The Responder's calls and reads">
+<div class="card-head"><div><h2>Classification of detection sd-9c21 (a scan from 192.0.2.3)</h2><div class="muted" style="font-size:13px">2 calls · $0.0011 · 3 reads asked for: 1 run, 2 refused · device state class: on for sdn_lab · the controller: Ryu, sdn_lab's connection</div></div><span class="chip ok">checked: passed</span></div>
+<table><thead><tr><th>At</th><th>What</th><th>Result</th></tr></thead><tbody>
+<tr><td>21:14:02</td><td><span class="aimark">AI</span><strong>Pass 1</strong> · sdn_classify · trigger background (the loop's job)</td><td>$0.0003 · asked for 3 reads</td></tr>
+<tr><td>21:14:03</td><td style="padding-left:28px">Read 1 · <span class="mono">switch_flows</span> dpid 0000000000000002 → <span class="mono">GET /stats/flow/2</span></td><td class="ok-t">run · 3.1 KiB sent as device state</td></tr>
+<tr><td>21:14:03</td><td style="padding-left:28px">Read 2 · <span class="mono">delete_flow</span> dpid 0000000000000002<div class="faint">why: "remove the scanner's flow to stop it"</div></td><td class="danger-t">refused: a write endpoint (POST /stats/flowentry/delete_strict); only GET is ever sent. Nothing sent</td></tr>
+<tr><td>21:14:03</td><td style="padding-left:28px">Read 3 · <span class="mono">port_stats</span> dpid 0000000000000009, port 3</td><td class="danger-t">refused: dpid 0000000000000009 is not a switch the controller lists (it lists 1 to 4)</td></tr>
+<tr><td>21:14:05</td><td><span class="aimark">AI</span><strong>Pass 2</strong> · no reads may be asked</td><td>$0.0008 · checked: passed (cites read:1)</td></tr>
+</tbody></table>
+<p class="callout">The operations: topology, switch_flows, port_stats (built today: GET /v1.0/topology/*, /stats/switches, /stats/flow/&lt;dpid&gt;, /stats/port/&lt;dpid&gt;); link_state (to build: GET /stats/portdesc/&lt;dpid&gt; with the topology's links); path_trace (to build in Lab 9: Mercury's trace over those GETs). The loop holds a read-only view of the driver: any method but GET, and every flow, meter, group and port-modify path, is refused before a byte leaves. A driver not built refuses every operation, naming itself.</p>
+</section>
+<section class="card" aria-label="B4's evaluation">
+<div class="card-head"><h2>B4's evaluation: frozen before the build</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<dl class="kv">
+<dt>Baseline</dt><dd>today's single pass; the same model and prompts otherwise</dd>
+<dt>Technique</dt><dd>the read loop (one round, at most 3 reads)</dd>
+<dt>Cases</dt><dd>recorded 58 (recorded 12, from blind 26, walk 8, held out 12); blind 11 plus 2 normal-traffic; keys locked, no tuning on blind</dd>
+<dt>Measures</dt><dd>correct diagnosis, false positives, sources named, tokens and cost per answer, time to an answer; each with its difference and uncertainty</dd>
+<dt>Pass rule</dt><dd>improves results only if blind accuracy rises without more false positives; a cost increase is reported</dd>
+<dt>Spend</dt><dd>both runs about $1.1, at most $1.5, against $161.19 left at the plan's last reading (the ledger read again first)</dd>
+</dl>
+<p class="callout">The blind set is spent apart from 11 cases; a fresh blind set is the operator's capture session, and it captures each operation's GET answer so the reads replay. The board draws the plan's head as the run's report will open; where the report is shown is the build's to propose against an existing screen, never a new one without its own board.</p>
 </section>
 </div>
 </main>
@@ -579,10 +1018,24 @@ X-Mercury-Signature: sha256=&lt;hex of HMAC(secret, timestamp + "." + body)&gt;
 <div class="q"><h3>N6 · N per hour</h3><ol><li><strong>Recommended:</strong> section 7's approved rails: 1 per device and 6 per network an hour; the same fix twice in 24 h halts.</li></ol></div>
 <div class="q"><h3>N7 · R3 on r6 Gi2, Mercury's path to r6</h3><ol><li><strong>Recommended:</strong> run R3's heal on the r3–r4 link's Gi4, and keep the management-interface refusal.</li></ol></div>
 <div class="q"><h3>N8 · AUTO's expiry, and marking the network lab</h3><ol><li><strong>Recommended:</strong> an expiry is required, at most 7 days, then dry run. Marking Default lab and turning AUTO on there are the operator's.</li></ol></div>
-<div class="q"><h3>N9 · A line in a secret position</h3><ol><li><strong>Recommended:</strong> removing a routing key is Tier 1, masked, with the policy's words as its reason; adding any secret back is Tier 2; accounts, AAA and communities are Tier 4.</li></ol></div>
+<div class="q"><h3>N9 · A line in a secret position</h3><ol><li><strong>Recommended:</strong> removing a routing key is Auto, masked, with the policy's words as its reason; adding any secret back is Propose; accounts, AAA and communities are Never.</li></ol></div>
 <div class="q"><h3>N10 · The analysis's pack carries the masked intent-diff lines</h3><ol><li><strong>Recommended:</strong> send them, as Explain does (at most 20, the allowed class of 2026-10-29). The step log's own lines stay by kind.</li></ol></div>
 <div class="q"><h3>N11 · Phase 8's end</h3><ol><li><strong>Recommended:</strong> it moves to about Dec 11, with 0.1 unchanged; the credit-bound measurement rounds stay before 11-29.</li></ol></div>
 <div class="q"><h3>N12 · A change a named person made at the CLI</h3><ol><li><strong>Recommended:</strong> heal after the grace period, naming the person and notifying; the person-working guard holds a device under active work.</li></ol></div>
+<div class="artlabel"><span class="amendtag">amendment, for review</span><strong>The amendment's decisions</strong>: only what practice does not decide; the reasons are in docs/HEAL_TO_INTENT.md section 19.10.</div>
+<div class="q amend"><h3>The tiers by name, and the lecture's crosswalk</h3><ol><li>Every screen names board H's tiers: <strong>Auto</strong> (1 in code), <strong>Propose</strong> (2), <strong>Alert</strong> (3), <strong>Never</strong> (4). The lecture's three tiers by rising autonomy: T1 read-only diagnosis = Alert plus diagnosis; T2 a suggested fix a person approves = Propose; T3 auto-remediate low-risk, well-understood cases = Auto; its "poor candidates" = Never (section 19.9).</li></ol></div>
+<div class="q amend"><h3>N14 · Diagnosis on which tiers (the operator's)</h3><ol><li>Automatic on Alert incidents before they notify, and on Propose incidents before they are offered for approval, the diagnosis attached to the proposal (artboard E's insert); Diagnose… on demand everywhere. Practice: automated diagnostics attached when an incident opens (incident platforms); triage before treatment (SRE book, chapter 12); the approver sees the evidence first (ITIL change evaluation).</li></ol></div>
+<div class="q amend"><h3>N15 · I5's staging (the operator's)</h3><ol><li>"Far end up" is kept; no guard is loosened to pass a sheet. The flap moves to the lab host; the operator's one trial records what r4 sees and what the far end, r3, sees; the I5 sheet stays a draft until it is measured. If both ends go down, the bounce stays refused and I5 needs another staging; never a looser guard. Practice: test the control against a real fault (the Principles of Chaos Engineering).</li></ol></div>
+<div class="q amend"><h3>N16 · The BGP clears (the operator's)</h3><ol><li>A hard clear of one named neighbour only when not Established in two reads in a row; a soft clear for an Established session; clear ip bgp * is Never; no clear for a peer in Idle (Admin), a shut neighbour or a wrong remote AS, which raise drift or Alert. Auto on a network marked lab, Propose by default. Practice: route refresh first (RFC 2918, RFC 7313); a hard reset kept to one peer (RFC 4271's state machine).</li></ol></div>
+<div class="q amend"><h3>N17 · A stuck OSPF adjacency (the operator's)</h3><ol><li>One adjacency reset through the port bounce on its interface, only when the interface has exactly one OSPF neighbour, with all the bounce's guards; any bounce refused on Mercury's management path to the device or the device's only path (artboard K, step 6, the first refusal); every bounce run inside the device's revert timer, confirmed only once Mercury is back in and the post-check passes, and refused without the configuration archive in intent (step 7); the timer and its restore unmeasured until the operator's r4 trial, and the bounce not shipped before it; clear ip ospf process stays Alert unless the router has exactly one adjacency. Practice adds: a change that can cut the tool's own path needs a device-side rollback timer (IOS archive revert, Junos commit confirmed). Practice: the smallest blast radius (RFC 2328's InterfaceDown resets only that interface's neighbours).</li></ol></div>
+<div class="q amend"><h3>N18 · The flap threshold and the stability window</h3><ol><li><strong>Recommended:</strong> 3 transitions in 10 minutes, and a 10-minute window; revisited from the lab's recorded flaps. Practice: IP event dampening and BGP route flap damping (RFC 2439) define a flap over a decaying window.</li></ol></div>
+<div class="q amend"><h3>N19 · Dampening's parameters</h3><ol><li><strong>Recommended:</strong> the platform's defaults (bare dampening), measured on both dialects. Practice: vendor defaults first, tuned only on measurement.</li></ol></div>
+<div class="q amend"><h3>N20 · The egress of device state (the operator's)</h3><ol><li>A new class, device state, off by default and turned on per network (artboard N); the AI's show commands from an allow-list the tool enforces; show running-config through the existing configuration masking, under the configuration class; every send logged. Practice: default-deny information flow (NIST SP 800-53 AC-4); OWASP LLM02:2025.</li></ol></div>
+<div class="q amend"><h3>N21 · How the AI asks for reads, and what it may ask (the operator's)</h3><ol><li>A field of pass 1's strict schema; pass 2's cannot ask again. The allow-list matches the whole command; modifiers only include, exclude, begin and section; | redirect, | tee, | append and any other modifier refused, since on IOS they write to flash; arguments against strict patterns; newlines and control characters refused. Required tests: each refused form planted and refused, the allowed forms passing (artboard M). Practice: OWASP LLM06:2025, Excessive Agency.</li></ol></div>
+<div class="q amend"><h3>N22 · What the notice carries while the loop runs</h3><ol><li><strong>Recommended:</strong> pass 1's answer if back within 60 s, labelled "first pass"; the final in the one follow-up. Practice: page at once, add context as updates to the same incident; mail threading (RFC 5322).</li></ol></div>
+<div class="q amend"><h3>N23 · What the diagnosis may carry to the AI</h3><ol><li><strong>Recommended:</strong> the hypotheses in Mercury's words; the values compared only where the device state class is on; never an ACL's entries, a key or a configuration line. Practice: data minimisation (OWASP LLM02:2025).</li></ol></div>
+<div class="q amend"><h3>N24 · How many diagnoses, and how large (the operator's)</h3><ol><li>One diagnosis at a time per device; at most 3 automatic at once per network; at most 70 device commands per diagnosis, about 2.5 times the longest runbook's 28 (adjacency down, dual-stack OSPF and BGP, both ends), a run at the cap saying where it stopped. Practice: bulkheads (Release It!), one incident per cause (alert grouping), a bound about 2.5 times the measured size.</li></ol></div>
+<div class="q amend"><h3>Item 3's prerequisite (the operator's)</h3><ol><li>The AI read loop runs on no device until that device's read-only account resolves (artboard N). The account moved from after Lab 10 into item 3, and item 3 is re-costed at 5.5 agent-days for the routers (section 19.7). Item 3 is now never cut: it carries Lab 10's item 3 and Lab 9's B4, its SDN read set (2.5 days, artboard O) and B4's evaluation (1.0 day) following Lab 10.</li></ol></div>
 <div style="height:40px"></div>
 </body>
 </html>

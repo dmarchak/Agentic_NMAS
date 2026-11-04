@@ -312,6 +312,18 @@ Survey of the product (`app.py`, `modules/`, `routes/`, the runtime scripts):
 
 ---
 
+### 2.4 The Lab 9 laptop, as given by the operator (2026-11-04)
+
+| Fact | Value | What it settles |
+|---|---|---|
+| OS | Ubuntu 26.04.1 LTS | Its system Python is newer than CI's 3.12.3. So Mercury's venv is built on 3.12.3, installed by uv as the development laptop's is, never on the system interpreter. `telnetlib.py`'s shim covers 3.13 and later if the system one is ever used. |
+| CPU | 24 threads | Mercury, netbox-docker and the SDN controller run side by side with headroom. |
+| Memory | 30 GB usable | The same. netbox-docker's stack (NetBox, PostgreSQL, Redis, the worker) is the largest part. |
+| Docker | 29.1.3, Ubuntu's `docker.io` package | Apache 2.0, an OS package, approved by the licence rule (docs/THIRD_PARTY_DEV_TOOLS.md). The same version the local CI runner was measured on. |
+| Docker Compose | 2.40.3 | Compose v2, the form netbox-docker's recipe needs. |
+
+**Planned now, independent of the switch models:** items 2 to 5 and 7 to 10 of section 2, plus the laptop install itself (item 9) on these facts. **Waits for the Arista and HP switch models (Thursday 2026-11-05):** item 1's drivers. Section 2.1's platform assumptions are sized again once the models are known.
+
 ## 3. The estimates against the schedule's windows
 
 **Capacity, stated so it can be checked:**

@@ -55,7 +55,8 @@ table · 6 hard stops and guards · 7 dry run and enablement · 8 the step log a
 9 settings and screens · 10 notifications · 11 the lifecycle rule for an automatic heal ·
 12 the AI analysis of a can't-fix · 13 the never list · 14 tests and coverage · 15 the demo
 plan · 16 the build estimate · 17 the schedule shift · 18 decisions for the operator, earlier
-decisions this narrows, and rows to record.
+decisions this narrows, and rows to record · **19 the amendment of 2026-11-03, the course's
+troubleshooting lecture's additions (for the operator's review, not approved).**
 
 ---
 
@@ -766,6 +767,10 @@ the rails (one heal per device per hour, six per network per hour), never on s3,
 | 8 | **I5**: a link flapping, made from r4's side by its Tcl loop. **The can't-fix (physical)** | r3, r4 | r3's "Interface down" (port down, admin up) checks r3, at intent: physical. r4's repeated CONFIG_I from the loop hold r4 ("a person appears to be working", guard 7) | **3** | nothing sent | not applicable | one incident on the link: r3 physical, r4 held; the email "can't fix: Gi4 down while administratively up, configuration at intent"; the AI analysis, advisory |
 | 9 | **V1**, new: **a failed verify, rolled back** (the third recorded case for the analysis) | an IOS-XE router chosen from the lab's committed intent | an OSPF `network` statement added outside intent for a link whose far end already runs OSPF, so an adjacency forms that intent does not describe (shape `ospf.network`, measured first) | 1, added line | Mode B removes it | verify sees the adjacency drop (tolerance 0, settle window) and rolls back; the policy halts | **An unpredicted side effect, so Mercury undid its own fix: the safety behaviour.** Needs attention: "Self-healing rolled back on <device>: removing the added line dropped an OSPF adjacency it did not predict"; the halt's row; the analysis. **Checked in review (2026-11-03):** `expected_effects.for_device` predicts an OSPF drop only for an interface the program takes down (`adjacencies_drop`, from intent's adjacencies via the interfaces in `down`). Removing a `network` statement takes no interface down, and the adjacency it formed is not in intent, so nothing predicts the drop, and verify rolls back. Its sheet is written after reading the lab's intent for a link that fits; if none does, it is said, not staged |
 
+**Row 8 (I5) is revised in the amendment, for review:** bounced once, still flapping, dampening
+proposed (section 19.6), a draft sheet until the operator's lab-host trial is measured; row 8
+stands as written until then. Row 7 (C4) gains an on-demand diagnosis there too.
+
 **The video's beats** (Nov 20 to 22): two heals (C3 and M6), with History's step log and the
 golden re-check; the R8 proposal and its approval; C4 won't fix, its row and email with the AI
 analysis; I5 physical; V1 rolled back; the unit tests and the coverage report; the
@@ -786,6 +791,11 @@ wall-clock hours for one agent (0.7 to 2.6) and about 4M weighted tokens (2.5M t
     across the range);
   - about 65M weighted tokens (40M to 150M), roughly 5% of a week's usage (3 to 12%).
 - The ten-day window below is therefore not the limit.
+- **With the amendment (section 19, for review):** H14 to H31 add 21.5 days, so board H is
+  37.75 days: about 49 hours (26 to 98) and about 151M weighted tokens (94M to 340M), roughly
+  12% of a week's usage (7 to 26%). Lab 10's part, all but H29 to H31 (Lab 9's B4), is 34.25
+  days. Section 19.7 holds the parts, their streams and what each
+  depends on.
 
 | Part | What | Days |
 |---|---|---|
@@ -803,6 +813,25 @@ wall-clock hours for one agent (0.7 to 2.6) and about 4M weighted tokens (2.5M t
 | H12 | The scenario replays as tests (one per demo scenario through the whole loop) and the coverage report | 0.75 |
 | H13 | The AI analysis's measurement: 3 recorded cases × 10 runs (about $1) | 0.5 |
 | | **Total** | **16.25** |
+| H14 | *Amendment, for review (19.3):* the diagnosis engine, the "adjacency down with both ends at intent" runbook, the ranking table, one diagnosis per device and 70 commands per diagnosis | 2.0 |
+| H15 | *Amendment (19.3):* the "A can't reach B" runbook, on the path trace, its IPv6 form | 1.5 |
+| H16 | *Amendment (19.3):* Diagnose… on a device and on an alert, the result card, the manual pages | 1.0 |
+| H17 | *Amendment (19.3):* the diagnosis run automatically on an Alert incident before it notifies and on a Propose incident before it is offered; its pack section for H8 | 0.75 |
+| H18 | *Amendment (19.3):* the runbooks' captured fixtures and scenario replays | 0.5 |
+| H19 | *Amendment (19.4):* the four action kinds, their guards, flap detection | 1.0 |
+| H20 | *Amendment (19.4):* the port bounce, and the OSPF adjacency reset through it (one neighbour only), refused on Mercury's management path and on a device's only path, run inside the device's revert timer and confirmed only after Mercury is back in; shipped only once the operator's trial is measured | 1.75 |
+| H21 | *Amendment (19.4):* the BGP clears (a hard clear of one named neighbour, a soft clear), measured privileged operations; Auto on a lab network, Propose elsewhere | 1.0 |
+| H22 | *Amendment (19.4):* the dampening proposal: intent's dampening field, its measured shapes, one hash for the intent commit and its deploy; intent's configuration archive field (`archive.path`) | 2.0 |
+| H23 | *Amendment (19.4):* the actions' records, rows, manual and replays; I5's sheet written from the operator's trial | 1.0 |
+| H24 | *Amendment (19.5):* the AI read set, the allow-list the tool enforces, matching the whole command | 1.0 |
+| H25 | *Amendment (19.5):* the read loop: pass 1's requests, the check, the reads, pass 2 | 1.25 |
+| H26 | *Amendment (19.5):* the loop in History, every send logged, and its egress hand check | 0.75 |
+| H27 | *Amendment (19.5):* the loop's measurement, 3 cases × 10 runs at two passes (about $2) | 0.5 |
+| H28 | *Amendment (19.5):* item 3's prerequisites: the read-only device account (moved from after Lab 10) and the device state egress class | 2.0 |
+| H29 | *Amendment (19.12):* the SDN read set, GET only, every write endpoint refused in code, its tests and canary (Lab 9's B4) | 1.75 |
+| H30 | *Amendment (19.12):* the SDN reads in History, and their replay from captured packs (Lab 9's B4) | 0.75 |
+| H31 | *Amendment (19.13):* B4's evaluation against its frozen plan (Lab 9's B4) | 1.0 |
+| | **Total with the amendment** | **37.75** (Lab 10's part 34.25) |
 
 **Against the window.** The build window is Nov 5 to 14, ten calendar days: an expectation, not
 a start date. The build starts as soon as local CI and this board's commit are done, and
@@ -830,6 +859,11 @@ it is cut):
    that network, say so, and then the installation-wide switch may go last.")
 
 The heal loop, its guards, its records and C4's notification are never cut.
+
+**The amendment revises this cut order (section 19.8, for review):** the diagnosis runbooks
+and the AI read loop (Lab 10's item 3 and Lab 9's B4) are never cut. Verification codes
+and the installation's kill switch are built (commit 24aef7b6, H1 and H7), so they leave the
+list.
 
 **Spend:** about $1 for H13, and about $2 for the analyses during the walks and the video,
 inside the $161 left (PHASE8_PLAN 0.5).
@@ -866,7 +900,11 @@ this board's to propose.
   3. the measured OSPF reset (R8 stays a Tier 2 proposal that Mercury cannot run);
   4. last, the installation-wide kill switch, since each network's Turn off is a one-click stop.
 
-  Each cut keeps the lab's requirements.
+  Each cut keeps the lab's requirements. **Revised by the amendment, for review: section
+  19.8.**
+- **The amendment's load, said early:** section 19 adds 21.5 agent-days (about 28 hours, 15
+  to 56), 18.0 of them Lab 10's. The streams hold about 15.0 and 16.25 days of Lab 10's work,
+  then stream B's 3.5 days of Lab 9's B4 (19.7).
 - **Usage:** two parallel agents roughly double it. The two-agent work is front-loaded into
   Nov 5 to 7, before the weekly reset on Sunday Nov 8, and each report's schedule line carries
   the usage (the operator, 2026-11-03).
@@ -928,3 +966,1116 @@ board):
 - the NetBox journal write;
 - the notifier (C2128's first slice);
 - the AI analysis feature (its measurement, the beta label).
+
+---
+
+## 19. Amendment, 2026-11-03: the troubleshooting lecture's additions (for the operator's review)
+
+**The operator's direction, 2026-11-03, from the course's troubleshooting lecture.** Five items:
+1. diagnosis runbooks as code, read-only and deterministic, run automatically on a Tier 3
+   incident before it notifies and on demand;
+2. action remediations, the lecture's "good candidates": one bounce of a port, dampening
+   proposed if it still flaps, and one clear of a stuck routing session;
+3. a bounded, read-only loop for the can't-fix AI analysis;
+4. rows to register for after Lab 10 (given in the agent's report, not written here);
+5. for the video and the write-up, board H's tiers mapped to the lecture's, and Mercury placed
+   on the L0 to L5 maturity ladder.
+
+**Not approved, not built.** This is a draft for the operator's review, not self-signed under
+the Phase 7 mode, like the board it amends. Drafted 2026-11-03 ~23:4x UTC (17:4x, UTC−6) over
+HEAD ad202730. The board's new regions (artboards I to M, and inserts in A and G) are each marked
+"amendment, for review" in `docs/boards/heal-to-intent.html`. Sections 1 to 18 stand as
+approved, except where this section says it revises them (16's parts and 17's cut order).
+
+**Register rows searched first:**
+- **C762** (a Toolbox page, absorbing C1310's packet capture), open, C, after Phase 7;
+- **C1004** (flow export, NetFlow), open, C, Phase 8: after;
+- **C230** (Grafana's token is an Editor's), open, the least-privilege precedent;
+- **C589** (an adjacency that drops and recovers inside two reads raises nothing), open;
+- **C1810** (a console change seen only at the next drift run), open;
+- C2128 and C2387 (the notifier and its deferred formats).
+
+None covers a diagnosis runbook, an action remediation or an AI read loop. The new rows this
+section needs are listed in 19.11, for recording once the operator has reviewed it.
+
+**The operator's review, 2026-11-03 (after the first draft), from the lecture's slides.** Its
+corrections are applied throughout this section: the lecture's three tiers and its own L0 to L5
+ladder (19.9), N15, N16, N17 and N20 as the operator set them (19.10), and the read-only device
+account moved from after Lab 10 into item 3's prerequisites (19.5, H28).
+
+**Three numberings, kept apart.** "Tier" means three things here, and each is named when used:
+- **board H's tier,** numbered 1 to 4 in code and in this document (sections 5 and 6) and **shown
+  by name on every screen:** Tier 1 is **Auto**, Tier 2 **Propose**, Tier 3 **Alert**, Tier 4
+  **Never**. The code's numbers are not changed (the operator's decision);
+- **the command policy's tier** (`modules/readonly_commands.py`: 1 non-destructive, 2
+  recoverable, 3 destructive), written "command-policy Tier N";
+- **the lecture's tier:** three tiers numbered by rising autonomy, written "lecture T1" to "T3"
+  (the crosswalk, 19.9).
+
+### 19.1 The industry need
+
+**The problem.** Most of an outage's time goes on isolation, not repair. An engineer paged for
+"r3 Gi4 down" runs the same dozen reads every time: both ends' interface state and errors, the
+neighbour's view, MTU, timers, area, authentication, the path hop by hop. They do this before
+they know whether the fault is a cable, a far end, a typo or an ACL. A transient fault (a port
+that will come back if bounced, a routing session that will form if cleared) waits for that
+engineer, though the fix is mechanical.
+
+**How established practice and commercial tools address it:**
+- **Troubleshooting methods.** Cisco's documented methods include follow-the-path, bottom-up and
+  compare-configurations (its CCNP troubleshooting curriculum). Google's SRE book, "Effective
+  Troubleshooting" (chapter 12), describes the hypothetico-deductive loop: triage, examine,
+  diagnose, test, treat. A ranked hypothesis list with its evidence is that loop's diagnose step,
+  written down.
+- **Executable runbooks.** Network automation platforms run a stored diagnosis against the live
+  network and show its findings in place (NetBrain's executable runbooks). Incident platforms
+  run automated diagnostics when an incident opens, before or as the on-call is paged, and
+  attach the output to the incident (PagerDuty's process automation, Rundeck). Path analysis
+  products answer "can A reach B" from forwarding state and point at the hop that drops it
+  (Forward Networks, IP Fabric).
+- **Bounded automatic actions.** Devices recover an err-disabled port themselves after an
+  interval (`errdisable recovery` on Cisco IOS). IP event dampening suppresses a flapping
+  interface (the interface `dampening` command), as BGP route flap damping does for routes (RFC
+  2439). Container platforms restart a failed process and back off before escalating (the
+  restart back-off of an orchestrator's liveness probe). Each acts once, verifies, and then
+  stops and asks.
+- **Bounded tool loops for a model.** The model asks for a tool, and the application decides
+  whether and how to run it and returns the result: the ReAct pattern (Yao et al., 2022) and
+  Anthropic's tool use. OWASP's Top 10 for LLM Applications (2025) names the risks: LLM06
+  Excessive Agency (limit what a model can call, its permissions and its autonomy), LLM01
+  Prompt Injection, and LLM02 Sensitive Information Disclosure.
+
+**How Mercury meets or improves on it:**
+- **Diagnosis compares each hop with committed intent, not with "what usually works".** A
+  divergence is a fact about this network's own intent, with the read that shows it.
+- **Every read goes through the one reads engine:** allowlisted whole, the device held, masked,
+  capped, recorded on History › Reads. No new device path is opened.
+- **The ranking is a rule table in code.** The same reads give the same ranking, which a test
+  can hold and a person can audit.
+- **An action runs only when the diagnosis's top hypothesis is that action's own precondition.**
+  It runs once and is verified. When it does not take, it escalates to a person's proposal
+  (dampening) and never a second try.
+- **The AI asks; code decides.** The model may ask for up to 3 reads. Each is checked against a
+  narrower AI read set than a person's allowlist, run by the reads engine as a read-only device
+  account, masked, sent only under a device state class a network turns on, recorded, and
+  charged to the feature's caps. Nothing in the heal loop reads the answer (section 12).
+
+### 19.2 What changes, item by item
+
+| Item | Where it lands in this design | Parts | Board |
+|---|---|---|---|
+| 1, diagnosis runbooks | 19.3: a new step between decide's Tier 3 outcome and notify (section 4); Diagnose… on a device and an alert | H14 to H18 | artboards I and J; A's Tier 3 row |
+| 2, action remediations | 19.4: four new fix kinds in section 5's table (port bounce, session clear, OSPF adjacency reset, dampening proposal), their guards beside section 6's | H19 to H23 | artboards K and L; A's kinds and guards |
+| 3, the AI read loop | 19.5: section 12's analysis gains one bounded read round and a second pass; its prerequisites are the read-only device account and the device state egress class; extended to the SDN Analyst and Responder (19.12) and evaluated as Lab 9's B4 (19.13) | H24 to H31 | artboards M, N and O; G's estimate |
+| 4, rows after Lab 10 | the agent's report (the register is not edited here); the read-only account left this item for item 3 | none | none |
+| 5, the tier crosswalk and the ladder | 19.9 | none (documents) | every artboard: tiers by name |
+
+### 19.3 Item 1: diagnosis runbooks, read-only and deterministic
+
+**What a runbook is.** It is a fixed list of steps in code (`modules/heal/diagnose.py`, new).
+Each step is a read, or a comparison of what was read with committed intent. A runbook sends no
+command that is not a read, changes nothing, and calls no model. Its output is a **diagnosis**:
+the steps with their results, a ranked list of hypotheses with their evidence, and the checks
+that passed ("ruled out").
+
+**Its two entry points:**
+- **Automatic, on a Tier 3 incident, before it notifies** (the operator's direction): decide's
+  outcome is can't fix at Tier 3 (physical or link down while admin up; unknown cause). The
+  incident runs the runbook that fits its trigger. An interface or adjacency trigger runs
+  "adjacency down with both ends at intent". "Device unreachable", or a reachability probe,
+  runs "A can't reach B", where A is the device the failing probe runs from, or the device
+  Mercury reaches B through, and B is the unreachable device's address. Then item 2's actions
+  are considered (19.4), and then the notice is sent, carrying the diagnosis.
+- **Automatic, on a Propose (Tier 2) incident, before it is offered for approval** (the operator,
+  N14): the runbook that fits the incident's trigger runs first, and its diagnosis is attached
+  to the proposal. The Needs attention row, its email and its Approve… show it, so the person
+  approving sees what Mercury read. A proposal whose diagnosis finds a decisive cause the
+  proposed fix does not address says so on the row: "the diagnosis's first hypothesis is
+  <claim>, which this fix does not change". It is never withdrawn by the diagnosis alone.
+- **On demand, Diagnose…, everywhere:** on the device page's Actions menu, beside Check drift
+  now…; on an alert, beside Explain on its evidence card (Monitoring); and on every Needs
+  attention row the heal raises, of any tier, Never included. A person picks the runbook and its target from what intent and
+  NetBox hold (a device, an intended neighbour, an address of the network), never free text. An
+  address is checked as one IPv4 or IPv6 address. The dialog lists every read it will make, and
+  on which devices, with the worst-case time. The press is busy on itself, and the diagnosis
+  draws in place (artboards I and J).
+
+**Its guards:**
+- **Reads only.** Every command passes `readonly_commands.refusal` with no extras (a new
+  reads-engine caller kind, `diagnosis`, whose `reads.EXTRAS` entry is empty). No `send log`,
+  no `verify`, no `terminal` setting.
+- **One diagnosis per incident.**
+- **At most one diagnosis at a time per device** (the operator, N24). A diagnosis lock per
+  device across processes, refused by name and never queued, is held beside the reads engine's
+  per-read hold. A second diagnosis touching that device says "not diagnosed: r4 is in
+  diagnosis <id>", with Diagnose… offered once it ends. A device held by another operation is
+  skipped by name: its step says "not read: r4 is held by <operation>", and any hypothesis
+  that needed it is marked **evidence incomplete**, never guessed.
+- **At most 3 automatic diagnoses at once per network** (N24). The rest say "not diagnosed: 3
+  diagnoses already running on Default", with Diagnose… offered on their rows.
+- **At most 70 device commands per diagnosis** (`diagnose.MAX_COMMANDS`, N24), about 2.5 times
+  the longest runbook's own count. The counts, from 19.3's table:
+  - **"adjacency down"** on a dual-stack OSPF and BGP link is 14 commands per end:
+    - `show interfaces` twice;
+    - `show ip interface`, `show ip ospf interface`, `show ip ospf neighbor detail`;
+    - `show ipv6 ospf interface`, `show ospfv3 neighbor detail`;
+    - CDP, LLDP;
+    - the link ping and the df-bit ping;
+    - `show ip bgp summary`, `show ip bgp neighbors`, the update-source ping.
+
+    So it is **28 commands for both ends: the longest of the two runbooks' fixed counts,**
+    and 2.5 × 28 = 70.
+  - **"A can't reach B"** is 3 commands (ping, traceroute and the return route), plus about 7 a
+    routed hop (`show ip cef`, `show ip route`, `show interfaces` twice, ARP or ND, `show ip
+    interface`, an ACL's counters). It usually stops at the first divergence, and at 70 it
+    covers 9 hops. A longer path stops at the cap and says so: "stopped at the 70-command cap
+    after hop 9; hops after it not read". It never stops silently.
+- **Bounded:**
+  - at most 14 reads per device per run (the adjacency runbook's own count);
+  - both ends read concurrently (`fanout.read_each`);
+  - each ping or traceroute inside `readonly_commands.BOUND_SECONDS`;
+  - the whole run's bound is about 2.5 times its measured time, measured in H18 (an estimate
+    before then: 30 to 60 s).
+- **Never `clear counters`.** It erases the evidence a diagnosis reads, and it is
+  command-policy Tier 2. Error counters are read twice, 10 s apart (to be measured), and the
+  difference is the evidence.
+
+**What a Diagnose… run reads.** Every command below was put through
+`readonly_commands.refusal` over HEAD ad202730 on 2026-11-03, and **every one passed**. Each
+bound is `readonly_commands.bound_seconds`. "Captured" names a real capture in the suite today
+(`tests/fixtures/operational/`, `tests/fixtures/endpoints/`, `tests/fixtures/path/`). One not
+captured is captured in H18 before its parser is written, because fixtures are real captures.
+
+| Runbook | Step | Command (IPv4) | IPv6 form | Bound | Captured today |
+|---|---|---|---|---|---|
+| both | interface state, MTU, errors (twice) | `show interfaces <if>` | the same | read timeout | Loopback0 only (r2, s1); a physical port not yet |
+| both | address, subnet, ACL bindings | `show ip interface <if>` | `show ipv6 interface <if>` | read timeout | the whole table (r1, r3, s1, s3) |
+| both | who is cabled there | `show cdp neighbors <if> detail`; `show lldp neighbors <if> detail` | the same | read timeout | yes (detail, whole table) |
+| adjacency | OSPF on the interface: area, network type, hello and dead, authentication, passive | `show ip ospf interface <if>` | `show ipv6 ospf interface <if>` | read timeout | **no** |
+| adjacency | the neighbour's view, each end | `show ip ospf neighbor <if> detail` | `show ospfv3 neighbor detail` | read timeout | yes (r1, r3, s1, s3; OSPFv3 without detail) |
+| adjacency | MTU across the link, don't fragment | `ping <far address> size <intent's MTU> df-bit repeat 2 timeout 2` | none (IPv6 never fragments in transit: the interface MTUs are compared instead) | 34 s | **no** |
+| adjacency | the far end reachable on the link | `ping <far address> source <if> repeat 5 timeout 2` | `ping ipv6 <far address> source <if> repeat 5 timeout 2` | 40 s | **no** |
+| adjacency | BGP: the session's state | `show ip bgp summary`; `show bgp all summary` | `show bgp ipv6 unicast summary` | read timeout | yes (r3, r4, s1, s3) |
+| adjacency | BGP: last reset reason, hold time, update source | `show ip bgp neighbors <peer>` | `show bgp ipv6 unicast neighbors <peer>` | read timeout | **no** |
+| can't reach | does A reach B | `ping <B> [source <if>] repeat 5 timeout 2` | `ping ipv6 <B> ...` | 40 s | **no** |
+| can't reach | the forwarding path, hop by hop (the path trace's own read) | `show ip cef <B>` | `show ipv6 cef <B>` | read timeout | IPv4 yes (`path/cef_fleet.json`); IPv6 **no** |
+| can't reach | past the managed devices | `traceroute <B> numeric timeout 2 probe 1 ttl 1 16` | `traceroute ipv6 <B> numeric timeout 2 probe 1 ttl 1 16` | 62 s | **no** |
+| can't reach | each hop's route and its source | `show ip route <B>` | `show ipv6 route <B>` | read timeout | connected and summary only |
+| can't reach | the next hop resolved | `show ip arp <next hop>` | `show ipv6 neighbors <if>` | read timeout | yes (r1, s1) |
+| can't reach | a switch between two routed hops: where the next hop's MAC is learned, and its port's spanning-tree state | `show mac address-table address <mac>`; `show spanning-tree interface <port>` | the same | read timeout | the dynamic table only; spanning tree by VLAN (vIOS-L2) only |
+| can't reach | an ACL's match counters, when one is bound | `show ip access-lists <name>` | `show ipv6 access-list <name>` | read timeout | **no** |
+| both | the device's logs: ADJCHG and its reason, ERRRCV, BGP notifications, UPDOWN, CONFIG_I | Loki, through `device_logs`, not a device read | the same | the Loki reader's bound | yes (`tests/fixtures/loki/`) |
+
+**What the allowlist lacks, and what is missing besides** (each a row in 19.11):
+- **No read the runbooks need is refused.** The allowlist is shaped by verb, so every `show`
+  passes, and ping and traceroute pass inside their bounds.
+- **Captures and parsers are missing** for the reads marked **no** above. H18 captures them on
+  r2 (IOS-XE) and s1 (IOS), never on s3, never inside 08:30 to 09:10 UTC.
+- **The path trace reads IPv4 only:** `path_trace.refusal` says "the trace reads IPv4
+  forwarding only". The IPv6 form of "A can't reach B" needs `show ipv6 cef` parsed and
+  followed. That is H15's, under the IPv6 rule (a capability that cannot serve IPv6 says so by
+  name), and part of C1245's epic until built.
+- **The allowlist is too wide for a model.** `show running-config` passes, so item 3 has its own
+  narrower set (19.5).
+- **The actions are not reads, correctly.** `clear ip bgp <peer>` is refused as command-policy
+  Tier 3 ("a hard reset"). `clear ip bgp <peer> soft` is command-policy Tier 2, and
+  `privileged.NOT_MEASURED` holds it. `clear ip ospf process` is command-policy Tier 3. Item 2
+  adds measured operations for what it needs (19.4, N16).
+
+**"Diverges from intent," at each hop.** The comparison is against the network model compiled
+from committed intent (`modules/network_model.py`): links and their subnets, expected
+adjacencies, each interface's intended admin state and address, OSPF's area, network type,
+timers and authentication where intent holds them, the MTU where intent holds it, and the ACL
+bindings intent holds. Where intent is silent, the platform's measured default is the expected
+value (`modules/nsot/interface_defaults.json`, `platform_defaults.json`), and the step says so.
+- **"A can't reach B":**
+  - A pings B. If it succeeds, the result is "A reaches B now", and the runbook stops.
+  - The path is followed with `path_trace.trace`'s hop-by-hop `show ip cef`, then the hops past
+    the managed devices with a traceroute.
+  - At each routed hop, in order, the runbook reads:
+    - the egress interface's state and errors (two reads);
+    - the next hop's resolution (ARP or ND);
+    - on each switch between two routed hops, where the next hop's MAC is learned and that
+      port's spanning-tree state, against the cabling intent and the observed links name;
+    - the route's source against intent: a connected subnet, an expected adjacency's protocol,
+      or a static route intent holds; anything else is "a route intent does not explain", C3's
+      shape;
+    - the ACL bindings on the egress interface and on the next hop's ingress, against
+      intent's.
+  - **It stops at the first hop that diverges, and reports it,** with "hops after r6 not read"
+    said, never implied.
+  - If the forward path holds at every hop, it reads the return path from B's device, when B
+    is managed. A missing return route is the divergence.
+- **"Adjacency down with both ends at intent":**
+  - Both ends are read concurrently, and each parameter is compared three ways: end against
+    end, each end against intent, and each end against the platform's default.
+  - **Both ends at intent, yet the ends disagree, is its own finding:** intent disagrees with
+    itself, or a platform default differs between the two platforms. The finding says which.
+
+**How the hypotheses are ranked** (a rule table in code, `diagnose.RULES`, each rule with a
+planted case in its test):
+1. **By the strength of the evidence:**
+   - **decisive:** a read that alone explains the symptom, such as a parameter that must match
+     and differs;
+   - **strong:** a state that usually explains it;
+   - **circumstantial:** a log line or a timing.
+2. **Within a strength, bottom-up by layer:** physical, then link, then network, then the
+   routing protocol, then policy. This is the bottom-up method: a lower layer's fault explains
+   the layers above it.
+3. **Then by the number of independent reads that agree,** both ends counting as two.
+4. **A hypothesis whose evidence is incomplete** (a read skipped or failed) ranks below every
+   complete hypothesis of its strength, and says which read is missing.
+5. **At most 5 are shown.** The checks that passed are listed as "ruled out", each with its
+   read.
+6. **No rule fires:** "no cause found in what Mercury reads", followed by the ruled-out list.
+   It never guesses.
+
+| Rule (examples; the table is complete in H14) | Layer | Strength | Evidence it cites |
+|---|---|---|---|
+| interface down while administratively up, far end up | physical | decisive | both ends' `show interfaces`; the far end's CDP or LLDP |
+| CDP or LLDP names a neighbour intent does not cable there | physical | decisive | `show cdp neighbors <if> detail` against intent's link |
+| input errors or CRC rising across the two reads | physical | strong | the two `show interfaces` reads and their difference |
+| MTU differs between the ends, and the neighbour is stuck in EXSTART or EXCHANGE | link | decisive | both `show interfaces`; `show ip ospf neighbor detail`; the df-bit ping |
+| addresses on different subnets | network | decisive | both `show ip interface` |
+| OSPF area, hello or dead, network type or authentication differs | protocol | decisive (network type: strong) | both `show ip ospf interface` |
+| passive on one end | protocol | decisive | `show ip ospf interface` ("No Hellos") |
+| one-way: one end lists the other in INIT, the other lists nothing | protocol | strong | both ends' neighbour view |
+| a BGP session not Established, its peer unreachable from the update source | network | decisive | the ping from the update source; `show ip bgp neighbors <peer>` |
+| a BGP peer in Idle (Admin), administratively shut, or with a configuration mismatch (a wrong remote AS in its last reset reason) | protocol | decisive (no clear follows: drift or Alert) | `show ip bgp neighbors <peer>`; intent's remote AS |
+| a BGP session not Established, its peer reachable, no configuration cause | protocol | strong (item 2's precondition) | as above, and the last reset reason |
+| an ACL bound that intent does not hold, on the path or the link | policy | decisive (and Tier 4 for the heal) | `show ip interface <if>`; the ACL's counters |
+| no route to B at a hop | network | decisive | `show ip route <B>`, `show ip cef <B>` |
+| next hop unresolved (ARP or ND incomplete) | link | strong | `show ip arp <next hop>` |
+| the next hop's MAC learned on a port intent does not cable toward it, or that port blocking | link | strong | `show mac address-table address <mac>`; `show spanning-tree interface <port>` |
+| a configuration change outside Mercury on either end in the window | policy | circumstantial | the CONFIG_I lines (Loki) |
+
+**Each hypothesis carries:**
+- its claim, in Mercury's words;
+- its layer and strength;
+- its evidence: each read referenced by its reads run (`read:<run>:<device>:<command>`), the
+  masked line that fired the rule, and the intent value it was compared with;
+- the read that would rule it out;
+- what to do. That is never an action Mercury runs from this list, except item 2's two
+  actions, and only on their own preconditions.
+
+**The industry practice it follows:**
+- a deterministic rule table for fault isolation, the way event-correlation and assurance
+  products rank a probable cause with its evidence;
+- the bottom-up and follow-the-path methods for the order;
+- the hypothetico-deductive loop for the shape: hypotheses, each with the test that would
+  refute it.
+
+**Where the step log records it** (H6's store, section 8):
+- **Each runbook step is a step:** what was checked, each read named by device and command with
+  its reads run (History › Reads holds the masked answer; the step log never holds raw text),
+  the intent value compared, and the result.
+- **The diagnosis itself** (the ranked list and the ruled-out list) is one record in the same
+  store.
+- **Automatic:** it is attached to the incident, and the incident's step log shows it as
+  "Diagnosis: 4 hypotheses, the first decisive" with the list expanded.
+- **On demand:** it is its own record. History gains the kind **diagnosis**
+  (`modules/history_sources.py`), drawn on the device's History tab too (the one-timeline
+  rule).
+- **"Diagnosed" is not a fix.** A diagnosis that finds a cause clears nothing.
+
+**What the notice and the AI analysis receive:**
+- **The notice,** under Mercury's facts: "Mercury's diagnosis" with each hypothesis in words,
+  its strength, and the hop or end it names. Values are by kind only, as section 10's messages
+  are ("MTU differs: r4 Gi4 against r3 Gi4", never a configuration line). The screens name
+  the tier ("Alert, diagnosed"), never its number.
+- **The wait:** the notice waits for the diagnosis up to the runbook's bound. If the bound
+  fires, the notice says "diagnosis not finished within <bound>; its result follows on this
+  thread", using the AI analysis's follow-up mechanism (section 12).
+- **The AI analysis (H8)** receives the diagnosis as a pack section, `diagnosis`, each
+  hypothesis a piece `diag:<n>`. What it may carry off the host is decision N23.
+- **The heal loop may read the diagnosis:** it is deterministic code, not AI text. Section 12's
+  test still refuses any reference from the loop to `modules.ai` or to the `analysis` field.
+
+### 19.4 Item 2: action remediations
+
+**Not heal to intent, and said so.** Section 2 heals a configuration back to intent. These
+actions change no configuration line (a bounce, a clear), or they propose a change to intent
+(dampening). So they are **actions**, under the same tiers, guards, lifecycle and records, and
+each is named as an action wherever it is drawn.
+
+**The new fix kinds** (section 5's table gains these rows):
+
+| Fix kind | Example scenario | Board H tier | What is done | Verify reads | Rollback | Why that tier |
+|---|---|---|---|---|---|---|
+| **port bounce** (`port_bounce`): a port down while admin up, its far end admin up and up, configuration at intent on both ends | I5 revised (19.6) | **1**, once per port per hour | one program, `interface <if>` / `shutdown` / `no shutdown`, in one batch through the deploy pipeline as the policy | the port up within its settle bound (measured), then **stable** for the stability window (no UPDOWN transition); the adjacency formed; the running configuration **did not move** against the pre-read | if the read after shows `shutdown` (the second line never landed), `no shutdown` alone, and the record says so | Reversible in seconds, configuration unchanged, verifiable; the lecture's first candidate. Never twice: a second need is a proposal |
+| **session clear** (`session_clear`), BGP: one neighbour intent holds, **not Established in two reads in a row** (the adjacencies reader's `PERSIST_READS`, 2), its peer answering from the update source, no configuration cause found | none in the set (its proof is a replay test) | **Auto on a network marked lab; Propose by default** (the operator, N16); once per neighbour per incident | a **hard clear of that one named neighbour**, `clear ip bgp <peer>`, measured, through `privileged.py`'s lifecycle as the policy (or as the approving person, when proposed) | the session Established within about 2.5 times its measured time | does not apply: a session that was not Established had nothing to lose; the preview and record say so (`privileged`'s rule) | Only a session not Established is hard-cleared, so it carries no routes to lose. **An Established session gets only a soft clear** (`clear ip bgp <peer> soft`, today in `privileged.NOT_MEASURED`, measured first), proposed when the diagnosis finds it Established and receiving fewer routes than intent expects. **`clear ip bgp *` is Never.** **No clear at all** (the operator) for a peer in **Idle (Admin)**, an **administratively shut neighbour** (`neighbor … shutdown`), or a **configuration mismatch** such as a wrong remote AS (the last reset reason in `show ip bgp neighbors <peer>` naming a bad peer AS): those raise drift, when the device departs from intent, or an Alert with the diagnosis, when both ends are at intent, never a clear |
+| **OSPF adjacency reset** (`ospf_reset`): one OSPF adjacency intent holds, not FULL in two reads in a row, the neighbour reachable on the link, no configuration cause found, and **the interface has exactly one OSPF neighbour** (read with `show ip ospf neighbor <if>`, and intent naming one), so a bounce resets that one adjacency and no other | none in the set (replay test) | **as the port bounce:** Auto, with every one of its guards (13a to 13e) | **the port bounce on that interface** (N17): one adjacency reset, nothing else on the router touched | as the port bounce, and the adjacency FULL | as the port bounce | Resets exactly one adjacency. **`clear ip ospf process` stays Alert,** since it drops every adjacency on the router, **unless the router has exactly one OSPF adjacency,** when it resets only that one and is H5's measured reset under the same guards. R8's router-id proposal (Propose) is unchanged |
+| **dampening proposal** (`dampening_proposal`): the port still flapping after its one bounce, or needing a second within 24 h | I5 revised | **2**, a change to intent, proposed | proposed: intent gains `dampening` on that interface (the platform's defaults); Approve… commits that intent edit and deploys it under one hash, as the approving person | the line read back; `show interfaces dampening` shows the interface tracked | `removal.restore_program` of the measured `interface.dampening` shape | A change to intent is a person's (section 2: a heal never pushes intent the device never held), so it is a proposal, never a heal |
+| **physical, link or unknown cause** (existing Tier 3 rows) | I5 as today's sheet; an adjacency down at intent | **3** | unchanged, plus **the diagnosis runs first** (19.3) and its result rides in the notice | not applicable | not applicable | unchanged |
+
+**When an action is chosen.** It is chosen only from the deterministic diagnosis, never from AI
+text, by a fixed table (`diagnose.ACTIONS`). An action runs only when the diagnosis's
+**top-ranked complete hypothesis** is that action's own rule:
+- "interface down while administratively up, far end up" → port bounce;
+- "a BGP neighbour not Established in two reads in a row, its peer reachable, no configuration
+  cause, not Idle (Admin) and not administratively shut" → session clear, a hard clear of that
+  neighbour. A wrong remote AS, Idle (Admin) or a shut neighbour is a decisive diagnosis rule
+  of its own (protocol, decisive), so no clear follows;
+- "an Established BGP session receiving fewer routes than intent expects, no configuration
+  cause" → a soft clear of that neighbour, proposed;
+- "an OSPF adjacency not FULL in two reads in a row, the neighbour reachable on the link, no
+  configuration cause, exactly one OSPF neighbour on the interface" → OSPF adjacency reset, the
+  port bounce on that interface (with two or more, Alert).
+
+A decisive finding above it (an MTU mismatch, a cabling mismatch, an ACL) means no action: the
+action could not fix it.
+
+**The guards each action meets.** Section 6's fourteen guards apply in their order. Kinds are
+allowed in AUTO one at a time, after their dry-run scenario (N8). These are added after guard
+13, in this order:
+
+| # | Guard | Setting (default) | Why |
+|---|---|---|---|
+| 13a | **The precondition is read fresh, and again just before the send.** If it no longer holds: "the port came back by itself", and nothing is sent | none; always on | C78's property for an action: what was decided on is what is acted on |
+| 13b | **The far end is up and not held.** It is read on the far device. Guard 7, a person working, applies to **both ends**: a bounce never fights a person working the far end. An unmanaged far end cannot be read, so there is no action | none; always on | The lecture's "its far end up"; protects active work |
+| 13c | **Never Mercury's path, never the only path** (the operator). Any bounce, the port bounce and `ospf_reset` alike, is refused when: (1) the interface carries the address Mercury reaches the device on; or (2) **Mercury's route to that address leaves out of that interface:** the device's own `show ip cef <Mercury's source address>` (and `show ipv6 cef` for an IPv6 manager) names it as the egress; or (3) **it is the device's only path:** `blast_radius.radius_of_shutdowns` for its shutdown has a non-empty `reach_lost`, the device itself or any device behind it. Each refusal is Never (Tier 4), as in section 5, in words naming the read and both operands: "Not bounced: r4 reaches Mercury (192.0.2.250) out of GigabitEthernet4 (`show ip cef 192.0.2.250` on r4), so a bounce would cut Mercury's own session to r4"; "Not bounced: GigabitEthernet4 is r4's only path: shutting it leaves r4 and 2 devices behind it unreachable (blast radius)". A session whose loss would withdraw the manager's route is Never too | none; always on | CLAUDE.md, "Operations and safety": a change to the path the tool reaches a device on needs a repair route independent of that path |
+| 13d | **Once.** A port is bounced at most once an hour (the lecture's), and a second need within `heal_repeat_halts_hours` (24) is the dampening proposal instead. A session is cleared once per incident, and a second need is can't fix, Tier 3, with its diagnosis | `heal_bounce_per_port_hour` (1) | The lecture's "once"; guard 11's repeat rule, applied per port |
+| 13e | **A flap is measured, not felt.** At least N UPDOWN transitions of one interface in M minutes, from `logs-tail` (a new after-store step; `%LINK-3-UPDOWN`, `%LINEPROTO-5-UPDOWN`) | `heal_flap_transitions` (3) in `heal_flap_minutes` (10); the stability window is the same M (N18) | Separates a flapping port from a port that went down once |
+| 13f | **A device-side repair route** (the operator, N17). 13c's CEF check covers only the device's return path: it cannot see the interface Mercury's packets arrive on, and in-band routing can be asymmetric. So 13c stays the first refusal, and every bounce and `ospf_reset` also runs inside `configure terminal revert timer <n>`; `configure confirm` is sent only after Mercury reaches the device again and the post-check passes. If the session is lost, the device reverts on its own. It needs the configuration archive (`archive` with a `path`) in the device's intent. Without it the bounce is refused: "Not bounced: r4 has no configuration archive in its intent, so it cannot revert a bounce by itself if Mercury's session is lost. Add the archive's path to r4's intent (host_vars, `archive.path`) and deploy it." | `<n>` (unmeasured): about 2.5 times the bounce's measured settle time (the port up, Mercury's session back, the post-check), in the timer's own unit, rounded up | CLAUDE.md, "Operations and safety": a change to the path the tool reaches a device on needs a repair route independent of that path. The device's own timer is that route |
+
+**The bounce's program, and the lifecycle** (section 11's table, for an action):
+- **Preview.** The fixed program and its hash go in the step log before anything is sent:
+  `configure terminal revert timer <n>`, then `interface <if>` / `shutdown` / `no shutdown`,
+  then `end`. `shutdown` is one of `pipeline._DANGEROUS_PATTERNS`, so the program carries its
+  authorisation: the policy's reason for the `port_bounce` kind, in the hash and the receipt.
+- **Confirm.** The policy's fingerprint names the kind, and the program's hash is recomputed at
+  apply from the stage-4 read.
+- **Apply, holding the device.** `routes.deploy.apply_batch` as the policy, inside the revert
+  timer, the three lines in one batch: a cut session cannot leave `shutdown` alone, because the
+  device receives the batch whole, and the timer reverts it if it does. That is measured in H20
+  on r2 and s1, never on s3, together with the time the port takes to come up.
+- **Confirm on the device.** Mercury opens a new session to the device. Only when it is in, and
+  the post-check passes (the port up, the running configuration equal to the pre-read), does it
+  send `configure confirm`. Otherwise it sends nothing more, and the device reverts when the
+  timer ends. The step log names which happened and when.
+- **Verify.** It reads the port up, the stability window, and the adjacency. The read-back is
+  stronger than a deploy's: the running configuration must equal the pre-read, line for line.
+  A bounce changes nothing that stays.
+- **Rollback.** It ensures `no shutdown`, and says what it achieved. The device's revert is the
+  rollback when Mercury cannot reach the device.
+- **The never list's "never a whole-configuration replace" is narrowed here, and said so.** The
+  revert is the device returning itself to its own archive, taken as this bounce began, which
+  is the state Mercury had just read. Mercury sends no configuration of its own. PHASE8_PLAN
+  15.2 names the same mechanism as Phase 9's first prerequisite ("a revert timer on every
+  autonomous change").
+- **Not shipped until measured** (the operator). H20 builds the wrapper, and the bounce stays
+  refused ("the revert timer is not measured on <platform>") until the operator's trial below
+  has run on that platform.
+
+**The operator's step: one revert-timer trial on r4, before H20 ships the bounce.** It is a
+measured probe (preview and record, `scripts/nmas-removal-probe`'s pattern). It runs outside
+08:30 to 09:10 UTC, not on s3, and restarts no node. Before it, `archive` with a path is in r4's
+intent and deployed.
+1. **The revert path.** Enter `configure terminal revert timer 1` on r4, bounce Gi4 (no
+   management on it), send no confirm, and wait past the timer. Record:
+   - whether IOS-XE accepts both commands, and the timer's unit;
+   - whether the revert happens, and the lines it logs;
+   - whether Gi4 ends `no shutdown` and up;
+   - how long each step takes.
+2. **The confirm path.** Bounce Gi4 again inside a timer and send `configure confirm` within it.
+   Record that no revert follows.
+3. **The bounce's settle time** from both runs (the port up, a new session in, the post-check),
+   which sets `<n>`.
+
+The IOS dialect's answer needs the same trial on s1. Until then, devices of that dialect have
+the bounce refused, naming the unmeasured timer.
+- **Record.** Receipt, step log, change record ("port bounced; configuration unchanged") and
+  the NetBox journal. **No golden is committed:** the configuration did not change, and the
+  golden re-check finds the device at its golden.
+
+**The session clear's lifecycle** is `privileged.py`'s six steps, with two changes:
+- **The policy is a caller.** T2-3's "the agent never runs one" is about the AI agent and stays
+  true. The heal policy runs as its setter, with `actor_kind="policy"`, as the heal's apply
+  does. This rides on H5's policy path for the measured OSPF reset.
+- **Two new `COMMANDS` entries,** `clear-bgp-peer` (`clear ip bgp {peer}`) and the existing
+  `clear-bgp-soft` measured and moved out of `NOT_MEASURED`. The peer is taken from intent's
+  sessions, never typed, and never `*`. Each prompt is measured on r3 or r4. The before-state
+  (`show ip bgp neighbors {peer}`, the last reset reason) is kept, under T2-4. The verify rule
+  is "Established within the measured bound" (and, for the soft clear, the received routes
+  read again).
+
+**The command policy changes for one shape only** (the operator, N16): a hard clear of one named
+neighbour whose session was not Established in two reads in a row. Every other hard clear stays
+command-policy Tier 3, and `clear ip bgp *` is Never.
+
+**The dampening proposal:**
+- **Intent can express dampening.** It cannot today: no hostvars field, template line, parser or
+  measured removal shape holds `dampening`. H22 adds the field (`interfaces.<if>.dampening`,
+  true for the platform's defaults, N19), its template line, its parser's round trip, and its
+  removal shape, measured on both dialects with `scripts/nmas-removal-probe`.
+- **The proposal** is an intent patch (`modules/nsot/intent_patch.py`) and the deploy program it
+  renders, **bound by one hash**. Approve… (a verified person, a reason) commits the intent edit
+  as that person (`Actor-Verified: access`) and deploys it through the pipeline, as the person's
+  own deploy. It is never `apply_batch` as the policy, and it is not counted in the heal rails.
+- **It clears when** the change is approved and verified; or it is declined with a reason; or
+  the interface has been stable for 24 hours (resolved by time, with that said). A new
+  `CLEARS` entry, `heal`/`proposal`'s.
+
+**Records and History.** Section 8's marks gain **bounced**, **cleared**, **bounced, still
+flapping** and **diagnosed**. Every automatic action notifies (17.7 item 6): "r4 Gi4 bounced
+once: still flapping; a dampening change waits for a person". Dry run records "would have
+bounced r4 Gi4 (program <hash>)" on the drift row and in History, with Right / Wrong, as section
+7 does.
+
+**The industry practice it follows:**
+- device-native recovery, then suppression (`errdisable recovery`, then IP event dampening);
+- an orchestrator's restart with back-off, then escalation;
+- the ITIL standard change for the pre-authorised action, and a normal change (a person's) for
+  the intent edit.
+
+### 19.5 Item 3: the agentic read-only loop for the can't-fix AI analysis
+
+**The shape.**
+- **Pass 1 is section 12's analysis call,** shape B unchanged, plus one optional field: `reads`,
+  at most 3 entries, each `{device, command, why, hypothesis}`.
+- **Code checks each request** (below). The ones it allows run through the reads engine.
+- **Pass 2 is one more call** with the results. Its schema has **no `reads` field**, so it
+  cannot ask again.
+- Its answer passes Explain's check (`explain.check`), extended so a reference to `read:<n>` must
+  name a read that was run and sent.
+- **If pass 1 asks for nothing, there is no pass 2.** That is never more than two calls.
+
+**Its two prerequisites (the operator's corrections):**
+1. **The read-only device account (H28)** comes before the loop runs on any device. Every AI
+   read runs as that account. A device where it does not resolve is refused by name ("no
+   read-only account for r4"), never read with the deploy account. It moved here from item 4's
+   "after Lab 10" rows.
+   - **The credential chain gains a read role.** `modules/credentials.py`'s resolution (device
+     override → designated list → role → site → default profile) resolves a second account per
+     device for reads. The Credentials profile card gains it (artboard N).
+   - **The account reaches each device as an intent change:** an account added, never changed
+     (CLAUDE.md, "Operations and safety"), deployed by a person.
+   - **It is the operator's credential operation.** The operator types its password; the agent
+     never sees it (the Phase 7 mode's secrets stop).
+   - **Its device-side shape is measured first** on r2 (IOS-XE) and s1 (IOS): a low privilege
+     level, or a role-based CLI view, that runs exactly the AI read set and nothing that
+     changes state.
+   - **Credential health, retirement and the startup check** cover it, as they cover the deploy
+     account.
+   - Industry practice: least privilege for service accounts (NIST SP 800-53, AC-6), and a
+     separate read account for collection, as monitoring and NetDevOps tools use. Diagnosis,
+     collection and drift reads may move to it later (19.11).
+2. **The device state egress class (N20)** must be on for the network before any read answer
+   leaves the host. It is off by default. With it off, the loop's reads are not asked: pass 1
+   is the whole analysis, and it says why.
+
+**The AI read set (`AI_READS`, new; H24).** It is an allow-list the tool enforces, narrower than
+a person's allowlist. A request is run only when it passes both checks:
+- **`readonly_commands.refusal(command)`, with no extras;**
+- **it parses as one of `AI_READS`' command shapes.** Each argument is one token of its shape,
+  taken from what Mercury holds: an interface in the device's golden, an address in the
+  network's intent or prefixes, a BGP peer intent names, a MAC in MAC shape. Matched by
+  parsing, never as a resemblance.
+
+**How the allow-list matches (the operator, N21; OWASP LLM06:2025, Excessive Agency):**
+- **The whole command is matched,** verb, words and arguments, against one shape. A command
+  with any word the shape does not name is refused.
+- **Output modifiers are limited to `include`, `exclude`, `begin` and `section`.** `| redirect`,
+  `| tee`, `| append` and any other modifier are refused, because on IOS they write the output
+  to flash or another host. `| count` is refused here too: it is not one of the four.
+- **Arguments match strict patterns:** an interface name in the platform's interface-name shape
+  that the device's golden holds; one IPv4 or IPv6 address, checked by `ipaddress`; one prefix,
+  checked the same way; a peer address intent names; a MAC in dotted MAC shape.
+- **Newlines and control characters are refused,** with `?` and any URL.
+
+**What `modules/readonly_commands.py` does today** (probed over HEAD ad202730, 2026-11-03):
+- **It already refuses:**
+  - `| redirect`, `| tee` and `| append`, naming that they write (`WRITING_MODIFIERS`);
+  - `| format` and any other non-filter modifier;
+  - a later segment that could be one of them (`| include a|redirect x`);
+  - newlines ("one command per entry, no line breaks") and control characters;
+  - `?` and any URL.
+- **It allows `| count`.** `SAFE_MODIFIERS` holds begin, count, exclude, include and section.
+- **It does not check a `show` command's arguments.** It is verb-shaped by design (C61), and
+  only ping, traceroute, dir, more and verify have their arguments checked. So `show interfaces
+  GigabitEthernet4 extra junk words`, `show interfaces Gi4; reload` and `show ip route
+  999.1.1.1` all pass it. IOS treats `;` as no separator, so the probe shows a wrong argument,
+  not a write. For a person's Show commands this is the existing design. For a model's request,
+  N21 needs the stricter matcher, `AI_READS` (H24), on top of `refusal`: both must pass.
+
+**The Diagnose… runbooks (item 1) take the same pipe rule now, as a test, not a second path.**
+- Their commands are code templates whose arguments come from intent, never typed.
+- A test (H14's) renders every command every runbook can produce, for each platform, and holds
+  each to `AI_READS`' matcher with the four modifiers. The only exceptions are the reads the AI
+  set leaves out on purpose, which the runbooks never use.
+- **Cost:** one test. **Prevents:** a runbook template gaining `| count` or a writing modifier
+  unseen.
+
+**The read loop's required tests** (H25's, written before its code, red then green; each planted
+request is refused, and each allowed form passes):
+
+| Planted request | Expected |
+|---|---|
+| `show interfaces GigabitEthernet4 \| redirect flash:x` | refused: a modifier that writes |
+| `show interfaces GigabitEthernet4 \| tee flash:x` | refused: a modifier that writes |
+| `show interfaces GigabitEthernet4 \| append flash:x` | refused: a modifier that writes |
+| `show interfaces GigabitEthernet4 \| count up` | refused: not one of include, exclude, begin, section |
+| `show interfaces GigabitEthernet4 \| format x` | refused: not one of the four |
+| `show version \| include a\|redirect x` | refused: a later segment that could be a writing modifier |
+| `show interfaces GigabitEthernet4` with a newline, then `show running-config` | refused: a newline |
+| `show interfaces GigabitEthernet4` with a control character | refused: a control character |
+| `show interfaces GigabitEthernet4 extra words` | refused: a word the shape does not name |
+| `show interfaces Gi4; reload` | refused: not an interface the device's golden holds |
+| `show ip route 999.1.1.1` | refused: not an address |
+| `show ip bgp neighbors 192.0.2.99` (a peer intent does not name) | refused: not a peer intent names |
+| `show running-config` on a network whose configuration class is off | refused, naming the class |
+| `show interfaces GigabitEthernet4 \| include line protocol\|errors` | passes |
+| `show ip ospf neighbor GigabitEthernet4 detail \| section Neighbor` | passes |
+| `show ip route 192.0.2.5`, `show ipv6 route 2001:db8::5` | pass |
+| `ping 192.0.2.4 source GigabitEthernet4 repeat 5 timeout 2`, `ping ipv6 2001:db8::4 repeat 5 timeout 2` | pass |
+
+Each refusal's words are asserted as well as its verdict, so a refusal for the wrong reason
+fails. The planted cases are shown able to fail (the property removed in a throwaway worktree,
+the aimed tests failing).
+
+The set is the diagnosis's state reads (19.3's table): interfaces, the IP interface,
+CDP and LLDP, the OSPF interface and neighbours, BGP summary and neighbours, route, CEF, ARP and
+ND, the MAC table by address, spanning tree by interface, and ping (repeat ≤ 5, timeout ≤ 2) and
+traceroute (ttl ≤ 16, probe 1, timeout ≤ 2) to an address of the network.
+
+**`show running-config` goes through the existing configuration masking** (the operator, N20).
+It and its section forms (`show running-config interface <if>`, `| section <name>`) are
+configuration, so they are the configuration class's, never the device state class's:
+- they are sent only where a network has the configuration class on, under 15.11's
+  conditions: masked by `redact.redact_egress`, a secret's line dropped whole, the smallest
+  slice the question needs;
+- while the configuration class is off (every network until C1720's marking is built), they are
+  refused, naming the class.
+
+**Left out on purpose,** each refused with its reason:
+- a secret's position: `show key chain`, `show snmp`, `show users`;
+- configuration printed in other forms: `show startup-config`, `show archive`, `show
+  access-lists` and `show ip access-lists` (their entries are configuration), `show
+  tech-support`;
+- `more` and `dir` (files may be configuration);
+- `show logging`: the logs reach the model only from Loki, masked, in the pack.
+
+**Mercury's other checks on a request** (each refusal names its comparison and both operands,
+and goes to pass 2 as "refused: <why>", so the model sees it):
+- the device is one the incident or the pack as sent names, in the incident's network, never
+  another network's;
+- the device is not held; a held device is skipped by name, never queued;
+- at most 3 requests; a fourth is refused "past the 3 reads a pass may ask for";
+- **on behalf of a person, as the read-only account:** the reads are recorded as "the AI
+  analysis of incident <id>, turned on by <admin>", and they sign in with the device's read-only
+  account (IBN_DESIGN section 12 item 2: no AI identity stronger than the person; section 13:
+  a fully compromised model can do nothing the person could not already do). The AI read set is
+  a strict subset of what that admin may read, and the account enforces it on the device too.
+
+**The reads themselves:**
+- run by `reads.run` with a new caller kind, `ai_analysis`, with no extras: held, masked by
+  `redact.redact_text`, recorded on History › Reads;
+- concurrent across devices, each inside its bound; the loop's reads bounded at 60 s in all,
+  about 2.5 times the expected measure (to be measured in H27);
+- **each answer capped at 4 KiB for the model** (`AI_READ_CAP`), saying "cut" with the whole
+  answer's hash, as the reads engine does. The record keeps the reads engine's own cap.
+
+**Masking and egress** (15.11; the irreversible tier):
+- A read's output is not one of 15.11's classes today: it is neither an alert label, a metric
+  series, a masked log line nor an intent diff. **A new class, device state** (the operator,
+  N20), holds the AI read set's answers (operational state, by command shape):
+  - off by default on every network;
+  - turned on per network by an admin, with a reason, recorded with who and when (the
+    configuration class's pattern, 15.11 and 13.1), in Settings › the network's AI data
+    classes (artboard N);
+  - off is one click, and it stops new sends at once;
+  - a classification marking forces it off, as every class (C1720);
+  - `egress_classes.device_state_allowed(network)`, new, beside `topology_allowed`.
+- **Every send is logged:** each answer's bytes after masking, its lines dropped and withheld,
+  in History's AI calls (15.14), beside the reads run it came from.
+- Every answer is masked by `redact.redact_egress`: by position and by known value, then every
+  secret, password, key and hash shape.
+- **A line with a secret's shape is dropped whole,** not masked, and counted (15.11's condition
+  2, applied here).
+- Every answer passes `injection.withhold_parts` (`modules/ai/injection.py`). Device text is
+  writable by others: descriptions, BGP neighbour descriptions, CDP device ids.
+- The gateway's `redact.egress_payload` covers every byte. The hand check (changed lines'
+  mutants by hand, a must-die canary, `docs/TIER_HAND_CHECK.md`'s log) comes before the deploy
+  (H26).
+- **injection.py's premise changes, and is said.** Its docstring says "the model has no acting
+  tool". A read request is not an action, and code decides whether it runs. When built, the
+  docstring says "the model may ask for reads from a fixed set; code decides", and its test
+  names the loop.
+
+**Cost (PHASE8_PLAN 18.3's rules):**
+- **Trigger:** each pass is a gateway call with `trigger background`, the analysis job's id,
+  under the feature `heal_analysis` (section 12). The gateway checks the feature's switch for
+  the network, and the caps, **before each pass**.
+- **A cap reached between the passes:** pass 2 is refused and recorded with no provider
+  request. The answer shown is pass 1's: "second pass not run: the day's cap for this feature
+  is reached".
+- **`calls_per_finding` becomes 2.** The estimate shown at Turn on uses it (board G's insert).
+- **The cost per finding, estimated:** pass 1 at about Explain's measured $0.0257, and pass 2
+  that plus up to 3 × 4 KiB of answers (about 3,000 input tokens), so **about $0.06 a finding**.
+  At worst it is $0.16, two calls at the $0.08 per-call cap.
+- **The caps are unchanged** ($1.00 a day, $10.00 a month on Default). That is about 16
+  analyses a day at the estimate. The lab walks expect about 5, about $0.30 a day.
+- The measurement round (H27) replaces the estimate with the measured figure, which the board
+  shows.
+
+**Timing.** Section 12's 60 s wait is kept. The notice carries what is ready (decision N22,
+recommended):
+- pass 1's answer, if it is back within 60 s, labelled "first pass: Mercury is running the 2
+  reads it asked for";
+- otherwise "AI analysis: pending".
+
+The follow-up on the same thread carries the final answer. That is at most one follow-up, as
+section 12 already allows.
+
+**History (15.14's AI calls).** Each pass is its own row: trigger, cost, and the check's
+verdict. Between the two passes, each read request is a row, linked to both:
+- what was asked (device, command, why, the hypothesis it tests);
+- the verdict, run or refused, with the reason and both operands;
+- the reads run on History › Reads;
+- the bytes sent after masking, and any lines dropped or withheld.
+
+The incident's step log gets one step: "AI analysis: asked for 3 reads; 2 run, 1 refused;
+second pass answered". Nothing in the heal loop reads the steps or the answer. Section 12's
+mechanised test is extended to the loop's module.
+
+**The relation to Lab 9's tool-calling candidate** (docs/LAB9_SDN_GAP.md, its section 4,
+candidate 3, estimated there at 4 to 5 agent-days because it adds provider tool turns to the
+gateway). This loop uses no provider tool turns (N21). If candidate 3 is built later, it reuses
+this check and this record, one home for "a model asks for a read".
+
+**The industry practice it follows:**
+- ReAct, and the provider's own pattern: the model requests, the application runs;
+- OWASP LLM06: a fixed function set, read-only permissions, a bounded number of calls, and
+  nothing high-impact without a person;
+- LLM01's mitigations: untrusted content flagged and withheld, and the model's output never
+  executed;
+- LLM02: masking at the boundary;
+- agent frameworks' bounded iterations: here exactly one round.
+
+### 19.6 The revised I5 demo: bounced once, still flapping, dampening proposed (a draft sheet)
+
+**The guard stays; the sheet changes** (the operator, N15). The bounce's precondition keeps "far
+end up": the flapping port down while administratively up, the far end administratively up and
+up, and neither end held. A guard is never loosened to make a sheet pass. Today's sheet makes
+the flap with a Tcl loop on r4, which shuts r4 Gi4 in each down phase and logs a CONFIG_I each
+time, so r4 is "a person working" (guard 7, and 13b on both ends). **On that sheet the bounce is
+refused, correctly.** The automatic diagnosis's first hypothesis is then "r4 Gi4
+administratively down, by a person on r4 (decisive)", which is the right answer.
+
+**The revised sheet is a draft until the operator's trial is measured.** The flap moves below
+the configuration: the lab host takes r4 Gi4's virtual link down and up at the hypervisor
+process (believed available through the vrnetlab container's QEMU monitor, `set_link`;
+unmeasured). Neither router then logs a CONFIG_I. This is lab tooling under `lab/`, never the
+product.
+
+**The operator's step: one trial on the lab host, before the sheet is written.**
+1. Outside 08:30 to 09:10 UTC, not on s3, with no restart of any node (the standing facts),
+   take r4 Gi4's virtual link down once at the hypervisor process, for about 15 s, then up.
+2. Record **what r4 sees:** whether Gi4 reads "down, line protocol is down" while
+   "administratively up", the UPDOWN lines it logs, and the time each takes.
+3. Record **what the far end, r3, sees:** whether r3 Gi4 stays up and line protocol up, or goes
+   down too, and what it logs (the OSPF adjacency's drop on its dead timer).
+4. The result decides the sheet (the operator confirmed: r4 is the toggled side, r3 the far
+   end, and the bounce is on r4 Gi4):
+   - **r4 down while admin up, r3 up:** the bounce's precondition holds, and the draft rows
+     below become the sheet (the cycle, 15 s down and 45 s up for 10 minutes, is the operator's
+     to confirm);
+   - **both ends go down:** the far end is not up, so **the bounce stays refused,** and I5 needs
+     another staging. It is never run with a looser guard (the operator);
+   - **anything else:** that is said, I5 runs as today's sheet (Alert, diagnosed, not bounced),
+     and the bounce's proof is its replay test alone.
+
+This trial is the operator's step, not the agent's. The agent writes the sheet from its result.
+
+**The draft rows** (for the operator's trial to confirm; the tiers by name, as the screens show
+them):
+
+| # | Scenario | Device | What Mercury detects | Tier | What it does | What verify reads | What the person sees |
+|---|---|---|---|---|---|---|---|
+| 8 (draft) | **I5 revised:** r4 Gi4 flapping, made at the lab host, both ends at intent | r4 (r3 the far end) | r4's "Interface down" (port down, admin up), and 3 UPDOWN transitions on r4 Gi4 in 10 minutes (13e); r4 at intent; Alert, so the **diagnosis runs first**: r4 Gi4 down while admin up, r3 Gi4 up and admin up, CDP last saw r3 on r4 Gi4 as intent cables it, no CONFIG_I on either end, no input errors. First hypothesis: physical on r4 Gi4 (decisive) | **Auto**, port bounce (allowed in Auto mode on Default after its dry run) | the precondition read again (13a), then `interface GigabitEthernet4` / `shutdown` / `no shutdown` on r4, one batch, its hash first | up within its settle bound; then the stability window: **2 more transitions within 10 minutes, so still flapping**; the configuration did not move | History: "r4 Gi4 bounced once, still flapping" (amber); Needs attention: **"A change waits for a person: dampening on r4 Gi4"** (Propose) with the intent edit and one hash; the email: can't fix, Mercury's diagnosis, the bounce and its result, the proposal waiting, then the AI analysis (its reads, for example `show interfaces GigabitEthernet4` on r4 and r3, in History) |
+| 8b (draft) | **The proposal approved** (a person) | r4 | — | **Propose**, a person's change | Approve…: the intent edit committed as the person, then deployed (`dampening` on Gi4) | the line read back; `show interfaces dampening` lists Gi4 | the flap suppressed while the lab host's cycle runs; the proposal row clears (approved and verified) |
+| 7+ | **C4 plus Diagnose… on demand:** from r7's "Device unreachable" | r6 | a person presses Diagnose… on the alert: "Can't reach r7" from r6's neighbour on the Gi2 link | none (reads only) | "A can't reach B": the ping fails; the path trace reaches r6; **the first divergent hop is r6**: an inbound ACL on Gi2 that intent does not hold (decisive), which the heal had classed Never | not applicable | the diagnosis card: the hop, the binding, the ACL's counters, the read that confirms it; History, kind diagnosis |
+
+**The rails hold.** The bounce is r4's one action that hour, and the dampening deploy is a
+person's, not a heal. Section 15's row 8 (r3's trigger, today's sheet) stands until the trial is
+measured.
+
+**The video's beats gain:**
+- I5's "bounced once, still flapping, dampening proposed";
+- C4's Diagnose… finding the hop;
+- the AI analysis's reads in History.
+
+### 19.7 The estimate, in agent-days and in the measured ratio
+
+Each part's tests are written with it, red then green (section 14). **The measured ratio**
+(PHASE8_PLAN 0.3, C2380): one agent-day is about 1.3 wall-clock hours for one agent (0.7 to
+2.6), and about 4M weighted tokens (2.5M to 9M).
+
+| Part | What | Days | Stream | Depends on |
+|---|---|---|---|---|
+| H14 | The diagnosis engine (`modules/heal/diagnose.py`): steps, reads through the reads engine as kind `diagnosis`, the comparison with the network model, `RULES` and the ranking; the "adjacency down" runbook (OSPF, OSPFv3, BGP); the per-device diagnosis lock, `MAX_COMMANDS` (70) and the runbooks' pipe-rule test | 2.0 | B | H6 (the step log store, for its records); the reads engine and network model (built) |
+| H15 | The "A can't reach B" runbook on `path_trace`; per-hop interface, ARP and ND, MAC and STP, route source and ACL checks; the return path; **the IPv6 form** (`show ipv6 cef` parsed and followed) | 1.5 | B | H14 |
+| H16 | Diagnose… on the device page's Actions menu, on an alert's card and on a can't-fix row (gated, declared, invalidated, busy on itself); the result card; the manual's how-it-works pages and their diagrams | 1.0 | B | H14, H15; H9's screens |
+| H17 | The automatic run on an Alert incident before notifying, and on a Propose incident before it is offered for approval (the diagnosis on the proposal's row, email and Approve…); the storm bound; the notice's diagnosis block and its follow-up; the `diagnosis` pack section for H8 | 0.75 | B | H3 (the Tier 3 outcome), H14, H7 (built), H8 |
+| H18 | The runbooks' captures (the reads marked **no** in 19.3, on r2 and s1) and one scenario replay per runbook | 0.5 | B | H14 to H17; H11's walk |
+| H19 | The four action kinds in the tier table; guards 13a to 13e; flap detection (an after-store step on `logs-tail`); `diagnose.ACTIONS` | 1.0 | A | H2 (triggers), H3 (classification), H14 |
+| H20 | The port bounce, and the OSPF adjacency reset through it: the fixed program and its authorisation, `apply_batch` as the policy, verify with the stability window and the configuration-did-not-move read-back, its rollback; guard 13c's management-path and only-path checks (`show ip cef` toward Mercury, the blast radius) and their refusals; `ospf_reset`'s exactly-one-neighbour read; **13f's revert timer**: the wrapper, the new session and the post-check before `configure confirm`, the no-archive refusal, the per-platform "not measured" refusal until the operator's trial; measured on r2 and s1 | 1.75 | A | H4 (act and verify), H19 |
+| H21 | The BGP clears (N16): `clear-bgp-peer` (hard, one named neighbour, not Established in two reads) and `clear-bgp-soft` (an Established session), each measured on r3 or r4, run through `privileged.py` by the policy on a lab network and as a proposal elsewhere | 1.0 | A | H5 (the policy path), H19 |
+| H22 | The dampening proposal: intent's `dampening` field, template line, parser round trip, the measured `interface.dampening` shape, the one-hash intent commit and deploy, its `CLEARS` entry; **intent's configuration archive** (`archive.path`): its field, template line and parser round trip, which 13f needs | 2.0 | A | H5 (the proposal routes), H6; the intent editor (built) |
+| H23 | The actions' History marks, rows, notices, change records and manual; the scenario replays; I5's sheet written from the operator's trial (19.6) | 1.0 | A | H20 to H22, H9, H11, H12; the operator's trial |
+| H24 | `AI_READS`: the allow-list matching the whole command (N21): its shapes, the four modifiers, strict argument patterns (interfaces, addresses, prefixes, peers, MACs), the device scope, each refusal's words; `show running-config` routed to the configuration class | 1.0 | B | the allowlist (built); can start first |
+| H28 | **The read-only device account, item 3's prerequisite:** the credential chain's read role, the Credentials card, the device-side account in intent (an account added), its shape measured on r2 and s1, credential health, retirement; the reads engine signs AI reads in with it and refuses a device without one; the device state egress class (N20) and its per-network switch | 2.0 | B | the credential chain and the reads engine (built); the operator's credential operation for the password |
+| H25 | The loop: pass 1's `reads`, the check, the reads as kind `ai_analysis`, the cap per answer, pass 2's schema and the extended check, the cap check before each pass, `calls_per_finding` 2; **the required tests of 19.5** (each planted refused form refused, each allowed form passing), written first | 1.25 | B | H8, H24, H28 |
+| H26 | The loop's History rows (15.14), every send logged, the step-log step, the loop-never-read test, the egress hand check | 0.75 | B | H25, H6 |
+| H27 | The measurement: H13's 3 recorded cases × 10 runs at two passes (about $2), plus the planted refusals as tests | 0.5 | B | H25, H26, H13 |
+| H29 | **The SDN read set (19.12):** the operation table, `ReadOnlyDriver` (GET only, every write endpoint refused), arguments against the current topology, the new `port_desc` read for `link_state`, the Analyst's and Responder's pass-1 field, the device state class for SDN reads; its required tests and the canary | 1.75 | B | H25, H26 (the loop); the Ryu driver (built); Lab 9's trace for `path_trace` |
+| H30 | The SDN reads in History, and the replay of reads from a case's captured pack for the evaluation ("not captured" counted) | 0.75 | B | H29 |
+| H31 | **B4's evaluation (19.13):** the paired comparison, its intervals, both arms' batch runs, the live-path timing subset, the report against the frozen pass rule | 1.0 | B | H29, H30; the ledger read first |
+
+**Per item, and in total:**
+
+| Item | Agent-days | Wall-clock for one agent (× 1.3 h; 0.7 to 2.6) | Weighted tokens (× 4M; 2.5M to 9M) |
+|---|---|---|---|
+| 1, diagnosis runbooks (H14 to H18) | 5.75 | about 7.5 h (4.0 to 15.0) | about 23M (14M to 52M) |
+| 2, action remediations (H19 to H23) | 6.75 | about 8.8 h (4.7 to 17.6) | about 27M (17M to 61M) |
+| 3, the AI read loop for the routers (H24 to H28), **with its read-only account** | 5.5 (3.5, plus H28's 2.0) | about 7.2 h (3.9 to 14.3); H28 alone about 2.6 h (1.4 to 5.2) | about 22M (14M to 50M); H28 alone about 8M (5M to 18M) |
+| 3, the SDN read set (H29, H30; Lab 9's B4) | 2.5 | about 3.3 h (1.8 to 6.5) | about 10M (6M to 23M) |
+| 3, B4's evaluation (H31; Lab 9's B4) | 1.0 | about 1.3 h (0.7 to 2.6) | about 4M (2.5M to 9M) |
+| **The amendment** | **21.5** | **about 28 h (15 to 56)** | **about 86M (54M to 194M)** |
+| **Board H with the amendment** (16.25 + 21.5) | **37.75** | **about 49 h (26 to 98)** | **about 151M (94M to 340M)**, roughly 12% of a week's usage (7 to 26%) |
+| of which Lab 10's (all but H29 to H31) | 34.25 | about 45 h (24 to 89) | about 137M (86M to 308M) |
+
+**The growth since the first draft:**
+- **The six changes:** H14 (+0.25: the per-device lock, the command cap, the pipe-rule test),
+  H17 (+0.25: diagnosis on Propose rows), H20 (+0.25: the management-path and only-path checks)
+  and H24 (+0.25: the whole-command matcher), 1.0 day in all.
+- **The revert timer:** H20 (+0.5) and H22's archive field (+0.5), 1.0 day.
+- **The SDN read set and B4's evaluation:** H29 to H31, 3.5 days.
+
+**The streams.** H1 and H7 are built (commit 24aef7b6). What is left:
+- **stream A:** H2 to H6, H11 and H12 (8.25), plus item 2's H19 to H23 (6.75), so **15.0
+  days**, about 19.5 h (10.5 to 39.0);
+- **stream B, Lab 10's parts:** H8, H9, H10 and H13 (5.0), plus item 1's H14 to H18 (5.75) and
+  item 3's H24 to H28 (5.5), so **16.25 days**, about 21.1 h (11.4 to 42.3);
+- **stream B, then Lab 9's:** H29 to H31 (3.5), so **19.75 days** in all, about 25.7 h (13.8 to
+  51.4).
+- **Stream B's order:** H24 and H28 first (they depend on nothing unbuilt), then H8. H14 is
+  written against H6's store once it lands. H29 to H31 come after Lab 10's parts (the
+  operator's order).
+- **The critical path:**
+  - **For Lab 10,** stream B's 16.25 days plus its 14 parts × 1.5 gates × 17 minutes (about 6
+    hours) is **about 27 hours (17 to 48)**. Stream A, 15.0 days and 12 parts, is about 25
+    hours (16 to 44).
+  - **For B4,** stream B continues: 19.75 days and 17 parts (about 7 hours of gates) is
+    **about 33 hours (21 to 59)**.
+- **Spend:** about $2 for H27, about $1 more in the walks at two passes, and about $1.5 to $1.9
+  for B4's evaluation (19.13), inside the $161.19 left (PHASE8_PLAN 0.5's latest figure).
+
+**The date risk, said early:**
+- **Lab 10 (due 2026-11-23 23:59 MT):** not threatened at the estimate.
+  - **The agent-time arithmetic:** its critical path is about 27 hours of one stream's agent
+    time. Over the build window (Nov 5 to 14) that is about 2.7 hours a day, and 4.8 hours a
+    day at the range's top. The walks (to Nov 19) and the submission days (Nov 20 to 23) are
+    the margin.
+  - **The real risk is not agent hours. It is the operator's steps in the chain:**
+    - the lab-host I5 trial;
+    - the r4 revert-timer trial (and s1's);
+    - the read-only account's password and its deploy;
+    - turning the device state class on.
+  - The bounce cannot ship before its trial, and item 3 now cannot be cut, so the read-only
+    account's credential operation should be scheduled early in the window.
+  - If the trials slip, the bounce is the last cut (19.8) and I5 runs as today's sheet. Lab 10
+    still meets its requirements.
+- **Lab 9 (due 2026-11-30):** B4 is the most exposed item, because it sits at the end of the
+  chain (Lab 10, then item 3 for the routers, then the SDN read set, then the evaluation).
+  - At the estimate, H29 to H31 need about 4.6 hours after Lab 10's stream B. If Lab 10's
+    build lands by about Nov 19, that leaves about a week.
+  - **The threat is the dependencies,** not the build:
+    - Lab 9's trace (for `path_trace`): without it, that operation is refused "not built" and
+      the others run;
+    - the fresh blind set (the operator's capture session), without which B4's blind result
+      rests on 11 to 13 spent-set cases;
+    - the hardware's arrival (the Arista and HP models on Thursday), for the drivers' reads.
+  - Lab 9's own build shares the same two agent slots (docs/LAB9_SDN_GAP.md, section 3), so a
+    slip in Lab 10's stream B moves B4 day for day. That is said in each report's schedule
+    line.
+
+If a stream runs behind, 19.8's cut order applies, and the report says which part and why.
+
+### 19.8 The revised cut order (sections 16 and 17, merged)
+
+**Never cut** (the operator's directions):
+- the heal loop, its guards, its records and C4's notification (section 16);
+- **item 1,** both runbooks, automatic on Alert and Propose incidents and on demand (H14 to H18);
+- **item 3, the AI read loop, whole: H24 to H28 with the read-only device account and the device
+  state class, and H29 to H31.** It now carries Lab 10's item 3 and Lab 9's B4.
+
+docs/LAB9_SDN_GAP.md's usage-cut order (its section 5) still names "B4 as candidate 1" as its
+second cut. Since B4 is now the read loop, that line is the operator's to restate there.
+
+**Built, so off the list:** verification codes (H7) and the installation's kill switch (H1),
+both in commit 24aef7b6.
+
+**Applied only when an item is actually behind, and said in the report when it is** (section
+16). In order:
+1. **The webhook formats:** already deferred to after Lab 10, not cut (C2387). Nothing is left
+   to cut here.
+2. **Item 2's BGP clears (H21).** No demo scenario needs them. A stuck session stays Alert,
+   with its diagnosis.
+3. **"The process clear": `clear ip ospf process`, measured (H5's).** This is the whole-process
+   reset, used in two places only: R8's router-id proposal (Propose), and a router with exactly
+   one OSPF adjacency (N17). If it is cut, R8's proposal applies the router-id and offers
+   Mercury's Reload in a planned window instead, as section 16 says, and the single-adjacency
+   router stays Alert. It is **not** step 5's bounce.
+4. **Item 2's dampening proposal, to its lean form (H22's one hash).** The proposal drafts the
+   intent edit and opens it in the intent editor, for the person's own commit and deploy. The
+   field, the template line, the parser and the measured shape stay. So does the archive field,
+   which 13f needs.
+5. **"The bounce": the port bounce, and `ospf_reset` through it (H20), last of item 2.** This
+   is the interface bounce (`shutdown` / `no shutdown` on one interface, inside the revert
+   timer), which also resets one OSPF adjacency on an interface with exactly one OSPF
+   neighbour. It never sends `clear ip ospf process`, and it is **not** step 3's process clear.
+   If it is cut, or its revert-timer trial has not run, I5 runs as today's sheet (Alert,
+   diagnosed, notified), and a stuck single-neighbour adjacency stays Alert.
+
+Each cut keeps Lab 10's requirements. A cut part is deferred with a row, never dropped. The
+critical path is 19.7's: about 27 hours for Lab 10 (stream B), then about 33 hours to B4's
+evaluation.
+
+### 19.9 Item 5: the crosswalk to the lecture's tiers, and its maturity ladder (for the video and the write-up)
+
+**The crosswalk** (the operator, 2026-11-03, from the lecture's slides). The lecture has three
+tiers, numbered by rising autonomy. Board H keeps its four tiers and their numbers in code, and
+every screen shows them by name.
+
+| The lecture's tier | Its meaning | Board H's tier: its name on screen (its number in code) | What Mercury does there | The lecture's examples and this amendment's kinds, placed |
+|---|---|---|---|---|
+| **T1, read-only diagnosis** | the tool gathers and analyses; a person fixes | **Alert (3), plus diagnosis** | sends nothing; runs the diagnosis runbook (item 1), then notifies with it | physical or link down while admin up, an unknown cause; `clear ip ospf process` on a router with several adjacencies |
+| **T2, a suggested fix a person approves** | the tool proposes the change; a person approves it | **Propose (2)** | the program and its hash on a Needs attention row; Approve… by a verified person, with a reason | dampening when still flapping; a soft clear of an Established BGP session; a hard BGP clear on a network not marked lab; R8's router-id and process reset; QoS; a secret added back |
+| **T3, auto-remediate low-risk, well-understood cases** | the tool fixes it, verifies, records and notifies | **Auto (1)** | heals or acts under a person's standing policy, once, verified, rolled back on failure, recorded, notified | the four configuration kinds of section 5; the port bounce; the OSPF adjacency reset through it; a hard clear of one named BGP neighbour on a network marked lab |
+| **the lecture's "poor candidates"** | what should never be automated | **Never (4)** | never automatic; notifies, with Diagnose… offered | security ACLs, credentials and AAA, Mercury's own path, multi-device causes, `clear ip bgp *` |
+
+**Mercury on the lecture's L0 to L5 ladder** (the lecture's own, the operator's source; it
+replaces the first draft's TM Forum placement):
+
+| Level | The lecture's meaning | Mercury | Evidence in the code or the plan |
+|---|---|---|---|
+| L0, manual CLI | a person at the device's prompt | **left behind** | no terminal steps (CLAUDE.md, "Operations and safety"); the break-glass terminal removed (R39); every read through the reads engine (`modules/nsot/reads.py`) |
+| L1, scripted collection | scripts gather state from devices | **has** | the readers (`modules/reader_job.py`, `modules/readers/`); Show commands across devices (`modules/nsot/reads.py`, `fanout.read_each`); captures (`modules/capture_job.py`); the drift reads (`modules/drift_check.py`) |
+| L2, parsing and correlation | the output is parsed and events are correlated | **has** | the parsers (`modules/nsot/parsers/`, `platform_reads.json`); the network model (`modules/network_model.py`); the evidence pack correlating alerts, logs, neighbours and changes (`modules/evidence_pack.py`); the blast-radius fold (`modules/nsot/blast_radius.py`); attribution and one row per cause (PHASE8_PLAN 20.2, 20.5) |
+| L3, rules-based diagnosis: runbooks as code | stored, deterministic runbooks find the cause | **the gap: item 1 fills it** | no runbook exists today. The nearest are the path trace (forwarding only, IPv4, `modules/path_trace.py`), the drift check and intent match (configuration comparisons), and Explain (AI, advisory, not rules). H14 to H18 build the two runbooks |
+| L4, approved or automated remediation | the fix is applied, with a person's approval or automatically | **approved: has; automated: board H, being built** | approved: the deploy pipeline (preview, confirm by hash, verify, rollback: `modules/pipeline.py`), restore, Mode B removal, privileged commands (`modules/nsot/privileged.py`), Reload. Automated: the heal policy (H1, built: `modules/heal/policy.py`) and the loop (H2 to H6), on networks marked lab only (C2009's guard); item 2's actions |
+| L5, AI-assisted | AI helps analyse and propose | **has, in beta** | Explain (`modules/ai/explain.py`), Ask in words, Change it in words; the can't-fix analysis (H8) and its read loop (item 3). Advisory only: no fix is chosen or run from AI text (section 12) |
+
+**So Mercury has L0 to L2, approved L4, and L5 in beta. L3, rules-based diagnosis, is the gap
+the lecture's ladder exposes,** and item 1 fills it. That is why item 1 is never cut (19.8).
+Automated L4 arrives with board H's build.
+
+### 19.10 Decisions for the operator (one line each: the decision, the recommendation, the practice it rests on)
+
+N15, N16, N17 and N20 are as the operator set them in review; the others are recommendations
+for the operator to approve.
+
+- **N14, diagnosis on which tiers:** automatic on Alert (Tier 3) incidents before they notify and on Propose (Tier 2) incidents before they are offered for approval, the diagnosis attached to the proposal, and Diagnose… on demand everywhere, Never included (the operator); practice: incident platforms run automated diagnostics when an incident opens and attach them before or as a person is asked to act (PagerDuty Process Automation, Rundeck), the triage-before-treatment step of Google's SRE book, chapter 12, and a change approver sees the evidence before approving (ITIL change evaluation).
+- **N15, I5's staging:** keep "far end up" and never loosen a guard to make a sheet pass; the flap moves to the lab host, the operator's one trial records what r4 sees and what the far end, r3, sees, and the I5 sheet stays a draft until it is measured (the operator); practice: test the safety control against a real fault rather than relaxing it, the Principles of Chaos Engineering (a hypothesis about steady state, real-world events injected, the blast radius kept small).
+- **N16, the BGP clears:** a hard clear of one named neighbour only when it was not Established in two reads in a row, a soft clear for an Established session, `clear ip bgp *` Never, and no clear at all for a peer in Idle (Admin), an administratively shut neighbour or a configuration mismatch such as a wrong remote AS, which raise drift or Alert instead; Auto on a network marked lab, Propose by default (the operator); practice: route refresh resets nothing that works (RFC 2918, RFC 7313), so a soft clear is the first resort for an Established session; a hard reset is kept to one peer that RFC 4271's state machine shows is not Established; and a reset never fights a cause it cannot fix (a shut neighbour or an AS mismatch comes back down at once, RFC 4271's OPEN message error, Bad Peer AS).
+- **N17, a stuck OSPF adjacency:** `ospf_reset` resets that one adjacency through the port bounce on its interface, only when the interface has exactly one OSPF neighbour, with every one of the bounce's guards; any bounce is refused when the interface is on Mercury's management path to that device (the address Mercury reaches it on routes out of it, by the device's own CEF lookup, the first refusal) or is the device's only path; because that check sees only the return path and in-band routing can be asymmetric, every bounce and `ospf_reset` also runs inside `configure terminal revert timer <n>`, with `configure confirm` only after Mercury reaches the device again and the post-check passes, so a lost session reverts on the device; it needs the configuration archive (`archive` with a path) in intent, and a device without it has the bounce refused, naming the intent field; `<n>` is about 2.5 times the bounce's measured settle time, unmeasured until the operator's r4 trial, and H20 does not ship the bounce until that trial has measured the revert timer, the confirm and the restored `no shutdown`; `clear ip ospf process` stays Alert, unless the router has exactly one OSPF adjacency (the operator); practice: the smallest blast radius that clears the fault, since RFC 2328's InterfaceDown event (sections 9.3 and 10.2) resets only the neighbours on that interface while a process reset drops every one; a change to the tool's own path needs a repair route independent of it (CLAUDE.md, "Operations and safety"); and a change that can cut the tool's own path needs a device-side rollback timer (the IOS configuration archive's revert, Junos `commit confirmed`).
+- **N18, the flap threshold and the stability window:** 3 transitions in 10 minutes to call a flap, and the same 10 minutes to call a bounce stable, revisited from the lab's recorded flaps; practice: IP event dampening (Cisco IOS `dampening`) and BGP route flap damping (RFC 2439) both define a flap as repeated transitions inside a decaying window.
+- **N19, dampening's parameters:** the platform's defaults (bare `dampening`), measured on both dialects, with parameters a later intent field; practice: vendor defaults first, tuned only on measurement, and CLAUDE.md, "If the safe path is tedious, people route around it" (inherited defaults over settings).
+- **N20, the egress of device state:** a new class, device state, off by default and turned on per network by an admin with a reason; the AI's show commands come from an allow-list the tool enforces; `show running-config` goes through the existing configuration masking, under the configuration class; every send is logged (the operator); practice: default-deny information-flow control (NIST SP 800-53 AC-4) and OWASP LLM02:2025, Sensitive Information Disclosure (restrict and sanitise what reaches the model).
+- **N21, how the AI asks for reads, and what it may ask:** a field of pass 1's strict schema, not the provider's tool use, so pass 2's schema cannot ask again; the read allow-list matches the whole command, its output modifiers only include, exclude, begin and section, `| redirect`, `| tee`, `| append` and any other modifier refused because on IOS they write to flash, its arguments matched against strict patterns (interface names, addresses, prefixes), and newlines and control characters refused; the build's required tests plant each refused form and see it refused, and see the allowed forms pass (the operator); practice: OWASP LLM06:2025, Excessive Agency (minimise the functions, permissions and autonomy a model can reach), schema-validated output (OWASP LLM05:2025) and the bounded request-then-run loop of ReAct (Yao et al., 2022).
+- **N22, the notice while the loop runs:** pass 1's answer in the notice if back within 60 s, labelled "first pass", and the final in the one follow-up on the same thread; practice: incident platforms page at once and add context as updates to the same incident, and mail threads by In-Reply-To and References (RFC 5322).
+- **N23, what the diagnosis may carry to the AI:** its hypotheses in Mercury's words as the allowed class, the values it compared only where the device state class is on, never an ACL's entries, a key or a configuration line; practice: data minimisation, the smallest slice the question needs (15.11's condition 3; OWASP LLM02:2025).
+- **N24, how many diagnoses, and how large:** at most one diagnosis at a time per device, at most 3 automatic diagnoses at once per network, and at most 70 device commands per diagnosis (`diagnose.MAX_COMMANDS`, about 2.5 times the longest runbook's own 28, "adjacency down" on a dual-stack OSPF and BGP link), a run that reaches the cap saying where it stopped; the rest offer Diagnose… on their rows (the operator); practice: the bulkhead pattern (concurrency bounded so one failure cannot exhaust the whole; Nygard, *Release It!*), alert grouping into one incident per cause (Prometheus Alertmanager's `group_by`), and a bound about 2.5 times the measured size (CLAUDE.md, "Bounds are about 2.5x a measured time").
+
+### 19.11 Rows to record once the operator has reviewed this (the register is not edited here)
+
+- the diagnosis runbooks themselves (Lab 10: blocks, area NSoT/devices);
+- the reads with no capture or parser: `show ip ospf interface`, `show ip bgp neighbors`, the
+  df-bit and sourced pings, traceroute, `show ip route <prefix>`, `show ipv6 cef`, `show mac
+  address-table address`, `show spanning-tree interface`, `show ip access-lists <name>`;
+- **the path trace reads IPv4 only** (`path_trace.refusal`): the IPv6 form of "A can't reach B"
+  (C1245's epic);
+- **intent cannot express interface dampening:** no field, template line, parser or measured
+  removal shape;
+- `clear ip bgp <peer>` and `clear ip bgp <peer> soft` unmeasured, and the command policy's one
+  new shape (N16);
+- the I5 sheet a draft until the operator's lab-host trial is measured (N15);
+- **show output is in no egress class:** the device state class to build (N20);
+- **the read-only device account,** item 3's prerequisite (H28), with diagnosis, collection and
+  drift reads moving to it later;
+- injection.py's "no acting tool" premise, to restate when the loop is built;
+- **a `show` command's arguments are not checked by `readonly_commands.refusal`:** `show
+  interfaces Gi4; reload` and `show ip route 999.1.1.1` pass it (probed 2026-11-03). That is
+  harmless on IOS, which has no command separator, but a person's Show commands accept words
+  no shape names. UNKNOWN, its one measurement: whether any show argument on either dialect
+  does more than print. The AI's reads are covered by `AI_READS` (N21);
+- `| count` is a safe modifier for a person and refused for the model (N21).
+
+- **UNKNOWN until measured, its one measurement the operator's r4 trial (19.4):** whether
+  IOS-XE and vIOS both support `configure terminal revert timer` and `configure confirm`, and
+  whether a revert restores `no shutdown` on the bounced interface. PHASE8_PLAN 15.2 item 1
+  holds the same unknown;
+- **UNKNOWN: the revert timer's `<n>`,** unmeasured; its one measurement is the bounce's settle
+  time in the same trial;
+- **intent holds no configuration archive** (`archive` with a `path`): the field, its template
+  line and its parser are H22's;
+- **the SDN read set's link state needs a read the driver lacks** (`GET /stats/portdesc/<dpid>`),
+  and its path trace needs Lab 9's trace (19.12).
+
+The rows for item 4 (a read-only MCP server, NetFlow and IPFIX, and packet capture) are in the
+agent's report, with the existing rows each one was searched against (C1004 for flows, C762 for
+capture). The read-only device account left item 4 for item 3's prerequisites.
+
+### 19.12 The SDN read set: item 3 extended to the SDN Analyst and Responder (Lab 9's B4, approved)
+
+**The operator's approval, 2026-11-03.** B4, Lab 9's advanced technique, is built as a Mercury
+feature: the bounded read loop of item 3, for the SDN Analyst (Lab 9's B1, the live analyst) and
+the Responder (the loop's classification, `sdn_classify`, PHASE8_PLAN 17.1). It supersedes the
+Lab 9 board's recommendation of candidate 1 (docs/LAB9_SDN_GAP.md, its section 4: candidate 3,
+"tool calling into the trace", estimated there at 4 to 5 agent-days with a new gateway path for
+provider tool turns). Here it reuses item 3's check, record and egress, so it costs less.
+
+**The same loop, the same limits.**
+- The model asks for reads through the same pass-1 schema field (N21), one round, then pass 2.
+- It is bounded by N24's limits: at most 3 reads a pass, one diagnosis at a time per device (a
+  switch, by its dpid), at most 3 at once per network, and the command cap.
+- The egress is N20's device state class, off by default, turned on per network.
+- The controller is read through the network's connection (`modules/sdn/connections.py`) and its
+  driver.
+
+**The allowed operations: an allow-list of named controller operations, each mapped to a GET.**
+"Exists" means the driver reads it today; "to build" means it needs code. Ryu's `ofctl_rest`
+and `rest_topology` are the only built driver (`modules/sdn/drivers/ryu.py`). The other drivers
+are declarations that refuse every call (`modules/sdn/drivers/declared.py`: ONOS, OpenDaylight,
+ACI, NSX, and the rest). The Arista and HP switches due Thursday, and OVS on Linux, join through
+Lab 9's multi-vendor drivers (its item 1). Each driver adds its own GET for each operation when
+built, and an operation a driver does not declare is refused, naming the driver.
+
+| Operation | Arguments (checked against the current topology) | Ryu endpoint | Method | Driver method | State |
+|---|---|---|---|---|---|
+| `topology` | none | `/v1.0/topology/switches`, `/v1.0/topology/links`, `/v1.0/topology/hosts`; `/stats/switches` | GET | `topology()`, `switches()`, `links()`, `hosts()` | **exists** |
+| `switch_flows` | `dpid`: a switch the topology lists | `/stats/flow/<dpid>` | GET | `flows(dpid)` | **exists** |
+| `port_stats` | `dpid`, and optionally `port`: a port that switch lists | `/stats/port/<dpid>` (one port is filtered from it in code) | GET | `port_stats(dpid)` | **exists** |
+| `link_state` | `dpid` and `port`, or a link the topology lists | `/stats/portdesc/<dpid>` (a port's state and config flags), with `/v1.0/topology/links` | GET | `port_desc(dpid)`, new | **to build** (ofctl_rest offers it; the driver does not read it) |
+| `path_trace` | two hosts the topology lists (MAC or address) | none of its own: Mercury's trace over the GETs above (each hop's flows, the links) | GET only, through the reads above | Lab 9's trace by dpid and its ports (docs/LAB9_SDN_GAP.md, item 3) | **to build, in Lab 9** (refused "not built" until then) |
+
+**Only GET is ever sent; every write is refused in code, whatever the request:**
+- **A read-only driver view.** The loop's executor holds a read-only view of the driver
+  (`ReadOnlyDriver`, new). Its HTTP call refuses any method but GET before a byte leaves. Any
+  path among the driver's write endpoints is refused too:
+  - `FLOW_ADD`, `FLOW_MODIFY_STRICT` and `FLOW_DELETE_STRICT` (`/stats/flowentry/add`,
+    `/stats/flowentry/modify_strict`, `/stats/flowentry/delete_strict`);
+  - Ryu's other flow, meter and group writes (`/stats/flowentry/modify`, `/stats/flowentry/delete`,
+    `/stats/flowentry/clear`, `/stats/meterentry/*`, `/stats/groupentry/*`, `/stats/portdesc/modify`).
+- **Two checks, two layers:** the operation table names only reads, and the method check holds
+  even if a write were added to the table by mistake.
+- **No write method is reachable through the view:** the driver's `add_flow`,
+  `modify_flow_strict`, `delete_flow_strict`, `add_meter`, `delete_meter` and `apply` are absent
+  from it, not merely unused.
+- **Arguments are checked against the current topology,** read from the controller at the
+  request's time: a dpid the switch list holds, a port that switch lists, a host the hosts list
+  holds. Anything else is refused, naming what was compared ("dpid 0000000000000009 is not a
+  switch the controller lists: it lists 1 to 4").
+- **Least privilege at the controller.** Ryu's REST has no accounts, so the method check is the
+  boundary. A driver whose controller has roles signs in with a read-only role, the read-only
+  device account's analogue (H28).
+
+**Required tests** (the SDN read set's part, written first, red then green):
+
+| Planted request | Expected |
+|---|---|
+| each write endpoint above, asked by name or by path | refused: a write endpoint; nothing sent (the test's controller fake records no request) |
+| a write method (POST, PUT, DELETE) on a read path | refused: only GET is sent |
+| `switch_flows` with a dpid the topology does not list | refused, naming the dpids it lists |
+| `port_stats` with a port the switch does not list | refused, naming the switch's ports |
+| `path_trace` with a host the controller does not list | refused, naming the hosts' count |
+| `topology`, `switch_flows`, `port_stats`, `link_state` with listed arguments | pass; one GET each, answered from captured controller answers (`tests/fixtures/sdn/`) |
+
+**The canary:** the method check is removed in a throwaway worktree (`scripts/nmas-control`),
+and the write-refusal tests must fail, not crash. The run is kept with its output.
+
+**The laptop install (Lab 9)** touches this part only in where the controller runs. Its facts
+belong in docs/LAB9_SDN_GAP.md.
+
+### 19.13 B4's evaluation plan (written before anything is built; the expectations frozen)
+
+**What is compared:**
+- **The baseline:** today's single pass (the Responder's `sdn_classify` call and the Analyst's
+  call as each is live when B4's build starts, its prompt version named in the report).
+- **The technique:** the read loop.
+- Same model, same prompts otherwise. The only differences are the `reads` field, the read
+  results and pass 2's instruction, which are the technique.
+
+**The cases, their sizes read 2026-11-03** (`tests/fixtures/ai_cases/sdn_classify/`,
+`tests/fixtures/blind_sets/sdn_classify/`):
+
+| Set | Cases | Role |
+|---|---|---|
+| `recorded.json` | 12 | recorded |
+| `recorded_from_blind.json` | 26 | recorded: blind cases whose misses the prompt's author read, moved by the operator's rule |
+| `recorded_walk.json` | 8 | recorded (the Lab 8 walk) |
+| `held_out.json` | 12 | held out (never tuned on) |
+| `blind_cases.json` | 11 | **blind: all that is left of the spent blind set** |
+| `blind_normal_cases.json` | 2 | normal traffic (N1, N2), scored with the blind set if its key holds them |
+
+- **The blind set is spent apart from 11 cases** (PHASE8_PLAN 0.2's SDN row: 10 of 36 cases
+  reliable; the 26 whose misses were read moved to the recorded set). A fair blind measure of
+  B4 needs **a fresh blind set, which is the operator's capture session** (PHASE8_PLAN 0.3:
+  about 20 scenarios drawn by a recorded seed, the key locked first, three sittings of about 50
+  to 55 minutes).
+- **That session must also capture each allowed operation's GET answer at detection time,** so
+  the loop's reads replay.
+- **On today's recorded and blind cases, a read is answered from the case's own captured pack.**
+  The pack's `sdn` section holds the flow and port pieces. A read the pack did not capture
+  (topology, link state, a path trace) answers "not captured at the case's time", and the
+  report counts how often that happened.
+
+**Frozen rules:**
+- the blind keys stay locked (`blind_answer_key.md`, `blind_draw.json` with its sha256);
+- no tuning on a blind case;
+- a blind case whose failures are read beyond their categories moves to the recorded set, as
+  before;
+- each case's expectation is the one in its file now. None is edited for B4.
+
+**The measures**, each reported for the baseline, the technique, the difference and its
+uncertainty:
+
+| Measure | How it is scored | Uncertainty |
+|---|---|---|
+| **Correct diagnosis** | the case passes its expectation (threat detected, type, source, severity, action), each case reliable at 10 of 10 runs, by `scripts/nmas-sdn-cases` | paired by case: the count of cases that flip each way, with McNemar's exact test; a 95% bootstrap interval for the difference in the share reliable |
+| **False positives** | runs answering a threat on a benign case (C2305's class) | the same, on the benign cases |
+| **The sources named** | the answer's citations against each case's `cites_any` | the mean share of cases, with its 95% bootstrap interval |
+| **Tokens and cost per answer** | from the ledger (`data/ai_calls.jsonl`; `scripts/nmas-ai-ledger`), both passes counted | the mean and its 95% interval |
+| **Time to an answer** | wall time from the request to the final answer, on the live path (a batch's latency is not the loop's): the recorded set at 1 run per case, both arms | the median and its interquartile range |
+
+**The pass rule, decided now** (the operator): B4 "improves results" only if blind accuracy
+rises without more false positives:
+- **rises:** more blind cases are reliable with the loop than without it;
+- **without more false positives:** no more benign-case runs are answered as a threat.
+
+The interval is reported beside the result. With 11 to 13 blind cases one case is about 8
+points, and the report says that power is low. A cost increase is reported, never hidden. The
+recorded and held-out results are reported too, labelled as not blind.
+
+**The spend, estimated before running** (the measured batch rate: $0.000326 a call,
+PHASE8_PLAN 0.5, `sdn_classify`'s blind round of 2026-11-02):
+
+| Run | Calls | Estimate |
+|---|---|---|
+| Baseline, all 71 cases (58 recorded and held out, 13 blind and normal) × 10 runs, batch | 710 | about $0.23 |
+| The loop, the same × 10, batch: pass 1 at the measured rate, pass 2 at about 2.2 times (up to 3 × 4 KiB more input) | 710 × 2 | about $0.74 (at most about $1.16 if pass 2 costs 4 times) |
+| Time to an answer: the recorded 58 × 1 run per arm, live path (about twice the batch price) | about 174 | about $0.12 |
+| **Both runs** | | **about $1.1 (at most about $1.5)** |
+| The fresh blind set later (about 20 cases × 10 runs, both arms) | about 600 | about $0.30 (at most $0.40) |
+
+- **Against the budget:** PHASE8_PLAN 0.5's latest figure is **$161.19 left** (read on the host
+  2026-11-03 ~06:5x UTC, `--since 2026-10-29 --budget 190`). No later reading is in the plan,
+  so the ledger is read again and the figure recomputed before the run (that section's rule).
+- **About $1.5 to $1.9 in all,** about 1% of what is left, inside the $15 day cap.
+
+**The order** (the operator):
+1. Lab 10 first.
+2. Item 3 for the routers, within board H (H24 to H28).
+3. Then the SDN read set (H29, H30).
+4. Then B4's evaluation (H31).
