@@ -3686,3 +3686,56 @@ the same result.
 
 **The result: 21 mutants with the canary; 20 killed, 1 equivalent (M10, its reason above); the
 file identical after each; the worktree removed.**
+
+## 2026-11-04: the generic read loop's reads on their way to the model (board H's H25), by hand
+
+**What changed in the tier:** data off the host, new. `modules/ai/read_loop.py` (e6493d19) runs a
+feature's reads and sends their answers to the provider in a second pass. Nothing calls it yet:
+no family is wired and the device state class it needs does not exist (C2419), so it reads
+nothing today. The danger the hand check guards:
+- a read's answer leaving unmasked, or a masked line kept as masked text rather than dropped
+  whole;
+- an answer leaving uncut, or cut through a character;
+- a refused request run anyway, or a write declared as a read;
+- a read run while its class is off or the network is marked;
+- a second pass run with nothing read;
+- a citation of a read that did not run;
+- what a read returned widening what may be acted on;
+- the day cap not judged before pass 2.
+
+**The method:** each mutant is one exact replacement of a changed line, required to match once,
+in a `scripts/nmas-control` throwaway of main at e6493d19 (2026-11-04 23:15:02 to 23:16:41 UTC),
+then tests/test_ai_read_loop.py (and, for the scan's three, tests/test_url_userinfo_masked.py)
+with two workers in CI's interpreter, confined. The file is restored after each
+(`scratchpad/h25_controls.py`, `h25_controls2.py`). Baselines: 83 passed, and 48.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the read's answer not masked at all | killed | `test_a_planted_secret_in_a_reads_answer_never_reaches_the_gateway`, `test_through_the_real_gateway_the_planted_secret_is_in_no_byte_sent` |
+| M1 the declaration's read rule removed (a write declarable) | killed | 8 planted-write cases |
+| M2 a true/false value taken as a number | killed | 4 |
+| M3 an argument the operation does not take allowed | killed | 3 |
+| M4 an extra key in the request allowed | killed | 1 |
+| M5 the egress class not asked | killed | 4 |
+| M6 the reads' limit not asked | killed | 2 |
+| M7 the classification marking not asked | killed | `test_a_classification_marking_refuses_every_read` |
+| M8 an argument's comparison against the scope not asked | killed | 1 |
+| M9 masked lines kept, not dropped | killed | `test_a_planted_secret_in_a_reads_answer_never_reaches_the_gateway` |
+| M10 the answer not cut | killed | 2 |
+| M11 the cut through a character | killed | 2 |
+| M12 a refused request run anyway | killed | 4 |
+| M13 a citation of a missing read allowed | killed | 1 |
+| M14 a citation of a refused read allowed | killed | 1 |
+| M15 a read widening what may be acted on | killed | 1 |
+| M16 pass 2 run with no read run | killed | 2 |
+| M17 pass 2's schema may ask for reads again | killed | 1 |
+| M18 the plain pass never used | killed | 1 |
+| M19 one call a finding counted | killed | 2 |
+| M20 the gateway's day cap not judged (in gateway.py) | killed | `test_the_day_cap_reached_by_pass_1_stops_pass_2_recorded_with_no_second_request` |
+| M21 (scan) masked lines kept, not dropped | killed | 2 `DROPS_WHOLE` cases |
+| M22 (scan) a masked leaf kept, not withheld | killed | 1 |
+| M23 (scan) a line not masked at all | killed | 2 |
+
+**The result: 24 mutants with the canary, all killed; the file restored after each; the
+worktree removed.** The loop may be deployed unwired. Its wiring into a feature (H26, B4-4)
+brings its own hand check, over what that feature sends.
