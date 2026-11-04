@@ -227,11 +227,42 @@ NOT_FREE_TEXT = {
 }
 
 
+#: Masking functions that WITHHOLD what the mask changes rather than send it masked: a line (or
+#: a structured answer's leaf) `redact.redact_egress` would change leaves as no text at all
+#: (docs/HEAL_TO_INTENT.md 19.5: "a line with a secret's shape is dropped whole, not masked").
+#: Each is handed the planted URL between two plain lines: neither the secret, the user nor the
+#: URL may come out, and the plain lines must.
+KEPT = "interface Gi4 up"
+
+
+def _read_loop(name):
+    return getattr(__import__("modules.ai.read_loop", fromlist=["x"]), name)
+
+
+DROPS_WHOLE = {
+    # The read loop's answer to a model (board H, H25): text by line, JSON by leaf.
+    "modules/ai/read_loop.py:masked": lambda: _read_loop("masked")(
+        f"{KEPT}\n{PLANTED}\npackets 9", values={})[0],
+    "modules/ai/read_loop.py:_masked_text": lambda: _read_loop("_masked_text")(
+        f"{KEPT}\n{PLANTED}\npackets 9", {})[0],
+    "modules/ai/read_loop.py:_masked_leaves": lambda: repr(_read_loop("_masked_leaves")(
+        {"a": [KEPT, PLANTED], "b": "packets 9"}, {}, [0])),
+}
+
+
 @pytest.mark.parametrize("name", sorted(ENTRY_POINTS))
 def test_every_masking_entry_point_masks_a_url_s_user_part(name):
     out = ENTRY_POINTS[name]()
     assert SECRET not in out and "x-access-token" not in out, (name, out)
     assert "<redacted:url_userinfo>" in out, (name, out)
+
+
+@pytest.mark.parametrize("name", sorted(DROPS_WHOLE))
+def test_every_withholding_entry_point_drops_the_url_s_line_whole(name):
+    out = DROPS_WHOLE[name]()
+    assert SECRET not in out and "x-access-token" not in out, (name, out)
+    assert "example.invalid/o/r.git" not in out and "url_userinfo" not in out, (name, out)
+    assert KEPT in out and "packets 9" in out, (name, out)
 
 
 def _masking_functions() -> set:
@@ -254,10 +285,12 @@ def _masking_functions() -> set:
 def test_every_masking_function_is_tested_or_says_why_not():
     found = _masking_functions()
     assert len(found) >= 30, f"the population shrank: {len(found)}"
-    unplaced = sorted(found - set(ENTRY_POINTS) - set(NOT_FREE_TEXT))
+    unplaced = sorted(found - set(ENTRY_POINTS) - set(DROPS_WHOLE) - set(NOT_FREE_TEXT))
     assert unplaced == [], ("a function that masks, redacts or scrubs: add it to ENTRY_POINTS "
-                            "with a planted URL, or to NOT_FREE_TEXT saying why: " + str(unplaced))
-    gone = sorted((set(ENTRY_POINTS) | set(NOT_FREE_TEXT)) - found)
+                            "with a planted URL (or DROPS_WHOLE, when it withholds what the "
+                            "mask changes), or to NOT_FREE_TEXT saying why: " + str(unplaced))
+    assert not set(DROPS_WHOLE) & (set(ENTRY_POINTS) | set(NOT_FREE_TEXT)), "placed twice"
+    gone = sorted((set(ENTRY_POINTS) | set(DROPS_WHOLE) | set(NOT_FREE_TEXT)) - found)
     assert gone == [], f"named here and no longer defined: {gone}"
 
 
