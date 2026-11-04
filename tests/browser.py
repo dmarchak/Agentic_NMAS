@@ -85,7 +85,27 @@ def remove_folder(path: str) -> bool:
 _PROBED = []
 
 
+def required() -> bool:
+    """Whether a browser that cannot start is a FAILURE here, never a skip:
+    `NMAS_REQUIRE_BROWSER=1`, set on CI's browser shards and the gate's (C2412,
+    C1169), as `NMAS_REQUIRE_PG=1` is for PostgreSQL. A runner whose Firefox
+    stopped starting turned 80 browser tests into skips and stayed green (#1295)."""
+    return os.environ.get("NMAS_REQUIRE_BROWSER") == "1"
+
+
 def available() -> tuple:
+    """``(True, "")`` or ``(False, why)``; where a browser is `required`, no
+    browser fails the test asking, naming why, instead of returning False, so
+    every caller's skip becomes a failure in one place."""
+    ok, why = _probe()
+    if not ok and required():
+        import pytest
+        pytest.fail(f"NMAS_REQUIRE_BROWSER=1 and no real browser starts here: {why}",
+                    pytrace=False)
+    return ok, why
+
+
+def _probe() -> tuple:
     """``(True, "")`` or ``(False, why)``, measured once per run by STARTING a
     session: a browser that is installed and cannot start here is not
     available. Measured 2026-09-30: inside `scripts/nmas-test`'s loopback-only

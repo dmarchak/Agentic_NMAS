@@ -268,11 +268,14 @@ class TestRootNeverRunsTheRepository:
 
 
 def _root_files_read_as_root():
-    """Inside the confined runner (a user namespace) root's files read as
-    another uid, so a check of real root-owned files cannot run there."""
+    """Inside the confined runner (a user namespace) root's files read as another uid, so a
+    check of real root-owned files cannot run there. Such a test is marked `real_root_files`
+    and deselected there (tests/conftest.py); reached anyway, it FAILS, never skips: a skip ran
+    it nowhere automated (C2455)."""
     if os.stat("/usr").st_uid != 0:
-        pytest.skip("root's files read as another uid here (the confined runner's user "
-                    "namespace); this runs under plain pytest, in CI and on the host")
+        pytest.fail("root's files read as another uid here, and this test reads them: it is "
+                    "marked real_root_files, deselected in a confined run and run unconfined "
+                    "by the gate's step 4c (C2455)", pytrace=False)
 
 
 def _binary(node):
@@ -360,6 +363,7 @@ class TestEveryProgramByAbsolutePath:
         assert shutil.which("runuser", path="/usr/bin:/bin") is None
         assert shutil.which("/usr/sbin/runuser", path="/usr/bin:/bin") == "/usr/sbin/runuser"
 
+    @pytest.mark.real_root_files
     def test_the_self_test_passes_on_this_machine_for_the_real_table(self):
         """Real files, not stubs: the table's programs exist here, root's."""
         _root_files_read_as_root()
@@ -397,6 +401,7 @@ class TestEveryProgramByAbsolutePath:
         assert "rel: 'runuser' is not an absolute path" in text
         assert "dir: " in text and "not a regular file" in text
 
+    @pytest.mark.real_root_files
     def test_the_self_test_names_each_problem(self, tmp_path):
         _root_files_read_as_root()
         U = _updater()
@@ -796,6 +801,7 @@ class TestTheInstallCheck:
                                     active=True)
         assert s["state"] == "cannot_run" and "has no self-test" in s["cannot_run"][0]
 
+    @pytest.mark.real_root_files
     def test_this_releases_updater_passes_its_own_self_test_as_installed(self, tmp_path, monkeypatch):
         """The control: the release's own updater, installed, can run."""
         _root_files_read_as_root()

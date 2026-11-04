@@ -340,6 +340,9 @@ jobs:
         if: steps.plan.outputs.work == 'yes'
         env:
           NMAS_REQUIRE_PG: "1"
+          # C2412: a browser test skipped for want of a browser kills no mutant; CI's browser
+          # shards require one, and the night, unsharded, requires it throughout.
+          NMAS_REQUIRE_BROWSER: "1"
         run: |
           set +e
           timeout "${MUTATION_BUDGET_MINUTES}m" unshare -rn sh -c '

@@ -243,6 +243,8 @@ jobs:
       # and passed 120 s twice in the docs shard (#1267), where the dump took an xdist worker
       # down (C647's shape); 270 s is 2.5x the runner's 108.6 s.
 
+      # C2412: NMAS_REQUIRE_BROWSER is 1 on a browser shard, so a browser that cannot start
+      # fails its tests there, never skips them (#1295: 80 skipped and green).
       - name: Tests (R1, R4), confined to loopback, measured by tier
         env:
           COVERAGE_CORE: sysmon
@@ -251,11 +253,17 @@ jobs:
           NMAS_COVERAGE_TIERS: "1"
           NMAS_TEST_TIMEOUT: "1470"
           NMAS_REQUIRE_PG: "1"
+          NMAS_REQUIRE_BROWSER: ${{ startsWith(matrix.shard, 'browser') && '1' || '' }}
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto -o faulthandler_timeout=270
           --cov=modules --cov=routes --cov=app --cov-report=
           --junitxml=junit-${{ matrix.shard }}.xml
           $(python scripts/nmas-shards ${{ matrix.shard }})
+
+      # C2412: every skip in this shard is one tests/skip_reasons.py declares for CI, or the job
+      # fails naming each test and its reason.
+      - name: Every skip is a declared one
+        run: python scripts/nmas-skip-check --where ci junit-${{ matrix.shard }}.xml
 
       # Kept when a test failed too: the coverage job reports on a red run as well. The JUnit
       # file is each test's runner seconds, which tests/shard_weights.json is measured from

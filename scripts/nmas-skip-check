@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Refuse a run whose tests skipped for a reason not declared for this place (C2412).
+
+    scripts/nmas-skip-check --where {ci,gate,local} JUNIT.xml [JUNIT.xml ...]
+
+Reads each JUnit file's skipped cases (`<skipped message>`), and matches each message whole
+against tests/skip_reasons.py's DECLARED. A skip whose reason no entry matches, or whose entry
+does not name this place, is refused, naming the test, its reason, and the entries compared.
+An absent or unreadable file is refused too: a check that read nothing passes nothing.
+
+Exit 0 when every skip is declared for this place, 1 when any is not, 2 when it cannot run.
+Cost: under a second per run. Prevents: a green run with tests unrun for a reason nobody
+declared (#1295: 80 browser tests skipped, "Firefox could not start", and CI stayed green).
+"""
+import argparse
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+from tests import skip_reasons  # noqa: E402
+
+
+def skipped(path):
+    """`[(test id, reason)]` for each skipped case (an xfail is not a skip); None when the file
+    is absent or does not parse."""
+    try:
+        tree = ET.parse(path)
+    except (OSError, ET.ParseError):
+        return None
+    out = []
+    for case in tree.iter("testcase"):
+        for child in case:
+            if child.tag == "skipped" and child.get("type") != "pytest.xfail":
+                out.append((f"{case.get('classname')}::{case.get('name')}",
+                            child.get("message") or ""))
+    return out
+
+
+def judge(cases, where):
+    """`(counts, refusals)`: how many skips each entry allowed, and each refused skip's words."""
+    counts, refusals = {}, []
+    for test, reason in cases:
+        hit = next((e for e in skip_reasons.DECLARED if re.fullmatch(e[1], reason)), None)
+        if hit is None:
+            refusals.append(f"{test}: skipped for {reason[:200]!r}, which no entry of "
+                            f"tests/skip_reasons.py's {len(skip_reasons.DECLARED)} matches whole")
+        elif where not in hit[2]:
+            refusals.append(f"{test}: skipped for {hit[0]!r}, declared for "
+                            f"{', '.join(hit[2])}, not for {where}")
+        else:
+            counts[hit[0]] = counts.get(hit[0], 0) + 1
+    return counts, refusals
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--where", required=True, choices=skip_reasons.PLACES)
+    p.add_argument("junit", nargs="+")
+    args = p.parse_args(argv)
+    cases = []
+    for path in args.junit:
+        got = skipped(path)
+        if got is None:
+            print(f"nmas-skip-check: REFUSED: {path} is absent or not JUnit XML; nothing judged")
+            return 2
+        cases += got
+    counts, refusals = judge(cases, args.where)
+    for name, n in sorted(counts.items()):
+        print(f"nmas-skip-check: declared for {args.where}: {n} x {name}")
+    for line in refusals:
+        print(f"nmas-skip-check: REFUSED: {line}")
+    print(f"nmas-skip-check: {len(cases)} skip(s) in {len(args.junit)} file(s), "
+          f"{len(refusals)} undeclared for {args.where}")
+    return 1 if refusals else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

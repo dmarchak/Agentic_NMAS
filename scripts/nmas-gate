@@ -32,6 +32,11 @@ everything after it:
                     195fdbe; d0ce454 shipped two failures), and NO browser test skipped: CI
                     runs them in this suite, with CI's workers (2026-10-03, "The browser
                     tests" in docs/TESTING.md);
+  4c. root's files: the tests of root's real files (`real_root_files`), deselected in step 4,
+                    run unconfined, required (C2455);
+  4d. the skips:    every skip in the runs' JUnit files is one tests/skip_reasons.py declares
+                    for the gate (`scripts/nmas-skip-check`, C2412); the browser shards run
+                    with NMAS_REQUIRE_BROWSER=1, so a browser that cannot start fails there;
   4b. the ratchet:  CI's coverage job over the four shards' measurement (each measures by tier,
                     as CI's do): combined, then `nmas-coverage report --check`; a failure
                     refuses, naming the module and both figures (C808: the gate passed and
@@ -86,7 +91,7 @@ SHARDS = ("browser1", "browser2", "browser3", "a", "b")
 #: CI's tests step does (NMAS_COVERAGE_TIERS=1, C773), so step 4b can run CI's ratchet.
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
          "COVERAGE_FILE={cov}/.coverage.{shard} NMAS_TEST_TIERS={cov}/tiers "
-         "NMAS_TEST_TIMEOUT={bound} NMAS_REQUIRE_PG=1 "
+         "NMAS_TEST_TIMEOUT={bound} NMAS_REQUIRE_PG=1 NMAS_REQUIRE_BROWSER={req} "
          "scripts/nmas-test -q -p no:cacheprovider -n {n} -o faulthandler_timeout=270 "
          "--cov=modules --cov=routes "
          "--cov=app --cov-report= --junitxml={cov}/junit-{shard}.xml -rEfs "
@@ -147,6 +152,12 @@ PG_LIB = os.environ.get("NMAS_GATE_PG_LIB",
                         os.path.expanduser("~/.local/share/nmas-pg/usr/lib/x86_64-linux-gnu"))
 #: The words tests/browser.py's skip says when no browser can start.
 BROWSER_SKIPPED = "no real browser here"
+#: Step 4c (C2455): the tests of root's real files, deselected in the confined step 4 (root's
+#: files read as another uid there), run unconfined; none collected fails (pytest's exit 5).
+ROOT_FILES = ("{py} -m pytest -q -p no:cacheprovider -rEfs -m real_root_files "
+              "--junitxml={cov}/junit-rootfiles.xml tests/test_update_button.py")
+#: Step 4d (C2412): every skip in the runs' JUnit files is one declared for the gate.
+SKIP_CHECK = "{py} scripts/nmas-skip-check --where gate {files}"
 BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
                  "tests/test_v2_layout_in_a_browser.py tests/test_attention_badge.py "
                  "tests/test_device_capture_v2.py tests/test_device_persist_v2.py "
@@ -381,6 +392,12 @@ def verdict(path, rc):
     if not PASSED_LINE.match(last):
         return f"the last line does not say what passed: {last[:200]!r}"
     return None
+
+
+def browser_required(shard):
+    """`NMAS_REQUIRE_BROWSER`'s value for *shard*: "1" on a browser shard, as CI's tests step
+    sets it (C2412), so a browser that cannot start fails there; empty elsewhere."""
+    return "1" if shard.startswith("browser") else "''"
 
 
 def browser_skipped(path):
@@ -680,7 +697,8 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
         say(f"4. workers, from the memory available now: {words}; each shard bound at "
             f"{suite_bound(n)} s")
         runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s, cov=shlex.quote(cov), n=n,
-                                 bound=suite_bound(n)),
+                                 bound=suite_bound(n),
+                                 req=browser_required(s)),
                     os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in shards}
     # AT MOST ONE FULL-SUITE RUN AT A TIME (the operator, 2026-10-19): held for the suite and
     # the ratchet; another gate, or a bare scripts/nmas-test, refuses naming this one.
@@ -701,6 +719,39 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
         name, why, out = whys[0]
         refuse("the suite", (f"job {name}: " if len(runs) > 1 else "") + why
                + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else ""), out)
+
+    stand_in = bool(os.environ.get("NMAS_GATE_SUITE"))
+    junits = [os.path.join(cov, f"junit-{s}.xml") for s in shards]
+    if docs_only:
+        say("4c. the tests of root's real files: not run, docs only (the code is its parent's)")
+    else:
+        roots_out = os.path.join(gitdir, "nmas-gate-rootfiles.out")
+        cmd = os.environ.get("NMAS_GATE_ROOTFILES") or (
+            None if stand_in else ROOT_FILES.format(py=shlex.quote(a.python),
+                                                    cov=shlex.quote(cov)))
+        if cmd is None:
+            say("4c. the tests of root's real files: not run, the suite is a stand-in")
+        else:
+            say("4c. the tests of root's real files, unconfined (deselected in step 4, C2455)")
+            why = verdict(roots_out, run_to_file(cmd, snap, roots_out))
+            say(f"    {last_line(roots_out) if os.path.isfile(roots_out) else '(no output)'}")
+            if why:
+                refuse("the tests of root's real files", why, roots_out)
+            junits.append(os.path.join(cov, "junit-rootfiles.xml"))
+    skips_out = os.path.join(gitdir, "nmas-gate-skips.out")
+    cmd = os.environ.get("NMAS_GATE_SKIP_CHECK") or (
+        None if stand_in else SKIP_CHECK.format(
+            py=shlex.quote(a.python), files=" ".join(shlex.quote(j) for j in junits)))
+    if cmd is None:
+        say("4d. every skip declared: not run, the suite is a stand-in")
+    else:
+        say("4d. every skip is one tests/skip_reasons.py declares for the gate (C2412)")
+        rc = run_to_file(cmd, snap, skips_out)
+        say(f"    {last_line(skips_out) if os.path.isfile(skips_out) else '(no output)'}")
+        if rc:
+            refuse("the declared skips", f"scripts/nmas-skip-check exited {rc}: "
+                   f"{last_line(skips_out) if os.path.isfile(skips_out) else 'no output'}",
+                   skips_out)
 
     if docs_only:
         say("4b. the coverage ratchet: not run, docs only (the code, and so its coverage, is "

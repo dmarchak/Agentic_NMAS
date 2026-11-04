@@ -355,7 +355,7 @@ class TestTheCoverageRatchet:
         assert "--check" in report.split()
         assert ("scripts/nmas-coverage report --data {cov}/.coverage --tiers {cov}/tiers --check"
                 in gate.RATCHET)
-        shard = gate.SUITE.format(py="P", shard="a", cov="D", n=4, bound=740)
+        shard = gate.SUITE.format(py="P", shard="a", cov="D", n=4, bound=740, req="''")
         assert "COVERAGE_FILE=D/.coverage.a" in shard and "NMAS_TEST_TIERS=D/tiers" in shard
 
 
@@ -422,7 +422,13 @@ def test_the_default_suite_is_cis_command():
         elif a not in CI_ONLY_ARGS:
             assert a in suite, (a, gate.SUITE)
     for k, v in env.items():
-        if k not in CI_ONLY_ENV:
+        if k == "NMAS_REQUIRE_BROWSER":
+            # Per shard in both (C2412): CI's expression, the gate's `browser_required`.
+            assert v == "${{ startsWith(matrix.shard, 'browser') && '1' || '' }}", v
+            assert f"{k}={{req}}" in gate.SUITE, gate.SUITE
+            assert all(gate.browser_required(s) == ("1" if s.startswith("browser") else "''")
+                       for s in gate.SHARDS)
+        elif k not in CI_ONLY_ENV:
             assert f"{k}={v}" in gate.SUITE, (k, v)
 
 
@@ -447,7 +453,7 @@ def test_each_job_is_a_gate_command():
     assert "$(python scripts/nmas-shards ${{ matrix.shard }})" in tests["run"]
     assert "scripts/nmas-shards {shard})" in gate.SUITE
     for s in gate.SHARDS:
-        assert gate.SUITE.format(py="P", shard=s, cov="D", n=4, bound=740).endswith(
+        assert gate.SUITE.format(py="P", shard=s, cov="D", n=4, bound=740, req=gate.browser_required(s)).endswith(
             f"$(P scripts/nmas-shards {s})")
     once = [s for s in job["steps"]
             if s.get("if") == "matrix.shard == 'a' || matrix.shard == 'docs'"]
@@ -541,6 +547,53 @@ def test_every_browser_test_skips_in_the_words_the_gate_refuses():
             about = [s for s in skips if re.search(r"(?i)browser|firefox|gecko", s)]
             assert about and all(s.startswith(phrase) for s in about), (name, skips)
     assert len(users) >= 7, users
+
+
+def test_the_browser_shards_and_only_they_require_a_browser():
+    """C2412: step 4 runs each browser shard with NMAS_REQUIRE_BROWSER=1, as CI's tests step
+    does, so a browser that cannot start fails there; the other shards leave it empty."""
+    gate = _gate_module()
+    assert "NMAS_REQUIRE_BROWSER={req}" in gate.SUITE
+    assert {s: gate.browser_required(s) for s in gate.SHARDS} == {
+        "browser1": "1", "browser2": "1", "browser3": "1", "a": "''", "b": "''"}
+
+
+def test_a_skip_the_list_does_not_declare_refuses_the_gate(repo, tmp_path):
+    """C2412, step 4d: the skip check's refusal stops the commit, naming it; with only the
+    suite a stand-in (the gate's own tests), the step says it did not run."""
+    r = _gate(repo, tmp_path, extra=())
+    assert r.returncode == 0, r.stdout
+    assert "4d. every skip declared: not run, the suite is a stand-in" in r.stdout
+    (repo / "docs" / "a.md").write_text("three\n")
+    msg = tmp_path / "msg.txt"
+    env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
+               NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]),
+               NMAS_GATE_ROOTFILES=_suite(["3 passed in 1.00s"]),
+               NMAS_GATE_SKIP_CHECK=_suite(["nmas-skip-check: 1 skip(s) in 5 file(s), "
+                                            "1 undeclared for gate"], rc=1))
+    msg.write_text("Docs: three\n")
+    r = subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
+                        "--expect", "Docs:"], capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "the declared skips" in r.stdout
+    assert "1 undeclared for gate" in r.stdout and _commits(repo) == 2
+
+
+def test_the_tests_of_root_s_real_files_failing_refuse_the_gate(repo, tmp_path):
+    """C2455, step 4c: the unconfined run of the `real_root_files` tests is required (a code
+    change: a docs-only commit's code is its parent's, and 4c says so)."""
+    (repo / "tool.py").write_text("X = 1\n")
+    _git(repo, "add", "tool.py")
+    _git(repo, "commit", "-q", "-m", "a tool")
+    (repo / "tool.py").write_text("X = 2\n")
+    msg = tmp_path / "msg.txt"
+    msg.write_text("Docs: three\n")
+    env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
+               NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]),
+               NMAS_GATE_ROOTFILES=_suite(["1 failed, 2 passed in 1.00s"], rc=1),
+               NMAS_GATE_SKIP_CHECK=_suite(["nmas-skip-check: 0 skip(s)"]))
+    r = subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
+                        "--expect", "Docs:"], capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "the tests of root's real files" in r.stdout
 
 
 class TestCIsInterpreterHoldsWhatCIInstalls:

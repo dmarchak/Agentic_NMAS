@@ -269,6 +269,24 @@ def pytest_configure(config):
             config.pluginmanager.register(coverage_tiers, "nmas_coverage_tiers")
 
 
+def root_files_read_as_another_uid() -> bool:
+    """Inside the confined runner (a user namespace) root's files read as another uid."""
+    return os.stat("/usr").st_uid != 0
+
+
+def pytest_collection_modifyitems(config, items):
+    # C2455: a test of root's REAL files (`real_root_files`) cannot run where they read as
+    # another uid, and a skip there ran it nowhere automated. It is deselected there, said in
+    # the run's summary, and the gate's step 4c runs it unconfined on every gate, where a
+    # test that cannot read them fails.
+    if not root_files_read_as_another_uid():
+        return
+    held = [i for i in items if i.get_closest_marker("real_root_files")]
+    if held:
+        items[:] = [i for i in items if not i.get_closest_marker("real_root_files")]
+        config.hook.pytest_deselected(items=held)
+
+
 def pytest_report_header(config):
     return network_guard.report_line(_NETWORK_STATE)
 

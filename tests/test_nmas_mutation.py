@@ -1596,7 +1596,13 @@ def setup_gaps(ci: dict, night: dict) -> list:
             gaps.append(f"{name}: no step of the night runs it")
     mutate_env = next(s for s in mine if s.get("id") == "mutate").get("env") or {}
     for k, v in (steps[tests_at].get("env") or {}).items():
-        if k not in NOT_THE_NIGHTS_ENV and str(mutate_env.get(k)) != str(v):
+        if k == "NMAS_REQUIRE_BROWSER":
+            # Per shard on CI (C2412): "1" on the browser shards. The night is not sharded, so
+            # CI's expression would set nothing there; the night must require it outright.
+            if str(mutate_env.get(k)) != "1":
+                gaps.append(f"{k}: CI's browser shards require a browser ({v}); the mutate "
+                            f"step has {mutate_env.get(k)}, where 1 is needed")
+        elif k not in NOT_THE_NIGHTS_ENV and str(mutate_env.get(k)) != str(v):
             gaps.append(f"{k}={v} on ci.yml's tests step; the mutate step has {mutate_env.get(k)}")
     return gaps
 

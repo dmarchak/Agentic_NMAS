@@ -21,6 +21,7 @@ calls in the test's own folder; only the provider is fake (a `send` that keeps w
   mean cost per sent call in 30 days, or its per-call cap, said as an upper bound, when none was
   measured; an unmeasured frequency is unknown, never guessed.
 """
+import datetime
 import json
 import types
 
@@ -246,14 +247,33 @@ def test_the_features_day_cap_stops_it_naming_both_operands(bg):
     assert row["verdict"] == "feature_cap" and row["cap_kind"] == "day"
 
 
-def test_the_features_month_cap_stops_it(bg):
+def _clock(monkeypatch, iso):
+    """The cap's clock fixed at *iso* (UTC), so a test of a month's edge runs every day, never
+    skipping on the calendar (C2436)."""
+    fixed = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    monkeypatch.setattr(calls, "_now", lambda: fixed)
+    assert calls.today() == iso[:10]
+
+
+def test_the_features_month_cap_stops_it_on_an_ordinary_day(bg, monkeypatch):
+    _clock(monkeypatch, "2026-11-15T12:00:00Z")
     _on(day=0.50, month=1.00)
     # Earlier this month (the cap's day is UTC by default), so today's spend is nothing.
-    first = calls.today()[:8] + "01"
-    if first == calls.today():
-        pytest.skip("the month's first day has no earlier day to plant on")
-    _plant(0.999999, at=f"{first}T00:30:00Z")
+    _plant(0.999999, at="2026-11-01T00:30:00Z")
     got = _call(bg)
+    assert got.get("error") == "feature_cap" and "is over its month cap $1.0000" in got.get("detail", "")
+    assert calls.read()["rows"][0]["cap_kind"] == "month"
+
+
+def test_on_the_months_first_day_the_month_cap_counts_today_and_not_last_month(bg, monkeypatch):
+    """The 1st has no earlier day this month: its own spend is the month's, and the last
+    month's last day counts toward neither cap (C2436, the operator's ruling: test the 1st)."""
+    _clock(monkeypatch, "2026-11-01T12:00:00Z")
+    _on(day=1.40, month=1.00)
+    _plant(0.999999, at="2026-10-31T23:30:00Z")
+    assert _call(bg)["ok"] is True
+    _plant(0.999999, at="2026-11-01T00:30:00Z")
+    got = _call(bg, job="j2")
     assert got.get("error") == "feature_cap" and "is over its month cap $1.0000" in got.get("detail", "")
     assert calls.read()["rows"][0]["cap_kind"] == "month"
 

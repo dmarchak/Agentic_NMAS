@@ -78,7 +78,8 @@ class TestTheGate:
         assert gate.suite_workers(int(30 * GIB))[0] == 4
         assert gate.suite_workers(int(10.6 * GIB))[0] == 1
         assert gate.suite_bound(4) == 740 and gate.suite_bound(1) == 2960
-        cmd = gate.SUITE.format(py="P", shard="a", cov="D", n=1, bound=gate.suite_bound(1))
+        cmd = gate.SUITE.format(py="P", shard="a", cov="D", n=1, bound=gate.suite_bound(1),
+                                req=gate.browser_required("a"))
         assert " -n 1 " in cmd and "NMAS_TEST_TIMEOUT=2960 " in cmd
 
     def test_a_second_full_run_is_refused_naming_the_first(self, tmp_path):

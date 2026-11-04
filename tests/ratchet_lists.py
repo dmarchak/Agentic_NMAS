@@ -156,6 +156,8 @@ RATCHETS = (
     ("tests/test_v2_one_confirm.py", "POPULATION_FLOOR", "floor"),
     ("tests/test_v2_one_confirm.py", "PATTERN_FLOOR", "floor"),
     ("tests/test_v2_one_confirm.py", "V2_SCRIPTS_FLOOR", "floor"),
+    # ── The declared skip reasons (C2412): a reason, or a place it is allowed, only leaves ──
+    ("tests/skip_reasons.py", "DECLARED", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────
     ("tests/ratchet_lists.py", "RATCHETS", "registry"),
 )
