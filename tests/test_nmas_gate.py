@@ -313,6 +313,79 @@ class TestEveryWayAStepFails:
         assert r.returncode == 2 and _commits(repo) == 1
 
 
+class TestASleepIsNotATestFailure:
+    """C2410 (the operator, 2026-11-04): a run that spanned a suspend is "interrupted by sleep",
+    never a test failure. The gate compares CLOCK_BOOTTIME with CLOCK_MONOTONIC across the run;
+    here a file stands in for their gap (NMAS_GATE_CLOCK_GAP), and the stand-in suite moves it
+    as a suspend would."""
+
+    def _run(self, repo, tmp_path, slept, suite_lines, rc):
+        gap = tmp_path / "gap"
+        gap.write_text("6308.5\n")
+        suite = f"echo {6308.5 + slept} > {gap}; " + _suite(suite_lines, rc=rc)
+        old = os.environ.get("NMAS_GATE_CLOCK_GAP")
+        ENV["NMAS_GATE_CLOCK_GAP"] = str(gap)
+        try:
+            return _gate(repo, tmp_path, suite=suite)
+        finally:
+            if old is None:
+                ENV.pop("NMAS_GATE_CLOCK_GAP", None)
+            else:
+                ENV["NMAS_GATE_CLOCK_GAP"] = old
+
+    FAILED = (["[gw1] node down: Not properly terminated", "worker 'gw1' crashed while running "
+               "'tests/test_x.py::test_y'", "1 failed, 11 passed in 2501.0s"], 1)
+
+    def test_a_failure_in_a_run_that_slept_is_interrupted_not_refused(self, repo, tmp_path):
+        r = self._run(repo, tmp_path, 2497, *self.FAILED)
+        assert r.returncode == 75, r.stdout + r.stderr
+        assert "INTERRUPTED BY SLEEP at the suite: the machine slept 2497 s" in r.stdout
+        assert "not a test failure and no verdict: run the gate again" in r.stdout
+        assert "worker" in r.stdout or "exited 1" in r.stdout, "what the step said is kept"
+        assert "REFUSED" not in r.stdout and _commits(repo) == 1
+
+    def test_the_same_failure_awake_is_refused(self, repo, tmp_path):
+        r = self._run(repo, tmp_path, 0, *self.FAILED)
+        assert r.returncode == 1 and "REFUSED at the suite" in r.stdout
+        assert "SLEEP" not in r.stdout and _commits(repo) == 1
+
+    def test_a_gap_under_a_second_is_awake(self, repo, tmp_path):
+        r = self._run(repo, tmp_path, 0.4, *self.FAILED)
+        assert r.returncode == 1 and "REFUSED at the suite" in r.stdout
+
+    def test_a_run_that_slept_and_passed_commits_and_says_it_slept(self, repo, tmp_path):
+        r = self._run(repo, tmp_path, 61, ["....", "12 passed in 3.10s"], 0)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "the machine slept 61 s during this run, and every step passed" in r.stdout
+        assert _commits(repo) == 2
+
+    def test_the_real_clocks_awake_measure_no_sleep(self):
+        """The gap read from the kernel's two clocks, with no stand-in: awake, it moves far
+        less than the threshold (6 microseconds in 3 s, measured 2026-11-04)."""
+        import importlib.machinery
+        import importlib.util
+        import time
+
+        if not hasattr(time, "CLOCK_BOOTTIME"):
+            pytest.fail("CLOCK_BOOTTIME is Linux's; the gate runs on Linux")
+        saved = os.environ.pop("NMAS_GATE_CLOCK_GAP", None)
+        try:
+            loader = importlib.machinery.SourceFileLoader("nmas_gate_clock", GATE)
+            gate = importlib.util.module_from_spec(importlib.util.spec_from_loader(
+                "nmas_gate_clock", loader))
+            loader.exec_module(gate)
+            start = gate.clock_gap()
+            time.sleep(0.2)
+            got = gate.slept(start=start)
+        finally:
+            if saved is not None:
+                os.environ["NMAS_GATE_CLOCK_GAP"] = saved
+        assert got is not None and 0 <= got < gate.SLEPT_AT_LEAST / 100, got
+        assert gate.slept(start=10.0, now=70.5) == 60.5
+        gate.GAP_AT_START = None                    # a machine with no boot clock
+        assert gate.slept(now=1.0) is None, "no boot clock: cannot tell, never 0"
+
+
 class TestTheCoverageRatchet:
     """C808 (the operator's decision, 2026-10-15): the gate ran the suite with coverage but not
     the ratchet, so it passed and CI's coverage job failed after the push. Step 4b runs CI's

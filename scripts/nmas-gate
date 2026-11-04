@@ -63,9 +63,13 @@ everything after it:
     scripts/nmas-gate --message MSG --expect "Subject prefix" [--browser] [--push]
                       [--fixes-red N] [--only PATH ...]
 
-Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage.
+Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage; 75
+interrupted by sleep: a step failed in a run during which the machine slept (CLOCK_BOOTTIME
+gained on CLOCK_MONOTONIC by a second or more), so it is no verdict and no test failure, said
+as "INTERRUPTED BY SLEEP", with what the step said (C2410). A run that slept and passed
+commits, saying it slept.
 For tests only, NMAS_GATE_SUITE, NMAS_GATE_RATCHET and NMAS_GATE_BROWSER replace the three
-commands.
+commands, and NMAS_GATE_CLOCK_GAP names a file holding the clocks' gap (a suspend's stand-in).
 """
 import argparse
 import json
@@ -75,6 +79,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 #: CI's `-n auto` on GitHub's hosted Ubuntu runner for a public repository: 4 vCPUs (GitHub's
@@ -211,7 +216,53 @@ def red_ci(fixes_red):
             + (f" (--fixes-red {fixes_red} names another run)" if fixes_red is not None else ""))
 
 
+#: C2410: the machine sleeping during a run is not a test failure. The two "worker crashed"
+#: reds of 2026-11-03 fell inside a 41-minute suspend of the laptop. CLOCK_MONOTONIC stops while
+#: the machine is suspended and CLOCK_BOOTTIME does not, so the growth of their difference
+#: across the run is the time it slept. Awake, the difference moved 6 microseconds in 3 s
+#: (measured 2026-11-04), so a second is far above the noise.
+SLEPT_AT_LEAST = 1.0
+#: The exit code of a run that slept: EX_TEMPFAIL, "run it again", never the refusal's 1.
+INTERRUPTED_BY_SLEEP = 75
+
+
+def clock_gap():
+    """CLOCK_BOOTTIME minus CLOCK_MONOTONIC, in seconds, or None where there is no boot clock.
+    NMAS_GATE_CLOCK_GAP names a file holding the gap, the tests' stand-in for a suspend (as
+    NMAS_GATE_SUITE stands in for the suite)."""
+    stand_in = os.environ.get("NMAS_GATE_CLOCK_GAP")
+    if stand_in:
+        try:
+            return float(open(stand_in, encoding="utf-8").read().strip() or 0)
+        except (OSError, ValueError):
+            return 0.0
+    boot = getattr(time, "CLOCK_BOOTTIME", None)
+    if boot is None:
+        return None
+    return time.clock_gettime(boot) - time.monotonic()
+
+
+#: The gap when this process started: every step it runs is measured against it.
+GAP_AT_START = clock_gap()
+
+
+def slept(start=None, now=None):
+    """Seconds the machine slept since this run began, or None where it cannot be told."""
+    start = GAP_AT_START if start is None else start
+    now = clock_gap() if now is None else now
+    if start is None or now is None:
+        return None
+    return max(0.0, now - start)
+
+
 def refuse(step, why, evidence=None):
+    s = slept()
+    if s is not None and s >= SLEPT_AT_LEAST:
+        say(f"INTERRUPTED BY SLEEP at {step}: the machine slept {s:.0f} s during this run "
+            "(CLOCK_BOOTTIME gained that much on CLOCK_MONOTONIC), so this is not a test "
+            "failure and no verdict: run the gate again. What the step said: " + why
+            + (f" (the whole output: {evidence})" if evidence else ""))
+        sys.exit(INTERRUPTED_BY_SLEEP)
     say(f"REFUSED at {step}: {why}" + (f" (the whole output: {evidence})" if evidence else ""))
     sys.exit(1)
 
@@ -986,6 +1037,9 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
                              f"so the tested commit {new[:10]} was not put on it")
     sha = new[:8]
     say(f"   committed {sha}: {body.splitlines()[0]}")
+    s = slept()
+    if s is not None and s >= SLEPT_AT_LEAST:
+        say(f"   the machine slept {s:.0f} s during this run, and every step passed regardless")
     if a.push:
         say("8. push")
         git(repo, "push", "-q")
