@@ -279,6 +279,14 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ### Operations and safety
 
+- **A read that fails because its dependency is not answering yet is retried on a short
+  backoff until the dependency answers, then runs at its interval; within a start grace
+  measured from the dependency's own start (about 2.5x its measured start time) it is drawn as
+  waiting for that dependency, never critical; past the grace it is a row as today** (the
+  operator, 2026-11-05; C2568: NetBox's boot left netbox-secrets critical for its hourly
+  interval). Cost: one backoff and one waiting state in the reader job. Prevents: a critical
+  row about a dependency's boot that clears itself, which teaches people to ignore critical
+  rows. [not mechanised yet: C2568; the reader job's backoff will be tests/test_reader_job.py's]
 - **Every device-changing operation: preview (the exact program, masked) → confirm by hash as a
   verified person → apply holding the device → verify → rollback on failure → record** (commit and
   receipt), readable again. [every confirm- and approve-gated route declares its five stages,
