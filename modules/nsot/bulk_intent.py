@@ -60,6 +60,7 @@ KNOWN_CHILDREN = {
     "logging": {"console", "settings", "hosts", "syslog"},
     "snmp": {"communities", "settings", "hosts"},
     "routing": {"ospf", "ospfv3", "ripng", "rip", "bgp"},
+    "dhcp_server": {"excluded", "pools"},
 }
 
 
@@ -73,7 +74,10 @@ def known_top_level() -> set:
     base = {"hostname", "platform", "interfaces", "vlans", "users", "routing",
             "static_routes", "acls", "snmp", "logging", "ntp_servers",
             "lines", "tracks", "services", "flags", "spanning_tree",
-            "unmodeled", "secret_refs", "unmodeled_ack", "bootstrap"}
+            "unmodeled", "secret_refs", "unmodeled_ack", "bootstrap",
+            # The DHCP server pack's (Lab 9 A4): emitted only when a config holds a pool or
+            # an excluded range, so it is not a schema default every parse fills.
+            "dhcp_server"}
     return base | set(BaseParser.SCHEMA_DEFAULTS)
 
 

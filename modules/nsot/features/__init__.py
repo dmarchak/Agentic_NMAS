@@ -2,7 +2,8 @@
 register C764; the design in docs/FEATURE_PACKS.md).
 
 A pack is four things, and the routing packs here (OSPFv2, OSPFv3, RIPv2, RIPng) are the
-first:
+first; the DHCP server's (`dhcp`, a router's own DHCPv4 pools, Lab 9 A4) is the next, judged
+against a library on its own markers (`dhcp.MARKERS`):
 
 (a) **a schema**: the fields of its section of intent, with their empty values
     (`ospf.PROCESS`, `rip.RIP`, ...), and the checks a value must pass (`problems`), each
@@ -143,19 +144,22 @@ def partials(platform: str):
 
 
 @functools.lru_cache(maxsize=64)
-def _reads_packs(root: str, platform: str, name: str, _signature: str) -> bool:
+def _reads_packs(root: str, platform: str, name: str, _signature: str,
+                 markers: frozenset = MARKERS) -> bool:
     from modules.nsot.config_check import template_reads
-    return bool(MARKERS & template_reads(root, platform, name))
+    return bool(markers & template_reads(root, platform, name))
 
 
-def library_reads_packs(root: str, platform: str, name: str) -> bool:
+def library_reads_packs(root: str, platform: str, name: str,
+                        markers: frozenset = MARKERS) -> bool:
     """Does the template *name* (with everything it imports) in the library at *root* render
-    the packs' fields? False for a library from before them. Cached by the library's own
-    signature (`templates_repo.library_signature`), so an edit is seen; True when the closure
-    cannot be read (the render then names what is wrong itself)."""
+    the packs' fields (*markers*: the routing packs' by default, `dhcp.MARKERS` for the DHCP
+    server's)? False for a library from before them. Cached by the library's own signature
+    (`templates_repo.library_signature`), so an edit is seen; True when the closure cannot be
+    read (the render then names what is wrong itself)."""
     from modules.nsot.templates_repo import library_signature
     try:
-        return _reads_packs(root, platform, name, library_signature(root))
+        return _reads_packs(root, platform, name, library_signature(root), markers)
     except Exception as exc:                       # noqa: BLE001 - the render says it
         log.debug("features: the reads of %s/%s/%s are unreadable: %s", root, platform,
                   name, exc)
@@ -165,8 +169,15 @@ def library_reads_packs(root: str, platform: str, name: str) -> bool:
 def for_library(host_vars: dict, root: str, platform: str, name: str) -> dict:
     """*host_vars* (prepared) as the library at *root* can render it: as it is when the library
     renders the packs, else with every pack field written as its lines (`raw_view`, by the
-    shipped partial), which a library from before the packs emits verbatim. Raises when that
+    shipped partial), which a library from before the packs emits verbatim. Each pack family
+    is judged on its own markers: a library that renders the routing packs may predate the
+    DHCP server's (`dhcp.lines_view` then moves its lines to ``unmodeled``). Raises when that
     cannot be done, never returns fields such a library would drop silently."""
+    from modules.nsot.features import dhcp
+
+    if dhcp.structured(host_vars) and not library_reads_packs(root, platform, name,
+                                                             dhcp.MARKERS):
+        host_vars = dhcp.lines_view(host_vars, platform)
     if not structured(host_vars) or library_reads_packs(root, platform, name):
         return host_vars
     return raw_view(host_vars, platform, strict=True)
@@ -228,15 +239,16 @@ def dotted(path: tuple, key: str = "") -> str:
 # ── the whole document ───────────────────────────────────────────────────────
 
 def problems(host_vars: dict) -> list:
-    """``[(path, key, message)]``: every structured routing field of *host_vars* a pack refuses,
+    """``[(path, key, message)]``: every structured field of *host_vars* a pack refuses,
     in document order; ``[]`` when none. A raw line is never judged here: it renders as typed,
     as it always did."""
-    from modules.nsot.features import ospf, rip
+    from modules.nsot.features import dhcp, ospf, rip
 
     hv = host_vars if isinstance(host_vars, dict) else {}
     found = []
     found += ospf.problems(hv)
     found += rip.problems(hv)
+    found += dhcp.problems(hv)
     return found
 
 
@@ -268,6 +280,9 @@ def prepare(host_vars: dict) -> dict:
     if isinstance(out.get("interfaces"), list):
         out["interfaces"] = [complete_interface(i) if isinstance(i, dict) else i
                              for i in out["interfaces"]]
+    if isinstance(out.get("dhcp_server"), dict):
+        from modules.nsot.features import dhcp
+        out["dhcp_server"] = dhcp.complete_server(out["dhcp_server"])
     return out
 
 
@@ -288,8 +303,9 @@ def settle(host_vars: dict, platform: str) -> dict:
     interface naming a process the routing section does not hold, which a line-by-line parse
     cannot see) goes back to its lines, verbatim, so a capture's parse always renders (`prepare`
     refuses nothing a parser emits). Returns *host_vars*, changed in place."""
-    from modules.nsot.features import ospf, rip
+    from modules.nsot.features import dhcp, ospf, rip
 
+    dhcp.settle(host_vars, platform)
     for _attempt in range(2):
         found = problems(host_vars)
         if not found:

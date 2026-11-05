@@ -33,7 +33,7 @@ import logging
 import os
 import re
 
-from modules.nsot.features import ospf as _ospf, rip as _rip
+from modules.nsot.features import dhcp as _dhcp, ospf as _ospf, rip as _rip
 
 log = logging.getLogger(__name__)
 
@@ -536,7 +536,12 @@ INTENT_SECTIONS = {
     "interfaces[].ospf_interface": frozenset(_ospf.INTERFACE),
     "interfaces[].ospfv3_interface": frozenset(_ospf.INTERFACE),
     "interfaces[].ripng_interface[]": frozenset(_rip.RIPNG_INTERFACE),
-    "logging": frozenset({"console", "settings", "hosts", "syslog"}),
+    # The DHCP server pack (Lab 9 A4, `modules/nsot/features/dhcp.py`): a router's own pools.
+    "dhcp_server": frozenset(_dhcp.SERVER),
+    "dhcp_server.excluded[]": frozenset(_dhcp.EXCLUDED),
+    "dhcp_server.pools[]": frozenset(_dhcp.POOL) | frozenset(_dhcp.RAW_POOL),
+    "dhcp_server.pools[].lease": frozenset(_dhcp.LEASE),
+    "logging":frozenset({"console", "settings", "hosts", "syslog"}),
     "logging.syslog": frozenset({"trap", "origin_id", "source_interface", "hosts",
                                  "heartbeat"}),
     "snmp": frozenset({"communities", "settings", "hosts"}),

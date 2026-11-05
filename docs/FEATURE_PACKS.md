@@ -112,6 +112,36 @@ takes `include_connected` (`include-connected`) and names RIPng by its process n
 - `ripng_interface[]`: one entry per RIPng process, `name`, `enable` (`ipv6 rip <name> enable`),
   `default_information` (`originate` or `only`); a name routing does not declare is refused.
 
+### DHCP server: `dhcp_server` (`ip dhcp excluded-address`, `ip dhcp pool <name>`)
+
+Lab 9's A4 (docs/LAB_READINESS.md, "A4: the router's pool"): a router's own DHCPv4 server.
+`modules/nsot/features/dhcp.py`; tests: `tests/test_feature_pack_dhcp.py`. The words are Cisco's
+"Configuring the Cisco IOS DHCP Server" (IOS 15M&T's DHCP guide, read 2026-11-05). The key is
+present only when a config holds a line the pack models, so no parse of any other config gains
+it. The partial is called from `services_block`, which both dialects' `base.j2` call, and a
+library from before it is judged on its own marker (`dhcp.MARKERS`) and handed the lines in
+`unmodeled` (`dhcp.lines_view`).
+
+| Field | Line | Notes |
+|---|---|---|
+| `excluded[]` | `ip dhcp excluded-address L [H]` | `low`, `high`; high not below low |
+| `pools[].name` | `ip dhcp pool N` | one word, once per intent |
+| `pools[].network` | ` network A M` | written as a prefix (`192.0.2.0/25`), no host bits |
+| `pools[].default_router[]` | ` default-router A ...` | at most 8, each inside the pool's network (RFC 2132, 3.5), never its network or broadcast address |
+| `pools[].dns_servers[]` | ` dns-server A ...` | at most 8 |
+| `pools[].domain_name` | ` domain-name D` | one word |
+| `pools[].lease` | ` lease D [H [M]]`, ` lease infinite` | `days`, `hours` (0 to 23), `minutes` (0 to 59), `infinite`; absent is IOS's one day |
+| `pools[].raw[]` | any other line of the pool | verbatim, after the modelled lines (`option`, `netbios-*`, `bootfile`) |
+
+Left as lines: a VRF's excluded range, a pool with a submode (a `network ... secondary` subnet
+and its indented lines, `class`), a second block for one pool's name, a network typed as
+`/length`, and every DHCPv6 line (`ipv6 dhcp pool`): **DHCPv6 is not covered**, and an IPv6
+address in any field is refused naming it. **A pool is compared as a set** by the round trip
+(`roundtrip.UNORDERED_SECTIONS`): each line sets one of the pool's parameters, and IOS prints
+them in its own order. **Not measured:** no capture in the lab holds a pool, so how IOS and
+IOS-XE print one (line order, the mask form, whether the default `lease 1` shows) waits on the
+router's first capture with one.
+
 ## Modelled, and left as lines
 
 Modelled: every routing line in the lab's captures except `max-metric router-lsa ...` (the

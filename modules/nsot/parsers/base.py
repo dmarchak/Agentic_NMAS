@@ -151,6 +151,10 @@ class BaseParser:
             (re.compile(r"^memory\s+(.*)$"),                 self._h_memory),
             (re.compile(r"^redundancy\s*$"),                 self._h_redundancy),
             (re.compile(r"^call-home\s*$"),                  self._h_call_home),
+            # The DHCP server pack (Lab 9 A4, `features/dhcp.py`): the router's own DHCPv4
+            # pools. A shape the pack does not reproduce stays in `unmodeled`, whole.
+            (re.compile(r"^ip dhcp excluded-address\s+(.*)$"), self._h_dhcp_excluded),
+            (re.compile(r"^ip dhcp pool\s+(\S+)\s*$"),       self._h_dhcp_pool),
         ]
 
     # ── entry point ─────────────────────────────────────────────────────────
@@ -768,6 +772,28 @@ class BaseParser:
         lines = self._routing_block(block, "ripng")["raw"]
         entry = {"name": m.group(1), **pack.claim_ripng(lines, self.platform)}
         out["routing"].setdefault("ripng", []).append(entry)
+
+    # ── the DHCP server (Lab 9 A4, `features/dhcp.py`) ──────────────────────
+    # `dhcp_server` appears only when the config holds a line the pack models, so no parse of
+    # a config without one gains a key. A shape it does not reproduce (a VRF's excluded range,
+    # a pool with a submode, a second block for one pool name) stays in `unmodeled`, whole.
+
+    def _h_dhcp_excluded(self, block, out, m):
+        from modules.nsot.features import dhcp as pack
+        entry = None if block.children else pack.claim_excluded(m.group(1), self.platform)
+        if entry is None:
+            return False
+        out.setdefault("dhcp_server", {"excluded": [], "pools": []})["excluded"].append(entry)
+
+    def _h_dhcp_pool(self, block, out, m):
+        from modules.nsot.features import dhcp as pack
+        held = (out.get("dhcp_server") or {}).get("pools") or []
+        if any(p["name"] == m.group(1) for p in held):
+            return False
+        entry = pack.claim_pool(m.group(1), block.children, self.platform)
+        if entry is None:
+            return False
+        out.setdefault("dhcp_server", {"excluded": [], "pools": []})["pools"].append(entry)
 
     #: Structure, not configuration: the template re-emits it around a family.
     #: Keeping it as a setting is what let the families become decoration.

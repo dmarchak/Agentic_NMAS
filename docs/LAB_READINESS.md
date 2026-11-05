@@ -118,7 +118,7 @@ are section 2. No register row is tagged "Lab 9: blocks" but C2379 and C2427. Th
 | A1 | Network build | 20 | **the operator's team, by hand** (the operator's scope correction, 2026-11-05) | the hardware build and base setup, and loop-free forwarding with them (formerly 1 to 1.5 agent-days, inferred) | none: Mercury's first involvement is ZTP and A2. The laptop install (formerly 3) is the kit, landed 2026-11-05 | the build and base setup; its design document; the switch readings at the first sitting |
 | A2 | NSoT-driven OpenFlow configuration | 8 | in progress (2026-11-05) | section 1 A2 (partial: `RyuDriver._switches` read); read-only discovery (docs/LAB9_DISCOVERY.md); the OpenFlow templates, ZTP profiles and discovery reads in build, draft until a capture confirms each | templates, ZTP and discovery (about 2.5, under way); the confirm-and-push path per vendor once captures confirm (about 3, inferred, in place of item 1's full drivers, 9.5); item 2 onboarding (3); hardware integration (3); the board's sign-off, self-signed under the Phase 7 mode (section 7) | the captures from each switch; decision 6 (AOS-CX's netmiko) |
 | A3 | DNS blacklist | 10 | not started | section 1 A3 (missing); no commit | steering app (2); the filter service (2) | decision 4 (dnspython's licence); question 6 (the verdict service; any key typed by the operator) |
-| A4 | DHCP | 6 | not started | section 1 A4 (missing); no commit | DHCP steering (1.25) | the router's pool, in the build (A1) |
+| A4 | DHCP | 6 | in progress (2026-11-05): the router's pool as intent, built, not yet on a device | section 1 A4; "A4: the router's pool" below; the DHCP server pack (`modules/nsot/features/dhcp.py`), tests/test_feature_pack_dhcp.py | DHCP steering (1.25); the pool's remainder (about 0.75, below) | the router's running config once a pool is on it (one capture, below) |
 | A5 | SDN trace | 8 | not started | section 1 A5 (missing); C1911 | the trace by DPID (2.5) | none |
 | A6 | REST implementation | 8 | in progress | section 1 A6 (exists for flows and meters); C2427 | groups (in item 6's reroute, 1.5); port description (in item 7, 1) | question 5 (the controller server) |
 | B1 | AI Network Analyst | 8 | not started | section 1 B1 (partial: collection only); C2495 | item 7 (3.5) | the planted issues, in a sitting |
@@ -134,3 +134,76 @@ are section 2. No register row is tagged "Lab 9: blocks" but C2379 and C2427. Th
 
 Two estimates of section 2 sit across rows: the manual and fidelity records (2.5) and
 hardware integration (3, under A1).
+
+### A4: the router's pool
+
+Written 2026-11-05. **A4 is two things** (LAB9_SDN_GAP section 1, A4; section 5, "DHCP
+steering"): the router serves DHCP from its own pool, and the OpenFlow edge forces clients'
+requests to it. Under the operator's scope correction (2026-11-05) the team builds the hardware
+by hand (A1), and the pool is Mercury's: IOS intent, rendered, previewed, confirmed by hash, sent
+merge-only, verified and recorded by the pipeline every intent change already takes
+(`modules/pipeline.py`). Not Kea: Mercury's DHCP page (`routes/dhcp_v2.py`) fronts Kea, and
+nothing of it is used here.
+
+**The design.** The pool is a feature pack (docs/FEATURE_PACKS.md, "DHCP server"), the shape the
+routing packs set: a schema of DHCP's own concepts, a partial in IOS's words, a parse that
+models a line only when the partial writes it back exactly, and the round trip as the judge.
+Intent holds `dhcp_server`:
+
+```yaml
+dhcp_server:
+  excluded:                       # ip dhcp excluded-address <low> [<high>]
+    - {low: 192.0.2.1, high: 192.0.2.10}
+  pools:
+    - name: LAN10                 # ip dhcp pool LAN10
+      network: 192.0.2.0/25       # network 192.0.2.0 255.255.255.128
+      default_router: [192.0.2.1] # option 3, in order of preference
+      dns_servers: [192.0.2.53]   # option 6
+      domain_name: lab.example    # option 15
+      lease: {days: 0, hours: 8}  # lease 0 8; or {infinite: true}; absent: one day
+      raw: [option 150 ip 192.0.2.5]   # any other line, verbatim
+```
+
+**What practice settles** (Cisco, "Configuring the Cisco IOS DHCP Server", IP Addressing: DHCP
+Configuration Guide, Cisco IOS Release 15M&T,
+https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/ipaddr_dhcp/configuration/15-mt/dhcp-15-mt-book/config-dhcp-server.html,
+read 2026-11-05; RFC 2132, https://www.rfc-editor.org/rfc/rfc2132.html, read 2026-11-05):
+
+- the commands and their shapes: `ip dhcp excluded-address low-address [high-address]`;
+  `network network-number [mask | /prefix-length]`; `default-router` and `dns-server` take "up
+  to eight" addresses; `lease {days [hours [minutes]] | infinite}`, default one day;
+- the router's own interface address "is automatically excluded" (the guide), so intent need
+  not exclude the gateway; any other address the server must not offer is excluded by hand;
+- a router is "on the client's subnet" (RFC 2132, 3.5), so a default router outside its pool's
+  network is refused; routers and name servers are "listed in order of preference" (3.5, 3.8),
+  so both lists keep their order;
+- the DHCP server is on by default (the guide), so no `service dhcp` line is written.
+
+**This increment (code and tests only; nothing sent to a device):** the schema and its checks,
+the partial for both Cisco dialects (one copy in `_common.j2`, called from `services_block`, so
+a library whose `_common.j2` is brought in renders it unchanged), the parser's two handlers,
+the schema sections, a library from before the pack handed its lines (`dhcp.lines_view`), a pool
+compared as a set by the round trip, and tests on the lab's real captures with Cisco's example
+pools inserted: the round trip, the parse, the exact lines, the preview's program and its
+undo, the refusals with the IPv6 case beside each IPv4 one, and the old library.
+
+**DHCPv6 is not covered.** IOS's DHCPv6 server (`ipv6 dhcp pool`) stays verbatim lines, and an
+IPv6 address in any field is refused naming it (CLAUDE.md, IPv6 parity). A4's steering screen
+names it too (LAB9_SDN_GAP 5).
+
+**Not measured: how a lab IOS or IOS-XE device prints a pool.** No capture holds one. The guide's
+example writes the network in mask form, and so does the partial; IOS's own line order inside a
+pool, whether it prints `lease 1` (the default), and how it spaces `default-router` are not
+shown. One measurement settles them: the router's running config read through Mercury after its
+first pool lands, kept as a fixture. Until then a line the partial does not reproduce stays raw,
+and the round trip compares a pool as a set.
+
+**What is left:**
+
+- **the pool's remainder, about 0.75 agent-days:** ZTP's options as fields (150, 66 and 67,
+  the switches' TFTP server and file, today `raw`); a check that each pool's network is a subnet
+  of one of the router's own interfaces (the guide's "directly connected clients", or a relay);
+  the capture's fixture and any partial change it shows; the manual's intent page entry;
+- **DHCP steering, 1.25 agent-days** (LAB9_SDN_GAP section 2, item 3): the edge flows (a client's
+  broadcast to the router's port, server replies dropped from any other port). **Its screen is a
+  new tab, SDN › Apps, board B (LAB9_SDN_GAP section 7); none is drawn here.**

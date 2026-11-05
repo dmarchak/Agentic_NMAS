@@ -323,6 +323,41 @@ interface {{ i.name }}
 {%- endfor %}
 {%- endmacro -%}
 
+{#- ── The DHCP server pack (Lab 9 A4; docs/FEATURE_PACKS.md, "DHCP server") ───────────────
+    The router's own DHCPv4 server, from STRUCTURED intent (`dhcp_server`), completed by
+    `features.prepare` (`features/dhcp.py`: a pool's network written out as its address and
+    mask). Cisco's words, from "Configuring the Cisco IOS DHCP Server" (IOS 15M&T's DHCP
+    guide, read 2026-11-05). The order of a pool's lines is the partial's: IOS prints its own
+    (the round trip compares a pool as a set). Called from `services_block`, which every
+    dialect's `base.j2` already calls, so a library whose `_common.j2` is brought in renders
+    it with no change to its `base.j2`. -#}
+{%- macro dhcp_excluded(e) -%}
+ip dhcp excluded-address {{ e.low }}{{ (' ' ~ e.high) if e.high else '' }}
+{% endmacro -%}
+
+{%- macro dhcp_pool_body(p) -%}
+{% if p.network %} network {{ p.network_address }} {{ p.network_mask }}
+{% endif %}
+{%- if p.default_router %} default-router {{ p.default_router | join(' ') }}
+{% endif %}
+{%- if p.dns_servers %} dns-server {{ p.dns_servers | join(' ') }}
+{% endif %}
+{%- if p.domain_name %} domain-name {{ p.domain_name }}
+{% endif %}
+{%- if p.lease.infinite %} lease infinite
+{% elif p.lease.days %} lease {{ [p.lease.days, p.lease.hours, p.lease.minutes] | select | join(' ') }}
+{% endif %}
+{%- endmacro -%}
+
+{%- macro dhcp_server_block(v) -%}
+{% set d = v.get('dhcp_server') or {} %}
+{%- for e in d.get('excluded') or [] %}{{ dhcp_excluded(e) }}{% endfor %}
+{%- for p in d.get('pools') or [] %}ip dhcp pool {{ p.name }}
+{{ dhcp_pool_body(p) }}{% for s in p.raw %} {{ s }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
 {%- macro services_block(v) -%}
 {% for s in v.ssh or [] %}ip ssh {{ s }}
 {% endfor %}
@@ -341,6 +376,7 @@ interface {{ i.name }}
 {% for s in v.control_plane.settings %} {{ s }}
 {% endfor %}
 {%- endif %}
+{{- dhcp_server_block(v) }}
 {%- endmacro -%}
 
 {%- macro management(v) -%}

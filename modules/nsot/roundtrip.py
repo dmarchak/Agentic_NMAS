@@ -49,6 +49,10 @@ UNORDERED_SECTIONS = (
     re.compile(r"^interface\b"),        # IOS reorders interface sub-commands
     re.compile(r"^vrf definition\b"),
     re.compile(r"^line\b"),
+    # A DHCP pool's lines each set one parameter of the pool (Cisco's DHCP server guide: the
+    # pool's commands are its settings, entered in any order), and IOS prints them in its own
+    # order, which no capture in the lab yet shows (docs/FEATURE_PACKS.md, "DHCP server").
+    re.compile(r"^ip dhcp pool\b"),
 )
 
 #: Sections whose child order is semantic. Listed explicitly so the intent is
