@@ -285,8 +285,8 @@ over it.
 **What is left, about 1.5 agent-days:**
 
 - **the screen, about 1 agent-day:** Topology's Path… with the controller's layer, and SDN ›
-  Flows linking to it (LAB9_SDN_GAP section 5). **It needs board D, "Topology › Path…: the
-  trace through flow tables" (LAB9_SDN_GAP section 7); none is drawn here.** Then its route (a
+  Flows linking to it (LAB9_SDN_GAP section 5). **Its board is board D, drawn 2026-11-05:
+  `docs/boards/sdn-trace.html` (counted as signed off under the Phase 7 mode).** Then its route (a
   read: `GET`, declared in neither `route_gates` nor `invalidation`), the hops drawn with their
   ports, each flow on expand, and the large-fleet summary for a flood;
 - **the manual, about 0.25:** the Path… page's SDN section and its How it works page;

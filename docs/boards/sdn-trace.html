@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>SDN trace board</title>
+<!-- Board D for the final SDN lab's A5 (the trace, and its ports bonus; docs/LAB9_SDN_GAP.md
+     sections 1, 5 and 7; docs/LAB_READINESS.md "A5: the trace"): Topology › Path… gaining the
+     SDN controller's layer, drawn from the walk's result shape in modules/sdn/trace.py
+     (`trace()`: state, words, branches of hops, outcome per branch, more, current, read_at).
+     It supersedes the one-card sketch in docs/boards/lab9-sdn.html's artboard D. Artboards A to
+     G, then the decisions. Self-contained: no external fonts or scripts. Example names
+     (campus-sdn, ctl-1, ovs-1, of-eos-1, r1 to r6) and documentation addresses (192.0.2.0/24,
+     198.51.100.0/24, 2001:db8::/32) only; artboard C's Lab 8 case keeps the capture's own
+     names (s1, s2) and addresses. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--sdn:#2F6FB0;--sdn-soft:#E4EEF8;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--sdn:#7FB2E5;--sdn-soft:#1D2F42}}
+:root[data-theme="dark"]{--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--sdn:#7FB2E5;--sdn-soft:#1D2F42}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+pre.mono{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:8px 10px;white-space:pre-wrap}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}.chip.bad{background:var(--danger-soft);color:var(--danger)}.chip.sdn{background:var(--sdn-soft);color:var(--sdn)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.btn[aria-busy="true"]{opacity:.7;cursor:progress}
+.btn[aria-busy="true"]::before{content:"";display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}
+.small{font-size:12.5px}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+input,select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+input:disabled{background:var(--surface-2);color:var(--ink-3)}
+.hint{font-size:12px;color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13px;margin:0}
+.kv dt{color:var(--ink-2)}.kv dd{margin:0}
+.summary{display:flex;gap:18px;font-size:13px;flex-wrap:wrap}
+.summary b{font-size:18px;display:block}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+tr.grp td{background:var(--surface-2);font-weight:600}
+tr.sub td{background:var(--surface-2)}
+tr.end td{font-size:12.5px}
+tr.end.ok td{color:var(--ok)}tr.end.bad td{color:var(--danger)}tr.end.warn td{color:var(--warn)}tr.end.neutral td{color:var(--ink-2)}
+tr.again td{background:var(--danger-soft)}
+.topbar{display:flex;justify-content:flex-end;gap:12px;align-items:center;font-size:13px}
+.aichip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg a{padding:5px 11px;text-decoration:none;color:var(--ink-2);font-size:13px;border-right:1px solid var(--line);background:var(--surface)}
+.seg a:last-child{border-right:0}
+.seg a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.notice{border-left:3px solid var(--line);background:var(--surface-2);padding:8px 12px;border-radius:4px;font-size:13px;margin:0}
+.notice.bad{border-left-color:var(--danger);background:var(--danger-soft)}
+.notice.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.notice.info{border-left-color:var(--accent);background:var(--accent-soft)}
+.pop{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:14px 16px;display:flex;flex-direction:column;gap:10px;width:720px}
+.sugg{border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 4px 12px rgba(0,0,0,.12);font-size:13px;width:420px}
+.sugg div{padding:5px 10px;border-bottom:1px solid var(--line-2)}
+.sugg div.on{background:var(--accent-soft)}
+.sugg div:last-child{border-bottom:0}
+ol.hops{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+ol.hops li{border:1px solid var(--line);border-radius:6px;padding:4px 9px;background:var(--surface-2)}
+ol.hops li.arrow{border:0;background:none;padding:0;color:var(--ink-3)}
+ol.hops li.dst{border-color:var(--ok);background:var(--ok-soft)}
+ol.hops li.stop{border-color:var(--danger);background:var(--danger-soft)}
+.flow{font-family:var(--mono);font-size:12px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px;margin:0}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 18px;width:1404px;margin:0 auto 10px;font-size:13px;box-sizing:border-box}
+.q h3{margin-bottom:6px}
+.q ol,.q ul{margin:6px 0 0 18px;padding:0}
+.q li{margin:2px 0}
+.phone{width:390px;background:var(--ground);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.phone .pbar{background:var(--side);color:#fff;padding:10px 14px;font-size:14px;font-weight:600;display:flex;justify-content:space-between}
+.phone .pbody{padding:12px;display:flex;flex-direction:column;gap:10px}
+.mapbox{background:var(--surface);border:1px solid var(--line);border-radius:8px}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Board D: Topology › Path… through an SDN fabric's flow tables (the final SDN lab's A5 and its ports bonus)</h1>
+<div>Drawn from the walk as built (<span class="mono">modules/sdn/trace.py</span>: one stored read, every branch ending in one named outcome, each hop its DPID with its ingress and egress port and their names, the flows it took). Seven artboards at 1440 wide, then the decisions. <strong>A</strong> the question; <strong>B</strong> a delivered path; <strong>C</strong> every other ending; <strong>D</strong> a stale read, busy and failure; <strong>E</strong> the routed layer beside it; <strong>F</strong> a large fabric; <strong>G</strong> phone width. Yellow dashed notes are the board's annotations, not part of the screen; every other link and control is one the built screen will have. It supersedes the one-card sketch in <span class="mono">docs/boards/lab9-sdn.html</span>, artboard D. Counted as signed off under the Phase 7 mode (docs/STANDING_APPROVAL_LOG.md, 2026-11-05, "Board D drawn: the SDN trace").</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · The question: Path… with a Layer switch</strong>: on a network with a controller layer, Path… asks which layer to follow. Flow tables takes a source and a destination (an IPv4 or IPv6 address or a MAC, as the controller lists its hosts), a protocol and, for TCP or UDP, the destination port. Suggestions, never a long list. Beside it, the form's other states, SDN › Flows' way in, and every refusal.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>campus-sdn</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div class="row" style="justify-content:space-between"><h1 class="page">Topology <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a> <span class="muted" style="font-size:14px;font-weight:400">campus-sdn · 2 devices, 1 link, 4 switches, 6 hosts · read 14:03 UTC</span></h1><span class="row"><input type="search" placeholder="Find a device, switch or address" style="width:240px"><a href="#" class="how"><i class="i">i</i>How does this work?</a></span></div>
+<div class="toolbar">
+<a class="btn sm on" href="#">Labels</a><a class="btn sm" href="#">Ports</a><a class="btn sm" href="#">Snap to grid</a><a class="btn sm" href="#">Reset layout</a>
+<span class="seg"><a href="#">−</a><a href="#" class="on">100%</a><a href="#">+</a></span>
+<a class="btn sm" href="#">Weak points</a><a class="btn sm on" href="#">Path…</a><a class="btn sm" href="#">Take out a device (what-if)…</a>
+</div>
+<div class="row" style="align-items:flex-start;gap:24px">
+<div class="pop" aria-label="Path…">
+<div class="row"><span class="small muted">Layer</span><span class="seg" role="group" aria-label="Layer"><a href="#">Routing (CEF)</a><a href="#" class="on" aria-pressed="true">Flow tables (OpenFlow)</a></span><span class="faint small">ctl-1's tables, read 14:03:12 UTC (18 s ago)</span></div>
+<div class="row" style="align-items:flex-end">
+<label class="field">From<input value="192.0.2.101" style="width:200px"></label>
+<label class="field">to<input value="192.0.2.2" style="width:200px" aria-expanded="true"></label>
+<label class="field">Protocol<select><option>ICMP echo</option><option selected>TCP</option><option>UDP</option></select></label>
+<label class="field">Port<input value="443" style="width:70px" inputmode="numeric"></label>
+<span class="row" style="gap:6px"><a class="btn primary sm" href="#">Trace the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></span>
+</div>
+<div class="sugg" style="margin-left:214px;margin-top:-6px" role="listbox" aria-label="Hosts the controller lists">
+<div class="on"><span class="mono">192.0.2.202</span> · ovs-2 port 4 (ovs2-eth4) · <span class="mono faint">00:00:00:00:02:02</span></div>
+<div><span class="mono">192.0.2.203</span> · ovs-2 port 5 (ovs2-eth5) · <span class="mono faint">00:00:00:00:02:03</span></div>
+<div><span class="mono">192.0.2.211</span> · of-eos-2 port 9 (Ethernet9) · <span class="mono faint">00:00:00:00:02:11</span></div>
+<div class="faint small">3 of 6 hosts match "192.0.2.2"; any address or MAC may be typed</div>
+</div>
+<p class="hint" style="margin:0">An IPv4 or IPv6 address or a MAC, as ctl-1 lists its hosts. The packet is the one a host sends: an ICMP echo, or TCP or UDP from port 49152 to the port given, untagged.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;flex:1;min-width:0">
+<section class="card" aria-label="The form's other states">
+<h3>The form's other states</h3>
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on">Flow tables (OpenFlow)</a></span> <input value="2001:db8:10::101" style="width:150px"> to <input value="2001:db8:10::202" style="width:150px"> <select><option>ICMP echo</option></select> <input value="" placeholder="no port" disabled style="width:70px"></div>
+<p class="hint" style="margin:0">IPv6: an ICMPv6 echo request. ICMP has no port, so Port is off.</p>
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on">Flow tables (OpenFlow)</a></span> <input value="00:00:00:00:01:01" style="width:150px"> to <input value="00:00:00:00:02:02" style="width:150px"> <select><option>UDP</option></select> <input value="53" style="width:70px"></div>
+<p class="hint" style="margin:0">Two MACs: the packet's family is IPv4 where both hosts have an IPv4 address, else IPv6, and the answer names it. Give an IPv6 address to trace IPv6.</p>
+<div class="row small"><span class="faint">A network with switches and no routing devices:</span> no Layer switch; From and to as above.</div>
+<div class="row small"><span class="faint">A network with no controller connection:</span> Path… as today (artboard E, left), no Layer switch.</div>
+</section>
+<section class="card" aria-label="SDN › Flows' way in">
+<h3>SDN › Flows: the way in</h3>
+<div class="row small"><input type="search" placeholder="Search switch, cookie or match" style="width:220px"><select><option>Every owner</option></select><a class="btn sm" href="#">Trace a packet…</a><span class="faint">read 14:03 UTC</span></div>
+<p class="hint" style="margin:0">Opens Topology › Path… on this network with Flow tables chosen and the form open. One home for the trace.</p>
+</section>
+</div>
+</div>
+<section class="card" aria-label="Refusals">
+<h2>Path: not traced <span class="faint small" style="font-weight:400">(each refusal in the card, the form above it, as today's)</span></h2>
+<div class="cols">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p class="notice bad" role="alert"><strong>Not traced:</strong> no controller lists a host with 192.0.2.99 on an edge port (6 hosts listed). Nothing was asked of the controller or any switch.</p>
+<p class="notice bad"><strong>Not traced:</strong> 192.0.2.101 is listed at 2 places: 192.0.2.101 (00:00:00:00:01:01) on of:0000000000000011 ovs1-eth2 and 192.0.2.101 (00:00:00:00:09:09) on of:0000000000000022 ovs2-eth7; the controller keeps a host until it restarts, so one may be old: give its MAC.<br><span class="row" style="margin-top:6px"><a class="btn sm" href="#">Trace from 00:00:00:00:01:01</a><a class="btn sm" href="#">Trace from 00:00:00:00:09:09</a></span></p>
+<p class="notice bad"><strong>Not traced:</strong> the source 192.0.2.101 is IPv4 and the destination 2001:db8:10::202 is IPv6: a packet has one family.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<p class="notice bad"><strong>Not traced:</strong> the controller's topology is not read: ctl-1 has not answered since 13:41 UTC (connection refused). <a href="#">SDN › Controllers</a></p>
+<p class="notice bad"><strong>Not traced:</strong> the source is on ctl-1's fabric and the destination on ctl-2's: a trace stays inside one controller's fabric.</p>
+<p class="notice bad"><strong>Not traced:</strong> the controller lists no global IPv6 address for 192.0.2.203 (00:00:00:00:02:03) on of:0000000000000022 ovs2-eth5.</p>
+<p class="notice bad"><strong>Not traced:</strong> a TCP trace needs its destination port, from 1 to 65535, not ''.</p>
+</div>
+</div>
+</section>
+<p class="callout">The refusals are the walk's own words (<span class="mono">trace.Refused</span>), naming what was looked for and what was found; the build may name a switch by its reported name beside its <span class="mono">of:</span> key. The two-places refusal offers each MAC as a button that fills From and traces. Layer, From, to, Protocol and Port are in the address, so a trace is a link anyone can open. The trace is a read of the stored value: any viewer may run it; nothing is held, recorded or invalidated.</p>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · A delivered path</strong>: the answer first (delivered, how many switches), then the lab's question in one line: each switch's DPID with the port it came in by and the port it left by, both named. The hops table one level down; each hop's flows, in the order its pipeline ran them, one level further. The map draws the path.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>campus-sdn</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div class="row" style="justify-content:space-between"><h1 class="page">Topology <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a> <span class="muted" style="font-size:14px;font-weight:400">campus-sdn · 2 devices, 1 link, 4 switches, 6 hosts · read 14:03 UTC</span></h1><span class="row"><input type="search" placeholder="Find a device, switch or address" style="width:240px"><a href="#" class="how"><i class="i">i</i>How does this work?</a></span></div>
+<section class="card" aria-labelledby="b-h">
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on">Flow tables (OpenFlow)</a></span>From <input value="192.0.2.101" style="width:140px"> to <input value="192.0.2.202" style="width:140px"><select><option>TCP</option></select> port <input value="443" style="width:60px"><a class="btn sm" href="#">Trace the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<div class="row" style="justify-content:space-between"><h2 id="b-h">192.0.2.101 to 192.0.2.202, TCP 443: delivered through 4 switches</h2><span class="chip ok">delivered</span></div>
+<p class="small muted" style="margin:0">From 192.0.2.101 (00:00:00:00:01:01) on ovs-1 port 2 to 192.0.2.202 (00:00:00:00:02:02) on ovs-2 port 4 · through ctl-1's flow tables, read 14:03:12 UTC (18 s ago)</p>
+<ol class="hops" aria-label="The switches in order, with their ports">
+<li><strong>ovs-1</strong> <span class="mono">0000000000000011</span> · in 2 <span class="faint">ovs1-eth2</span> → out 5 <span class="faint">ovs1-eth5</span></li><li class="arrow">→</li>
+<li><strong>of-eos-1</strong> <span class="mono">001c7300a0000001</span> · in 1 <span class="faint">Ethernet1</span> → out 7 <span class="faint">Ethernet7</span></li><li class="arrow">→</li>
+<li><strong>of-eos-2</strong> <span class="mono">001c7300a0000002</span> · in 3 <span class="faint">Ethernet3</span> → out 2 <span class="faint">Ethernet2</span></li><li class="arrow">→</li>
+<li class="dst"><strong>ovs-2</strong> <span class="mono">0000000000000022</span> · in 1 <span class="faint">ovs2-eth1</span> → out 4 <span class="faint">ovs2-eth4</span>, 192.0.2.202</li>
+</ol>
+<table aria-label="The hops">
+<thead><tr><th style="width:20px"></th><th>#</th><th>Switch · DPID</th><th>In port</th><th>The flow that decided it</th><th>Owner</th><th>Out port</th><th>Then</th></tr></thead>
+<tbody>
+<tr><td>▸</td><td>1</td><td><a href="#">ovs-1</a><div class="mono faint">0000000000000011</div></td><td>2 <span class="faint">ovs1-eth2</span></td><td class="flow">table 0 · priority 100 · cookie 0x0<br>eth_dst=00:00:00:00:02:02 → OUTPUT:5</td><td>the controller's own</td><td>5 <span class="faint">ovs1-eth5</span></td><td class="small">link to of-eos-1 port 1</td></tr>
+<tr><td>▾</td><td>2</td><td><a href="#">of-eos-1</a><div class="mono faint">001c7300a0000001</div></td><td>1 <span class="faint">Ethernet1</span></td><td class="flow">table 1 · priority 100 · cookie 0x0<br>eth_dst=00:00:00:00:02:02 → OUTPUT:7</td><td>the controller's own</td><td>7 <span class="faint">Ethernet7</span></td><td class="small">link to of-eos-2 port 3</td></tr>
+<tr class="sub"><td></td><td colspan="7">
+<div class="small muted" style="margin-bottom:6px">2 flows, in the order the switch's pipeline ran them (table 0 first, forward only):</div>
+<table>
+<thead><tr><th>Table</th><th>Priority</th><th>Cookie</th><th>Owner</th><th>Match</th><th>Instructions</th><th></th></tr></thead>
+<tbody>
+<tr><td>0</td><td>200</td><td class="mono">0x4d01</td><td>Mercury's (policy <a href="#">allow-web</a>)</td><td class="flow">eth_type=0x0800, ip_proto=6, tcp_dst=443</td><td class="flow">GOTO_TABLE:1</td><td><a href="#">Open in SDN › Flows</a></td></tr>
+<tr><td>1</td><td>100</td><td class="mono">0x0</td><td>the controller's own</td><td class="flow">eth_dst=00:00:00:00:02:02</td><td class="flow">OUTPUT:7</td><td><a href="#">Open in SDN › Flows</a></td></tr>
+</tbody></table>
+</td></tr>
+<tr><td>▸</td><td>3</td><td><a href="#">of-eos-2</a><div class="mono faint">001c7300a0000002</div></td><td>3 <span class="faint">Ethernet3</span></td><td class="flow">table 0 · priority 100 · cookie 0x0<br>eth_dst=00:00:00:00:02:02 → DEC_NW_TTL, OUTPUT:2</td><td>the controller's own</td><td>2 <span class="faint">Ethernet2</span></td><td class="small">link to ovs-2 port 1</td></tr>
+<tr><td>▸</td><td>4</td><td><a href="#">ovs-2</a><div class="mono faint">0000000000000022</div></td><td>1 <span class="faint">ovs2-eth1</span></td><td class="flow">table 0 · priority 100 · cookie 0x0<br>eth_dst=00:00:00:00:02:02 → METER:1, OUTPUT:4</td><td>the controller's own</td><td>4 <span class="faint">ovs2-eth4</span></td><td class="small">192.0.2.202's port</td></tr>
+<tr class="end ok"><td></td><td colspan="7">0000000000000022 port 4 is the destination's port: delivered.</td></tr>
+</tbody></table>
+<p class="notice"><strong>Noted on the way, not modelled:</strong> of-eos-2's flow decrements the IP TTL; ovs-2's flow sends it through meter 1, which may drop it by rate.</p>
+<details open><summary class="small">The packet traced: TCP, IPv4, from 192.0.2.101 port 49152 to 192.0.2.202 port 443, untagged</summary>
+<dl class="kv" style="margin-top:6px"><dt>Ethernet</dt><dd class="mono">eth_src=00:00:00:00:01:01, eth_dst=00:00:00:00:02:02, eth_type=0x0800, vlan_vid=none</dd><dt>IP</dt><dd class="mono">ipv4_src=192.0.2.101, ipv4_dst=192.0.2.202, ip_proto=6, ip_dscp=0, ip_ecn=0</dd><dt>TCP</dt><dd class="mono">tcp_src=49152, tcp_dst=443</dd><dt>Where the MACs come from</dt><dd>ctl-1's host table, as if ARP had already resolved them (ARP and IPv6 neighbour discovery are not traced)</dd></dl></details>
+<p class="faint small" style="margin:0">Walked through ctl-1's tables as the SDN reader stored them at 14:03:12 UTC; nothing was asked of the controller or any switch, and no traffic was sent. The answer redraws as each new read arrives. On the map: the path drawn on, each switch on it ringed. <a href="#">SDN › Controllers</a></p>
+<div class="row"><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Copy the hops</a><a class="btn sm" href="#">Clear the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<div class="cols" style="grid-template-columns:2fr 1fr">
+<div class="mapbox" aria-label="The map, with the path drawn">
+<svg viewBox="0 0 760 200" width="100%" role="img" aria-label="The map: the path from 192.0.2.101 through ovs-1, of-eos-1, of-eos-2 and ovs-2 to 192.0.2.202">
+<g fill="none" stroke-width="2">
+<path d="M70 150 L170 100" style="stroke:var(--ink-3)" stroke-dasharray="4 3"/>
+<path d="M170 100 L330 60 L490 60 L650 100" style="stroke:var(--accent)" stroke-width="7" opacity=".25"/>
+<path d="M170 100 L330 60 L490 60 L650 100" style="stroke:var(--sdn)"/>
+<path d="M330 60 L490 150" style="stroke:var(--sdn)"/>
+<path d="M650 100 L720 150" style="stroke:var(--accent)" stroke-width="7" opacity=".25"/>
+<path d="M650 100 L720 150" style="stroke:var(--ink-3)" stroke-dasharray="4 3"/>
+<path d="M70 150 L170 100" style="stroke:var(--accent)" stroke-width="7" opacity=".25"/>
+<path d="M650 100 L600 160" style="stroke:var(--ink-3)" stroke-dasharray="4 3"/>
+</g>
+<g font-size="12" style="fill:var(--ink)">
+<rect x="150" y="86" width="40" height="28" rx="4" style="fill:var(--sdn-soft);stroke:var(--accent)" stroke-width="2.5"/><text x="150" y="132">ovs-1</text>
+<rect x="310" y="46" width="40" height="28" rx="4" style="fill:var(--sdn-soft);stroke:var(--accent)" stroke-width="2.5"/><text x="306" y="40">of-eos-1</text>
+<rect x="470" y="46" width="40" height="28" rx="4" style="fill:var(--sdn-soft);stroke:var(--accent)" stroke-width="2.5"/><text x="466" y="40">of-eos-2</text>
+<rect x="470" y="136" width="40" height="28" rx="4" style="fill:var(--sdn-soft);stroke:var(--sdn)"/><text x="470" y="182">of-hp-1</text>
+<rect x="630" y="86" width="40" height="28" rx="4" style="fill:var(--sdn-soft);stroke:var(--accent)" stroke-width="2.5"/><text x="630" y="80">ovs-2</text>
+<circle cx="70" cy="150" r="7" style="fill:var(--surface);stroke:var(--accent)" stroke-width="2.5"/><text x="30" y="176">192.0.2.101</text>
+<circle cx="720" cy="150" r="7" style="fill:var(--surface);stroke:var(--accent)" stroke-width="2.5"/><text x="680" y="176">192.0.2.202</text>
+<circle cx="600" cy="160" r="6" style="fill:var(--surface);stroke:var(--ink-3)"/><text x="560" y="186">192.0.2.203</text>
+</g>
+</svg>
+</div>
+<p class="callout">The map is Topology's own (board F, TopoSdn): the delivered branch's links glow in the accent, each switch on it ringed, as a routed trace's are. A branch that stops short is drawn red to the switch where it stops; one that leaves the fabric grey to the port it leaves by. Hops are named by the name the switch reports, with its sixteen-digit DPID (<span class="mono">dpid_hex</span>); a host by its address (board F revised).</p>
+</div>
+<p class="callout">"Trace the reverse" swaps From and to and traces at once: each direction is its own flows in OpenFlow, so the way back is a second question, never assumed. "Copy the hops" copies the answer's one line (<span class="mono">trace()["words"]</span>, the DPIDs with their in and out ports) for a report, and says "Copied" on itself. "Clear the path" takes the card and the map's highlight away, as today. There is no "Trace again": the answer follows each read as it arrives (decision D4).</p>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · Every other ending</strong>: each branch ends in one named outcome with the flow that decided it (<span class="mono">trace.OUTCOMES</span>). The card's shape is B's: heading, chip, the hops, the ending's row in its colour, and what to open next. Shown here as the cards would be, shortened to their hops and ending; then every ending in one table.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="cols">
+<section class="card" aria-label="Dropped by a flow">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.202, TCP 22: not delivered, dropped at of-eos-1</h2><span class="chip bad">dropped by a flow</span></div>
+<ol class="hops"><li><strong>ovs-1</strong> <span class="mono">0000000000000011</span> · in 2 → out 5</li><li class="arrow">→</li><li class="stop"><strong>of-eos-1</strong> <span class="mono">001c7300a0000001</span> · in 1 <span class="faint">Ethernet1</span>, no out port</li></ol>
+<table><tbody>
+<tr><td>2</td><td>of-eos-1</td><td class="flow">table 0 · priority 300 · cookie 0x4d02 → drop</td><td>Mercury's (policy <a href="#">block-ssh</a>)</td></tr>
+<tr class="end bad"><td colspan="4">the flow at priority 300 in table 0 (cookie 0x4d02) sends it nowhere (no output), so the switch drops it</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Open the flow in SDN › Flows</a><a class="btn sm" href="#">Open the policy</a></div>
+</section>
+<section class="card" aria-label="No flow matched">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.202, UDP 53: not delivered, no flow matched at of-eos-2</h2><span class="chip bad">no flow matched</span></div>
+<ol class="hops"><li><strong>ovs-1</strong> · in 2 → out 5</li><li class="arrow">→</li><li><strong>of-eos-1</strong> · in 1 → out 7</li><li class="arrow">→</li><li class="stop"><strong>of-eos-2</strong> <span class="mono">001c7300a0000002</span> · in 3, no out port</li></ol>
+<table><tbody>
+<tr><td>3</td><td>of-eos-2</td><td class="flow">table 0 · priority 50 · cookie 0x4d03 → GOTO_TABLE:1</td><td>Mercury's (policy <a href="#">dns-steer</a>)</td></tr>
+<tr class="end bad"><td colspan="4">no flow in table 1 takes it, and with no table-miss entry OpenFlow 1.3.5 5.4 drops it by default</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Open of-eos-2's table 1 in SDN › Flows</a></div>
+</section>
+<section class="card" aria-label="Sent to the controller">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.2 to 192.0.2.4, ICMP echo: sent to the controller at s1</h2><span class="chip warn">to the controller</span></div>
+<ol class="hops"><li class="stop"><strong>s1</strong> <span class="mono">0000000000000001</span> · in 2 <span class="faint">s1-eth2</span> → CONTROLLER</li></ol>
+<table><tbody>
+<tr><td>1</td><td>s1</td><td class="flow">table 0 · priority 0 · cookie 0x0 → OUTPUT:CONTROLLER</td><td>the controller's own (its table-miss entry)</td></tr>
+<tr class="end warn"><td colspan="4">0000000000000001 sends it to the controller, which decides what to do with it (and may install a flow for it): the trace follows no packet the controller handles</td></tr>
+</tbody></table>
+<p class="small muted" style="margin:0">A controller that installs flows when a packet arrives shows this until it has: once the flow is in the next read, this answer redraws.</p>
+<div class="row"><a class="btn sm" href="#">Open s1 in SDN › Flows</a></div>
+</section>
+<section class="card" aria-label="To another host">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.1 to 192.0.2.3, ICMP echo: not delivered, sent to another host's port at s2</h2><span class="chip bad">to another host</span></div>
+<ol class="hops"><li><strong>s1</strong> <span class="mono">0000000000000001</span> · in 1 <span class="faint">s1-eth1</span> → out 3 <span class="faint">s1-eth3</span></li><li class="arrow">→</li><li class="stop"><strong>s2</strong> <span class="mono">0000000000000002</span> · in 3 <span class="faint">s2-eth3</span> → out 2 <span class="faint">s2-eth2</span></li></ol>
+<table><tbody>
+<tr><td>2</td><td>s2</td><td class="flow">table 0 · priority 40000 · cookie 0xbad0<br>ipv4_dst=192.0.2.3 → OUTPUT:2</td><td><span class="chip bad">unauthorised</span></td></tr>
+<tr class="end bad"><td colspan="4">it leaves by 0000000000000002 port 2, where the controller lists 192.0.2.4 (00:00:00:00:00:04) on of:0000000000000002 s2-eth2, not the destination</td></tr>
+</tbody></table>
+<p class="small muted" style="margin:0">Beside it, 2001:db8:8::1 to 2001:db8:8::3 (ICMPv6 echo): <span class="chip ok">delivered</span> s1 in 1 → out 3, s2 in 3 → out 1: the unauthorised flow matches IPv4 only.</p>
+<div class="row"><a class="btn sm" href="#">Open the flow in SDN › Flows</a><a class="btn sm" href="#">Trace 2001:db8:8::1 to 2001:db8:8::3</a></div>
+</section>
+<section class="card" aria-label="A loop">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.211, TCP 443: not delivered, a loop between of-eos-2 and of-hp-1</h2><span class="chip bad">a loop</span></div>
+<table><thead><tr><th>#</th><th>Switch</th><th>In</th><th>Flow</th><th>Out</th></tr></thead><tbody>
+<tr><td>1</td><td>ovs-1</td><td>2</td><td class="flow">t0 p100 0x0 → OUTPUT:5</td><td>5</td></tr>
+<tr><td>2</td><td>of-eos-1</td><td>1</td><td class="flow">t1 p100 0x0 → OUTPUT:4</td><td>4</td></tr>
+<tr><td>3</td><td>of-eos-2</td><td>3 <span class="faint">Ethernet3</span></td><td class="flow">t0 p120 0x4d07 → OUTPUT:5</td><td>5</td></tr>
+<tr><td>4</td><td>of-hp-1</td><td>2 <span class="faint">A2</span></td><td class="flow">t0 p100 0x0 → OUTPUT:1</td><td>1</td></tr>
+<tr class="again"><td>5</td><td>of-eos-2</td><td>3 <span class="faint">Ethernet3</span></td><td colspan="2" class="small">again, unchanged</td></tr>
+<tr class="end bad"><td colspan="5">it reaches 001c7300a0000002 port 3 a second time, unchanged: the flows forward it in a loop</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Open of-eos-2's flow in SDN › Flows</a><a class="btn sm" href="#">Open of-hp-1's flow in SDN › Flows</a></div>
+</section>
+<section class="card" aria-label="Cannot tell">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.203, TCP 8080: cannot tell, at of-hp-1</h2><span class="chip warn">cannot tell</span></div>
+<ol class="hops"><li><strong>ovs-1</strong> · in 2 → out 6</li><li class="arrow">→</li><li class="stop"><strong>of-hp-1</strong> <span class="mono">000a3e0000000001</span> · in 4 <span class="faint">A4</span></li></ol>
+<table><tbody>
+<tr class="end warn"><td>the flow at priority 100 in table 0 (cookie 0x0) sends it to a group, whose buckets the trace does not read</td></tr>
+</tbody></table>
+<p class="small muted" style="margin:0">The other reasons it names, each with its flow: NORMAL (the switch's own forwarding); a VLAN, MPLS or PBB push or pop; a match on a field the trace does not build; two flows at one priority with different actions (OpenFlow 1.3.5 5.3 leaves which applies undefined); a goto to an earlier table; an action the driver could not read.</p>
+<div class="row"><a class="btn sm" href="#">Open the flow in SDN › Flows</a></div>
+</section>
+<section class="card" aria-label="A switch not read">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.211, TCP 443: cannot tell, of-eos-2's table not read</h2><span class="chip warn">cannot tell</span></div>
+<ol class="hops"><li><strong>ovs-1</strong> · in 2 → out 5</li><li class="arrow">→</li><li><strong>of-eos-1</strong> · in 1 → out 7</li><li class="arrow">→</li><li class="stop"><strong>of-eos-2</strong> <span class="mono">001c7300a0000002</span> · in 3, not read</li></ol>
+<table><tbody>
+<tr class="end warn"><td>it reaches 001c7300a0000002 port 3, and its flow table could not be read: no answer</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">SDN › Controllers</a></div>
+</section>
+<section class="card" aria-label="Leaves the fabric">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.202, TCP 443: leaves the fabric at ovs-2</h2><span class="chip">leaves the fabric</span></div>
+<ol class="hops"><li><strong>ovs-1</strong> · in 2 → out 5</li><li class="arrow">→</li><li><strong>ovs-2</strong> <span class="mono">0000000000000022</span> · in 1 → out 6 <span class="faint">ovs2-eth6</span></li></ol>
+<table><tbody>
+<tr class="end neutral"><td>it leaves the fabric by 0000000000000022 port 6, where the controller lists no link and no host</td></tr>
+</tbody></table>
+<p class="small muted" style="margin:0">Where the controller's knowledge ends, in grey, as a routed trace's "leaves the network" (C696).</p>
+</section>
+</div>
+<section class="card" style="padding:0" aria-label="Every ending">
+<div style="padding:14px 18px 0"><h2>Every ending, its chip, and what the card offers</h2></div>
+<table>
+<thead><tr><th>Outcome (<span class="mono">trace.py</span>)</th><th>Chip</th><th>The ending's words</th><th>Offers</th></tr></thead>
+<tbody>
+<tr class="grp"><td colspan="4">The answer's state: delivered</td></tr>
+<tr><td class="mono">delivered</td><td><span class="chip ok">delivered</span></td><td>&lt;dpid&gt; port &lt;n&gt; is the destination's port</td><td>Trace the reverse · Copy the hops</td></tr>
+<tr class="grp"><td colspan="4">Not delivered</td></tr>
+<tr><td class="mono">dropped</td><td><span class="chip bad">dropped by a flow</span></td><td>the flow … sends it nowhere (no output), so the switch drops it</td><td>Open the flow in SDN › Flows · the policy when Mercury's</td></tr>
+<tr><td class="mono">dropped</td><td><span class="chip bad">dropped</span></td><td>&lt;dpid&gt; port &lt;n&gt; is the port it came in by, and OpenFlow sends a packet back out its ingress port only by IN_PORT</td><td>Open the flow</td></tr>
+<tr><td class="mono">dropped</td><td><span class="chip bad">dropped</span></td><td>&lt;dpid&gt; port &lt;n&gt; is not a port the controller lists for the switch, and an output to a port that does not exist is dropped (OpenFlow 1.3.5 5.10)</td><td>Open the flow</td></tr>
+<tr><td class="mono">no_match</td><td><span class="chip bad">no flow matched</span></td><td>no flow in table &lt;t&gt; takes it, and with no table-miss entry OpenFlow 1.3.5 5.4 drops it by default</td><td>Open the switch's table in SDN › Flows</td></tr>
+<tr><td class="mono">elsewhere</td><td><span class="chip bad">to another host</span></td><td>it leaves by &lt;dpid&gt; port &lt;n&gt;, where the controller lists &lt;host&gt;, not the destination</td><td>Open the flow</td></tr>
+<tr><td class="mono">loop</td><td><span class="chip bad">a loop</span></td><td>it reaches &lt;dpid&gt; port &lt;n&gt; a second time, unchanged: the flows forward it in a loop</td><td>Open each flow in the loop</td></tr>
+<tr><td class="mono">to_controller</td><td><span class="chip warn">to the controller</span></td><td>&lt;dpid&gt; sends it to the controller, which decides what to do with it …</td><td>Open the switch in SDN › Flows</td></tr>
+<tr><td class="mono">leaves</td><td><span class="chip">leaves the fabric</span></td><td>it leaves the fabric by &lt;dpid&gt; port &lt;n&gt;, where the controller lists no link and no host</td><td>(none)</td></tr>
+<tr><td class="mono">local</td><td><span class="chip">to the switch itself</span></td><td>&lt;dpid&gt; sends it to its own local port</td><td>Open the flow</td></tr>
+<tr class="grp"><td colspan="4">Cannot tell</td></tr>
+<tr><td class="mono">unknown</td><td><span class="chip warn">cannot tell</span></td><td>the flow … &lt;what it does that the trace does not model&gt;</td><td>Open the flow</td></tr>
+<tr><td class="mono">not_read</td><td><span class="chip warn">cannot tell</span></td><td>it reaches &lt;dpid&gt; port &lt;n&gt;, and &lt;its table could not be read: why&gt;</td><td>SDN › Controllers</td></tr>
+<tr><td class="mono">(more)</td><td><span class="chip warn">cannot tell</span></td><td>&lt;n&gt; branches past the 256 drawn</td><td>artboard F</td></tr>
+</tbody></table>
+</section>
+<p class="callout">Colour is the result's (CLAUDE.md, "Colour is part of the result"): green only for delivered; red for every ending that stops the packet short or sends it where it was not meant to go; amber where the trace cannot follow (it is never called delivered or dropped); grey where the fabric's knowledge ends. An unauthorised flow on a hop is marked as SDN › Flows marks it. Every IPv4 case traces the same way in IPv6 (ICMPv6, TCP or UDP over IPv6).</p>
+</main>
+</div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · A stale read, busy, and failure</strong>: an answer from tables older than their promise is said above it and never green; the button is busy on itself until the answer arrives; an answer that cannot be drawn says so in place.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="cols">
+<section class="card" aria-label="A stale read">
+<div class="row" style="justify-content:space-between"><h2>192.0.2.101 to 192.0.2.202, TCP 443: delivered through 4 switches, as last read</h2><span class="chip">delivered, as read 22 min ago</span></div>
+<p class="notice warn">ctl-1 has not been read since 13:41:07 UTC (22 minutes ago): connection refused. This is where the packet went through the tables as they were then; the switches may hold other flows now. <a href="#">SDN › Controllers</a></p>
+<ol class="hops"><li><strong>ovs-1</strong> <span class="mono">0000000000000011</span> · in 2 → out 5</li><li class="arrow">→</li><li><strong>of-eos-1</strong> · in 1 → out 7</li><li class="arrow">→</li><li><strong>of-eos-2</strong> · in 3 → out 2</li><li class="arrow">→</li><li><strong>ovs-2</strong> · in 1 → out 4</li></ol>
+<p class="faint small" style="margin:0">The hops table as in B. The answer redraws when ctl-1 is read again.</p>
+<div class="row"><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Copy the hops</a><a class="btn sm" href="#">Clear the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<div style="display:flex;flex-direction:column;gap:14px">
+<section class="card" aria-label="Busy">
+<h3>Busy, on the control itself</h3>
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on">Flow tables (OpenFlow)</a></span><input value="192.0.2.101" style="width:120px"> to <input value="192.0.2.202" style="width:120px"><select><option>TCP</option></select><input value="443" style="width:55px"><span class="btn sm" aria-busy="true">Tracing…</span><a href="#" class="how"><i class="i">i</i></a></div>
+<p class="hint" style="margin:0">Disabled until the answer arrives (a read of the stored value), then the card below is replaced. The previous answer stays drawn until then.</p>
+</section>
+<section class="card" aria-label="Could not load">
+<h3>The answer could not be drawn</h3>
+<p class="notice bad" role="alert">Couldn't load: the server answered 502 Bad Gateway. No answer is shown rather than one that may be old.</p>
+<div class="row"><a class="btn sm" href="#">Trace the path</a></div>
+</section>
+<section class="card" aria-label="The walk failed">
+<h3>The walk itself failed</h3>
+<p class="notice bad" role="alert"><strong>The trace failed:</strong> the stored read could not be parsed (switch 0000000000000022's flows: not a list). Nothing was asked of the controller or any switch.</p>
+</section>
+</div>
+</div>
+<p class="callout">A stale answer keeps its outcome in words and loses its colour: "delivered, as read 22 min ago" in grey, the notice in amber saying what is old, why and since when (<span class="mono">trace()["current"]</span> false, its <span class="mono">read_at</span> and <span class="mono">read_why</span>). A switch whose own table was not read is a "cannot tell" on its hop (artboard C), not a stale answer. The "Couldn't load" line is the v2 rule for an action that cannot draw its answer.</p>
+</main>
+</div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · The routed layer beside it</strong>: one card at a time on the page, drawn side by side here. Routing (CEF) is today's Path… unchanged (board D, TopoPathTrace, as built); Flow tables is this board's. The Layer switch is the only addition to the routed side.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>Default</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div><h1 class="page">Topology <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a> <span class="muted" style="font-size:14px;font-weight:400">Default · 9 devices, 12 links, 1 external, 2 switches, 4 hosts · read 14:03 UTC</span></h1></div>
+<div class="cols">
+<section class="card" aria-label="Routing (CEF)">
+<div class="row small"><span class="seg"><a href="#" class="on" aria-pressed="true">Routing (CEF)</a><a href="#">Flow tables (OpenFlow)</a></span>From <select><option>r1</option></select> to <select><option>r5 (outside, AS 65002): 198.51.100.1, r3's peering</option></select></div>
+<div class="row"><a class="btn sm" href="#">Trace the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<h2>r1 to r5 (outside, AS 65002): 198.51.100.1, r3's peering: 2 equal-cost branches, 1 delivers, 1 does not arrive</h2>
+<p style="margin:0"><span class="chip bad">1 of 2 branches not delivered</span></p>
+<p class="small" style="margin:0">r1's forwarding table splits traffic for 198.51.100.1 between equal-cost next hops; the device chooses per flow, so some flows take each branch.</p>
+<table><thead><tr><th>Branch</th><th>Hop</th><th>Its forwarding answer for 198.51.100.1</th><th>To the next hop</th></tr></thead><tbody>
+<tr><td rowspan="3"><span class="chip ok">delivered</span></td><td class="mono">r1</td><td class="mono small">via 192.0.2.33, Gi2</td><td class="small">r1 to r3, cabled directly</td></tr>
+<tr><td class="mono">r3</td><td class="mono small">via 198.51.100.1, Gi4 (attached)</td><td class="small">r3 to r5, cabled directly</td></tr>
+<tr><td colspan="3" class="small">r5 holds 198.51.100.1</td></tr>
+<tr><td rowspan="2"><span class="chip bad">dropped</span></td><td class="mono">r1</td><td class="mono small">via 192.0.2.34, Gi3</td><td class="small">across s3, s4 <span class="faint">(layer 2, not read)</span></td></tr>
+<tr><td colspan="3" class="small" style="color:var(--danger)">r4 has no route to 198.51.100.1: dropped</td></tr>
+</tbody></table>
+<p class="faint small" style="margin:0">Read 14:02 UTC from r1, r3, r4 (3 reads, on <a href="#">History › Reads</a>).</p>
+<div class="row"><a class="btn sm" href="#">Clear the path</a><a class="btn sm" href="#">Trace again</a><a href="#" class="how"><i class="i">i</i></a></div>
+</section>
+<section class="card" aria-label="Flow tables (OpenFlow)">
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on" aria-pressed="true">Flow tables (OpenFlow)</a></span>From <input value="2001:db8:8::1" style="width:120px"> to <input value="2001:db8:8::3" style="width:120px"><select><option>ICMP echo</option></select></div>
+<div class="row"><a class="btn sm" href="#">Trace the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<h2>2001:db8:8::1 to 2001:db8:8::3, ICMPv6 echo: delivered through 2 switches</h2>
+<p style="margin:0"><span class="chip ok">delivered</span></p>
+<ol class="hops"><li><strong>s1</strong> <span class="mono">0000000000000001</span> · in 1 <span class="faint">s1-eth1</span> → out 3 <span class="faint">s1-eth3</span></li><li class="arrow">→</li><li class="dst"><strong>s2</strong> <span class="mono">0000000000000002</span> · in 3 <span class="faint">s2-eth3</span> → out 1 <span class="faint">s2-eth1</span></li></ol>
+<table><thead><tr><th>#</th><th>Switch · DPID</th><th>In</th><th>The flow that decided it</th><th>Out</th></tr></thead><tbody>
+<tr><td>1</td><td>s1 <span class="mono faint">0000000000000001</span></td><td>1</td><td class="flow">t0 p1 0x0 eth_dst=00:00:00:00:00:03 → OUTPUT:3</td><td>3</td></tr>
+<tr><td>2</td><td>s2 <span class="mono faint">0000000000000002</span></td><td>3</td><td class="flow">t0 p1 0x0 eth_dst=00:00:00:00:00:03 → OUTPUT:1</td><td>1</td></tr>
+<tr class="end ok"><td colspan="5">0000000000000002 port 1 is the destination's port: delivered.</td></tr>
+</tbody></table>
+<p class="faint small" style="margin:0">Walked through lab-ryu's tables as stored at 14:03:12 UTC; nothing was asked of the controller or any switch.</p>
+<div class="row"><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Copy the hops</a><a class="btn sm" href="#">Clear the path</a><a href="#" class="how"><i class="i">i</i></a></div>
+</section>
+</div>
+<p class="callout">What differs, and why: the routed trace reads each device (<span class="mono">show ip cef</span>, a job, a person's click, "Tracing… reading r3, r4", Trace again); the flow-table trace reads nothing new (the stored read, any viewer, redrawn as reads arrive). Both share the card, the Clear the path control, the map's colours and the How does this work? page (its SDN section added). A path that leaves the fabric toward a router ends "leaves the fabric" (grey); one question across both layers is not traced (proposed for the register). Switching Layer keeps nothing typed on the other side: From is a device there and a host here.</p>
+</main>
+</div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · A large fabric</strong>: 48 switches, a flood on the way. A summary by ending first; the delivered branch drawn with its middle hops folded; every other branch grouped by ending, closed, searchable; a hop's long pipeline folded to its count. Branches past 256 counted, never drawn.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#" class="on">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>dc-fabric</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div><h1 class="page">Topology <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a> <span class="muted" style="font-size:14px;font-weight:400">dc-fabric · 4 devices, 6 links, 48 switches, 1,912 hosts · read 14:03 UTC</span></h1></div>
+<section class="card" aria-labelledby="f-h">
+<div class="row small"><span class="seg"><a href="#">Routing (CEF)</a><a href="#" class="on">Flow tables (OpenFlow)</a></span>From <input value="198.51.100.10" style="width:130px"> to <input value="198.51.100.240" style="width:130px"><select><option>TCP</option></select> port <input value="443" style="width:55px"><a class="btn sm" href="#">Trace the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<div class="row" style="justify-content:space-between"><h2 id="f-h">198.51.100.10 to 198.51.100.240, TCP 443: delivered through 9 switches; and 211 other copies of it (flooded at spine-02), 3 of which the trace cannot follow</h2><span class="row" style="gap:6px"><span class="chip ok">delivered</span><span class="chip warn">3 copies not followed</span></span></div>
+<div class="summary">
+<div><b style="color:var(--ok)">1</b>delivered</div><div><b style="color:var(--danger)">168</b>to other hosts' ports</div><div><b>40</b>left the fabric</div><div><b style="color:var(--warn)">3</b>cannot tell</div><div><b>0</b>loops</div><div><b>0</b>past the 256 drawn</div>
+</div>
+<p class="small muted" style="margin:0">Flooded at spine-02 (<span class="mono">00000000000002a2</span>) by the flow at priority 1 in table 0 (cookie 0x0): OUTPUT:FLOOD, every listed port but the one it came in by (47).</p>
+<div class="row"><input type="search" placeholder="Find a switch, DPID, port or host in the branches" style="width:320px"><select><option>Every ending</option><option>Delivered</option><option>Cannot tell</option><option>To other hosts</option><option>Left the fabric</option></select><span class="faint small">212 branches</span></div>
+<table aria-label="The branches, grouped by ending">
+<thead><tr><th style="width:20px"></th><th>#</th><th>Switch · DPID</th><th>In port</th><th>The flow that decided it</th><th>Out port</th><th>Then</th></tr></thead>
+<tbody>
+<tr class="grp"><td>▾</td><td colspan="6">Delivered (1): 9 switches</td></tr>
+<tr><td>▸</td><td>1</td><td>leaf-01 <span class="mono faint">00000000000001a1</span></td><td>12 <span class="faint">Ethernet12</span></td><td class="flow">t0 p100 0x0 → GOTO_TABLE:1 <span class="faint">· 5 flows, tables 0 to 4 ▸</span></td><td>49 <span class="faint">Ethernet49/1</span></td><td class="small">link to spine-02 port 1</td></tr>
+<tr><td>▸</td><td>2</td><td>spine-02 <span class="mono faint">00000000000002a2</span></td><td>1 <span class="faint">Ethernet1/1</span></td><td class="flow">t0 p1 0x0 → OUTPUT:FLOOD <span class="chip">flooded, 47 ports</span></td><td>7 <span class="faint">Ethernet7/1</span></td><td class="small">link to leaf-07 port 49</td></tr>
+<tr><td></td><td colspan="6"><a href="#">▸ Hops 3 to 7 (5 switches: leaf-07, agg-03, agg-04, spine-05, leaf-19)</a></td></tr>
+<tr><td>▸</td><td>8</td><td>leaf-23 <span class="mono faint">00000000000001b7</span></td><td>50 <span class="faint">Ethernet50/1</span></td><td class="flow">t1 p100 0x0 eth_dst=… → OUTPUT:49</td><td>49 <span class="faint">Ethernet49/1</span></td><td class="small">link to tor-23a port 1</td></tr>
+<tr><td>▸</td><td>9</td><td>tor-23a <span class="mono faint">00000000000003c1</span></td><td>1 <span class="faint">eth1</span></td><td class="flow">t0 p100 0x0 eth_dst=… → OUTPUT:14</td><td>14 <span class="faint">eth14</span></td><td class="small">198.51.100.240's port</td></tr>
+<tr class="end ok"><td></td><td colspan="6">00000000000003c1 port 14 is the destination's port: delivered.</td></tr>
+<tr class="grp"><td>▾</td><td colspan="6">Cannot tell (3)</td></tr>
+<tr><td>▸</td><td colspan="2">spine-02 → leaf-31</td><td colspan="4" class="small" style="color:var(--warn)">it reaches 00000000000001c5 port 49, and its flow table could not be read: no answer (2 branches)</td></tr>
+<tr><td>▸</td><td colspan="2">spine-02 → leaf-40</td><td colspan="4" class="small" style="color:var(--warn)">the flow at priority 100 in table 0 (cookie 0x0) sends it to a group, whose buckets the trace does not read</td></tr>
+<tr class="grp"><td>▸</td><td colspan="6">To other hosts' ports (168): at 31 switches, 3 hops each <span class="faint" style="font-weight:400">· first: leaf-04 port 3, 198.51.100.41</span></td></tr>
+<tr class="grp"><td>▸</td><td colspan="6">Left the fabric (40): at 12 switches <span class="faint" style="font-weight:400">· first: border-01 port 48, no link and no host listed</span></td></tr>
+</tbody></table>
+<p class="notice"><strong>Past the 256 drawn:</strong> a larger flood says "and N more branches, counted, not drawn" here, and the answer is "cannot tell" unless one drawn branch is delivered (<span class="mono">trace.MAX_BRANCHES</span>).</p>
+<div class="row"><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Copy the hops</a><a class="btn sm" href="#">Clear the path</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</section>
+<p class="callout">Folding: a branch longer than 6 hops shows its first two and last two with the middle as one row naming the switches; a hop with more than one flow shows the deciding flow and "N flows, tables a to b ▸". Groups follow the summary's order (delivered, then cannot tell, then the rest), the delivered one open, the others closed; Find filters the branches to those passing a switch, DPID, port or host, and says how many match. The map draws the delivered branch only, with "211 other copies" in its legend. The walk's own work is the hops it walks times each table's flows: no per-switch read per request.</p>
+</main>
+</div>
+
+<!-- ============================================================ G -->
+<div class="artlabel"><strong>G · Phone width (390)</strong>: the card above the tab's content, as today's Path…; the form wraps; the hops are stacked rows, each a switch with its DPID and both ports, its flow on expand.</div>
+<div class="art" style="padding:24px 32px;gap:32px;align-items:flex-start">
+<div class="phone">
+<div class="pbar"><span>☰ Topology</span><span>campus-sdn</span></div>
+<div class="pbody">
+<section class="card" style="padding:12px">
+<span class="seg"><a href="#">Routing</a><a href="#" class="on">Flow tables</a></span>
+<label class="field">From<input value="192.0.2.101"></label>
+<label class="field">to<input value="192.0.2.202"></label>
+<div class="row"><select><option>TCP</option></select><input value="443" style="width:70px"><a class="btn sm" href="#">Trace the path</a></div>
+<h2>192.0.2.101 to 192.0.2.202, TCP 443: delivered through 4 switches</h2>
+<span><span class="chip ok">delivered</span> <span class="faint small">read 18 s ago</span></span>
+<table><tbody>
+<tr><td>▸ <strong>1 ovs-1</strong><div class="mono faint">0000000000000011</div><div class="small">in 2 ovs1-eth2 → out 5 ovs1-eth5</div></td></tr>
+<tr><td>▾ <strong>2 of-eos-1</strong><div class="mono faint">001c7300a0000001</div><div class="small">in 1 Ethernet1 → out 7 Ethernet7</div><div class="flow" style="margin-top:4px">t0 p200 0x4d01 → GOTO_TABLE:1<br>t1 p100 0x0 → OUTPUT:7</div><a href="#" class="small">Open in SDN › Flows</a></td></tr>
+<tr><td>▸ <strong>3 of-eos-2</strong><div class="mono faint">001c7300a0000002</div><div class="small">in 3 Ethernet3 → out 2 Ethernet2</div></td></tr>
+<tr><td>▸ <strong>4 ovs-2</strong><div class="mono faint">0000000000000022</div><div class="small">in 1 ovs2-eth1 → out 4 ovs2-eth4</div></td></tr>
+<tr class="end ok"><td>port 4 is the destination's port: delivered.</td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Trace the reverse</a><a class="btn sm" href="#">Copy the hops</a><a class="btn sm" href="#">Clear the path</a></div>
+</section>
+</div>
+</div>
+<p class="callout" style="max-width:520px">At phone width the Layer switch's words shorten to Routing and Flow tables; the one-line DPID strip of B is the stacked rows themselves, so it is not drawn twice. The large fabric's summary and groups are B's and F's, one column.</p>
+</div>
+
+<!-- ============================================================ decisions -->
+<div class="artlabel"><strong>Decided by practice</strong>: each with its source; none waits on the operator.</div>
+<div class="q"><h3>D1 · One home: Topology › Path… gains a Layer switch; SDN › Flows links to it</h3><ul><li>Source: docs/LAB9_SDN_GAP.md section 5 ("The trace has one home"); CLAUDE.md, "One owner per piece of state; one home per action". The switch appears only on a network with both a controller layer and routing devices; with one, that one alone.</li></ul></div>
+<div class="q"><h3>D2 · The question: source, destination, protocol, destination port</h3><ul><li>Source: Cisco Catalyst Center's Path Trace asks a source and destination address with an optional protocol and ports; <span class="mono">trace.packet_of</span> takes ICMP, TCP or UDP and a destination port, its source port fixed at 49152 (RFC 6335 6), said in "The packet traced". No source-port field, no "Custom…" packet (lab9-sdn.html's sketch had one; the walk models only these three).</li></ul></div>
+<div class="q"><h3>D3 · Each hop's evidence in Open vSwitch's trace shape, one level down</h3><ul><li>Source: Open vSwitch's <span class="mono">ofproto/trace</span> (ovs-vswitchd(8)) names, per bridge, each table visited with the flow's priority, cookie, match and actions in pipeline order. The hop row shows the deciding flow; its expansion every flow the pipeline ran; CLAUDE.md, "The screen answers the person's question; the evidence is one level down".</li></ul></div>
+<div class="q"><h3>D4 · The answer follows the stored read; no Trace again; any viewer may trace</h3><ul><li>Source: <span class="mono">trace.py</span> reads the SDN reader's stored value and asks nothing; docs/LAB_READINESS.md "A5: the trace" (a GET, in neither route_gates nor invalidation); CLAUDE.md, "A change leaves every screen showing the new state" and "one decision, one control". The card redraws as each read arrives and shows its read time; the routed trace keeps its Trace again and its person-only gate because it reads devices.</li></ul></div>
+<div class="q"><h3>D5 · Colours by ending; a stale answer is never green</h3><ul><li>Source: CLAUDE.md, "Colour is part of the result: never green over a partial" and "Never let a wrong thing look like a working thing"; C696's grey for where knowledge ends (docs/fidelity/topology.md). Delivered green; short or misdirected red; cannot tell amber; leaves the fabric and local grey; a stale answer grey with an amber notice.</li></ul></div>
+<div class="q"><h3>D6 · Names: a switch by what it reports with its 16-digit DPID; a host by its address; a port by number and name</h3><ul><li>Source: board F (TopoSdn) and its S14 deviations, and board F revised (a host by its address); <span class="mono">drivers.base.dpid_hex</span>; the lab's bonus asks ingress and egress ports, given as both.</li></ul></div>
+<div class="q"><h3>D7 · Large fabrics: summary first, delivered branch open, the rest grouped and closed, hops and pipelines folded, branches past 256 counted</h3><ul><li>Source: CLAUDE.md, "Built for large fleets"; <span class="mono">trace.MAX_BRANCHES</span>. From and to take any address or MAC with suggestions of the matching hosts (the first 20), never a list of every host.</li></ul></div>
+<div class="q"><h3>D8 · Trace the reverse, Copy the hops</h3><ul><li>Source: Catalyst Center's Path Trace offers the reverse path; OpenFlow forwards each direction by its own flows. Copy the hops copies <span class="mono">trace()["words"]</span>, the answer the lab asks for, so no one retypes DPIDs (CLAUDE.md, "Mercury automates labour").</li></ul></div>
+<div class="q"><h3>D9 · Refusals in the walk's words; the two-places refusal offers each MAC</h3><ul><li>Source: CLAUDE.md, "A refusal or guard names the comparison it made and both operands"; <span class="mono">trace.find_host</span>, which says to give the MAC. Each MAC is a button that fills From (or to) and traces.</li></ul></div>
+
+<div class="artlabel"><strong>The build</strong>: about 1.25 agent-days for the screen (the route, the Layer switch, the card and its states, the large-fabric folding, SDN › Flows' link, the browser and layout tests, and docs/fidelity/topology.md's section), and 0.25 for the manual's Path… SDN section and its How it works page: about 1.5 agent-days (about 2 h and 6M weighted tokens). The Lab 9 capture (0.25, docs/LAB_READINESS.md) is separate.</div>
+<div style="height:40px"></div>
+</body>
+</html>
