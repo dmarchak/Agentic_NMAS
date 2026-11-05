@@ -673,6 +673,15 @@ and records. The model never changes permissions. Offline parity (non-negotiable
 with AI off, every workflow works. Each item below is marked **DECIDED** (the operator's, section
 9) or **PROPOSED** (pending the operator, section 9 decision 12).
 
+**Added 2026-11-04 (the operator; a Stage 10 research track, after both labs):**
+[LOCAL_MODEL.md](LOCAL_MODEL.md) designs Mercury's OWN local model for closed networks:
+- small (0.3 to 1.5B, 4-bit, under about 1 GB, CPU only), fine-tuned for four narrow tasks;
+- improved by the installation's outcome-verified labels, its promotion the operator's;
+- beside the controlled language that every provider shares.
+
+It keeps this section's decided rules: US origin, one adapter per API shape, only qualified
+models offered.
+
 ### 10.1 What the built-in model is for
 
 A model that runs on the NMAS host itself, with no account, no per-token cost and no egress after

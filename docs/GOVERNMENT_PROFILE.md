@@ -781,3 +781,145 @@ Each is a reading for the build, from the host's files, never from memory.
 4. No served asset names an external URL (9.3).
 5. A bundle that is unsigned, or signed by another key, is refused (9.4).
 6. The acceptance test of 9.6, as a recorded walk with its packet and DNS log.
+
+## 10. Offline installation (the operator, 2026-11-04; design only, built after both labs)
+
+Air-gapped mode (section 9) says what an isolated installation never does. This section says how
+one gets there: Mercury installed on an isolated host from an external drive, and updated the
+same way.
+
+### 10.1 One signed bundle per release
+
+- **What it holds:**
+  - every container image, written with `docker save`: Mercury; NetBox with PostgreSQL and its
+    cache (Redis, or Valkey as today's host runs); Grafana; Prometheus; Loki; Kea; the SDN
+    controller;
+  - the Compose files;
+  - Python wheels, if any remain outside the images;
+  - the manual;
+  - the installer.
+- **Docker is the one prerequisite (recommended).** The alternative, Docker's packages inside
+  the bundle for each supported OS, ties every release to each OS's package versions and its
+  signing keys, and a site's own approved repository already carries Docker Engine.
+  - The installer checks Docker's version first and refuses, naming the version found and the
+    one needed.
+  - The OS's package is installed through the site's own approved repository, as any other
+    package is.
+- **The local AI model's weights are a separate, optional bundle** (10.7).
+
+### 10.2 Integrity
+
+- **The manifest:** a plain-text SHA-256 manifest of every file in the bundle.
+- **The signature:** a detached signature over the manifest.
+  - **Recommended: cosign with a key pair, not keyless.** One tool and one key sign both the
+    bundle's manifest (`cosign sign-blob`) and the images a site pushes to its internal
+    registry. It verifies offline with a public key and needs no transparency log. It is the
+    signing tool the container world, the DoD's included, already uses for images.
+  - **The lighter alternative is minisign:** one small binary and a one-line public key, but it
+    signs files only, so an internal registry's images would need a second tool.
+  - GPG works and is familiar, but its key handling is the hardest to get right.
+- **The verifier ships, so its licence is the operator's:** cosign is Apache-2.0.
+- **The installer verifies both before it loads anything:** the signature against the public key
+  pinned at setup, and every file against the manifest. It refuses a bundle that is modified (a
+  hash differs) or incomplete (a file missing, or one not in the manifest), naming each file.
+- **The public key is distributed out of band** (on the site's own channel, never inside the
+  bundle it verifies), and its fingerprint is printed in the manual.
+
+### 10.3 Included for reviewers
+
+- **An SBOM per image and one for the bundle:** SPDX recommended (ISO/IEC 5962, and the format
+  federal software attestation most often asks for); CycloneDX could be added later, generated
+  from the same scan.
+- **The release's vulnerability scan report** over every image, with its scanner, its database
+  date and each finding's state.
+- **The licence notices** of everything shipped (NSOT_STAGE10_PLAN 8.2a's audit).
+
+### 10.4 One install path
+
+- **The online installer downloads the same bundle and runs the same installer,** so one
+  acceptance test covers both, and no second path drifts from the tested one.
+- **The download** is the only step the online path adds, and the signature check runs on what
+  was downloaded, as it does on the drive's copy.
+
+### 10.5 Updates use the same bundle format (C2370)
+
+1. Verify the bundle (10.2).
+2. Load the images.
+3. Run the migrations, each expand then contract, so the previous release can still read the
+   data (CLAUDE.md).
+4. Run the post-update checks: the smoke check's pages, /health on the new commit, every
+   service's own check.
+5. Roll back on a failed check, to the previous images, which are kept until the next update.
+
+The CI verdict travels inside the bundle as a signed record (9.4), so an isolated update never
+asks GitHub.
+
+### 10.6 Easy to scan under a site's media-transfer process
+
+- **Plain contents:** a manifest a reviewer can read, and no packed or self-extracting
+  executables. Images are `docker save` tar files, the installer is a script a reviewer can
+  read, and the bundle is a plain directory or an uncompressed tar of one.
+- **The documentation says the bundle goes through the site's own media-transfer process** (its
+  scanning and approval) before it reaches the isolated network, and that Mercury does not
+  replace that process.
+
+### 10.7 The local AI model's weights: a separate, optional bundle
+
+- **Its own bundle:** the same format, manifest and signature, so a site that wants no AI never
+  carries the weights.
+- **The design:** docs/LOCAL_MODEL.md, Mercury's own model for closed networks.
+
+### 10.8 The acceptance test
+
+- **The setup:** install from the bundle on a fresh VM with no route out, in the same logging
+  namespace as 9.6.
+- **The walk:** run the setup wizard, then walk the app (the manual's screens and operations).
+- **PASS:** installed and working, with zero logged outbound attempts.
+
+### 10.9 The bundle's size, estimated from today's images
+
+Measured 2026-11-05 ~00:1x UTC on the NMAS host:
+- images by `docker image inspect`, uncompressed;
+- the packaged services' installed sizes by `dpkg-query`, as a proxy for their images;
+- Mercury's venv and checkout by `du`.
+
+| Part | Size | Source |
+|---|---|---|
+| NetBox (`netboxcommunity/netbox:v4.6-5.0.2`) | 256 MB | measured, the image |
+| PostgreSQL (`postgres:18-alpine`) | 120 MB | measured, the image |
+| Valkey (`valkey/valkey:9.1-alpine`), NetBox's cache | 19 MB | measured, the image |
+| Loki (`grafana/loki:3.3.2`) | 33 MB | measured, the image |
+| The SDN controller (`mercury-lab-ryu:4.34`) | 59 MB | measured, the image |
+| snmp_exporter (`prom/snmp-exporter:v0.29.0`) | 12 MB | measured, the image |
+| Grafana | about 1.3 GB | its installed package (1,327,741 KiB); an image is likely smaller, not measured |
+| Grafana Alloy | about 0.5 GB | its installed package (538,626 KiB) |
+| Prometheus | about 0.1 GB | its installed package (107,782 KiB) |
+| Kea | under 0.1 GB | its installed packages are small; its image is not measured |
+| Mercury | about 0.4 GB | its venv (176 MB) and checkout (81 MB, without `.git` and `data/`) on a Python base image of about 0.15 GB (estimated) |
+| The manual, the installer, the manifest, the SBOMs and the scan report | under 0.05 GB | the manual measured at 1.5 MB |
+| **Total** | **about 2.9 GB uncompressed** | about 0.5 GB of it measured as images, the rest from installed sizes |
+
+- **Compressed,** `docker save` output usually shrinks by 40 to 60%, so about 1.2 to 1.8 GB.
+  That ratio is an estimate, to be measured by saving each image when the bundle is built.
+- **The local model's bundle** is separate and comes on top (LOCAL_MODEL.md: under about 1 GB
+  for a small 4-bit model).
+- **The job image of the local CI runner** (749 MB) is a development tool, never in the bundle.
+
+### 10.10 Required tests (written when it is built)
+
+1. A bundle with one byte changed, a file missing, an extra file or a bad signature is refused
+   before anything is loaded, naming the file or the key.
+2. The installer refuses a Docker older than the one it needs, naming both versions.
+3. The online path and the drive's run the same installer on the same bundle (one test).
+4. An update rolls back to the kept images when a post-update check fails.
+5. The bundle holds no packed or self-extracting executable (a scan of its files' types).
+6. The acceptance test of 10.8.
+
+## 11. Mercury's own local model, and the controlled language
+
+The design note is [LOCAL_MODEL.md](LOCAL_MODEL.md): a small US-origin model, fine-tuned for
+Mercury's narrow tasks and served inside the installation. It covers its continual-learning loop,
+and the controlled language every provider shares. Two of its open questions are this profile's:
+- whether a signed model shipped inside the installation, with no egress, may be the AI option on
+  SECRET and COLORLESS, added through the shipped list (4.1);
+- the classification its training data gives the model (it never leaves its domain).
