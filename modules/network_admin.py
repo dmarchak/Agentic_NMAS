@@ -72,6 +72,27 @@ def create(name: str, fingerprint: str, actor: str, verified: str) -> dict:
     return dict(entry, ok=True, name=pv["name"], folder=pv["folder"])
 
 
+def make_current(name: str, actor: str, verified: str) -> dict:
+    """Make the network *name* the installation's current one (`device.set_installation_list`),
+    recorded in the installation's settings record when it moved (C2521: the laptop kit's
+    `init`, so Mercury opens on its network). No screen calls it: the picker records a person's
+    own choice. Raises `Refused` naming the network when it is not registered."""
+    from modules import device
+    from modules import installation_settings as IS
+
+    before = device.get_current_device_list()[0]
+    changed, msg = device.set_installation_list((name or "").strip())
+    if not changed and before != (name or "").strip():
+        raise Refused(msg)
+    if not changed:
+        return {"ok": True, "changed": False, "name": before, "message": msg}
+    entry = IS._record({"kind": "network_current", "actor": actor, "actor_verified": verified,
+                        "fields": [name.strip()],
+                        "changes": [{"key": "current_list", "label": "Current network",
+                                     "kind": "text", "old": before, "new": name.strip()}]})
+    return dict(entry, ok=True, changed=True, name=name.strip(), message=msg)
+
+
 def _git_count(repo_dir: str, *args) -> int:
     from modules.nsot.repo import run_git
 

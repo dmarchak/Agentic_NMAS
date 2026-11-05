@@ -3,7 +3,8 @@
 # on this laptop, run from a clean worktree at a pinned sha, never the main working tree.
 #
 #   kit init SHA       the kit folder, the worktree at SHA, NetBox's secrets, images, settings
-#   kit repin SHA      the worktree moved to SHA (a fix on lab9-live), Mercury stopped first
+#   kit repin SHA      the worktree moved to SHA (a fix on lab9-live), Mercury stopped first;
+#                      then the settings init again, adding only what is missing
 #   kit start          the check, the identity exception, NetBox, Mercury (loopback only)
 #   kit stop           the identity gates restored (recorded), Mercury and NetBox stopped
 #   kit status         what runs, the pinned sha, the last identity exception
@@ -144,6 +145,9 @@ cmd_repin() {    # the kit moved to another commit (a fix committed on lab9-live
   git -C "$WT" checkout -q --detach "$sha"
   sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
   echo "kit: repinned at $(git -C "$WT" log -1 --format='%h %s' | cut -c1-90)"
+  # The new commit's settings (the operator, 2026-11-05): init adds what is missing and keeps
+  # every value already stored; kit.env is never rewritten here, only its PIN_SHA above.
+  in_wt "$PY" "$HERE/kit_settings.py" init
 }
 
 cmd_check() {

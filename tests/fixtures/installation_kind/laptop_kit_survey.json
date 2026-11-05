@@ -1,0 +1,370 @@
+{
+ "cached": {
+  "app-pushed": {
+   "doc": {
+    "endpoints": [
+     "the application repository's origin, by `git ls-remote origin refs/heads/main`"
+    ],
+    "failing_since": "2026-11-05T05:59:32Z",
+    "interval_basis": "a pushed commit waits on a person's deploy, which is minutes, not seconds; one ls-remote is about 1 s (measured for the list repositories, 2026-09-29)",
+    "interval_seconds": 300,
+    "last_attempt": {
+     "at": "2026-11-05T05:59:32Z",
+     "error": "RuntimeError: git ls-remote origin refs/heads/main answered nothing (fatal: unable to access 'https://github.com/<account>/Agentic_NMAS.git/': Could not resolve host: github.com)",
+     "ok": false,
+     "took_ms": 6,
+     "trigger": {
+      "kind": "scheduled"
+     }
+    },
+    "last_good": null,
+    "reader": "app-pushed",
+    "runs": [
+     {
+      "at": "2026-11-05T05:59:32Z",
+      "ok": false,
+      "took_ms": 6,
+      "trigger": {
+       "kind": "scheduled"
+      }
+     }
+    ],
+    "stale_after_seconds": 900,
+    "what": "whether the running commit is what is pushed: this process's commit against origin/main",
+    "window": "origin/main's tip at the read, against the commit this process loaded"
+   },
+   "state": "ok",
+   "why": ""
+  },
+  "ci-agreement": {
+   "doc": {
+    "endpoints": [
+     "GitHub Actions push runs on main, and a red run's jobs",
+     "the local CI runner's verdict store (/var/lib/nmas-local-ci)"
+    ],
+    "failing_since": "2026-11-05T05:59:32Z",
+    "interval_basis": "GitHub allows 60 unauthenticated requests an hour per address, shared with nmas-deploy and the other readers; a read costs one, plus one per new red, so every 15 min is about 4 an hour; a red after a deploy is said within 15 min of GitHub recording it",
+    "interval_seconds": 900,
+    "last_attempt": {
+     "at": "2026-11-05T05:59:32Z",
+     "error": "RuntimeError: GitHub's runs on main could not be read (URLError: [Errno -3] Temporary failure in name resolution)",
+     "ok": false,
+     "took_ms": 13,
+     "trigger": {
+      "kind": "scheduled"
+     }
+    },
+    "last_good": null,
+    "reader": "ci-agreement",
+    "runs": [
+     {
+      "at": "2026-11-05T05:59:32Z",
+      "ok": false,
+      "took_ms": 13,
+      "trigger": {
+       "kind": "scheduled"
+      }
+     }
+    ],
+    "stale_after_seconds": 2700,
+    "what": "whether GitHub's CI and the local runner agree on each recent commit on main, for Needs attention (workstream 0)",
+    "window": "main's last 50 push runs at the read"
+   },
+   "state": "ok",
+   "why": ""
+  },
+  "ci-verdict": {
+   "doc": {
+    "endpoints": [
+     "GitHub Actions runs for the running commit (and its ancestors when it has none)"
+    ],
+    "failing_since": null,
+    "interval_basis": "GitHub allows 60 unauthenticated requests an hour per address, shared with nmas-deploy; a verdict costs 1, up to 11 walking back (C170), so every 15 min is about 4 an hour and 44 at worst",
+    "interval_seconds": 900,
+    "last_attempt": {
+     "at": "2026-11-05T05:59:32Z",
+     "ok": true,
+     "took_ms": 4,
+     "trigger": {
+      "kind": "scheduled"
+     }
+    },
+    "last_good": {
+     "read_started": 1793858372.3005404,
+     "took_ms": 4,
+     "trigger": {
+      "kind": "scheduled"
+     },
+     "value": {
+      "code": 2,
+      "commit": "c67f7a54bacaef45c2453ddd0e02e9cc0bc9f4ae",
+      "sentence": "could not ask CI about c67f7a54ba (URLError: [Errno -3] Temporary failure in name resolution). Refused: an unverified commit is never deployed. Retry, or run `nmas-deploy --offline` to run the suite here.",
+      "source": "github",
+      "state": "could_not_ask"
+     },
+     "value_at": "2026-11-05T05:59:32Z"
+    },
+    "reader": "ci-verdict",
+    "runs": [
+     {
+      "at": "2026-11-05T05:59:32Z",
+      "ok": true,
+      "took_ms": 4,
+      "trigger": {
+       "kind": "scheduled"
+      }
+     }
+    ],
+    "stale_after_seconds": 2700,
+    "what": "the running commit's CI verdict, by nmas-deploy's own gate, for the status bar",
+    "window": "the verdict at the read, for the commit named in the value"
+   },
+   "state": "ok",
+   "why": ""
+  },
+  "grafana-alerts": {
+   "doc": {
+    "endpoints": [
+     "api/ruler/grafana/api/v1/rules",
+     "api/prometheus/grafana/api/v1/rules",
+     "api/alertmanager/grafana/api/v2/alerts",
+     "api/alertmanager/grafana/api/v2/silences",
+     "Prometheus: GET /api/v1/query, the rule's own query for each alerting series a person acknowledged within a band (C433)"
+    ],
+    "failing_since": "2026-11-05T05:59:32Z",
+    "interval_basis": "both rule groups evaluate every 60 s (measured 2026-09-28), so a faster read sees nothing new",
+    "interval_seconds": 60,
+    "last_attempt": {
+     "at": "2026-11-05T05:59:32Z",
+     "error": "ConnectionError: api/ruler/grafana/api/v1/rules: Not configured \u2014 set in Settings",
+     "ok": false,
+     "took_ms": 0,
+     "trigger": {
+      "kind": "scheduled"
+     }
+    },
+    "last_good": null,
+    "reader": "grafana-alerts",
+    "runs": [
+     {
+      "at": "2026-11-05T05:59:32Z",
+      "ok": false,
+      "took_ms": 0,
+      "trigger": {
+       "kind": "scheduled"
+      }
+     }
+    ],
+    "stale_after_seconds": 180,
+    "what": "Grafana's alert rules and instances, and the silences on them, read for Needs attention and 8.6's triage",
+    "window": "the state at the read; history is not read here (8.6 reads it uncapped)"
+   },
+   "state": "ok",
+   "why": ""
+  },
+  "scheduled-jobs": {
+   "doc": {
+    "endpoints": [
+     "GitHub Actions runs of each workflow with a schedule, and a failed run's jobs"
+    ],
+    "failing_since": "2026-11-05T05:59:35Z",
+    "interval_basis": "GitHub allows 60 unauthenticated requests an hour per address, shared with nmas-deploy and the ci-verdict reader; a read costs one per scheduled workflow and one per failed newest run, so every 30 min is 4 to 8 an hour for two workflows, and a daily job's failure is said within 30 min of GitHub recording it",
+    "interval_seconds": 1800,
+    "last_attempt": {
+     "at": "2026-11-05T05:59:35Z",
+     "error": "RuntimeError: GitHub could not be asked about any scheduled workflow: coverage-nightly.yml: GitHub's runs could not be read (URLError: [Errno -3] Temporary failure in name resolution); mutation-nightly.yml: GitHub's runs could not be read (URLError: [Errno -3] Temporary failure in name resolution)",
+     "ok": false,
+     "took_ms": 33,
+     "trigger": {
+      "kind": "scheduled"
+     }
+    },
+    "last_good": null,
+    "reader": "scheduled-jobs",
+    "runs": [
+     {
+      "at": "2026-11-05T05:59:35Z",
+      "ok": false,
+      "took_ms": 33,
+      "trigger": {
+       "kind": "scheduled"
+      }
+     }
+    ],
+    "stale_after_seconds": 5400,
+    "what": "each scheduled workflow's newest scheduled runs on main, for Needs attention (C2347)",
+    "window": "the newest scheduled runs at the read, up to 10 per workflow"
+   },
+   "state": "ok",
+   "why": ""
+  }
+ },
+ "jobs": [
+  {
+   "detail": "nmas-netbox-backup.service is not installed (systemd reports Result=success for it anyway)",
+   "max_age_minutes": 180,
+   "state": "not_installed",
+   "unit": "nmas-netbox-backup",
+   "what": "NetBox dump + config, hourly (NSOT_PLAN P.2)"
+  },
+  {
+   "detail": "nmas-netbox-restore-test.service is not installed (systemd reports Result=success for it anyway)",
+   "max_age_minutes": 3000,
+   "state": "not_installed",
+   "unit": "nmas-netbox-restore-test",
+   "what": "NetBox restore of the plain LOCAL hourly copy into a scratch postgres, daily (P.2); it does not read the encrypted off-box copies (NETBOX_BACKUP 6g)"
+  },
+  {
+   "detail": "nmas-heartbeat-check.service is not installed (systemd reports Result=success for it anyway)",
+   "max_age_minutes": 180,
+   "state": "not_installed",
+   "unit": "nmas-heartbeat-check",
+   "what": "each device's heartbeat window still fits its measured rate, hourly (C16)"
+  },
+  {
+   "detail": "nmas-telemetry-check.service is not installed (systemd reports Result=success for it anyway)",
+   "max_age_minutes": 180,
+   "state": "not_installed",
+   "unit": "nmas-telemetry-check",
+   "what": "every streaming device's telemetry alert rule is installed in Grafana, hourly (C304)"
+  },
+  {
+   "detail": "nmas-startup-check.service is not installed (systemd reports Result=success for it anyway)",
+   "max_age_minutes": 180,
+   "state": "not_installed",
+   "unit": "nmas-startup-check",
+   "what": "every device's startup config carries the credential Mercury holds, hourly (C53)"
+  },
+  {
+   "detail": "the Proxmox integration is not configured (proxmox_url, proxmox_node, proxmox_token_id, proxmox_backup_storage, proxmox_backup_vmids, proxmox_token_secret), so the nightly images are not watched -- not the same as ok",
+   "max_age_minutes": 1560,
+   "state": "not_configured",
+   "unit": "vm-images",
+   "what": "nightly VM image (vzdump) on the Proxmox host (B6)"
+  },
+  {
+   "action": {
+    "command": "nmas-setting-not-applicable kea_ztp_fragment --reason '<why>'",
+    "label": "Set kea_ztp_fragment in Settings, or record on the host that nothing here uses it (a decision with who, when and why)"
+   },
+   "detail": "EMPTY. It gates modules/nsot/ztp_responder.py:132; modules/nsot/ztp.py:817; modules/nsot/ztp.py:1186, which will refuse and say 'not configured' until it is set",
+   "max_age_minutes": 0,
+   "state": "unset_guard",
+   "unit": "setting:kea_ztp_fragment",
+   "what": "a setting a guard depends on; empty, the guard refuses with 'not configured', which reads like a check that ran (C28)"
+  },
+  {
+   "action": {
+    "command": "nmas-setting-not-applicable snmp_exporter_config --reason '<why>'",
+    "label": "Set snmp_exporter_config in Settings, or record on the host that nothing here uses it (a decision with who, when and why)"
+   },
+   "detail": "EMPTY. It gates modules/nsot/profile_propose.py:168, which will refuse and say 'not configured' until it is set",
+   "max_age_minutes": 0,
+   "state": "unset_guard",
+   "unit": "setting:snmp_exporter_config",
+   "what": "a setting a guard depends on; empty, the guard refuses with 'not configured', which reads like a check that ran (C28)"
+  },
+  {
+   "action": {
+    "command": "nmas-setting-not-applicable syslog_host --reason '<why>'",
+    "label": "Set syslog_host in Settings, or record on the host that nothing here uses it (a decision with who, when and why)"
+   },
+   "detail": "EMPTY. It gates modules/nsot/onboard.py:1040; modules/nsot/profile_propose.py:207; modules/nsot/profile_propose.py:222, which will refuse and say 'not configured' until it is set",
+   "max_age_minutes": 0,
+   "state": "unset_guard",
+   "unit": "setting:syslog_host",
+   "what": "a setting a guard depends on; empty, the guard refuses with 'not configured', which reads like a check that ran (C28)"
+  },
+  {
+   "action": {
+    "command": "nmas-setting-not-applicable yang_push_script --reason '<why>'",
+    "label": "Set yang_push_script in Settings, or record on the host that nothing here uses it (a decision with who, when and why)"
+   },
+   "detail": "EMPTY. It gates recorded by hand in settings_schema.GUARD_GATING_EMPTY_DEFAULTS, which will refuse and say 'not configured' until it is set",
+   "max_age_minutes": 0,
+   "state": "unset_guard",
+   "unit": "setting:yang_push_script",
+   "what": "a setting a guard depends on; empty, the guard refuses with 'not configured', which reads like a check that ran (C28)"
+  },
+  {
+   "action": {
+    "command": "cd <checkout>\nsudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update\nsudo install -d -o root -g root -m 0755 /usr/local/lib/nmas-update\nsudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy\nd=$(mktemp -d) && scripts/nmas-render-units --out \"$d\" deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service && cat \"$d/nmas-update.path\" \"$d/nmas-update.service\" && sudo install -o root -g root -m 0644 \"$d/nmas-update.path\" \"$d/nmas-update.service\" /etc/systemd/system/\nsudo install -d -o root -g root -m 0755 /var/lib/nmas-update\ninstall -d -m 0700 data/update/requests data/update/staging\nsudo systemctl daemon-reload\nsudo systemctl enable --now nmas-update.path\nscripts/nmas-update-check",
+    "label": "Install the updater, once, on the host, in this checkout as the service user (sudo asks for the password):",
+    "reference": "docs/UPDATE.md, \"The one-time install\""
+   },
+   "detail": "the Update button cannot act until it is installed; missing: the updater, the updater's copy of the CI gate, the path unit, the service unit",
+   "max_age_minutes": 0,
+   "state": "not_installed",
+   "unit": "updater",
+   "what": "the Update button's root-owned updater is installed, and nothing the service user can write is run as root"
+  }
+ ],
+ "readers": [
+  {
+   "action": {
+    "label": "Read the error above: it names what could not be asked"
+   },
+   "detail": "its last read of the application repository's origin, by `git ls-remote origin refs/heads/main` at 2026-11-05T05:59:32Z failed: RuntimeError: git ls-remote origin refs/heads/main answered nothing (fatal: unable to access 'https://github.com/<account>/Agentic_NMAS.git/': Could not resolve host: github.com). It has never read a value",
+   "max_age_minutes": 15,
+   "since": 1793858372,
+   "state": "never_succeeded",
+   "unit": "reader:app-pushed",
+   "what": "whether the running commit is what is pushed: this process's commit against origin/main"
+  },
+  {
+   "action": {
+    "label": "Read the error above: it names what GitHub answered"
+   },
+   "detail": "its last read of GitHub Actions push runs on main, and a red run's jobs, the local CI runner's verdict store (/var/lib/nmas-local-ci) at 2026-11-05T05:59:32Z failed: RuntimeError: GitHub's runs on main could not be read (URLError: [Errno -3] Temporary failure in name resolution). It has never read a value",
+   "max_age_minutes": 45,
+   "since": 1793858372,
+   "state": "never_succeeded",
+   "unit": "reader:ci-agreement",
+   "what": "whether GitHub's CI and the local runner agree on each recent commit on main, for Needs attention (workstream 0)"
+  },
+  {
+   "action": {
+    "label": "Read the error above: it names which of Prometheus or Loki could not be asked"
+   },
+   "detail": "its last read of Prometheus: GET /api/v1/targets, Prometheus: GET /api/v1/query (2 queries), Loki: GET /loki/api/v1/query_range (2 queries), this host: the heartbeat rules Grafana loads at 2026-11-05T05:59:32Z failed: RuntimeError: no source could be asked: targets: Prometheus is not configured; up: Prometheus is not configured; telemetry: Prometheus is not configured; syslog: Loki is not configured; heartbeat: Loki is not configured. It has never read a value",
+   "max_age_minutes": 3,
+   "since": 1793858372,
+   "state": "never_succeeded",
+   "unit": "reader:coverage-reporting",
+   "what": "when each device's monitoring data last arrived (SNMP, IP SLA, telemetry, syslog, the heartbeat), for Coverage's not-reporting cells"
+  },
+  {
+   "action": {
+    "label": "Check Grafana's URL and token in Settings \u203a Default, the Grafana card (or the network's own); the error names the endpoint that refused"
+   },
+   "detail": "its last read of api/ruler/grafana/api/v1/rules, api/prometheus/grafana/api/v1/rules, api/alertmanager/grafana/api/v2/alerts, api/alertmanager/grafana/api/v2/silences, Prometheus: GET /api/v1/query, the rule's own query for each alerting series a person acknowledged within a band (C433) at 2026-11-05T05:59:32Z failed: ConnectionError: api/ruler/grafana/api/v1/rules: Not configured \u2014 set in Settings. It has never read a value",
+   "max_age_minutes": 3,
+   "since": 1793858372,
+   "state": "never_succeeded",
+   "unit": "reader:grafana-alerts",
+   "what": "Grafana's alert rules and instances, and the silences on them, read for Needs attention and 8.6's triage"
+  },
+  {
+   "action": {
+    "label": "Check Grafana's URL and token in Settings \u203a Default, the Grafana card (or the network's own); the error names the endpoint"
+   },
+   "detail": "its last read of api/search, api/dashboards/uid/<uid>, api/frontend/settings, api/datasources at 2026-11-05T05:59:32Z failed: ConnectionError: api/search: Not configured \u2014 set in Settings. It has never read a value",
+   "max_age_minutes": 15,
+   "since": 1793858372,
+   "state": "never_succeeded",
+   "unit": "reader:grafana-dashboards",
+   "what": "every dashboard Grafana holds and its model, for the pages that render its panels"
+  },
+  {
+   "action": {
+    "label": "Read the error above: it names the workflow and what GitHub answered"
+   },
+   "detail": "its last read of GitHub Actions runs of each workflow with a schedule, and a failed run's jobs at 2026-11-05T05:59:35Z failed: RuntimeError: GitHub could not be asked about any scheduled workflow: coverage-nightly.yml: GitHub's runs could not be read (URLError: [Errno -3] Temporary failure in name resolution); mutation-nightly.yml: GitHub's runs could not be read (URLError: [Errno -3] Temporary failure in name resolution). It has never read a value",
+   "max_age_minutes": 90,
+   "since": 1793858375,
+   "state": "never_succeeded",
+   "unit": "reader:scheduled-jobs",
+   "what": "each scheduled workflow's newest scheduled runs on main, for Needs attention (C2347)"
+  }
+ ]
+}

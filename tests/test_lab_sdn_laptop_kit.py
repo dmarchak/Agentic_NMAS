@@ -375,6 +375,222 @@ class TestNetBoxWritesOnForAFreshKit:
             not json.loads((data / "user_settings.json").read_text()).get("netbox_allow_writes")
 
 
+class TestInitMarksTheKitAndOpensOnLab9:
+    """C2521 (the operator, 2026-11-05): `kit init` writes `installation_kind: laptop_kit`, so
+    Needs attention marks the server's own checks not applicable (tests/test_installation_kind),
+    and makes lab9 the installation's current network, so Mercury opens on it: the kit has no
+    verified person whose own choice the picker could record. Run as the kit runs it."""
+
+    def _init(self, data):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), "init"],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, NMAS_DATA_DIR=str(data)))
+
+    def _records(self, data):
+        path = data / "settings_record.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()
+                if '"network_current"' in line] if path.exists() else []
+
+    def test_it_sets_the_kind_and_makes_lab9_current_recorded(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._init(data)
+        assert r.returncode == 0, r.stderr
+        settings = json.loads((data / "user_settings.json").read_text())
+        assert settings["installation_kind"] == "laptop_kit"
+        registry = json.loads((data / "device_lists.json").read_text())
+        assert registry["current_list"] == "lab9" and "lab9" in registry["lists"]
+        assert "lab9: the installation's current network (recorded in History)" in r.stdout
+        (rec,) = self._records(data)
+        assert rec["changes"][0]["old"] == "Default" and rec["changes"][0]["new"] == "lab9"
+        assert rec["actor"] == "lab kit (scripts: lab/sdn-laptop)"
+
+    def test_a_second_init_records_nothing_more(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        assert self._init(data).returncode == 0
+        r = self._init(data)
+        assert r.returncode == 0, r.stderr
+        assert "current network is lab9, set before: kept" in r.stdout
+        assert len(self._records(data)) == 1
+
+
+#: The operator's own values, planted before init or repin runs again: each must survive.
+OPERATOR = {"netbox_url": "http://[::1]:8101", "netbox_auth_scheme": "Token",
+            "heal_mode": "dry_run"}
+OPERATOR_ENV = {"CONTROLLER_ADDR": "192.0.2.50", "LAB_IF": "enp9s0", "WIFI_IF": "wlp2s0",
+                "LAB_PROFILE": "lab9-bench", "MERCURY_PORT": "5081", "NETBOX_PORT": "8002"}
+#: A token built by concatenation, never a literal one; it is never printed.
+TOKEN = "plant" + "ed-" + "kit-token-" + "0042"
+_PLANT = ("import os, sys; sys.path.insert(0, os.getcwd()); "
+          "from modules.settings_schema import write_settings; import json; "
+          "from modules.secrets_store import encrypt_value; "
+          "got = write_settings(dict(json.loads(os.environ['PLANT']), "
+          "netbox_token=encrypt_value(os.environ['PLANT_TOKEN'])), actor='the operator'); "
+          "sys.exit(0 if got.get('ok') else 1)")
+
+
+def _plant_operator(data, cwd=ROOT):
+    r = subprocess.run([sys.executable, "-c", _PLANT], cwd=cwd, capture_output=True, text=True,
+                       env=dict(os.environ, NMAS_DATA_DIR=str(data), PLANT=json.dumps(OPERATOR),
+                                PLANT_TOKEN=TOKEN, PYTHONDONTWRITEBYTECODE="1"))
+    assert r.returncode == 0, "the operator's values could not be planted"
+    return json.loads((data / "user_settings.json").read_text())
+
+
+def _assert_kept(before, data):
+    after = json.loads((data / "user_settings.json").read_text())
+    for key, value in OPERATOR.items():
+        assert after[key] == value, f"{key} was overwritten"
+    # Compared as booleans, so a failure prints no part of the token.
+    unchanged = after["netbox_token"] == before["netbox_token"]
+    in_clear = TOKEN in after["netbox_token"]
+    assert unchanged is True, "the stored token was changed"
+    assert in_clear is False, "the token is stored in the clear"
+    assert after["installation_kind"] == "laptop_kit", "a missing key was not added"
+    return after
+
+
+class TestInitAddsOnlyWhatIsMissing:
+    """The operator, 2026-11-05: init runs again on every `kit repin`, so it writes a setting
+    only when its key is absent from the stored file, and says which it added and kept by
+    name; lab9 is made current only when no current network was set."""
+
+    def _init(self, data):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), "init"],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, NMAS_DATA_DIR=str(data)))
+
+    def test_the_operators_values_survive_and_the_missing_are_added(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        before = _plant_operator(data)
+        r = self._init(data)
+        assert r.returncode == 0, r.stderr
+        _assert_kept(before, data)
+        line = next(ln for ln in r.stdout.splitlines() if ln.startswith("installation settings"))
+        added, kept = line.split("; kept ", 1)
+        assert "installation_kind" in added and "flask_host" in added
+        for key in ("heal_mode", "netbox_url"):
+            assert key in kept and key not in added
+        printed = TOKEN in r.stdout + r.stderr
+        assert printed is False, "the token was printed"
+
+    def test_a_current_network_set_before_is_kept(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "device_lists.json").write_text(json.dumps(
+            {"current_list": "Branch", "lists": {"Default": "default", "Branch": "branch"}}))
+        r = self._init(data)
+        assert r.returncode == 0, r.stderr
+        assert json.loads((data / "device_lists.json").read_text())["current_list"] == "Branch"
+        assert "current network is Branch, set before: kept" in r.stdout
+
+
+class TestRepinRunsInitAndKeepsTheOperatorsValues:
+    """`kit repin` moves the worktree, changes only kit.env's PIN_SHA, and runs init again.
+    Run as the operator runs it, on a planted kit: a throwaway repository holding the kit's
+    two scripts and the product's code by link, a worktree of it at one commit, a fake
+    `systemctl` that says Mercury is stopped, and the operator's values planted."""
+
+    GIT = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.org",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.org"}
+
+    def _git(self, *args):
+        r = subprocess.run(["git", "-c", "commit.gpgsign=false", *args], capture_output=True,
+                           text=True, env=dict(os.environ, **self.GIT))
+        assert r.returncode == 0, r.stderr
+        return r.stdout.strip()
+
+    @pytest.fixture
+    def kit(self, tmp_path):
+        import shutil
+
+        repo = tmp_path / "repo"
+        (repo / "lab" / "sdn-laptop").mkdir(parents=True)
+        for name in ("kit", "kit_settings.py"):
+            shutil.copy2(os.path.join(ROOT, "lab", "sdn-laptop", name),
+                         repo / "lab" / "sdn-laptop" / name)
+        for name in ("modules", "routes"):
+            os.symlink(os.path.join(ROOT, name), repo / name)
+        self._git("init", "-q", str(repo))
+        self._git("-C", str(repo), "add", "-A")
+        self._git("-C", str(repo), "commit", "-q", "-m", "one")
+        one = self._git("-C", str(repo), "rev-parse", "HEAD")
+        self._git("-C", str(repo), "commit", "-q", "--allow-empty", "-m", "two")
+        two = self._git("-C", str(repo), "rev-parse", "HEAD")
+        home = tmp_path / "kit"
+        (home / "data").mkdir(parents=True)
+        (home / "run").mkdir()
+        self._git("-C", str(repo), "worktree", "add", "-q", "--detach", str(home / "mercury"), one)
+        env_lines = [f"PIN_SHA={one}"] + [f"{k}={v}" for k, v in OPERATOR_ENV.items()]
+        (home / "kit.env").write_text("\n".join(env_lines) + "\n")
+        fake = tmp_path / "bin"
+        fake.mkdir()
+        (fake / "systemctl").write_text("#!/bin/sh\nexit 3\n")
+        (fake / "systemctl").chmod(0o755)
+        before = _plant_operator(home / "data", cwd=str(home / "mercury"))
+        return {"repo": repo, "home": home, "one": one, "two": two, "before": before,
+                "env": dict(os.environ, KIT_HOME=str(home), KIT_PYTHON=sys.executable,
+                            PATH=f"{fake}:{os.environ['PATH']}")}
+
+    def _repin(self, kit):
+        return subprocess.run([str(kit["repo"] / "lab" / "sdn-laptop" / "kit"), "repin",
+                               kit["two"]], capture_output=True, text=True, env=kit["env"])
+
+    def test_repin_keeps_every_operator_value_and_adds_the_missing(self, kit):
+        r = self._repin(kit)
+        assert r.returncode == 0, r.stderr
+        assert "kit: repinned at" in r.stdout and "installation settings: added" in r.stdout
+        _assert_kept(kit["before"], kit["home"] / "data")
+        env = dict(ln.split("=", 1) for ln in
+                   (kit["home"] / "kit.env").read_text().splitlines() if "=" in ln)
+        assert env.pop("PIN_SHA") == kit["two"], "PIN_SHA did not move"
+        assert env == OPERATOR_ENV, "kit.env changed beyond PIN_SHA"
+        printed = TOKEN in r.stdout + r.stderr
+        assert printed is False, "the token was printed"
+
+    def test_repin_still_refuses_a_dirty_worktree(self, kit):
+        (kit["home"] / "mercury" / "stray.txt").write_text("x")
+        r = self._repin(kit)
+        assert r.returncode != 0 and "is not clean" in r.stderr
+        assert f"PIN_SHA={kit['one']}" in (kit["home"] / "kit.env").read_text()
+        settings = json.loads((kit["home"] / "data" / "user_settings.json").read_text())
+        assert "installation_kind" not in settings, "init ran on a refused repin"
+
+
+class TestMakeCurrent:
+    """`network_admin.make_current`, the installation's current network, for an installation
+    with no person to choose (C2521): refused for a network that is not registered, naming it."""
+
+    @pytest.fixture
+    def registry(self, tmp_path, monkeypatch):
+        from modules import config, device
+
+        path = tmp_path / "device_lists.json"
+        path.write_text(json.dumps({"current_list": "Default",
+                                    "lists": {"Default": "default", "lab9": "lab9"}}))
+        monkeypatch.setattr(device, "DEVICE_LISTS_CONFIG", str(path))
+        monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+        return path
+
+    def test_an_unregistered_network_is_refused_naming_it(self, registry):
+        from modules import network_admin
+
+        with pytest.raises(network_admin.Refused, match="'lab10'.*Default, lab9"):
+            network_admin.make_current("lab10", "test", "none")
+        assert json.loads(registry.read_text())["current_list"] == "Default"
+
+    def test_a_registered_one_is_made_current(self, registry):
+        from modules import network_admin
+
+        got = network_admin.make_current("lab9", "test", "none")
+        assert got["changed"] and got["recorded"]
+        assert json.loads(registry.read_text())["current_list"] == "lab9"
+
+
 class TestNmasDeployRefusesTheKit:
     def test_a_repo_holding_the_marker_is_refused_before_anything_moves(self, tmp_path, capsys):
         nd = _load("nmas_deploy", "scripts/nmas-deploy")

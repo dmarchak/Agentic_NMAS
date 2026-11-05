@@ -3,7 +3,11 @@
 Run by `kit` from the kit's pinned worktree, with NMAS_DATA_DIR naming the kit's data folder,
 never the checkout's. Prints names and states, never a value that could be a secret.
 
-    kit_settings.py init                  the installation's settings and the lab9 network
+    kit_settings.py init                  the installation's settings that are missing
+                                          (installation_kind laptop_kit among them; a stored
+                                          one is kept), the lab9 network if missing, made the
+                                          installation's current one if none was set; run
+                                          again by `kit repin`
     kit_settings.py exception-on UNTIL    the identity exception, recorded in History
     kit_settings.py exception-off WHY     the gates restored, recorded in History
     kit_settings.py netbox-writes-on WHY  NetBox's master write switch on, recorded (C2548)
@@ -39,6 +43,9 @@ INSTALLATION = {
     "ai_background": {},
     "records_db_host": "",
     "netbox_url": NETBOX,
+    # C2521: Needs attention marks the server's own checks (its systemd units, updater, local
+    # CI, GitHub, Proxmox, monitoring stack, host steps) "not applicable on a laptop kit".
+    "installation_kind": "laptop_kit",
 }
 
 
@@ -50,17 +57,67 @@ def _write(values: dict) -> None:
         sys.exit(f"kit_settings: refused: {got.get('error')}")
 
 
-def init() -> None:
-    from modules import network_admin
+def _current_is_set() -> str:
+    """The installation's current network when one was SET, or "": a `network_current`
+    record in History (this init's, or anyone's), or a registry naming a network other than
+    Default. The registry's "Default" on its own is Mercury's first-run placeholder, written
+    when the registry is first read, never a choice; with no verified person on the kit, the
+    picker cannot set one either (it records a person's own choice)."""
+    import json
 
-    _write(INSTALLATION)
-    print("installation settings: " + ", ".join(sorted(INSTALLATION)))
+    from modules import installation_settings as IS
+    from modules.config import DEVICE_LISTS_CONFIG
+
+    try:
+        with open(DEVICE_LISTS_CONFIG, encoding="utf-8") as fh:
+            current = json.load(fh).get("current_list") or ""
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError) as exc:
+        sys.exit(f"kit_settings: the network registry cannot be read ({type(exc).__name__}): "
+                 "nothing is made current over it")
+    if current and current != "Default":
+        return current
+    if any(r.get("kind") == "network_current" for r in IS.changes().get("rows", [])):
+        return current or "Default"
+    return ""
+
+
+def init() -> None:
+    """Adds what is missing and never overwrites (the operator, 2026-11-05: `kit repin` runs
+    it again): an installation setting is written only when its key is ABSENT from the stored
+    settings file (not from the schema's defaults), so a value the operator set (NetBox's URL,
+    token and auth scheme, the heal mode, anything stored) is kept; lab9 is created only when
+    missing, and made current only when no current network was set."""
+    from modules import network_admin
+    from modules.config import load_user_settings
+
+    stored = load_user_settings()
+    added = {k: v for k, v in INSTALLATION.items() if k not in stored}
+    kept = sorted(k for k in INSTALLATION if k in stored)
+    if added:
+        _write(added)
+    print("installation settings: added " + (", ".join(sorted(added)) or "none")
+          + "; kept " + (", ".join(kept) or "none") + " (already set, never overwritten)")
+    current = _current_is_set()
     pv = network_admin.create_preview(NETWORK)
     if pv.get("refused"):
         print(f"network {NETWORK}: {pv['refused']}")
     else:
         network_admin.create(NETWORK, pv["fingerprint"], ACTOR, VERIFIED)
         print(f"network {NETWORK}: created, no git remote")
+    if current:
+        print(f"network {NETWORK}: the installation's current network is {current}, set "
+              "before: kept")
+        return
+    # Mercury opens on lab9 (C2521): the kit has no verified person whose own choice the picker
+    # could record, so the installation's current network is lab9, recorded in History.
+    got = network_admin.make_current(NETWORK, ACTOR, VERIFIED)
+    if got.get("changed") and not got.get("recorded"):
+        sys.exit(f"kit_settings: {NETWORK} made current and NOT recorded: "
+                 f"{got.get('record_error')}")
+    print(f"network {NETWORK}: the installation's current network"
+          + (" (recorded in History)" if got.get("changed") else " already"))
 
 
 def _gates() -> dict:

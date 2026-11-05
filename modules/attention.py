@@ -704,7 +704,8 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
 def source_result(source: str, label: str, *, read_at: float, took_ms: int,
                   rows=None, checked: str = "", error: str = "",
                   value_at: float = None, stale_after_seconds: int = None,
-                  reader: str = None, detail: str = "", held=None) -> dict:
+                  reader: str = None, detail: str = "", held=None,
+                  not_applicable=None, marked: str = "") -> dict:
     """One source, read. *error* makes the source a row of its own.
 
     *read_at* is when this request read the source; *value_at* is the time of
@@ -729,7 +730,14 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     operator's presentation rule, 2026-09-28).
 
     *held* lists each signal a planned window explained (`_held`), the structured twin of the
-    words *checked* gives them: the operation's card reads it (board PS)."""
+    words *checked* gives them: the operation's card reads it (board PS).
+
+    *not_applicable* lists each check of this source that is marked rather than read
+    (``{"check", "why", "mark"}``): one the installation has no use for (C2521,
+    `modules/installation_kind.py`, "not applicable on a laptop kit", the default mark), or one
+    about a network with no devices ("no devices yet", `NO_DEVICES`). Each is drawn as its own
+    line under What was checked, never a row. *marked* is the mark's words when the whole
+    source is one such check, its *checked* the reason."""
     if error:
         # Kept where it outlives the row (the operator, 2026-09-29): a transient
         # "could not be read: Approvals" cleared on the next read, and nothing
@@ -754,7 +762,51 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
             "value_at": _iso(read_at if value_at is None else value_at),
             "stale_after_seconds": stale_after_seconds, "reader": reader, "detail": detail,
             "took_ms": took_ms, "checked": checked, "rows": list(rows or []),
-            "held": list(held or [])}
+            "held": list(held or []), "not_applicable": list(not_applicable or []),
+            "marked": str(marked or "")}
+
+
+#: The mark of a device-level check on a network that holds no device (the operator,
+#: 2026-11-05): said under What was checked, never a row, on any installation; the network's
+#: first device makes the check a real row again, unchanged.
+NO_DEVICES = "no devices yet"
+
+
+def _no_devices_why(lst: str, presence=None) -> str:
+    """Why network *lst*'s device-level checks are marked `NO_DEVICES`, or "": only when its
+    inventory is READ and holds no device (`device.presence`, no per-device work). An
+    unreadable inventory is never "no devices": its checks stay what they were."""
+    from modules import device
+
+    got = (presence or device.presence)(lst)
+    if got.get("state") != "none":
+        return ""
+    return f"{lst} holds no device ({got.get('why') or 'none listed'})"
+
+
+def _no_devices_source(source: str, label: str, lst: str, what: str, presence=None):
+    """The result of a source whose every check is about network *lst*'s devices, when it has
+    none: one line, "no devices yet: ...", and no row; None to read the source as before."""
+    why = _no_devices_why(lst, presence)
+    if not why:
+        return None
+    return source_result(source, label, read_at=time.time(), took_ms=0, marked=NO_DEVICES,
+                         checked=f"{NO_DEVICES}: {why}, so {what}; it is checked again from "
+                                 "its first device")
+
+
+def _not_applicable_source(source: str, label: str):
+    """The result of a source this installation has no use for as a whole (C2521: the laptop
+    kit's server-only sources, `installation_kind.SOURCES`), or None to read it as before. Its
+    finding is the reason, "not applicable on a laptop kit: ...", one line under What was
+    checked; it is not read and raises no row."""
+    from modules import installation_kind as K
+
+    why = K.source(source)
+    if not why:
+        return None
+    return source_result(source, label, read_at=time.time(), took_ms=0,
+                         checked=f"{K.MARK}: {why}", marked=K.MARK)
 
 
 def _held(source: str, got: dict, devices, what: str, *, margin: float = None) -> dict:
@@ -963,11 +1015,21 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             live = [{"unit": "reader:*", "what": "the reader jobs' liveness", "state": "unknown",
                      "detail": f"the readers could not be judged: {type(exc).__name__}: {exc}"}]
         jobs += live
+    from modules import installation_kind as K
+
     took = int((time.time() - started) * 1000)
-    rows, expected = [], []
+    rows, expected, marked = [], [], []
+    kit = K.is_laptop_kit()
     for job in jobs:
         state = job.get("state", "")
         if state in J.OK_STATES:
+            continue
+        why = K.job(job, kit)
+        if why:
+            # A check of the server's own install, on a laptop kit (C2521): one line of its own
+            # under What was checked, with its reason, never a row.
+            words = _JOB_STATES.get(state, (f"reads {state}",))[0]
+            marked.append({"check": f"{job.get('unit', '?')} {words}", "why": why})
             continue
         if state in EXPECTED_JOB_STATES:
             # Expected and nothing to do yet (the operator, 2026-10-02): said in
@@ -996,11 +1058,14 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             operands=ops,
             action=_job_action(job), level=level,
             read_at=job.get("_read_at") or value_at or started))
-    n_ok = len(jobs) - len(rows) - len(expected)
+    n_ok = len(jobs) - len(rows) - len(expected) - len(marked)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
                          rows=rows, value_at=value_at, stale_after_seconds=promise,
                          reader=JOB_HEALTH_READER if promise else None, detail=where,
+                         not_applicable=marked,
                          checked=f"{len(jobs)} job-health row(s), {n_ok} ok"
+                                 + (f", {len(marked)} {K.MARK} (each on its own line)"
+                                    if marked else "")
                                  + (f"; expected, nothing to do yet: {'; '.join(expected)}"
                                     if expected else ""))
 
@@ -1027,16 +1092,25 @@ _DRIFT_HOME = "/v2/settings/installation?tab=diagnostics"
 _CHECK_NOW = "Run a drift check with Check now in Settings › Installation › Diagnostics"
 
 
-def drift_source(status=None, now=None) -> dict:
+def drift_source(status=None, now=None, presence=None) -> dict:
     """The LAST drift run for the list on screen, from its stored record
     (section 0a: nothing re-checks a device to draw this page). Every device
     the run did not clear is a row, and so is the checker's own state: off,
     never run, a failed run, or a stored run too old to describe the network
-    now."""
+    now.
+
+    A network with no devices is one line, "no devices yet" (`_no_devices_source`), when the
+    source reads the network's own record; a *status* given by a caller is that caller's
+    network, read as given."""
     from modules import drift_check as D
 
     started = time.time()
     now = now or started
+    if status is None:
+        marked = _no_devices_source("drift", "Drift", _page_network(),
+                                    "there is nothing to compare with a golden", presence)
+        if marked:
+            return marked
     try:
         st = status() if status else D.get_checker().status(_page_network())
         interval = D._get_interval()
@@ -1660,18 +1734,26 @@ def _pending_is_named(lst: str, host: str, r: dict) -> bool:
 # Source: the last baseline decision (a baseline that was not earned)
 # ---------------------------------------------------------------------------
 
-def baseline_source(log_fn=None) -> dict:
+def baseline_source(log_fn=None, presence=None) -> dict:
     """The NEWEST `Baseline:` decision recorded in the list's golden history
     (`save_golden()` writes it into the commit it judged). A row when that
     decision was a denial, with its reasons; a later earned baseline
     supersedes it. One `git log`, never a read per device (section 0a).
     Commits before 2026-09-28 carry no decision, and the source says so
-    rather than reading their silence as either answer."""
+    rather than reading their silence as either answer.
+
+    A network with no devices is one line, "no devices yet", when the source reads the
+    network's own history; a *log_fn* given by a caller is read as given."""
     import os
 
     from modules.config import get_list_data_dir
 
     started = time.time()
+    if log_fn is None:
+        marked = _no_devices_source("baseline", "Baseline", _page_network(),
+                                    "there is no golden to earn a baseline from", presence)
+        if marked:
+            return marked
     try:
         lst = _page_network()
         if log_fn is None:
@@ -2061,6 +2143,12 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
     if configuration:
         src_name = f"grafana@{configuration['id']}"
         src_label = f"Grafana alerts ({', '.join(configuration['lists'])})"
+    else:
+        # Default's Grafana, on a laptop kit that configured none (C2521); another network's
+        # own Grafana is configured by definition, so its source is always read.
+        marked = _not_applicable_source(src_name, src_label)
+        if marked:
+            return marked
     started = time.time()
     got = reader_job.read_cached(GRAFANA_READER) if cached is None else cached
     doc = got.get("doc") or {}
@@ -2480,6 +2568,9 @@ def ci_source(cached=None) -> dict:
     from modules import reader_job
     from routes import health
 
+    marked = _not_applicable_source("ci", "Running commit's CI")
+    if marked:
+        return marked
     started = time.time()
     got = reader_job.read_cached("ci-verdict") if cached is None else cached
     doc = got.get("doc") or {}
@@ -2528,6 +2619,9 @@ def scheduled_jobs_source(cached=None, now: float = None) -> dict:
 
     started = time.time() if now is None else now
     label = "Scheduled quality jobs"
+    marked = _not_applicable_source("scheduled_jobs", label)
+    if marked:
+        return marked
     got = reader_job.read_cached(SJ.NAME) if cached is None else cached
     doc = got.get("doc") or {}
     good = doc.get("last_good") or {}
@@ -2599,6 +2693,9 @@ def ci_agreement_source(cached=None, now: float = None) -> dict:
 
     started = time.time() if now is None else now
     label = "The two CI runners"
+    marked = _not_applicable_source("ci_agreement", label)
+    if marked:
+        return marked
     got = reader_job.read_cached(CA.NAME) if cached is None else cached
     doc = got.get("doc") or {}
     good = doc.get("last_good") or {}
@@ -2980,12 +3077,17 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
-def intent_format_source(cached=None) -> dict:
+def intent_format_source(cached=None, presence=None) -> dict:
     """A device whose committed intent does not round-trip through Mercury's serialiser
     (C1693): Change it in words and bulk intent refuse to patch it, so one row per device,
     naming it and its network, with Normalise on its Intent tab as the action. Read from the
     intent-format reader's stored value (one ls-tree per network per cycle), never per
-    request."""
+    request.
+
+    A network with no devices is its own line, "no devices yet", never its rows (an unreadable
+    repository included: a fresh Default has none), judged by *presence* (`device.presence`
+    when the stored value is the reader's own; a *cached* value given by a caller is read as
+    given unless it gives a *presence* too)."""
     from modules import reader_job
 
     started = time.time()
@@ -3002,8 +3104,16 @@ def intent_format_source(cached=None) -> dict:
                              error=f"not read yet: {why}")
     v = good.get("value") or {}
     value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
-    rows, judged, files, failed = [], 0, 0, []
+    rows, judged, files, failed, empty = [], 0, 0, [], []
+    from modules import device
+
+    judge = presence if presence is not None else (device.presence if cached is None else None)
     for name, net in sorted((v.get("lists") or {}).items()):
+        why = _no_devices_why(name, judge) if judge else ""
+        if why:
+            empty.append({"check": name, "mark": NO_DEVICES,
+                          "why": f"{why}, so there is no device intent to judge"})
+            continue
         if net.get("error"):
             failed.append(f"{name} ({net['error']})")
             continue
@@ -3038,10 +3148,12 @@ def intent_format_source(cached=None) -> dict:
                              "what git answered", "known": False}))
     return source_result(
         "intent-format", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
-        stale_after_seconds=promise, reader="intent-format",
+        stale_after_seconds=promise, reader="intent-format", not_applicable=empty,
         checked=(f"{files} committed intent document(s) in {judged} network(s), {len(rows)} "
                  "hand-formatted"
-                 + (f"; not read: {'; '.join(failed)}" if failed else "")))
+                 + (f"; not read: {'; '.join(failed)}" if failed else "")
+                 + (f"; {len(empty)} network(s) with {NO_DEVICES} (each on its own line)"
+                    if empty else "")))
 
 
 def _n(count: int, one: str, many: str) -> str:
@@ -3935,6 +4047,9 @@ def pushed_source(cached=None) -> dict:
     from modules.readers import app_pushed
     from routes import health
 
+    marked = _not_applicable_source("pushed", "Running commit against origin/main")
+    if marked:
+        return marked
     started = time.time()
     got = reader_job.read_cached("app-pushed") if cached is None else cached
     doc = got.get("doc") or {}
@@ -4221,6 +4336,9 @@ def host_steps_source(owed=None) -> dict:
 
     started = time.time()
     label = "Host steps a running release owes"
+    marked = _not_applicable_source("host_steps", label)
+    if marked:
+        return marked
     if not health._COMMIT:
         return source_result("host_steps", label, read_at=started, took_ms=0,
                              error="the running commit is unknown, so its history cannot be read")
@@ -6550,6 +6668,27 @@ def needs_attention(sources=None) -> dict:
     return {"ok": True, "headline": headline, "rows": rows,
             "unreadable": unreadable, "acknowledged": acknowledged, "in_force": in_force,
             "badge": badge_of(rows, results), "expected": _expected_on_cards(results),
-            "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
-                                             "value_at", "took_ms", "checked")}
-                        | {"count": len(res["rows"])} for res in results]}
+            "sources": _checked_lines(results)}
+
+
+def _checked_lines(results: list) -> list:
+    """What was checked: one line per source, then one line for each check of it that is marked
+    rather than read, "<source> › <check>", its finding "<mark>: <why>": one this installation
+    has no use for (C2521, `installation_kind`, "not applicable on a laptop kit"), or one about
+    a network with no devices ("no devices yet"), so each is explicit and visible, and none a
+    row. A line is a mark by its words, "<mark>: <why>" in ``checked``, the words drawn; the
+    page carries no key its template does not draw (tests/test_v2_context_is_drawn.py)."""
+    from modules import installation_kind as K
+
+    out = []
+    for res in results:
+        out.append({k: res[k] for k in ("source", "label", "state", "read_at", "value_at",
+                                        "took_ms", "checked")}
+                   | {"count": len(res["rows"])})
+        for na in res.get("not_applicable") or []:
+            mark = na.get("mark") or K.MARK
+            out.append({"source": f"{res['source']}:{na['check'].split(' ', 1)[0]}",
+                        "label": f"{res['label']} › {na['check']}", "state": "read",
+                        "read_at": res.get("read_at"), "value_at": res.get("value_at"),
+                        "took_ms": 0, "checked": f"{mark}: {na['why']}", "count": 0})
+    return out

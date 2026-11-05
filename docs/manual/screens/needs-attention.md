@@ -40,6 +40,31 @@ The landing page answers one question: does anything need you?
   take. Something true that needs nothing, such as a new release being available, or a
   check that missed a booting device once, is
   said under "What was checked", beside the source that found it, or on its own page.
+- **On a laptop kit, the server's own checks are marked, not raised.** An
+  installation set up by the final SDN lab's laptop kit (`installation_kind` is `laptop_kit`,
+  written by the kit's `init`) has none of the Mercury host's install, so those checks are not
+  rows. Each is one line of its own under *What was checked*, naming its source and the check,
+  saying
+  **not applicable on a laptop kit** and why. They are:
+  - the server's systemd jobs: the NetBox backup and its restore test, the heartbeat,
+    telemetry and startup checks;
+  - the Update button's updater, and the nightly VM images while Proxmox is not configured;
+  - the monitoring settings left empty: the SNMP exporter's config, the syslog host and the
+    YANG push script;
+  - the readers and sources that compare the running commit with GitHub: origin, CI, the two
+    CI runners and the scheduled workflows;
+  - the Grafana and coverage readers, and Grafana's alerts, while Grafana (or Prometheus and
+    Loki) is not configured;
+  - the host steps a release owes the Mercury host.
+
+  Everything else is raised as on any installation: NetBox not answering while the kit runs, a
+  device unreachable, anything about the kit's own network's devices. A kit that configures
+  Grafana or Proxmox gets their rows back. On the Mercury host, the default, nothing is marked.
+- **A network with no devices yet marks its device checks.** On any installation, while a
+  network holds no device, its drift check, its baseline and its intent formatting are each one
+  line under *What was checked*, saying **no devices yet** and why, never a row. Its first
+  device makes them rows again, exactly as before. A network whose device list cannot be read
+  is not "no devices": its checks stay rows.
 - **Recent changes**: the last deploys and restores, from their receipts. It reads itself again
   when a deploy or restore finishes, so a page left open shows the new one without a reload.
 

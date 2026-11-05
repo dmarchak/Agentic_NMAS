@@ -1271,6 +1271,8 @@ SETTING_WORDS = {
     "records_db_save": "saved", "records_db_replace": "password replaced",
     "ratify": "decision recorded", "network_create": "network created",
     "network_delete": "network deleted", "inventory_source": "inventory source set",
+    # C2521: the laptop kit's `init` makes its network the installation's current one.
+    "network_current": "the installation's current network set",
     "drift_interval": "drift check interval set", "drift_on": "drift checks turned on",
     "drift_off": "drift checks turned off",
     "records_store_move": "a store moved to the records database",

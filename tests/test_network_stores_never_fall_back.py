@@ -106,9 +106,19 @@ class TestTheDriftStateIsTheNetworksOwn:
 
 
 class TestNeedsAttentionReadsThePagesNetwork:
-    def _page(self, client, monkeypatch, url):
-        from modules import attention
+    """Each network holds a device, as C487's did (Default nine): a network with none marks
+    its drift check "no devices yet" instead (tests/test_no_devices_yet.py, the operator,
+    2026-11-05), and these tests are about which network the page reads."""
 
+    def _page(self, client, monkeypatch, url):
+        from modules import attention, device
+        from modules.config import get_list_data_dir
+
+        for name, ip in (("Default", "192.0.2.11"), ("Branch", "192.0.2.61")):
+            device.save_device({"hostname": f"d-{name.lower()}", "ip": ip,
+                                "device_type": "cisco_ios", "username": "u", "password": "p",
+                                "secret": "s"},
+                               os.path.join(get_list_data_dir(name), "devices.csv"))
         monkeypatch.setattr(attention, "SOURCES", (attention.drift_source,))
         r = client.get(url)
         assert r.status_code == 200, r.get_data(as_text=True)[:400]

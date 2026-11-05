@@ -123,6 +123,9 @@ SCOPES: dict = {
     # network's healing at once.
     **_group(HOST, "heal_kill_switch", "heal_stopped"),
     **_group(HOST, "web_server", "flask_host", "flask_port"),
+    # C2521: what kind of installation this is (the NMAS host's, or the laptop kit's), the
+    # installation's alone; written by the kit's `init`, never by a screen.
+    **_group(HOST, "installation_kind", "installation_kind"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
     # Notifications' email relay (board H, H7): one for the installation, as the records
     # database is; who receives a network's notices is its heal policy's, not this group.

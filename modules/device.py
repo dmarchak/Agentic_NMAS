@@ -101,6 +101,91 @@ def _load_devices_csv(filename: str | None = None) -> list[dict[str, Any]]:
         return list(csv.DictReader(f))
 
 
+PRESENCE_STATES = ("none", "some", "unreadable")
+
+
+def presence(list_name: str) -> dict:
+    """Whether the network *list_name* holds any device: ``{"state", "why"}``, *state* one of
+    `PRESENCE_STATES` (the operator, 2026-11-05: a network with no devices marks its
+    device-level checks "no devices yet" instead of raising them).
+
+    Read with no device I/O and writing nothing: the registry read as a file (never
+    `_load_device_lists_config`, which creates one); for a local list, `load_saved_devices`,
+    the one dispatch every check's inventory comes through (one file read per network, the
+    read Needs attention already makes for its networks); for a NetBox-sourced list, the
+    inventory cache `load_netbox_devices` serves (it never performs network I/O). With an empty inventory, a golden committed in the
+    network's repository still counts as a device (`_goldens_presence`, one `git ls-tree`):
+    drift and baselines are about it. **An unreadable list is never "none"** (absent and
+    unreadable are different states): a registry or CSV that cannot be read or parsed, a
+    NetBox list never loaded, or one whose last fetch failed with nothing cached, is
+    ``unreadable``, and its checks stay what they were. A CSV that is absent is ``none``: a
+    list with no devices yet is a real state (`load_saved_devices`)."""
+    try:
+        with open(DEVICE_LISTS_CONFIG, encoding="utf-8") as fh:
+            lists = json.load(fh).get("lists") or {}
+    except FileNotFoundError:
+        lists = {}
+    except (OSError, ValueError, AttributeError) as exc:
+        return {"state": "unreadable",
+                "why": f"the network registry could not be read ({type(exc).__name__})"}
+    if list_name not in lists:
+        # Never guessed from a derived folder: an unregistered name's inventory is not known.
+        return {"state": "unreadable",
+                "why": "it is not in the network registry, so its inventory is not known"}
+    from modules import config
+
+    # The folder through the one resolver the sources read (registered: it exists already).
+    folder = config.get_list_data_dir(list_name)
+    try:
+        from modules.inventory.source_config import is_netbox_sourced
+        netbox = is_netbox_sourced(list_name)
+        if netbox:
+            from modules.inventory import load_netbox_devices
+            devices, _skipped, meta = load_netbox_devices(list_name)
+            if devices:
+                return {"state": "some", "why": f"NetBox's inventory holds {len(devices)}"}
+            if meta.get("never_loaded") or meta.get("error"):
+                return {"state": "unreadable",
+                        "why": ("its NetBox inventory has not been read yet"
+                                if meta.get("never_loaded") else
+                                f"its NetBox inventory's last read failed: {meta['error']}")}
+            inventory = "its NetBox inventory holds no device"
+    except Exception as exc:                           # noqa: BLE001 - said, never "none"
+        return {"state": "unreadable",
+                "why": f"its inventory source could not be read ({type(exc).__name__})"}
+    if not netbox:
+        try:
+            # The one dispatch every check's inventory comes through, so "no devices" here is
+            # what the checks themselves would see.
+            listed = load_saved_devices(os.path.join(folder, "devices.csv"))
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            return {"state": "unreadable",
+                    "why": f"its devices file could not be read ({type(exc).__name__})"}
+        if listed:
+            return {"state": "some", "why": f"its devices file lists {len(listed)}"}
+        inventory = "its devices file lists no device"
+    return _goldens_presence(os.path.join(folder, "config_repo"), inventory)
+
+
+def _goldens_presence(repo: str, inventory: str) -> dict:
+    """With an empty inventory, a committed golden still means the network has had a device
+    whose record governs (drift and baselines read it): one `git ls-tree` of HEAD's golden/,
+    never a read per device. No repository (a fresh Default) holds none; a repository git
+    cannot read is ``unreadable``."""
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {"state": "none", "why": f"{inventory}, and it has no repository yet"}
+    from modules.nsot.repo import git
+
+    rc, out, err = git(repo, "ls-tree", "--name-only", "HEAD", "--", "golden/")
+    if rc != 0 and "Not a valid object name HEAD" not in (err or "") \
+            and "not a tree object" not in (err or ""):
+        return {"state": "unreadable",
+                "why": f"its repository could not be read ({(err or '').strip()[:120] or rc})"}
+    if rc == 0 and out.strip():
+        return {"state": "some", "why": f"{inventory}, and its repository holds goldens"}
+    return {"state": "none", "why": f"{inventory}, and its repository holds no golden"}
+
+
 class UnknownDeviceList(ValueError):
     """A path that names no list and is not on disk. See `load_saved_devices`."""
 
@@ -583,6 +668,30 @@ def create_device_list(list_name: str, actor: str = "") -> tuple[bool, str]:
 
     logger.info("Created device list: %s (folder: %s)", list_name, slug)
     return True, f"Device list '{list_name}' created successfully"
+
+
+@_holding_lists_lock
+def set_installation_list(list_name: str) -> tuple[bool, str]:
+    """Make *list_name*, a registered network, the installation's current list: what a page
+    with no network named and no person's own choice shows, and what a job or host script
+    reads. ``(changed, message)``; an unregistered name is refused, naming it.
+
+    For an installation with no verified person to choose (C2521: the laptop kit, whose `init`
+    makes its network current, `network_admin.make_current`): the picker records a PERSON's
+    choice (`network_choice`), and the installation's list stays frozen to every screen
+    (`get_current_device_list`, P7-26)."""
+    config = _load_device_lists_config()
+    lists = config.get("lists", {})
+    if list_name not in lists:
+        return False, (f"there is no network {list_name!r} (registered: "
+                       f"{', '.join(sorted(lists)) or 'none'}): nothing was made current")
+    before = config.get("current_list", "Default")
+    if before == list_name:
+        return False, f"'{list_name}' is already the installation's current network"
+    config["current_list"] = list_name
+    _save_device_lists_config(config)
+    logger.info("The installation's current list: %s (was %s)", list_name, before)
+    return True, f"'{list_name}' is the installation's current network (was '{before}')"
 
 
 @_holding_lists_lock

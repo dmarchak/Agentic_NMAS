@@ -53,8 +53,39 @@ on `lab9-live` is run by `kit repin <sha>` (section 6).
 | Kea, ZTP | not used | — | off (LAB9_SDN_GAP.md 2.3: not needed for this lab) |
 
 Discovery and onboarding need NetBox, Mercury and SSH to the switches, and none of the optional
-three. Job health shows the NMAS host's own jobs (systemd units, the updater, Proxmox, the GitHub
-readers) as failing on the laptop. That is C2521, expected, and not a fault of the kit.
+three.
+
+**The NMAS host's own checks are marked, not raised (C2521).** `kit init` writes
+`installation_kind: laptop_kit` and makes `lab9` the installation's current network, so Mercury
+opens on it (recorded in History). On that kind, Needs attention draws none of the server's own
+checks as rows. Each is one line under *What was checked*, "not applicable on a laptop kit",
+with its reason (`modules/installation_kind.py`, the one table):
+- the systemd jobs: the NetBox backup and its restore test, the heartbeat, telemetry and startup
+  checks;
+- the updater;
+- Proxmox's nightly images while Proxmox is not configured;
+- the empty monitoring settings (SNMP exporter config, syslog host, YANG push script);
+- the GitHub readers and sources (origin, CI, the two runners, the scheduled workflows);
+- the Grafana and coverage readers and Grafana's alerts while those services are not configured;
+- the host steps.
+
+A real problem is still a row: NetBox not answering while the kit runs, a device unreachable,
+anything about lab9's devices. The marks are Needs attention's alone: job health itself still
+reports those jobs as the install has them. Measured on a planted kit
+(tests/test_installation_kind.py's fixture): 31 rows became 3. Two of the three were about
+networks with no devices (lab9's first drift check not yet run, and Default's intent formatting,
+unreadable because a fresh Default has no repository). On any installation those are now one
+line each, "no devices yet" (tests/test_no_devices_yet.py), until the network's first device.
+The one row left is the empty `kea_ztp_fragment` guard: ZTP is off for this lab, and the guard
+stays a row because a kit could use ZTP.
+
+**`kit repin` runs the settings init again, and init only adds.** A setting is written only
+when its key is absent from the stored settings file, so a value already set (NetBox's URL,
+token and auth scheme, the heal mode, anything stored) is kept. init says which keys it added
+and which it kept, by name, never by value. lab9 is created only when missing, and made current
+only when no current network was set: a History record of one, or a registry naming a network
+other than the first run's Default. kit.env is written only by `kit init` when absent; repin
+changes its `PIN_SHA` alone.
 
 ## 3. Safety defaults on the kit
 
@@ -95,14 +126,14 @@ made it. `init` itself runs from the main checkout's `lab/sdn-laptop/kit`.
 
 | Command | What it does |
 |---|---|
-| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets (its v2-token pepper among them, by `kit ensure-pepper`), the images pulled, the installation's settings and the `lab9` network |
+| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets (its v2-token pepper among them, by `kit ensure-pepper`), the images pulled, the installation's settings (`installation_kind: laptop_kit` among them, C2521) and the `lab9` network, made the installation's current one (section 2) |
 | `kit ensure-pepper` | NetBox's v2-token pepper (`API_TOKEN_PEPPER_1`, which the image turns into `API_TOKEN_PEPPERS = {1: …}`, as the NMAS host's netbox-docker does) added to `secrets.env` once, 64 hex characters, owner-only, never printed, never replaced (a new one would void every v2 token issued); it takes effect at the next `kit start` |
 | `kit netbox-admin` | NetBox's superuser; **the operator types its passphrase** |
 | `kit start` | the check (refuses on any finding), lab9guard installed on `LAB_IF` (sudo asks; refuses if `LAB_IF` is unset or absent), the last exception said, the exception on with its timer, NetBox up, Mercury started as the user unit `nmas-sdn-kit-mercury`, then waits up to 100 s for `/health` ready |
 | `kit preflight` | section 7's lines (lab9guard read by `sudo -n`: run `sudo -v` first), the safety lines and the settings check, one PASS or FAIL each |
 | `kit status` | the pinned sha, what runs, the last exception record |
 | `kit stop` | the gates restored and recorded, the timer cancelled, Mercury's unit stopped, NetBox stopped, lab9guard removed (sudo asks; an unattended stop leaves it in place and logs so) |
-| `kit repin <sha>` | the worktree moved to `<sha>` (Mercury stopped first, the worktree clean) |
+| `kit repin <sha>` | the worktree moved to `<sha>` (Mercury stopped first, the worktree clean), kit.env's `PIN_SHA` alone changed, then the settings init again: it adds what is missing and keeps every stored value (section 2) |
 | `kit check` | the settings check alone |
 | `kit reset` | asks for `RESET`, stops, then deletes the kit's data folder and NetBox's volumes. The main checkout, the NMAS host and the lab are untouched. `kit init` writes the settings and `lab9` again |
 

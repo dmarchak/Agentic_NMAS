@@ -304,6 +304,12 @@ DEFAULTS: dict = {
     #: and one carrying none of them is refused (modules/request_origin.py). Off by default,
     #: the prior behaviour, until the callers that write without them are reported (C248).
     "require_same_origin_writes": False,
+    #: What kind of installation this is (C2521; docs/LAB9_SDN_GAP.md 2.3): ``host``, the NMAS
+    #: host's install, the default and every release before it; ``laptop_kit``, the final SDN
+    #: lab's laptop kit, on which Needs attention marks the server-only checks "not applicable
+    #: on a laptop kit" (`modules/installation_kind.py`). Written by the kit's `init`, never by
+    #: a screen.
+    "installation_kind": "host",
     #: ``{client-id: friendly name}`` for service tokens, so an audit row reads
     #: "nmas-automation" rather than 32 hex characters. A LABEL ONLY — never a
     #: grant. Identity still comes from the verified assertion; an unlabelled
@@ -969,6 +975,7 @@ SCHEMA: dict = {
         "cf_access_trusted_peers": _STR,
         "allowed_host_names": _STR,
         "require_same_origin_writes": _BOOL,
+        "installation_kind": {"enum": ["host", "laptop_kit"]},
         # C621: 300 s to a day, never 0 ("keep for ever"): a key Cloudflare retires must stop
         # being trusted (identity.JWKS_TTL_MIN and JWKS_TTL_MAX, the reason beside them).
         "cf_access_jwks_ttl": {"type": "integer", "minimum": 300, "maximum": 86400},
