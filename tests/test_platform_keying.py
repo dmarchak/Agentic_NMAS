@@ -46,6 +46,7 @@ KEYING = {
     "modules/nsot/parsers/__init__.py":     "both",   # a registry accepting any input
     "modules/settings_schema.py":           "both",   # platform_map: slug keys, driver values
     "modules/nsot/bootstrap_config.py":     "dialect",
+    "modules/heal/diagnose.py":             "dialect",   # its reads' templates, by dialect
     "modules/nsot/templates_repo.py":       "dialect",
     "modules/nsot/parsers/base.py":         "dialect",
     "modules/nsot/parsers/cisco_ios.py":    "dialect",

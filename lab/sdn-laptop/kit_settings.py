@@ -6,6 +6,7 @@ never the checkout's. Prints names and states, never a value that could be a sec
     kit_settings.py init                  the installation's settings and the lab9 network
     kit_settings.py exception-on UNTIL    the identity exception, recorded in History
     kit_settings.py exception-off WHY     the gates restored, recorded in History
+    kit_settings.py netbox-writes-on WHY  NetBox's master write switch on, recorded (C2548)
     kit_settings.py last-exception        the newest exception record, one line
     kit_settings.py safety                the safety defaults, one PASS/FAIL line each
 
@@ -99,6 +100,34 @@ def exception_off(why: str) -> None:
     print("identity exception: OFF, the gates restored (recorded in History)")
 
 
+def netbox_writes_on(why: str) -> None:
+    """NetBox's master write switch on for the kit's installation (the operator's sitting,
+    2026-11-05). As built, Mercury turns it on only in the confirm of an authorised NetBox
+    write (an import into NetBox, `netbox_ops`), and an import is not offered for a network
+    with no devices, while onboarding a first device needs the switch on: a fresh install
+    cannot start (C2548). The kit's bridge: the setting written through Mercury's own path and
+    recorded in History with its reason, as the identity exception is. Turn off is the NetBox
+    connection card's (Settings › Installation › Connections)."""
+    from modules import installation_settings as IS
+    from modules.settings_schema import get_setting
+
+    if not why.strip():
+        sys.exit("kit_settings: NetBox writes need a reason (kit netbox-writes-on \"<why>\")")
+    if get_setting("netbox_allow_writes", False):
+        print("netbox writes: already ON, nothing written")
+        return
+    _write({"netbox_allow_writes": True})
+    got = IS._record({"kind": "netbox_writes_on", "card": "netbox", "actor": ACTOR,
+                      "actor_verified": VERIFIED, "fields": ["netbox_allow_writes"],
+                      "changes": [{"key": "netbox_allow_writes", "label": "Writes allowed",
+                                   "kind": "bool", "old": False, "new": True}],
+                      "reason": f"the laptop kit (C2548's bridge): {why.strip()}"})
+    if not got.get("recorded"):
+        sys.exit(f"kit_settings: turned on and NOT recorded: {got.get('record_error')}")
+    print("netbox writes: ON (recorded in History); Turn off is on Settings › Installation › "
+          "Connections, NetBox connection")
+
+
 def last_exception() -> None:
     from modules import installation_settings as IS
 
@@ -146,6 +175,8 @@ if __name__ == "__main__":
         exception_on(args[0])
     elif cmd == "exception-off" and args:
         exception_off(" ".join(args))
+    elif cmd == "netbox-writes-on" and args:
+        netbox_writes_on(" ".join(args))
     elif cmd == "last-exception":
         last_exception()
     elif cmd == "safety":

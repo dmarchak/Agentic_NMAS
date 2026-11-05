@@ -10,6 +10,7 @@
 #   kit preflight      one PASS/FAIL line per check (kit_preflight.sh)
 #   kit check          the settings check alone (kit_check.py)
 #   kit netbox-admin   NetBox's superuser, created by the operator (who types its passphrase)
+#   kit netbox-writes-on "<reason>"  NetBox writes on, recorded in History (C2548's bridge)
 #   kit reset          stop, then delete the kit's data and NetBox's volumes (asks first)
 #
 # KIT_HOME (default ~/nmas-sdn-lab) holds everything: kit.env, data/ (NMAS_DATA_DIR), netbox/,
@@ -106,11 +107,31 @@ EOF
         "$db" "$db" "$rd" "$rd" "$key" > "$KIT_HOME/netbox/secrets.env" )
     echo "netbox: its internal secrets generated, owner-only (never printed)"
   fi
+  cmd_ensure_pepper
   load
   "${COMPOSE[@]}" pull -q
   echo "netbox: images pulled"
   in_wt "$PY" "$HERE/kit_settings.py" init
   echo "kit: initialised at $sha in $KIT_HOME; fill LAB_IF and CONTROLLER_ADDR in $ENV at the lab"
+}
+
+cmd_ensure_pepper() {   # NetBox's v2-token pepper, in secrets.env, once; never printed
+  # NetBox 4.6 refuses to save a v2 token without API_TOKEN_PEPPERS ("Unable to save v2 tokens:
+  # API_TOKEN_PEPPERS is not defined", the operator's first run, 2026-11-05). The image builds
+  # it from API_TOKEN_PEPPER_1 (its /etc/netbox/config/configuration.py), as the NMAS host's
+  # netbox-docker does. At least 50 characters (NetBox's minimum); 64 hex here. Added when
+  # missing, never replaced: a new pepper would invalidate every v2 token already issued.
+  local f="$KIT_HOME/netbox/secrets.env"
+  [ -f "$f" ] || die "no $f: kit init makes NetBox's secrets first"
+  if grep -q '^API_TOKEN_PEPPER_1=' "$f"; then
+    local n; n=$(grep '^API_TOKEN_PEPPER_1=' "$f" | head -1 | cut -d= -f2- | tr -d '\n' | wc -c)
+    [ "$n" -ge 50 ] || die "API_TOKEN_PEPPER_1 in $f is $n characters, under NetBox's 50"
+    echo "netbox: the v2-token pepper is set (id 1, $n characters; not printed)"
+  else
+    ( umask 077; printf 'API_TOKEN_PEPPER_1=%s\n' "$(openssl rand -hex 32)" >> "$f" )
+    chmod 0600 "$f"
+    echo "netbox: the v2-token pepper generated (id 1, 64 characters, owner-only; not printed); it takes effect at the next kit start"
+  fi
 }
 
 cmd_repin() {    # the kit moved to another commit (a fix committed on lab9-live), clean, stopped
@@ -196,6 +217,19 @@ cmd_preflight() {
   load
   local fails=0
   bash "$HERE/kit_preflight.sh" || fails=$?
+  # NetBox can save a v2 token: its running settings hold a pepper of id 1, at least 50
+  # characters. Read in the NetBox container (`manage.py shell -c`), the length printed, never
+  # the value; read-only. A v2 token's own creation is the operator's (the sheet, step 3).
+  local pep
+  pep=$("${COMPOSE[@]}" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
+        shell -c "from django.conf import settings as s; p = getattr(s, 'API_TOKEN_PEPPERS', {}) or {}; print('pepper', 1 in p, len(p.get(1) or ''))" 2>/dev/null | tail -1)
+  case "$pep" in
+    "pepper True "*) n=${pep##* }
+      if [ "$n" -ge 50 ]; then echo "PASS NetBox can save a v2 token: its pepper (id 1) is set, $n characters"
+      else echo "FAIL NetBox can save a v2 token: its pepper (id 1) is $n characters, under 50"; fails=$((fails + 1)); fi ;;
+    "pepper False "*) echo "FAIL NetBox can save a v2 token: API_TOKEN_PEPPERS has no id 1 (kit init adds it; kit stop and start apply it)"; fails=$((fails + 1)) ;;
+    *) echo "FAIL NetBox can save a v2 token: NetBox's settings could not be read (is NetBox up? kit start)"; fails=$((fails + 1)) ;;
+  esac
   if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" safety || fails=$((fails + $?)); fi
   if cmd_check >/dev/null; then echo "PASS settings check"; else echo "FAIL settings check: kit check names each key"; fails=$((fails + 1)); fi
   echo "kit preflight: $fails FAIL in all"
@@ -223,6 +257,9 @@ cmd_reset() {
 case "${1:-}" in
   init) shift; cmd_init "$@" ;;
   repin) shift; cmd_repin "$@" ;;
+  ensure-pepper) cmd_ensure_pepper ;;
+  netbox-writes-on) shift; load; [ $# -gt 0 ] || die 'usage: kit netbox-writes-on "<reason>"'
+    in_wt "$PY" "$HERE/kit_settings.py" netbox-writes-on "$@" ;;
   start) cmd_start ;;
   stop) cmd_stop ;;
   status) cmd_status ;;

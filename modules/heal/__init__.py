@@ -32,4 +32,12 @@ store kept per network, read by History's ``heal`` source), the golden commit's
 AI call), `journal` (the NetBox journal entry, under the master switch and the policy's
 declared authority) and `interrupted` (a heal whose job ended before it recorded its outcome:
 found by its mark, recorded, its incident closed, raised in Needs attention).
+
+H14 is the diagnosis engine (the amendment's item 1, docs/HEAL_TO_INTENT.md 19.3): `diagnose`
+(the runbooks as code: a plan from intent and the network model, every read through the reads
+engine as kind ``diagnosis``, the per-device lock, the 70-command cap, `RULES` and the
+ranking; "adjacency down with both ends at intent" built, "A can't reach B" H15's) and
+`diagnose_parse` (each read's parser, only where a real capture exists). Its record is the step
+log's ``diagnosis`` row. Read-only and deterministic: it sends no command that is not a read
+and calls no model.
 """

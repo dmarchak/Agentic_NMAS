@@ -51,6 +51,12 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     # different lab, its list also named Lab). DATA_DIR stays put: the lab's reader values live
     # there.
     monkeypatch.setattr(restarts, "_data", lambda name: str(tmp_path / name))
+    # And the credential profile record (2026-11-05, the gate's browser3 shard with two workers):
+    # a test that changed a profile earlier in the worker left its entry in the session's store,
+    # and History drew it among this lab's fleet rows as a third kind, `credential`.
+    from modules import credential_changes
+    monkeypatch.setattr(credential_changes, "_path",
+                        lambda: str(tmp_path / "credential_changes.jsonl"))
     from modules.nsot import credential_rotation as cr
     from modules.nsot import listref, receipts
     from modules.nsot import repo as R

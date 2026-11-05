@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -264,6 +265,114 @@ class TestTheDualHomedLaptop:
 
     def test_no_ipv4_default_route_fails(self, net):
         assert not net.judge_routes("", self._f("route6.txt"), "wlp130s0", "enp129s0")[0]
+
+
+class TestNetBoxsV2TokenPepper:
+    """NetBox 4.6 saves a v2 token only with API_TOKEN_PEPPERS (the operator's first run,
+    2026-11-05: "Unable to save v2 tokens: API_TOKEN_PEPPERS is not defined"). The image builds
+    it from API_TOKEN_PEPPER_1, so `kit ensure-pepper` (which `kit init` runs) puts one in the
+    owner-only secrets.env once, never prints it, and never replaces it."""
+
+    KIT = os.path.join(ROOT, "lab", "sdn-laptop", "kit")
+
+    def _run(self, home):
+        return subprocess.run(["bash", self.KIT, "ensure-pepper"], capture_output=True,
+                              text=True, env=dict(os.environ, KIT_HOME=str(home)))
+
+    def _home(self, tmp_path, secrets="DB_PASSWORD=d\nSECRET_KEY=s\n"):
+        (tmp_path / "netbox").mkdir()
+        f = tmp_path / "netbox" / "secrets.env"
+        f.write_text(secrets)
+        f.chmod(0o600)
+        return tmp_path, f
+
+    def test_a_missing_pepper_is_added_owner_only_never_printed(self, tmp_path):
+        home, f = self._home(tmp_path)
+        r = self._run(home)
+        assert r.returncode == 0, r.stderr
+        lines = f.read_text().splitlines()
+        assert lines[:2] == ["DB_PASSWORD=d", "SECRET_KEY=s"]           # the others kept
+        pepper = [ln.split("=", 1)[1] for ln in lines if ln.startswith("API_TOKEN_PEPPER_1=")]
+        assert len(pepper) == 1 and len(pepper[0]) >= 50
+        assert pepper[0] not in r.stdout + r.stderr
+        assert oct(f.stat().st_mode & 0o777) == "0o600"
+
+    def test_an_existing_pepper_is_never_replaced(self, tmp_path):
+        home, f = self._home(tmp_path, "API_TOKEN_PEPPER_1=" + "a" * 64 + "\n")
+        before = f.read_text()
+        r = self._run(home)
+        assert r.returncode == 0 and f.read_text() == before
+        assert "is set (id 1, 64 characters" in r.stdout
+
+    def test_a_short_pepper_is_refused(self, tmp_path):
+        home, _f = self._home(tmp_path, "API_TOKEN_PEPPER_1=short\n")
+        r = self._run(home)
+        assert r.returncode != 0 and "under NetBox's 50" in r.stderr
+
+    def test_init_runs_it_and_the_image_reads_that_name(self):
+        src = open(self.KIT, encoding="utf-8").read()
+        init = src[src.index("cmd_init() {"):src.index("cmd_check() {")]
+        assert "cmd_ensure_pepper" in init
+        assert "API_TOKEN_PEPPER_1" in src     # the netbox image's configuration.py reads it
+
+    def test_the_preflight_reads_netboxs_own_settings(self):
+        src = open(self.KIT, encoding="utf-8").read()
+        pre = src[src.index("cmd_preflight() {"):src.index("cmd_netbox_admin() {")]
+        assert "manage.py" in pre and "API_TOKEN_PEPPERS" in pre
+        assert "NetBox can save a v2 token" in pre
+
+
+class TestNetBoxWritesOnForAFreshKit:
+    """C2548's bridge (2026-11-05): a fresh install cannot turn NetBox writes on through Mercury
+    (an import's confirm turns them on, and an import is not offered for a network with no
+    devices, while onboarding a first device needs them on). `kit netbox-writes-on "<why>"`
+    writes the switch through Mercury's own path and records it in History with its reason,
+    as the identity exception is. Run as the kit runs it, a child process on its own data
+    folder."""
+
+    def _run(self, data, *args):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"),
+                               "netbox-writes-on", *args], cwd=ROOT, capture_output=True,
+                              text=True, env=dict(os.environ, NMAS_DATA_DIR=str(data)))
+
+    def _records(self, data):
+        out = []
+        for path in data.rglob("*"):
+            if path.is_file() and path.suffix in (".jsonl", ".json"):
+                for line in path.read_text(errors="replace").splitlines():
+                    if '"netbox_writes_on"' in line:
+                        out.append(json.loads(line))
+        return out
+
+    def test_it_turns_writes_on_and_records_who_why_and_the_change(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._run(data, "the first sitting's onboarding")
+        assert r.returncode == 0, r.stderr
+        assert "netbox writes: ON (recorded in History)" in r.stdout
+        settings = json.loads((data / "user_settings.json").read_text())
+        assert settings["netbox_allow_writes"] is True
+        (rec,) = self._records(data)
+        assert rec["card"] == "netbox" and rec["fields"] == ["netbox_allow_writes"]
+        assert rec["changes"][0]["old"] is False and rec["changes"][0]["new"] is True
+        assert "the first sitting's onboarding" in rec["reason"]
+
+    def test_already_on_writes_nothing_more(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        assert self._run(data, "first").returncode == 0
+        r = self._run(data, "again")
+        assert r.returncode == 0 and "already ON, nothing written" in r.stdout
+        assert len(self._records(data)) == 1
+
+    def test_a_reason_is_required(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._run(data, "   ")
+        assert r.returncode != 0 and "need a reason" in (r.stdout + r.stderr)
+        assert not (data / "user_settings.json").exists() or \
+            not json.loads((data / "user_settings.json").read_text()).get("netbox_allow_writes")
 
 
 class TestNmasDeployRefusesTheKit:

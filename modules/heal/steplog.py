@@ -19,7 +19,12 @@ store. Append-only, one line per event, never rewritten.
   call: `modules/heal/change_record.py`) and the NetBox journal entry (`modules/heal/journal.py`);
 - ``raised``: the act's job raised before it recorded an outcome (its exception's words);
 - ``interrupted``: a heal whose job ended before it recorded its outcome, found and recorded by
-  `modules/heal/interrupted.py`.
+  `modules/heal/interrupted.py`;
+- ``diagnosis``: one diagnosis runbook's run (`modules/heal/diagnose.py`, 19.3): its steps, its
+  ranked hypotheses and the checks it ruled out, each read named by its reads run (History ›
+  Reads holds the masked answer; this row never holds a device's text). Attached to its
+  incident when the heal ran it (`incidents` draws it on that entry), its own record when a
+  person did (`diagnoses`). "Diagnosed" is not a fix: the row changes no entry's outcome.
 
 **Masked:** every string a row carries passes through `redact.redact_text` before it is kept
 (a secret's position and value never reach the store), and again on the way out (History).
@@ -40,7 +45,12 @@ log = logging.getLogger(__name__)
 
 STORE = "heal_steps"
 FILE_NAME = "heal_steps.jsonl"
-ROWS = ("decision", "started", "act", "raised", "interrupted")
+ROWS = ("decision", "started", "act", "raised", "interrupted", "diagnosis")
+#: A diagnosis row's fields kept (`record_diagnosis`): Mercury's words and read references only.
+DIAGNOSIS_FIELDS = ("id", "runbook", "runbook_words", "target", "incident", "actor", "state",
+                    "words", "steps", "hypotheses", "more", "ruled_out", "not_checked",
+                    "commands", "cap", "runs", "stopped", "devices", "started_at",
+                    "finished_at")
 #: Each outcome as History marks it (section 8: healed, would heal, proposed, can't fix, held
 #: and halted), the decision's and the act's.
 MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",
@@ -179,6 +189,16 @@ def record_raised(network: str, decision: dict, words: str, now: float = None) -
     return append(network, dict(_of(decision), row="raised", words=words), now)
 
 
+def record_diagnosis(network: str, diagnosis: dict, now: float = None) -> dict:
+    """The ``diagnosis`` row for one run of a diagnosis runbook (`diagnose.run`'s answer):
+    `DIAGNOSIS_FIELDS` only, masked; its first device is the row's device."""
+    kept = {k: diagnosis.get(k) for k in DIAGNOSIS_FIELDS}
+    return append(network, dict(row="diagnosis", decision="",
+                                incident=diagnosis.get("incident") or "",
+                                device=(diagnosis.get("devices") or [""])[0],
+                                diagnosis=kept), now)
+
+
 def record_interrupted(network: str, decision: dict, words: str, *, halted: bool, by: str,
                        now: float = None) -> dict:
     """The ``interrupted`` row (`modules/heal/interrupted.py`)."""
@@ -192,9 +212,13 @@ def record_interrupted(network: str, decision: dict, words: str, *, halted: bool
 
 def _fold(rows: list) -> list:
     """*rows* folded into one entry per incident, oldest first (section 8: one record per
-    incident; an incident checked again later holds each of its decisions)."""
+    incident; an incident checked again later holds each of its decisions). A ``diagnosis`` row
+    makes no entry: it is attached to its incident's entry (its last), and a person's own
+    diagnosis is `diagnoses`'."""
     by = {}
     for r in rows:
+        if r.get("row") == "diagnosis":
+            continue
         key = r.get("incident") or r.get("decision") or r.get("id")
         e = by.get(key)
         if e is None:
@@ -240,12 +264,35 @@ def _fold(rows: list) -> list:
             e["steps"] += steps
             e.update(outcome="interrupted", words=r.get("words") or "", state="interrupted",
                      halted=bool(r.get("halted")), by=r.get("by") or e["by"])
+    for r in rows:
+        if r.get("row") == "diagnosis" and r.get("incident") in by:
+            by[r["incident"]]["diagnosis"] = r.get("diagnosis") or {}
     out = []
     for e in by.values():
         if "started" in e:
             e["steps"] += e.pop("started")
         out.append(e)
     return out
+
+
+def diagnoses(network: str, device: str = "", incident: str = "") -> dict:
+    """*network*'s diagnoses, newest first: ``{"state", "diagnoses", "error"}``; *device* keeps
+    those that read it, *incident* those attached to it. Each is its row's ``diagnosis`` with
+    the row's ``at``. A read creates nothing; absent and unreadable are different answers."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "diagnoses": [], "error": got["error"]}
+    out = []
+    for r in got["rows"]:
+        if r.get("row") != "diagnosis":
+            continue
+        d = dict(r.get("diagnosis") or {}, at=r.get("at"))
+        if device and device not in (d.get("devices") or []):
+            continue
+        if incident and d.get("incident") != incident:
+            continue
+        out.append(d)
+    return {"state": got["state"], "diagnoses": out[::-1], "error": ""}
 
 
 def incidents(network: str, device: str = "") -> dict:

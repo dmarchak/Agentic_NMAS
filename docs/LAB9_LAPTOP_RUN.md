@@ -95,7 +95,8 @@ made it. `init` itself runs from the main checkout's `lab/sdn-laptop/kit`.
 
 | Command | What it does |
 |---|---|
-| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets, the images pulled, the installation's settings and the `lab9` network |
+| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets (its v2-token pepper among them, by `kit ensure-pepper`), the images pulled, the installation's settings and the `lab9` network |
+| `kit ensure-pepper` | NetBox's v2-token pepper (`API_TOKEN_PEPPER_1`, which the image turns into `API_TOKEN_PEPPERS = {1: …}`, as the NMAS host's netbox-docker does) added to `secrets.env` once, 64 hex characters, owner-only, never printed, never replaced (a new one would void every v2 token issued); it takes effect at the next `kit start` |
 | `kit netbox-admin` | NetBox's superuser; **the operator types its passphrase** |
 | `kit start` | the check (refuses on any finding), lab9guard installed on `LAB_IF` (sudo asks; refuses if `LAB_IF` is unset or absent), the last exception said, the exception on with its timer, NetBox up, Mercury started as the user unit `nmas-sdn-kit-mercury`, then waits up to 100 s for `/health` ready |
 | `kit preflight` | section 7's lines (lab9guard read by `sudo -n`: run `sudo -v` first), the safety lines and the settings check, one PASS or FAIL each |
@@ -106,8 +107,15 @@ made it. `init` itself runs from the main checkout's `lab/sdn-laptop/kit`.
 | `kit reset` | asks for `RESET`, stops, then deletes the kit's data folder and NetBox's volumes. The main checkout, the NMAS host and the lab are untouched. `kit init` writes the settings and `lab9` again |
 
 **NetBox's API token:** the operator creates it in NetBox (the user menu, API Tokens) and enters
-it in Mercury at Settings › Installation › NetBox. Mercury keeps it encrypted, and nobody else
-reads it.
+it in Mercury at Settings › Installation › Connections › NetBox connection (API token,
+Replace…). Mercury keeps it encrypted, and nobody else reads it.
+- **A v2 token** (NetBox 4.6's own) needs the pepper above. The auth scheme is `Bearer`.
+- **A v1 token** works without it. The auth scheme is `Token`. The operator's first run used one,
+  because the kit's first release gave NetBox no pepper (NetBox: "Unable to save v2 tokens:
+  API_TOKEN_PEPPERS is not defined").
+- **The preflight's "NetBox can save a v2 token"** reads NetBox's running settings in its
+  container for a pepper of id 1, at least 50 characters. It prints the length, never the
+  value.
 
 ## 5. Discovery for the unknown switches
 

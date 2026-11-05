@@ -104,8 +104,10 @@ def matches(command: str, words: tuple) -> bool:
 
 #: Tier 1's members beyond the reads (`readonly_commands.EXTRAS`) each kind of caller may run
 #: (NSOT_READS.md section 11). A person: all of them. The agent: `verify /md5` only, a read of
-#: a file; a line in a device's log and the session's settings are a person's to send.
-EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",)}
+#: a file; a line in a device's log and the session's settings are a person's to send. A
+#: diagnosis runbook (`modules/heal/diagnose.py`, HEAL_TO_INTENT 19.3): none, reads only.
+EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",),
+          "diagnosis": ()}
 
 #: A reason long enough to allow `send log` at levels 0 to 3 for a person (the operator,
 #: 2026-10-08: "three words minimum, like dangerous lines"); recorded with the run.
@@ -261,9 +263,12 @@ def annotate(list_name: str, run_id: str, key: str, value) -> dict:
 
 
 def actor_words(record: dict) -> str:
-    """Who ran it, as History says it: a person, or the agent for a person."""
+    """Who ran it, as History says it: a person, the agent for a person, or a diagnosis for
+    the person or the heal that ran it."""
     if record.get("by") == "agent":
         return f"the agent, for {record.get('actor') or 'nobody named'}"
+    if record.get("by") == "diagnosis":
+        return f"a diagnosis, for {record.get('actor') or 'nobody named'}"
     return record.get("actor") or "unknown"
 
 
