@@ -1,0 +1,18 @@
+#!/usr/sbin/nft -f
+# The laptop kit's forwarding guard (docs/LAB9_LAPTOP_RUN.md section 7; the operator,
+# 2026-11-05): nothing is forwarded to or from the lab interface. It leaves forwarding on for
+# everything else (containers and VMs keep their outbound access). @LAB_IF@ is replaced by
+# `kit start` with kit.env's LAB_IF, checked as an interface name first.
+#
+# Priority -10 runs before the filter chains Docker installs (priority 0); a drop in any base
+# chain is final, whatever a later chain would accept. The counters let the preflight see the
+# rules in force.
+table inet lab9guard
+delete table inet lab9guard
+table inet lab9guard {
+	chain forward {
+		type filter hook forward priority -10; policy accept;
+		iifname "@LAB_IF@" counter drop comment "lab9guard: nothing forwarded from the lab"
+		oifname "@LAB_IF@" counter drop comment "lab9guard: nothing forwarded to the lab"
+	}
+}

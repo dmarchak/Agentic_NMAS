@@ -1,0 +1,5 @@
+HomeWiFi:wlp130s0
+br-5940de460963:br-5940de460963
+br-a58ce6e65e9a:br-a58ce6e65e9a
+docker0:docker0
+lo:lo

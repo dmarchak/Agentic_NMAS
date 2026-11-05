@@ -124,6 +124,148 @@ class TestTheComposeFile:
         assert ports and all(p.startswith("127.0.0.1:") for p in ports), ports
 
 
+class TestTheForwardingGuard:
+    """lab9guard (the operator, 2026-11-05): nothing forwarded to or from the lab interface,
+    forwarding left on for everything else. The fixture is nft 1.1.6's own answer
+    (`nft -j list table inet lab9guard`) for lab9guard.nft.in rendered on enp129s0, loaded in
+    a private user and network namespace (`unshare -rn`), 2026-11-05; each failing case is
+    that capture with one edit."""
+
+    FIXTURE = os.path.join(ROOT, "tests", "fixtures", "nft", "lab9guard-enp129s0.json")
+
+    @pytest.fixture
+    def guard(self):
+        return _load("kit_guard_check", "lab/sdn-laptop/kit_guard_check.py")
+
+    def _doc(self):
+        return json.load(open(self.FIXTURE, encoding="utf-8"))
+
+    def test_the_real_table_is_in_force(self, guard):
+        ok, words = guard.judge(self._doc(), "enp129s0")
+        assert ok, words
+        assert words.startswith("lab9guard in force on enp129s0")
+
+    def test_another_interface_is_not_guarded(self, guard):
+        ok, words = guard.judge(self._doc(), "enp130s0")
+        assert not ok and "iifname or oifname 'enp130s0'" in words
+
+    def test_a_missing_direction_fails_naming_it(self, guard):
+        doc = self._doc()
+        doc["nftables"] = [i for i in doc["nftables"]
+                           if "lab9guard: nothing forwarded to the lab" not in json.dumps(i)]
+        ok, words = guard.judge(doc, "enp129s0")
+        assert not ok and "no counted drop for oifname 'enp129s0'" in words
+
+    @pytest.mark.parametrize("edit,words", [
+        ({"hook": "input"}, "no chain is hooked on forward"),
+        ({"prio": 0}, "priority -10"),
+    ])
+    def test_a_chain_not_hooked_before_dockers_fails(self, guard, edit, words):
+        doc = self._doc()
+        for i in doc["nftables"]:
+            if "chain" in i:
+                i["chain"].update(edit)
+        ok, said = guard.judge(doc, "enp129s0")
+        assert not ok and words in said
+
+    def test_no_table_fails(self, guard):
+        ok, words = guard.judge({}, "enp129s0")
+        assert not ok and "not loaded" in words
+
+    def test_a_rule_without_its_counter_fails(self, guard):
+        doc = self._doc()
+        for i in doc["nftables"]:
+            if "rule" in i:
+                i["rule"]["expr"] = [e for e in i["rule"]["expr"] if "counter" not in e]
+        assert not guard.judge(doc, "enp129s0")[0]
+
+    def test_the_template_renders_both_directions_and_the_priority(self):
+        src = open(os.path.join(ROOT, "lab", "sdn-laptop", "lab9guard.nft.in"),
+                   encoding="utf-8").read().replace("@LAB_IF@", "enp129s0")
+        assert "type filter hook forward priority -10; policy accept;" in src
+        assert 'iifname "enp129s0" counter drop' in src
+        assert 'oifname "enp129s0" counter drop' in src
+        assert "@LAB_IF@" not in src
+
+    def test_start_installs_it_and_stop_removes_it(self):
+        src = open(os.path.join(ROOT, "lab", "sdn-laptop", "kit"), encoding="utf-8").read()
+        start = src[src.index("cmd_start() {"):src.index("cmd_stop() {")]
+        stop = src[src.index("cmd_stop() {"):src.index("cmd_status() {")]
+        assert "guard_on" in start and start.index("guard_on") < start.index('"${COMPOSE[@]}" up')
+        assert "guard_off" in stop
+        assert "sudo nft delete table inet lab9guard" in src
+
+
+class TestTheDualHomedLaptop:
+    """The lab profile is ready on the lab interface (active once a cable is in), and the
+    default route stays on the Wi-Fi (the operator, 2026-11-05). The fixtures are the laptop's
+    own `nmcli` and `ip` answers of 2026-11-05 ~03:4x UTC, cable unplugged, with minimal
+    edits: the Wi-Fi profile's name and the home LAN's addresses replaced (192.0.2.x,
+    fe80::1)."""
+
+    FIX = os.path.join(ROOT, "tests", "fixtures", "nm")
+
+    @pytest.fixture
+    def net(self):
+        return _load("kit_net_check", "lab/sdn-laptop/kit_net_check.py")
+
+    def _f(self, name):
+        return open(os.path.join(self.FIX, name), encoding="utf-8").read()
+
+    def test_unplugged_the_profile_is_ready_not_active(self, net):
+        ok, words = net.judge_profile(self._f("lab9-profile.txt"),
+                                      self._f("active-unplugged.txt"), False, "enp129s0", "lab9")
+        assert ok and "ready on enp129s0" in words and "no carrier" in words
+
+    def test_with_a_cable_it_must_be_active_on_the_lab_interface(self, net):
+        args = (self._f("lab9-profile.txt"), self._f("active-unplugged.txt"), True,
+                "enp129s0", "lab9")
+        ok, words = net.judge_profile(*args)
+        assert not ok and "its active connection is 'none'" in words
+        active = self._f("active-unplugged.txt") + "lab9:enp129s0\n"
+        ok, words = net.judge_profile(args[0], active, True, "enp129s0", "lab9")
+        assert ok and "active on enp129s0" in words
+
+    def test_another_profile_active_on_it_fails(self, net):
+        active = self._f("active-unplugged.txt") + "Wired connection 1:enp129s0\n"
+        ok, words = net.judge_profile(self._f("lab9-profile.txt"), active, True, "enp129s0",
+                                      "lab9")
+        assert not ok and "'Wired connection 1'" in words
+
+    @pytest.mark.parametrize("line,field", [(1, "ipv4.never-default"), (2, "ipv6.never-default"),
+                                            (3, "ipv4.ignore-auto-dns"),
+                                            (4, "ipv6.ignore-auto-dns")])
+    def test_each_setting_must_be_yes(self, net, line, field):
+        vals = self._f("lab9-profile.txt").splitlines()
+        vals[line] = "no"
+        ok, words = net.judge_profile("\n".join(vals), "", False, "enp129s0", "lab9")
+        assert not ok and f"{field} 'no'" in words
+
+    def test_a_profile_on_another_interface_or_absent_fails(self, net):
+        vals = self._f("lab9-profile.txt").replace("enp129s0", "enp130s0")
+        assert "bound to 'enp130s0'" in net.judge_profile(vals, "", False, "enp129s0", "lab9")[1]
+        assert "was not found" in net.judge_profile("", "", False, "enp129s0", "lab9")[1]
+
+    def test_the_default_routes_stay_on_the_wifi(self, net):
+        ok, words = net.judge_routes(self._f("route4.txt"), self._f("route6.txt"), "wlp130s0",
+                                     "enp129s0")
+        assert ok and words == "IPv4 via wlp130s0, IPv6 via wlp130s0"
+
+    @pytest.mark.parametrize("family", ["4", "6"])
+    def test_a_default_route_via_the_lab_fails_naming_it(self, net, family):
+        r4, r6 = self._f("route4.txt"), self._f("route6.txt")
+        if family == "4":
+            r4 += "default via 192.0.2.254 dev enp129s0 proto dhcp metric 100\n"
+        else:
+            r6 += "default via fe80::2 dev enp129s0 proto ra metric 100\n"
+        ok, words = net.judge_routes(r4, r6, "wlp130s0", "enp129s0")
+        assert not ok and "via enp129s0 (the lab interface)" in words
+        assert f"IPv{family}" in words
+
+    def test_no_ipv4_default_route_fails(self, net):
+        assert not net.judge_routes("", self._f("route6.txt"), "wlp130s0", "enp129s0")[0]
+
+
 class TestNmasDeployRefusesTheKit:
     def test_a_repo_holding_the_marker_is_refused_before_anything_moves(self, tmp_path, capsys):
         nd = _load("nmas_deploy", "scripts/nmas-deploy")

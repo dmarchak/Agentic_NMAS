@@ -57,23 +57,33 @@ else
   else line FAIL "lab interface addressed" "$LAB_IF has no address"; fi
 fi
 
-# 6. The default route is the Wi-Fi's, and only the Wi-Fi's
-defs=$(ip route show default | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | sort -u)
-if [ -z "$defs" ]; then line FAIL "default route via Wi-Fi" "no default route"
+# 6. The lab profile (bound to LAB_IF, never-default and ignore-auto-dns for IPv4 and IPv6,
+#    active once a cable is in), and the default route staying on WIFI_IF, IPv4 and IPv6.
+: "${WIFI_IF:=}" "${LAB_PROFILE:=lab9}"
+judge() {   # judge profile|routes: kit_net_check.py's one line, as this script's
+  local got; got=$(python3 -I "$(dirname "$0")/kit_net_check.py" "$1")
+  case "$got" in PASS*) line PASS "${got#PASS }" ;; *) line FAIL "${got#FAIL }" ;; esac
+}
+carrier=0; [ -n "$LAB_IF" ] && ip link show "$LAB_IF" 2>/dev/null | grep -q LOWER_UP && carrier=1
+NM_PROFILE=$(nmcli -g connection.interface-name,ipv4.never-default,ipv6.never-default,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns connection show "$LAB_PROFILE" 2>/dev/null) \
+NM_ACTIVE=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null) \
+CARRIER=$carrier LAB_IF="$LAB_IF" LAB_PROFILE="$LAB_PROFILE" judge profile
+if [ -z "$WIFI_IF" ]; then line FAIL "default route stays on the Wi-Fi" "WIFI_IF is not set in $KIT_HOME/kit.env"
 else
-  bad=""; for d in $defs; do [ -d "/sys/class/net/$d/wireless" ] || bad="$bad $d"; done
-  if [ -n "$bad" ]; then line FAIL "default route via Wi-Fi" "a default route via a wired interface:$bad"
-  else line PASS "default route via Wi-Fi" "$(echo $defs)"; fi
+  ROUTE4=$(ip route show default) ROUTE6=$(ip -6 route show default) \
+  WIFI_IF="$WIFI_IF" LAB_IF="$LAB_IF" judge routes
 fi
-d6=$(ip -6 route show default | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | sort -u)
-bad6=""; for d in $d6; do [ -d "/sys/class/net/$d/wireless" ] || bad6="$bad6 $d"; done
-if [ -n "$bad6" ]; then line FAIL "IPv6 default route via Wi-Fi" "a default route via a wired interface:$bad6"
-else line PASS "IPv6 default route via Wi-Fi" "${d6:-none}"; fi
 
-# 7. IP forwarding off, IPv4 and IPv6
-f4=$(cat /proc/sys/net/ipv4/ip_forward); f6=$(cat /proc/sys/net/ipv6/conf/all/forwarding)
-if [ "$f4" = 0 ] && [ "$f6" = 0 ]; then line PASS "IP forwarding off" "ipv4 $f4, ipv6 $f6"
-else line FAIL "IP forwarding off" "ipv4 $f4, ipv6 $f6 (Docker sets ipv4 forwarding on: docs/LAB9_LAPTOP_RUN.md section 7, step 1)"; fi
+# 7. No forwarding to or from the lab interface: the lab9guard table in force (its rules and
+#    counters), never the forwarding sysctl, which stays on for the laptop's containers and VMs.
+#    Reading nftables needs root: `sudo -n` asks nothing, so run `sudo -v` first if this fails.
+if [ -z "$LAB_IF" ]; then line FAIL "no forwarding to or from the lab interface" "LAB_IF is not set"
+elif ! out=$(sudo -n nft -j list table inet lab9guard 2>&1); then
+  line FAIL "no forwarding to or from the lab interface" "the lab9guard table could not be read: $(printf '%s' "$out" | head -c 120) (run sudo -v first, or kit start installs it)"
+else
+  got=$(printf '%s' "$out" | python3 -I "$(dirname "$0")/kit_guard_check.py" "$LAB_IF")
+  case "$got" in PASS*) line PASS "${got#PASS }" ;; *) line FAIL "${got#FAIL }" ;; esac
+fi
 
 echo "preflight: $fails FAIL"
 exit "$fails"

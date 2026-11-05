@@ -46,6 +46,29 @@ nmas_names() {   # the NMAS host's LAN address and tunnel name, for the check, n
 }
 UNIT=nmas-sdn-kit-mercury
 pid_alive() { systemctl --user is-active --quiet "$UNIT"; }
+klog() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$RUN/kit.log"; echo "$*"; }
+
+guard_on() {     # the lab9guard nftables table: nothing forwarded to or from LAB_IF
+  [ -n "${LAB_IF:-}" ] || die "LAB_IF is not set in $ENV: name the lab interface first"
+  [[ "$LAB_IF" =~ ^[A-Za-z0-9._-]{1,15}$ ]] || die "LAB_IF '$LAB_IF' is not an interface name"
+  ip link show "$LAB_IF" >/dev/null 2>&1 || die "LAB_IF $LAB_IF does not exist on this laptop (ip -br link lists them)"
+  echo "lab9guard: installing the forwarding guard on $LAB_IF; sudo asks for your password"
+  sed "s/@LAB_IF@/$LAB_IF/g" "$HERE/lab9guard.nft.in" | sudo nft -f - \
+    || die "lab9guard could not be installed, so the kit does not start"
+  klog "lab9guard: installed (inet lab9guard, forward priority -10, drops iifname and oifname $LAB_IF), by sudo"
+}
+
+guard_off() {
+  if sudo -n true 2>/dev/null || { echo "lab9guard: removing the forwarding guard; sudo asks for your password"; sudo -v; }; then
+    if sudo nft list table inet lab9guard >/dev/null 2>&1; then
+      sudo nft delete table inet lab9guard && klog "lab9guard: removed, by sudo"
+    else
+      klog "lab9guard: not loaded, nothing to remove"
+    fi
+  else
+    klog "lab9guard: NOT removed (sudo refused); remove it with: sudo nft delete table inet lab9guard"
+  fi
+}
 
 cmd_init() {
   local sha="${1:-}"
@@ -61,11 +84,15 @@ cmd_init() {
   # The marker nmas-deploy refuses on: nothing is ever deployed from this installation.
   printf 'the final SDN lab laptop kit, %s\n' "$KIT_HOME" > "$WT/.nmas-lab-kit"
   [ -f "$ENV" ] || cat > "$ENV" <<EOF
-# The laptop kit's settings (docs/LAB9_LAPTOP_RUN.md). Fill LAB_IF and CONTROLLER_ADDR at the lab.
+# The laptop kit's settings (docs/LAB9_LAPTOP_RUN.md). LAB_IF is the lab Ethernet, WIFI_IF the
+# Wi-Fi that keeps the default route, LAB_PROFILE the NetworkManager profile on LAB_IF;
+# CONTROLLER_ADDR is filled at the lab.
 PIN_SHA=$sha
 MERCURY_PORT=5080
 NETBOX_PORT=8001
 LAB_IF=
+WIFI_IF=
+LAB_PROFILE=lab9
 CONTROLLER_ADDR=
 OPENFLOW_PORT=6653
 CONTROLLER_REST_PORT=8080
@@ -109,6 +136,7 @@ cmd_start() {
   [ -z "$(git -C "$WT" status --porcelain -- . ':!.nmas-lab-kit')" ] || die "$WT is not clean"
   pid_alive && die "Mercury already runs (pid $(cat "$RUN/mercury.pid"))"
   cmd_check || die "refused to start: the settings check failed (above)"
+  guard_on
   in_wt "$PY" "$HERE/kit_settings.py" last-exception
   local until; until=$(date -u -d "+$EXCEPTION_HOURS hours" +%Y-%m-%dT%H:%MZ)
   in_wt "$PY" "$HERE/kit_settings.py" exception-on "$until"
@@ -153,6 +181,7 @@ cmd_stop() {
   systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
   rm -f "$RUN/mercury.pid"
   "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
+  guard_off
 }
 
 cmd_status() {

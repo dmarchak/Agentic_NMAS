@@ -97,10 +97,10 @@ made it. `init` itself runs from the main checkout's `lab/sdn-laptop/kit`.
 |---|---|
 | `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets, the images pulled, the installation's settings and the `lab9` network |
 | `kit netbox-admin` | NetBox's superuser; **the operator types its passphrase** |
-| `kit start` | the check (refuses on any finding), the last exception said, the exception on with its timer, NetBox up, Mercury started, then waits up to 100 s for `/health` ready |
-| `kit preflight` | section 7's lines, the safety lines and the settings check, one PASS or FAIL each |
+| `kit start` | the check (refuses on any finding), lab9guard installed on `LAB_IF` (sudo asks; refuses if `LAB_IF` is unset or absent), the last exception said, the exception on with its timer, NetBox up, Mercury started as the user unit `nmas-sdn-kit-mercury`, then waits up to 100 s for `/health` ready |
+| `kit preflight` | section 7's lines (lab9guard read by `sudo -n`: run `sudo -v` first), the safety lines and the settings check, one PASS or FAIL each |
 | `kit status` | the pinned sha, what runs, the last exception record |
-| `kit stop` | the gates restored and recorded, the timer cancelled, Mercury stopped by its pid (only if it is still `app.py`), NetBox stopped |
+| `kit stop` | the gates restored and recorded, the timer cancelled, Mercury's unit stopped, NetBox stopped, lab9guard removed (sudo asks; an unattended stop leaves it in place and logs so) |
 | `kit repin <sha>` | the worktree moved to `<sha>` (Mercury stopped first, the worktree clean) |
 | `kit check` | the settings check alone |
 | `kit reset` | asks for `RESET`, stops, then deletes the kit's data folder and NetBox's volumes. The main checkout, the NMAS host and the lab are untouched. `kit init` writes the settings and `lab9` again |
@@ -148,34 +148,50 @@ to the driver build (LAB9_SDN_GAP.md section 2, item 1). Nothing is written to a
 ## 7. The laptop's networking: the operator's sheet
 
 The laptop is dual-homed: the Wi-Fi carries the default route to the internet, the Ethernet
-carries the lab's subnets, and the laptop forwards nothing between them. Each step ends with the
-line it must print.
+carries the lab's subnets, and the laptop forwards nothing to or from the lab. Each step ends
+with the line it must print.
 
-1. **Before the lab:** stop Docker from turning forwarding on, then restart it.
-   - Docker sets `net.ipv4.ip_forward=1` when it starts. The kit's NetBox talks only on its own
-     bridge and to loopback, which needs no forwarding.
-   - `sudo install -m 0644 /dev/null /etc/docker/daemon.json` only if the file does not exist.
-     Otherwise add the key to it by hand.
-   - Then set it to `{"ip-forward": false}`, and run
-     `sudo systemctl restart docker && sudo sysctl -w net.ipv4.ip_forward=0`.
-   - PASS: `cat /proc/sys/net/ipv4/ip_forward` prints `0`.
-2. **Plug in the lab cable** (the interface named in `kit.env` as `LAB_IF`).
+**Forwarding stays on for the laptop; only the lab interface is fenced** (the operator,
+2026-11-05). Turning forwarding off globally would break every container's and VM's outbound
+access on the laptop, and Docker already sets the FORWARD policy to DROP when it enables
+forwarding. So the kit installs its own guard:
+- **`kit start` installs the nftables table `inet lab9guard`:** a forward chain at priority -10,
+  before Docker's filter chains, that drops anything whose `iifname` or `oifname` is the lab
+  interface. That interface is `LAB_IF` in `kit.env`, checked at start to exist.
+- **`kit stop` removes the table.**
+- Each one asks for sudo, says why, and logs that it did in `~/nmas-sdn-lab/run/kit.log`.
+- An unattended stop (the identity exception's expiry timer) cannot answer sudo. It leaves the
+  guard in place and logs that it did, which is the safe direction.
+- The template is `lab/sdn-laptop/lab9guard.nft.in`. The preflight's check
+  (`kit_guard_check.py`) reads the table's rules and counters, never the forwarding sysctl.
+
+1. **Plug in the lab cable** (the interface named in `kit.env` as `LAB_IF`).
    - PASS: `ip -br link show <LAB_IF>` shows `UP`.
-3. **Address the lab leg with no default route.** Use the address the lab's management plan
-   gives, or the lab's DHCP with its default route ignored:
-   - `nmcli con add type ethernet ifname <LAB_IF> con-name lab9 ipv4.method <manual|auto>
-     ipv4.addresses <addr/len> ipv4.never-default yes ipv6.never-default yes
-     ipv4.ignore-auto-dns yes`;
-   - `nmcli con up lab9`.
-   - PASS: `ip route show default` names only the Wi-Fi interface.
-4. **Route the lab's subnets over the lab leg,** each one it does not reach directly:
+2. **The lab leg with no default route: the NetworkManager profile `lab9`** on `LAB_IF`, with
+   never-default and ignore-auto-dns for IPv4 and IPv6. The operator made it on 2026-11-05 on
+   `enp129s0` (the laptop's built-in Ethernet, a stable name), DHCP for both families. To
+   remake it: `nmcli con add type ethernet ifname <LAB_IF> con-name lab9 ipv4.method auto
+   ipv6.method auto ipv4.never-default yes ipv6.never-default yes ipv4.ignore-auto-dns yes
+   ipv6.ignore-auto-dns yes`.
+   - The preflight's "lab profile" line checks the profile bound to `LAB_IF` (`LAB_PROFILE` in
+     `kit.env`), each of the four settings `yes`, and, once a cable is in, the profile active
+     on `LAB_IF` (`kit_net_check.py`).
+   - Its "default route stays on the Wi-Fi" line checks every IPv4 and IPv6 default route on
+     `WIFI_IF` (`wlp130s0`), none on the lab interface.
+   - PASS: "PASS lab profile: 'lab9' is active on enp129s0 …" with the cable in ("… is ready on
+     enp129s0 …, not active: no carrier" without), and "PASS default route stays on the Wi-Fi:
+     IPv4 via wlp130s0, IPv6 via wlp130s0".
+3. **Route the lab's subnets over the lab leg,** each one it does not reach directly:
    `nmcli con mod lab9 +ipv4.routes "<subnet/len> <lab gateway>"`, then `nmcli con up lab9`.
    - PASS: `ip route get <a switch's management address>` names `dev <LAB_IF>`.
-5. **Forwarding stays off,** IPv4 and IPv6.
-   - PASS: `sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding` prints both `= 0`.
-6. **Fill `kit.env`:** `LAB_IF` and `CONTROLLER_ADDR` (the controller server's address on the lab
+4. **Fill `kit.env`:** `LAB_IF` and `CONTROLLER_ADDR` (the controller server's address on the lab
    leg).
-   - PASS: `kit preflight` prints "PASS lab interface up", "PASS default route via Wi-Fi",
-     "PASS IP forwarding off" and "PASS controller OpenFlow port".
+5. **`kit start`,** which installs lab9guard (sudo asks).
+   - PASS: "lab9guard: installed (inet lab9guard, forward priority -10, drops iifname and
+     oifname <LAB_IF>), by sudo".
+6. **`sudo -v`, then `kit preflight`,** which reads the table with `sudo -n` and asks nothing.
+   - PASS: "PASS lab interface up", "PASS lab profile: 'lab9' is active on <LAB_IF> …", "PASS
+     default route stays on the Wi-Fi …", "PASS no forwarding to or from the lab interface:
+     lab9guard in force on <LAB_IF> …" and "PASS controller OpenFlow port".
 
-The preflight checks steps 2 to 6 on every run, and changes nothing.
+The preflight checks steps 1 to 6 on every run, and changes nothing.
