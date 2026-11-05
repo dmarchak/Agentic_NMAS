@@ -93,6 +93,12 @@
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
         {%- if r.action.run_url and r.action.run_url.startswith('https://github.com/') %}<a class="btn btn-small btn-outline" href="{{ r.action.run_url }}" target="_blank" rel="noopener noreferrer">Open {{ ('run #' ~ r.action.run) if r.action.run else 'the run' }} on GitHub</a>{% endif %}
+        {#- Board H's amendment, artboard I (H16): a can't-fix row of any tier, Never's
+            included, carries Diagnose…, the device's dialog with its runbook and target
+            taken from the incident's trigger (`diagnose_page.from_incident`); it reads
+            nothing until a person runs it there. -#}
+        {%- if r.diagnose and r.diagnose.device %} <span class="op-act"><a class="btn btn-small btn-outline" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=r.diagnose.device, list=r.diagnose.list) if r.diagnose.unreachable else url_for('device_v2.device', name=r.diagnose.device, list=r.diagnose.list, op='diagnose', **r.diagnose.args) }}" title="{{ r.diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted">{{ r.diagnose.words }}</span>
+        {%- elif r.diagnose %} <span class="muted">Diagnose… is not offered: {{ r.diagnose.words }}</span>{% endif %}
       </div>
       {#- Board H, artboard E: a self-healing proposal's card, read when the row is opened
           (routes/heal_proposal_v2.proposal), with Approve and Decline. -#}

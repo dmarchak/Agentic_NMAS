@@ -471,6 +471,7 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
     ping = p["reads"][a]
     got = reader.read({a: ping}, "reach")
     out["steps"].append(_step("reach", a, ping, None if got is None else got.get(a), ""))
+    out["hops"] = [_reach_row(a, ping, None if got is None else got.get(a))]
 
     ctx.trace, ctx.refs = _trace(reader, a, dest, owner_of, "trace")
     out["steps"].append({"step": "trace", "result": "ok", "reads": sorted(ctx.refs.values()),
@@ -483,7 +484,12 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
         hop, last = branch["hops"][i], i == len(branch["hops"]) - 1
         if last and (branch["end"] in _DIVERGES or (branch["end"] == "edge" and p["owner"])):
             ctx.divergence = {"branch": branch, "hop": hop}
+            out["hops"].append({"n": n + 1, "device": hop["device"],
+                                "read": f"show ip cef {dest}: {hop.get('words') or ''}",
+                                "against": f"diverges here: {branch['words']}",
+                                "verdict": "diverges"})
             _stop(out, hop["device"], seq[k + 1:], "its forwarding diverges from intent")
+            _unread_rows(out, hop["device"], seq[k + 1:], n + 1)
             return ctx
         key = (hop["device"], hop.get("iface") or "", hop.get("to_address") or "")
         if hop.get("iface") and key not in checked:
@@ -496,9 +502,14 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
                         h.capped == 1 and n == 1 else
                         f"after hop {n - 1}; hops after it not read" if h.capped == 1 else
                         f"during hop {n} (its second read not made); hops after it not read")
+                out["hops"].append(_hop_row(h, "", out["stopped"]))
+                _unread_rows(out, h.device, seq[k + 1:], n)
                 return ctx
-            if _diverges(ctx, h):
+            claim = _diverges(ctx, h)
+            out["hops"].append(_hop_row(h, claim))
+            if claim:
                 _stop(out, h.device, seq[k + 1:], f"hop {n} diverges from intent")
+                _unread_rows(out, h.device, seq[k + 1:], n)
                 return ctx
         if last and branch["end"] in ("unread", "bounded"):
             out["not_checked"].append({"check": f"the path past {hop['device']}",
@@ -535,17 +546,86 @@ def _stop(out: dict, device: str, rest: list, why: str) -> None:
                                    "why": "the runbook stops at the first hop that diverges"})
 
 
-def _diverges(ctx: ReachContext, h: Hop) -> bool:
-    """Whether hop *h* alone fires a decisive or strong rule (the walk stops there)."""
+def _diverges(ctx: ReachContext, h: Hop) -> str:
+    """The claim of the first decisive or strong rule hop *h* alone fires (the walk stops
+    there), or "" when it fires none."""
     view = ReachContext(ctx.plan)
     view.hops = [h]
     for rule in PATH_RULES:
         if rule.scope != "hop":
             continue
         hits, _passed = rule.fn(rule, view)
-        if any(x["strength"] in ("decisive", "strong") for x in hits):
-            return True
-    return False
+        for x in hits:
+            if x["strength"] in ("decisive", "strong"):
+                return x["claim"]
+    return ""
+
+
+# ── The hop table (board H, artboard J's right: the path hop by hop against intent) ────────
+
+def _reach_row(a: str, ping: list, ans) -> dict:
+    """Hop 0: A's ping to B. Sent and kept on History › Reads; its answer is not interpreted
+    until the ping has a real capture (C2414), so the row never says it passed or failed."""
+    cmd = ping[0]["command"] if ping else "ping"
+    if ans is None:
+        return {"n": 0, "device": a, "read": f"{cmd}: not sent, the command cap was reached",
+                "against": "", "verdict": "unread"}
+    sent = ans.get("state") not in ("refused", "failed") and bool(ans.get("answers"))
+    return {"n": 0, "device": a,
+            "read": (f"{cmd}: sent, its answer on History › Reads" if sent else
+                     f"{cmd}: not read ({ans.get('why') or ans.get('state') or 'no answer'})"),
+            "against": "not interpreted yet (C2414): the path is followed whatever it answered",
+            "verdict": "not_interpreted" if sent else "unread"}
+
+
+def _hop_row(h: Hop, claim: str, stopped: str = "") -> dict:
+    """A checked hop as the table draws it: what was read (each read's state in a few words,
+    "not read" naming why) and how it stands against intent."""
+    parts = [f"out {_short(h.egress)} toward {h.to or h.nh}"
+             + (f" ({h.nh})" if h.to and h.nh else "")]
+    f = h.fact("egress", "interfaces")
+    parts.append(f"{_short(h.egress)} {f['state'].replace('_', ' ')}, line protocol "
+                 f"{f['protocol']}" if f else f"{_short(h.egress)}'s state not read")
+    one, two = h.fact("egress", "interfaces", 1), h.fact("egress", "interfaces", 2)
+    if one and two and one.get("input_errors") is not None:
+        parts.append(f"input errors {one.get('input_errors')} then "
+                     f"{two.get('input_errors')}")
+    arp = h.fact("egress", "arp")
+    if arp is not None:
+        mine = any(e["address"] == h.nh for e in arp["entries"])
+        parts.append(f"next hop {h.nh} resolved (ARP)" if mine else
+                     f"next hop {h.nh} unresolved (ARP)")
+    for where in ("egress", "ingress"):
+        if where == "ingress" and not h.ingress:
+            continue
+        b = h.fact(where, "ip_interface")
+        name = h.name(where)
+        if b is None:
+            parts.append(f"{name}'s access lists not read")
+            continue
+        acls = [f"{d} {b[k]}" for d, k in (("in", "acl_in"), ("out", "acl_out")) if b.get(k)]
+        parts.append(f"{name}: " + (", ".join(f"access list {a}" for a in acls) if acls
+                                    else "no access list bound"))
+    if stopped:
+        return {"n": h.n, "device": h.device, "read": "; ".join(parts),
+                "against": f"not finished: {stopped}", "verdict": "unread"}
+    return {"n": h.n, "device": h.device, "read": "; ".join(parts),
+            "against": f"diverges here: {claim}" if claim else "as intent",
+            "verdict": "diverges" if claim else "ok"}
+
+
+def _unread_rows(out: dict, device: str, rest: list, n: int) -> None:
+    """The devices after the hop the walk stopped at, each once, as rows "not read"."""
+    seen = {device} | {r["device"] for r in out["hops"]}
+    for b, i in rest:
+        dev = b["hops"][i]["device"]
+        if dev in seen:
+            continue
+        seen.add(dev)
+        n += 1
+        out["hops"].append({"n": n, "device": dev, "read": f"not read: hops after {device} "
+                                                           "are not read",
+                            "against": "", "verdict": "unread"})
 
 
 def _return(p: dict, out: dict, reader: _Reader, ctx: ReachContext, owner_of: dict) -> None:

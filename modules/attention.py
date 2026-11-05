@@ -5285,13 +5285,18 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
     template loads it when the item opens: never a call)."""
     from modules import heal_notice
     from modules.ai import heal_analysis as HA
-    from modules.heal import steplog
+    from modules.heal import diagnose_page, steplog
 
     got = steplog.incidents(lst)
     if got["state"] == "unreadable":
         said.append(f"the step log cannot be read ({got['error']}), so no can't-fix is shown")
         return []
     later = _later_done(rows)
+    # Each incident's own triggers (their kind, rule, interface and other end), read once for
+    # the network: Diagnose…'s runbook and target (H16's second part). Unreadable or gone, the
+    # row's Diagnose… opens the dialog on its first choice.
+    from modules.heal import incidents as INC
+    triggers = {i.get("id"): i.get("triggers") or [] for i in INC.read(lst)["incidents"]}
     out = []
     for e in got["entries"]:
         if e.get("outcome") not in HA.CANT_FIX or not e.get("incident"):
@@ -5319,6 +5324,9 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
                           "outcome": e.get("outcome"), "kind": e.get("kind"),
                           "mode": e.get("mode")})
         r["heal_analysis"] = {"network": lst, "incident": e["incident"]}
+        # Board H's amendment, artboard I (H16): Diagnose…, its runbook and target from the
+        # incident's trigger, read from the row already read (nothing more is asked).
+        r["diagnose"] = diagnose_page.from_incident(lst, e, triggers.get(e["incident"]))
         out.append(r)
     return out
 

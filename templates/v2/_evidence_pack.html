@@ -60,6 +60,14 @@
   {%- endif %}
   {#- Explain and its answer (_explain_block.html): the answer kept with this pack, when there
       is one (C1853), drawn with no new call; it names the pack it read (C1862). -#}
+  {#- Diagnose… beside Explain (board H's amendment, artboard I; H16): the device's dialog, its
+      runbook and target taken from the alert (`diagnose_page.entry`); it reads nothing until
+      a person runs it there. A pack naming no device of a network offers none, saying why. -#}
+  {%- if diagnose and diagnose.device %}
+  <p class="pack-source pack-diagnose"><span class="op-act"><a class="btn btn-small" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=diagnose.device, list=diagnose.list) if diagnose.unreachable else url_for('device_v2.device', name=diagnose.device, list=diagnose.list, op='diagnose', **diagnose.args) }}" title="{{ diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted small">{{ diagnose.words }}</span></p>
+  {%- elif diagnose %}
+  <p class="muted small pack-diagnose">Diagnose… is not offered: {{ diagnose.words }}.</p>
+  {%- endif %}
   {%- with x = explained %}{% include "v2/_explain_block.html" %}{% endwith %}
   {#- Each section collapsed (board AlertsExplain revised 2026-10-29, "the answer card first"):
       its summary names it, its count (`evidence_pack.section_count`, carried as

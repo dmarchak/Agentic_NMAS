@@ -403,7 +403,7 @@ def device(name):
                        "list": ref.name, "back": tab} if op == "reload" else
                       _reload_verify_card(ref, dev, tab) if op == "reload_verify" else
                       _drift_check_card(ref, dev, tab) if op == "drift_check" else
-                      _diagnose_card(ref, dev, tab, _diagnose_fields(request.args))
+                      _diagnose_card(ref, dev, tab, _diagnose_fields(request.args, hints=True))
                       if op == "diagnose" else
                       # C537 (3), board C: no card asked for, and this device has an operation
                       # running, or one finished this person has not opened: THAT card.
@@ -1329,8 +1329,15 @@ def _diagnose_card(ref, dev, back, args) -> dict:
     return diagnose_page.card(ref.name, dev.get("hostname", ""), back, args)
 
 
-def _diagnose_fields(fields) -> dict:
-    return {k: (fields.get(k) or "") for k in ("runbook", "adjacency", "to", "address")}
+#: The card's fields; a GET's address may carry the hints an alert or a can't-fix row names
+#: (H16's second part: which interface, or the other end), which the run's form never sends.
+DIAGNOSE_FIELDS = ("runbook", "adjacency", "to", "address")
+DIAGNOSE_HINTS = ("interface", "neighbour")
+
+
+def _diagnose_fields(fields, hints: bool = False) -> dict:
+    return {k: (fields.get(k) or "") for k in DIAGNOSE_FIELDS + (DIAGNOSE_HINTS if hints
+                                                                 else ())}
 
 
 @bp.route("/device/<name>/diagnose", methods=["GET"])
@@ -1343,7 +1350,7 @@ def diagnose_card(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_diagnose.html", c=_diagnose_card(
-        ref, dev, _back(request.args), _diagnose_fields(request.args))))
+        ref, dev, _back(request.args), _diagnose_fields(request.args, hints=True))))
 
 
 @bp.route("/device/<name>/diagnose/run", methods=["POST"])
@@ -1381,24 +1388,35 @@ def diagnose_job_card(name, job):
     the job's failure, or that this server holds no such job. Re-read when the job announces
     ``diagnosis``."""
     from modules.heal import diagnose_page
-    from modules.nsot import capture_job
 
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
     ref, dev = found
-    c = {"op": "diagnose", "host": dev.get("hostname", ""), "list": ref.name,
-         "back": _back(request.args), "job": job}
-    j = capture_job.get(job)
-    if j is None or j.get("list") != ref.name or j.get("kind") != "diagnosis":
-        c.update(state="unknown")
-    elif j["state"] == "running":
-        c.update(state="running")
-    elif j["state"] == "failed" or not isinstance(j.get("payload"), dict):
-        c.update(state="failed", error=j.get("error") or "the job answered nothing")
-    else:
-        c.update(state="done", d=diagnose_page.result(j["payload"]))
-    return _strict(render_template("v2/_diagnose.html", c=c))
+    # One builder for this route and the page's reopened card (C537); drawn, it is opened.
+    c = diagnose_page.job_card(ref.name, dev.get("hostname", ""), job, _back(request.args))
+    return _strict(render_template("v2/_diagnose.html", c=_opened(c)))
+
+
+@bp.route("/device/<name>/diagnose/unreachable", methods=["GET"])
+def diagnose_unreachable(name):
+    """Diagnose… for a device Mercury cannot reach (an alert's card, a can't-fix row; board
+    H's artboard I): the dialog of the first of its neighbours by intent, "Can't reach" chosen
+    and the device's intended loopback its target (`diagnose_page.unreachable`), as a redirect
+    to that device's page. With no neighbour, the device's own dialog. Reads intent only."""
+    from flask import redirect, url_for
+
+    from modules.heal import diagnose_page
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    to = diagnose_page.unreachable(ref.name, dev.get("hostname", ""))
+    log.info("diagnose: Diagnose… for %s unreachable opens on %s (%s)", name, to["host"],
+             to["words"])
+    return redirect(url_for("device_v2.device", name=to["host"], list=ref.name, op="diagnose",
+                            **to["args"]))
 
 
 @bp.route("/device/<name>/reload/verify/offer", methods=["GET"])

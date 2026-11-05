@@ -32,7 +32,17 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `e7b05604308a5e4760bb53bc046f151441ded64df0d9e8fde15eb656fca08f24`
+Templates sha256: `ecd1f599966a88a880623895baffbca979ea5c7a4de363a0b121257210a48c19`
+
+Compared again 2026-11-05 (board H's amendment, H16's second part: History's kind diagnosis),
+by the template diff: `_timeline.html`'s kind table gains `diagnosis` ("diagnosis", info), and
+the Kind menu's What ran on a device gains **Diagnoses** (`history_sources.KIND_GROUPS`); a
+diagnosis a person ran is one row ("Diagnosis on <device>: <runbook> (<target>): <what it
+found>") on every device it read, opening to its record (hypotheses, ruled out, not checked,
+its hops, its reads' runs and every step), as every row opens. Board K draws a "diagnosed"
+chip under the kind Heal where the built page draws the kind Diagnoses: **deviation**
+(proposed log line: "History's Kind menu gains Diagnoses"). No other region moved. Templates
+sha256 before: `e7b05604308a5e4760bb53bc046f151441ded64df0d9e8fde15eb656fca08f24`.
 
 Compared again 2026-11-04 (board H, H6: the self-healing step log and the policy identity), by
 the template diff: `_timeline.html`'s kind table gains `heal` ("self-healing", info, drawn

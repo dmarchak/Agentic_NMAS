@@ -2030,6 +2030,75 @@ def heal(ctx):
                 if len(events) >= ctx["limit"] else [])
 
 
+def diagnoses(ctx):
+    """A person's diagnosis (board H's amendment, artboards I and J; docs/HEAL_TO_INTENT.md
+    19.3, part H16), kind ``diagnosis``: ONE row per diagnosis Diagnose… ran, its line the
+    runbook, its target and what it found ("3 hypotheses, the first decisive"), on every device
+    it read (so each device's History draws it), opening to its ranked hypotheses, what was
+    ruled out and not checked, the hops for "can't reach", every step and its reads' runs on
+    History › Reads. A diagnosis the heal ran for an incident is that incident's (the heal
+    row), never a row of its own. The network's own store (`steplog.diagnoses`); every text
+    masked again on the way out."""
+    from modules.heal import steplog
+    from modules.redact import redact_text
+
+    def m(value):
+        return redact_text(str(value)) if value not in (None, "") else ""
+
+    got = steplog.diagnoses(ctx["ref"].name, device=ctx["device"])
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the diagnoses in the self-healing step log could not be read: "
+                            f"{got['error']}"])
+    events = []
+    for d in got["diagnoses"]:
+        if d.get("incident") or not _recent(ctx, d.get("at")):
+            continue
+        devices = [x for x in d.get("devices") or [] if x]
+        if not any(_mine(ctx, x) for x in devices):
+            continue
+        hyps = d.get("hypotheses") or []
+        state = d.get("state") or ""
+        found = ("not diagnosed" if state in ("refused", "busy") else
+                 f"{len(hyps) + (d.get('more') or 0)} hypothes"
+                 f"{'i' if len(hyps) == 1 and not d.get('more') else 'e'}s, the first "
+                 f"{hyps[0].get('strength')}" if hyps else "no cause found")
+        target = d.get("target") or {}
+        about = (target.get("address") or target.get("peer")
+                 or " ".join(x for x in (target.get("neighbour"), target.get("interface"))
+                             if x))
+        events.append(_event(
+            d.get("at"), "diagnosis",
+            f"Diagnosis on {devices[0] if devices else 'no device'}: "
+            f"{d.get('runbook_words') or d.get('runbook')}"
+            + (f" ({m(about)})" if about else "") + f": {found}",
+            devices, who=d.get("actor") or "", detail=m(d.get("words")),
+            outcome="refused" if state in ("refused", "busy") else "done",
+            marks=["diagnosis", found],
+            record=[("Diagnosis", d.get("id")), ("Runbook", d.get("runbook_words")),
+                    ("Devices read", ", ".join(devices)),
+                    ("Device commands", (f"{d.get('commands') or 0} of at most "
+                                         f"{d.get('cap') or 0}")),
+                    ("Stopped", m(d.get("stopped"))),
+                    ("Started", d.get("started_at")), ("Finished", d.get("finished_at"))]
+            + [(f"Hypothesis {i}", f"{h.get('layer')} · {h.get('strength')}: "
+                                   f"{m(h.get('claim'))}")
+               for i, h in enumerate(hyps, 1)]
+            + [("Ruled out", "; ".join(m(r.get("check")) for r in d.get("ruled_out") or []))]
+            + [("Not checked", "; ".join(f"{m(r.get('check'))}: {m(r.get('why'))}"
+                                         for r in d.get("not_checked") or []))]
+            + [(f"Hop {h.get('n')} · {h.get('device')}",
+                f"{m(h.get('read'))}" + (f"; {m(h.get('against'))}" if h.get("against")
+                                         else ""))
+               for h in d.get("hops") or []]
+            + [("Reads on History › Reads", ", ".join(sorted(set(d.get("runs") or []))))]
+            + [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
+               for i, s in enumerate(d.get("steps") or [], 1)]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events, cut=[f"the step log's newest {ctx['limit']} diagnoses"]
+                if len(events) >= ctx["limit"] else [])
+
+
 #: A console run's outcome, as History says it (modules/nsot/console_ztp.py's outcomes).
 CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in",
                     "done": "done, verified", "unverified": "done, not verified",
@@ -2258,6 +2327,7 @@ SOURCES = {
     "sdn_operations": sdn_operations,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
+    "diagnoses": diagnoses,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2275,7 +2345,8 @@ KIND_GROUPS = (
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
                               ("retries", "Retries authorised", ("retry",)),
-                              ("heal", "Self-healing", ("heal",)))),
+                              ("heal", "Self-healing", ("heal",)),
+                              ("diagnoses", "Diagnoses", ("diagnosis",)))),
     ("What happened to a device", (("restarts", "Restarts", ("restart",)),
                                    ("windows", "Planned windows", ("window",)))),
     ("Decisions and records", (("approvals", "Approvals", ("approval",)),
@@ -2408,6 +2479,7 @@ SOURCE_KINDS = {
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
+    "diagnoses": ("diagnosis",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

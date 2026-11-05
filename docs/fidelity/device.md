@@ -74,7 +74,23 @@ Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, t
 Compared again 2026-11-05 (the main session, H16's gate): `_diagnose.html`'s "not offered"
 `<details>` gains `data-keep` (C472: a live region's details keeps its state across a redraw),
 an attribute no region draws; every region reads as before.
-Templates sha256: `20e2078c26ed7a66598677f7499cd2fc7f1e5456a2c30d7e3b9ee7505b2e7560`
+Templates sha256: `3b2f0b7c4c55bc7cb018c02d6312ef9591e101e6b453f5c0a1564dc89bd299a6`
+
+**Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
+by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it
+(no shot: C2583): Run is replaced by "<device> is in diagnosis dg-… (started … by …);
+Diagnose… is offered when it ends" while a device the plan reads is in one (I's amendment
+note: **same**); a hint from an alert or a can't-fix row that matches no offered adjacency is
+said on the card (no board draws it: it is the subset saying so); Can't reach's hop table
+(J's right) is drawn above the steps, its ping "not interpreted" where J reads "0 of 5 ·
+fails" (**deviation**, under the log line "H16's Diagnose… card", its text amended as the
+report proposes); Open in History opens the device's History tab on the kind Diagnoses and the
+diagnosis's day, in its own network, where J's link names History (History reads the active
+network only: the same deviation's line); the device page reopens a running or unread
+diagnosis as it reopens every job card (C537; no board draws a reopened Diagnose card: the
+reopened badge is board C's). The table's rows "One diagnosis per device", "Can't reach's
+path", "The result's controls" and "Diagnose… on an alert's card" are written again below.
+Templates sha256 before: `20e2078c26ed7a66598677f7499cd2fc7f1e5456a2c30d7e3b9ee7505b2e7560`.
 
 **Compared again 2026-11-05 ~11:4x UTC for H16** (board H's amendment, artboards I and J): the
 Actions menu gains **Diagnose…** after Check drift now…, always offered, opening its card in
@@ -352,12 +368,12 @@ controls, region by region.
 | Can't reach's target | one select: "a device of Default, or an IPv4 or IPv6 address, checked as one address" | a select of the network's devices by their loopback in intent, and an address field beside it, checked as one address; the card says Can't reach reads IPv4 forwarding only | **deviation** (log: H16's Diagnose… card) |
 | What it reads | Device, Reads, At most; each read named; Loki, one query | the same columns, each command as it will be sent ("show interfaces GigabitEthernet2 (twice, 10 s apart)"), each device's count; Loki's row; for Can't reach, the reads at each hop as the path reaches it | **same** |
 | The run's time | "about 40 s, at most 90 s (an estimate until it is measured)" | the reads' own bounds added (minutes on a full plan) and "the run's time is not measured yet (an estimate of 30 to 60 s)" | **deviation** (log: H16's Diagnose… card) |
-| One diagnosis per device | the button replaced by "r4 is in diagnosis dg-41a7 …" before the press | the count against the cap of 70; a device in another diagnosis refused by name when the run starts, drawn in place | **later** H16's next part: reading the diagnosis lock without taking it |
+| One diagnosis per device | the button replaced by "r4 is in diagnosis dg-41a7 …" before the press | (H16's second part) Run replaced by "r4 is in diagnosis dg-… (started HH:MM UTC by …); Diagnose… is offered when it ends", read from the lock's record without taking it, the card re-read when a diagnosis ends; still refused by name if one starts between the card and the press | **same** |
 | Run the diagnosis | primary, busy on itself, then the diagnosis in its place; Cancel | the same, busy on itself ("Starting the diagnosis…"), then the card waiting on the job's announcement, then the diagnosis in its place | **same** |
 | The diagnosis's head | "Diagnosis: r4 GigabitEthernet4 ↔ r3 GigabitEthernet4, OSPF down", times, on demand or automatic, reads count; the chip "3 hypotheses · the first decisive" | "Diagnosis: adjacency down with both ends at intent, r2 and r1", times, on demand by whom, commands against the cap, its id and whether it was recorded; the same chip | **deviation** (log: H16's Diagnose… card) |
 | The hypotheses | #, Hypothesis, Layer · strength, Evidence (masked) with each read a link, Would rule it out; "evidence incomplete" chip | the same five columns; each read a link to its run on History › Reads; the chip with what it lacks | **same** |
 | Ruled out | a details, open, the checks joined | a part "Ruled out (N)", the checks joined | **same** |
 | Not checked | not drawn | a part "Not checked (N)", each with why | **deviation** (log: H16's Diagnose… card) |
-| Can't reach's path | a hop table: Hop, Read, Against intent, the diverging hop marked | every step in order (reach, trace, each hop, return, logs, compare, rank), the hop that diverges named in its step | **deviation** (log: H16's Diagnose… card) |
-| The result's controls | Run again, Open in History, "16 reads on History › Reads", How does this work?; Open r6's can't-fix row | Run again… and a link to each reads run on History › Reads, How does this work? | **later** H16's next part: History's kind diagnosis (Open in History), and the can't-fix row's link |
-| Diagnose… on an alert's card and on a can't-fix row | drawn (Monitoring › Alerts, Needs attention) | not built | **later** H16's next part |
+| Can't reach's path | a hop table: Hop, Read, Against intent, the diverging hop marked; the chip "diverges at r6" | (H16's second part) "The path, hop by hop": Hop, Read, Against intent, each verdict a chip (as intent, diverges, not read), the diverging hop's claim in bold, the hops after it "not read"; hop 0 the ping, "not interpreted" where the board reads "0 of 5 · fails" (the ping has no capture, C2414); the chip "diverges at <device>"; every step still drawn below | **deviation** (log: H16's Diagnose… card) |
+| The result's controls | Run again, Open in History, "16 reads on History › Reads", How does this work?; Open r6's can't-fix row | (H16's second part) Run again…, Open in History (the device's History tab on the kind Diagnoses and the day it ran, in the diagnosis's own network), a link to each reads run on History › Reads, How does this work? | **later** Open <device>'s can't-fix row: a diagnosis on demand names no incident |
+| Diagnose… on an alert's card and on a can't-fix row | drawn (Monitoring › Alerts, Needs attention) | (H16's second part) drawn on both: docs/fidelity/alerts-explain.md and docs/fidelity/landing.md compare them | **same** |

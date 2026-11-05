@@ -174,7 +174,8 @@ def card(network: str, host: str, back: str, args) -> dict:
                      for k, l, r in CHOICES],
          "adjacency": args.get("adjacency") or "", "to": args.get("to") or "",
          "address": (args.get("address") or "").strip(), "options": [], "not_offered": [],
-         "without": [], "plan": None, "error": "", "ipv4_only": IPV4_ONLY}
+         "without": [], "plan": None, "error": "", "ipv4_only": IPV4_ONLY, "hint": "",
+         "busy": []}
     try:
         model, intents = D._sources(network)
     except D.Refused as exc:
@@ -183,7 +184,8 @@ def card(network: str, host: str, back: str, args) -> dict:
     if runbook == "adjacency_down":
         c["options"], c["not_offered"] = adjacencies(network, host, model, intents)
         if not c["adjacency"] and c["options"]:
-            c["adjacency"] = c["options"][0]["value"]
+            c["adjacency"], c["hint"] = _hinted(c["options"], args.get("interface") or "",
+                                                args.get("neighbour") or "")
     else:
         c["options"], c["without"] = destinations(host, _all_lines(intents or {}))
         if not c["to"] and not c["address"] and c["options"]:
@@ -196,7 +198,35 @@ def card(network: str, host: str, back: str, args) -> dict:
         c["plan"] = shown(D.plan(network, runbook, target, model=model, intents=intents))
     except D.Refused as exc:
         c["error"] = str(exc)
+        return c
+    # A device the plan reads already in a diagnosis (artboard I's amendment note): named in
+    # place of Run, read from the lock's record WITHOUT taking the lock; the press's lock
+    # stays the authority. The card re-reads when a diagnosis ends.
+    c["busy"] = [{"host": h, "diagnosis": b.get("diagnosis") or "",
+                  "actor": b.get("actor") or "an unrecorded caller",
+                  "started": (b.get("started_at") or "")[11:16] or "an unrecorded time"}
+                 for h, b in D.in_diagnosis(network, [r["device"] for r in c["plan"]["rows"]])
+                 .items()]
     return c
+
+
+def _hinted(options: list, interface: str, neighbour: str) -> tuple:
+    """``(adjacency, hint)``: the offered adjacency an alert or incident named (over
+    *interface*, matched in the short form intent's links use, or toward *neighbour*), else the
+    first offered and the hint saying the named one is not among them (never silently
+    swapped)."""
+    from modules.nsot.ifnames import abbreviate
+    if not interface and not neighbour:
+        return options[0]["value"], ""
+    short = (abbreviate(interface) or interface) if interface else ""
+    for o in options:
+        kind, _, rest = o["value"].partition("|")
+        b, _, port = rest.partition("|")
+        if kind == "link" and ((short and port == short) or (not short and b == neighbour)):
+            return o["value"], ""
+    named = f"{interface}" if interface else f"the link toward {neighbour}"
+    return options[0]["value"], (f"What raised this names {named}: no adjacency intent holds "
+                                 "over it is offered, so the first is chosen")
 
 
 def start(network: str, host: str, runbook: str, target: dict, shown_fp: str,
@@ -217,7 +247,10 @@ def start(network: str, host: str, runbook: str, target: dict, shown_fp: str,
                           "so nothing was read. Read the list again and run it.")}
     job = capture_job.start(network, f"diagnosing {host}: {p['runbook_words']}", actor,
                             lambda _j: mask_payload(D.run(network, runbook, target, actor)),
-                            kind="diagnosis", announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER)
+                            kind="diagnosis", announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER,
+                            # C537: the device's page reopens this card while it runs and its
+                            # result until each person has opened it (`job_card`).
+                            device=host, card="diagnose")
     return {"job": job}
 
 
@@ -252,6 +285,14 @@ def result(d: dict) -> dict:
         level = "danger" if first["strength"] == "decisive" else "warn"
     else:
         chip, level = "no cause found", "info"
+    # Can't reach's path, hop by hop (artboard J's right): the chip names the first hop that
+    # diverges, as the board draws it ("diverges at <device>").
+    hops = [{"n": h.get("n", 0), "device": h.get("device") or "", "read": h.get("read") or "",
+             "against": h.get("against") or "", "verdict": h.get("verdict") or "unread"}
+            for h in d.get("hops") or []]
+    where = next((h["device"] for h in hops if h["verdict"] == "diverges"), "")
+    if where and state not in ("refused", "busy"):
+        chip, level = f"diverges at {where}", "danger"
     runs = sorted(set(d.get("runs") or []))
     return {"id": d.get("id") or "", "words": d.get("words") or "",
             "runbook_words": d.get("runbook_words") or "", "actor": d.get("actor") or "",
@@ -266,4 +307,141 @@ def result(d: dict) -> dict:
                       for s in d.get("steps") or []],
             "commands": d.get("commands") or 0, "cap": d.get("cap") or 0,
             "devices": list(d.get("devices") or []), "stopped": d.get("stopped") or "",
-            "runs": runs, "recorded": d.get("recorded")}
+            "runs": runs, "recorded": d.get("recorded"), "hops": hops}
+
+
+# ── Diagnose… from an alert and from a can't-fix row (board H's amendment, artboard I) ─────
+
+#: An alert rule whose fault is the device not answering Mercury: its Diagnose… is "can't
+#: reach" toward the device, from the device nearest it by intent (`unreachable`).
+UNREACHABLE = "unreachable"
+OPENS = "Opens the dialog in place of the device's tab: nothing is read until you run it"
+
+
+def entry(network: str, device: str, *, rule: str = "", interface: str = "",
+          neighbour: str = "") -> dict:
+    """Diagnose… for something that names *device* (an alert, a can't-fix incident):
+    ``{"device", "list", "args", "unreachable", "words", "title"}``, the template's link built
+    by `url_for` from them: an alert whose rule is the device unreachable (`UNREACHABLE`),
+    "can't reach" toward it from its nearest device (``unreachable``, the redirect route);
+    one naming an interface, "an adjacency is down" over it (the card's ``interface`` hint);
+    one naming the other end, toward it (``neighbour``); anything else, the dialog on its
+    first choice. ``device`` "" and ``words`` the reason when it names no device of a network.
+    Reads nothing: the dialog reads intent when it opens, and only a press reads a device."""
+    if not device or not network:
+        return {"device": "", "list": "", "args": {}, "unreachable": False, "title": "",
+                "words": ("it names no device" if not device else
+                          f"{device} is in no network Mercury holds")}
+    out = {"device": device, "list": network, "args": {}, "unreachable": False,
+           "title": OPENS}
+    if UNREACHABLE in (rule or "").lower():
+        out.update(unreachable=True, words=(f"\"Can't reach\" {device}, from the device "
+                                            f"nearest it by intent ({rule})"))
+    elif interface:
+        out.update(args={"runbook": "adjacency_down", "interface": interface},
+                   words=f"\"An adjacency is down\" on {device} {interface}")
+    elif neighbour:
+        out.update(args={"runbook": "adjacency_down", "neighbour": neighbour},
+                   words=f"\"An adjacency is down\" between {device} and {neighbour}")
+    else:
+        out["words"] = f"on {device}: the runbook and its target chosen on the dialog"
+    return out
+
+
+def from_pack(pack: dict) -> dict:
+    """Diagnose… on an alert's evidence pack (Monitoring › Alerts, beside Explain): its device,
+    network and rule, and the interface its alert piece's labels name (`triggers`'
+    ``INTERFACE_LABELS``). An SDN detection's pack names a switch, never a device: none."""
+    from modules.heal import triggers
+    if not pack:
+        return {}
+    if not pack.get("device"):
+        return entry("", "", rule="") | {"words": (
+            "an SDN detection names a switch, which no runbook reads"
+            if (pack.get("store") or "").startswith("sdn") else "the alert names no device")}
+    labels = {}
+    for s in pack.get("sections") or []:
+        if s.get("name") == "alert":
+            labels = ((s.get("pieces") or [{}])[0] or {}).get("labels") or {}
+            break
+    interface = next((str(labels[k]) for k in triggers.INTERFACE_LABELS if labels.get(k)), "")
+    return entry(pack.get("network") or "", pack["device"], rule=pack.get("rule") or "",
+                 interface=interface)
+
+
+def from_incident(network: str, e: dict, triggers=None) -> dict:
+    """Diagnose… on a can't-fix row (Needs attention, of any tier, Never's included), on its
+    step log entry's device (*e*), from its incident's first trigger that names a target
+    (*triggers*: the incident's own, `incidents.read`'s, each with its kind; the step log keeps
+    only their words): an alert's rule and interface, or an adjacency's other end. No
+    trigger read: the dialog on its first choice."""
+    rule, interface, neighbour = "", "", ""
+    for t in triggers or []:
+        if not isinstance(t, dict):
+            continue
+        if t.get("kind") == "alert":
+            rule, interface = t.get("rule") or "", t.get("interface") or ""
+            break
+        if t.get("kind") == "adjacency" and t.get("related"):
+            neighbour = sorted(t["related"])[0]
+            break
+    return entry(network, e.get("device") or "", rule=rule, interface=interface,
+                 neighbour=neighbour)
+
+
+def nearest(model: dict, host: str) -> list:
+    """*host*'s neighbours by the network model's links, by name: the devices a "can't reach"
+    toward *host* can be run from, one hop from it, each once."""
+    ids = model.get("names") or {}
+    me = ids.get(host)
+    by_id = {v: k for k, v in ids.items()}
+    out = set()
+    for link in (model.get("links") or {}).values():
+        members = [m.get("dev") for m in link.get("members") or []]
+        if me is not None and me in members:
+            out |= {by_id[d] for d in members if d != me and d in by_id}
+    return sorted(out)
+
+
+def unreachable(network: str, host: str) -> dict:
+    """Where Diagnose… for *host* unreachable opens: ``{"host", "args", "words"}``, the first
+    of its neighbours by intent with "can't reach" chosen and *host*'s intended loopback its
+    target (none chosen when intent gives it none), or *host*'s own dialog and why when no
+    neighbour or no intent is known. Reads intent and the model only."""
+    from modules.heal import diagnose as D
+    from modules.heal import diagnose_reach as R
+    from modules.neighbours import _all_lines
+    try:
+        model, intents = D._sources(network)
+    except D.Refused as exc:
+        return {"host": host, "args": {}, "words": str(exc)}
+    near = nearest(model, host)
+    if not near:
+        return {"host": host, "args": {},
+                "words": f"intent cables {host} to no other device to diagnose from"}
+    _name, address = R._loopback(_all_lines(intents or {}).get(host) or {})
+    return {"host": near[0], "args": {"runbook": "cant_reach", "to": address or ""},
+            "words": f"from {near[0]}, the first of {host}'s {len(near)} neighbour(s) by intent"}
+
+
+def job_card(network: str, host: str, job_id: str, back: str = "overview") -> dict:
+    """The diagnosis's card by its job, as its job route and the device page's reopened card
+    draw it (C537): running, the diagnosis drawn (artboard J), the job's failure, or that this
+    server holds no such job (or one of another kind). ``level`` and ``words`` are the In
+    progress chip's: a diagnosis that ran is done whatever it found (its chip says what), one
+    refused or busy is partial."""
+    from modules.nsot import capture_job
+    c = {"op": "diagnose", "host": host, "list": network, "back": back, "job": job_id,
+         "level": "", "words": ""}
+    j = capture_job.get(job_id)
+    if j is None or j.get("list") != network or j.get("kind") != "diagnosis":
+        c.update(state="unknown")
+    elif j["state"] == "running":
+        c.update(state="running")
+    elif j["state"] == "failed" or not isinstance(j.get("payload"), dict):
+        c.update(state="failed", error=j.get("error") or "the job answered nothing")
+    else:
+        d = result(j["payload"])
+        c.update(state="done", d=d, words=d["chip"],
+                 level="warn" if d["chip"] == "not diagnosed" else "ok")
+    return c

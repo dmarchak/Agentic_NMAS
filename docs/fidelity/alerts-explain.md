@@ -15,7 +15,19 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `1cdf722c346003ad609aa90b6a762799cf4758199af3c2ebd1415ec564086eef`
+Templates sha256: `579b73fa95c1ce16b645fda3727e438a0b925ab4390aa78c14cd023c5658ae43`
+
+**Compared again 2026-11-05 (board H's amendment, artboard I, H16's second part):** by the
+template diff, against artboard I's alert card ("Explain · Diagnose… · Open the evidence pack ·
+How does this work?"): `_evidence_pack.html` draws, just above Explain, **Diagnose…** with its
+(i) and what it opens (`diagnose_page.from_pack`: an alert naming an interface, "An adjacency
+is down" on it; "Device unreachable", "Can't reach" toward the device from its nearest
+neighbour by intent; any other alert, the dialog on its first choice), or "Diagnose… is not
+offered: <why>" for a pack naming no device (an SDN detection's included). The board draws
+Diagnose… after Explain on one row, the pack's card draws it on its own line above Explain's
+block (Explain's control and answer are one block since C1853): **deviation** (proposed log
+line: "Diagnose… above Explain on the pack's card"). No other region moved. Templates sha256
+before: `1cdf722c346003ad609aa90b6a762799cf4758199af3c2ebd1415ec564086eef`.
 
 **Compared again 2026-10-29 (C2174, an alert firing on its data's absence):**
 `_evidence_pack.html`'s alert piece gains one clause, drawn only when the piece carries

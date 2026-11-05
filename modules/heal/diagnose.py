@@ -195,6 +195,38 @@ class DiagnosisLock:
         return False
 
 
+def _alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError, TypeError, OverflowError):
+        return False
+    return True
+
+
+def in_diagnosis(network: str, hosts) -> dict:
+    """``{host: holder}`` for each of *hosts* another diagnosis holds now, read WITHOUT taking
+    the lock (the card asks before the press; the press's `DiagnosisLock` stays the authority,
+    refusing by name). A holder is the lock file's record (`DiagnosisLock._take` writes it once
+    held and empties it before release), counted only while the process it names lives: a
+    holder that died left its record, and the kernel released its lock. A read creates
+    nothing: a device never diagnosed has no file."""
+    out = {}
+    for host in sorted(set(hosts or ())):
+        path = DiagnosisLock(network, [host], "", "")._path(host)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read(1 << 16)
+        except OSError:
+            continue
+        try:
+            holder = json.loads(text) if text.strip() else {}
+        except ValueError:
+            continue
+        if isinstance(holder, dict) and holder.get("diagnosis") and _alive(holder.get("pid")):
+            out[host] = holder
+    return out
+
+
 # ── The templates: every command a runbook can send ─────────────────────────────────────────
 
 #: Each read kind's command per dialect (`{if}` an interface intent holds, `{far}` and `{peer}`

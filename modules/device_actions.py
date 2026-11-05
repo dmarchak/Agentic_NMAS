@@ -1064,7 +1064,7 @@ def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict
 
 #: The cards a device's page reopens for its job (C537 (3)): each built as its own job route
 #: builds it, so the reopened card is the card.
-REOPENS = ("rotate", "deploy", "restore", "reload")
+REOPENS = ("rotate", "deploy", "restore", "reload", "diagnose")
 
 
 def job_card(ref, host: str, card: str, job_id: str) -> dict:
@@ -1081,6 +1081,9 @@ def job_card(ref, host: str, card: str, job_id: str) -> dict:
         return restore_job_card(ref, host, job_id, deploy_job.state(job_id))
     if card == "reload":
         return reload_job_card(ref, host, job_id, capture_job.get(job_id))
+    if card == "diagnose":
+        from modules.heal import diagnose_page
+        return diagnose_page.job_card(ref.name, host, job_id)
     raise ValueError(f"no card reopens a {card!r} job (REOPENS: {', '.join(REOPENS)})")
 
 

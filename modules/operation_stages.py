@@ -598,6 +598,9 @@ WRITTEN_ELSEWHERE = {
                           "alerts reader's after-store step from the ruler (modules/"
                           "alert_rule_changes.py, C1886): no Mercury operation writes it",
     "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
+    "diagnoses": "each diagnosis Diagnose… ran, written to the self-healing step log "
+                 "(modules/heal/steplog.py) by its job, which a reveal route starts "
+                 "(device_v2.diagnose_run; board H, H16), never a confirm",
     # The fleet's own records (C369, board D): about no one device, read by the one timeline.
     "commits": "a commit touching no device's golden or intent: the monitoring profile, the "
                "templates, a policy (every writer, through repo.commit())",

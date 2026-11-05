@@ -1573,11 +1573,15 @@ def _pack_context(pack, rows) -> dict:
     And ``section_counts``, each section's count by its reference as its collapsed summary
     names it (`evidence_pack.section_count`; board AlertsExplain revised 2026-10-29)."""
     from modules import evidence_pack
+    from modules.heal import diagnose_page
 
     counts = {s.get("ref"): evidence_pack.section_count(s)
               for s in ((pack or {}).get("sections") or [])}
+    # Diagnose… beside Explain (board H's amendment, artboard I; H16): from the pack alone,
+    # reading nothing (`diagnose_page.from_pack`).
     return dict(_pack_lineage(pack, rows), sdn=evidence_pack.sdn_view(pack) if pack else {},
-                section_counts=counts)
+                section_counts=counts,
+                diagnose=diagnose_page.from_pack(pack) if pack else None)
 
 
 def _explain_model() -> str:

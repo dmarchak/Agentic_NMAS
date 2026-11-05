@@ -133,7 +133,7 @@ OPERATION_NAMES = {
     "rotate": "Rotate credential", "onboard": "Onboard", "persist": "Persist",
     "retire": "Retire", "save": "Save", "command": "A command that is not a read",
     "bulk": "Bulk change", "reload": "Reload", "file": "File action",
-    "probe": "Removal probe", "read": "Show commands",
+    "probe": "Removal probe", "read": "Show commands", "diagnose": "Diagnose",
     # A scoped batch's operation is its scope's noun (`receipts.SCOPES`, C364).
     "monitoring profile apply": "Monitoring profile apply", "IP SLA send": "IP SLA send",
     "monitoring templates deploy": "Monitoring templates deploy",

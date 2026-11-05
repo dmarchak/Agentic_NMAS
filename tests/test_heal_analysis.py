@@ -454,6 +454,10 @@ class TestTheCantFixRow:
         assert r["action"]["label"].startswith("Decide on the ACL")
         assert r["cause"].startswith("Mercury's facts:") and "step(s) tried" in r["cause"]
         assert r["heal_analysis"] == {"network": "Default", "incident": inc}
+        # Board H's amendment, artboard I (H16's second part): Diagnose… on a can't-fix row
+        # of any tier, Never's included (this ACL's), on the incident's device.
+        assert (r["diagnose"]["device"], r["diagnose"]["list"]) == (r["devices"][0],
+                                                                     "Default"), r["diagnose"]
         assert ("heal", "cant_fix") in ACKNOWLEDGED_HERE
         assert "acknowledge" in CLEARS[("heal", "cant_fix")][0]
 

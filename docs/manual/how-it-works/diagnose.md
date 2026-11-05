@@ -1,7 +1,10 @@
 # Diagnose: a runbook's reads, ranked into hypotheses
 
 **Diagnose…** on a device's Actions menu runs one of two fixed runbooks: "an adjacency is down
-with both ends at intent" and "can't reach a device or an address". A runbook is a list of
+with both ends at intent" and "can't reach a device or an address". The same Diagnose… is on an
+alert's evidence pack (Monitoring › Alerts, above Explain) and on a can't-fix row of Needs
+attention, any tier, Never's included; each opens the device's card with its runbook and target
+taken from what raised it (see [Where it opens from](#from)). A runbook is a list of
 steps in code. Each step is a read of a device, or a comparison of what was read with committed
 intent. It sends no command that is not a read, changes nothing, and calls no model. What it
 answers is a **diagnosis**: each step with its result, the hypotheses ranked with their
@@ -28,6 +31,25 @@ reads it makes at each hop for "can't reach", the logs it reads, its count again
 verified person, because what it reads is shown to the person who asked. The plan is made
 again at the press; if the reads moved since the card was drawn (intent changed), nothing is
 read and the card says so, naming both fingerprints.
+
+If a device the plan reads is already in a diagnosis, the card says so in place of the button
+("edge1 is in diagnosis dg-... (started 18:40 UTC by ...); Diagnose… is offered when it ends"),
+and draws itself again when a diagnosis ends. It asks without taking the device: the press
+still refuses by name if a diagnosis starts between the card and the press.
+
+## Where it opens from {#from}
+
+- **The device's Actions menu:** the card on its first choice.
+- **An alert's evidence pack:** an alert naming an interface opens "An adjacency is down" with
+  the adjacency over that interface chosen; "Device unreachable" opens "Can't reach" on the
+  first of the device's neighbours by intent, the unreachable device the target (by its
+  loopback in intent); any other alert opens the card on its first choice. A pack naming no
+  device (an SDN detection's) says Diagnose… is not offered, and why.
+- **A can't-fix row:** the same, from the incident's first trigger (an alert, or an
+  adjacency's other end).
+
+If what raised it names an adjacency the card does not offer, the card says so and chooses the
+first. Nothing is read until you press **Run the diagnosis**.
 
 ## The steps: an adjacency is down
 
@@ -80,6 +102,17 @@ what would rule it out, each piece of evidence a link to its read's run on Histo
 (the masked answer), what was ruled out, what was not checked and why, and every step. With no
 rule firing it reads "no cause found in what Mercury reads", then the ruled-out list. It never
 guesses. **Run again…** opens the card again.
+
+For "can't reach", **The path, hop by hop** comes first: the ping (sent, its answer on History ›
+Reads, not interpreted until it has a capture), each hop checked with what was read and "as
+intent" or "diverges here", and the devices after the hop that diverges "not read". The
+headline then names the hop ("diverges at edge2").
+
+**Open in History** opens the device's History tab on the kind Diagnoses and the day it ran:
+each diagnosis a person ran is a row there, and on History, on every device it read. A
+diagnosis self-healing runs for an incident is that incident's, on its row. Leave the page
+while it runs, and the device's page opens the card again when you come back, until you have
+seen its result; the top bar's In progress lists it meanwhile.
 
 "Diagnosed" is not a fix: a diagnosis on demand acts on nothing and clears nothing.
 

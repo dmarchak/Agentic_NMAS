@@ -494,6 +494,125 @@ class TestEachRule:
         assert {r.name for r in R.PATH_RULES} == planted
 
 
+class TestTheHopTable:
+    """Artboard J's right (H16's second part): the path hop by hop against intent, each row
+    what was read and how it stands, the first hop that diverges named, the hops after it
+    "not read", and the ping (hop 0) never said to pass or fail until it has a capture."""
+
+    def test_a_healthy_path_each_hop_as_intent_and_the_ping_not_interpreted(self, world):
+        got, _ = reach(r1_to_r4())
+        hops = got["hops"]
+        assert [(h["n"], h["device"], h["verdict"]) for h in hops] == [
+            (0, "r1", "not_interpreted"), (1, "r1", "ok")], hops
+        assert hops[0]["read"] == ("ping 10.255.1.14 source Loopback0 repeat 5 timeout 2: "
+                                   "sent, its answer on History › Reads")
+        assert "C2414" in hops[0]["against"]
+        assert hops[1]["read"].startswith("out Gi2 toward r4 (10.255.3.14); Gi2 up, line "
+                                          "protocol up")
+        assert "next hop 10.255.3.14 resolved (ARP)" in hops[1]["read"]
+        assert "r4 Gi3: no access list bound" in hops[1]["read"]
+        assert hops[1]["against"] == "as intent"
+
+    def test_the_first_hop_that_diverges_is_named_and_the_rest_not_read(self, world):
+        answers = changed(s1_to_r4(), "s1", "show interfaces GigabitEthernet0/2",
+                          show_if("GigabitEthernet0/2").replace(
+                              "GigabitEthernet0/2 is up, line protocol is up",
+                              "GigabitEthernet0/2 is administratively down, line protocol is "
+                              "down"))
+        got, _ = reach(answers, device="s1")
+        hops = got["hops"]
+        assert [(h["n"], h["device"], h["verdict"]) for h in hops] == [
+            (0, "s1", "not_interpreted"), (1, "s1", "diverges"), (2, "r1", "unread")], hops
+        assert hops[1]["against"] == "diverges here: " + got["hypotheses"][0]["claim"]
+        assert hops[2]["read"] == "not read: hops after s1 are not read"
+
+    def test_a_divergence_at_the_trace_s_end_is_its_own_row(self, world):
+        answers = {("r3", "ping 198.51.100.3 source Loopback0 repeat 5 timeout 2"): "",
+                   ("r3", "show ip cef 198.51.100.3"): CEF["r3"]["show ip cef 198.51.100.3"]}
+        got, _ = reach(answers, device="r3", address="198.51.100.3")
+        last = got["hops"][-1]
+        assert (last["n"], last["device"], last["verdict"]) == (1, "r3", "diverges")
+        assert last["against"] == "diverges here: dropped at r3: no route to 198.51.100.3"
+
+    def test_the_hops_are_kept_in_the_record(self, world):
+        from modules.heal import steplog
+        got, _ = reach(r1_to_r4())
+        (d,) = steplog.diagnoses("Default")["diagnoses"]
+        assert d["hops"] == got["hops"]
+
+
+class TestInDiagnosisWithoutTakingTheLock:
+    """The card asks, before the press, whether a device is in a diagnosis (artboard I's
+    amendment note), reading the lock's record without taking the lock; a record whose
+    process died is not a holder (the kernel released its lock)."""
+
+    def test_held_named_then_released_and_a_dead_holder_ignored(self, world):
+        import json
+        import os
+
+        from modules.heal import diagnose as D
+        assert D.in_diagnosis("Default", ["r1", "r4"]) == {}, "a read creates nothing"
+        with D.DiagnosisLock("Default", ["r4"], "dg-held", ACTOR):
+            got = D.in_diagnosis("Default", ["r1", "r4"])
+            assert list(got) == ["r4"] and got["r4"]["diagnosis"] == "dg-held"
+            assert got["r4"]["actor"] == ACTOR
+            with D.DiagnosisLock("Default", ["r1"], "dg-other", ACTOR):
+                pass                                  # the reader took nothing: r1 is free
+        assert D.in_diagnosis("Default", ["r4"]) == {}, "released, its record emptied"
+        path = D.DiagnosisLock("Default", ["r1"], "", "")._path("r1")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"pid": 2 ** 22 + 7, "diagnosis": "dg-dead", "actor": ACTOR}, fh)
+        assert D.in_diagnosis("Default", ["r1"]) == {}, "a dead holder's record is not a hold"
+
+
+def _history(device=""):
+    from modules import history_sources as HS
+    from modules.nsot import listref
+    return HS.diagnoses({"ref": listref.resolve("Default"), "device": device, "limit": 50,
+                         "since": None, "until": None, "members": None, "inventory": None,
+                         "call": ""})
+
+
+class TestOnHistory:
+    """History's kind ``diagnosis`` (H16's second part; 19.3: "On demand: it is its own
+    record"): the real run's recorded row, one event on every device it read, its hypotheses,
+    hops and reads in the opened record; a diagnosis the heal ran for an incident is the
+    incident's, never its own row."""
+
+    def test_a_person_s_diagnosis_is_one_row_on_each_device_it_read(self, world):
+        from modules import history_sources as HS
+        got, _ = reach(changed(r1_to_r4(), "r1", "show interfaces GigabitEthernet2",
+                               show_if("GigabitEthernet2").replace(
+                                   "is up, line protocol is up",
+                                   "is administratively down, line protocol is down")))
+        (e,) = _history()["events"]
+        assert e["kind"] == "diagnosis" and HS.SOURCE_KINDS["diagnoses"] == ("diagnosis",)
+        assert e["what"] == ("Diagnosis on r1: A can't reach B (10.255.1.14): 1 hypothesis, "
+                             "the first decisive"), e["what"]
+        assert e["devices"] == ["r1", "r4"] == got["devices"] and e["who"] == ACTOR
+        record = dict(e["record"])
+        assert record["Diagnosis"] == got["id"]
+        assert record["Hypothesis 1"] == "physical · decisive: " + got["hypotheses"][0]["claim"]
+        assert record["Hop 1 · r1"].endswith("diverges here: " + got["hypotheses"][0]["claim"])
+        assert record["Reads on History › Reads"] == ", ".join(sorted(set(got["runs"])))
+        assert [x["what"] for x in _history("r1")["events"]] == [e["what"]]
+        assert [x["what"] for x in _history("r4")["events"]] == [e["what"]], \
+            "r4's ingress was read, so r4's History draws it too"
+        assert _history("r2")["events"] == [], "r2 was not read"
+
+    def test_an_incident_s_diagnosis_is_not_a_row_of_its_own(self, world):
+        reach(r1_to_r4(), incident="hi-planted")
+        assert _history()["events"] == []
+
+    def test_an_unreadable_step_log_is_said(self, world, monkeypatch):
+        from modules.heal import steplog
+        monkeypatch.setattr(steplog, "read", lambda network: {
+            "state": "unreadable", "rows": [], "error": "planted"})
+        got = _history()
+        assert got["events"] == [] and "could not be read: planted" in got["errors"][0]
+
+
 class TestTheRecord:
     def test_one_masked_row_naming_the_runbook(self, world):
         from modules.heal import steplog

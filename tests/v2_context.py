@@ -1430,6 +1430,24 @@ def _diagnose(client, _lab, _mp):
         assert job and capture_job.wait(job.group(1), 10), r.status_code
         done = client.get(f"/v2/device/r3/diagnose/job/{job.group(1)}?back=overview")
         assert "Diagnosis:" in done.get_data(as_text=True), done.status_code
+        # H16's second part: an alert's hint naming no offered adjacency (said on the card),
+        # r4 already in a diagnosis (named in place of Run; its lock in a folder of its own,
+        # never the store), and Can't reach's hops drawn by its job's card.
+        import tempfile
+
+        from tests.test_heal_diagnose_v2 import TestTheHopsDrawn
+        hinted = client.get("/v2/device/r3/diagnose?back=overview&interface=GigabitEthernet9")
+        assert "the first is chosen" in hinted.get_data(as_text=True), hinted.status_code
+        with tempfile.TemporaryDirectory(prefix="nmas-v2-context-diag-") as folder:
+            mp.setattr("modules.config.LISTS_DIR", folder)
+            with D.DiagnosisLock("Lab", ["r4"], "dg-held", "operator@example.com"):
+                busy = client.get("/v2/device/r3/diagnose?back=overview&adjacency=link|r4|Gi4")
+            assert "r4 is in diagnosis dg-held" in busy.get_data(as_text=True), busy.status_code
+        job = capture_job.start("Lab", "diagnosing r3", "operator@example.com", lambda _j: dict(
+            FAKE, runbook="cant_reach", hops=TestTheHopsDrawn.HOPS), kind="diagnosis")
+        assert capture_job.wait(job, 10)
+        hops = client.get(f"/v2/device/r3/diagnose/job/{job}?back=overview")
+        assert "The path, hop by hop" in hops.get_data(as_text=True), hops.status_code
     finally:
         mp.undo()
 

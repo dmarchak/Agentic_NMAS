@@ -50,7 +50,7 @@ ROWS = ("decision", "started", "act", "raised", "interrupted", "diagnosis")
 DIAGNOSIS_FIELDS = ("id", "runbook", "runbook_words", "target", "incident", "actor", "state",
                     "words", "steps", "hypotheses", "more", "ruled_out", "not_checked",
                     "commands", "cap", "runs", "stopped", "devices", "started_at",
-                    "finished_at")
+                    "finished_at", "hops")
 #: Each outcome as History marks it (section 8: healed, would heal, proposed, can't fix, held
 #: and halted), the decision's and the act's.
 MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",

@@ -35,7 +35,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `fc12fb9529ab2d1cc5834c26c0da7a598e3b2a6b8480c2e421d1d1690eac7087`
+Templates sha256: `e6fb7548c903598671015aad67f1425cc912bca4de5d2f1f50a1eb075951df46`
+
+**Compared again 2026-11-05 for H16's second part** (board H's amendment, artboard I's
+callout: "A can't-fix row on Needs attention carries Diagnose… too, the Never tier's
+included"), by the template diff: `_attention.html`'s What to do gains, on a row carrying
+``diagnose`` (`diagnose_page.from_incident`, the can't-fix rows only), **Diagnose…** with its
+(i) and a line saying what it opens ("An adjacency is down" on the interface the incident's
+alert named, toward the adjacency's other end, "Can't reach" toward a device unreachable, or
+the dialog on its first choice), or "Diagnose… is not offered: <why>". Artboard I draws the
+control by its callout only, so the placement after the row's own action is read from board
+E's What to do: **same**. No other region moved. Templates sha256 before:
+`fc12fb9529ab2d1cc5834c26c0da7a598e3b2a6b8480c2e421d1d1690eac7087`.
 
 **Merged again 2026-11-04 ~20:2x UTC (H8 onto C2471):** H8's can't-fix branch and the halted
 row's branch of `_attention.html` were compared apart; the merged template holds both,

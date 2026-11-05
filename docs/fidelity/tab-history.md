@@ -20,7 +20,14 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `214dd296b96752a04e1d7201319a31afb959325adff9fdbc5157dba1292b8814`
+Templates sha256: `a5d588173b044c71601e0698e8dd33400d45f9bb84866529cbe420608592579c`
+
+Compared again 2026-11-05 (board H's amendment, H16's second part), by the template diff:
+`_timeline.html`'s kind table gains `diagnosis` ("diagnosis", info); a device's History tab
+draws each diagnosis that read the device as every row is drawn, and a diagnosis's Open in
+History opens this tab on that kind and day. Board D draws no diagnosis kind: **deviation**
+(proposed log line: "History's Kind menu gains Diagnoses"). No other region of this tab moved.
+Templates sha256 before: `214dd296b96752a04e1d7201319a31afb959325adff9fdbc5157dba1292b8814`.
 
 Compared again 2026-11-04 (board H, H6), by the template diff: `_timeline.html`'s kind table
 gains `heal` ("self-healing", info, danger when the heal rolled back, failed after sending or
