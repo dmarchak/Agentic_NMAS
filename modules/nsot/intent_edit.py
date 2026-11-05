@@ -214,6 +214,24 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
                       + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
                       line, column)
 
+    # 2f. A DHCP pool that would serve no client (C2573): its network neither one of this
+    #     router's own subnets nor relayed to it by an interface in the network's committed
+    #     intent. Only a pool new or moved against HEAD; the network's intent is read only
+    #     when a pool is off the router's own subnets.
+    from modules.nsot.features import dhcp as _dhcp
+
+    def _network_facts():
+        if not list_name:
+            return {"error": "no network was named, so no relay in its intent could be read"}
+        from modules.readers.dhcp import intent_facts
+        return intent_facts(list_name)
+
+    problems = _dhcp.reach_problems(parsed, committed, _network_facts, hostname)
+    if problems:
+        path, key, _message = problems[0]
+        line, column = _key_mark(text, path, key)
+        return refuse("schema", "; ".join(m for _p, _k, m in problems), line, column)
+
     # 3. The secret guards, before anything is rendered or written.
     try:
         hostvars.assert_printable(text, hostname)

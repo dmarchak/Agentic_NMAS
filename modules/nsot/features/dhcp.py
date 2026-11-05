@@ -52,8 +52,11 @@ EXCLUDED = {"low": "", "high": ""}
 #: ``infinite``. All empty: the device's default, one day (the guide).
 LEASE = {"days": "", "hours": "", "minutes": "", "infinite": False}
 #: One pool: its network is a prefix (``192.0.2.0/24``), written out as IOS's address and mask.
+#: ``ztp``: the pool's clients boot from Mercury's ZTP server, whose address Mercury fills in
+#: as options 150 and 66 (`ztp_server`); ``ztp_device``: the one device the pool boots, whose
+#: boot file Mercury fills in as option 67 (`ztp.boot_file`). Neither value is typed.
 POOL = {"name": "", "network": "", "default_router": ListOf(), "dns_servers": ListOf(),
-        "domain_name": "", "lease": DictOf(LEASE)}
+        "domain_name": "", "lease": DictOf(LEASE), "ztp": False, "ztp_device": ""}
 #: The pool's lines the pack does not model, verbatim and in order.
 RAW_POOL = {"raw": ListOf()}
 SERVER = {"excluded": ListOf(EXCLUDED), "pools": ListOf()}
@@ -64,17 +67,74 @@ MARKERS = frozenset({"dhcp_server"})
 MAX_ADDRESSES = 8
 NOT_V6 = ("an IPv6 address: this pack serves IOS's DHCPv4 server only; DHCPv6 (`ipv6 dhcp "
           "pool`) is not covered, and its lines stay as they are in `unmodeled`")
+#: The names only the ZTP fields' lines read: a library whose partial predates them (it
+#: renders `dhcp_server` and not these) is handed a ZTP pool's options as `raw` lines.
+ZTP_MARKERS = frozenset({"ztp_server"})
+#: The DHCP options the ZTP fields write, by code: a pool's `raw` line naming one of them
+#: beside ``ztp`` would be a second value for one option.
+ZTP_OPTIONS = ("150", "66", "67")
 
 
-def complete_pool(pool: dict) -> dict:
+def ztp_server(unit_path: str = "", addrs=None) -> str:
+    """Mercury's ZTP server address for a router's pool (options 150 and 66): this host's one
+    IPv4 address on the interface its ZTP responder serves udp/69 on, the `BindToDevice=` of
+    the responder's socket unit. Derived on every render, never stored (D3: a configured copy
+    is how `tftp_server_ip` came to name an address the host did not have, C48). Raises
+    `FeatureIntentInvalid` naming what it found when it is not exactly one address."""
+    from modules.nsot import ztp_relayed
+    from modules.nsot.features import FeatureIntentInvalid
+
+    unit = unit_path or ztp_relayed.RESPONDER_SOCKET_UNIT
+    iface = ztp_relayed.responder_interface(unit)
+    if not iface:
+        raise FeatureIntentInvalid(
+            f"a pool with ztp: true needs Mercury's ZTP server address, the address of the "
+            f"interface its responder serves TFTP on, and {unit} names none (no BindToDevice= "
+            "line, or the unit is not installed: docs/DEPLOY_LINUX.md, the ZTP responder)")
+    found = sorted(str(a) for a in ztp_relayed._host_addrs(addrs).get(iface, []))
+    if len(found) != 1:
+        raise FeatureIntentInvalid(
+            f"a pool with ztp: true needs Mercury's ZTP server address: expected exactly one "
+            f"IPv4 address of this host on {iface}, the interface {unit} binds the responder "
+            f"to, found {len(found)}: {found}. Option 150 carries an IPv4 address: ZTP is "
+            "IPv4 only (C1245), so an IPv6 address there is never one")
+    return found[0]
+
+
+def complete_pool(pool: dict, server=None) -> dict:
     """*pool* with every field present, and its network written out for the partial
     (``network_address``, ``network_mask``; empty when the network is unset or unreadable,
-    which `problems` refuses before any render)."""
+    which `problems` refuses before any render). A ZTP pool also carries what Mercury fills
+    in: ``ztp_server`` (from *server*, a callable, `ztp_server` by default) and ``ztp_file``
+    (`ztp.boot_file` of ``ztp_device``, empty without one); a pool without ``ztp`` asks
+    nothing."""
     out = complete(pool, {**POOL, **RAW_POOL})
     out["network_address"], out["network_mask"] = "", ""
+    out["ztp_server"], out["ztp_file"] = "", ""
     net = _network(out["network"])
     if net is not None:
         out["network_address"], out["network_mask"] = str(net.network_address), str(net.netmask)
+    if out["ztp"] is True:
+        from modules.nsot import ztp
+        out["ztp_server"] = (server or ztp_server)()
+        device = _scalar(out["ztp_device"])
+        out["ztp_file"] = ztp.boot_file(device) if device else ""
+    return out
+
+
+def ztp_as_raw(server: dict, platform: str) -> dict:
+    """*server* (completed) for a library whose partial predates the ZTP fields: each ZTP
+    pool's option lines, as the shipped partial writes them, moved to the front of its `raw`
+    (which every library renders), and its ``ztp`` turned off, so no option is dropped."""
+    out = dict(server)
+    pools = []
+    for p in server.get("pools") or []:
+        if p.get("ztp") is True:
+            lines = [l for l in body_lines(platform, "dhcp_pool_body", p)
+                     if l.startswith("option ")]
+            p = dict(p, ztp=False, ztp_server="", ztp_file="", raw=lines + list(p["raw"]))
+        pools.append(p)
+    out["pools"] = pools
     return out
 
 
@@ -380,7 +440,111 @@ def pool_problems(pool: dict, path: tuple, cross: bool = True) -> list:
     if raw is not None and not (isinstance(raw, list)
                                 and all(isinstance(l, str) and "\n" not in l for l in raw)):
         found.append(_bad(path, "raw", raw, "a list of the pool's other lines, one each"))
+    found += _ztp_problems(pool, path, raw if isinstance(raw, list) else [])
     return found
+
+
+def _ztp_problems(pool: dict, path: tuple, raw: list) -> list:
+    """The ZTP fields: ``ztp`` true or false; ``ztp_device`` one word, only beside ``ztp``;
+    and no `raw` line giving one of the options they write a second value."""
+    found = []
+    on = pool.get("ztp")
+    if on not in (None, True, False):
+        found.append(_bad(path, "ztp", on, "it is true or false (true: the pool's clients "
+                                           "boot from Mercury's ZTP server)"))
+    device = _scalar(pool.get("ztp_device"))
+    if device and not token(pool.get("ztp_device")):
+        found.append(_bad(path, "ztp_device", pool.get("ztp_device"), "a device's name, in "
+                                                                      "one word"))
+    elif device and on in (None, False):
+        found.append(_bad(path, "ztp_device", pool.get("ztp_device"),
+                          "a boot file is given only to a pool whose clients boot from "
+                          f"Mercury's ZTP server, and this pool's ztp is {on!r}"))
+    if on is True:
+        for i, line in enumerate(raw):
+            w = str(line).split()
+            if len(w) >= 2 and w[0] == "option" and w[1] in ZTP_OPTIONS:
+                found.append(_bad(path + ("raw",), i, line,
+                                  f"option {w[1]} is one Mercury fills in for a pool with "
+                                  "ztp: true (150 and 66 its ZTP server's address, 67 the "
+                                  "device's boot file), so this line would give it a second "
+                                  "value; remove the line"))
+    return found
+
+
+def reach_problems(doc: dict, committed=None, network_facts=None, hostname: str = "") -> list:
+    """``[(path, key, message)]`` for each pool of *doc* (a router's intent) that would serve
+    no client: its network is neither the subnet of one of the router's own interfaces nor the
+    subnet of an interface elsewhere in the network's committed intent whose ``ip
+    helper-address`` names one of the router's addresses. Cisco's guide: a relayed request is
+    served from "the DHCP pool that has the subnet that contains the IP address in the giaddr
+    field", a direct one from "DHCP pools that contain the subnets configured on the receiving
+    interface"; a pool matching neither is never chosen.
+
+    REFUSED, not warned (C2573): IOS accepts such a pool and offers it to nobody, so the device
+    cannot say so; Mercury holds the network's intent, and refuses as ZTP's relayed subnets do
+    a relay it does not manage. Only a pool that is new or whose network changed against
+    *committed* (the document at HEAD) is judged, so a pool captured from the device stands.
+    *network_facts* is called (once, and only when a pool is off the router's own subnets) for
+    the network's committed intent facts, `readers.dhcp.intent_facts`'s shape. A pool behind a
+    relay Mercury does not manage is kept as its lines, verbatim, in ``unmodeled``."""
+    from modules.readers.dhcp import facts_from
+
+    if not structured(doc):
+        return []
+    pools = doc["dhcp_server"].get("pools")
+    if not isinstance(pools, list):
+        return []
+    held = set()
+    if isinstance(committed, dict) and isinstance(committed.get("dhcp_server"), dict):
+        held = {(_scalar(p.get("name")), _scalar(p.get("network")))
+                for p in committed["dhcp_server"].get("pools") or [] if isinstance(p, dict)}
+    own = facts_from({hostname or "this router": doc})["IPv4"]
+    mine = sorted({e["address"] for entries in own.values() for e in entries})
+    facts, found = None, []
+    for i, p in enumerate(pools):
+        net = _network(p.get("network")) if isinstance(p, dict) else None
+        if net is None or str(net) in own:
+            continue
+        if (_scalar(p.get("name")), _scalar(p.get("network"))) in held:
+            continue
+        if facts is None:
+            facts = (network_facts() if callable(network_facts) else network_facts) or {}
+        on = [e for e in ((facts.get("IPv4") or {}).get(str(net)) or [])
+              if e.get("device") != hostname]
+        if any(set(map(str, e.get("relays") or [])) & set(mine) for e in on):
+            continue
+        found.append(_bad(("dhcp_server", "pools", i), "network", p.get("network"),
+                          _unreached_words(net, own, mine, on, facts)))
+    return found
+
+
+def _unreached_words(net, own: dict, mine: list, on: list, facts: dict) -> str:
+    subnets = ", ".join(f"{prefix} ({', '.join(e['iface'] for e in entries)})"
+                        for prefix, entries in sorted(own.items())) or "none"
+    near = [f"{prefix} ({', '.join(e['iface'] for e in entries)})"
+            for prefix, entries in sorted(own.items())
+            if ipaddress.ip_network(prefix).version == 4
+            and ipaddress.ip_network(prefix).overlaps(net)]
+    words = ("a pool is chosen for a request by the subnet of the interface it arrives on, or "
+             "of a relay's giaddr (Cisco's DHCP server guide), so this one serves no client: "
+             f"this router's own IPv4 subnets in this intent are {subnets}")
+    if near:
+        words += (f", and {', '.join(near)} overlaps {net} without being it (a pool's network "
+                  "is the interface's own subnet, its mask too)")
+    if on:
+        helpers = "; ".join(f"{e.get('device')} {e.get('iface')} relays to "
+                            f"{list(e.get('relays') or []) or 'nothing'}" for e in on)
+        words += (f"; {net} is in the network's committed intent, where {helpers}, none of "
+                  f"them this router's addresses {mine}")
+    else:
+        words += (f"; and no interface on {net} in the network's committed intent relays to "
+                  f"this router's addresses {mine}")
+    error = facts.get("error") or "; ".join(facts.get("errors") or [])
+    if error:
+        words += f" (the network's intent was not all read: {error})"
+    return (words + ". A pool for a relay Mercury does not manage stays as its lines, "
+            "verbatim, in `unmodeled`")
 
 
 def problems(hv: dict) -> list:

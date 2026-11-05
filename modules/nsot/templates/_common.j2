@@ -330,7 +330,9 @@ interface {{ i.name }}
     guide, read 2026-11-05). The order of a pool's lines is the partial's: IOS prints its own
     (the round trip compares a pool as a set). Called from `services_block`, which every
     dialect's `base.j2` already calls, so a library whose `_common.j2` is brought in renders
-    it with no change to its `base.j2`. -#}
+    it with no change to its `base.j2`. A ZTP pool's options (C2574) are the guide's `option
+    code {ascii string | ip address}`: 150 and 66 Mercury's ZTP server, 67 the device's boot
+    file, both filled in by `features/dhcp.py`, never typed. -#}
 {%- macro dhcp_excluded(e) -%}
 ip dhcp excluded-address {{ e.low }}{{ (' ' ~ e.high) if e.high else '' }}
 {% endmacro -%}
@@ -346,6 +348,11 @@ ip dhcp excluded-address {{ e.low }}{{ (' ' ~ e.high) if e.high else '' }}
 {% endif %}
 {%- if p.lease.infinite %} lease infinite
 {% elif p.lease.days %} lease {{ [p.lease.days, p.lease.hours, p.lease.minutes] | select | join(' ') }}
+{% endif %}
+{%- if p.ztp_server %} option 150 ip {{ p.ztp_server }}
+ option 66 ascii {{ p.ztp_server }}
+{% endif %}
+{%- if p.ztp_file %} option 67 ascii {{ p.ztp_file }}
 {% endif %}
 {%- endmacro -%}
 

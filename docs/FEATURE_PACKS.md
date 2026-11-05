@@ -131,7 +131,55 @@ library from before it is judged on its own marker (`dhcp.MARKERS`) and handed t
 | `pools[].dns_servers[]` | ` dns-server A ...` | at most 8 |
 | `pools[].domain_name` | ` domain-name D` | one word |
 | `pools[].lease` | ` lease D [H [M]]`, ` lease infinite` | `days`, `hours` (0 to 23), `minutes` (0 to 59), `infinite`; absent is IOS's one day |
-| `pools[].raw[]` | any other line of the pool | verbatim, after the modelled lines (`option`, `netbios-*`, `bootfile`) |
+| `pools[].ztp` | ` option 150 ip S`, ` option 66 ascii S` | true or false; S is filled in by Mercury, never typed (below) |
+| `pools[].ztp_device` | ` option 67 ascii F` | one word, only beside `ztp: true`; F is `ztp.boot_file` of it (`<device>.cfg`) |
+| `pools[].raw[]` | any other line of the pool | verbatim, after the modelled lines (`option`, `netbios-*`, `bootfile`); beside `ztp: true` an `option 150`, `66` or `67` line is refused as a second value |
+
+**A pool that serves no client is refused (C2573).** IOS chooses a pool for a relayed request
+by "the subnet that contains the IP address in the giaddr field", and for a direct one from
+"DHCP pools that contain the subnets configured on the receiving interface" (the guide, read
+2026-11-05). A pool matching neither is accepted by IOS and offered to nobody, so the device
+cannot say so. The intent editor (`intent_edit.validate`, the preview's and the save's check;
+`dhcp.reach_problems`) refuses a pool whose network is neither the subnet of one of the
+router's own IPv4 interfaces nor that of an interface in the network's committed intent whose
+`ip helper-address` names one of the router's addresses. The refusal names the pool's network,
+the router's subnets (any that overlaps without being it), and the relays found on that
+network with their helpers. Refused rather than warned: Mercury holds the network's intent,
+and a relay it does not manage is refused the same way for ZTP's relayed subnets. Only a pool
+new or moved against HEAD is judged, so a pool captured from a device stands; a pool behind a
+relay Mercury does not manage is kept as its lines in `unmodeled`. The network's intent is read
+only when a pool is off the router's own subnets. The router's IPv6 subnets are never counted
+(DHCPv4).
+
+**ZTP's options are fields (C2574).** `ztp: true` says the pool's clients boot from Mercury's
+ZTP server. Mercury fills in the server, S, as this host's one IPv4 address on the interface
+its ZTP responder serves udp/69 on (the `BindToDevice=` of `nmas-ztp-responder.socket`,
+`dhcp.ztp_server`). That address is derived on every render and never stored, the rule D3
+keeps for Kea's reservations, because a stored copy is how `tftp_server_ip` came to name an
+address the host did not have (C48). It is refused, naming the unit, the interface and what
+it holds, when it is not exactly one IPv4 address. Option 66 carries the same address, so no
+resolver is needed. Option 67 is written only for a pool that names its one device, because a
+pool shared by several devices has no one file. The preview's program shows all three lines,
+and a server address that moves changes the program, so a confirmed hash no longer matches.
+The parse never reads the host: a device's option lines stay in `raw`, verbatim. A library
+whose partial predates the fields is judged on their own marker (`dhcp.ZTP_MARKERS`) and
+handed the options in `raw` (`dhcp.ztp_as_raw`).
+
+What each client reads, read 2026-11-05:
+
+| Client | Server | File | Source |
+|---|---|---|---|
+| Cisco IOS AutoInstall | sname, option 66, option 150, siaddr, highest priority first | option 67 (or the file field) | Cisco, "AutoInstall Using DHCP for LAN Interfaces", IOS 12.1T, https://www.cisco.com/en/US/docs/ios/12_1t/12_1t5/feature/guide/dt_dhcpa.html |
+| HPE Comware (6125XLG configuration guide) | option 150 (an address) first, else option 66 (a domain name, resolved through option 6) | option 67, else the file field, else `<option 12 host name>.cfg` | "Configuration file acquisition process", HP 6125XLG Configuration Manual, https://www.manualslib.com/manual/579807/Hp-6125xlg.html?page=130 (a third-party copy of the vendor manual) |
+| Arista EOS | no option of its own: the URL names it | option 67 (bootfile-name) holds the file's URL | Arista's ZTPServer documentation, https://github.com/arista-eosplus/ztpserver/blob/v1.3.2/docs/overview.rst; Arista's own EOS manual pages refused the read (HTTP 403) |
+| ArubaOS-Switch, AOS-CX | not read | not read | HPE's techdocs refused the read (HTTP 403); the AOS-S 16.11 Basic Operation Guide's contents name "configuration file update using Option 66" |
+
+The IOS option command is the DHCP server guide's `option code [instance number] {ascii string |
+hex string | ip-address}`. **Not served yet:** Mercury's ZTP responder answers only an address it
+reserved in Kea (`ztp_responder.decide`), and renders only a Cisco bootstrap. A client of a
+router's pool asking it for a file is therefore refused, and that refusal is recorded in the
+responder's audit. Arista's URL form and the other vendors' bootstraps wait on A2's ZTP
+profiles.
 
 Left as lines: a VRF's excluded range, a pool with a submode (a `network ... secondary` subnet
 and its indented lines, `class`), a second block for one pool's name, a network typed as
@@ -188,4 +236,6 @@ The device page's feature tiles, presets that write a feature's intent from NetB
 the catalog page, removal (a pack's negation, since deploy is merge-only), the pack format as
 files (`feature.yml`, a capability matrix) and a NETCONF renderer remain, as the register row
 sets out. No manual page: the operator's, 2026-10-19 (pages for Lab 8's steps come when they
-land on devices).
+land on devices). The DHCP server's pool (A4) has not landed on a device either: no pool has
+been sent, and C2572's capture waits on the first one. Its entry on the intent editor's page
+comes with that landing.

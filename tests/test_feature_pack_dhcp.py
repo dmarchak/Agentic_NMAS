@@ -28,7 +28,14 @@ What is held:
 4. each refusal names the field, its value and the rule, beside a control that passes, the
    IPv6 case beside the IPv4 one, by the editor's check and by the render;
 5. a library from before the pack (the shipped templates at its parent commit) is handed the
-   pack's fields as lines, so the same lines render through it.
+   pack's fields as lines, so the same lines render through it;
+6. (C2573) a pool the router would offer to nobody, its network neither one of its own
+   subnets nor relayed to it by an interface in the network's committed intent, is refused
+   by the editor naming the pool's network, the router's subnets and the relays found; a
+   pool already committed stands; the router's IPv6 subnets are never counted;
+7. (C2574) a ZTP pool's options 150, 66 and 67 are filled in by Mercury (its responder's
+   address, the device's boot file), drawn in the preview's program, refused when typed
+   beside the field, and handed as lines to a library from before the fields.
 """
 
 import copy
@@ -434,3 +441,261 @@ def test_a_line_the_template_would_write_differently_stays_verbatim(platform):
                                   " domain-name   example.org"], platform)
     assert got["raw"] == ["domain-name   example.org"], got
     assert not got.get("domain_name"), got
+
+
+# ── 6. a pool that serves no client (C2573) ──────────────────────────────────
+#
+# r1's real interfaces: Loopback0 10.255.1.11/32, GigabitEthernet1 (its management port, in
+# the lab's own /24) and others; s1's Vlan10 is 10.10.10.2/24 with `ip helper-address
+# 10.255.0.10` and Vlan30 IPv6 only (tests/fixtures/configs/fleet). r1 has ONE edit:
+# GigabitEthernet1 moved to 192.0.2.65/26, a documentation address. The expectations below
+# are read from those files by eye, not from `facts_from`, which the check calls.
+
+def _router(pools, name="r1.cfg", platform="cisco_iosxe"):
+    hv = get_parser(platform).parse(_capture(name))
+    for iface in hv["interfaces"]:
+        if name == "r1.cfg" and iface["name"] == "GigabitEthernet1":
+            iface["ipv4"] = "192.0.2.65 255.255.255.192"
+    hv["dhcp_server"] = {"pools": pools}
+    return hv
+
+
+def _s1_facts():
+    """The network's committed intent facts as the reader builds them, from s1's real parse."""
+    from modules.readers.dhcp import facts_from
+    return {"IPv4": facts_from({"s1": get_parser("cisco_ios").parse(_capture("s1.cfg"))})["IPv4"],
+            "error": ""}
+
+
+def test_a_pool_on_one_of_the_router_s_own_subnets_is_taken_and_reads_nothing_else():
+    calls = []
+    hv = _router([{"name": "LAN", "network": "192.0.2.64/26",
+                   "default_router": ["192.0.2.65"]}])
+    assert dhcp.reach_problems(hv, None, lambda: calls.append(1) or {}, "r1") == []
+    assert calls == [], "the network's intent is read only for a pool off the router's subnets"
+
+
+def test_a_pool_off_every_subnet_with_no_relay_is_refused_naming_both_sides():
+    hv = _router([{"name": "LAN10", "network": "198.51.100.0/24"}])
+    found = dhcp.reach_problems(hv, None, lambda: {"IPv4": {}, "error": ""}, "r1")
+    assert len(found) == 1, found
+    path, key, message = found[0]
+    assert (path, key) == (("dhcp_server", "pools", 0), "network")
+    for word in ("dhcp_server.pools[0].network is '198.51.100.0/24'", "serves no client",
+                 "192.0.2.64/26 (GigabitEthernet1)", "10.255.1.11/32 (Loopback0)",
+                 "no interface on 198.51.100.0/24", "'192.0.2.65'", "`unmodeled`"):
+        assert word in message, (word, message)
+    assert "overlaps" not in message
+
+
+def test_an_overlapping_subnet_is_named_as_not_the_pool_s_own():
+    hv = _router([{"name": "HALF", "network": "192.0.2.64/27"}])
+    message = dhcp.reach_problems(hv, None, {"IPv4": {}}, "r1")[0][2]
+    assert "192.0.2.64/26 (GigabitEthernet1) overlaps 192.0.2.64/27 without being it" in message
+
+
+def test_a_relay_to_another_server_is_refused_naming_its_helper_and_one_to_this_router_taken():
+    """s1's Vlan10 relays 10.10.10.0/24 to 10.255.0.10 (its real line): a pool for that subnet
+    on r1, whose addresses do not include 10.255.0.10, is refused naming the helper; the same
+    pool on r1 with one interface moved to 10.255.0.10 (the one edit) is taken."""
+    pool = [{"name": "V10", "network": "10.10.10.0/24", "default_router": ["10.10.10.2"]}]
+    found = dhcp.reach_problems(_router(pool), None, _s1_facts, "r1")
+    assert len(found) == 1, found
+    assert "s1 Vlan10 relays to ['10.255.0.10']" in found[0][2], found[0][2]
+    hv = _router(pool)
+    loop = next(i for i in hv["interfaces"] if i["name"] == "Loopback0")
+    loop["ipv4"] = "10.255.0.10 255.255.255.255"
+    assert dhcp.reach_problems(hv, None, _s1_facts, "r1") == []
+
+
+def test_the_router_s_ipv6_subnets_are_never_counted():
+    """The IPv6 case beside the IPv4 one: s1's Vlan30 holds only 2001:DB8:30::2/64, so a pool
+    on s1 is judged against its IPv4 subnets alone, and none of its IPv6 prefixes is listed."""
+    hv = _router([{"name": "V30", "network": "192.0.2.0/24"}], "s1.cfg", "cisco_ios")
+    message = dhcp.reach_problems(hv, None, {"IPv4": {}}, "s1")[0][2]
+    assert "10.10.10.0/24 (Vlan10)" in message
+    assert "2001:" not in message.lower(), message
+
+
+def test_a_pool_already_committed_stands_and_a_moved_one_is_judged():
+    hv = _router([{"name": "LAN10", "network": "192.0.2.0/25"}])
+    committed = copy.deepcopy(hv)
+    assert dhcp.reach_problems(hv, committed, {"IPv4": {}}, "r1") == []
+    hv["dhcp_server"]["pools"][0]["network"] = "192.0.2.128/25"
+    assert len(dhcp.reach_problems(hv, committed, {"IPv4": {}}, "r1")) == 1
+
+
+def test_the_editor_refuses_a_pool_that_serves_no_client_and_takes_one_that_does():
+    """The editor's own check (`intent_edit.validate`, the preview's and the save's), stage
+    schema, at the pool's network line; with no network named, the refusal says no relay
+    could be read."""
+    from modules.nsot import intent_edit
+    hv = _router([{"name": "LAN10", "network": "192.0.2.0/25"}])
+    hv["logging"]["syslog"]["heartbeat"] = 300         # the editor's syslog rule (whole block)
+    text = hostvars.to_yaml(hv)
+    got = intent_edit.validate("r1", text)
+    assert got["ok"] is False and got["stage"] == "schema", got
+    assert "serves no client" in got["error"] and "no network was named" in got["error"]
+    assert text.splitlines()[got["line"] - 1].strip().startswith("network: 192.0.2.0/25")
+    hv["dhcp_server"]["pools"][0]["network"] = "192.0.2.64/26"
+    assert intent_edit.validate("r1", hostvars.to_yaml(hv))["ok"] is True
+
+
+# ── 7. ZTP's options as fields (C2574) ───────────────────────────────────────
+
+class _Nic:
+    def __init__(self, family, address):
+        self.family, self.address = family, address
+
+
+@pytest.fixture
+def responder(tmp_path, monkeypatch):
+    """The ZTP responder's socket unit bound to `ens19`, which holds one IPv4 and one IPv6
+    address (psutil's own answer shape, filtered by `ztp_relayed`'s own reader)."""
+    import socket
+
+    import psutil
+    from modules.nsot import ztp_relayed
+
+    unit = tmp_path / "nmas-ztp-responder.socket"
+    unit.write_text("[Socket]\nListenDatagram=69\nBindToDevice=ens19\n", encoding="utf-8")
+    monkeypatch.setattr(ztp_relayed, "RESPONDER_SOCKET_UNIT", str(unit))
+    nics = {"ens19": [_Nic(socket.AF_INET6, "2001:db8:5::5"),
+                      _Nic(socket.AF_INET, "198.51.100.5")],
+            "ens18": [_Nic(socket.AF_INET, "192.0.2.250")]}
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: nics)
+    return nics
+
+
+ZTP_POOL = {"name": "SWITCHES", "network": "192.0.2.0/25", "default_router": ["192.0.2.1"],
+            "ztp": True, "ztp_device": "sw1"}
+#: Typed from the guide's `option code {ascii string | ip address}` (an independent path):
+#: Mercury's responder address in both server options, the device's file in 67.
+ZTP_LINES = ["ip dhcp pool SWITCHES", " network 192.0.2.0 255.255.255.128",
+             " default-router 192.0.2.1", " option 150 ip 198.51.100.5",
+             " option 66 ascii 198.51.100.5", " option 67 ascii sw1.cfg"]
+
+
+@pytest.mark.parametrize("name, platform", CAPTURES)
+def test_a_ztp_pool_renders_mercury_s_server_and_the_device_s_file(responder, name, platform):
+    hv = get_parser(platform).parse(_capture(name))
+    hv["dhcp_server"] = {"pools": [copy.deepcopy(ZTP_POOL)]}
+    assert _dhcp_lines(roundtrip.render(hv, platform, secret_lookup=_secret)) == ZTP_LINES
+    hv["dhcp_server"]["pools"][0].pop("ztp_device")
+    assert _dhcp_lines(roundtrip.render(hv, platform, secret_lookup=_secret)) == ZTP_LINES[:-1]
+
+
+def test_the_preview_s_program_carries_the_options_and_a_moved_server_changes_it(responder):
+    """The program the preview shows and the deploy sends: the options under their pool; a
+    responder address that moved renders another program, so a confirmed hash no longer
+    matches (`deploy_contract`'s recomputation at apply)."""
+    import socket
+
+    running = _capture("r1.cfg")
+    hv = get_parser("cisco_iosxe").parse(running)
+    hv["dhcp_server"] = {"pools": [copy.deepcopy(ZTP_POOL)]}
+    program = deploy.merge_commands(roundtrip.render(hv, "cisco_iosxe"), running)
+    assert program == ZTP_LINES + ["exit"]
+    responder["ens19"] = [_Nic(socket.AF_INET, "198.51.100.6")]
+    moved = deploy.merge_commands(roundtrip.render(hv, "cisco_iosxe"), running)
+    assert " option 150 ip 198.51.100.6" in moved and moved != program
+
+
+def test_the_server_is_refused_naming_what_was_found(responder, tmp_path, monkeypatch):
+    """No unit, an interface with two IPv4 addresses, and (the IPv6 case) one with only an
+    IPv6 address: each refused naming the unit, the interface and what it holds."""
+    import socket
+
+    from modules.nsot import ztp_relayed
+
+    assert dhcp.ztp_server() == "198.51.100.5"                    # the control
+    responder["ens19"] = [_Nic(socket.AF_INET6, "2001:db8:5::5")]
+    with pytest.raises(features.FeatureIntentInvalid) as exc:
+        dhcp.ztp_server()
+    assert "on ens19" in str(exc.value) and "found 0" in str(exc.value)
+    assert "IPv4 only" in str(exc.value)
+    responder["ens19"] = [_Nic(socket.AF_INET, "198.51.100.5"),
+                          _Nic(socket.AF_INET, "198.51.100.7")]
+    with pytest.raises(features.FeatureIntentInvalid, match=r"found 2: \['198.51.100.5', "
+                                                            r"'198.51.100.7'\]"):
+        dhcp.ztp_server()
+    monkeypatch.setattr(ztp_relayed, "RESPONDER_SOCKET_UNIT", str(tmp_path / "absent"))
+    with pytest.raises(features.FeatureIntentInvalid, match="names none"):
+        dhcp.ztp_server()
+
+
+def test_a_pool_without_ztp_asks_for_no_server(monkeypatch):
+    """A pool not booting devices never reads the host: the render is the host's business only
+    where a pool says ztp: true."""
+    def fail(*_a, **_k):
+        raise AssertionError("the ZTP server was asked for")
+    monkeypatch.setattr(dhcp, "ztp_server", fail)
+    hv = _authored("r1.cfg", "cisco_iosxe")
+    assert _dhcp_lines(roundtrip.render(hv, "cisco_iosxe", secret_lookup=_secret)) == \
+        AUTHORED_LINES
+
+
+ZTP_REFUSED = [
+    (dict(ZTP_POOL, ztp="yes"), ["dhcp_server.pools[0].ztp is 'yes'", "true or false"]),
+    (dict(ZTP_POOL, ztp=False), ["dhcp_server.pools[0].ztp_device is 'sw1'", "ztp is False"]),
+    (dict(ZTP_POOL, ztp_device="sw 1"), ["dhcp_server.pools[0].ztp_device", "one word"]),
+    (dict(ZTP_POOL, raw=["option 150 ip 192.0.2.5"]),
+     ["dhcp_server.pools[0].raw[0] is 'option 150 ip 192.0.2.5'", "second value"]),
+    (dict(ZTP_POOL, raw=["option 67 ascii other.cfg"]), ["raw[0]", "option 67"]),
+]
+
+
+@pytest.mark.parametrize("pool, words", ZTP_REFUSED, ids=[w[0] for _p, w in ZTP_REFUSED])
+def test_a_ztp_field_typed_wrong_is_named(pool, words):
+    assert features.problems({"dhcp_server": {"pools": [ZTP_POOL]}}) == []    # the control
+    found = features.problems({"dhcp_server": {"pools": [pool]}})
+    assert len(found) == 1, found
+    for word in words:
+        assert word in found[0][2], (word, found[0][2])
+
+
+def test_a_raw_option_beside_no_ztp_is_still_just_a_line():
+    """Without ztp a pool's option 150 is one of its verbatim lines, as before the fields."""
+    pool = {"name": "A", "network": "192.0.2.0/25", "raw": ["option 150 ip 192.0.2.5"]}
+    assert features.problems({"dhcp_server": {"pools": [pool]}}) == []
+
+
+def test_a_captured_pool_s_options_stay_verbatim():
+    """The parse never reads the host, so the options a device holds stay raw lines, in order,
+    and render back as they were."""
+    got = dhcp.claim_pool("SWITCHES", [" network 192.0.2.0 255.255.255.128",
+                                       " option 150 ip 198.51.100.5",
+                                       " option 66 ascii 198.51.100.5",
+                                       " option 67 ascii sw1.cfg"], "cisco_iosxe")
+    assert got["raw"] == ["option 150 ip 198.51.100.5", "option 66 ascii 198.51.100.5",
+                          "option 67 ascii sw1.cfg"]
+    assert "ztp" not in got
+
+
+@pytest.mark.parametrize("name, platform", CAPTURES)
+def test_a_library_from_before_the_ztp_fields_is_handed_the_options_as_lines(
+        responder, tmp_path, name, platform):
+    """Increment 1's library (the shipped templates at its commit) renders `dhcp_server` and
+    not the ZTP fields: it is judged on their own marker and handed the options in `raw`, so
+    the same lines reach the device."""
+    root = tmp_path / "templates"
+    for rel in ("_common.j2", "cisco_ios/base.j2", "cisco_iosxe/base.j2"):
+        old = subprocess.run(["git", "-C", ROOT, "show",
+                              f"{BEFORE_ZTP}:modules/nsot/templates/{rel}"],
+                             capture_output=True, text=True, check=False)
+        if old.returncode != 0:
+            pytest.skip(f"no history for the shipped templates here: {old.stderr.strip()}")
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(old.stdout, encoding="utf-8")
+    assert "dhcp_server" in (root / "_common.j2").read_text(encoding="utf-8")
+    assert features.library_reads_packs(str(root), platform, "base.j2", dhcp.MARKERS) is True
+    assert features.library_reads_packs(str(root), platform, "base.j2",
+                                        dhcp.ZTP_MARKERS) is False
+    hv = get_parser(platform).parse(_capture(name))
+    hv["dhcp_server"] = {"pools": [copy.deepcopy(ZTP_POOL)]}
+    old = roundtrip.render(hv, platform, secret_lookup=_secret, template_root=str(root))
+    assert _dhcp_lines(old) == ZTP_LINES
+
+
+#: Increment 1's commit: its library renders the pack and not the ZTP fields.
+BEFORE_ZTP = "92564624"

@@ -178,6 +178,12 @@ def for_library(host_vars: dict, root: str, platform: str, name: str) -> dict:
     if dhcp.structured(host_vars) and not library_reads_packs(root, platform, name,
                                                              dhcp.MARKERS):
         host_vars = dhcp.lines_view(host_vars, platform)
+    elif dhcp.structured(host_vars) and not library_reads_packs(root, platform, name,
+                                                               dhcp.ZTP_MARKERS):
+        # A library whose DHCP partial predates the ZTP fields (C2574) renders a pool's `raw`
+        # and would drop its options: they are handed to it as raw lines.
+        host_vars = dict(host_vars, dhcp_server=dhcp.ztp_as_raw(host_vars["dhcp_server"],
+                                                                platform))
     if not structured(host_vars) or library_reads_packs(root, platform, name):
         return host_vars
     return raw_view(host_vars, platform, strict=True)

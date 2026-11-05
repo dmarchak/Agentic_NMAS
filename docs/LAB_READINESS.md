@@ -198,12 +198,18 @@ shown. One measurement settles them: the router's running config read through Me
 first pool lands, kept as a fixture. Until then a line the partial does not reproduce stays raw,
 and the round trip compares a pool as a set.
 
+**Increment 2 (code and tests only; nothing sent to a device):** a pool that serves no client
+is refused by the intent editor, naming its network, the router's subnets and the relays found
+(C2573); ZTP's options 150, 66 and 67 are pool fields Mercury fills in from where its ZTP
+responder listens and the device's boot file (C2574). docs/FEATURE_PACKS.md, "DHCP server",
+holds both, with what each vendor's client reads.
+
 **What is left:**
 
-- **the pool's remainder, about 0.75 agent-days:** ZTP's options as fields (150, 66 and 67,
-  the switches' TFTP server and file, today `raw`); a check that each pool's network is a subnet
-  of one of the router's own interfaces (the guide's "directly connected clients", or a relay);
-  the capture's fixture and any partial change it shows; the manual's intent page entry;
+- **the pool's remainder, about 0.5 agent-days:** the capture's fixture and any partial change
+  it shows (C2572); the manual's intent page entry, when the pool lands; the responder serving
+  a router pool's client, which today it refuses because it answers only Kea reservations
+  (proposed in increment 2's report);
 - **DHCP steering, 1.25 agent-days** (LAB9_SDN_GAP section 2, item 3): the edge flows (a client's
   broadcast to the router's port, server replies dropped from any other port). **Its screen is a
   new tab, SDN › Apps, board B (LAB9_SDN_GAP section 7); none is drawn here.**
