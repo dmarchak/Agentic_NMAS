@@ -1223,3 +1223,239 @@ class TestThePromoteStep:
             "verified time) was NOT committed: index.lock exists. Nothing was undone. Until "
             ".nsot/manifest.json is committed, an operation that needs a clean repository, "
             "such as Retire, refuses")
+
+
+# ---------------------------------------------------------------------------
+# The account steps: the tool's credential, the owner's verify, the owner's result (groups A2,
+# A4 and A6)
+# ---------------------------------------------------------------------------
+
+#: The enable secret a privilege-1 owner needs, planted for the test (built by concatenation).
+OWNER_ENABLE = "Owner-" + "Enable-Secret-5531"
+TOOL_STEPS = ["tool_account", "supplied_session", "local_login", "account_absent", "stage",
+              "push", "verify", "record"]
+NOT_READ_BACK = (f"the tool's credential for {IP} could not be read back from the store it was "
+                 "recorded in")
+
+
+def _rows(out, step):
+    return [s for s in out["steps"] if s["step"] == step]
+
+
+def _real_verify(lab, monkeypatch):
+    """No `verify` injected: the device's own verify (`verify_with_retry`) is what runs, as on
+    hardware; this stand-in answers as the router does and keeps what it was asked with."""
+    asked = []
+
+    def verify_with_retry(device, username, password, *, secret=None, attempts=3, sleep=None):
+        asked.append((device, username, password, secret))
+        if lab["router"].passwords.get(username) == password:
+            return {"ok": True, "config": lab["router"].text()}
+        return {"ok": False, "error": "Authentication failed", "attempted": True}
+    monkeypatch.setattr(CR, "verify_with_retry", verify_with_retry)
+    return asked
+
+
+class TestTheAccountSteps:
+    """The account step adds the tool's account (or proves the one an earlier run added), and
+    says what it did in its row and in the result; the owner's account is verified with the
+    owner's enable secret when one was given, and is in the result whatever happened to it;
+    and without the tool's credential read back from the store, nothing further is sent."""
+
+    @pytest.mark.parametrize("enable, secret", [
+        (OWNER_ENABLE, OWNER_ENABLE),
+        ("", SUPPLIED_PW),
+    ], ids=["enable_given", "no_enable_the_password"])
+    def test_kills_adopt__apply_mutmut_226_to_237_307_318_the_owner_is_verified_with_its_enable_secret(
+            self, lab, monkeypatch, enable, secret):
+        asked = _real_verify(lab, monkeypatch)
+        lab["router"].load(_config(admin=CLEAR_ADMIN))
+        fingerprint = _plan(lab, convert_supplied=True)["fingerprint"]
+        out = _apply(lab, fingerprint=fingerprint, convert_supplied=True, supplied_enable=enable,
+                     verify=None)
+        assert out["ok"], out
+        owner = [(d and d.get("ip"), u, w == SUPPLIED_PW, s == secret)
+                 for d, u, w, s in asked if u == "admin"]
+        assert owner == [(IP, "admin", True, True)], \
+            "(one fresh login as the owner, with its password, enabling with its enable secret)"
+
+    def test_kills_adopt__apply_mutmut_213_to_225_an_entry_without_a_login_reads_as_empty(
+            self, lab, monkeypatch):
+        """A resumed run proves the tool's account from the store; an entry there with no
+        username or password is proved as empty values, never as None or anything else, and
+        nothing further is sent."""
+        from modules import credentials
+        _resumable(lab)
+        fingerprint = _plan(lab)["fingerprint"]
+        real_resolve, real_plan, planned = credentials.resolve, A._plan, []
+
+        def plan(*a, **k):
+            out = real_plan(*a, **k)
+            planned.append(True)
+            return out
+        monkeypatch.setattr(A, "_plan", plan)
+        monkeypatch.setattr(credentials, "resolve",
+                            lambda ip: {"ok": True} if planned else real_resolve(ip))
+        asked = []
+
+        def verify(dev, user, pw):
+            asked.append((user, pw))
+            return {"ok": True}
+        out = _apply(lab, fingerprint=fingerprint, verify=verify)
+        assert asked == [("", "")]
+        assert _rows(out, "account") == [{"step": "account", "ok": True, "detail": (
+            "'' logs in on a fresh session: added by an earlier run, nothing sent")}]
+        assert out["reason"] == NOT_READ_BACK
+
+    @pytest.mark.parametrize("resumed", [False, True], ids=["fresh", "resumed"])
+    def test_kills_adopt__apply_mutmut_238_422_423_no_conversion_leaves_no_owner_result(
+            self, lab, resumed):
+        fingerprint = None
+        if resumed:
+            _resumable(lab)
+            fingerprint = _plan(lab)["fingerprint"]
+        out = _apply(lab, fingerprint=fingerprint)
+        assert out["ok"], out
+        assert "owner_account" in out and out["owner_account"] is None
+
+    def test_kills_adopt__apply_mutmut_421_to_423_a_converted_owner_is_in_the_result(self, lab):
+        out = TestTheOwnersAccountConverted()._convert(lab)
+        assert out["ok"], out
+        row, = _rows(out, "owner_account")
+        assert out["owner_account"] == {"state": A.OWNER_CONVERTED, "detail": row["detail"]}
+
+    def test_kills_adopt__apply_mutmut_322_to_330_364_to_367_the_added_account_is_in_the_result(
+            self, lab):
+        out = _adopt_fully(lab)
+        assert sorted(out["account"]) == ["state", "steps"]
+        assert out["account"]["state"] == A.ADDED
+        assert [(s["name"], s["ok"]) for s in out["account"]["steps"]] == [
+            (name, True) for name in TOOL_STEPS]
+        assert _rows(out, "account") == [{"step": "account", "ok": True, "detail": (
+            "'nmas' added, verified and recorded; 'admin' was not changed. Persistence not "
+            "yet verified")}]
+
+    def test_kills_adopt__apply_mutmut_297_322_to_330_336_338_to_347_357_an_unrecorded_account_stops_naming_its_recovery(
+            self, lab):
+        out = TestItsOwnRecovery()._unrecorded(lab)
+        staged_at = os.path.join(_repo(), CR.STAGING_REL, f"{HOST}.enc")
+        reason = ("'nmas' was added and verified on the device, but recording it FAILED: "
+                  f"OSError: store. The staged copy at {staged_at} is the ONLY copy of that "
+                  "account's password: keep it, and settle it with nmas-adopt-recover r2 --list "
+                  "Lab. The supplied account 'admin' still logs in, so the device is reachable")
+        assert out["reason"] == reason
+        assert _rows(out, "account") == [{"step": "account", "ok": False, "detail": reason}]
+        assert sorted(out["account"]) == ["state", "steps"]
+        assert out["account"]["state"] == A.ADDED_NOT_RECORDED
+        assert [(s["name"], s["ok"]) for s in out["account"]["steps"]] == [
+            (name, name != "record") for name in TOOL_STEPS]
+        assert [r["step"] for r in out["remaining"]] == [
+            "owner_account", "profile", "persist", "golden", "netbox", "promote"]
+
+    def test_kills_adopt__apply_mutmut_459_481_to_483_a_restored_owner_stops_and_says_so(
+            self, lab):
+        lab["router"].store_as = {"admin": "Not-The-Owners-Password-1"}
+        out = TestTheOwnersAccountConverted()._convert(lab)
+        assert out["owner_account"]["state"] == A.OWNER_RESTORED
+        detail = out["owner_account"]["detail"]
+        assert detail.startswith("converting 'admin' failed")
+        assert _rows(out, "owner_account") == [
+            {"step": "owner_account", "ok": False, "detail": detail}]
+        assert out["reason"] == detail + ". Nothing further was done"
+        assert out["state"] == "stopped", "put back as it was: not at risk"
+
+    def test_kills_adopt__apply_mutmut_451_to_480_a_conversion_that_returns_nothing_did_not_run(
+            self, lab, monkeypatch):
+        monkeypatch.setattr(A, "_convert_owner", lambda *a, **k: None)
+        out = TestTheOwnersAccountConverted()._convert(lab)
+        assert out["owner_account"] is None
+        assert _rows(out, "owner_account") == [
+            {"step": "owner_account", "ok": False, "detail": "the conversion did not run"}]
+        assert out["reason"] == ". Nothing further was done"
+        assert out["state"] == "stopped"
+        assert [r["step"] for r in out["remaining"]][:1] == ["profile"]
+
+    @pytest.mark.parametrize("held", [
+        None,
+        {"ok": True, "username": "nmas", "password": ""},
+        {"ok": True, "username": "", "password": "Half-" + "Kept-Pass-2"},
+    ], ids=["nothing_kept", "no_password", "no_username"])
+    def test_kills_adopt__apply_mutmut_485_to_493_a_credential_not_read_back_stops_before_the_profile(
+            self, lab, monkeypatch, held):
+        if held is not None:
+            monkeypatch.setattr("modules.credentials.resolve", lambda ip: dict(held))
+        out = _apply(lab, record=lambda ip, u, p: None)       # nothing kept for the address
+        assert out["reason"] == NOT_READ_BACK
+        assert [r["step"] for r in out["remaining"]] == [
+            "profile", "persist", "golden", "netbox", "promote"]
+        assert lab["router"].saves == 0 and lab["calls"]["capture"] == []
+
+
+# ---------------------------------------------------------------------------
+# The profile not sent, and the persist step (groups A7a and A8)
+# ---------------------------------------------------------------------------
+
+SAVED = {"ok": True, "state": "persisted", "detail": "the startup config carries it"}
+NOT_SAVED_TAIL = (". The tool's account is in the RUNNING config only: do not reload the "
+                  "device. Run adopt again to resume; it proves the account and saves again")
+
+
+class TestTheProfileNotSentAndThePersistStep:
+    """A profile with nothing to send says why in its row; the save runs as the tool's own
+    account, its answer is in the result and in the rotation record as adopt's; a save that
+    fails stops there and says not to reload."""
+
+    @pytest.mark.parametrize("answer, detail", [
+        ({"applies": False, "commands": []}, "not sent: nothing to send"),
+        ({"applies": False, "why": "the network has no monitoring profile", "commands": []},
+         "not sent: the network has no monitoring profile"),
+        ({"applies": True, "why": "the device holds the profile's 4 line(s)", "commands": [],
+          "fingerprint": "held"}, "the device holds the profile's 4 line(s)"),
+        ({"applies": True, "commands": [], "fingerprint": "held"}, "already holds every line"),
+    ], ids=["no_profile", "no_profile_why", "held_why", "held"])
+    def test_kills_adopt__apply_mutmut_495_to_532_an_unsent_profile_says_why(
+            self, lab, monkeypatch, answer, detail):
+        monkeypatch.setattr("modules.nsot.profile_apply.for_capture",
+                            lambda *a, **k: dict(answer))
+        out = _apply(lab)
+        assert out["ok"], out
+        assert _rows(out, "profile") == [{"step": "profile", "ok": True, "detail": detail}]
+
+    def test_kills_adopt__apply_mutmut_693_to_718_the_save_is_the_tools_and_is_recorded(
+            self, lab, monkeypatch):
+        from modules import credentials
+        from modules.nsot import onboard
+        asked, recorded, real = [], [], onboard._record_native_persist
+
+        def persist(ip, user, pw, sec, dt):
+            asked.append((ip, user, pw, sec, dt))
+            lab["collab"]["persist"](ip, user, pw, sec, dt)
+            return dict(SAVED)
+
+        def record(*a, **k):
+            recorded.append((a, k))
+            return real(*a, **k)
+        monkeypatch.setattr(onboard, "_record_native_persist", record)
+        out = _apply(lab, persist=persist)
+        assert out["ok"], out
+        held = credentials.resolve(IP)
+        (ip, user, pw, sec, dt), = asked
+        assert (ip, user, dt) == (IP, "nmas", _plan(lab)["device_type"])
+        # Compared, never printed: the tool's password is the login and the enable secret.
+        assert (pw == held["password"], sec == held["password"]) == (True, True)
+        assert out["persist"] == SAVED
+        assert recorded == [((HOST, SAVED, "op@example.com"), {"via": "adopt", "list_name": LIST})]
+        assert _rows(out, "persist") == [
+            {"step": "persist", "ok": True, "detail": "the startup config carries it"}]
+
+    @pytest.mark.parametrize("answer, detail, reason", [
+        ({"ok": False, "detail": "no startup"}, "no startup", "no startup" + NOT_SAVED_TAIL),
+        ({"ok": False}, "", "the save could not be confirmed" + NOT_SAVED_TAIL),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_722_to_754_a_failed_save_stops_and_says_do_not_reload(
+            self, lab, answer, detail, reason):
+        out = _apply(lab, persist=lambda *a: dict(answer))
+        assert out["persist"] == answer
+        assert _rows(out, "persist") == [{"step": "persist", "ok": False, "detail": detail}]
+        assert out["reason"] == reason
+        assert [r["step"] for r in out["remaining"]] == ["golden", "netbox", "promote"]
