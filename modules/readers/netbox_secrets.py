@@ -67,4 +67,7 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("netbox",),
     remedy="Read the error above: it names what NetBox or the record answered",
     window="NetBox's devices at the read",
+    # C2568: a read refused while NetBox starts is retried on a backoff and, within NetBox's
+    # start grace, waiting rather than failing (reader_job rule 14).
+    dependency=reader_job.NETBOX,
 ))

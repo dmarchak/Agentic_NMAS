@@ -705,7 +705,7 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
                   rows=None, checked: str = "", error: str = "",
                   value_at: float = None, stale_after_seconds: int = None,
                   reader: str = None, detail: str = "", held=None,
-                  not_applicable=None, marked: str = "") -> dict:
+                  not_applicable=None, marked: str = "", waiting=None) -> dict:
     """One source, read. *error* makes the source a row of its own.
 
     *read_at* is when this request read the source; *value_at* is the time of
@@ -737,7 +737,11 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     `modules/installation_kind.py`, "not applicable on a laptop kit", the default mark), or one
     about a network with no devices ("no devices yet", `NO_DEVICES`). Each is drawn as its own
     line under What was checked, never a row. *marked* is the mark's words when the whole
-    source is one such check, its *checked* the reason."""
+    source is one such check, its *checked* the reason.
+
+    *waiting* lists each check of this source whose read is inside its dependency's start
+    grace (``{"check", "why"}``, C2568, reader_job rule 14): each its own line under What was
+    checked, drawn as not ok and never a row."""
     if error:
         # Kept where it outlives the row (the operator, 2026-09-29): a transient
         # "could not be read: Approvals" cleared on the next read, and nothing
@@ -763,7 +767,37 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
             "stale_after_seconds": stale_after_seconds, "reader": reader, "detail": detail,
             "took_ms": took_ms, "checked": checked, "rows": list(rows or []),
             "held": list(held or []), "not_applicable": list(not_applicable or []),
-            "marked": str(marked or "")}
+            "marked": str(marked or ""), "waiting": list(waiting or [])}
+
+
+#: The state of a source that has no value to show because its reader is inside its
+#: dependency's start grace (C2568): not read, not unreadable, never a row.
+WAITING = "waiting"
+
+
+def _waiting_source(source: str, label: str, doc: dict, *, read_at: float,
+                    took_ms: int) -> dict:
+    """The result of a source whose reader has never stored a value and whose latest read is
+    inside its dependency's start grace (reader_job rule 14), or None to draw it as before:
+    one line under What was checked, "waiting for NetBox to answer (since ..., grace until
+    ...)", marked as not ok (its state is not "read"), with no row and no value time."""
+    from modules import reader_job
+
+    w = reader_job.waiting(doc)
+    if not w:
+        return None
+    return {"source": source, "label": label, "state": WAITING, "read_at": _iso(read_at),
+            "value_at": None, "took_ms": took_ms, "checked": reader_job.waiting_words(w),
+            "rows": [], "reader": (doc or {}).get("reader"), "waiting": []}
+
+
+def _still_waiting(doc: dict, what: str) -> list:
+    """A source drawing its reader's last good value while the latest read is inside its
+    dependency's start grace: that wait as one line (``waiting=`` of `source_result`)."""
+    from modules import reader_job
+
+    w = reader_job.waiting(doc)
+    return [{"check": what, "why": reader_job.waiting_words(w)}] if w else []
 
 
 #: The mark of a device-level check on a network that holds no device (the operator,
@@ -830,6 +864,9 @@ def _held(source: str, got: dict, devices, what: str, *, margin: float = None) -
 _JOB_STATES = {
     "failing": ("is failing", "danger"),
     "never_succeeded": ("has never succeeded", "danger"),
+    # C2568 (reader_job rule 14): inside its dependency's start grace, drawn as its own line
+    # under What was checked (WAITING_JOB_STATES), never a row; past the grace it is failing.
+    "waiting": ("is waiting for its dependency to answer", "unknown"),
     "not_installed": ("is not installed", "danger"),
     "stale": ("has not succeeded recently", "warning"),
     # A run that ended ok and found something for a person (C1791): never "failing", which
@@ -929,6 +966,9 @@ JOB_HEALTH_READER = "job-health"
 #: A pending onboarding's staged bootstrap credential (C1159) likewise: Verify or
 #: Abandon clears it, and the pending device's own page names both.
 EXPECTED_JOB_STATES = ("unread", "shared", "onboarding_staged")
+#: Job-health states drawn as a line of their own under What was checked, marked as not ok
+#: and never a row (C2568): a reader inside its dependency's start grace.
+WAITING_JOB_STATES = ("waiting",)
 
 
 def _install_rows_asked_again(jobs: list) -> list:
@@ -1018,7 +1058,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
     from modules import installation_kind as K
 
     took = int((time.time() - started) * 1000)
-    rows, expected, marked = [], [], []
+    rows, expected, marked, waits = [], [], [], []
     kit = K.is_laptop_kit()
     for job in jobs:
         state = job.get("state", "")
@@ -1030,6 +1070,13 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             # under What was checked, with its reason, never a row.
             words = _JOB_STATES.get(state, (f"reads {state}",))[0]
             marked.append({"check": f"{job.get('unit', '?')} {words}", "why": why})
+            continue
+        if state in WAITING_JOB_STATES:
+            # C2568: a reader inside its dependency's start grace, its own line, never a row.
+            waits.append({"check": job.get("unit", "?"),
+                          "why": (reader_job.waiting_words(job["waiting"])
+                                  if isinstance(job.get("waiting"), dict) else
+                                  job.get("headline") or f"{job.get('unit', '?')}: {state}")})
             continue
         if state in EXPECTED_JOB_STATES:
             # Expected and nothing to do yet (the operator, 2026-10-02): said in
@@ -1058,14 +1105,16 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             operands=ops,
             action=_job_action(job), level=level,
             read_at=job.get("_read_at") or value_at or started))
-    n_ok = len(jobs) - len(rows) - len(expected) - len(marked)
+    n_ok = len(jobs) - len(rows) - len(expected) - len(marked) - len(waits)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
                          rows=rows, value_at=value_at, stale_after_seconds=promise,
                          reader=JOB_HEALTH_READER if promise else None, detail=where,
-                         not_applicable=marked,
+                         not_applicable=marked, waiting=waits,
                          checked=f"{len(jobs)} job-health row(s), {n_ok} ok"
                                  + (f", {len(marked)} {K.MARK} (each on its own line)"
                                     if marked else "")
+                                 + (f", {len(waits)} waiting for a dependency to answer (each "
+                                    "on its own line)" if waits else "")
                                  + (f"; expected, nothing to do yet: {'; '.join(expected)}"
                                     if expected else ""))
 
@@ -2881,10 +2930,18 @@ def credential_health_source(cached=None) -> dict:
         return source_result("credential-health", "Credential expiry and age", read_at=started,
                              took_ms=took, error=f"not read yet: {why}")
     v = good.get("value") or {}
-    rows = []
+    rows, waits = [], []
+    w = reader_job.waiting(doc)
     for c in v.get("credentials") or []:
         state = c.get("state")
         if state in ("ok", "listed"):
+            continue
+        if (state == "unknown" and w and c.get(reader_job.NOT_ANSWERING) == w.get("for")
+                and w.get("for") in (v.get(reader_job.NOT_ANSWERING) or [])):
+            # C2568: its service did not answer, inside its start grace: its own line under
+            # What was checked, never a row; past the grace, the row below.
+            waits.append({"check": c.get("label") or c.get("id", "?"),
+                          "why": reader_job.waiting_words(w)})
             continue
         where = f"Renew it at {c.get('renew_at')}; put the new value in {c.get('put_at')}"
         if c.get("kind") == "age" and state == "warning":
@@ -2916,6 +2973,7 @@ def credential_health_source(cached=None) -> dict:
         "credential-health", "Credential expiry and age", read_at=started, took_ms=took,
         rows=rows, value_at=_ts(good.get("value_at")),
         stale_after_seconds=doc.get("stale_after_seconds"), reader="credential-health",
+        waiting=waits,
         checked=(f"{len(v.get('credentials') or [])} credential(s): "
                  + ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
                  + (f"; not read: {'; '.join(v.get('errors'))}" if v.get("errors") else "")))
@@ -3029,6 +3087,11 @@ def netbox_secrets_source(cached=None) -> dict:
     doc = got.get("doc") or {}
     good = doc.get("last_good") or {}
     took = int((time.time() - started) * 1000)
+    label = "NetBox stored credentials"
+    waits = _waiting_source("netbox-secrets", label, doc, read_at=started, took_ms=took) \
+        if got["state"] == "ok" and not good else None
+    if waits:
+        return waits
     if got["state"] != "ok" or not good:
         why = (got.get("why") if got["state"] != "ok" else
                "the reader has never stored a value; its last attempt: "
@@ -3071,8 +3134,9 @@ def netbox_secrets_source(cached=None) -> dict:
                         what=f"NetBox holds a credential for {name}", devices=[name],
                         cause=cause, operands={"netbox_id": d.get("id")}, action=action))
     return source_result(
-        "netbox-secrets", "NetBox stored credentials", read_at=started, took_ms=took,
+        "netbox-secrets", label, read_at=started, took_ms=took,
         rows=rows, value_at=value_at, stale_after_seconds=promise, reader="netbox-secrets",
+        waiting=_still_waiting(doc, "its latest read"),
         checked=f"{v.get('scanned', 0)} NetBox device(s) scanned, "
                 f"{len(v.get('devices') or [])} holding a credential")
 
@@ -3188,6 +3252,10 @@ def netbox_lag_source(cached=None, writes=None, presence=None) -> dict:
     doc = got.get("doc") or {}
     good = doc.get("last_good") or {}
     took = int((time.time() - started) * 1000)
+    waits = _waiting_source("netbox-lag", label, doc, read_at=started, took_ms=took) \
+        if got["state"] == "ok" and not good else None
+    if waits:
+        return waits
     if got["state"] != "ok" or not good:
         why = (got.get("why") if got["state"] != "ok" else
                "the reader has never stored a value; its last attempt: "
@@ -3252,6 +3320,7 @@ def netbox_lag_source(cached=None, writes=None, presence=None) -> dict:
     return source_result(
         "netbox-lag", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
         stale_after_seconds=promise, reader="netbox-lag", not_applicable=empty,
+        waiting=_still_waiting(doc, "its latest read"),
         checked=(f"{checked} device(s) in {judged} network(s) in NetBox compared with their "
                  f"committed goldens, {len([r for r in rows if r['kind'] == 'behind'])} "
                  "holding more than NetBox"
@@ -6068,7 +6137,7 @@ def badge_of(rows: list, results: list) -> dict:
     due = [_ts(r["clears_at"]) for r in rows if r.get("clears_at")]
     stale = [_ts(res["value_at"]) + res["stale_after_seconds"] for res in results
              if res.get("value_at") and res.get("stale_after_seconds")]
-    unreadable = [res["label"] for res in results if res.get("state") != "read"]
+    unreadable = [res["label"] for res in results if res.get("state") not in ("read", WAITING)]
     return {"n": len(rows), "level": LEVELS[worst] if worst is not None else "",
             "next_change_at": _iso(min(due)) if due else None,
             "stale_at": _iso(min(stale)) if stale else None,
@@ -6682,7 +6751,8 @@ def needs_attention(sources=None) -> dict:
         results.append(ack_result)
     in_force = _standing_acknowledgements(acknowledged)
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
-    unreadable = [res["label"] for res in results if res["state"] != "read"]
+    # A source waiting out its dependency's start (C2568) is not unreadable: its own line says.
+    unreadable = [res["label"] for res in results if res["state"] not in ("read", WAITING)]
     if rows:
         headline = f"{len(rows)} thing(s) need attention"
     else:
@@ -6713,4 +6783,11 @@ def _checked_lines(results: list) -> list:
                         "label": f"{res['label']} › {na['check']}", "state": "read",
                         "read_at": res.get("read_at"), "value_at": res.get("value_at"),
                         "took_ms": 0, "checked": f"{mark}: {na['why']}", "count": 0})
+        for w in res.get("waiting") or []:
+            # C2568: a read inside its dependency's start grace, its own line, drawn as not ok
+            # (the page marks every line whose state is not "read"), never a row.
+            out.append({"source": f"{res['source']}:{w['check']}",
+                        "label": f"{res['label']} › {w['check']}", "state": WAITING,
+                        "read_at": res.get("read_at"), "value_at": None,
+                        "took_ms": 0, "checked": w["why"], "count": 0})
     return out

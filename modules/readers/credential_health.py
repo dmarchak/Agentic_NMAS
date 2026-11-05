@@ -90,9 +90,14 @@ def netbox(now: float) -> list:
         r.raise_for_status()
         rows = r.json().get("results") or []
     except Exception as exc:                            # noqa: BLE001
-        return [_entry("netbox_token", "NetBox API token", kind="expiry", state="unknown",
-                       why=f"the token list could not be read: {type(exc).__name__}",
-                       renew_at=renew, put_at=put, now=now)]
+        got = _entry("netbox_token", "NetBox API token", kind="expiry", state="unknown",
+                     why=f"the token list could not be read: {type(exc).__name__}",
+                     renew_at=renew, put_at=put, now=now)
+        if reader_job.not_answering(exc):
+            # C2568: NetBox did not answer at all (still starting, or down): the read is
+            # retried on a backoff and waits out NetBox's start grace (reader_job rule 14).
+            got[reader_job.NOT_ANSWERING] = reader_job.NETBOX.key
+        return [got]
     # NetBox 4.6 lists a v2 token (`nbt_<key>.<secret>`) by its KEY and never shows any part of
     # its secret (C378, measured on 4.6.9: `key` the 12-character id, `token` null); the
     # tool's row is the one whose key is its own token's.
@@ -297,7 +302,9 @@ def read(now: float = None) -> dict:
             creds += fn(now)
         except Exception as exc:                        # noqa: BLE001
             errors.append(f"{fn.__name__}: {type(exc).__name__}: {exc}")
-    return {"credentials": creds, "errors": errors,
+    down = sorted({c[reader_job.NOT_ANSWERING] for c in creds
+                   if c.get(reader_job.NOT_ANSWERING)})
+    return {"credentials": creds, "errors": errors, reader_job.NOT_ANSWERING: down,
             "thresholds": {"warning_days": WARN_DAYS, "danger_days": DANGER_DAYS,
                            "listed_beyond_days": LISTED_DAYS, "max_age_days": MAX_AGE_DAYS}}
 
@@ -316,4 +323,6 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("credential_health",),
     remedy="Read the error above: it names which source could not be read",
     window="each credential's metadata at the read",
+    # C2568: its NetBox token read waits out NetBox's start (reader_job rule 14).
+    dependency=reader_job.NETBOX,
 ))

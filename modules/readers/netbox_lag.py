@@ -296,4 +296,6 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("netbox",),
     remedy="Read the error above: it names what NetBox or the repository answered",
     window="each device's committed golden and NetBox's records at the read",
+    # C2568: NetBox still starting is waited out (reader_job rule 14).
+    dependency=reader_job.NETBOX,
 ))

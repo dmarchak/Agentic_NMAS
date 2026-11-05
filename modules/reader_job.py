@@ -112,6 +112,30 @@ produced it.
     mid-run stays busy; `answer_bound()` is how long a page waits before
     saying the answer is late, 2.5x the slowest recorded run.
 
+14. **A read that fails because its dependency is not answering YET is retried
+    on a short backoff, and within a start grace it is waiting, never failing**
+    (the operator, 2026-11-05; C2568: NetBox's boot left `netbox-secrets`
+    critical for its whole hourly interval after NetBox answered). "Not
+    answering" is connection-level only (`not_answering`): refused, reset or
+    aborted, or timed out before any HTTP answer; an HTTP error, a TLS failure,
+    a name that does not resolve or a wrong answer is the dependency ANSWERING,
+    and is the failure it is today. Such a failure is retried after
+    `BACKOFF_FIRST_SECONDS`, doubling to `BACKOFF_CAP_SECONDS` or the interval,
+    whichever is shorter, until a read succeeds (exponential backoff with a cap,
+    as Kubernetes restarts a container: 10 s doubling to 300 s); the store
+    records the next try (`retry`). A reader that declares its `dependency`
+    also records `waiting`: since when, and the grace (`Dependency`, about 2.5x
+    the dependency's measured start) measured from the dependency's OWN start,
+    or from Mercury's start when that cannot be read, said so in
+    `grace_from_basis`. Within the grace, `health_rows` says `waiting` and the
+    consumer draws it under What was checked, never as a row and never as ok;
+    past it, the row it is today. The retry is never scheduled past the grace's
+    end, so the judgement at the end is a read's, not a guess. A read whose
+    value carries one part a dependency did not answer (`NOT_ANSWERING`: the
+    credential health's NetBox token) is backed off and waits the same way, its
+    value stored. Known edge: a dependency answering after the last try inside
+    the grace and before its end is a row for the length of the read at the end.
+
 Nothing here starts a thread at import (C36): `start()` is called from the
 app's `_start_background_daemons()`, and only there.
 """
@@ -138,6 +162,46 @@ _NAME = re.compile(r"^[a-z][a-z0-9_-]{1,40}$")
 #: read is not a stop. Stored with the value (`stale_after_seconds`), so the
 #: page judges the same promise on its own clock.
 STALE_AFTER_INTERVALS = 3
+
+
+#: Rule 14's backoff (C2568): the first retry after a read found its dependency not
+#: answering, doubled each retry, capped here or at the reader's interval, whichever is
+#: shorter. Practice: Kubernetes' container restart backoff, 10 s doubling to 300 s. A
+#: dependency that stays down is asked about 12 times an hour instead of once.
+BACKOFF_FIRST_SECONDS = 15
+BACKOFF_CAP_SECONDS = 300
+
+#: The key a read's VALUE may carry (a list of `Dependency.key`) when one part of it found
+#: that dependency not answering and the rest was read (rule 14).
+NOT_ANSWERING = "not_answering"
+
+
+@dataclass(frozen=True)
+class Dependency:
+    """A service a reader cannot read without (rule 14). Its grace is how long after its own
+    start it is expected to be answering: about 2.5x its measured start, with the measurement
+    in `grace_basis`."""
+
+    key: str
+    label: str
+    start_grace_seconds: int
+    grace_basis: str
+    #: () -> epoch seconds of the dependency's own start, or None when it cannot be read.
+    started_at: Callable = None
+    #: Why its start cannot be read, said where the grace is measured from Mercury's instead.
+    start_unreadable: str = ""
+
+
+NETBOX = Dependency(
+    key="netbox", label="NetBox", start_grace_seconds=120,
+    # Measured read-only on the Mercury host (the 2026-10-09 boot; its containers' StartedAt and
+    # the netbox container's log): the container started 03:21:00.9Z, granian listened at
+    # 03:21:31.5Z (30.5 s), its four workers were up at 03:21:34.8Z (33.8 s), and the first
+    # request was answered at 03:21:47.4Z: 46.5 s. 2.5x is 116 s; 120 s.
+    grace_basis=("about 2.5x NetBox's measured start: 46.5 s from its container's start to "
+                 "its first answered request (the Mercury host, 2026-10-09)"),
+    start_unreadable=("NetBox's API reports no start time, and where NetBox runs (its "
+                      "containers or its service) is not Mercury's to read"))
 
 
 class ReaderRefused(ValueError):
@@ -172,6 +236,8 @@ class Reader:
     #: apart: Default's under the reader's own name (unchanged), another's as ``name@id``.
     per_group: tuple = ()
     read_for: Callable = None         # (list name) -> value; required with per_group
+    #: Rule 14: the service whose start this reader waits out (a `Dependency`), if any.
+    dependency: Dependency = None
 
 
 _REGISTRY: dict = {}
@@ -207,6 +273,11 @@ def register(reader: Reader) -> Reader:
         problems.append("stale after fewer than two intervals would call one slow read a stop")
     if reader.per_group and not callable(reader.read_for):
         problems.append("it reads per configuration (per_group) with no read_for(list_name)")
+    dep = reader.dependency
+    if dep is not None and (not isinstance(dep, Dependency) or dep.start_grace_seconds <= 0
+                            or not (dep.grace_basis or "").strip()):
+        problems.append("its dependency is not a Dependency with a positive start grace and "
+                        "the measurement it comes from (rule 14)")
     with _REGISTRY_MU:
         if reader.name in _REGISTRY and _REGISTRY[reader.name] is not reader:
             problems.append(f"a reader named {reader.name!r} is already registered")
@@ -305,6 +376,117 @@ def refuse_truncated(items, limit: int, what: str):
                         "partial, and a partial answer stored as whole is how \"never\" "
                         "becomes false")
     return items
+
+
+# ---------------------------------------------------------------------------
+# Rule 14: a dependency not answering yet
+# ---------------------------------------------------------------------------
+
+def _no_answer(exc) -> bool:
+    """*exc* itself (not its causes) is connection-level: True, an answer of some kind: False,
+    neither: None."""
+    import socket
+    import ssl
+
+    import requests.exceptions as rx
+    import urllib3.exceptions as ux
+
+    # An answer, or a fault that is not the dependency starting: a TLS failure, a proxy's
+    # refusal, an HTTP status, a name that does not resolve.
+    answered = (ssl.SSLError, socket.gaierror, rx.SSLError, rx.ProxyError, rx.HTTPError,
+                rx.InvalidURL, rx.ChunkedEncodingError, rx.ContentDecodingError, ux.SSLError,
+                ux.ProxyError, ux.NameResolutionError)
+    if isinstance(exc, answered):
+        return False
+    if isinstance(exc, rx.ConnectionError):
+        # requests wraps urllib3's reason (MaxRetryError.reason) in args, not as a cause.
+        reason = getattr(exc.args[0], "reason", None) if exc.args else None
+        if reason is not None and _no_answer(reason) is False:
+            return False
+        return True
+    if isinstance(exc, (rx.Timeout, ux.NewConnectionError, ux.ConnectTimeoutError,
+                        ux.ReadTimeoutError, ux.ProtocolError)):
+        return True
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        # Refused, reset, aborted, a broken pipe, http.client's RemoteDisconnected, a socket
+        # timeout: nothing answered.
+        return True
+    return None
+
+
+def not_answering(exc) -> bool:
+    """Rule 14: did *exc* happen because nothing answered (refused, reset, aborted, or timed
+    out before any HTTP answer)? An HTTP error, a TLS failure, a name that does not resolve
+    or a wrong answer is the dependency answering: False. Its explicit cause and its context
+    are read too, so a wrapper's error still says what happened under it."""
+    seen = 0
+    while exc is not None and seen < 8:
+        got = _no_answer(exc)
+        if got is not None:
+            return got
+        exc = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+        seen += 1
+    return False
+
+
+_STARTED_AT = None
+_IMPORTED_AT = time.time()
+
+
+def mercury_started() -> float:
+    """When this process's readers started (`start`), or when it imported this module where
+    none did: the grace's start when a dependency's own cannot be read."""
+    return _STARTED_AT if _STARTED_AT is not None else _IMPORTED_AT
+
+
+def mark_started(at=None) -> None:
+    """Record when this process's readers started (`start` calls it once); None returns the
+    grace's start to the module's import. A test sets it and puts it back."""
+    global _STARTED_AT
+    _STARTED_AT = at
+
+
+def _grace_from(dep: Dependency) -> tuple:
+    """``(epoch, basis)``: the dependency's own start when it can be read, else Mercury's."""
+    why = dep.start_unreadable or f"{dep.label}'s own start cannot be read"
+    if dep.started_at is not None:
+        try:
+            at = dep.started_at()
+        except Exception as exc:                        # noqa: BLE001 (said in the basis)
+            at, why = None, f"{dep.label}'s start could not be read ({type(exc).__name__})"
+        if at:
+            return float(at), f"{dep.label}'s own start"
+    return mercury_started(), f"Mercury's start, because {why}"
+
+
+def waiting(doc: dict, now: float = None) -> dict:
+    """Rule 14: the stored wait for a dependency, when the latest attempt found it not
+    answering and its start grace has not passed (judged on *now*, so a reader that stops
+    trying is a row once the grace ends); else None."""
+    w = (doc or {}).get("waiting")
+    if not isinstance(w, dict):
+        return None
+    until = _parse_iso(w.get("grace_until"))
+    now = time.time() if now is None else now
+    if until is None or now > until:
+        return None
+    return dict(w)
+
+
+def waiting_words(w: dict) -> str:
+    """How a wait is drawn under What was checked."""
+    return (f"waiting for {w.get('label') or 'its dependency'} to answer (since "
+            f"{w.get('since')}, grace until {w.get('grace_until')})")
+
+
+def next_wait(reader: Reader, doc: dict) -> int:
+    """Seconds the scheduler waits after a run that stored *doc*: its backoff when it found
+    its dependency not answering (rule 14), else the interval."""
+    retry = (doc or {}).get("retry") or {}
+    got = retry.get("in_seconds")
+    if isinstance(got, (int, float)) and 0 < got < reader.interval_seconds:
+        return int(got)
+    return reader.interval_seconds
 
 
 #: The records database's store for the stored values (C1330): a document per reader's store,
@@ -545,6 +727,38 @@ def read_cached_for(name: str, list_name: str) -> dict:
     return read_cached(IG.store_name(name, gid))
 
 
+def _record_backoff(doc: dict, before: dict, reader: Reader, started: float) -> None:
+    """Rule 14, on *doc*: the next try (`retry`), and, for a reader that declares its
+    dependency and found it not answering, the wait (`waiting`) with its grace."""
+    streak = 0
+    for run in reversed(doc["runs"]):
+        if not run.get("no_answer"):
+            break
+        streak += 1
+    delay = min(BACKOFF_FIRST_SECONDS * 2 ** min(max(streak - 1, 0), 16), BACKOFF_CAP_SECONDS,
+                reader.interval_seconds)
+    dep = reader.dependency
+    if dep is not None and doc["runs"][-1].get("no_answer"):
+        grace_from, basis = _grace_from(dep)
+        until = grace_from + dep.start_grace_seconds
+        prev = before.get("waiting") or {}
+        doc["waiting"] = {
+            "for": dep.key, "label": dep.label,
+            "since": (prev.get("since") if prev.get("for") == dep.key and prev.get("since")
+                      else _iso(started)),
+            "grace_from": _iso(grace_from), "grace_from_basis": basis,
+            "grace_seconds": dep.start_grace_seconds, "grace_basis": dep.grace_basis,
+            "grace_until": _iso(until)}
+        if started < until:
+            # Never past the grace's end: the judgement there is a read's.
+            delay = min(delay, max(1, int(until - started)))
+    doc["retry"] = {"in_seconds": int(delay),
+                    "why": (f"nothing answered {streak} read(s) running: retried after "
+                            f"{BACKOFF_FIRST_SECONDS} s, doubling to "
+                            f"{min(BACKOFF_CAP_SECONDS, reader.interval_seconds)} s, until a "
+                            "read is answered (rule 14)")}
+
+
 def _run_once(reader: Reader, announce, clock, trigger) -> dict:
     trigger = dict(trigger or SCHEDULED)
     # Asked for (a person's request, or a host job that finished): logged, and
@@ -553,14 +767,20 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
     requested = bool(trigger.get("run"))
     started = clock()
     t0 = time.monotonic()
-    value, error = None, ""
+    value, error, no_answer = None, "", False
     try:
         value = reader.read()
         if not isinstance(value, dict):
             error = f"the read returned {type(value).__name__}, not a mapping"
     except Exception as exc:                            # noqa: BLE001
         error = f"{type(exc).__name__}: {exc}"
+        no_answer = not_answering(exc)
     took = int((time.monotonic() - t0) * 1000)
+    # Rule 14: did its dependency not answer, the whole read or one part of it?
+    dep = reader.dependency
+    dep_down = dep is not None and (
+        no_answer if error else dep.key in ((value or {}).get(NOT_ANSWERING) or ()))
+    backoff = no_answer or dep_down
 
     path = store_path(reader.name)
     # The lock stays on the file's path when the value is on the records database (C1330), as
@@ -597,8 +817,11 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
             "last_good": before.get("last_good"),
             "failing_since": None,
             "runs": ((before.get("runs") or [])[-(RUNS_KEPT - 1):]
-                     + [{"at": _iso(started), "ok": not error, "took_ms": took, "trigger": trigger}]),
+                     + [{"at": _iso(started), "ok": not error, "took_ms": took, "trigger": trigger,
+                         **({"no_answer": True} if backoff else {})}]),
         }
+        if backoff:
+            _record_backoff(doc, before, reader, started)
         if replaced:
             doc["replaced_unreadable"] = {"at": _iso(started), "why": replaced}
         elif before.get("replaced_unreadable") and error:
@@ -745,6 +968,21 @@ def health_rows(now: float = None, population: list = None) -> list:
                          "action": {"label": "Read the app log for this reader; its thread "
                                              "has stopped, and a restart starts it again"}})
             continue
+        w = waiting(doc, now) if not attempt.get("ok") else None
+        if w:
+            # Rule 14: inside its dependency's start grace, waiting: never failing, never ok.
+            rows.append({**base, "state": "waiting", "since": _parse_iso(w.get("since")),
+                         "headline": f"{unit} is {waiting_words(w)}", "waiting": w,
+                         "detail": (f"its last read of {', '.join(doc.get('endpoints') or [])} "
+                                    f"at {attempt.get('at')} found nothing answering: "
+                                    f"{attempt.get('error', '?')}. The grace is "
+                                    f"{w.get('grace_seconds')} s ({w.get('grace_basis')}), from "
+                                    f"{w.get('grace_from_basis')}; it is retried in "
+                                    f"{(doc.get('retry') or {}).get('in_seconds', '?')} s, and "
+                                    "past the grace it is a row. "
+                                    + (f"The value shown is from {good['value_at']}"
+                                       if good else "It has never read a value"))})
+            continue
         if not attempt.get("ok"):
             state = "failing" if good else "never_succeeded"
             rows.append({**base, "state": state, "since": _parse_iso(doc.get("failing_since")),
@@ -768,15 +1006,19 @@ _threads: dict = {}
 _stop = threading.Event()
 
 
-def _loop(reader: Reader, announce) -> None:
-    while not _stop.is_set():
+def _loop(reader: Reader, announce, stop=None) -> None:
+    """*stop* is the event that ends it and is waited on between runs (the module's own)."""
+    stop = _stop if stop is None else stop
+    while not stop.is_set():
+        doc = None
         try:
-            run_once(reader, announce=announce)
+            doc = run_once(reader, announce=announce)
         except Exception as exc:                        # noqa: BLE001
             # The store could not be written: logged here, and the stale row
             # names it at the next health read, from any process.
             log.error("reader %s: its result could not be stored: %s", reader.name, exc)
-        _stop.wait(reader.interval_seconds)
+        # Rule 14: a read that found nothing answering is tried again on its backoff.
+        stop.wait(next_wait(reader, doc))
 
 
 def start(announce=None) -> list:
@@ -796,6 +1038,9 @@ def start(announce=None) -> list:
     # Board H, H2: the heal triggers ride on the readers' stores ("check this device now").
     from modules.heal import triggers as heal_triggers
     heal_triggers.install()
+    if _STARTED_AT is None:
+        # Rule 14: Mercury's start, the grace's start where a dependency's own cannot be read.
+        mark_started(time.time())
     _stop.clear()
     started = []
     for r in readers():

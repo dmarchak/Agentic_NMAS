@@ -65,6 +65,17 @@ The landing page answers one question: does anything need you?
   line under *What was checked*, saying **no devices yet** and why, never a row. Its first
   device makes them rows again, exactly as before. A network whose device list cannot be read
   is not "no devices": its checks stay rows.
+- **A check waiting for NetBox to start is a line, not a row, until its grace ends.** When a
+  read of NetBox finds nothing answering at all (the connection refused, reset, or timed out
+  before any answer), Mercury asks again after 15 seconds, doubling to 5 minutes, until NetBox
+  answers. For two minutes from NetBox's start (Mercury cannot read NetBox's own start, so from
+  Mercury's), the check is one line under *What was checked*: **waiting for NetBox to answer
+  (since …, grace until …)**, marked like a source that could not be read and never drawn as
+  fine. Two minutes is about 2.5 times NetBox's measured start, 46.5 seconds from its
+  containers' start to its first answer. Past the grace it is the row it always was, and that
+  row clears at the next answered read. An HTTP error, a certificate refused or a wrong answer
+  is NetBox answering, and is a row at once. The checks it covers: NetBox's stored
+  credentials, NetBox against the committed goldens, and the NetBox API token's expiry.
 - **Recent changes**: the last deploys and restores, from their receipts. It reads itself again
   when a deploy or restore finishes, so a page left open shows the new one without a reload.
 
