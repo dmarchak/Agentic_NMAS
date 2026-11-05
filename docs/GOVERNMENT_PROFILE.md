@@ -576,6 +576,15 @@ event.
 - Any profile may choose it: the edge-kit case (EDGE_ARCHITECTURE), a lab, a commercial enclave.
   Turning it off needs the wizard rerun, as the marking does.
 
+**The principle behind it, for every install (the operator, 2026-11-05):** Mercury functions
+100% locally, and online features are optional extras (PHASE8_PLAN section 0, "Standing design
+principle").
+- Air-gapped mode is that principle enforced. Every other install relies on it too: an install
+  that loses its internet keeps every core function, and says plainly which optional feature
+  is unavailable.
+- The acceptance test of 9.6 is a release gate for every install.
+- 9.9 lists today's breaks by register row.
+
 **Why it is safe to rely on.** Interconnected systems on separate classification domains are
 expected to send nothing but what their accreditation names (NIST SP 800-53 SC-7, boundary
 protection, and AC-4, information flow enforcement). A refusal made after a resolve or a connect
@@ -662,6 +671,12 @@ never left to chance.
 - **PASS is zero logged attempts.**
   - Any logged attempt fails it, named by its source and destination.
   - The fix goes through the door or the stack's configuration, never by widening the rule.
+- **A release gate for every install, not only government ones** (the operator, 2026-11-05).
+  - A release does not ship until the walk passes on an install configured with no online
+    feature at all.
+  - On a commercial install, the same walk also passes with each online feature configured and
+    then made unreachable: the screen says so plainly, with no timeout and no blank card, and
+    every core function still works.
 
 ### 9.7 The inventory of outbound call sites and phone-homes
 
@@ -780,6 +795,27 @@ Each is a reading for the build, from the host's files, never from memory.
 3. Each phone-home of 9.2 is off in the configuration an air-gapped install writes.
 4. No served asset names an external URL (9.3).
 5. A bundle that is unsigned, or signed by another key, is refused (9.4).
+
+### 9.9 The local-first principle's current breaks, by register row (2026-11-05)
+
+Each of these breaks the principle today. The rows were taken from 9.7's inventory, with the
+register searched first.
+
+| Core function or rule | What breaks it today | Row |
+|---|---|---|
+| Sign-in has a local path | Verified identity is Cloudflare Access only: offline, every gated action is refused | **C2520** (new) |
+| Updates have a local path | Update and `nmas-deploy` gate on GitHub's CI verdict, with no signed-bundle path | C2370, C1008 |
+| Install has a local path | The host steps fetch from PyPI and Docker Hub, with no offline bundle (section 10) | C1008 |
+| Certificates have a local path | Mercury serves plain HTTP on Werkzeug, and TLS comes only from Cloudflare's edge | C248 |
+| Online features are off until configured | `ci_verdict`, `ci_agreement` and `app_pushed` run with no switch | C2512 |
+| Online features are off until configured | The stack's phone-homes (NetBox census, Grafana and Loki reporting, update checks) are at their defaults | C2513 |
+| Removing an online feature breaks nothing | An unreachable GitHub raises Needs attention rows, CRITICAL among them | C2241 |
+| Removing an online feature breaks nothing | Publishing and the remote checks are GitHub-shaped (`check_private` calls `api.github.com`) | C1011 |
+| Unavailable is said plainly | On an install without the NMAS host's services (systemd units, the updater, Proxmox, GitHub), Job health and Needs attention show permanent failures | **C2521** (new) |
+
+Not counted as breaks:
+- hosted AI, which is off by default and needs a key (the marking that forces it off is C1720);
+- the developer tools and host steps that reach GitHub and PyPI, which are not the product.
 6. The acceptance test of 9.6, as a recorded walk with its packet and DNS log.
 
 ## 10. Offline installation (the operator, 2026-11-04; design only, built after both labs)

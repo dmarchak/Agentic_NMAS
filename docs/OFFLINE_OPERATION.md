@@ -27,6 +27,15 @@ note: sign-in, updates, packages, and two readers that ask GitHub whatever is co
 
 ## 1. Identity: Keycloak per instance (the operator's decision, 2026-10-16)
 
+**Amended 2026-11-05 (the operator): built-in local accounts are the first sign-in option.**
+Keycloak (OIDC) and Cloudflare Access are optional, under the standing design principle that
+Mercury functions 100% locally (PHASE8_PLAN section 0). Two decisions made with it:
+- the single-user local provider (loopback-only, `Actor-Verified: local`) is built straight
+  after the final SDN lab's hardware sitting, ahead of the lab's B2 and B3 demos;
+- that provider is designed as the release's built-in local accounts.
+
+The Keycloak design below stays as the OIDC option. Today's break is C2520.
+
 ### 1.1 What `modules/identity.py` does today (measured)
 
 Mercury has no sign-in of its own. It trusts Cloudflare Access's signed assertion and the

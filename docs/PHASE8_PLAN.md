@@ -91,6 +91,29 @@ schedule this section held (of ~17:2x the same day). The rest of Phase 8 moves b
 - **Every report carries one line on the schedule:** on track, ahead, or behind by how much,
   and the reason.
 
+**Standing design principle: Mercury functions 100% locally; online features are optional
+extras (the operator, 2026-11-05).**
+- **Every core function has a local path:**
+  - sign-in: built-in local accounts are the first option; Cloudflare Access and OIDC are
+    optional;
+  - inventory, intent and history;
+  - monitoring and logs;
+  - the manual;
+  - time;
+  - certificates;
+  - updates, from signed bundles (docs/GOVERNMENT_PROFILE.md section 10).
+- **Every online feature is off until configured:** Cloudflare, OIDC, GitHub, commercial and
+  GenAI.mil AI, update checks and external assets. Removing one never breaks a core function.
+  When one is unavailable, the screen says so plainly: no timeout, no blank card.
+- **The air-gapped acceptance test is a release gate for every install, not only government
+  ones:** no route out, every page and feature walked, zero logged outbound attempts
+  (docs/GOVERNMENT_PROFILE.md 9.6).
+- **The current breaks are registered** (docs/GOVERNMENT_PROFILE.md 9.9 lists them by row).
+  Cloudflare-only verified identity (C2520) is the first.
+- Cost: a local path designed and tested beside every online feature, and the acceptance walk
+  at each release. Prevents: a core function that silently needs the internet, found only on
+  a closed network, where the attempt itself is a logged security event.
+
 **How the work is run (the operator, 2026-11-03):**
 - **The fast checks run before every full gate:** the changed tests, the doc, register and
   lab-name and publication scans, and the commit-msg checks on the staged commit. This cuts
