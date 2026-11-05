@@ -276,9 +276,11 @@ def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50,
 
 # --------------------------------------------------------------------------- the run
 
-def _answer(conn, command: str, values: dict, cap: int) -> dict:
+def _answer(conn, command: str, values: dict, cap: int, driver: str = "") -> dict:
+    """One command's answer, masked by `redact_text`; on a discovery driver's session
+    (`modules/discovery.py`) also by `discovery.mask_lines`, whose rules are not IOS's."""
     from modules.commands import run_device_command
-    from modules.redact import redact_text
+    from modules.discovery import masked
 
     from modules.readonly_commands import bound_seconds
 
@@ -292,11 +294,11 @@ def _answer(conn, command: str, values: dict, cap: int) -> dict:
     except Exception as exc:                          # noqa: BLE001 (the command's failure)
         from modules.utils import error_text
         return {"command": command, "state": FAILED,
-                "why": redact_text(error_text(exc), values)[:400],
+                "why": masked(error_text(exc), values, driver)[:400],
                 "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
-    masked = redact_text(raw, values)
-    data = masked.encode("utf-8")
-    kept = data[:cap].decode("utf-8", errors="ignore") if len(data) > cap else masked
+    text = masked(raw, values, driver)
+    data = text.encode("utf-8")
+    kept = data[:cap].decode("utf-8", errors="ignore") if len(data) > cap else text
     return {"command": command, "state": ANSWERED, "answer": kept, "bytes": len(data),
             "cut": len(data) > cap, "sha256": hashlib.sha256(data).hexdigest(),
             "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
@@ -371,14 +373,20 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
         dev = inventory.get(host)
         if dev is not None and drivers and host in drivers:
             dev = dict(dev, device_type=drivers[host])
+        from modules import discovery
+        driver = (dev or {}).get("device_type", "")
         if dev is None:
             out = {"state": UNKNOWN, "why": f"{host} is not a device of {list_name}"}
+        elif discovery.refusal(driver, commands):
+            # A device Mercury has no driver for is asked only its capture list: refused
+            # before any session opens, naming the command (modules/discovery.py).
+            out = {"state": FAILED, "why": discovery.refusal(driver, commands)}
         else:
             t0 = time.time()
             try:
                 with device_ops.hold(list_name, host, "read", holder,
                                      detail=f"{len(commands)} command(s)", ip=dev.get("ip", "")):
-                    answers = session(dev, lambda conn: [_answer(conn, c, values, cap)
+                    answers = session(dev, lambda conn: [_answer(conn, c, values, cap, driver)
                                                          for c in commands])
                 failed = [a for a in answers if a["state"] != ANSWERED]
                 out = {"state": FAILED if len(failed) == len(answers) else ANSWERED,

@@ -99,19 +99,53 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    identity alone, unchanged; the post-deploy smoke check waits for `ready`
    (about 100 s, 2.5 times that 40 s) before it times a page. `ok`, `commit`,
    `started_at` and `pid` are what they were.
+   **Then it must be READY (C2514; the operator, 2026-11-05: "Approved: C2514,
+   deploy and Update wait for ready (100 s); a timeout or failed step reports
+   FAILED with a critical row and offers rollback, no automatic rollback").**
+   The step `ready` waits for `/health` to say `ready` (C2465's warm-up: every
+   warm-up step finished without an error), by the gate's own
+   `wait_for_ready`, so `nmas-deploy` and the updater judge it by one
+   function. The bound is 100 s, about 2.5x the ~40 s the host's first pages
+   waited after a restart on 2026-11-04 (`READY_BOUND_S`). The outcomes:
+   - ready within the bound: the update goes on, and ends `updated`;
+   - a warm-up step `failed` (the wait ends at once: ready cannot follow) or
+     none ready at 100 s: the outcome is **`not_ready`, FAILED**, naming the
+     step and its error, or the step still warming. A terminal `nmas-deploy`
+     ends with **exit 11** (`NOT_READY`, its own code: exit 5 means the target
+     is not confirmed running, and its remedy is a restart);
+   - a `/health` with no `ready` (a version from before C2465), or an
+     installed gate without `wait_for_ready` (from before C2514): said, and
+     not waited for; the update ends as it did before.
+
+   **Not ready is never rolled back.** The version came up, so the rollback is
+   a person's decision: the readiness wait runs after the come-up check, outside
+   the rollback above, and neither `nmas-deploy` nor the updater puts anything
+   back. Needs attention raises one DANGER row from the newest record of a
+   release put running by either route (`update_op.last_deployed`: the
+   updater's `history.jsonl`, read past a later refusal, and `nmas-deploy`'s
+   `data/deploy_audit.jsonl`): "The deployed release <sha> is not ready:
+   <step> failed: <error>" or "<step> still warming after 100 s". Its action
+   is the rollback to the release it replaced: today
+   `scripts/nmas-rollback <sha> --push`, then Update (Mercury has no one-click
+   rollback yet); for a release still warming, waiting too. It clears when
+   the running process's `/health` says ready, or when another release runs
+   (a rollback landed, or a later deploy by either route).
 7. **Every stage is visible, and the page waits on facts** (`/health`'s commit
    and the updater's record, never a timer). On click the button disables and
    reads "Sending the request…"; a refusal is shown on the page with its reason;
    once accepted, a STEPPER follows the updater's own steps (request written,
    updater started, checkout checked, fetched, CI re-checked, checkout moved,
-   restarting, waiting for the new version with its seconds, running the
-   target), each named by the key the updater's record carries.
+   restarting, waiting for the new version with its seconds, waiting for it to
+   be ready with `/health`'s own reason, running the target), each named by the
+   key the updater's record carries. A target that answers and says it is not
+   ready is the `ready` step, never "Updated".
 
    After a failure the stepper shows three states, never a bare list:
    - the completed steps are **done**;
    - the failed step reads "failed:" and its reason;
    - every later step is **not reached**, struck through and marked apart. A finished update reloads the page, which then draws **The
-   last update**: updated, refused, rolled back, or ROLLBACK FAILED, with why.
+   last update**: updated, FAILED not ready, refused, rolled back, or ROLLBACK
+   FAILED, with why.
    About shows it too.
    **The first real run (2026-09-30) did nothing and said nothing** (C243): the
    component read its attributes from the button instead of its root, so the
@@ -336,7 +370,8 @@ on hover.
 - It touches no device, no list's repository and no NetBox.
 - It does not update itself (see Re-install).
 - It rolls back only a version that does not come up within 120 s. A defect
-  found later is fixed by the next release.
+  found later is fixed by the next release. A version that comes up and is not
+  ready within 100 s is FAILED and left running, never rolled back (C2514).
 - `nmas-deploy` stays the host-side path. **It and the updater take ONE lock**
   (`data/update/lock`, C242): whichever holds it moves the checkout, and the
   other refuses by name (`nmas-deploy` exits 9). The Update preview shows a

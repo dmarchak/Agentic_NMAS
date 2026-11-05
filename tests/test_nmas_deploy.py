@@ -90,9 +90,14 @@ def _fetch_from_real_origin(world):
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
          wait=False, host_check=None, operations=None, to=None, setup=None, units=None,
-         store=None, override=None):
+         store=None, override=None, readiness=None, seen=None):
     """*units*: ``(restart_unit, unit_of)`` for the checkout's other units (C1404); by default
-    none is installed here, as on a host without the ZTP responder."""
+    none is installed here, as on a host without the ZTP responder.
+
+    *readiness* (C2514): ``readiness(n, now)`` gives the fields /health adds (``ready``,
+    ``warming``, ``not_ready``) at its n-th answer since the restart, *now* the fake clock;
+    None answers with none of them, as a version from before C2465 does. *seen* collects the
+    module, the fake clock and how many readiness answers were given."""
     mod = _script()
     if setup:
         setup(mod)              # e.g. the venv's paths in a temporary folder (section 8.4)
@@ -162,7 +167,14 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
             return 200, {"commit": world.base, "started_at": early, "pid": unit()["MainPID"]}
         if health == "foreign_pid":
             return 200, {"commit": running, "started_at": early, "pid": 999}
-        return 200, {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
+        body = {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
+        if readiness is not None and restarted:
+            answers[0] += 1
+            body.update(readiness(answers[0], now[0]))
+        return 200, body
+    answers = [0]
+    if seen is not None:
+        seen.update(mod=mod, now=now, answers=answers)
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else [])
                     + (["--wait"] if wait else []) + (["--to", to] if to else [])
@@ -751,6 +763,115 @@ class TestAfterTheRestart:
         code, _, _ = _run(world, {sha: _run_entry(sha)}, restart_fails=True)
         err = capsys.readouterr().err
         assert code == 5 and "NOT restarted" in err and "Unit not found" in err
+
+
+def _warming(step="ai-calls", until=None, failed_at=None,
+             error="OSError: the record of AI calls could not be read"):
+    """/health's readiness fields (C2465's contract) at its n-th answer: ready from answer
+    *until* on, the step failed from answer *failed_at* on, and otherwise the step running."""
+    def fields(n, _now):
+        if until is not None and n >= until:
+            return {"ready": True, "not_ready": "",
+                    "warming": [{"step": step, "state": "done", "error": ""}]}
+        if failed_at is not None and n >= failed_at:
+            return {"ready": False, "not_ready": f"the warm-up step {step} failed: {error}",
+                    "warming": [{"step": step, "state": "failed", "error": error}]}
+        return {"ready": False, "not_ready": f"warming: {step} running",
+                "warming": [{"step": step, "state": "running", "error": ""}]}
+    return fields
+
+
+def _no_rollback(calls):
+    """A `setup` recording every git command the deploy runs (before `_run` wraps it)."""
+    def setup(mod):
+        real = mod.git
+
+        def git(repo, *args, check=True):
+            calls.append(args)
+            return real(repo, *args, check=check)
+        mod.git = git
+    return setup
+
+
+class TestItWaitsForReady:
+    """C2514 (the operator, 2026-11-05: "Approved: C2514, deploy and Update wait for ready
+    (100 s); a timeout or failed step reports FAILED with a critical row and offers rollback,
+    no automatic rollback"): once the target is confirmed running, /health must say `ready`
+    within READY_BOUND_S, or the deploy is FAILED (exit 11), and nothing is put back."""
+
+    def test_a_release_that_turns_ready_is_deployed_once_it_says_so(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        seen = {}
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)}, readiness=_warming(until=4),
+                                  seen=seen)
+        out = capsys.readouterr().out
+        assert code == 0 and len(restarted) == 1
+        assert "readiness: ready after" in out
+        assert seen["answers"][0] == 4                  # it asked until the answer said ready
+        row = _audit_rows(world)[-1]
+        assert row["exit"] == 0 and row["ready"]["state"] == "ready"
+
+    def test_a_failed_step_is_failed_not_ready_naming_the_step_and_its_error(self, world,
+                                                                               capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        seen = {}
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)},
+                                  readiness=_warming(failed_at=2), seen=seen)
+        err = capsys.readouterr().err
+        assert code == 11 == seen["mod"].NOT_READY
+        assert err.startswith("FAILED, NOT READY: ")
+        assert ("the warm-up step ai-calls failed: OSError: the record of AI calls could not "
+                "be read") in err
+        assert "NOT rolled back" in err and world.base[:10] in err      # the rollback offered
+        assert seen["answers"][0] == 2                  # a failed step ends the wait at once
+        row = _audit_rows(world)[-1]
+        assert row["exit"] == 11 and row["to"] == sha
+        assert (row["ready"]["state"], row["ready"]["step"]) == ("failed", "ai-calls")
+        assert row["ready"]["error"].startswith("OSError")
+
+    def test_still_warming_at_the_bound_is_failed_naming_the_step(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, readiness=_warming("needs-attention"))
+        err = capsys.readouterr().err
+        assert code == 11
+        assert "needs-attention still warming after 100 s (warming: needs-attention running)" in err
+        ready = _audit_rows(world)[-1]["ready"]
+        assert ready["state"] == "warming" and ready["bound_s"] == 100
+        assert 100 <= ready["seconds"] < 110            # it waited the bound, and no longer
+
+    def test_a_health_with_no_ready_key_is_said_and_not_waited_for(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, readiness=None)
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "has no `ready` (it predates the warm-up, C2465): readiness not waited for" in out
+        assert _audit_rows(world)[-1]["ready"]["state"] == "absent"
+
+    @pytest.mark.parametrize("readiness", [_warming(failed_at=1), _warming()],
+                             ids=["failed-step", "still-warming"])
+    def test_not_ready_is_never_rolled_back(self, world, readiness):
+        """Nothing put back: the checkout stays at the target, one restart, and no git
+        command after the move (a reset, a merge back) runs."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        calls = []
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)}, readiness=readiness,
+                                  setup=_no_rollback(calls))
+        assert code == 11 and len(restarted) == 1
+        assert _head(world) == sha
+        moved = [i for i, a in enumerate(calls) if a[:2] == ("merge", "--ff-only")]
+        assert len(moved) == 1
+        after = [a for a in calls[moved[0] + 1:] if a[0] in ("reset", "merge", "checkout")]
+        assert after == []
+
+    def test_the_bound_is_measured_and_its_own_exit_code(self):
+        mod = _script()
+        src = open(os.path.join(ROOT, "scripts", "nmas-deploy"), encoding="utf-8").read()
+        assert mod.READY_BOUND_S == 100 and "about 2.5x that" in src and "40.8 s" in src
+        codes = [mod.OK, mod.CI_REFUSED, mod.COULD_NOT_ASK, mod.OFFLINE_FAILED,
+                 mod.LOCAL_REFUSED, mod.UNHEALTHY, mod.CANNOT_RESTART, mod.CI_PENDING,
+                 mod.CI_CANCELLED, mod.LOCKED, mod.BUSY, mod.NOT_READY]
+        assert len(set(codes)) == len(codes) and mod.NOT_READY == 11
+        assert re.search(r"^ 11  FAILED, NOT READY", mod.__doc__, re.M)
 
 
 class TestTheRecord:

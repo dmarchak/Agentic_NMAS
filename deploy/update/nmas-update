@@ -35,6 +35,14 @@ ROLLED BACK (the checkout reset to the commit it ran, restarted, confirmed the
 same way), and every outcome is written where the app reads it on the next
 page load: /var/lib/nmas-update/outcome.json (0644) and history.jsonl.
 
+Once it runs, the updater waits for it to be READY (C2514, the step `ready`):
+`/health` saying `ready` within the gate's READY_BOUND_S (100 s), by the gate's
+own `wait_for_ready`. A failed warm-up step, or none ready at the bound, ends
+the update `not_ready`, FAILED, naming the step; that is NEVER a rollback (the
+operator, 2026-11-05: "no automatic rollback"): the version came up, so the
+person decides, from the Needs attention row it raises. A running version
+with no `ready` in its `/health` is said, and not waited for.
+
 Environment (set by the root-owned unit, never by the request):
   NMAS_UPDATE_REPO      the checkout the service runs
   NMAS_UPDATE_USER      the service user
@@ -79,7 +87,7 @@ BINARIES = {
 #: The steps this updater reports, in order, by KEY: its record names the one
 #: it is on, and the Update page draws its stepper from them
 #: (modules/update_op.STEPS holds the same keys; a test holds them equal).
-STEPS = ("checkout", "fetch", "ci", "move", "restart", "wait")
+STEPS = ("checkout", "fetch", "ci", "move", "restart", "wait", "ready")
 
 #: The ONE lock a terminal deploy (`nmas-deploy`) and this updater both take
 #: (C242): whoever holds it moves the checkout, and the other refuses by name.
@@ -428,6 +436,13 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
     rec["pid_after"] = ((seen or {}).get("unit") or {}).get("MainPID")
     if ok:
         words = f"running {target[:10]} as pid {rec['pid_after']}"
+        # Can it serve (C2514)? Past the rollback's reach on purpose: the version came up, so a
+        # warm-up that fails or outlasts the bound is FAILED and reported, never rolled back.
+        ready = wait_ready(gate, health, clock, sleep, report)
+        rec["ready"] = {k: ready.get(k) for k in ("state", "step", "error", "seconds", "bound_s",
+                                                  "not_ready")}
+        not_ready = ready.get("state") in ("failed", "warming")
+        words += f"; readiness: {ready.get('words')}"
         if plan["state"] == "swap":
             # Keep the current venv and the previous one (the operator, 2026-10-09).
             try:
@@ -442,26 +457,54 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
         # The checkout's other long-running units (C1404): each restarted and confirmed by its
         # new MainPID through the gate's one function, or the outcome says which runs old code.
         units = getattr(gate, "restart_checkout_units", None)
+        partly = False
         if restart_unit is not None and units is None:
-            return dict(rec, outcome="updated_partly", step="wait", ended_at=iso(clock()),
-                        reason=words + "; the installed gate (the root-owned nmas-deploy) "
-                               "predates C1404, so the ZTP responder was not restarted: "
-                               "re-install it (docs/UPDATE.md) and restart "
-                               "nmas-ztp-responder.service")
-        if restart_unit is not None:
+            partly = True
+            words += ("; the installed gate (the root-owned nmas-deploy) predates C1404, so the "
+                      "ZTP responder was not restarted: re-install it (docs/UPDATE.md) and "
+                      "restart nmas-ztp-responder.service")
+        elif restart_unit is not None:
             try:
                 units_ok, said = units(restart_unit, unit_of, clock, sleep)
             except Exception as exc:                     # noqa: BLE001
                 units_ok, said = False, [f"the units' restart raised {type(exc).__name__}: "
                                          f"{exc}"]
             words += "; " + "; ".join(said) if said else ""
-            if not units_ok:
-                return dict(rec, outcome="updated_partly", step="wait", ended_at=iso(clock()),
-                            reason=words)
-        return dict(rec, outcome="updated", step="wait", ended_at=iso(clock()), reason=words)
+            partly = not units_ok
+        if not_ready:
+            # FAILED, worst first: a release that cannot serve outranks a unit left behind.
+            return dict(rec, outcome="not_ready", step="ready", ended_at=iso(clock()),
+                        reason=f"{target[:10]} came up and is NOT READY: {ready.get('words')}. "
+                               f"It was not rolled back: Needs attention offers the rollback "
+                               f"to {head[:10]}. ({words})")
+        if partly:
+            return dict(rec, outcome="updated_partly", step="ready", ended_at=iso(clock()),
+                        reason=words)
+        return dict(rec, outcome="updated", step="ready", ended_at=iso(clock()), reason=words)
     return rollback(rec, reason, repo=repo, head=head, gate=gate, git=git, restart=restart,
                     unit=unit, health=health, clock=clock, sleep=sleep, report=report,
                     venv=venv if plan["state"] == "swap" else None, plan=plan)
+
+
+def wait_ready(gate, health, clock, sleep, report) -> dict:
+    """The step `ready` (C2514): the gate's own `wait_for_ready` (`nmas-deploy`'s, bounded by
+    its READY_BOUND_S), so a terminal deploy and this updater judge readiness by one function.
+    An installed gate without it predates C2514: said, and not waited for, as a version whose
+    /health has no `ready` is. A wait that raises has not confirmed the version can serve, so
+    it is a failed step, named; nothing here restarts or rolls back."""
+    report("ready")
+    fn = getattr(gate, "wait_for_ready", None)
+    if fn is None:
+        return {"state": "absent", "step": "", "error": "", "seconds": 0, "bound_s": None,
+                "not_ready": "", "words": "the installed gate (the root-owned nmas-deploy) "
+                                          "predates C2514: readiness not waited for"}
+    try:
+        return fn(health, clock, sleep)
+    except Exception as exc:                             # noqa: BLE001
+        error = f"{type(exc).__name__}: {exc}"
+        return {"state": "failed", "step": "the readiness wait", "error": error, "seconds": None,
+                "bound_s": getattr(gate, "READY_BOUND_S", None), "not_ready": "",
+                "words": f"the readiness wait failed: {error}"}
 
 
 def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, health, clock,

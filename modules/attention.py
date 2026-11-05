@@ -165,6 +165,12 @@ ROW_KINDS = {
                             "update, or find where the running commit came from"),
     ("pushed", "ci_failed"): ("CI failed (or was cancelled) for the newest pushed commit, so the "
                               "Update button refuses it", "the developer fixes forward"),
+    # C2514 (the operator, 2026-11-05): a deploy or an Update ended FAILED because the release
+    # it put running did not say ready in /health within the bound, or a warm-up step failed.
+    ("readiness", "not_ready"): ("the deployed release runs and cannot serve: a warm-up step "
+                                 "failed, or it was still warming at the deploy's bound",
+                                 "roll back to the previous deployed release (or wait, while "
+                                 "it may still finish warming)"),
     ("remote", "publication"): ("a list's history is not on its remote",
                                 "push, acknowledge, repair the remote, or verify it"),
     ("host_steps", "owed"): ("a host step a release asked for is not done", "do it, then say so"),
@@ -452,6 +458,9 @@ CLEARS = {
     ("pushed", "release"): (("resolves",), "the host runs the commit the remote holds"),
     ("pushed", "ci_failed"): (("resolves",), "a newer commit is pushed (its update is offered "
                               "once CI passes it), or the host runs this one"),
+    ("readiness", "not_ready"): (("resolves",), "the running process's /health says ready, or "
+                                 "another release runs (a rollback landed, or a later deploy "
+                                 "by either route)"),
     ("remote", "publication"): (("resolves",), "the remote holds the list's history: pushed, "
                                 "after a held push is acknowledged in History's Remote "
                                 "set-up"),
@@ -4015,6 +4024,98 @@ def pushed_source(cached=None) -> dict:
                          checked=app_pushed.words(v))
 
 
+def _ready_now():
+    """This process's readiness, as its /health says it (C2465's warm-up: ``{"ready",
+    "warming", "not_ready"}``), read in-process; None from a release without the warm-up,
+    which cannot say ready, so a row about it stands."""
+    try:
+        from modules import warmup
+    except ImportError:
+        return None
+    return warmup.status()
+
+
+def readiness_source(deployed=None, ready_now=None, running=None) -> dict:
+    """The deployed release that runs and is not ready (C2514; the operator, 2026-11-05:
+    "a timeout or failed step reports FAILED with a critical row and offers rollback, no
+    automatic rollback"). Reads the newest record of a release put running by either route
+    (`update_op.last_deployed`: the updater's history, `nmas-deploy`'s audit): when it ended
+    not ready, it is for the commit running now, and this process's /health does not say ready
+    now, one DANGER row naming the step and its error, or the step still warming at the bound,
+    whose action is the rollback to the release it replaced.
+
+    *deployed*, *ready_now* and *running* stand in for the record, this process's readiness
+    (`_ready_now`) and the running commit (`health._COMMIT`)."""
+    from modules import update_op
+    from routes import health
+
+    started = time.time()
+    label = "The deployed release's readiness"
+    try:
+        rec = update_op.last_deployed() if deployed is None else deployed
+    except Exception as exc:                                      # noqa: BLE001
+        return source_result("readiness", label, read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"the deploy records could not be read: "
+                                   f"{type(exc).__name__}: {exc}")
+    running = str(health._COMMIT or "") if running is None else running
+    now = _ready_now() if ready_now is None else ready_now
+    took = int((time.time() - started) * 1000)
+    to = str(rec.get("to") or "")
+    route = {"terminal": "a terminal nmas-deploy", "updater": "the Update button"}.get(
+        rec.get("route"), "a deploy")
+    if not rec:
+        checked = "no deploy by either route is recorded"
+    elif rec.get("outcome") != "not_ready":
+        checked = (f"the last deploy ({route}, to {to[:10]}) did not end not ready: "
+                   f"{rec.get('outcome')}")
+    elif to != running:
+        checked = (f"the last deploy ({route}) ended not ready for {to[:10]}, and "
+                   f"{running[:10] or 'an unknown commit'} runs now")
+    elif (now or {}).get("ready") is True:
+        checked = (f"the last deploy ({route}) ended not ready for {to[:10]}, and this "
+                   "process's /health says ready now")
+    else:
+        checked = ""
+    if checked:
+        return source_result("readiness", label, read_at=started, took_ms=took,
+                             checked=checked)
+    ready = rec.get("ready") or {}
+    bound = ready.get("bound_s") or update_op.READY_BOUND_S
+    step = str(ready.get("step") or "the warm-up")
+    said = (f"failed: {ready.get('error') or 'no error recorded'}"
+            if ready.get("state") == "failed" else f"still warming after {bound} s")
+    prev = str(rec.get("from") or "")
+    prev = prev if prev and prev != to else ""
+    now_words = ("this process cannot say whether it is ready (its release has no warm-up)"
+                 if now is None else
+                 f"its /health says now: {now.get('not_ready') or 'not ready'}")
+    cause = (f"{route} by {rec.get('requested_by') or '?'} put {to[:10]} running and ended "
+             f"FAILED, not ready ({rec.get('ended_at') or 'at an unrecorded time'}); it was not "
+             f"rolled back, by the operator's rule. {now_words}")
+    if prev:
+        label_words = (f"Roll back to the previous deployed release, {prev[:10]}: the developer "
+                       f"runs scripts/nmas-rollback {prev[:10]} --push, then Update installs "
+                       "it. Mercury has no one-click rollback yet")
+    else:
+        label_words = ("Roll back to the release deployed before this one (the record does not "
+                       "name it): the developer runs scripts/nmas-rollback <that release> "
+                       "--push, then Update installs it. Mercury has no one-click rollback yet")
+    if ready.get("state") != "failed":
+        label_words += "; or wait, while it may still finish warming: this clears once it is ready"
+    r = row(source="readiness", kind="not_ready", key=to[:10], level="danger",
+            what=f"The deployed release {to[:10]} is not ready: {step} {said}",
+            cause=cause, action={"label": label_words},
+            since=update_op.epoch_of(rec.get("ended_at")) or None,
+            operands={"release": to, "previous": prev, "route": rec.get("route") or "",
+                      "step": step, "state": ready.get("state") or "", "bound_s": bound,
+                      "error": ready.get("error") or "",
+                      "ready_now": (now or {}).get("not_ready", "")})
+    return source_result("readiness", label, read_at=started, took_ms=took, rows=[r],
+                         checked=f"the last deploy ({route}) ended not ready for the running "
+                                 f"{to[:10]}, and it is not ready now")
+
+
 def remote_source(cached=None) -> dict:
     """A list whose commits are not on its remote, from the `remote-publication`
     reader: HEAD against the remote's own branch, asked by `git ls-remote`,
@@ -5717,7 +5818,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            grafana_source, integrations_source, ci_source, scheduled_jobs_source,
            ci_agreement_source,
            redaction_source, reachability_source, netbox_secrets_source, credential_health_source,
-           remote_source, pushed_source,
+           remote_source, pushed_source, readiness_source,
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
@@ -5757,6 +5858,10 @@ SOURCE_KEYS = {
     "credential_health_source": ("credential_health",),
     "remote_source": ("remote", "goldens"),
     "pushed_source": ("app_version",),
+    # C2514: a deploy is a restart, so this process starts with it (its first computation
+    # reads the record); the warm-up's end changes the row too, and announces nothing, so the
+    # shared computation's SHARED_SECONDS bounds how long a cleared row is still drawn.
+    "readiness_source": ("app_version",),
     "host_steps_source": ("app_version",),
     "adjacency_source": ("adjacencies",),
     # The adjacency-log reader announces the same key (C589).

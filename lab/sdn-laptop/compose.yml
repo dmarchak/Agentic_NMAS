@@ -1,0 +1,55 @@
+# The laptop kit's NetBox for the final SDN lab (docs/LAB9_LAPTOP_RUN.md). The same images, at
+# the same versions, as the NMAS host's netbox-docker stack (read from the host 2026-11-05).
+# Bound to loopback only. Its secrets come from secrets.env, which `kit init` generates owner-only
+# in the kit's own folder. Nobody types or reads them: they are NetBox's internal keys.
+name: nmas-sdn-lab-netbox
+
+x-netbox: &netbox
+  image: docker.io/netboxcommunity/netbox:v4.6-5.0.2
+  env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+  environment:
+    DB_HOST: postgres
+    DB_NAME: netbox
+    DB_USER: netbox
+    REDIS_HOST: valkey
+    REDIS_DATABASE: "0"
+    REDIS_CACHE_HOST: valkey
+    REDIS_CACHE_DATABASE: "1"
+    SKIP_SUPERUSER: "true"
+    # The local-first rule (C2513): no census, no release check, no plugin catalogue.
+    CENSUS_REPORTING_ENABLED: "false"
+    ISOLATED_DEPLOYMENT: "true"
+  depends_on: [postgres, valkey]
+  volumes:
+    - netbox-media:/opt/netbox/netbox/media
+  restart: unless-stopped
+
+services:
+  netbox:
+    <<: *netbox
+    ports: ["127.0.0.1:${NETBOX_PORT:-8001}:8080"]
+  netbox-worker:
+    <<: *netbox
+    command: ["/opt/netbox/venv/bin/python", "/opt/netbox/netbox/manage.py", "rqworker"]
+    depends_on: [netbox]
+  postgres:
+    image: docker.io/postgres:18-alpine
+    env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+    volumes:
+      - netbox-postgres:/var/lib/postgresql
+    restart: unless-stopped
+  valkey:
+    image: docker.io/valkey/valkey:9.1-alpine
+    env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+    command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - netbox-valkey:/data
+    restart: unless-stopped
+
+volumes:
+  netbox-media:
+  netbox-postgres:
+  netbox-valkey:

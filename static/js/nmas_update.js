@@ -30,7 +30,8 @@
 (function (root) {
   'use strict';
 
-  var TERMINAL = ['updated', 'updated_partly', 'refused', 'rolled_back', 'rollback_failed', 'failed'];
+  var TERMINAL = ['updated', 'updated_partly', 'refused', 'rolled_back', 'rollback_failed', 'failed',
+                  'not_ready'];
 
   /* PURE. Each step's state (done, current, failed, pending) and its note,
      from what the page last read. *keys*: the stepper's steps in order, from
@@ -62,9 +63,12 @@
     }
     var short = String(target || '').slice(0, 10);
     // C1404: the app runs the target and another unit of the checkout may not; that update is
-    // drawn by its outcome below, never as a plain Updated.
-    if (health && health.commit === target &&
-        (!mine || (o.outcome !== 'rolled_back' && o.outcome !== 'updated_partly'))) {
+    // drawn by its outcome below, never as a plain Updated. C2514: nor is a target that runs
+    // and says it is not ready yet (`ready: false`); a /health with no `ready` predates it.
+    var warming = !!(health && health.commit === target && health.ready === false);
+    if (health && health.commit === target && !warming &&
+        (!mine || (o.outcome !== 'rolled_back' && o.outcome !== 'updated_partly' &&
+                   o.outcome !== 'not_ready'))) {
       upTo('running', 'done', 'running ' + short);
       return {steps: st, done: true, reload: true, failed: false,
               words: 'Updated: the app runs ' + short + '. Reloading…'};
@@ -84,6 +88,11 @@
       failAt(at, o.reason || '');
       return {steps: st, done: true, reload: false, failed: true,
               words: 'The update ' + (words[o.outcome] || o.outcome) + ': ' + (o.reason || 'no reason recorded')};
+    }
+    if (warming) {
+      // The target runs and is warming: the step it is on, with /health's own reason.
+      upTo('ready', 'current', (health.not_ready || 'warming') + ', ' + s + ' s');
+      return {steps: st, done: false, reload: false, failed: false, words: ''};
     }
     if (s >= timeoutS) {
       failAt(mine && o.step ? o.step : 'started',

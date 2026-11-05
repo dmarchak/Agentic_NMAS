@@ -40,13 +40,21 @@ class Refused(ValueError):
 
 def supported_drivers() -> list:
     """The drivers Mercury supports: those whose config dialect it knows
-    (`nsot.platform._DERIVED_FROM_DEVICE_TYPE`) and netmiko has."""
+    (`nsot.platform._DERIVED_FROM_DEVICE_TYPE`), and the discovery drivers (`modules/
+    discovery.py`: read only, by a capture list, with no dialect), that netmiko has."""
+    from modules import discovery
     from modules.nsot.platform import _DERIVED_FROM_DEVICE_TYPE
     try:
         from netmiko.ssh_dispatcher import CLASS_MAPPER
     except ImportError:                                   # netmiko absent: none can be opened
         return []
-    return sorted(d for d in _DERIVED_FROM_DEVICE_TYPE if d in CLASS_MAPPER)
+    return sorted(d for d in list(_DERIVED_FROM_DEVICE_TYPE) + list(discovery.DRIVERS)
+                  if d in CLASS_MAPPER)
+
+
+#: How a discovery driver's row says what it is, on the card and in a refusal.
+READ_ONLY_WORDS = ("read only: Mercury has no driver for this platform yet, so it is asked only "
+                   "its capture list and every device-changing operation is refused")
 
 
 def dialects() -> list:
@@ -85,9 +93,12 @@ def view() -> dict:
         # their template folder is never read: no problem to say there.
         dialect = _FROM_NETBOX_SLUG.get(slug) or dialect_of(e.get("template_dir", ""))
         problems = []
+        from modules import discovery
         if driver not in drivers:
             problems.append(f"driver {driver or '(none)'} is not one Mercury supports")
-        if not dialect:
+        if discovery.is_driver(driver):
+            problems.append(READ_ONLY_WORDS)
+        elif not dialect:
             problems.append(f"template folder {e.get('template_dir') or '(none)'} names no "
                             "dialect Mercury knows")
         rows.append({"slug": slug, "driver": driver, "dialect": dialect,
@@ -148,7 +159,13 @@ def _platform_row(slug, driver, dialect, transport, netconf, drivers, known) -> 
     if driver not in drivers:
         raise Refused(f"{slug}'s driver {driver!r} is not one Mercury supports: "
                       + ", ".join(drivers))
-    if dialect not in known:
+    from modules import discovery
+    if discovery.is_driver(driver):
+        # A discovery driver takes no dialect: nothing renders, parses or deploys for it.
+        if dialect:
+            raise Refused(f"{slug}'s driver {driver} is {READ_ONLY_WORDS}; it takes no config "
+                          f"dialect, and {dialect!r} was chosen: choose none")
+    elif dialect not in known:
         raise Refused(f"{slug}'s config dialect {dialect!r} is not one Mercury knows: "
                       + ", ".join(sorted(known)))
     if transport not in TRANSPORTS:

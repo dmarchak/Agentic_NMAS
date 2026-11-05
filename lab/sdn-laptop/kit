@@ -1,0 +1,199 @@
+#!/bin/bash
+# The laptop kit for the final SDN lab (docs/LAB9_LAPTOP_RUN.md): a separate Mercury installation
+# on this laptop, run from a clean worktree at a pinned sha, never the main working tree.
+#
+#   kit init SHA       the kit folder, the worktree at SHA, NetBox's secrets, images, settings
+#   kit repin SHA      the worktree moved to SHA (a fix on lab9-live), Mercury stopped first
+#   kit start          the check, the identity exception, NetBox, Mercury (loopback only)
+#   kit stop           the identity gates restored (recorded), Mercury and NetBox stopped
+#   kit status         what runs, the pinned sha, the last identity exception
+#   kit preflight      one PASS/FAIL line per check (kit_preflight.sh)
+#   kit check          the settings check alone (kit_check.py)
+#   kit netbox-admin   NetBox's superuser, created by the operator (who types its passphrase)
+#   kit reset          stop, then delete the kit's data and NetBox's volumes (asks first)
+#
+# KIT_HOME (default ~/nmas-sdn-lab) holds everything: kit.env, data/ (NMAS_DATA_DIR), netbox/,
+# mercury/ (the worktree), run/ (pid and log). Nothing is written to the main checkout.
+set -euo pipefail
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+REPO="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir | sed 's#/\.git$##')"
+KIT_HOME="${KIT_HOME:-$HOME/nmas-sdn-lab}"
+export KIT_HOME
+ENV="$KIT_HOME/kit.env"
+PY="${KIT_PYTHON:-$HOME/.local/share/nmas-py312/bin/python}"
+WT="$KIT_HOME/mercury"
+DATA="$KIT_HOME/data"
+RUN="$KIT_HOME/run"
+COMPOSE=(docker compose -f "$HERE/compose.yml" --project-directory "$KIT_HOME/netbox")
+# The identity exception's longest life (option (c), C2520): the sitting, never past 14 hours.
+EXCEPTION_HOURS=14
+
+die() { echo "kit: $*" >&2; exit 1; }
+load() {
+  [ -f "$ENV" ] || die "no $ENV: run 'kit init <sha>' first"
+  # shellcheck disable=SC1090
+  set -a; . "$ENV"; set +a
+  : "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}"
+}
+in_wt() {        # in_wt CMD...: run Mercury's code from the worktree, on the kit's data only
+  (cd "$WT" && env NMAS_DATA_DIR="$DATA" MERCURY_PORT="$MERCURY_PORT" NETBOX_PORT="$NETBOX_PORT" \
+    PYTHONDONTWRITEBYTECODE=1 "$@")
+}
+nmas_names() {   # the NMAS host's LAN address and tunnel name, for the check, never printed
+  KIT_NMAS_LAN="$("$REPO/scripts/nmas-host" nmas --field lan 2>/dev/null || true)"
+  KIT_NMAS_TUNNEL="$("$REPO/scripts/nmas-host" nmas --field tunnel 2>/dev/null || true)"
+  export KIT_NMAS_LAN KIT_NMAS_TUNNEL
+}
+pid_alive() { [ -f "$RUN/mercury.pid" ] && kill -0 "$(cat "$RUN/mercury.pid")" 2>/dev/null; }
+
+cmd_init() {
+  local sha="${1:-}"
+  [ -n "$sha" ] || die "usage: kit init <sha> (the newest deployed, CI-green sha)"
+  sha="$(git -C "$REPO" rev-parse --verify "$sha^{commit}")" || die "no commit $1"
+  install -d -m 0700 "$KIT_HOME" "$DATA" "$KIT_HOME/netbox" "$RUN"
+  if [ -d "$WT" ]; then
+    [ "$(git -C "$WT" rev-parse HEAD)" = "$sha" ] || die "$WT is at another sha: kit reset first, or move KIT_HOME"
+    [ -z "$(git -C "$WT" status --porcelain)" ] || die "$WT is not clean: the kit runs from a clean worktree only"
+  else
+    git -C "$REPO" worktree add --detach "$WT" "$sha" >/dev/null
+  fi
+  # The marker nmas-deploy refuses on: nothing is ever deployed from this installation.
+  printf 'the final SDN lab laptop kit, %s\n' "$KIT_HOME" > "$WT/.nmas-lab-kit"
+  [ -f "$ENV" ] || cat > "$ENV" <<EOF
+# The laptop kit's settings (docs/LAB9_LAPTOP_RUN.md). Fill LAB_IF and CONTROLLER_ADDR at the lab.
+PIN_SHA=$sha
+MERCURY_PORT=5080
+NETBOX_PORT=8001
+LAB_IF=
+CONTROLLER_ADDR=
+OPENFLOW_PORT=6653
+CONTROLLER_REST_PORT=8080
+EOF
+  sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
+  chmod 0600 "$ENV"
+  if [ ! -f "$KIT_HOME/netbox/secrets.env" ]; then
+    ( umask 077
+      db=$(openssl rand -hex 24); rd=$(openssl rand -hex 24); key=$(openssl rand -hex 40)
+      printf 'DB_PASSWORD=%s\nPOSTGRES_PASSWORD=%s\nREDIS_PASSWORD=%s\nREDIS_CACHE_PASSWORD=%s\nSECRET_KEY=%s\n' \
+        "$db" "$db" "$rd" "$rd" "$key" > "$KIT_HOME/netbox/secrets.env" )
+    echo "netbox: its internal secrets generated, owner-only (never printed)"
+  fi
+  load
+  "${COMPOSE[@]}" pull -q
+  echo "netbox: images pulled"
+  in_wt "$PY" "$HERE/kit_settings.py" init
+  echo "kit: initialised at $sha in $KIT_HOME; fill LAB_IF and CONTROLLER_ADDR in $ENV at the lab"
+}
+
+cmd_repin() {    # the kit moved to another commit (a fix committed on lab9-live), clean, stopped
+  local sha="${1:-}"
+  [ -n "$sha" ] || die "usage: kit repin <sha>"
+  load
+  sha="$(git -C "$REPO" rev-parse --verify "$sha^{commit}")" || die "no commit $1"
+  pid_alive && die "Mercury runs: kit stop first"
+  [ -z "$(git -C "$WT" status --porcelain -- . ':!.nmas-lab-kit')" ] || die "$WT is not clean"
+  git -C "$WT" checkout -q --detach "$sha"
+  sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
+  echo "kit: repinned at $(git -C "$WT" log -1 --format='%h %s' | cut -c1-90)"
+}
+
+cmd_check() {
+  load; nmas_names
+  python3 -I "$HERE/kit_check.py" "$DATA"
+}
+
+cmd_start() {
+  load
+  [ -d "$WT" ] || die "no worktree: kit init <sha> first"
+  [ -z "$(git -C "$WT" status --porcelain -- . ':!.nmas-lab-kit')" ] || die "$WT is not clean"
+  pid_alive && die "Mercury already runs (pid $(cat "$RUN/mercury.pid"))"
+  cmd_check || die "refused to start: the settings check failed (above)"
+  in_wt "$PY" "$HERE/kit_settings.py" last-exception
+  local until; until=$(date -u -d "+$EXCEPTION_HOURS hours" +%Y-%m-%dT%H:%MZ)
+  in_wt "$PY" "$HERE/kit_settings.py" exception-on "$until"
+  echo "$until" > "$RUN/exception-until"
+  # The expiry is enforced, not only written: a user timer runs the kit's stop at it.
+  systemctl --user stop nmas-sdn-kit-expiry.timer >/dev/null 2>&1 || true
+  systemd-run --user --quiet --unit=nmas-sdn-kit-expiry --on-active="${EXCEPTION_HOURS}h" \
+    --setenv=KIT_HOME="$KIT_HOME" "$HERE/kit" stop \
+    && echo "identity exception: the kit's stop is scheduled at $until (nmas-sdn-kit-expiry.timer)" \
+    || die "the expiry timer could not be scheduled, so the exception is not started"
+  "${COMPOSE[@]}" up -d
+  ( cd "$WT" && NMAS_DATA_DIR="$DATA" NMAS_HOST=127.0.0.1 NMAS_PORT="$MERCURY_PORT" \
+      NMAS_HEADLESS=1 PYTHONDONTWRITEBYTECODE=1 setsid "$PY" app.py \
+      >> "$RUN/mercury.log" 2>&1 < /dev/null & echo $! > "$RUN/mercury.pid" )
+  echo "mercury: started, pid $(cat "$RUN/mercury.pid"), log $RUN/mercury.log"
+  # Ready within 100 s: about 2.5x the ~40 s the NMAS host's warm-up took (C2465).
+  for _ in $(seq 1 100); do
+    if curl -s -m 2 "http://127.0.0.1:$MERCURY_PORT/health" | grep -q '"ready": *true'; then
+      echo "mercury: ready at http://127.0.0.1:$MERCURY_PORT/v2/"; return 0; fi
+    pid_alive || die "Mercury exited: read $RUN/mercury.log"
+    sleep 1
+  done
+  echo "mercury: NOT ready after 100 s: kit preflight says why" >&2; return 1
+}
+
+cmd_stop() {
+  load
+  if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" exception-off "the kit's stop" || true; fi
+  rm -f "$RUN/exception-until"
+  systemctl --user stop nmas-sdn-kit-expiry.timer >/dev/null 2>&1 || true
+  if pid_alive; then
+    local pid; pid=$(cat "$RUN/mercury.pid")
+    # By identity, never by pattern: the pid the kit started, and only if it is still app.py.
+    if tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "app.py"; then kill "$pid"; fi
+    for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    echo "mercury: stopped"
+  fi
+  rm -f "$RUN/mercury.pid"
+  "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
+}
+
+cmd_status() {
+  load
+  echo "kit: $KIT_HOME, pinned at ${PIN_SHA:-?} ($(git -C "$WT" log -1 --format=%h 2>/dev/null || echo 'no worktree'))"
+  pid_alive && echo "mercury: running, pid $(cat "$RUN/mercury.pid")" || echo "mercury: not running"
+  "${COMPOSE[@]}" ps --format '{{.Service}} {{.State}}' 2>/dev/null | sed 's/^/netbox stack: /' || true
+  [ -d "$WT" ] && in_wt "$PY" "$HERE/kit_settings.py" last-exception || true
+}
+
+cmd_preflight() {
+  load
+  local fails=0
+  bash "$HERE/kit_preflight.sh" || fails=$?
+  if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" safety || fails=$((fails + $?)); fi
+  if cmd_check >/dev/null; then echo "PASS settings check"; else echo "FAIL settings check: kit check names each key"; fails=$((fails + 1)); fi
+  echo "kit preflight: $fails FAIL in all"
+  return "$fails"
+}
+
+cmd_netbox_admin() {
+  load
+  "${COMPOSE[@]}" exec netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py createsuperuser
+}
+
+cmd_reset() {
+  load
+  echo "This deletes $DATA (the kit's Mercury data) and the kit's NetBox volumes."
+  echo "The main checkout, the NMAS host and the lab are untouched. Type RESET to go on:"
+  read -r answer
+  [ "$answer" = RESET ] || die "not reset"
+  cmd_stop || true
+  "${COMPOSE[@]}" down -v
+  rm -rf -- "$DATA"
+  install -d -m 0700 "$DATA"
+  echo "kit: data reset; 'kit init $PIN_SHA' writes the settings and lab9 again"
+}
+
+case "${1:-}" in
+  init) shift; cmd_init "$@" ;;
+  repin) shift; cmd_repin "$@" ;;
+  start) cmd_start ;;
+  stop) cmd_stop ;;
+  status) cmd_status ;;
+  preflight) cmd_preflight ;;
+  check) cmd_check ;;
+  netbox-admin) cmd_netbox_admin ;;
+  reset) cmd_reset ;;
+  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

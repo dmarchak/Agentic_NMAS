@@ -38,7 +38,7 @@
         <tr>
           <td><input name="new_slug" class="mono" type="text" placeholder="new platform slug" aria-label="New platform slug" autocomplete="off"></td>
           <td><select name="new_driver" aria-label="New platform driver">{% for d in pm.drivers %}<option>{{ d }}</option>{% endfor %}</select></td>
-          <td><select name="new_dialect" aria-label="New platform config dialect">{% for d in pm.dialects %}<option>{{ d }}</option>{% endfor %}</select></td>
+          <td><select name="new_dialect" aria-label="New platform config dialect">{% for d in pm.dialects %}<option>{{ d }}</option>{% endfor %}<option value="">none: read only (a discovery driver)</option></select></td>
           <td><select name="new_transport" aria-label="New platform delivers by">{% for t in pm.transports %}<option>{{ t }}</option>{% endfor %}</select></td>
           <td><label class="set-switch"><input type="checkbox" name="new_netconf" value="on"> supported</label></td>
           <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add</span><span class="op-busy">Adding…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='adding a platform') }}</td>

@@ -64,7 +64,15 @@ STEPS = (("request", "Request written"), ("started", "Updater started"),
          ("checkout", "Checkout checked: no local changes"), ("fetch", "Fetched origin"),
          ("ci", "CI re-checked for the target"), ("move", "Checkout moved to <target>"),
          ("restart", "Restarting the app"), ("wait", "Waiting for the new version"),
-         ("running", "Running <target>"))
+         ("ready", "Waiting for <target> to be ready"), ("running", "Running <target>"))
+
+#: How long the updater and `nmas-deploy` wait for the running target to say `ready`
+#: (C2514; `nmas-deploy` READY_BOUND_S, about 2.5x the ~40 s the host's first pages waited on
+#: 2026-11-04): stated for the page and Needs attention, which never ask the gate.
+READY_BOUND_S = 100
+
+#: `nmas-deploy`'s exit code for a release that runs and is not ready (its NOT_READY).
+DEPLOY_NOT_READY = 11
 
 
 def run_card(target: str) -> dict:
@@ -124,6 +132,8 @@ OUTCOME_WORDS = {
     "refused": "refused: nothing was changed",
     "rolled_back": "rolled back: the new version did not come up, the previous one runs again",
     "rollback_failed": "ROLLBACK FAILED: neither the new version nor the previous one came up",
+    "not_ready": ("FAILED, NOT READY: the new version runs and could not serve within the "
+                  "bound; it was not rolled back (Needs attention offers the rollback)"),
     "failed": "failed: the updater stopped with an error",
     "running": "running",
 }
@@ -481,13 +491,83 @@ def terminal_deploy(path: str = None) -> dict:
                     continue
                 if row.get("exit") == 0 and row.get("to") and row.get("from") != row.get("to"):
                     last = row
+                elif row.get("exit") == DEPLOY_NOT_READY and row.get("to"):
+                    # It moved the app and ended FAILED, not ready (C2514): the last update.
+                    last = row
     except OSError:
         return {}
     if not last:
         return {}
-    return {"outcome": "updated", "from": last.get("from") or "", "to": last["to"],
-            "requested_by": last.get("user") or "", "route": "terminal",
-            "ended_at": str(last.get("ended_at") or "")[:19] + "Z" if last.get("ended_at") else ""}
+    return _terminal_shape(last)
+
+
+def _terminal_shape(row: dict) -> dict:
+    """An `nmas-deploy` audit row in the updater's record's shape."""
+    code = row.get("exit")
+    return {"outcome": ("updated" if code == 0 else "not_ready" if code == DEPLOY_NOT_READY
+                        else "failed"),
+            "from": row.get("from") or "", "to": row.get("to") or "",
+            "requested_by": row.get("user") or "", "route": "terminal",
+            "reason": str(row.get("verdict") or ""), "ready": row.get("ready") or {},
+            "ended_at": str(row.get("ended_at") or "")[:19] + "Z" if row.get("ended_at") else ""}
+
+
+#: The updater's outcomes after which a release was put running by a restart (C2514): what
+#: "the deployed release" is, whatever came after it that moved nothing (a refused request).
+MOVED = ("updated", "updated_partly", "not_ready", "rolled_back", "rollback_failed")
+
+#: How much of the end of `nmas-deploy`'s audit is read for the last deploy: about 400 rows
+#: at the ~600 bytes a row is, far more than the deploys since the last one that restarted.
+AUDIT_TAIL_BYTES = 256 * 1024
+
+
+def _audit_tail(path: str) -> list:
+    """The audit's last rows that parse, oldest first; [] when it cannot be read."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - AUDIT_TAIL_BYTES))
+            raw = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    lines = raw.splitlines()[1:] if size > AUDIT_TAIL_BYTES else raw.splitlines()
+    out = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            out.append(row)
+    return out
+
+
+def epoch_of(text) -> float:
+    try:
+        return calendar.timegm(time.strptime(str(text or "")[:19], "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return 0.0
+
+
+def last_deployed(updater_rows: list = None, audit_rows: list = None) -> dict:
+    """The newest record of a release put running, by EITHER route (C2514): the updater's
+    newest record that restarted the app (`MOVED`, from its history), or `nmas-deploy`'s
+    newest audit row that issued a restart, in the updater's record's shape with its
+    ``route``; ``{}`` when neither records one. What the not-ready row reads, so a FAILED
+    terminal deploy and a FAILED Update both raise it, and a later deploy by either route
+    (a rollback among them) supersedes it."""
+    if updater_rows is None:
+        updater_rows = history(limit=50).get("rows") or []
+    if audit_rows is None:
+        audit_rows = _audit_tail(DEPLOY_AUDIT)
+    upd = next((dict(r, route="updater") for r in updater_rows
+                if isinstance(r, dict) and r.get("outcome") in MOVED), {})
+    term = next((_terminal_shape(r) for r in reversed(audit_rows)
+                 if r.get("to") and r.get("restart_issued_at")), {})
+    if not upd or not term:
+        return upd or term
+    return term if epoch_of(term.get("ended_at")) > epoch_of(upd.get("ended_at")) else upd
 
 
 def last_update(updater: dict = None, terminal: dict = None) -> dict:
@@ -782,7 +862,8 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
 
 
 #: The updater's outcomes that end a run (its record names one of these last).
-FINISHED = ("updated", "updated_partly", "refused", "rolled_back", "rollback_failed", "failed")
+FINISHED = ("updated", "updated_partly", "refused", "rolled_back", "rollback_failed", "failed",
+            "not_ready")
 
 
 def following(ended: dict, last: dict, running: str, clock=time.time) -> str:

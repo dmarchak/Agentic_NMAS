@@ -205,6 +205,101 @@ class TestAVersionThatDoesNotComeUpIsRolledBack:
         assert _updater().UP_BOUND_S == 120 and "median 2.1 s, p90 10.2 s" in src
 
 
+def _deploy_gate():
+    """The repository's nmas-deploy, loaded as the updater loads its root-owned copy."""
+    path = os.path.join(ROOT, "scripts", "nmas-deploy")
+    loader = importlib.machinery.SourceFileLoader("nmas_deploy_gate_under_test", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def _ready_gate(gate, answers):
+    """*gate* (`_gate`) with the real gate's `wait_for_ready` and READY_BOUND_S (C2514)."""
+    real = _deploy_gate()
+    gate.wait_for_ready, gate.READY_BOUND_S = real.wait_for_ready, real.READY_BOUND_S
+    return gate
+
+
+class TestTheUpdaterWaitsForReady:
+    """C2514 (the operator, 2026-11-05: "a timeout or failed step reports FAILED with a critical
+    row and offers rollback, no automatic rollback"): the step `ready`, after the new version is
+    confirmed running, by the gate's own `wait_for_ready`; never a rollback trigger."""
+
+    def _update(self, repos, health_fields, monkeypatch, gate=None):
+        U = _updater()
+        monkeypatch.setattr(U, "rollback", lambda *a, **k: pytest.fail("rolled back"))
+        steps, restarts, now = [], [], [1_800_000_000.0]
+
+        def clock():
+            now[0] += 0.25
+            return now[0]
+
+        def sleep(s):
+            now[0] += s
+        n = [0]
+
+        def health():
+            n[0] += 1
+            return 200, dict({"commit": repos["shas"][2], "pid": 200}, **health_fields(n[0]))
+        rec = U.update(_request(repos), repo=str(repos["work"]),
+                       gate=gate or _ready_gate(_gate(), n), git=_local_git,
+                       restart=lambda: restarts.append(1), unit=lambda: {"MainPID": 100},
+                       health=health, clock=clock, sleep=sleep, report=steps.append)
+        return rec, steps, restarts
+
+    def test_ready_is_a_step_after_the_wait_and_the_update_ends_updated(self, repos,
+                                                                        monkeypatch):
+        rec, steps, restarts = self._update(
+            repos, lambda n: {"ready": n >= 3, "not_ready": "" if n >= 3 else "warming",
+                              "warming": []}, monkeypatch)
+        assert rec["outcome"] == "updated" and rec["step"] == "ready" and restarts == [1]
+        assert steps[-2:] == ["wait", "ready"]
+        assert rec["ready"]["state"] == "ready" and rec["ready"]["seconds"] is not None
+        assert "readiness: ready after" in rec["reason"]
+
+    def test_a_failed_step_is_not_ready_failed_naming_it_and_not_rolled_back(self, repos,
+                                                                              monkeypatch):
+        rec, _steps, restarts = self._update(
+            repos, lambda n: {"ready": False, "not_ready": "the warm-up step ai-calls failed",
+                              "warming": [{"step": "ai-calls", "state": "failed",
+                                           "error": "OSError: unreadable"}]}, monkeypatch)
+        assert rec["outcome"] == "not_ready" and rec["step"] == "ready"
+        assert "the warm-up step ai-calls failed: OSError: unreadable" in rec["reason"]
+        assert "not rolled back" in rec["reason"] and repos["shas"][0][:10] in rec["reason"]
+        assert restarts == [1]
+        assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][2]   # left running
+
+    def test_still_warming_at_the_bound_is_not_ready_failed(self, repos, monkeypatch):
+        rec, _steps, restarts = self._update(
+            repos, lambda n: {"ready": False, "not_ready": "warming: needs-attention running",
+                              "warming": [{"step": "needs-attention", "state": "running"}]},
+            monkeypatch)
+        assert rec["outcome"] == "not_ready" and restarts == [1]
+        assert "needs-attention still warming after 100 s" in rec["reason"]
+        assert rec["ready"]["bound_s"] == 100 and rec["ready"]["seconds"] >= 100
+        assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][2]
+
+    def test_no_ready_key_is_said_and_the_update_ends_updated(self, repos, monkeypatch):
+        rec, _steps, _r = self._update(repos, lambda n: {}, monkeypatch)
+        assert rec["outcome"] == "updated" and rec["ready"]["state"] == "absent"
+        assert "readiness not waited for" in rec["reason"]
+
+    def test_a_gate_from_before_c2514_is_said_and_not_waited_for(self, repos, monkeypatch):
+        rec, _steps, _r = self._update(repos, lambda n: {"ready": False}, monkeypatch,
+                                       gate=_gate())
+        assert rec["outcome"] == "updated" and "predates C2514" in rec["reason"]
+
+    def test_not_ready_is_a_finished_failed_outcome_with_one_bound_and_code(self):
+        from modules import update_op
+        assert "not_ready" in update_op.FINISHED and "not_ready" in update_op.OUTCOME_WORDS
+        assert update_op.OUTCOME_WORDS["not_ready"].startswith("FAILED")
+        assert update_op.READY_BOUND_S == _deploy_gate().READY_BOUND_S
+        assert update_op.DEPLOY_NOT_READY == _deploy_gate().NOT_READY
+        src = open(os.path.join(ROOT, "static", "js", "nmas_update.js"), encoding="utf-8").read()
+        assert "'not_ready'" in src.split("var TERMINAL", 1)[1].split(";", 1)[0]
+
+
 class TestTheRequestIsARequestNeverAnInstruction:
     def test_every_malformed_field_is_refused_by_name_without_its_value(self, repos):
         U = _updater()
@@ -993,7 +1088,7 @@ class TestThePage:
         assert r.status_code == 403 and not os.path.exists(tmp_path / "requests")
 
 
-KEYS = ["request", "started", "checkout", "fetch", "ci", "move", "restart", "wait", "running"]
+KEYS = ["request", "started", "checkout", "fetch", "ci", "move", "restart", "wait", "ready", "running"]
 
 
 class TestTheStepperFollowsTheUpdatersOwnSteps:
@@ -1017,7 +1112,7 @@ class TestTheStepperFollowsTheUpdatersOwnSteps:
         r = self._states({"commit": "a" * 40}, self._status("running", "ci"))
         s = {k: v["state"] for k, v in r["steps"].items()}
         assert [s[k] for k in KEYS] == ["done", "done", "done", "done", "current",
-                                         "pending", "pending", "pending", "pending"]
+                                         "pending", "pending", "pending", "pending", "pending"]
         assert not r["done"] and not r["reload"]
 
     def test_waiting_for_the_new_version_counts_seconds_while_the_app_is_down(self):
@@ -1044,7 +1139,7 @@ class TestTheStepperFollowsTheUpdatersOwnSteps:
         reason = "the updater raised FileNotFoundError: [Errno 2] No such file or directory: 'runuser'"
         r = self._states({"commit": "a" * 40}, self._status("failed", "checkout", reason=reason))
         s = {k: v["state"] for k, v in r["steps"].items()}
-        assert [s[k] for k in KEYS] == ["done", "done", "failed"] + ["not_reached"] * 6
+        assert [s[k] for k in KEYS] == ["done", "done", "failed"] + ["not_reached"] * 7
         assert r["steps"]["checkout"]["note"] == "failed: " + reason
         assert all(r["steps"][k]["note"] == "not reached" for k in KEYS[3:])
         assert r["failed"] and not r["reload"]
@@ -1069,6 +1164,26 @@ class TestTheStepperFollowsTheUpdatersOwnSteps:
         assert any("line-through" in r for r in rules)
         done_dot = re.findall(r"\.run-step-not_reached \.run-dot[^{]*\{([^}]*)\}", css)
         assert not any("--ok" in r for r in done_dot)
+
+    def test_a_target_that_runs_and_is_warming_is_the_ready_step_never_updated(self):
+        """C2514: /health answering the target is not "Updated" while it says it is not ready;
+        the step `ready` is current with /health's own reason, and the page does not reload."""
+        r = self._states({"commit": "t" * 40, "ready": False,
+                          "not_ready": "warming: ai-calls running for 12 s"},
+                         self._status("running", "ready"), elapsed=40)
+        assert r["steps"]["ready"] == {"state": "current",
+                                       "note": "warming: ai-calls running for 12 s, 40 s"}
+        assert r["steps"]["wait"]["state"] == "done"
+        assert r["steps"]["running"]["state"] == "pending"
+        assert not r["done"] and not r["reload"] and not r["failed"]
+
+    def test_not_ready_is_a_failed_ending_at_the_ready_step_even_with_the_target_up(self):
+        reason = "tttttttttt came up and is NOT READY: the warm-up step ai-calls failed: x"
+        r = self._states({"commit": "t" * 40, "ready": False, "not_ready": "failed"},
+                         self._status("not_ready", "ready", reason=reason))
+        assert r["steps"]["ready"] == {"state": "failed", "note": "failed: " + reason}
+        assert r["steps"]["running"]["state"] == "not_reached"
+        assert r["done"] and r["failed"] and not r["reload"]
 
     def test_another_requests_record_is_not_this_ones(self):
         r = self._states({"commit": "a" * 40}, self._status("refused", "ci", rid="other"))

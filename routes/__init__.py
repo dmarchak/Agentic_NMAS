@@ -31,6 +31,12 @@ def register_blueprints(app) -> list:
     from modules import request_log
     request_log.install(app)
 
+    # The Host and same-origin checks (the operator, 2026-11-05; modules/request_origin.py),
+    # off unless an install turns them on, ahead of the gate: a foreign Host or a cross-site
+    # write is refused before any route decides anything. Outside the try, as the gate is.
+    from modules import request_origin
+    request_origin.install(app)
+
     # The gate table's hook goes on next, and is NOT inside the try below:
     # an app that started without it would serve every route ungated, which
     # is the failure P.3 exists to end. A crash here is the right outcome.

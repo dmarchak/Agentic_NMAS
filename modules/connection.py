@@ -552,7 +552,7 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
 
     conn.disconnect = _disconnect
     conn._nmas_session = (ip, sid)
-    _guard_writes(conn, ip)
+    _guard_writes(conn, ip, params.get("device_type", ""))
     logger.info("ssh: opened %s for %s (%d of %d this tool may hold; %d vty line(s), "
                 "%d kept for a person)", ip, owner, count, budget["budget"],
                 budget["lines"], RESERVED_FOR_PEOPLE)
@@ -650,7 +650,12 @@ _COMMAND_METHODS = ("send_command", "send_command_timing", "send_command_expect"
 _MULTILINE_METHODS = ("send_multiline", "send_multiline_timing")
 
 
-def _guard_writes(conn, ip: str) -> None:
+class DiscoveryOnly(UnheldDeviceWrite):
+    """A session to a device Mercury has no driver for asked for more than its capture list
+    (`modules/discovery.py`): refused whether or not the device is held."""
+
+
+def _guard_writes(conn, ip: str, device_type: str = "") -> None:
     """The lock's population, enforced where the write HAPPENS (C101).
 
     C98's lock was taken by a LIST of functions, so a new path that changed
@@ -661,9 +666,38 @@ def _guard_writes(conn, ip: str) -> None:
     a command it refuses, or a config or save call, is sent only while this
     thread holds the device. A path that forgets fails on first use, loudly.
     The refusal names the verb, never the command: a command can carry a
-    secret (a rotation's password line)."""
+    secret (a rotation's password line).
+
+    A session opened with a discovery driver (`modules/discovery.py`, a platform Mercury has
+    no driver for) carries only its capture list's commands and no config, save or commit
+    call, held or not: a positive allowlist, `DiscoveryOnly` naming the driver."""
+    from modules import discovery
     from modules.nsot import device_ops
     from modules.readonly_commands import refusal
+
+    if discovery.is_driver(device_type):
+        def only_reads(name, original):
+            def guarded(*args, **kwargs):
+                raise DiscoveryOnly(f"{ip}: " + discovery.write_refusal(device_type, f"{name}()"))
+            return guarded
+
+        def listed(original):
+            def guarded(*args, **kwargs):
+                cmd = args[0] if args else kwargs.get("command_string", "")
+                why = discovery.command_refusal(device_type, cmd)
+                if why:
+                    raise DiscoveryOnly(f"{ip}: {why}")
+                return original(*args, **kwargs)
+            return guarded
+
+        for name in _WRITE_METHODS + _MULTILINE_METHODS:
+            if callable(getattr(conn, name, None)):
+                setattr(conn, name, only_reads(name, getattr(conn, name)))
+        for name in _COMMAND_METHODS:
+            original = getattr(conn, name, None)
+            if callable(original):
+                setattr(conn, name, listed(original))
+        return
 
     def refuse(what):
         raise UnheldDeviceWrite(

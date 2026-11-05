@@ -54,6 +54,14 @@ Exit codes. Each means one thing; none is "probably fine":
      /health/operations, or any other error, whose reason is printed), the
      deploy continues and says so: a deploy is how a service that cannot
      answer is repaired
+ 11  FAILED, NOT READY (C2514): moved, restarted and confirmed running the
+     target, but /health did not say `ready` within READY_BOUND_S, or a
+     warm-up step failed. The verdict names the step and its error, or the
+     step still warming at the bound; the release is NOT rolled back (the
+     operator, 2026-11-05: "no automatic rollback"), and Needs attention
+     raises a critical row whose action is the rollback. A running version
+     whose /health has no `ready` key (from before C2465) is said and not
+     waited for: that deploy ends 0 as before
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -105,9 +113,22 @@ WORKFLOW_PATH = ".github/workflows/ci.yml"
 
 OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
 CANNOT_RESTART = 6
+#: The file the laptop kit writes in its worktree's root (lab/sdn-laptop/kit): a checkout
+#: holding it is a separate installation, and nmas-deploy refuses to run from it.
+LAB_KIT_MARKER = ".nmas-lab-kit"
 CI_PENDING, CI_CANCELLED = 7, 8
 LOCKED = 9
 BUSY = 10
+#: Its own code, not UNHEALTHY's 5 (C2514): 5 means the target is NOT confirmed running and its
+#: remedy is a restart; here the target IS running, and its remedy is a wait or a rollback.
+NOT_READY = 11
+
+#: How long the running target has to say `ready` in /health (C2465's warm-up) once it is
+#: confirmed running: the host's first pages after a restart waited about 40 s on 2026-11-04
+#: (the first AI chip 36.6 s, the first Needs attention count 37.3 s, a first /v2/ 40.8 s), and
+#: 100 s is about 2.5x that. Past it, or on a failed warm-up step, the deploy is FAILED (exit
+#: NOT_READY) and never rolled back by itself.
+READY_BOUND_S = 100
 
 #: The ONE lock this and the Update button's updater both take (C242): whoever
 #: holds it moves the checkout, and the other refuses by name.
@@ -1091,6 +1112,58 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
         sleep(interval)
 
 
+def _first(rows, states):
+    return next((r for r in rows if isinstance(r, dict) and r.get("state") in states), None)
+
+
+def wait_for_ready(health, clock, sleep, timeout=READY_BOUND_S, interval=2):
+    """The running target's warm-up (C2465, C2514), asked of /health once `wait_for_running`
+    confirmed it: a dict, the deploy's and the updater's ``ready`` record, whose ``state`` is
+
+    - ``ready``: /health said ``ready: true`` within *timeout*;
+    - ``absent``: /health answers with no ``ready`` key (a version from before C2465): said,
+      and not waited for;
+    - ``failed``: a warm-up step's row says ``failed``; ready cannot follow, so the wait ends
+      at once, naming the step and its error;
+    - ``warming``: still not ready at *timeout*, naming the step still running (or waiting).
+
+    with the ``step``, its ``error``, the ``seconds`` waited, the ``bound_s``, ``not_ready``
+    (/health's own sentence) and ``words``, the sentence a verdict says. It only READS: never a
+    restart and never a rollback (the operator, 2026-11-05: "no automatic rollback")."""
+    start = clock()
+    deadline = start + timeout
+    body, status = None, None
+    while True:
+        status, body = health()
+        waited = round(clock() - start, 1)
+        out = {"bound_s": timeout, "seconds": waited, "step": "", "error": "",
+               "not_ready": "", "warming": []}
+        if isinstance(body, dict):
+            out.update(not_ready=str(body.get("not_ready") or ""),
+                       warming=list(body.get("warming") or []))
+            if "ready" not in body:
+                return dict(out, state="absent",
+                            words="the running version's /health has no `ready` (it predates "
+                                  "the warm-up, C2465): readiness not waited for")
+            if body.get("ready") is True:
+                return dict(out, state="ready", words=f"ready after {waited} s")
+            bad = _first(out["warming"], ("failed",))
+            if bad:
+                step, error = str(bad.get("step") or "?"), str(bad.get("error") or "")
+                return dict(out, state="failed", step=step, error=error,
+                            words=f"the warm-up step {step} failed: "
+                                  f"{error or 'no error recorded'}")
+        if clock() >= deadline:
+            still = _first(out["warming"], ("running", "waiting")) or {}
+            step = str(still.get("step") or "")
+            heard = (f"/health answered {status}" if not isinstance(body, dict) else
+                     out["not_ready"] or "not ready, and /health gave no reason")
+            return dict(out, state="warming", step=step or "the warm-up",
+                        words=f"{step or 'the warm-up'} still warming after {timeout} s "
+                              f"({heard})")
+        sleep(interval)
+
+
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
          clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None,
          operations=None, restart_unit=None, unit_of=None, store=None) -> int:
@@ -1118,6 +1191,15 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                          "target (one passed it, the other failed it): deploys on the green, "
                          "recording REASON in the audit row; never over a red with no green")
     args = ap.parse_args(argv)
+    # The final SDN lab's laptop kit (the operator, 2026-11-05: "nmas-deploy refuses to run from
+    # this installation"): its worktree carries LAB_KIT_MARKER, and nothing is ever deployed
+    # from it, whichever checkout it would deploy (lab/sdn-laptop/kit init writes the marker).
+    for where in (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), args.repo):
+        if os.path.exists(os.path.join(where, LAB_KIT_MARKER)):
+            print(f"nmas-deploy: refused: {os.path.join(where, LAB_KIT_MARKER)} marks the final "
+                  "SDN lab's laptop kit, a separate installation nothing is deployed from; "
+                  "nothing moved", file=sys.stderr)
+            return LOCAL_REFUSED
     if args.override_ci_red is not None and (
             len(args.override_ci_red.split()) < OVERRIDE_MIN_WORDS):
         print(f"--override-ci-red needs a reason of at least {OVERRIDE_MIN_WORDS} words, the "
@@ -1390,6 +1472,13 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                  f"it back at {venv['from']}." if venv["state"] == "swap" else "")
         return finish(UNHEALTHY, _mixed_headline(health or _health, target)
                       + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}")
+    # Can it serve (C2514)? Asked once it is confirmed running, and only READ: a release that
+    # is not ready is reported FAILED and left running; the rollback is a person's, offered by
+    # Needs attention, never taken here (the operator, 2026-11-05).
+    ready_now = wait_for_ready(health or _health, clock, sleep)
+    row.update(ready={k: ready_now[k] for k in ("state", "step", "error", "seconds", "bound_s",
+                                                  "not_ready")})
+    print(f"readiness: {ready_now['words']}")
     # The checkout's other long-running units (C1404), once the app runs the target: each
     # restarted and confirmed by its new MainPID, or the verdict says which still runs old code.
     units_ok, units_words = restart_checkout_units(
@@ -1400,10 +1489,20 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
     row.update(checkout_units=units_words)
     for line in units_words:
         print(line)
+    not_ready = ready_now["state"] in ("failed", "warming")
     if not units_ok:
         return finish(UNHEALTHY, f"{what}, {SERVICE} restarted and running {target[:10]}, but "
                                  "not every unit that runs the checkout was: "
-                                 + "; ".join(w for w in units_words if "NOT" in w))
+                                 + "; ".join(w for w in units_words if "NOT" in w)
+                                 + (f"; and it is NOT READY: {ready_now['words']}"
+                                    if not_ready else ""))
+    if not_ready:
+        back = (f"the previous release, {head[:10]}" if head != target
+                else "the release before it")
+        return finish(NOT_READY,
+                      f"FAILED, NOT READY: {what}, restarted and running {target[:10]} as pid "
+                      f"{state.get('MainPID')}, but {ready_now['words']}. It was NOT rolled "
+                      f"back: Needs attention offers the rollback to {back}. {message}")
     pruned = ""
     if venv["state"] == "swap":
         # Keep the current venv and the previous one (the operator, 2026-10-09).

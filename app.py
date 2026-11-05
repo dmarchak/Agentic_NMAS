@@ -97,13 +97,18 @@ from modules.config import read_or_create_key
 app.secret_key = read_or_create_key(SECRET_KEY_FILE, lambda: os.urandom(24))
 
 
+from modules import request_origin as _request_origin
+
 # manage_session=False: none of this app's SocketIO handlers use flask.session
 # (the break-glass terminal, removed in R39, kept its own state), and on some
 # Flask/Flask-SocketIO version combos manage_session=True's internal session
 # copy hits `AttributeError: property 'session' of 'RequestContext' object
 # has no setter`, crashing every socket event before the handler even runs.
 socketio = SocketIO(
-    app, async_mode="threading", cors_allowed_origins="*", manage_session=False
+    # Every Origin while the same-origin check is off, as "*" was; Mercury's own once an install
+    # turns it on (modules/request_origin.py: the handshake never reaches Flask's hooks).
+    app, async_mode="threading", cors_allowed_origins=_request_origin.socket_origin_allowed,
+    manage_session=False
 )
 
 # Background jobs announce what they changed over this socket (C58,

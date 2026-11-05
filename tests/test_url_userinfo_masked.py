@@ -114,6 +114,14 @@ ENTRY_POINTS = {
     "modules/nsot/config_check.py:mask": lambda: (
         __import__("modules.nsot.config_check", fromlist=["_Run"])._Run(".", False).mask(PLANTED)),
     "modules/redact.py:redact_text": lambda: redact.redact_text(PLANTED, values={}),
+    # A discovery driver's answer leaving the reads engine (docs/LAB9_DISCOVERY.md):
+    # redact_text, then the rest of each credential line.
+    "modules/discovery.py:masked": lambda: __import__(
+        "modules.discovery", fromlist=["masked"]).masked(PLANTED, {}, "arista_eos"),
+    # Its line step, on what it is only ever given: text redact_text has masked.
+    "modules/discovery.py:mask_lines": lambda: __import__(
+        "modules.discovery", fromlist=["mask_lines"]).mask_lines(
+            redact.redact_text(PLANTED, values={})),
     # What leaves the host through Phase 8's gateway (C1654): redact_text, then the egress
     # shapes.
     "modules/redact.py:redact_egress": lambda: redact.redact_egress(PLANTED, values={}),

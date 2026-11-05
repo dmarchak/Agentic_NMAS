@@ -3739,3 +3739,36 @@ with two workers in CI's interpreter, confined. The file is restored after each
 **The result: 24 mutants with the canary, all killed; the file restored after each; the
 worktree removed.** The loop may be deployed unwired. Its wiring into a feature (H26, B4-4)
 brings its own hand check, over what that feature sends.
+
+## 2026-11-05: a discovery device's answers masked line by line (docs/LAB9_DISCOVERY.md), by hand
+
+**What changed in the tier:** masking. The reads engine (`modules/nsot/reads.py:_answer`) masks
+an answer from a session opened with a discovery driver (`modules/discovery.py`: `arista_eos`,
+`hp_procurve` and its aliases, `aruba_os`) through `discovery.masked`: `redact_text`, then
+`discovery.mask_lines`, which masks the rest of every line holding a credential word. `redact_text`'s positional rules
+are IOS's: measured 2026-11-05, EOS's `username X privilege 15 role R secret sha512 <hash>` and
+AOS-CX's `user X group G password ciphertext <blob>` pass it whole, and EOS's `enable secret
+sha512 <hash>` and ProCurve's `password manager user-name "x" sha1 "<hash>"` keep their hashes.
+`redact_text` itself is unchanged; a Cisco session's answers are masked as before. The danger the
+hand check guards:
+- a credential line's secret leaving the engine (drawn on Ask the device and Show commands,
+  recorded at rest, and read by the agent);
+- the mask applied only to the next word, leaving a hash after a type word (`sha512`);
+- a credential word missing from the list.
+
+**The method:** each mutant is one exact replacement in a `scripts/nmas-control` throwaway of
+this worktree's state on b166ddbf (2026-11-05 01:35 to 01:55 UTC), then
+tests/test_discovery_reads.py in CI's interpreter, confined, one process
+(`scratchpad/discovery-control.sh`). Baseline: 167 passed. Both new masking functions are
+also entry points of tests/test_url_userinfo_masked.py's scan (a URL's user part masked).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `mask_lines` not applied (the answer masked by `redact_text` alone) | killed | `test_the_capture_is_masked_and_keeps_its_shape` (IPv4 and IPv6) |
+| M1 only the word after the credential word masked | killed | the same 2, and `test_mask_lines_masks_the_rest_of_a_credential_line_only` |
+| M2 `secret` dropped from the credential words | killed | `test_the_capture_is_masked_and_keeps_its_shape` (2) |
+| M3 the engine's pre-session refusal removed (a command off the list reaches a session) | killed | `test_a_command_off_the_list_opens_no_session_and_is_named` (2) |
+
+**The result: 4 mutants with the canary, all killed; the worktree removed after each.** The
+cases are line shapes, not captures (no switch of these families had been read); a real
+capture's lines replace them after the sitting (the register's row).

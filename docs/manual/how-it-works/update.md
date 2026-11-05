@@ -144,10 +144,28 @@ and the Update page draws each step as the updater records it:
    responder) is restarted with `systemctl try-restart` and confirmed by its new MainPID; one
    not running is left, and its next start loads the new code. A terminal `nmas-deploy` does
    the same (C1404: a responder that kept its old code refused a device the new code serves).
-9. **Running** (`running`). Read: `/health`. Sent: nothing. Recorded: the outcome (updated,
+9. **Ready** (`ready`). Read: `/health` on the host, every 2 seconds for up to 100 s (about
+   2.5x the 40 s the first pages after a restart waited on 2026-11-04). Sent: nothing.
+   Recorded: the step, and the readiness the outcome carries (its state, the step, its
+   error, the seconds waited). The new version runs; this asks whether it can serve: `/health`
+   says `ready` only once each of its warm-up steps has finished without an error. Ready
+   within the bound goes on. A warm-up step that failed, or a version still warming at 100 s,
+   ends the update **FAILED, not ready**, naming the step and its error, or the step still
+   warming. It is NOT rolled back: the version came up, so the decision is yours. Needs
+   attention raises a critical row, "The deployed release <commit> is not ready: <step>
+   failed: <error>" (or "still warming after 100 s"), whose action is the rollback to the
+   release it replaced. Mercury has no one-click rollback yet: the row names the developer's
+   `scripts/nmas-rollback <commit> --push`, after which this page offers the rollback as an
+   update. The row clears once `/health` says ready, or once another release runs.
+   A version whose `/health` has no `ready` (from before the warm-up) is said and not waited
+   for. While it warms, the stepper shows this step with `/health`'s own reason, never
+   Updated. A terminal `nmas-deploy` waits the same way, with the same bound, and ends with
+   exit 11 when it is not ready.
+10. **Running** (`running`). Read: `/health`. Sent: nothing. Recorded: the outcome (updated,
    updated with a unit not restarted, which is a warning naming the unit and the command,
-   refused, rolled back, rollback failed, or failed) in `outcome.json` and appended to
-   `history.jsonl`. This is the page's end state: the target is running.
+   not ready (FAILED, above), refused, rolled back, rollback failed, or failed) in
+   `outcome.json` and appended to `history.jsonl`. This is the page's end state: the target
+   is running and ready.
 
 While the updater works, the page asks `/health` and the app's status route (which reads the
 updater's record) every 2 seconds and draws the step the record names; when the target is
@@ -185,6 +203,8 @@ that check is still owed an answer says how long ago it was asked.
 
 - It never installs a commit CI has not passed, whatever the request says.
 - It never runs anything from the repository as root.
+- It never rolls back a version that came up and is not ready: that is FAILED, and the
+  rollback is yours to choose from its Needs attention row.
 - It changes no network device, intent, golden or setting.
 - It does not do a host step for you: before-steps must be done first, after-steps stay on
   Needs attention until done.
