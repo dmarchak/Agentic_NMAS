@@ -153,7 +153,7 @@ def lab(monkeypatch, tmp_path):
     monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
     router = Router(_config())
-    calls = {"netbox": 0, "existing": 0, "capture": []}
+    calls = {"netbox": 0, "existing": 0, "capture": [], "existing_for": []}
     _forget_records()
 
     def verify(dev, user, pw):
@@ -167,11 +167,13 @@ def lab(monkeypatch, tmp_path):
 
     def existing(hostname):
         calls["existing"] += 1
+        calls["existing_for"].append(hostname)      # which device's objects were asked for
         return {"ok": True, "objects": list(EXISTING), "error": ""}
 
     def netbox(repo, hostname, list_name, *, actor, authority):
         calls["netbox"] += 1
         calls["authority"] = authority
+        calls["netbox_args"] = (repo, hostname, list_name, actor)
         return {"ok": True, "created": [], "device_id": 7, "reason": ""}
 
     def capture(ip, user, pw, secret, device_type):
@@ -1013,3 +1015,211 @@ class TestTheGoldenStep:
         (identity, _entry), = _entries_named(HOST)
         assert f"repo: adopting {HOST} ({IP}) as {identity}" in [
             r.getMessage() for r in caplog.records if r.name == "modules.nsot.repo"]
+
+
+# ---------------------------------------------------------------------------
+# The NetBox step: the read before the import, the import, the adoption record (group A10)
+# ---------------------------------------------------------------------------
+
+ADOPTED = [{"endpoint": ep, "id": i, "name": n} for ep, i, n in EXISTING]
+NETBOX_DONE = ("0 created (tagged, recorded as created); 3 that existed recorded as adopted, "
+               "never deletable")
+
+
+def _netbox_rows(out):
+    return [s for s in out["steps"] if s["step"] == "netbox"]
+
+
+def _adoption_record():
+    """Each row the adoption record holds for the network, as it is stored."""
+    from modules import netbox_guard
+    from modules.config import list_slug
+    if not os.path.exists(netbox_guard._ADOPTED_FILE):
+        return {}
+    data = netbox_guard._read_doc(netbox_guard._ADOPTED_FILE)
+    return {(ep, r["id"]): r for ep, rows in (data.get(list_slug(LIST)) or {}).items()
+            for r in rows}
+
+
+def _failing_read(answer):
+    """The preview's and the confirm's reads of NetBox answer; the apply's gets *answer*."""
+    reads = []
+
+    def existing(hostname):
+        reads.append(hostname)
+        if len(reads) <= 2:
+            return {"ok": True, "objects": list(EXISTING), "error": ""}
+        return dict(answer)
+    return existing
+
+
+class TestTheNetBoxStep:
+    """The NetBox step reads what exists for the device before anything is imported, imports
+    as the person under the adoption's authority, records what existed as ADOPTED (who, why,
+    on what basis), and says in its result what it did; each way it can fail stops there,
+    nothing promoted, and says why."""
+
+    def test_kills_adopt__apply_mutmut_907_953_to_956_964_to_966_the_import_is_the_devices_as_the_person(
+            self, lab):
+        out = _adopt_fully(lab)
+        assert lab["calls"]["existing_for"] == [HOST, HOST, HOST], \
+            "the preview's, the confirm's and the apply's reads are all of this device"
+        assert lab["calls"]["netbox_args"] == (_repo(), HOST, LIST, "op@example.com")
+        assert out["netbox"] == {"ok": True, "created": [], "device_id": 7, "reason": ""}
+
+    def test_kills_adopt__apply_mutmut_1017_to_1057_what_existed_is_recorded_as_adopted(
+            self, lab):
+        out = _adopt_fully(lab)
+        assert out["adopted"] == ADOPTED
+        assert _netbox_rows(out) == [{"step": "netbox", "ok": True, "detail": NETBOX_DONE}]
+        held = _adoption_record()
+        assert sorted(held) == sorted((ep, i) for ep, i, _n in EXISTING)
+        assert {(r["device"], r["actor"], r["reason"], r["authority"]) for r in held.values()} \
+            == {(HOST, "op@example.com", "taking r2 into management", "Adopt by op@example.com")}
+
+    def test_kills_adopt__apply_mutmut_950_951_1029_to_1031_no_actor_or_reason_says_so(self, lab):
+        fingerprint = _plan(lab)["fingerprint"]
+        out = A.apply(LIST, HOST, mgmt_ip=IP, platform="cisco_iosxe", supplied_username="admin",
+                      supplied_password=SUPPLIED_PW, confirmed_fingerprint=fingerprint,
+                      actor="", reason="", role="router", **lab["collab"])
+        assert out["ok"], out
+        assert lab["calls"]["authority"] == "Adopt by unknown"
+        assert {(r["reason"], r["authority"]) for r in _adoption_record().values()} == {
+            ("adopted into management", "Adopt by unknown")}
+
+    @pytest.mark.parametrize("answer, detail", [
+        ({"ok": False, "objects": [], "error": "NetBox could not be read"},
+         "NetBox could not be read"),
+        ({"ok": False, "objects": []}, ""),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_915_to_947_an_unread_netbox_stops_before_the_import(
+            self, lab, answer, detail):
+        existing = _failing_read(answer)
+        out = _apply(lab, fingerprint=_plan(lab, netbox_existing=existing)["fingerprint"],
+                     netbox_existing=existing)
+        assert _netbox_rows(out) == [{"step": "netbox", "ok": False, "detail": detail}]
+        assert out["reason"] == ("NetBox could not be read before the import, and what "
+                                 "existed must be recorded first: " + detail)
+        assert [r["step"] for r in out["remaining"]] == ["promote"]
+        assert lab["calls"]["netbox"] == 0 and "netbox" not in out and "adopted" not in out
+
+    @pytest.mark.parametrize("answer, detail, reason", [
+        ({"ok": False, "reason": "NetBox refused it"}, "NetBox refused it", "NetBox refused it"),
+        ({"ok": False}, "", "the NetBox record failed"),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_964_971_to_999_a_failed_import_stops_at_netbox(
+            self, lab, answer, detail, reason):
+        out = _apply(lab, netbox=lambda *a, **k: dict(answer))
+        assert out["netbox"] == answer
+        assert _netbox_rows(out) == [{"step": "netbox", "ok": False, "detail": detail}]
+        assert out["reason"] == reason
+        assert [r["step"] for r in out["remaining"]] == ["promote"]
+        assert "adopted" not in out and _adoption_record() == {}
+
+    @pytest.mark.parametrize("answer, detail", [
+        ({"ok": False, "error": "read-only"}, "read-only"),
+        ({"ok": False}, ""),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_1044_to_1077_an_unwritten_adoption_record_stops_at_netbox(
+            self, lab, answer, detail):
+        out = _apply(lab, record_adoption=lambda *a, **k: dict(answer))
+        assert out["adopted"] == ADOPTED
+        assert _netbox_rows(out) == [{"step": "netbox", "ok": False, "detail": detail}]
+        if detail:
+            assert out["reason"] == (
+                "the import landed and the adoption record could not be written: read-only. "
+                "Run adopt again: the import changes nothing twice and the record is taken again")
+        assert [r["step"] for r in out["remaining"]] == ["promote"]
+
+
+# ---------------------------------------------------------------------------
+# The promote step: the inventory row, the verified mark, the record's commit (group A11)
+# ---------------------------------------------------------------------------
+
+def _row():
+    from modules.device import load_saved_devices
+    from modules.nsot.listref import resolve
+    row, = load_saved_devices(resolve(LIST).csv_path)
+    return row
+
+
+def _promote_rows(out):
+    return [s for s in out["steps"] if s["step"] == "promote"]
+
+
+class TestThePromoteStep:
+    """Promotion writes the inventory row the tool's sessions log in from (the tool's account
+    and its password, no enable secret), marks the device verified as the person, and commits
+    the manifest's last writes in the network's own repository; the result carries both, and
+    each way it can fail says why."""
+
+    def test_kills_adopt__apply_mutmut_1099_1107_1110_the_row_holds_the_tools_login(self, lab):
+        from modules import credentials
+        from modules.device import decrypt_field
+        _adopt_fully(lab)
+        row, held = _row(), credentials.resolve(IP)
+        assert row["username"] == "nmas"
+        # Compared, never printed: every session to the device logs in from this row.
+        assert (decrypt_field(row["password"]) == held["password"],
+                decrypt_field(row["secret"]) == "") == (True, True), \
+            "(the row's password is the tool's, the row's enable secret is empty)"
+
+    def test_kills_adopt__apply_mutmut_1096_1104_the_device_is_verified_as_the_person(
+            self, lab, caplog):
+        caplog.set_level(logging.INFO, logger="modules.nsot.manifest")
+        _adopt_fully(lab)
+        (identity, _entry), = _entries_named(HOST)
+        assert f"manifest: {identity} verified by op@example.com" in [
+            r.getMessage() for r in caplog.records if r.name == "modules.nsot.manifest"]
+
+    def test_kills_adopt__apply_mutmut_1111_to_1113_1139_to_1141_1166_to_1170_the_result_carries_both(
+            self, lab):
+        out = _adopt_fully(lab)
+        (_identity, entry), = _entries_named(HOST)
+        assert out["promote"] == {"ok": True, "device": HOST, "list": LIST, "csv_row": True,
+                                  "verified": True, "error": "",
+                                  "verified_at": entry["verified_at"]}
+        head = _git("rev-parse", "HEAD")
+        assert out["record_commit"] == {"ok": True, "commit": head, "error": ""}
+        assert _promote_rows(out) == [{"step": "promote", "ok": True,
+                                       "detail": f"in the inventory; recorded in commit {head[:8]}"}]
+
+    def test_kills_adopt__apply_mutmut_1117_the_record_is_committed_in_the_networks_own_repository(
+            self, lab, monkeypatch, tmp_path):
+        """Every other name (the default network's profile is read too) is another network's
+        folder, which holds no repository: a record committed anywhere but here fails."""
+        from modules import config
+        here, elsewhere = config.get_list_data_dir(LIST), tmp_path / "another-network"
+        elsewhere.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: here if name == LIST else str(elsewhere))
+        out = _adopt_fully(lab)
+        assert out["record_commit"]["commit"] == _git("rev-parse", "HEAD")
+        assert not (elsewhere / "config_repo").exists()
+
+    @pytest.mark.parametrize("answer, detail, reason", [
+        ({"ok": False, "error": "the row was refused"}, "the row was refused",
+         "the row was refused"),
+        ({"ok": False}, "in the inventory", "promotion failed"),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_1111_1116_1130_to_1164_1194_to_1204_a_failed_promotion_commits_nothing(
+            self, lab, answer, detail, reason):
+        out = _apply(lab, promote=lambda *a, **k: dict(answer))
+        assert out["promote"] == answer
+        assert out["record_commit"] == {"ok": True, "commit": "", "error": ""}
+        assert _promote_rows(out) == [{"step": "promote", "ok": False, "detail": detail}]
+        assert out["reason"] == reason and out["state"] == "stopped"
+
+    def test_kills_adopt__apply_mutmut_1166_to_1170_1185_to_1192_an_unkept_record_says_what_landed(
+            self, lab, monkeypatch):
+        unkept = {"ok": False, "commit": "", "error": "index.lock exists"}
+        monkeypatch.setattr("modules.nsot.onboard.commit_record", lambda *a, **k: dict(unkept))
+        out = _apply(lab)
+        assert out["record_commit"] == unkept and out["state"] == "adopted"
+        assert _promote_rows(out) == [{"step": "promote", "ok": False,
+                                       "detail": "in the inventory"}]
+        assert out["reason"] == (
+            "r2 is adopted and in the inventory, and its manifest change (the NetBox id and "
+            "verified time) was NOT committed: index.lock exists. Nothing was undone. Until "
+            ".nsot/manifest.json is committed, an operation that needs a clean repository, "
+            "such as Retire, refuses")
