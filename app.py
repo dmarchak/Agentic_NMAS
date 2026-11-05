@@ -625,13 +625,14 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Prometheus targets keeper did not start: %s", _e)
 
-    # The record of AI calls read once into the kept rows (History and Needs attention read
-    # them): on a background task, so the first page after a start is not its cold parse.
+    # The warm-up (C2465, modules/warmup.py): the first-request work (the record of AI calls
+    # read once into the kept rows, Needs attention's sources gathered once) done on a
+    # background task, and /health's `ready` false until every step has finished.
     try:
-        from modules.ai import calls as _ai_calls
-        socketio.start_background_task(_ai_calls.warm)
+        from modules import warmup as _warmup
+        _warmup.start(spawn=socketio.start_background_task)
     except Exception as _e:
-        app.logger.error("AI calls record not warmed: %s", _e)
+        app.logger.error("The warm-up did not start: %s", _e)
 
     # The scheduled credential rotation's timer (C724): a run only when a policy is on.
     try:

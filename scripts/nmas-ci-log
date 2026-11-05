@@ -258,6 +258,10 @@ def main(argv=None) -> int:
     u.add_argument("--log", help="print this job's log (its name, e.g. 'coverage')")
     u.add_argument("--artifact", help="save this artifact's files (its name) into --out")
     u.add_argument("--out", help="the directory --artifact unpacks into")
+    # CI step 3 part 3 (2026-11-05): what fills a shard's time before its first test is read
+    # from the log's own times, so --log can keep them.
+    u.add_argument("--timestamps", action="store_true",
+                   help="with --log, keep each line's time as GitHub wrote it")
     # C791 (2026-10-15): the gate asks this before a push, and refuses on red.
     sub.add_parser("main-ci", help="CI's newest verdict on main, as one JSON line; exit 0 "
                                    f"green, {EXIT_RED} red, {EXIT_GITHUB} none or unaskable")
@@ -342,7 +346,8 @@ def main(argv=None) -> int:
                 log = get(f"/repos/{REPO}/actions/jobs/{job['id']}/logs", token).body.decode(
                     "utf-8", "replace")
                 for line in log.splitlines():
-                    print(re.sub(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s", "", line))
+                    print(line if args.timestamps
+                          else re.sub(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s", "", line))
             return 0
         run_id = args.run_id or next((str(x["id"]) for x in items
                                       if x.get("conclusion") == "failure"), "")

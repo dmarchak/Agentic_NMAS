@@ -102,6 +102,7 @@ EXCEPTIONS = {
     "modules/topology_positions.py": (SUPPORT, "the Topology page's saved positions"),
     "modules/update_op.py": (SUPPORT, "the app's own update"),
     "modules/utils.py": (SUPPORT, "small shared helpers"),
+    "modules/warmup.py": (SUPPORT, "the app's warm-up at start and the readiness it reports"),
     "modules/integrations/grafana.py": (SUPPORT, "dashboards for the monitoring pages"),
     "modules/integrations/loki.py": (SUPPORT, "log queries for the Logs pages"),
     "modules/integrations/prometheus.py": (SUPPORT, "metric queries for the monitoring pages"),

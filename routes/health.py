@@ -124,8 +124,16 @@ def operations():
 
 @bp.route("/health", methods=["GET"])
 def health():
+    """What this process loaded (`ok`, `commit`, `started_at`, `pid`: read by `nmas-deploy` and
+    the updater, unchanged), and whether it can serve yet (C2465): `ready` true only once every
+    warm-up step (`modules/warmup.py`) has finished without an error, `warming` each step's
+    state and seconds, and `not_ready` why not. `ok` stays what it was, the loaded commit
+    known: a process still warming answers ok and not ready."""
+    from modules import warmup
+
     body = {"ok": _COMMIT is not None, "commit": _COMMIT,
             "started_at": _iso_ms(_STARTED), "pid": os.getpid()}
     if _COMMIT is None:
         body["error"] = f"the loaded commit is unknown: {_COMMIT_ERROR}"
+    body.update(warmup.status())
     return jsonify(body)

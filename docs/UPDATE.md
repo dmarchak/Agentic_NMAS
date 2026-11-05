@@ -86,6 +86,19 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    The 120 s comes from 120 restarts in the host's deploy audit: median 2.1 s,
    p90 10.2 s, and the slowest normal ones 17.5, 19.1 and 38.9 s. One took
    574.7 s and is not explained.
+
+   **Running is not yet ready (C2465).** `/health` also answers `ready`,
+   `warming` and `not_ready`: `ready` is true only once every step of the
+   app's warm-up (`modules/warmup.py`: the record of AI calls read once, Needs
+   attention's sources gathered once) has finished without an error;
+   `warming` is each step's state, start, end, seconds and error; `not_ready`
+   says which step is running or failed. A process still warming answers `ok`
+   with the new commit and `ready` false: on the host on 2026-11-04 the first
+   pages after a restart waited about 40 s behind the first read of a 471 MB
+   record while `/health` already answered. Success above is decided by
+   identity alone, unchanged; the post-deploy smoke check waits for `ready`
+   (about 100 s, 2.5 times that 40 s) before it times a page. `ok`, `commit`,
+   `started_at` and `pid` are what they were.
 7. **Every stage is visible, and the page waits on facts** (`/health`'s commit
    and the updater's record, never a timer). On click the button disables and
    reads "Sending the request…"; a refusal is shown on the page with its reason;

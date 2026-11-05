@@ -191,6 +191,36 @@ class TestTimes:
         assert len(op.seen) == 3
 
 
+class TestAJobsLog:
+    """`run --log` prints one job's log; `--timestamps` keeps GitHub's time on each line (CI
+    step 3 part 3, 2026-11-05: what fills a shard before its first test is read from them)."""
+
+    LOG = (b"2026-11-04T23:39:10.1234567Z ##[group]Run scripts/nmas-test\n"
+           b"2026-11-04T23:40:12.7654321Z bringing up nodes...\n")
+
+    def _main(self, monkeypatch, *flags):
+        run = (b'{"run_number": 1451, "head_sha": "8c059523", "conclusion": "success",'
+               b' "html_url": "h"}')
+        jobs = (b'{"jobs": [{"id": 9, "name": "test (a)", "conclusion": "success",'
+                b' "html_url": "j", "started_at": null, "completed_at": null}]}')
+        op = _Opener(_Resp(b'{"workflow_runs": []}'), _Resp(run), _Resp(jobs),
+                     _Resp(b'{"artifacts": []}'), _Resp(self.LOG))
+        monkeypatch.setattr(CL, "_opener", lambda: op)
+        return CL.main(["run", "41935366642", "--log", "test (a)", *flags])
+
+    def test_the_times_are_stripped_by_default(self, token_file, monkeypatch, capsys):
+        assert self._main(monkeypatch) == 0
+        out = capsys.readouterr().out
+        assert "\n##[group]Run scripts/nmas-test\nbringing up nodes...\n" in out
+        assert "2026-11-04T23:39" not in out
+
+    def test_timestamps_keeps_them(self, token_file, monkeypatch, capsys):
+        assert self._main(monkeypatch, "--timestamps") == 0
+        out = capsys.readouterr().out
+        assert "2026-11-04T23:39:10.1234567Z ##[group]Run scripts/nmas-test\n" in out
+        assert "2026-11-04T23:40:12.7654321Z bringing up nodes...\n" in out
+
+
 def test_the_failing_lines_are_what_a_reader_needs():
     log = ("2026-10-01T02:57:39.2Z ............\n"
            "2026-10-01T02:57:39.2Z E       AssertionError: a different status\n"
