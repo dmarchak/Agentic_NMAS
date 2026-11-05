@@ -570,3 +570,113 @@ The day became more than four because of three things:
   GitHub's runner;
 - the suite's network confinement does not survive a default container;
 - the deploy gate now reads two verdicts with a scoped refusal rule.
+
+## 15. Paused until both labs, the two measured runs, and the dedicated CI VM (2026-11-05)
+
+**Paused (the operator, 2026-11-05):**
+- local CI waits until both labs are done;
+- the timer stays off, and C2503, C2516, C2518 and C2519 stay open;
+- GitHub CI is the deploy gate meanwhile;
+- nothing more is built before the labs but a one-line fix.
+
+The runner agent's unlanded work is kept in its worktree (`agent-a277d82f48f46eaf1`):
+- one act call per shard;
+- Python 3.12.3 baked into the job image (C2506, approved);
+- C2516's one-line fix;
+- C2518's first layer.
+
+**The two measured runs, on the NMAS host** (the runner as installed by 8c059523, `run` by
+hand, `lci_measured_run.sh`):
+
+| | Uncapped (caps lifted: CPUQuota 400%, MemoryMax 14G) | Capped (the slice's own: CPUQuota 200%, MemoryHigh 5632M, MemoryMax 6G) |
+|---|---|---|
+| Commit | 6638af7f | 487ed333 |
+| Started, ended | 2026-11-05 00:02:45 to 00:46:13 | 00:48:37 to 01:41:32 |
+| Run time | **2,610 s** (43.5 min) | **3,175 s** (52.9 min), **1.22x** uncapped |
+| `/v2/` every 15 s | 158 requests, 0 not 200; median **0.88 s**, p90 **3.01 s**, max **13.25 s** | 196 requests, 0 not 200; median **1.12 s**, p90 **2.09 s**, max **4.13 s** |
+| `/v2/` idle, for comparison | median 0.97 s, p90 1.37 s, max 2.59 s | (the same) |
+| Peak memory against the cap | 6,489,341,952 bytes (6.04 GiB): over the 6 GiB cap that was lifted for this run | under 5,632 MiB: the slice's `memory.events` read `high 0`, `max 0`, `oom_kill 0` after it |
+| Container check (`/proc/<pid>/cgroup`, every container started) | not recorded: the check script was overwritten on the host while it ran and died (a syntax error). Read by hand during the run, all 4 job containers were under the slice | **7 started: OK 7, FAIL 0, UNVERIFIED 0** (scope, the five shards, coverage) |
+| Verdict | failed, 6 jobs: a false red (C2516, the job checkout is not a git repository) | failed, 6 jobs: the same false red |
+
+Concurrency in both runs: act ran four test jobs at once despite `--concurrent-jobs 1` (C2503).
+
+**The operator's thresholds** (a VM is proposed if the capped run takes more than about twice
+the uncapped, or if `/v2/`'s p90 under the caps passes twice idle, 2.74 s):
+- **Neither is crossed:** the capped run took 1.22x, with a p90 of 2.09 s.
+- The caps bought the responsiveness. Uncapped, the p90 was 3.01 s and the max 13.25 s; capped,
+  2.09 s and 4.13 s.
+
+**The dedicated CI VM, recommended anyway, for isolation (C2518's second layer, the operator,
+2026-11-05).** A local CI job runs a commit's code. Today it runs beside Mercury on the NMAS host,
+where an escape (the Docker socket, act's settings files, or a kernel bug under the seccomp
+profile) reaches the host that holds every credential. On a disposable VM, an escape reaches the
+VM.
+- **Sizing, from the runs above:**
+  - 4 vCPU (the host's four were the runs' budget);
+  - 8 GiB of memory (the uncapped run peaked at 6.04 GiB with four jobs at once, and one act
+    call per shard lowers that);
+  - 40 GiB of disk (the job image is 866 MB with Python baked in, plus act's tool cache, the
+    mirror, and each run's logs and artifacts);
+  - Ubuntu 24.04, as the job image is.
+
+  Measure again after one act call per shard lands.
+- **What the install changes:**
+  - the runner, act, Docker and the job image move to the VM, and its slice caps become the
+    VM's own;
+  - the VM fetches its mirror from the configured origin itself;
+  - the verdicts the NMAS host's deploy gate reads (`verdicts/<sha>.json`) come back by a
+    one-way, read-only path: the host pulls them over SSH with a key that may only read that
+    folder, and the VM is given no credential for the host;
+  - it is a Proxmox VM restorable from a template, so a suspect run is answered by destroying
+    it.
+- **Its network isolation (the operator, 2026-11-05; built after the labs):**
+  - **No route from the VM to the lab management subnets or to any device network,** enforced
+    on two levels: Proxmox's firewall on the VM's interface, and the VM's own nftables. Neither
+    alone is the guard.
+  - **No connection the VM can open to the NMAS host:**
+    - the host pulls the verdicts (above), and the VM's firewall drops any new connection from
+      the VM to the host's addresses, every port;
+    - the host's firewall accepts the pull's SSH from the host to the VM only, never the other
+      way.
+  - **Allowed outbound: only what a run needs, and nothing else** (default deny, each entry by
+    name with its port, resolved and pinned at install):
+    - the container image registry the job image and the services' images come from (Docker
+      Hub, `registry-1.docker.io` and its blob host `production.cloudflare.docker.com`, TCP 443),
+      or an internal mirror instead;
+    - the Ubuntu package mirror for the image build (`archive.ubuntu.com` and
+      `security.ubuntu.com`, TCP 80 and 443), or an internal mirror;
+    - PyPI for the jobs' `pip install --require-hashes` (`pypi.org` and
+      `files.pythonhosted.org`, TCP 443), or an internal mirror;
+    - GitHub, only if the origin is GitHub and the workflow's actions are fetched from it
+      (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`, TCP 443); with
+      the actions vendored into the image, the origin's host alone;
+    - the configured origin for the mirror's fetch (its host and port);
+    - DNS to one named resolver, and NTP to one named server.
+
+    The list is measured, not guessed: the first install records every destination a clean run
+    contacts, and the allow-list is that record, reviewed by the operator.
+  - **A check at the VM's install proves it, from inside a job container** (a container started
+    the way the runner starts one, under its seccomp profile and network):
+    - a TCP connect to a device's management address (one router's, from the inventory) fails;
+    - a TCP connect to each of the NMAS host's admin ports (22, Mercury's port, PostgreSQL's
+      5432, NetBox's, Grafana's, Prometheus's, Loki's) fails;
+    - an ICMP echo to a lab management subnet's gateway fails;
+    - one allow-listed destination succeeds, so the check is shown able to see a working path;
+    - one PASS or FAIL line each.
+
+    The install is not finished until every line passes, and the check runs again after every
+    change to the VM's network.
+- **What stays the same:**
+  - the runner's code and its verdict format;
+  - the symmetric deploy rule (a red known at deploy time refuses, a missing verdict never
+    blocks);
+  - the seccomp profile and the bridge network inside the VM;
+  - push-triggered runs only (C2504);
+  - GitHub CI beside it.
+- **The order, after the labs:** C2518's first layer (no socket, fixed act flags, a test
+  planting each); one act call per shard (C2503); C2516's fix; the VM with its network isolation
+  and the install check passing; then a clean capped run with every container OK; and only then
+  the timer.
+
+The VM is the operator's to create (Proxmox stays read-only for the agent).

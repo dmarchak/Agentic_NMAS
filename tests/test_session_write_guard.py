@@ -74,6 +74,10 @@ def fake_netmiko(monkeypatch):
     C._sessions.clear()
     yield
     C._sessions.clear()
+    # Clearing the count leaves the sessions' cross-process slot locks held; released here, the
+    # tests' own (tests/ssh_slot_guard.py fails a test that leaves one).
+    from tests import ssh_slot_guard
+    ssh_slot_guard.release()
     with D._mu:
         stale = list(D._held.values())
         D._held.clear()

@@ -44,7 +44,8 @@ nmas_names() {   # the NMAS host's LAN address and tunnel name, for the check, n
   KIT_NMAS_TUNNEL="$("$REPO/scripts/nmas-host" nmas --field tunnel 2>/dev/null || true)"
   export KIT_NMAS_LAN KIT_NMAS_TUNNEL
 }
-pid_alive() { [ -f "$RUN/mercury.pid" ] && kill -0 "$(cat "$RUN/mercury.pid")" 2>/dev/null; }
+UNIT=nmas-sdn-kit-mercury
+pid_alive() { systemctl --user is-active --quiet "$UNIT"; }
 
 cmd_init() {
   local sha="${1:-}"
@@ -53,7 +54,7 @@ cmd_init() {
   install -d -m 0700 "$KIT_HOME" "$DATA" "$KIT_HOME/netbox" "$RUN"
   if [ -d "$WT" ]; then
     [ "$(git -C "$WT" rev-parse HEAD)" = "$sha" ] || die "$WT is at another sha: kit reset first, or move KIT_HOME"
-    [ -z "$(git -C "$WT" status --porcelain)" ] || die "$WT is not clean: the kit runs from a clean worktree only"
+    [ -z "$(git -C "$WT" status --porcelain -- . ':!.nmas-lab-kit')" ] || die "$WT is not clean: the kit runs from a clean worktree only"
   else
     git -C "$REPO" worktree add --detach "$WT" "$sha" >/dev/null
   fi
@@ -119,10 +120,17 @@ cmd_start() {
     && echo "identity exception: the kit's stop is scheduled at $until (nmas-sdn-kit-expiry.timer)" \
     || die "the expiry timer could not be scheduled, so the exception is not started"
   "${COMPOSE[@]}" up -d
-  ( cd "$WT" && NMAS_DATA_DIR="$DATA" NMAS_HOST=127.0.0.1 NMAS_PORT="$MERCURY_PORT" \
-      NMAS_HEADLESS=1 PYTHONDONTWRITEBYTECODE=1 setsid "$PY" app.py \
-      >> "$RUN/mercury.log" 2>&1 < /dev/null & echo $! > "$RUN/mercury.pid" )
-  echo "mercury: started, pid $(cat "$RUN/mercury.pid"), log $RUN/mercury.log"
+  # Mercury runs as a transient user unit: detached from this shell (a backgrounded child kept
+  # `kit start` waiting on it, 2026-11-05), stopped by its unit's identity, never a pattern.
+  systemd-run --user --quiet --unit="$UNIT" --working-directory="$WT" \
+    --setenv=NMAS_DATA_DIR="$DATA" --setenv=NMAS_HOST=127.0.0.1 \
+    --setenv=NMAS_PORT="$MERCURY_PORT" --setenv=NMAS_HEADLESS=1 \
+    --setenv=PYTHONDONTWRITEBYTECODE=1 \
+    --property=StandardOutput="append:$RUN/mercury.log" \
+    --property=StandardError="append:$RUN/mercury.log" \
+    "$PY" app.py || die "Mercury's unit $UNIT could not be started"
+  systemctl --user show "$UNIT" -p MainPID --value > "$RUN/mercury.pid"
+  echo "mercury: started as $UNIT, pid $(cat "$RUN/mercury.pid"), log $RUN/mercury.log"
   # Ready within 100 s: about 2.5x the ~40 s the NMAS host's warm-up took (C2465).
   for _ in $(seq 1 100); do
     if curl -s -m 2 "http://127.0.0.1:$MERCURY_PORT/health" | grep -q '"ready": *true'; then
@@ -138,13 +146,11 @@ cmd_stop() {
   if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" exception-off "the kit's stop" || true; fi
   rm -f "$RUN/exception-until"
   systemctl --user stop nmas-sdn-kit-expiry.timer >/dev/null 2>&1 || true
+  # By identity, never by pattern: the unit the kit started.
   if pid_alive; then
-    local pid; pid=$(cat "$RUN/mercury.pid")
-    # By identity, never by pattern: the pid the kit started, and only if it is still app.py.
-    if tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "app.py"; then kill "$pid"; fi
-    for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
-    echo "mercury: stopped"
+    systemctl --user stop "$UNIT" && echo "mercury: stopped ($UNIT)"
   fi
+  systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
   rm -f "$RUN/mercury.pid"
   "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
 }

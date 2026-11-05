@@ -7,8 +7,10 @@ commands (many devices, OBSERVE), and the Stage 8 agent, which opens no session 
 A run, in order, and nothing out of it:
 
 1. **Refuse first** (`refusal`): every command through the read-only allowlist, whole
-   (`readonly_commands`); `show tech-support` across more than one device (R1); no command, or
-   more than `MAX_COMMANDS`. A refused run asks no device, and is still recorded.
+   (`readonly_commands`), or a discovery capture list's (`modules/discovery.py`); `show
+   tech-support` across more than one device (R1); no command, or more than `MAX_COMMANDS`. A
+   refused run asks no device, and is still recorded. Each device is then asked only what its
+   own driver's rule allows (`device_refusal`), refused by name before its session opens.
 2. **Each device held while it is read** (`device_ops.hold`, operation `read`): a device another
    operation holds is SKIPPED, named with its holder, never queued; while a read holds it, a
    deploy is refused naming the read and its person.
@@ -119,8 +121,15 @@ def extras(by: str, reason: str = "") -> tuple:
     return allowed
 
 
-def refusal(commands: list, n_devices: int, by: str = "person", reason: str = "") -> str:
-    """``""`` when the run may ask its devices, else why (the comparison and its operands)."""
+def refusal(commands: list, n_devices: int, by: str = "person", reason: str = "",
+            drivers=None) -> str:
+    """``""`` when the run may ask its devices, else why (the comparison and its operands).
+
+    A command the allowlist refuses passes only when a discovery capture list allows it whole
+    (Comware's `display`; `modules/discovery.py`): of one of *drivers* (the devices' drivers,
+    when the caller knows them), else of any. Each device is then asked only what its own rule
+    allows (`device_refusal`), so such a command never reaches a device of another driver."""
+    from modules import discovery
     from modules.readonly_commands import refusal as one
 
     commands = [c for c in (commands or [])]
@@ -131,7 +140,14 @@ def refusal(commands: list, n_devices: int, by: str = "person", reason: str = ""
                 "(a longer list is a script, not a read).")
     for c in commands:
         why = one(c, extras(by, reason))
-        if why:
+        if why and not discovery.listed_on(c, drivers):
+            elsewhere = discovery.listed_on(c)
+            if elsewhere:
+                # A capture list's read, and none of these devices is of that list.
+                families = sorted({discovery.DRIVERS[d]["family"] for d in elsewhere})
+                why = (f"REFUSED: a read only on a {' or '.join(families)} discovery session "
+                       f"({', '.join(elsewhere)}), and the devices' drivers are "
+                       f"{', '.join(sorted({str(d) for d in drivers}))}. Nothing was sent.")
             return f"`{c[:120]}`: {why}"
     if n_devices > 1:
         for c in commands:
@@ -139,6 +155,22 @@ def refusal(commands: list, n_devices: int, by: str = "person", reason: str = ""
                 if matches(c, words):
                     return (f"Refused: `{c}` on {n_devices} devices; {HEAVY[words]}, so it is "
                             "asked of one device, on its page.")
+    return ""
+
+
+def device_refusal(driver: str, commands: list, by: str = "person", reason: str = "") -> str:
+    """``""`` when a device of *driver* may be asked every one of *commands*, else why: a
+    discovery driver by its capture list, every other driver by the read-only allowlist
+    (`readonly_commands`, Tier 1's extras for *by*), each command whole."""
+    from modules import discovery
+    from modules.readonly_commands import refusal as one
+
+    if discovery.is_driver(driver):
+        return discovery.refusal(driver, commands)
+    for c in commands or []:
+        why = discovery.foreign_refusal(driver, c) or one(c, extras(by, reason))
+        if why:
+            return f"`{c[:120]}`: {why}"
     return ""
 
 
@@ -377,10 +409,12 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
         driver = (dev or {}).get("device_type", "")
         if dev is None:
             out = {"state": UNKNOWN, "why": f"{host} is not a device of {list_name}"}
-        elif discovery.refusal(driver, commands):
-            # A device Mercury has no driver for is asked only its capture list: refused
-            # before any session opens, naming the command (modules/discovery.py).
-            out = {"state": FAILED, "why": discovery.refusal(driver, commands)}
+        elif device_refusal(driver, commands, by, reason):
+            # Each device is asked only what its own driver's rule allows: a device Mercury
+            # has no driver for its capture list, every other the allowlist, so a Comware
+            # `display` never reaches an IOS device. Refused before any session opens, naming
+            # the command (modules/discovery.py).
+            out = {"state": FAILED, "why": device_refusal(driver, commands, by, reason)}
         else:
             t0 = time.time()
             try:
@@ -391,6 +425,9 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                 failed = [a for a in answers if a["state"] != ANSWERED]
                 out = {"state": FAILED if len(failed) == len(answers) else ANSWERED,
                        "answers": answers, "took_s": round(time.time() - t0, 2)}
+                if discovery.is_driver(driver):
+                    # Its answers are captures (`discovery.captures`): which driver read them.
+                    out["driver"] = driver
             except device_ops.DeviceBusy as exc:
                 out = {"state": SKIPPED, "why": str(exc)}
             except Exception as exc:                  # noqa: BLE001 (that device's failure)

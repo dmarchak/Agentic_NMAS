@@ -6,7 +6,8 @@ name: nmas-sdn-lab-netbox
 
 x-netbox: &netbox
   image: docker.io/netboxcommunity/netbox:v4.6-5.0.2
-  env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+  env_file:
+    - ${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env
   environment:
     DB_HOST: postgres
     DB_NAME: netbox
@@ -34,7 +35,8 @@ services:
     depends_on: [netbox]
   postgres:
     image: docker.io/postgres:18-alpine
-    env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+    env_file:
+      - ${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env
     environment:
       POSTGRES_DB: netbox
       POSTGRES_USER: netbox
@@ -43,7 +45,8 @@ services:
     restart: unless-stopped
   valkey:
     image: docker.io/valkey/valkey:9.1-alpine
-    env_file: [${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env]
+    env_file:
+      - ${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env
     command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - netbox-valkey:/data

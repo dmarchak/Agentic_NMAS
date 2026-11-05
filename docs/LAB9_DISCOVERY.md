@@ -18,8 +18,20 @@ A platform with no driver gets a **discovery driver**, which is netmiko's own ty
 | `arista_eos` | `AristaSSH` | Arista EOS | `terminal length 0` (and `terminal width 511`) |
 | `hp_procurve`, `aruba_osswitch`, `aruba_procurve` | `HPProcurveSSH` | HP ProCurve / ArubaOS-Switch | `enable`, then `terminal width 511` and `no page` |
 | `aruba_os` | `ArubaSSH` (netmiko: "For use with Aruba OS Controllers") | Aruba; given AOS-CX's list | `enable`, then `no paging` |
+| `hp_comware` | `HPComwareSSH` | HP Comware (Comware 7: an HPE 5130, 5900 or the like) | `screen-length disable`; `enable` is never sent (below) |
 
 No command needs an answer to a pager.
+
+**Comware's `enable` is configuration mode.** In netmiko 4.3.0, `HPComwareBase.enable` enters
+`system-view`. So on a Comware session `enable` sends nothing, and the reads run in user view.
+Every configuration-mode call stays refused.
+
+**`display` is a read only on a Comware session (C2530).** The read-only allowlist has no
+`display` verb, and no other capture list has one.
+- Ask the device and Show commands accept a Comware `display` read for a Comware device. They
+  refuse it for any other device before a session opens, naming the command, the family and the
+  device's driver.
+- An IOS session refuses it too, held or not. So a held IOS read never sends it.
 
 **What such a device may do (a positive allowlist):**
 - It is read by its family's capture list (section 3), one command at a time, each command
@@ -61,12 +73,14 @@ No command needs an answer to a pager.
    the platform map:
    - the NetBox platform's slug;
    - its **Driver**: `arista_eos` for the Arista, `hp_procurve` for a ProCurve or
-     ArubaOS-Switch, `aruba_os` for an AOS-CX (section 3.3);
+     ArubaOS-Switch, `aruba_os` for an AOS-CX (section 3.3), `hp_comware` for a Comware
+     switch (section 3.4);
    - **Config dialect**: *none: read only (a discovery driver)*;
    - **Delivers by**: ssh.
 
    Press **Preview changes**. It names the devices the row loads. **Test with** one of them
-   reads `show version` through that driver; then press **Save**. The row then says it is read
+   reads `show version` through that driver (`display version` for Comware); then press
+   **Save**. The row then says it is read
    only. A discovery driver with a dialect is refused.
 4. **The first contact keeps the switch's SSH host key**, and every later session checks it.
    A changed key is refused, naming both.
@@ -82,10 +96,15 @@ No command needs an answer to a pager.
 
 ## 3. The capture lists
 
-A command is **confirmed** when netmiko 4.3.0's own source names it (its autodetect table:
-`show version` for `arista_eos` and `hp_procurve`) or when ntc-templates 3.5.0's index (in CI's
-environment) parses it for that platform. Everything else is **(inferred)**, from vendor
-command-line conventions, and is to be checked on the switch.
+A command is **confirmed** when one of these names it:
+- netmiko 4.3.0's own source (its autodetect table: `show version` for `arista_eos` and
+  `hp_procurve`, `display version` for `hp_comware`);
+- ntc-templates 3.5.0's index (in CI's environment), which parses it for that platform;
+- a vendor command reference cited here, with the date it was read.
+
+Everything else is **(inferred)**, from vendor command-line conventions or a source that is not
+the vendor's, and is to be checked on the switch. Each list's **ZTP or auto-configuration
+status** read is the last row.
 
 ### 3.1 Arista EOS (`arista_eos`)
 
@@ -99,6 +118,7 @@ command-line conventions, and is to be checked on the switch.
 | `show openflow` | (inferred) |
 | `show openflow flows` | (inferred) |
 | `show openflow ports` | (inferred) |
+| `show zerotouch` | (inferred). Arista's EOS 4.37.0F manual ("Initial Switch Access", read 2026-11-05) names only `zerotouch cancel`. DISA's STIG for Arista MLS EOS 4.x (V-256029) runs `sh zerotouch` and reads its `Zerotouch Mode:` line |
 
 `| json` is refused, as every output modifier but the filters is.
 
@@ -114,6 +134,11 @@ command-line conventions, and is to be checked on the switch.
 | `show lldp info remote-device` | confirmed (ntc-templates) |
 | `show openflow` | (inferred) |
 | `show openflow instance <name>` | (inferred); the name is one token, letters, digits, `_` and `-`, at most 32 |
+| `show dhcp client vendor-specific` | (inferred). An HPE Aruba community answer shows it giving the DHCP vendor class and whether vendor-specific processing is enabled; no HPE command reference was found for it (2026-11-05). `show autorun` was not found in any source and is not on the list |
+
+ArubaOS-Switch's DHCP auto-configuration is `dhcp config-file-update`, enabled by default (the
+ProCurve management guides, read 2026-11-05). Being the default, it does not appear in
+`show running-config`.
 
 ### 3.3 AOS-CX (driver `aruba_os` today)
 
@@ -135,9 +160,31 @@ long answer fails, the HP needs the lock change.
 | `show vlan` | (inferred) |
 | `show lldp neighbors-info` | (inferred, from ntc-templates' `show lldp neighbors-info detail`; the brief's `neighbor-info` is not AOS-CX's spelling) |
 | `show openflow` | (inferred) |
+| `show ztp information` | confirmed: HPE AOS-CX 10.03 and 10.06 command references, "show ztp information" (support.hpe.com, read 2026-11-05); operator or manager context |
 
-**Comware** (an HP 5130 or 5900) speaks `display`, which the read-only allowlist does not
-have. A Comware switch cannot be read this way.
+### 3.4 HP Comware (`hp_comware`)
+
+| Command | Source |
+|---|---|
+| `display version` | confirmed (netmiko autodetect: "HPE Comware", "HP Comware") |
+| `display device manuinfo` | confirmed (ntc-templates) |
+| `display current-configuration` | (inferred) |
+| `display interface brief` | (inferred; ntc-templates parses `display interface`) |
+| `display vlan brief` | confirmed (ntc-templates) |
+| `display lldp neighbor-information list` | confirmed (ntc-templates) |
+| `display openflow summary` | confirmed: H3C S5130-HI OpenFlow Command Reference, Release 1312-6W101 (Comware 7; read 2026-11-05) |
+| `display openflow instance` | confirmed: the same reference |
+| `display openflow instance <id>`, with `controller`, `listened` or `flow-table` after it | confirmed: the same reference; the id is one number, 1 to 4 digits |
+
+**Comware's ZTP status has no read on the list.** Comware 7's automatic configuration is
+`autodeploy` (the H3C Comware 7 Fundamentals Command Reference: `autodeploy sms enable`,
+`autodeploy udisk enable`, `autodeploy url enable`). None of the sources read on 2026-11-05
+names a `display` command for its state, so `display autodeploy` is not on the list.
+`display current-configuration` should show an `undo autodeploy` line for any method turned off
+(inferred: a non-default setting is shown).
+
+The H3C reference is for H3C-branded Comware 7. The HPE-branded 5130's reference was not
+found, so each command is to be checked on the switch.
 
 ## 4. What to read in each answer to pick the driver
 
@@ -153,7 +200,8 @@ have. A Comware switch cannot be read this way.
   - AOS-CX: `show version`'s `Version` line (`FL.10.…` and the like, inferred).
 
   The family decides the driver: EOS; ArubaOS-Switch, which is the ProCurve driver; AOS-CX,
-  which is the lock change; or Comware, which is not covered here.
+  which is the lock change; or Comware (`display version`'s `Comware Software, Version 7.…`
+  line, inferred).
 - **The OpenFlow version and mode:** in `show openflow`, and on ProCurve
   `show openflow instance <name>`:
   - whether OpenFlow is enabled, and its version (1.0 or 1.3);
@@ -172,11 +220,31 @@ have. A Comware switch cannot be read this way.
     `show vlans` or `show vlan`;
   - `show lldp …`, which says what each port faces.
 
-## 5. What this does not do
+- **The ZTP status:** whether the switch is still in zero-touch or auto-configuration mode, and
+  what it last fetched (section 3's last row for each family). This decides which vendor ZTP
+  profile applies.
+
+## 5. The captures
+
+Every answer a discovery device gives is a **capture**: the input for confirming a vendor
+OpenFlow template.
+
+- The store is the reads engine's own record: one file per run, each device's answers masked,
+  with the time and the SHA-256 of each. Nothing new writes it. The record now also says which
+  discovery driver read each device.
+- A capture is named `<device>/<command>/<run id>`. The command's words are joined by `_`, so
+  `sw1/show_running-config/20261105T…Z-…`. The run id is its start in UTC
+  (`discovery.captures`, `discovery.capture`).
+- A capture is kept as the reads engine keeps every answer: for the network's **Show commands:
+  answers kept (days)**, then moved to its archive, never deleted. On the laptop no archive is
+  configured, so the answers stay.
+- A Cisco device's reads are not captures.
+
+## 6. What this does not do
 
 - It has no driver: no deploy, verify, golden or drift.
 - It creates no NetBox record: step 1 is a gap.
-- It doesn't read Comware.
+- It doesn't read Comware's ZTP state with a command of its own (section 3.4).
 - It doesn't change the netmiko lock for AOS-CX.
 - Its masking cases are line shapes, not captures. A real capture's lines replace them after
   the sitting.

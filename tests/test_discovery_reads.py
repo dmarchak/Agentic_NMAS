@@ -1,10 +1,11 @@
 """Read-only discovery of a platform Mercury has no driver for (modules/discovery.py;
 docs/LAB9_DISCOVERY.md, the Lab 9 sitting of 2026-11-05).
 
-A device whose Netmiko driver is `arista_eos`, `hp_procurve` (and its two aliases) or `aruba_os`
-opens with that driver, is asked only its family's capture list, each command whole, and is
+A device whose Netmiko driver is `arista_eos`, `hp_procurve` (and its two aliases), `aruba_os`
+or `hp_comware` opens with that driver, is asked only its family's capture list, each command whole, and is
 sent no config, save or commit call at all, held or not; its answers are masked by
-`redact_text` and then line by line. Netmiko is faked at its boundary (`ConnectHandler`), so
+`redact_text` and then line by line. Comware's `display` is a read on a Comware session only,
+never on IOS (C2530); each answer is a capture named by device, command and run. Netmiko is faked at its boundary (`ConnectHandler`), so
 `open_ssh` and its guard run for real; the reads engine runs for real with its session faked at
 its one seam, as tests/test_reads_engine.py does.
 
@@ -22,7 +23,8 @@ from modules import discovery
 from modules.nsot import device_ops as D
 
 LIST = "Lab"
-DRIVERS = ("arista_eos", "hp_procurve", "aruba_osswitch", "aruba_procurve", "aruba_os")
+DRIVERS = ("arista_eos", "hp_procurve", "aruba_osswitch", "aruba_procurve", "aruba_os",
+           "hp_comware")
 ADDRESSES = ("192.0.2.31", "2001:db8::31")
 
 
@@ -83,13 +85,9 @@ def fake_netmiko(monkeypatch):
     # The cross-process slots (`ssh_slots/<ip>/<n>.lock` flocks) of sessions these tests left
     # open: clearing the count leaves their locks held by this worker, so a later test's child
     # process found the device's budget full (test_ssh_slots_across_processes, 2026-11-05).
-    with C._sessions_mu:
-        for key, (fd, _sid) in list(C._slots.items()):
-            C._slots.pop(key, None)
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+    # Released here, the tests' own (tests/ssh_slot_guard.py fails a test that leaves one).
+    from tests import ssh_slot_guard
+    ssh_slot_guard.release()
     with D._mu:
         stale = list(D._held.values())
         D._held.clear()
@@ -115,7 +113,7 @@ class TestEachTypeOpensWithItsDriver:
     @pytest.mark.parametrize("driver,cls", [
         ("arista_eos", "AristaSSH"), ("hp_procurve", "HPProcurveSSH"),
         ("aruba_osswitch", "HPProcurveSSH"), ("aruba_procurve", "HPProcurveSSH"),
-        ("aruba_os", "ArubaSSH")])
+        ("aruba_os", "ArubaSSH"), ("hp_comware", "HPComwareSSH")])
     def test_the_locked_netmiko_has_each_driver(self, driver, cls):
         from netmiko.ssh_dispatcher import CLASS_MAPPER
         assert CLASS_MAPPER[driver].__name__ == cls
@@ -216,6 +214,21 @@ CONFIG = "\n".join([
     "end"])
 
 
+#: Comware 7's credential lines, in the shapes of the H3C/HPE Comware 7 configuration guides
+#: (`local-user` / `password hash`, `super password ... hash`, `snmp-agent community ...
+#: cipher`); the secret parts are fakes. Shapes, not a capture.
+COMWARE_SECRETS = ("$h$6$FAKEsaltFAKE$FAKEhashFAKEhashFAKE==", "$c$3$FAKEcipherFAKEcipher==")
+COMWARE_CONFIG = "\n".join([
+    " sysname sw7",
+    "local-user admin class manage",
+    f" password hash {COMWARE_SECRETS[0]}",
+    f"super password role network-admin hash {COMWARE_SECRETS[0]}",
+    f"snmp-agent community read cipher {COMWARE_SECRETS[1]}",
+    "interface GigabitEthernet1/0/1",
+    " port link-mode bridge",
+    "return"])
+
+
 class Session:
     def __init__(self):
         self.opened = []
@@ -225,6 +238,8 @@ class Session:
         return fn(self)
 
     def answer(self, command):
+        if command == "display current-configuration":
+            return COMWARE_CONFIG
         return CONFIG if command == "show running-config" else f"{command}: ok"
 
 
@@ -232,7 +247,10 @@ class Session:
 def lab(monkeypatch, tmp_path):
     rows = [{"hostname": "sw1", "ip": ADDRESSES[0], "device_type": "arista_eos"},
             {"hostname": "sw6", "ip": ADDRESSES[1], "device_type": "hp_procurve"},
-            {"hostname": "r1", "ip": "192.0.2.11", "device_type": "cisco_xe"}]
+            {"hostname": "sw7", "ip": "192.0.2.37", "device_type": "hp_comware"},
+            {"hostname": "sw8", "ip": "2001:db8::38", "device_type": "hp_comware"},
+            {"hostname": "r1", "ip": "192.0.2.11", "device_type": "cisco_xe"},
+            {"hostname": "r6", "ip": "2001:db8::11", "device_type": "cisco_ios"}]
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / name))
     monkeypatch.setattr("modules.device.load_saved_devices", lambda path: [dict(d) for d in rows])
     monkeypatch.setattr("modules.commands.run_device_command", lambda conn, c: conn.answer(c))
@@ -342,3 +360,186 @@ class TestMaskLines:
     def test_mask_lines_keeps_lines_with_no_credential_word_byte_for_byte(self):
         text = "interface Ethernet1\n   description keyed-uplink\r\nopenflow\n  controller x\n"
         assert discovery.mask_lines(text) == text
+
+
+# --------------------------------------------------------------------------- Comware (C2530)
+
+COMWARE_DISPLAYS = discovery.commands_for("hp_comware")
+
+
+class FakeComware(FakeConn):
+    """netmiko 4.3.0's `HPComwareBase.enable`: config mode, `system-view`."""
+
+    def enable(self):
+        return self.config_mode("system-view")
+
+
+class TestComwareDisplayIsItsOwn:
+    @pytest.mark.parametrize("driver", ["cisco_ios", "cisco_xe"])
+    @pytest.mark.parametrize("ip", ADDRESSES, ids=("ipv4", "ipv6"))
+    @pytest.mark.parametrize("held", [False, True], ids=("unheld", "held"))
+    @pytest.mark.parametrize("command", COMWARE_DISPLAYS + ("display openflow instance 1",))
+    def test_display_is_refused_on_an_ios_session_held_or_not(self, driver, ip, held, command):
+        conn = _open(driver, ip)
+        import contextlib
+        hold = (D.hold(LIST, "r1", "read", "op@example.invalid", ip=ip) if held
+                else contextlib.nullcontext())
+        with hold, pytest.raises(C.DiscoveryOnly) as e:
+            conn.send_command(command)
+        assert repr(command) in str(e.value) and "HP Comware" in str(e.value)
+        assert driver in str(e.value) and ip in str(e.value)
+        assert FakeConn.sent == []
+
+    def test_an_ios_multiline_carrying_display_is_refused_while_held(self):
+        conn = _open("cisco_xe")
+        with D.hold(LIST, "r1", "deploy", "op@example.invalid", ip=ADDRESSES[0]):
+            with pytest.raises(C.DiscoveryOnly):
+                conn.send_multiline(["show clock", "display version"])
+        assert FakeConn.sent == []
+
+    def test_an_ios_session_still_sends_its_own_reads(self):
+        conn = _open("cisco_ios")
+        conn.send_command("show version")
+        assert FakeConn.sent == ["show version"]
+
+    @pytest.mark.parametrize("ip", ADDRESSES, ids=("ipv4", "ipv6"))
+    def test_each_display_runs_on_a_comware_session(self, ip):
+        assert "display version" in COMWARE_DISPLAYS and len(COMWARE_DISPLAYS) >= 8
+        conn = _open("hp_comware", ip)
+        for command in COMWARE_DISPLAYS:
+            conn.send_command(command)
+        assert FakeConn.sent == list(COMWARE_DISPLAYS)
+
+    @pytest.mark.parametrize("driver", [d for d in DRIVERS if d != "hp_comware"])
+    def test_display_is_refused_on_every_other_discovery_session(self, driver):
+        conn = _open(driver)
+        with pytest.raises(C.DiscoveryOnly):
+            conn.send_command("display version")
+        assert FakeConn.sent == []
+
+    def test_a_comware_instance_is_one_number_and_one_view(self):
+        for good in ("display openflow instance 1", "display openflow instance 12 controller",
+                     "display openflow instance 3 listened",
+                     "display openflow instance 3 flow-table"):
+            assert discovery.command_refusal("hp_comware", good) == "", good
+        for bad in ("display openflow instance a", "display openflow instance 1 group",
+                    "display openflow instance 1 controller 2", "display openflow instance 12345",
+                    "display openflow instance 1;reset"):
+            assert "REFUSED" in discovery.command_refusal("hp_comware", bad), bad
+
+    @pytest.mark.parametrize("ip", ADDRESSES, ids=("ipv4", "ipv6"))
+    def test_comware_enable_never_enters_system_view(self, monkeypatch, ip):
+        import netmiko
+        monkeypatch.setattr(netmiko, "ConnectHandler", FakeComware)
+        conn = _open("hp_comware", ip)
+        assert conn.enable() == ""
+        with pytest.raises(C.DiscoveryOnly):
+            conn.config_mode("system-view")
+        assert FakeConn.sent == []
+
+    def test_a_comware_temp_connection_reads_without_system_view(self, monkeypatch):
+        import netmiko
+        monkeypatch.setattr(netmiko, "ConnectHandler", FakeComware)
+        monkeypatch.setattr(C, "stored_connection_params", lambda dev: C.connection_params(
+            {"device_type": "hp_comware", "ip": dev["ip"], "username": "u"}, password="p"))
+        got = C.with_temp_connection({"ip": ADDRESSES[1]},
+                                     lambda conn: conn.send_command("display version"))
+        assert got == "ok" and FakeConn.sent == ["display version"]
+
+    def test_the_platform_map_test_asks_comwares_own_version_read(self, monkeypatch):
+        from modules import platform_maps as P
+        from modules.nsot import reads
+        asked = []
+        monkeypatch.setattr(reads, "start", lambda network, hosts, commands, actor, **kw:
+                            asked.append(commands) or {"run": "x"})
+        P.test("lab9", "sw7", "hp_comware", "op@example.invalid")
+        P.test("lab9", "sw1", "arista_eos", "op@example.invalid")
+        assert asked == [["display version"], ["show version"]]
+
+
+#: Each ZTP or auto-configuration status read, and the drivers whose list carries it.
+ZTP_READS = {"show zerotouch": {"arista_eos"},
+             "show dhcp client vendor-specific": {"hp_procurve", "aruba_osswitch",
+                                                  "aruba_procurve"},
+             "show ztp information": {"aruba_os"}}
+
+
+class TestZtpStatusReads:
+    @pytest.mark.parametrize("command", sorted(ZTP_READS))
+    @pytest.mark.parametrize("driver", DRIVERS)
+    def test_each_ztp_read_is_allowed_whole_only_on_its_vendor(self, command, driver):
+        why = discovery.command_refusal(driver, command)
+        assert (why == "") is (driver in ZTP_READS[command]), (driver, why)
+        assert "REFUSED" in discovery.command_refusal(driver, command + " detail")
+
+    @pytest.mark.parametrize("command", sorted(ZTP_READS))
+    def test_listed_on_names_exactly_its_vendors_drivers(self, command):
+        assert set(discovery.listed_on(command)) == ZTP_READS[command]
+
+
+class TestTheReadsEngineAcrossDrivers:
+    @pytest.mark.parametrize("host", ["sw7", "sw8"], ids=("ipv4", "ipv6"))
+    def test_a_comware_device_answers_display(self, lab, host):
+        r, s = _run([host], ["display version"])
+        assert r["results"][host]["state"] == "answered" and len(s.opened) == 1
+
+    @pytest.mark.parametrize("host", ["r1", "r6"], ids=("ipv4", "ipv6"))
+    def test_display_on_an_ios_device_opens_no_session_and_is_named(self, lab, host):
+        r, s = _run([host], ["display version"])
+        out = r["results"][host]
+        assert out["state"] == "failed" and "'display version'" in out["why"]
+        assert "HP Comware" in out["why"] and s.opened == []
+
+    def test_a_mixed_run_asks_display_only_of_the_comware_device(self, lab):
+        r, s = _run(["sw7", "r1", "sw1"], ["display version"])
+        assert r["results"]["sw7"]["state"] == "answered"
+        assert r["results"]["r1"]["state"] == r["results"]["sw1"]["state"] == "failed"
+        assert [d["hostname"] for d in s.opened] == ["sw7"]
+
+    def test_the_run_level_check_knows_the_drivers_when_given(self):
+        from modules.nsot import reads
+        assert reads.refusal(["display version"], 1) == ""
+        assert reads.refusal(["display version"], 1, drivers=("hp_comware",)) == ""
+        assert "display" in reads.refusal(["display version"], 1, drivers=("cisco_xe",))
+        assert "REFUSED" in reads.refusal(["display bogus"], 1)
+
+    def test_ask_the_device_says_display_is_comwares_only(self):
+        from modules import reads_page
+        ios = reads_page.check("display version", 1, drivers=("cisco_ios",))
+        comware = reads_page.check("display version", 1, drivers=("hp_comware",))
+        assert not ios["ok"] and "HP Comware" in ios["why"]
+        assert comware["ok"] and "HP Comware only" in comware["does"][0]
+
+
+class TestTheCaptures:
+    @pytest.mark.parametrize("host,command", [
+        ("sw1", "show running-config"), ("sw8", "display current-configuration")],
+        ids=("ipv4", "ipv6"))
+    def test_each_capture_is_named_by_device_and_command_and_kept_masked(
+            self, lab, tmp_path, host, command):
+        r, _s = _run([host], ["show version" if host == "sw1" else "display version", command])
+        got = discovery.captures(LIST, host)
+        assert got["unreadable"] == []
+        names = [c["name"] for c in got["captures"]]
+        name = f"{host}/{discovery.command_slug(command)}/{r['id']}"
+        assert name in names and len(names) == 2
+        one = discovery.capture(LIST, name)
+        assert one["device"] == host and one["command"] == command
+        assert one["driver"] in DRIVERS and one["at"] and len(one["sha256"]) == 64
+        stored = (tmp_path / LIST / "reads" / f"{r['id']}.json").read_text()
+        for secret in SECRETS + COMWARE_SECRETS:
+            assert secret not in one["text"], secret
+            assert secret not in stored, secret
+        assert ("hostname sw1" if host == "sw1" else "interface GigabitEthernet1/0/1") \
+            in one["text"]
+
+    def test_a_cisco_devices_reads_are_not_captures(self, lab):
+        _run(["r1"], ["show clock"])
+        assert discovery.captures(LIST, "r1")["captures"] == []
+
+    def test_a_name_of_no_capture_is_none(self, lab):
+        r, _s = _run(["sw1"], ["show version"])
+        assert discovery.capture(LIST, f"sw1/show_clock/{r['id']}") is None
+        assert discovery.capture(LIST, f"r1/show_version/{r['id']}") is None
+        assert discovery.capture(LIST, "sw1/show_version/not-a-run") is None
+        assert discovery.capture(LIST, "sw1") is None

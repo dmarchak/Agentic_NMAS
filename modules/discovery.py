@@ -19,30 +19,60 @@ such a session may carry, never a list of what it may not:
 
 Paging needs no answer from any command here: each driver's own session preparation turns it
 off before the first command (netmiko 4.3.0: `AristaSSH` sends `terminal length 0`,
-`HPProcurveSSH` sends `no page` after `enable`, `ArubaSSH` sends `no paging` after `enable`).
+`HPProcurveSSH` sends `no page` after `enable`, `ArubaSSH` sends `no paging` after `enable`,
+`HPComwareSSH` sends `screen-length disable`, each written to the channel, not through
+`send_command`).
+
+**Comware's `enable()` is configuration mode.** netmiko 4.3.0's `HPComwareBase.enable` is
+`config_mode("system-view")` ("enable mode on Comware is system-view"), so on a driver marked
+``enable_is_config`` the session's `enable` sends nothing: Comware's `display` commands run in
+user view, and system-view is never entered. Every `config_mode` call stays refused.
+
+**`display` is a read only on a Comware session (C2530).** It is on no other list, and the
+read-only allowlist (`readonly_commands`) has no `display` verb. A command that is on a capture
+list and that the allowlist refuses (`foreign_refusal`) is refused on every session that is not
+that list's, held or not, so a held IOS read never sends it.
 
 The table is keyed on Netmiko DRIVERS (the `device_type` a session opens with), never on a
 dialect: none of these is a dialect (`platform.DIALECTS`), so everything that parses, renders,
 records or sends a configuration already refuses them (`platform.require_platform`).
+
+**The captures** are the reads engine's own records (`modules/nsot/reads.py`: one file per run,
+each device's answers masked, timed and hashed), named here per device and command by
+`captures` and read back by `capture`: the input for confirming a vendor OpenFlow template.
 """
 
 import re
 
 #: The capture lists, each command whole. "(inferred)" in the manual's table marks a command
-#: not confirmed from netmiko's own source or ntc-templates' index (docs/LAB9_DISCOVERY.md).
+#: not confirmed from netmiko's own source, ntc-templates' index or a vendor document cited in
+#: docs/LAB9_DISCOVERY.md section 3.
 _ARISTA = ("show version", "show running-config", "show interfaces status",
            "show ip interface brief", "show lldp neighbors", "show openflow",
-           "show openflow flows", "show openflow ports")
+           "show openflow flows", "show openflow ports",
+           # ZTP status (inferred: a DISA STIG for EOS 4.x names it; not in Arista's manual).
+           "show zerotouch")
 _PROCURVE = ("show version", "show system", "show running-config", "show interfaces brief",
-             "show vlans", "show lldp info remote-device", "show openflow")
+             "show vlans", "show lldp info remote-device", "show openflow",
+             # DHCP auto-configuration's vendor class and state (inferred: an HPE community
+             # answer; not found in an HPE command reference).
+             "show dhcp client vendor-specific")
 #: netmiko's `aruba_os` is its ArubaOS (wireless controller) driver (`ArubaSSH`, "For use with
 #: Aruba OS Controllers"); on an AOS-CX switch, whose own driver `aruba_aoscx` is not in the
-#: locked netmiko 4.3.0, it is the nearest that opens a session (its `no paging` is AOS-CX's
-#: `no page` prefix, inferred). Its list is AOS-CX's.
+#: locked netmiko 4.3.0 (C2529), it is the nearest that opens a session (its `no paging` is
+#: AOS-CX's `no page` prefix, inferred). Its list is AOS-CX's.
 _AOSCX = ("show version", "show system", "show running-config", "show interface brief",
-          "show vlan", "show lldp neighbors-info", "show openflow")
+          "show vlan", "show lldp neighbors-info", "show openflow",
+          # ZTP status (confirmed: HPE AOS-CX 10.06 command reference, `show ztp information`).
+          "show ztp information")
+#: Comware 7 (an HPE 5130, 5900 or the like; `hp_comware`, netmiko's `HPComwareSSH`).
+_COMWARE = ("display version", "display device manuinfo", "display current-configuration",
+            "display interface brief", "display vlan brief",
+            "display lldp neighbor-information list", "display openflow summary",
+            "display openflow instance")
 
-#: driver -> the family in words, and its capture list.
+#: driver -> the family in words, its capture list, the command its platform-map Test asks,
+#: and whether netmiko's `enable()` for it is configuration mode (never sent).
 DRIVERS = {
     "arista_eos":     {"family": "Arista EOS", "commands": _ARISTA},
     "hp_procurve":    {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
@@ -50,10 +80,16 @@ DRIVERS = {
     "aruba_procurve": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
     "aruba_os":       {"family": "Aruba (netmiko's ArubaOS driver; AOS-CX's list)",
                        "commands": _AOSCX},
+    "hp_comware":     {"family": "HP Comware", "commands": _COMWARE,
+                       "version": "display version", "enable_is_config": True},
 }
 
 #: OpenFlow instance names on ProCurve (`show openflow instance <name>`): one token of its shape.
 _INSTANCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}\Z")
+#: Comware's instance id (`display openflow instance <id> [controller|listened|flow-table]`,
+#: H3C S5130-HI OpenFlow Command Reference, Release 1312-6W101): digits, one token.
+_COMWARE_INSTANCE = re.compile(r"[0-9]{1,4}\Z")
+_COMWARE_INSTANCE_VIEWS = ("controller", "listened", "flow-table")
 
 
 def is_driver(device_type) -> bool:
@@ -87,10 +123,46 @@ def command_refusal(device_type, command) -> str:
             and words[:3] == ["show", "openflow", "instance"]
             and _INSTANCE.match(str(command).split()[3])):
         return ""
+    if (driver == "hp_comware" and len(words) in (4, 5)
+            and words[:3] == ["display", "openflow", "instance"]
+            and _COMWARE_INSTANCE.match(words[3])
+            and (len(words) == 4 or words[4] in _COMWARE_INSTANCE_VIEWS)):
+        return ""
     shown = str(command or "")[:80]
     return (f"REFUSED: {shown!r} is not on the {DRIVERS[driver]['family']} capture list, and a "
             f"{driver} device is read only by that list until Mercury has a driver for it: "
             f"{'; '.join(allowed)}. Nothing was sent.")
+
+
+def listed_on(command, drivers=None) -> tuple:
+    """The discovery drivers (of *drivers*, or of all when ``None``) whose capture list allows
+    *command* whole."""
+    pool = DRIVERS if drivers is None else [str(d or "").strip().lower() for d in drivers]
+    return tuple(d for d in pool if d in DRIVERS and not command_refusal(d, command))
+
+
+def foreign_refusal(device_type, command) -> str:
+    """Why *command* is never sent on a *device_type* session that is NOT a discovery driver:
+    a command a capture list allows and the read-only allowlist refuses (Comware's `display`)
+    is a read on that list's sessions only, held or not. ``""`` otherwise (the session's own
+    rule then decides)."""
+    from modules.readonly_commands import refusal as readonly_refusal
+    driver = str(device_type or "").strip().lower()
+    if driver in DRIVERS or not isinstance(command, str):
+        return ""
+    on = listed_on(command)
+    if not on or not readonly_refusal(command):
+        return ""
+    families = sorted({DRIVERS[d]["family"] for d in on})
+    return (f"REFUSED: {command[:80]!r} is a read only on a {' or '.join(families)} discovery "
+            f"session ({', '.join(on)}), and this session's driver is "
+            f"{driver or '(none)'}, whose reads are Mercury's read-only allowlist, which "
+            "refuses it. Nothing was sent.")
+
+
+def version_command(device_type) -> str:
+    """The command *device_type*'s platform-map Test asks: its family's own, else ``""``."""
+    return DRIVERS.get(str(device_type or "").strip().lower(), {}).get("version", "")
 
 
 def refusal(device_type, commands) -> str:
@@ -137,3 +209,65 @@ def masked(text: str, values: dict, device_type) -> str:
     from modules.redact import redact_text
     out = redact_text(text, values)
     return mask_lines(out) if is_driver(device_type) else out
+
+
+# --------------------------------------------------------------------------- the captures
+
+def command_slug(command) -> str:
+    """*command*, normalised, as one path segment: its words joined by ``_``."""
+    return "_".join(_normal(command).split())
+
+
+def capture_name(device: str, command: str, run_id: str) -> str:
+    """A capture's name: ``<device>/<command>/<run id>`` (the run id is its UTC start)."""
+    return f"{device}/{command_slug(command)}/{run_id}"
+
+
+def captures(list_name: str, device: str = "", limit: int = 200) -> dict:
+    """``{"captures": [...newest first], "unreadable": [names]}``: every answer a discovery
+    driver's device gave in *list_name*'s reads (of *device* when named), each named by
+    `capture_name`, with when it was read, its driver, its SHA-256 and whether the answer was
+    cut at the cap or archived. Read from the reads engine's records; nothing is written."""
+    from modules.nsot import reads
+    got = reads.runs(list_name, device=device, limit=limit)
+    out = []
+    for r in got["runs"]:
+        for host, res in sorted((r.get("results") or {}).items()):
+            if device and host != device:
+                continue
+            driver = (res or {}).get("driver", "")
+            if not is_driver(driver):
+                continue
+            for a in res.get("answers") or []:
+                if a.get("state") != reads.ANSWERED:
+                    continue
+                out.append({"name": capture_name(host, a["command"], r["id"]), "device": host,
+                            "driver": driver, "family": DRIVERS[driver]["family"],
+                            "command": a["command"], "run": r["id"], "at": a.get("at"),
+                            "sha256": a.get("sha256", ""), "bytes": a.get("bytes", 0),
+                            "cut": bool(a.get("cut")), "archived": "answer" not in a})
+    return {"captures": out, "unreadable": got["unreadable"]}
+
+
+def capture(list_name: str, name: str):
+    """The capture *name* names (`capture_name`), with its masked ``text``, or None when
+    *list_name*'s reads hold no such answer. An archived answer has ``text`` ``""``."""
+    from modules.nsot import reads
+    parts = str(name or "").split("/")
+    if len(parts) != 3:
+        return None
+    host, slug, run_id = parts
+    try:
+        record = reads.get(list_name, run_id)
+    except ValueError:                                   # not a run id's shape
+        return None
+    res = ((record or {}).get("results") or {}).get(host) or {}
+    if not is_driver(res.get("driver", "")):
+        return None
+    for a in res.get("answers") or []:
+        if a.get("state") == reads.ANSWERED and command_slug(a.get("command")) == slug:
+            return {"name": name, "device": host, "driver": res["driver"],
+                    "command": a["command"], "run": run_id, "at": a.get("at"),
+                    "sha256": a.get("sha256", ""), "cut": bool(a.get("cut")),
+                    "archived": "answer" not in a, "text": a.get("answer", "")}
+    return None

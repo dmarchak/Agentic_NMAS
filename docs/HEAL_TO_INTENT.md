@@ -989,8 +989,11 @@ board):
 5. for the video and the write-up, board H's tiers mapped to the lecture's, and Mercury placed
    on the L0 to L5 maturity ladder.
 
-**Not approved, not built.** This is a draft for the operator's review, not self-signed under
-the Phase 7 mode, like the board it amends. Drafted 2026-11-03 ~23:4x UTC (17:4x, UTC−6) over
+**Approved by the operator, 2026-11-04** (commit `c94d8b08`'s `Approved-By`: "Approved: board H
+amendment section 19 with N14 to N24 as revised …", and "Section 19 approved as revised, with one
+addition to N17 before you commit"); the notes below are the draft as it was put for review.
+**As drafted:** not approved, not built. This was a draft for the operator's review, not
+self-signed under the Phase 7 mode, like the board it amends. Drafted 2026-11-03 ~23:4x UTC (17:4x, UTC−6) over
 HEAD ad202730. The board's new regions (artboards I to M, and inserts in A and G) are each marked
 "amendment, for review" in `docs/boards/heal-to-intent.html`. Sections 1 to 18 stand as
 approved, except where this section says it revises them (16's parts and 17's cut order).

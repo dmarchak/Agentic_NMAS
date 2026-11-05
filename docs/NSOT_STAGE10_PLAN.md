@@ -218,6 +218,7 @@ Cloudflare verification becomes one provider behind it, unchanged in behaviour.
 > one recorded break-glass admin, held in Keycloak rather than built into Mercury. Cloudflare
 > Access becomes an optional integration, off unless configured. The in-app local accounts in
 > (a) below are kept as the record of the earlier plan. Where they differ, the decision governs.
+> **Amended 2026-11-05 (the operator):** built-in local accounts are the default again, with AD, X.509, OIDC and SAML as optional connectors and Keycloak as an optional bundled provider: [IDENTITY.md](IDENTITY.md).
 
 **(a) LOCAL ACCOUNTS: built in, always available, the default.**
 - **Passwords:**

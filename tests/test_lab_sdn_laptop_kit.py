@@ -101,6 +101,29 @@ class TestTheSettingsCheck:
         assert r.returncode == 1 and "cannot rule them out" in r.stdout
 
 
+class TestTheComposeFile:
+    """lab/sdn-laptop/compose.yml parses, and binds NetBox to loopback only (its first real
+    `kit init`, 2026-11-05, failed: `${KIT_HOME:?…}` inside a YAML flow list did not parse)."""
+
+    def test_it_parses_as_yaml_with_every_service(self):
+        import yaml
+
+        doc = yaml.safe_load(open(os.path.join(ROOT, "lab", "sdn-laptop", "compose.yml"),
+                                  encoding="utf-8"))
+        assert set(doc["services"]) == {"netbox", "netbox-worker", "postgres", "valkey"}
+        for name in ("netbox", "postgres", "valkey"):
+            env = doc["services"][name]["env_file"]
+            assert env == ["${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env"], name
+
+    def test_netbox_is_published_on_loopback_only(self):
+        import yaml
+
+        doc = yaml.safe_load(open(os.path.join(ROOT, "lab", "sdn-laptop", "compose.yml"),
+                                  encoding="utf-8"))
+        ports = [p for s in doc["services"].values() for p in s.get("ports", [])]
+        assert ports and all(p.startswith("127.0.0.1:") for p in ports), ports
+
+
 class TestNmasDeployRefusesTheKit:
     def test_a_repo_holding_the_marker_is_refused_before_anything_moves(self, tmp_path, capsys):
         nd = _load("nmas_deploy", "scripts/nmas-deploy")

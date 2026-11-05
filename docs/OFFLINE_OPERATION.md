@@ -35,6 +35,7 @@ Mercury functions 100% locally (PHASE8_PLAN section 0). Two decisions made with 
 - that provider is designed as the release's built-in local accounts.
 
 The Keycloak design below stays as the OIDC option. Today's break is C2520.
+The full design of local accounts, the connectors and the optional bundled provider: [IDENTITY](IDENTITY.md).
 
 ### 1.1 What `modules/identity.py` does today (measured)
 

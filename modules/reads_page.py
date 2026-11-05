@@ -24,7 +24,13 @@ from modules.nsot import reads
 def what_it_does(command: str) -> tuple:
     """``(words, title)`` for a command Tier 1 allows: most are reads; `send log` writes a line
     into the device's log, and a terminal setting lasts the session (NSOT_READS.md section 11)."""
+    from modules import discovery
+    from modules.readonly_commands import refusal as readonly_refusal
     low = command.strip().lower()
+    if readonly_refusal(command) and discovery.listed_on(command):
+        families = sorted({discovery.DRIVERS[d]["family"] for d in discovery.listed_on(command)})
+        return (f"read-only, on {' or '.join(families)} only",
+                "A discovery capture list's read: asked only of a device of that family")
     if low.startswith("send log"):
         return ("writes one log line", "Tier 1: one line into the device's log, nothing else")
     if low.startswith("term"):
@@ -32,11 +38,13 @@ def what_it_does(command: str) -> tuple:
     return ("read-only", "Tier 1: a read")
 
 
-def check(command: str, n_devices: int = 1, reason: str = "") -> dict:
+def check(command: str, n_devices: int = 1, reason: str = "", drivers=None) -> dict:
     """The command as typed: ``{"ok", "why", "heavy", "does"}``. Empty is not ok and says
     nothing. A `send log` at 0 to 3 (C582, board C582) also carries ``urgent`` (its level):
     with no reason of `reads.REASON_WORDS` words it is not ok and says it needs one (never
-    "refused", since a reason is all it lacks); with one, the policy's own answer stands."""
+    "refused", since a reason is all it lacks); with one, the policy's own answer stands.
+    *drivers* (Ask the device: its one device's driver) is also asked whether each device may
+    be asked it (`reads.device_refusal`)."""
     from modules.readonly_commands import urgent_level
     command = (command or "").strip()
     if not command:
@@ -46,7 +54,11 @@ def check(command: str, n_devices: int = 1, reason: str = "") -> dict:
     if level is not None and not enough:
         return {"ok": False, "why": "", "heavy": [], "does": ("", ""), "urgent": level,
                 "needs_reason": True}
-    why = reads.refusal([command], n_devices, "person", reason if level is not None else "")
+    why = reads.refusal([command], n_devices, "person", reason if level is not None else "",
+                        drivers=drivers)
+    for driver in drivers or ():
+        why = why or reads.device_refusal(driver, [command], "person",
+                                          reason if level is not None else "")
     out = {"ok": not why, "why": why, "heavy": [] if why else reads.warnings([command]),
            "does": ("", "") if why else what_it_does(command)}
     if level is not None:

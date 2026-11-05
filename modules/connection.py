@@ -651,8 +651,9 @@ _MULTILINE_METHODS = ("send_multiline", "send_multiline_timing")
 
 
 class DiscoveryOnly(UnheldDeviceWrite):
-    """A session to a device Mercury has no driver for asked for more than its capture list
-    (`modules/discovery.py`): refused whether or not the device is held."""
+    """A session to a device Mercury has no driver for asked for more than its capture list,
+    or any other session asked for a read only a capture list allows (Comware's `display`;
+    `modules/discovery.py`): refused whether or not the device is held."""
 
 
 def _guard_writes(conn, ip: str, device_type: str = "") -> None:
@@ -670,7 +671,9 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
 
     A session opened with a discovery driver (`modules/discovery.py`, a platform Mercury has
     no driver for) carries only its capture list's commands and no config, save or commit
-    call, held or not: a positive allowlist, `DiscoveryOnly` naming the driver."""
+    call, held or not: a positive allowlist, `DiscoveryOnly` naming the driver. Every other
+    session refuses, held or not, a command only a capture list allows (`foreign_refusal`:
+    Comware's `display` never reaches an IOS device, C2530)."""
     from modules import discovery
     from modules.nsot import device_ops
     from modules.readonly_commands import refusal
@@ -697,6 +700,10 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
             original = getattr(conn, name, None)
             if callable(original):
                 setattr(conn, name, listed(original))
+        if discovery.DRIVERS[str(device_type).strip().lower()].get("enable_is_config"):
+            # netmiko's enable() is config mode on this platform (Comware's system-view):
+            # never entered; its reads run in user view (modules/discovery.py).
+            conn.enable = lambda *args, **kwargs: ""
         return
 
     def refuse(what):
@@ -717,9 +724,17 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
             return original(*args, **kwargs)
         return guarded
 
+    def foreign(cmd):
+        # Another platform's discovery read (Comware's `display`): never sent here, held or
+        # not (modules/discovery.py, `foreign_refusal`).
+        why = discovery.foreign_refusal(device_type, cmd)
+        if why:
+            raise DiscoveryOnly(f"{ip}: {why}")
+
     def commanding(original):
         def guarded(*args, **kwargs):
             cmd = args[0] if args else kwargs.get("command_string", "")
+            foreign(cmd)
             if refusal(cmd) and not device_ops.may_write(ip):
                 refuse(verb(cmd))
             return original(*args, **kwargs)
@@ -730,6 +745,7 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
             cmds = args[0] if args else kwargs.get("commands", [])
             for cmd in cmds or []:
                 cmd = cmd[0] if isinstance(cmd, (list, tuple)) else cmd
+                foreign(cmd)
                 if refusal(cmd) and not device_ops.may_write(ip):
                     refuse(verb(cmd))
             return original(*args, **kwargs)

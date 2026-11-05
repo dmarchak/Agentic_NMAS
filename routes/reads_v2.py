@@ -33,7 +33,9 @@ def ask_check(name):
     if refusal is not None:
         return refusal
     command, reason = request.args.get("command", ""), request.args.get("reason", "")
-    c = {"check": reads_page.check(command, 1, reason), "state": "idle", "host": name,
+    _ref, dev = found
+    c = {"check": reads_page.check(command, 1, reason, drivers=(dev.get("device_type", ""),)),
+         "state": "idle", "host": name,
          "reason": reads_page.reason_part([command], reason)}
     html = render_template("v2/_ask_check.html", c=c)
     # C582: the reason field follows the command (out of band), but never redraws itself

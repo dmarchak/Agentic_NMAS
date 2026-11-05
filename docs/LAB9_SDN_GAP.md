@@ -465,8 +465,17 @@ estimate: ~/Documents/nmas-reports/2026-11-04-b4-read-set-and-evaluation-design.
   agent-days, up to about 10 at the last stage's overrun. A threat to 2026-11-30 is reported
   as soon as it can be seen.
 
-1. **Identity on the laptop** (a standing rule: no localhost exemption). There are three
-   options:
+1. **Identity on the laptop** (a standing rule: no localhost exemption). **Decided by the
+   operator, 2026-11-05 (C2520):**
+   - **for the first hardware sitting, (c):** the gate-off settings on the laptop kit only, for
+     configure, confirm and approve. "Not enough" below holds for the lab's demos, not for the
+     sitting's onboarding and reads. It runs with Host, Origin and Fetch Metadata checks
+     (`modules/request_origin.py`), the exception and its enforced expiry recorded in History
+     (docs/LAB9_LAPTOP_RUN.md section 3);
+   - **(a) is built straight after the sitting, ahead of the B2 and B3 demos,** designed as the
+     release's built-in local accounts (docs/OFFLINE_OPERATION.md section 1, amended).
+
+   The options as they were put:
    - **(a) A single-user local provider:** loopback bind enforced, a passphrase set at first
      run, a session cookie, and `Actor-Verified: local`. It takes 1.5 days. It reverses the
      no-localhost rule for this install kind, so it is an exception that names its expiry: the
@@ -497,6 +506,18 @@ estimate: ~/Documents/nmas-reports/2026-11-04-b4-read-set-and-evaluation-design.
 6. **Item 1's HP path** if the switch is AOS-CX: the netmiko 4.3.0 to 4.6.0 upgrade, a lock
    change (not a new licence).
 7. **The remaining gap's lever** (section 3): more usage, the OVS path lean, or B1 behind B3.
+   **Decided by the operator, 2026-11-05:**
+   - B1 goes behind B3;
+   - A2 is OVS first: the NSoT-driven OpenFlow configuration works end to end on the servers'
+     Open vSwitch before the vendor templates, which then add to it;
+   - each row has a checkpoint date; a row whose Mercury path is not working by then is done by
+     hand for the grade, and its gap stays registered for after the labs;
+   - more usage waits until after these.
+
+   The same day, the operator's scope correction makes A1 (the hardware build and base setup)
+   the team's by hand; Mercury starts at ZTP and A2. Section 3's capacity counted one agent-day
+   per lane per calendar day, which the calibration does not bear out. Measured against it, no
+   gap remains (docs/LAB_READINESS.md, the order and the checkpoints; C2533).
 
 **Decided here by practice** (each recorded so it can be questioned):
 - **The controller stays Ryu.** The driver is built, captured and walked (17.2, 17.6), and

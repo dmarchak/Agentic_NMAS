@@ -277,9 +277,13 @@ def test(network: str, device: str, driver: str, actor: str) -> dict:
     "run"}`` or ``{"refused"}``."""
     from modules.nsot import reads
 
+    from modules import discovery
+
     if driver not in supported_drivers():
         raise Refused(f"{driver!r} is not a driver Mercury supports")
-    return reads.start(network, [device], [TEST_COMMAND], actor,
+    # A family whose version read is not `show version` (Comware's `display version`).
+    return reads.start(network, [device], [discovery.version_command(driver) or TEST_COMMAND],
+                       actor,
                        purpose=f"platform map test: {device} with {driver}",
                        drivers={device: driver})
 

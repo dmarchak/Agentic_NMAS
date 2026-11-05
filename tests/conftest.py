@@ -191,6 +191,11 @@ def _socketio_server_sends_to_real_clients():
             server.__dict__.pop(name, None)
 
 
+# No SSH session slot lock outlives the test that took it (the operator, 2026-11-05): a leak
+# fails the test that leaked, by name, never a later one (tests/ssh_slot_guard.py).
+from tests.ssh_slot_guard import _no_ssh_slot_lock_outlives_its_test  # noqa: E402,F401
+
+
 @pytest.fixture(autouse=True)
 def _no_operation_outlives_its_test():
     """After each test, no operation it started is still listed as running.

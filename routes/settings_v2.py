@@ -691,7 +691,9 @@ def platforms_test():
         got = P.test(network, device, driver, identity.request_actor())
     except P.Refused as exc:
         got = {"refused": str(exc)}
-    t = {"network": network, "device": device, "driver": driver, "run": got.get("run", "")}
+    from modules import discovery
+    t = {"network": network, "device": device, "driver": driver, "run": got.get("run", ""),
+         "command": discovery.version_command(driver) or P.TEST_COMMAND}
     if got.get("refused"):
         return _fragment("v2/_install_platforms_test.html", 409,
                          t=dict(t, state="refused", why=got["refused"]))
@@ -706,7 +708,9 @@ def platforms_test_status(network, run_id):
     record = reads.get(network, run_id) or {}
     device = (record.get("devices") or [""])[0]
     driver = (record.get("drivers") or {}).get(device, "")
-    t = {"network": network, "device": device, "driver": driver, "run": run_id}
+    from modules import platform_maps as P
+    t = {"network": network, "device": device, "driver": driver, "run": run_id,
+         "command": (record.get("commands") or [P.TEST_COMMAND])[0]}
     out = (record.get("results") or {}).get(device)
     if not record or record.get("state") == "running" or out is None:
         return _fragment("v2/_install_platforms_test.html", t=dict(t, state="running"))
