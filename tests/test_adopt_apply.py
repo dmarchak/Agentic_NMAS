@@ -1459,3 +1459,126 @@ class TestTheProfileNotSentAndThePersistStep:
         assert _rows(out, "persist") == [{"step": "persist", "ok": False, "detail": detail}]
         assert out["reason"] == reason
         assert [r["step"] for r in out["remaining"]] == ["golden", "netbox", "promote"]
+
+
+# ---------------------------------------------------------------------------
+# The result: its skeleton, a stop's rows, the confirm and the success tail (groups A0, A1, A12)
+# ---------------------------------------------------------------------------
+
+#: The keys every result of `_apply` carries on a stop at the confirm (the network's repository
+#: is known by then, so the run is recorded): no more, no fewer.
+STOPPED_KEYS = {"ok", "device", "list", "state", "steps", "remaining", "reason",
+                "tool_account", "supplied_account", "actor", "run_record"}
+
+
+def _did_not_run(steps, why):
+    return ([{"step": s, "ok": False, "detail": "did not run"} for s in steps],
+            [{"step": s, "why": why} for s in steps])
+
+
+def _moved_reason(confirmed, now):
+    return (f"the device or the plan moved since the preview (confirmed {confirmed}, now "
+            f"{now}): nothing was sent. Preview again and confirm what it shows")
+
+
+class TestTheResult:
+    """What an adoption's result says, stopped or done: which device, which network, who and
+    as which accounts, where its run was recorded; every step a stop did not run, with why; the
+    confirm's own refusals, word for word; and, adopted, what was done and what comes next."""
+
+    def test_kills_adopt__apply_mutmut_4_5_7_to_14_19_20_22_to_27_63_75_to_83_a_stop_says_who_what_and_where(
+            self, lab):
+        from modules.nsot import onboard
+        out = _apply(lab, fingerprint="not-the-previewed-one")
+        assert set(out) == STOPPED_KEYS, sorted(out)
+        assert {k: out[k] for k in ("ok", "device", "list", "state", "tool_account",
+                                    "supplied_account", "actor", "run_record")} == {
+            "ok": False, "device": HOST, "list": LIST, "state": "stopped",
+            "tool_account": "nmas", "supplied_account": "admin", "actor": "op@example.com",
+            "run_record": {"ok": True, "error": ""}}
+        row, = onboard.read_runs(_repo())["rows"]
+        assert (row["kind"], row["list"], row["device"], row["ok"]) == ("adopt", LIST, HOST, False)
+
+    def test_kills_adopt__apply_mutmut_108_109_113_to_116_122_123_a_stop_names_every_step_it_did_not_run(
+            self, lab):
+        out = _apply(lab, fingerprint="not-the-previewed-one")
+        assert (out["steps"], out["remaining"]) == _did_not_run(A.APPLY_STEPS, out["reason"])
+        out = _apply(lab, persist=lambda *a: {"ok": False, "detail": "no startup"})
+        rest = ("golden", "netbox", "promote")
+        assert [s["ok"] for s in out["steps"][:5]] == [True, True, True, True, False], out
+        assert (out["steps"][5:], out["remaining"]) == _did_not_run(rest, out["reason"])
+
+    def test_kills_adopt__apply_mutmut_40_each_step_is_noted_on_the_hold(self, lab, monkeypatch):
+        """A stepper drawing the adoption reads the hold's trail: each step is noted by its
+        name as it is reached, the tool account's own steps before the account's (the
+        promotion reads the trail before its own step)."""
+        from modules.nsot import device_ops, onboard
+        real, seen = onboard.promote_device, []
+
+        def promote_device(*a, **k):
+            seen.append([s for s, _at in device_ops.holder(LIST, HOST)["progress"]["trail"]])
+            return real(*a, **k)
+        monkeypatch.setattr(onboard, "promote_device", promote_device)
+        _adopt_fully(lab)
+        assert seen == [["started", "confirm", *TOOL_STEPS, "account", "owner_account",
+                         "profile", "persist", "golden", "netbox"]]
+
+    def test_kills_adopt__apply_mutmut_131_136_150_the_confirm_reads_as_the_person_gave(self, lab):
+        """The confirm's plan is made with what the person gave: the device it reads carries
+        their enable secret, and NetBox's dry run is asked as them."""
+        from modules.device import decrypt_field
+        reads, actors = [], []
+
+        def read(device, tool):
+            reads.append(device)
+            return lab["router"].reads(device, tool)
+
+        def netbox_preview(*a, **k):
+            actors.append(k.get("actor"))
+            return lab["collab"]["netbox_preview"](*a, **k)
+        fingerprint = _plan(lab, supplied_enable=OWNER_ENABLE, read=read,
+                            netbox_preview=netbox_preview)["fingerprint"]
+        out = _apply(lab, fingerprint=fingerprint, supplied_enable=OWNER_ENABLE, read=read,
+                     netbox_preview=netbox_preview)
+        assert out["ok"], out
+        # Compared, never printed: the preview's read and the confirm's.
+        assert [decrypt_field(d["secret"]) == OWNER_ENABLE for d in reads] == [True, True]
+        assert actors == ["preview", "op@example.com"]
+
+    def test_kills_adopt__apply_mutmut_162_to_164_167_to_173_a_blocked_confirm_says_every_reason(
+            self, lab):
+        lab["router"].load(_config(admin=CLEAR_ADMIN).replace(f"hostname {HOST}\n",
+                                                              f"hostname {HOST}-old\n"))
+        blocking = _plan(lab)["blocking"]
+        assert len(blocking) == 2 and blocking[0] == (
+            f"the device calls itself '{HOST}-old', not '{HOST}': adopt it under the name it "
+            "has") and "'admin' is stored as `password 0`" in blocking[1], blocking
+        out = _apply(lab, fingerprint="x")
+        assert out["reason"] == "refused, and nothing was sent: " + "; ".join(blocking)
+        assert (out["steps"], out["remaining"]) == _did_not_run(A.APPLY_STEPS, out["reason"])
+        assert lab["router"].sent == []
+
+    @pytest.mark.parametrize("confirmed", ["", "not-the-previewed-one"], ids=["none", "another"])
+    def test_kills_adopt__apply_mutmut_184_185_188_to_190_a_moved_device_names_both_fingerprints(
+            self, lab, confirmed):
+        now = _plan(lab)["fingerprint"]
+        out = _apply(lab, fingerprint=confirmed)
+        assert out["reason"] == _moved_reason(confirmed or "(none)", now)
+        assert lab["router"].sent == []
+
+    def test_kills_adopt__apply_mutmut_200_202_203_the_confirm_step_names_what_was_previewed(
+            self, lab):
+        fingerprint = _plan(lab)["fingerprint"]
+        out = _apply(lab, fingerprint=fingerprint)
+        assert out["steps"][0] == {"step": "confirm", "ok": True,
+                                   "detail": f"the device is as previewed ({fingerprint})"}
+
+    def test_kills_adopt__apply_mutmut_1210_to_1212_1222_to_1229_an_adoption_says_what_it_did_and_what_is_next(
+            self, lab):
+        out = _adopt_fully(lab)
+        assert out["reason"] == (f"{HOST} adopted: the tool logs in as 'nmas', and 'admin' was "
+                                 "not changed and is used by nothing")
+        assert out["next"] == {"label": (f"Export the break-glass record: it holds no entry "
+                                         f"for {HOST} until you do"),
+                               "open": "breakglass_export", "list": LIST}
+        assert out["then"] == "Seed its intent from the golden, on its Device page"
