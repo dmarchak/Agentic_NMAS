@@ -1,0 +1,68 @@
+# Arista EOS: OpenFlow mode, the controller, interface binding and enabling. Configuration-mode
+# lines, in order. DRAFT: no driver sends it yet (arista_eos is a discovery driver, which refuses
+# every write), and no line may be sent until this network has confirmed the template.
+# EOS's OpenFlow is 1.0 only and TCP only (the 4.20.1F manual, 45.1 and 45.2.3); the management
+# interface is left unbound, so it keeps normal forwarding.
+name: arista_eos
+family: Arista EOS
+drivers: [arista_eos]
+form: cli
+versions: ["1.0"]
+transports: [tcp]
+ipv6_controller: false
+instance_shape: none
+lines:
+  - text: "openflow"
+    cite: [eos-openflow-mode]
+  - text: "   controller tcp:{controller.address}:{controller.port}"
+    cite: [eos-controller, eos-limits]
+  - text: "   bind mode interface"
+    cite: [eos-bind-mode]
+  - text: "   bind interface {port}"
+    each: ports
+    cite: [eos-bind-interface]
+  - text: "   no shutdown"
+    cite: [eos-enable]
+citations:
+  eos-openflow-mode:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "Chapter 45 OpenFlow, the command openflow (config-OpenFlow mode)"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true
+  eos-controller:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "Chapter 45, controller (OpenFlow): controller tcp:ip_address:tcp_port"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true
+  eos-limits:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "45.1 (OpenFlow 1.0) and 45.2.3 Limitations (plain TCP, no TLS)"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true
+  eos-bind-mode:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "Chapter 45, bind mode (OpenFlow): interface, monitor or vlan"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true
+  eos-bind-interface:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "Chapter 45, bind interface (OpenFlow)"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true
+  eos-enable:
+    document: "Arista EOS 4.20.1F User Guide"
+    section: "45.3.2 Enabling Basic OpenFlow; shutdown (OpenFlow)"
+    release: "EOS 4.20.1F"
+    url: "https://www.arista.com/assets/data/docs/Manuals/EOS-4.20.1F-Manual.pdf"
+    read: "2026-11-05"
+    verified: true

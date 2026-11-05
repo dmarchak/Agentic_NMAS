@@ -19,6 +19,7 @@ A platform with no driver gets a **discovery driver**, which is netmiko's own ty
 | `hp_procurve`, `aruba_osswitch`, `aruba_procurve` | `HPProcurveSSH` | HP ProCurve / ArubaOS-Switch | `enable`, then `terminal width 511` and `no page` |
 | `aruba_os` | `ArubaSSH` (netmiko: "For use with Aruba OS Controllers") | Aruba; given AOS-CX's list | `enable`, then `no paging` |
 | `hp_comware` | `HPComwareSSH` | HP Comware (Comware 7: an HPE 5130, 5900 or the like) | `screen-length disable`; `enable` is never sent (below) |
+| `ovs_linux` | `OvsLinuxSSH` (`LinuxSSH` with nothing added) | Open vSwitch on a Linux server | none needed; `enable` (`sudo -s`, a root shell) is never sent. Its one write is the OpenFlow configuration's transaction, while held (docs/LAB9_OPENFLOW.md) |
 
 No command needs an answer to a pager.
 
@@ -185,6 +186,21 @@ names a `display` command for its state, so `display autodeploy` is not on the l
 
 The H3C reference is for H3C-branded Comware 7. The HPE-branded 5130's reference was not
 found, so each command is to be checked on the switch.
+
+### 3.5 Open vSwitch (`ovs_linux`)
+
+Each command runs under `sudo -n`, which never prompts. The server's sudoers grants the login
+`ovs-vsctl` and `ovs-ofctl` with no password, or sudo refuses in its own words and nothing runs.
+`<bridge>` is one Linux interface name of at most 15 characters.
+
+| Command | Source |
+|---|---|
+| `ovs-vsctl --version` | (inferred: Open vSwitch's common option, not quoted from ovs-vsctl(8)) |
+| `sudo -n ovs-vsctl show`, `list-br` | confirmed: ovs-vsctl(8), Open vSwitch 4.0.0 (read 2026-11-05) |
+| `sudo -n ovs-vsctl --columns=target,is_connected list controller` | confirmed: the same page (`list` with `--columns`) |
+| `sudo -n ovs-vsctl get-controller <bridge>`, `get-fail-mode <bridge>`, `list-ports <bridge>` | confirmed: the same page |
+| `sudo -n ovs-vsctl get bridge <bridge> protocols`, `get bridge <bridge> datapath_id`, `--if-exists get bridge <bridge> other-config:datapath-id` | confirmed: the same page (`get`), and the columns from ovs-vswitchd.conf.db(5); `--if-exists` with `get` (inferred) |
+| `sudo -n ovs-ofctl -O OpenFlow13 show <bridge>` | (inferred; ovs-ofctl(8) was not read) |
 
 ## 4. What to read in each answer to pick the driver
 

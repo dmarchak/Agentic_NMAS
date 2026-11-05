@@ -25,8 +25,14 @@ off before the first command (netmiko 4.3.0: `AristaSSH` sends `terminal length 
 
 **Comware's `enable()` is configuration mode.** netmiko 4.3.0's `HPComwareBase.enable` is
 `config_mode("system-view")` ("enable mode on Comware is system-view"), so on a driver marked
-``enable_is_config`` the session's `enable` sends nothing: Comware's `display` commands run in
-user view, and system-view is never entered. Every `config_mode` call stays refused.
+``no_enable`` the session's `enable` sends nothing: Comware's `display` commands run in
+user view, and system-view is never entered. Every `config_mode` call stays refused. Linux's
+`enable()` is `sudo -s`, a root shell, so an Open vSwitch server's (`ovs_linux`) sends nothing
+either: its reads and its one write each run under `sudo -n` (`modules/sdn/ovs.py`).
+
+**Open vSwitch (`ovs_linux`)** is read by `modules/sdn/ovs.py`'s shapes, and its session carries
+ONE write, while the server is held: the OpenFlow configuration's `ovs-vsctl` transaction
+(``held_write``; `modules/sdn/ovs_config.py`). Nothing else is ever sent to it.
 
 **`display` is a read only on a Comware session (C2530).** It is on no other list, and the
 read-only allowlist (`readonly_commands`) has no `display` verb. A command that is on a capture
@@ -71,8 +77,14 @@ _COMWARE = ("display version", "display device manuinfo", "display current-confi
             "display lldp neighbor-information list", "display openflow summary",
             "display openflow instance")
 
+#: Open vSwitch on a Linux server (`ovs_linux`): the literal reads; the bridge reads and the
+#: one held write are `modules/sdn/ovs.py`'s shapes.
+_OVS = ("ovs-vsctl --version", "sudo -n ovs-vsctl show", "sudo -n ovs-vsctl list-br",
+        "sudo -n ovs-vsctl --columns=target,is_connected list controller")
+
 #: driver -> the family in words, its capture list, the command its platform-map Test asks,
-#: and whether netmiko's `enable()` for it is configuration mode (never sent).
+#: why netmiko's `enable()` for it is never sent (``no_enable``), and the one write its
+#: session may carry while the device is held (``held_write``).
 DRIVERS = {
     "arista_eos":     {"family": "Arista EOS", "commands": _ARISTA},
     "hp_procurve":    {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
@@ -81,7 +93,12 @@ DRIVERS = {
     "aruba_os":       {"family": "Aruba (netmiko's ArubaOS driver; AOS-CX's list)",
                        "commands": _AOSCX},
     "hp_comware":     {"family": "HP Comware", "commands": _COMWARE,
-                       "version": "display version", "enable_is_config": True},
+                       "version": "display version",
+                       "no_enable": "netmiko's Comware enable() is system-view, config mode"},
+    "ovs_linux":      {"family": "Open vSwitch", "commands": _OVS,
+                       "version": "ovs-vsctl --version",
+                       "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
+                       "held_write": "the OpenFlow configuration's ovs-vsctl transaction"},
 }
 
 #: OpenFlow instance names on ProCurve (`show openflow instance <name>`): one token of its shape.
@@ -116,6 +133,12 @@ def command_refusal(device_type, command) -> str:
         return ""
     want = _normal(command)
     allowed = DRIVERS[driver]["commands"]
+    if driver == "ovs_linux":
+        # Case matters in a bridge's name: OVS's own shapes, on the command as given.
+        from modules.sdn import ovs
+        why = ovs.read_refusal(command)
+        return why and (f"{why} This is an {DRIVERS[driver]['family']} ({driver}) session, "
+                        "read only by these shapes. Nothing was sent.")
     if want in allowed:
         return ""
     words = want.split()
@@ -150,14 +173,26 @@ def foreign_refusal(device_type, command) -> str:
     driver = str(device_type or "").strip().lower()
     if driver in DRIVERS or not isinstance(command, str):
         return ""
-    on = listed_on(command)
+    from modules.sdn import ovs
+    on = listed_on(command) or (("ovs_linux",) if not ovs.write_refusal(command) else ())
     if not on or not readonly_refusal(command):
         return ""
     families = sorted({DRIVERS[d]["family"] for d in on})
-    return (f"REFUSED: {command[:80]!r} is a read only on a {' or '.join(families)} discovery "
+    return (f"REFUSED: {command[:80]!r} is sent only on a {' or '.join(families)} discovery "
             f"session ({', '.join(on)}), and this session's driver is "
             f"{driver or '(none)'}, whose reads are Mercury's read-only allowlist, which "
             "refuses it. Nothing was sent.")
+
+
+def held_write_refusal(device_type, command) -> str:
+    """``""`` when *command* is *device_type*'s one held write (``held_write``: the OVS
+    OpenFlow configuration's transaction, `modules/sdn/ovs.py`), else why. The session sends
+    it only while the device is held (`connection._guard_writes`)."""
+    driver = str(device_type or "").strip().lower()
+    if not DRIVERS.get(driver, {}).get("held_write"):
+        return write_refusal(device_type, "a write") or "REFUSED: not a discovery driver."
+    from modules.sdn import ovs
+    return ovs.write_refusal(command)
 
 
 def version_command(device_type) -> str:

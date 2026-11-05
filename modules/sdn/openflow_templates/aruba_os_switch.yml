@@ -1,0 +1,72 @@
+# HPE ArubaOS-Switch (ProVision; ProCurve): a controller on the management VLAN, one instance
+# whose member VLAN is the OpenFlow ports' VLAN, OpenFlow 1.3 only, the fail mode, then enable.
+# Global configuration lines. DRAFT: no driver sends it yet (hp_procurve is a discovery driver,
+# which refuses every write), and no line may be sent until this network has confirmed it.
+# The guide: the management VLAN cannot be a member VLAN, and controller traffic must transit
+# on a VLAN OpenFlow does not manage; the default version is 1.0, so 1.3 is set.
+name: aruba_os_switch
+family: HP ProCurve / ArubaOS-Switch
+drivers: [hp_procurve, aruba_osswitch, aruba_procurve]
+form: cli
+versions: ["1.0", "1.3"]
+transports: [tcp]
+ipv6_controller: false
+instance_shape: name
+lines:
+  - text: "openflow controller-id {controller.id} ip {controller.address} port {controller.port} controller-interface vlan {mgmt.vlan}"
+    cite: [aos-s-controller]
+  - text: "openflow instance {openflow.instance} member vlan {openflow.vlan}"
+    cite: [aos-s-member]
+  - text: "openflow instance {openflow.instance} controller-id {controller.id}"
+    cite: [aos-s-controller]
+  - text: "openflow instance {openflow.instance} version {aos_s.version}"
+    cite: [aos-s-version]
+  - text: "openflow instance {openflow.instance} connection-interruption-mode {aos_s.fail_mode}"
+    cite: [aos-s-fail-mode]
+  - text: "openflow instance {openflow.instance} enable"
+    cite: [aos-s-instance]
+  - text: "openflow enable"
+    cite: [aos-s-enable]
+citations:
+  aos-s-controller:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "Configuring a controller; openflow controller-id ... controller-interface; openflow instance <name> controller-id"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true
+  aos-s-member:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "openflow instance <instance-name> member vlan <VLAN-ID-LIST>; the management VLAN cannot be a member"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true
+  aos-s-version:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "Setting the protocol version: openflow instance <instance-name> version {1.0|1.3[only]}"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true
+  aos-s-fail-mode:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "openflow instance <instance-name> connection-interruption-mode {fail-secure|fail-standalone}"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true
+  aos-s-instance:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "Configuring instances: openflow instance {instance-name|aggregate} [enable|disable]"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true
+  aos-s-enable:
+    document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
+    section: "Enabling or disabling OpenFlow: openflow [enable|disable]"
+    release: "ArubaOS-Switch 16.03"
+    url: "https://support.hpe.com/hpesc/public/api/document/emr_na-c05365339"
+    read: "2026-11-05"
+    verified: true

@@ -1849,7 +1849,13 @@ def sdn_operations(ctx):
         what = ("Response" if response.get("kind") == "response" else
                 "Meter expiry" if response.get("kind") == "expiry" else
                 # A lost response put back (C2018); its record names the operation it re-applies.
-                "Re-apply" if response.get("kind") == "reapply" else "Flow change")
+                "Re-apply" if response.get("kind") == "reapply" else
+                # An Open vSwitch server's OpenFlow configuration (modules/sdn/ovs_config.py).
+                "OpenFlow configuration" if response.get("kind") == "openflow_config" else
+                "Flow change")
+        if response.get("kind") == "openflow_config":
+            r = dict(r, dpid_hex=f"{response.get('device')} "
+                                 f"(datapath {r.get('dpid_hex') or 'not read'})")
         checks = "; ".join(f"{c.get('state')}: {c.get('words')}"
                            for c in (r.get("verify") or {}).get("checks") or [])
         who = r.get("actor", "")

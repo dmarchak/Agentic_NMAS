@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Every scheduled job that failed, and whether the register holds a row for it (the operator,
+2026-11-05: "a failed scheduled job (mutation, coverage, any nightly) raises a register row
+automatically on its first failure and appears under 'Needs you' in the next report"; C2552:
+ten days of a red weekly mutation run went unflagged).
+
+    nmas-scheduled-failures [--write] [--no-host]
+
+What it reads:
+- each scheduled GitHub workflow's newest SCHEDULED run (`SCHEDULED_WORKFLOWS`), through
+  scripts/nmas-ci-log's API helper and its token file (the token is never printed);
+- unless --no-host, each scheduled unit on the NMAS host (`HOST_UNITS`), its last result,
+  through scripts/nmas-host (read-only: `systemctl show`).
+
+A failure counts as raised when docs/OPEN_FINDINGS.md has a row naming its key: `<workflow>
+#<run>` for a workflow run, or `<unit> failed <date>` for a host unit. Each unraised failure is
+printed as a ready one-line row (bucket UNKNOWN, its one measurement: read the failed step);
+--write inserts the rows at the top of the open findings, numbered after the highest C-number.
+The report's "Needs you" lists every failure printed here. Exit: 0 none failing, 1 failing (all
+raised), 3 a failure not yet raised (without --write), 2 the sources could not be asked.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# The interpreter flask-app runs, before any other import (Phase 4 section 8.1); on the laptop
+# that is the one that started it.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+import argparse  # noqa: E402
+import datetime  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REGISTER = os.path.join(ROOT, "docs", "OPEN_FINDINGS.md")
+#: The scheduled workflows (their `on: schedule`), by file.
+SCHEDULED_WORKFLOWS = ("mutation-nightly.yml", "coverage-nightly.yml")
+#: The NMAS host's scheduled units (deploy/systemd/*.timer's services).
+HOST_UNITS = ("nmas-heartbeat-check", "nmas-netbox-backup", "nmas-netbox-restore-test",
+              "nmas-startup-check", "nmas-telemetry-check")
+
+
+def _ci_log():
+    path = os.path.join(ROOT, "scripts", "nmas-ci-log")
+    loader = importlib.machinery.SourceFileLoader("nmas_ci_log", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def workflow_failures(get_runs) -> list:
+    """``[{"key", "what", "when", "url"}]``: each scheduled workflow whose newest scheduled run
+    failed. *get_runs(workflow)* returns the API's `workflow_runs` list."""
+    out = []
+    for wf in SCHEDULED_WORKFLOWS:
+        runs = [r for r in get_runs(wf) if r.get("event") == "schedule"
+                and r.get("status") == "completed"]
+        if not runs:
+            continue
+        newest = max(runs, key=lambda r: r.get("run_number", 0))
+        if newest.get("conclusion") not in ("success", "skipped"):
+            name = wf.rsplit(".", 1)[0]
+            out.append({"key": f"{name} #{newest['run_number']}",
+                        "what": f"the scheduled workflow {name}'s newest scheduled run, "
+                                f"#{newest['run_number']}, ended {newest.get('conclusion')}",
+                        "when": str(newest.get("created_at", ""))[:10],
+                        "url": newest.get("html_url", "")})
+    return out
+
+
+def host_failures(show) -> list:
+    """Each host unit whose last run's result is not success. *show(unit)* returns
+    ``systemctl show <unit> -p Result -p ExecMainExitTimestamp`` text."""
+    out = []
+    for unit in HOST_UNITS:
+        text = show(unit) or ""
+        result = re.search(r"^Result=(\S+)", text, re.MULTILINE)
+        when = re.search(r"^ExecMainExitTimestamp=\S+ (\d{4}-\d\d-\d\d)", text, re.MULTILINE)
+        if result and result.group(1) != "success":
+            day = when.group(1) if when else "unknown date"
+            out.append({"key": f"{unit} failed {day}",
+                        "what": f"the host's scheduled unit {unit} last ended "
+                                f"{result.group(1)}", "when": day, "url": ""})
+    return out
+
+
+def unraised(failures: list, register_text: str) -> list:
+    return [f for f in failures if f["key"] not in register_text]
+
+
+def row(f: dict, number: int, today: str) -> str:
+    return (f"| C{number} | **A scheduled job failed: {f['what']} ({f['key']}), raised by "
+            f"`scripts/nmas-scheduled-failures` on its first failure** ({today}; "
+            f"{f['url'] or 'the host: systemctl show ' + f['key'].split()[0]}; the register "
+            "searched first: C2552, C2551). *[triage " + today + ": area tests; Phase 8: "
+            "after; effort S]* | **[UNKNOWN: the one measurement, the failed run's or unit's "
+            "own failing step read (its log); in the next report's Needs you; sorted "
+            f"{today}]** | the scheduled job |")
+
+
+def insert_rows(text: str, rows: list) -> str:
+    """The rows put after the highest-numbered row above the Closed table, where the register
+    puts its newest findings."""
+    lines = text.split("\n")
+    closed = next((i for i, ln in enumerate(lines) if ln.startswith("## Closed")), len(lines))
+    best, at = -1, None
+    for i, line in enumerate(lines[:closed]):
+        m = re.match(r"^\| C(\d+) ", line)
+        if m and int(m.group(1)) > best:
+            best, at = int(m.group(1)), i
+    if at is None:
+        raise ValueError("no open finding row found in the register")
+    return "\n".join(lines[:at + 1] + rows + lines[at + 1:])
+
+
+def highest(text: str) -> int:
+    return max((int(n) for n in re.findall(r"^\| C(\d+) ", text, re.MULTILINE)), default=0)
+
+
+def main(argv=None, get_runs=None, show=None, today=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--write", action="store_true")
+    ap.add_argument("--no-host", action="store_true")
+    args = ap.parse_args(argv)
+    today = today or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    try:
+        if get_runs is None:
+            cl = _ci_log()
+            token = cl.read_token()
+
+            def get_runs(wf):
+                got = cl._json(cl.get(f"/repos/{cl.REPO}/actions/workflows/{wf}/runs"
+                                      "?per_page=20", token))
+                return got.get("workflow_runs", [])
+        failures = workflow_failures(get_runs)
+        if not args.no_host:
+            if show is None:
+                def show(unit):
+                    return subprocess.run(
+                        [os.path.join(ROOT, "scripts", "nmas-host"), "nmas", "--", "systemctl",
+                         "show", f"{unit}.service", "-p", "Result", "-p",
+                         "ExecMainExitTimestamp"], capture_output=True, text=True,
+                        timeout=60).stdout
+            failures += host_failures(show)
+    except Exception as exc:                            # noqa: BLE001 (said, exit 2)
+        print(f"nmas-scheduled-failures: the sources could not be asked: "
+              f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}",
+              file=sys.stderr)
+        return 2
+    text = open(REGISTER, encoding="utf-8").read()
+    for f in failures:
+        print(f"FAILED {f['key']}: {f['what']}")
+    missing = unraised(failures, text)
+    if not failures:
+        print("scheduled jobs: none failing")
+        return 0
+    if not missing:
+        print(f"scheduled jobs: {len(failures)} failing, each raised in the register")
+        return 1
+    n = highest(text)
+    rows = [row(f, n + i + 1, today) for i, f in enumerate(missing)]
+    if args.write:
+        with open(REGISTER, "w", encoding="utf-8") as fh:
+            fh.write(insert_rows(text, rows))
+        print(f"scheduled jobs: {len(missing)} not yet raised, now raised as "
+              + ", ".join(f"C{n + i + 1}" for i in range(len(missing))))
+        return 1
+    print(f"scheduled jobs: {len(missing)} not yet raised (run with --write):")
+    for r in rows:
+        print(r)
+    return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

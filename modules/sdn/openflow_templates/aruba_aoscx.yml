@@ -1,0 +1,16 @@
+# HPE Aruba AOS-CX: whether AOS-CX supports OpenFlow at all is UNKNOWN. No AOS-CX document read
+# on 2026-11-05 says it does or does not (the AOS-CX references returned 403; Aruba's campus
+# switching brief names OpenFlow for the 2930F, 2930M and 5400R, all ArubaOS-Switch, and not for
+# the 8320 or 8400). So this template has no lines, and rendering it refuses, naming why.
+name: aruba_aoscx
+family: HP Aruba AOS-CX
+drivers: [aruba_os]
+form: cli
+support: unknown
+support_why: "no AOS-CX document read on 2026-11-05 states whether AOS-CX supports OpenFlow (the AOS-CX references returned 403)"
+versions: []
+transports: []
+ipv6_controller: false
+instance_shape: none
+lines: []
+citations: {}

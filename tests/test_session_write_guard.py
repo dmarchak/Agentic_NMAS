@@ -255,6 +255,11 @@ NOT_A_DEVICE = {
     # before the send; tests/test_endpoints.py, its control).
     "modules/readers/endpoints.py:read_device": "sends only the platform pack's reads, each "
                                                 "refused unless the read-only allowlist takes it",
+    # The OpenFlow configuration's plan reads the bridge before (`ovs_config.read_bridge`): an
+    # ovs_linux session refuses any command but modules/sdn/ovs.py's read shapes, unheld
+    # (tests/test_openflow_config.py, TestTheOvsSession, its controls).
+    "modules/sdn/ovs_config.py:plan": "sends only the OVS reads, each refused at the ovs_linux "
+                                      "session unless it is one of modules/sdn/ovs.py's shapes",
 }
 
 

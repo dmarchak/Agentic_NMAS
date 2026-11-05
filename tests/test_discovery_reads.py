@@ -24,7 +24,7 @@ from modules.nsot import device_ops as D
 
 LIST = "Lab"
 DRIVERS = ("arista_eos", "hp_procurve", "aruba_osswitch", "aruba_procurve", "aruba_os",
-           "hp_comware")
+           "hp_comware", "ovs_linux")
 ADDRESSES = ("192.0.2.31", "2001:db8::31")
 
 
@@ -113,7 +113,8 @@ class TestEachTypeOpensWithItsDriver:
     @pytest.mark.parametrize("driver,cls", [
         ("arista_eos", "AristaSSH"), ("hp_procurve", "HPProcurveSSH"),
         ("aruba_osswitch", "HPProcurveSSH"), ("aruba_procurve", "HPProcurveSSH"),
-        ("aruba_os", "ArubaSSH"), ("hp_comware", "HPComwareSSH")])
+        ("aruba_os", "ArubaSSH"), ("hp_comware", "HPComwareSSH"),
+        ("ovs_linux", "OvsLinuxSSH")])
     def test_the_locked_netmiko_has_each_driver(self, driver, cls):
         from netmiko.ssh_dispatcher import CLASS_MAPPER
         assert CLASS_MAPPER[driver].__name__ == cls

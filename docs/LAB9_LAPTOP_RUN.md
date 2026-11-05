@@ -120,9 +120,15 @@ Replace…). Mercury keeps it encrypted, and nobody else reads it.
 ## 5. Discovery for the unknown switches
 
 The switch models are unknown until the sitting. The read-only onboarding path and the per-vendor
-capture lists (Arista EOS through `arista_eos`; HP through `aruba_os` and `hp_procurve`, and
-AOS-CX if the HP is one) are in docs/LAB9_DISCOVERY.md. The output of each capture is the input
+capture lists are in docs/LAB9_DISCOVERY.md:
+- Arista EOS through `arista_eos`;
+- HP through `hp_procurve`, `hp_comware` or `aruba_os` (AOS-CX, if the HP is one);
+- the Open vSwitch servers through `ovs_linux`. The output of each capture is the input
 to the driver build (LAB9_SDN_GAP.md section 2, item 1). Nothing is written to a switch.
+
+**The OpenFlow configuration** that the captures confirm is in docs/LAB9_OPENFLOW.md. It covers
+the values read from NetBox, the per-vendor templates with their citations, the draft and
+confirmed rule, and Open vSwitch's operation end to end.
 
 **At the sitting:**
 - **What it can do:**
@@ -136,7 +142,6 @@ to the driver build (LAB9_SDN_GAP.md section 2, item 1). Nothing is written to a
   - **create the switches' NetBox records in Mercury:** Add device… and Adopt a device… need a
     dialect, so the records are made in NetBox's own UI for now (C2527);
   - import a switch whose only management address is IPv6 (C1245);
-  - read a Comware switch (`display` is not allowlisted, C2530);
   - rely on `aruba_os` paging on AOS-CX (C2529);
   - deploy, verify, take a golden or check drift on these switches: that waits for the driver
     build.

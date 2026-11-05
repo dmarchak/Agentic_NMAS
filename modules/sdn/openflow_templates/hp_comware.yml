@@ -1,0 +1,62 @@
+# HPE/H3C Comware 7 (a 5130, 5900 or the like): one numbered instance classifying the OpenFlow
+# ports' VLAN, its controller (IPv4 or IPv6), its fail-open mode, then active. System-view lines.
+# DRAFT: no driver sends it yet (hp_comware is a discovery driver, which refuses every write),
+# and no line may be sent until this network has confirmed it. The sources are H3C's Comware 7
+# references: no HPE-branded page could be read (2026-11-05). Comware has no version command
+# (the configuration guide cites OpenFlow 1.3.3), and an active instance is deactivated
+# (`undo active instance`) before its VLAN changes (seen only in a search result: unverified).
+name: hp_comware
+family: HP Comware
+drivers: [hp_comware]
+form: cli
+versions: ["1.3"]
+transports: [tcp]
+ipv6_controller: true
+instance_shape: number
+lines:
+  - text: "openflow instance {openflow.instance}"
+    cite: [cw-instance]
+  - text: " classification vlan {openflow.vlan}"
+    cite: [cw-classification]
+  - text: " controller {controller.id} address {comware.family} {controller.address} port {controller.port}"
+    cite: [cw-controller]
+  - text: " fail-open mode {openflow.fail_mode}"
+    cite: [cw-fail-open]
+  - text: " active instance"
+    cite: [cw-active]
+citations:
+  cw-instance:
+    document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"
+    section: "openflow instance instance-id"
+    release: "R612x-6W103"
+    url: "https://www.h3c.com/en/d_201909/1227262_294551_0.htm"
+    read: "2026-11-05"
+    verified: true
+  cw-classification:
+    document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"
+    section: "classification vlan vlan-id [ mask vlan-mask ] [ loosen ]"
+    release: "R612x-6W103"
+    url: "https://www.h3c.com/en/d_201909/1227262_294551_0.htm"
+    read: "2026-11-05"
+    verified: true
+  cw-controller:
+    document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"
+    section: "controller controller-id address { ip ipv4-address | ipv6 ipv6-address } [ port port-number ] [ ssl ssl-policy-name ]"
+    release: "R612x-6W103"
+    url: "https://www.h3c.com/en/d_201909/1227262_294551_0.htm"
+    read: "2026-11-05"
+    verified: true
+  cw-fail-open:
+    document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"
+    section: "fail-open mode { secure | smart | standalone } (the options depend on the product and release)"
+    release: "R612x-6W103"
+    url: "https://www.h3c.com/en/d_201909/1227262_294551_0.htm"
+    read: "2026-11-05"
+    verified: true
+  cw-active:
+    document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"
+    section: "active instance"
+    release: "R612x-6W103"
+    url: "https://www.h3c.com/en/d_201909/1227262_294551_0.htm"
+    read: "2026-11-05"
+    verified: true

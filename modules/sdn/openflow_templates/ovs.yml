@@ -1,0 +1,85 @@
+# Open vSwitch on a Linux server: the bridge, its OpenFlow version, its fail mode, its controller
+# and its OpenFlow ports, as ONE ovs-vsctl invocation (each line one command, joined by " -- "),
+# which ovs-vsctl runs as one atomic OVSDB transaction. OVSDB keeps it: nothing to save.
+# Rendered by modules/sdn/openflow_templates.py from NetBox (modules/sdn/openflow_values.py);
+# sent only by modules/sdn/ovs_config.py, and only once this network has confirmed it.
+name: ovs
+family: Open vSwitch
+drivers: [ovs_linux]
+form: ovs-vsctl
+versions: ["1.0", "1.3"]
+transports: [tcp]
+ipv6_controller: true
+instance_shape: name
+lines:
+  - text: "--may-exist add-br {openflow.instance}"
+    cite: [vsctl-add-br]
+  - text: "set bridge {openflow.instance} protocols={openflow.ovs_protocol}"
+    cite: [vsctl-set, db-protocols]
+  - text: "set bridge {openflow.instance} other-config:datapath-id={openflow.datapath_id}"
+    when: openflow.datapath_id
+    cite: [vsctl-set, db-datapath-id]
+  - text: "set-fail-mode {openflow.instance} {openflow.fail_mode}"
+    cite: [vsctl-fail-mode]
+  - text: "set-controller {openflow.instance} tcp:{controller.host}:{controller.port}"
+    cite: [vsctl-set-controller, vsctl-target]
+  - text: "--may-exist add-port {openflow.instance} {port}"
+    each: ports
+    cite: [vsctl-add-port]
+citations:
+  vsctl-add-br:
+    document: "ovs-vsctl(8)"
+    section: "the command [--may-exist] add-br bridge"
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  vsctl-add-port:
+    document: "ovs-vsctl(8)"
+    section: "the command [--may-exist] add-port bridge port"
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  vsctl-set:
+    document: "ovs-vsctl(8)"
+    section: "the database command set table record column[:key]=value"
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  vsctl-fail-mode:
+    document: "ovs-vsctl(8)"
+    section: "the command set-fail-mode bridge standalone|secure"
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  vsctl-set-controller:
+    document: "ovs-vsctl(8)"
+    section: "the command set-controller bridge target..."
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  vsctl-target:
+    document: "ovs-vsctl(8)"
+    section: "the controller target tcp:host[:port] (\"Wrap IPv6 addresses in square brackets\"; default port 6653)"
+    release: "Open vSwitch 4.0.0"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt"
+    read: "2026-11-05"
+    verified: true
+  db-protocols:
+    document: "ovs-vswitchd.conf.db(5)"
+    section: "Bridge table, protocols: OpenFlow10 to OpenFlow15"
+    release: "Open vSwitch manual (dist-docs, current)"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.txt"
+    read: "2026-11-05"
+    verified: true
+  db-datapath-id:
+    document: "ovs-vswitchd.conf.db(5)"
+    section: "Bridge table, other_config:datapath-id (exactly 16 hex digits, not all zero)"
+    release: "Open vSwitch manual (dist-docs, current)"
+    url: "https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.txt"
+    read: "2026-11-05"
+    verified: true

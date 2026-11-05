@@ -688,10 +688,15 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
             def guarded(*args, **kwargs):
                 cmd = args[0] if args else kwargs.get("command_string", "")
                 why = discovery.command_refusal(device_type, cmd)
+                if why and held_write and device_ops.may_write(ip) \
+                        and not discovery.held_write_refusal(device_type, cmd):
+                    why = ""          # the driver's one write, shape-checked, the device held
                 if why:
                     raise DiscoveryOnly(f"{ip}: {why}")
                 return original(*args, **kwargs)
             return guarded
+
+        held_write = discovery.DRIVERS[str(device_type).strip().lower()].get("held_write")
 
         for name in _WRITE_METHODS + _MULTILINE_METHODS:
             if callable(getattr(conn, name, None)):
@@ -700,9 +705,9 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
             original = getattr(conn, name, None)
             if callable(original):
                 setattr(conn, name, listed(original))
-        if discovery.DRIVERS[str(device_type).strip().lower()].get("enable_is_config"):
-            # netmiko's enable() is config mode on this platform (Comware's system-view):
-            # never entered; its reads run in user view (modules/discovery.py).
+        if discovery.DRIVERS[str(device_type).strip().lower()].get("no_enable"):
+            # netmiko's enable() is config mode (Comware's system-view) or a root shell
+            # (Linux's `sudo -s`) on this platform: never sent (modules/discovery.py).
             conn.enable = lambda *args, **kwargs: ""
         return
 

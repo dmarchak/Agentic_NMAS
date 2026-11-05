@@ -43,6 +43,10 @@ DECLARED_DYNAMIC = {
     # C2458: the revert-timer probe sends its fixed, previewed program (the revert timer and the
     # port bounce) and its repair, one batch each, holding the device (scripts/nmas-revert-probe).
     ("scripts/nmas-revert-probe", "send"): ("revert probe",),
+    # An Open vSwitch server's OpenFlow configuration (docs/LAB9_OPENFLOW.md): the confirmed
+    # `sudo -n ovs-vsctl` transaction, its undo on a failure, and the OVS reads around them,
+    # each sent once holding the server; the session sends nothing else (modules/sdn/ovs.py).
+    ("modules/sdn/ovs_config.py", "apply"): ("openflow config",),
 }
 
 #: Config-mode sends, by the task each serves: config mode is a CHANNEL, not an
