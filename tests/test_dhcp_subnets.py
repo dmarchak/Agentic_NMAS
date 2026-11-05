@@ -11,6 +11,7 @@ files as captured 2026-10-11 (tests/fixtures/kea/kea-dhcp4.conf and kea-dhcp6.co
 kea-dhcp4 and kea-dhcp6 -t before this was relied on: docs/OPEN_FINDINGS.md, C529.)
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -658,6 +659,167 @@ class TestAddAndRemove:
         assert p["ok"], p["refused"]
         assert "(.)" not in p["leases"][0]
         assert "1 active lease(s) (aa:c1:ab:12:c6:03)" in p["leases"][0]
+
+
+ADD6 = {"op": "add", "family": "IPv6", "prefix": "2001:db8:40::/64",
+        "pool": "2001:db8:40::100 - 2001:db8:40::1ff"}
+SVC = {"IPv4": "dhcp4", "IPv6": "dhcp6"}
+
+
+def _captured_subnets(family):
+    """Kea's subnets for *family* read straight from the capture, not through the module."""
+    with open(os.path.join(KEA, f"{SVC[family]}-config-get.json"), encoding="utf-8") as fh:
+        doc = json.load(fh)
+    root = doc[0]["arguments"]["Dhcp4" if family == "IPv4" else "Dhcp6"]
+    return [(s["id"], s["subnet"]) for s in root["subnet4" if family == "IPv4" else "subnet6"]]
+
+
+class TestTheOverlapScanChecksEverySubnet:
+    """C2551 step 3b (mutation-nightly #68, `_plan_add`'s overlap scan, D1 and D2): an add is
+    refused when its prefix overlaps ANY of Kea's subnets in the family, each named with its
+    id and prefix; a Kea entry the scan cannot read is passed over, never the end of the scan;
+    a Kea subnet written with host bits still counts. IPv4 and IPv6 alike."""
+
+    @staticmethod
+    def _inside(subnet):
+        return str(next(ipaddress.ip_network(subnet).subnets(prefixlen_diff=1)))
+
+    @pytest.mark.parametrize("family", ["IPv4", "IPv6"])
+    def test_kills_dhcp_subnets__plan_add_mutmut_61_to_64_every_subnet_is_checked_and_named(
+            self, moved, family):
+        """Every captured subnet is still found overlapping after an entry with no subnet and
+        one with words for a subnet are put first: `continue` passes them over, where `break`
+        would end the scan before any real subnet (mutant 64); each refusal names the subnet
+        it overlaps (mutants 61 to 63)."""
+        moved["kea"].loaded[SVC[family]][:0] = [{"id": 7, "subnet": "not-a-prefix"}, {"id": 8}]
+        captured = _captured_subnets(family)
+        assert len(captured) >= 3
+        for sid, subnet in captured:
+            p = S.plan("Lab", {"op": "add", "family": family, "prefix": self._inside(subnet),
+                               "pool": ""}, kea=moved["kea"], intent={})
+            assert not p["ok"], subnet
+            assert f"overlaps Kea's subnet {sid} ({subnet})" in p["refused"], p["refused"]
+
+    @pytest.mark.parametrize("family, subnet, add", [
+        ("IPv4", "10.10.40.1/24", "10.10.40.0/25"),
+        ("IPv6", "2001:db8:40::1/64", "2001:db8:40::/80"),
+    ], ids=["IPv4", "IPv6"])
+    def test_kills_dhcp_subnets__plan_add_mutmut_48_and_56_a_kea_subnet_with_host_bits_counts(
+            self, moved, family, subnet, add):
+        """A Kea subnet written with host bits set is read loosely (`strict=False`) and still
+        refuses an add inside it; read strictly it would raise and be passed over (mutants 48
+        and 56)."""
+        moved["kea"].loaded[SVC[family]].append({"id": 9, "subnet": subnet})
+        p = S.plan("Lab", {"op": "add", "family": family, "prefix": add, "pool": ""},
+                   kea=moved["kea"], intent={})
+        assert not p["ok"] and f"overlaps Kea's subnet 9 ({subnet})" in p["refused"], \
+            p["refused"]
+
+    @pytest.mark.parametrize("values, prefix", [
+        (ADD, "10.10.30.0/24"),
+        (dict(ADD6, prefix=" 2001:DB8:40:0::/64 "), "2001:db8:40::/64"),
+    ], ids=["IPv4", "IPv6"])
+    def test_kills_dhcp_subnets__plan_add_mutmut_38_to_40_the_plan_names_its_prefix(
+            self, moved, values, prefix):
+        """The plan carries the prefix as parsed (stripped, IPv6 compressed and lower case),
+        the words the confirm button and the result heading draw (mutants 38, 39 and 40)."""
+        p = S.plan("Lab", values, kea=moved["kea"], intent=_vlan30())
+        assert p["ok"], p["refused"]
+        assert p["prefix"] == prefix and p["title"] == f"Add {prefix}"
+
+    def test_kills_dhcp_subnets__plan_add_mutmut_2_the_plan_reads_the_named_list(
+            self, moved, monkeypatch):
+        """The add reads the Kea folder of the list it was asked about, at every read (mutant
+        2 passed no list to the first)."""
+        from modules import dhcp_reservations as D
+        mains, seen = moved["mains"], []
+        monkeypatch.setattr(D, "main_config",
+                            lambda list_name, family: seen.append(list_name) or mains[family])
+        p = S.plan("Lab", ADD, kea=moved["kea"], intent=_vlan30())
+        assert p["ok"], p["refused"]
+        assert seen and set(seen) == {"Lab"}, seen
+
+    def test_an_ipv6_add_takes_the_next_id_and_says_no_relay_reaches_it(self, moved):
+        """An IPv6 add beside the captured subnets: no overlap, the id one more than the
+        highest in use, no relay in intent said, and no IPv4 gateway compared."""
+        p = S.plan("Lab", ADD6, kea=moved["kea"], intent={})
+        assert p["ok"], p["refused"]
+        top = max(sid for sid, _ in _captured_subnets("IPv6"))
+        assert p["id"] == top + 1 and p["after"]["subnet"] == "2001:db8:40::/64"
+        assert (f"no Kea subnet overlaps 2001:db8:40::/64; Kea id {top + 1} (one more than "
+                "the highest in use)") in [t for _, t in p["checks"]]
+        assert not any("gateway" in t for _, t in p["checks"])
+        assert any(st == "warn" and "no interface in intent is on this prefix" in t
+                   for st, t in p["checks"])
+
+
+EDIT6 = {"op": "edit", "family": "IPv6", "id": "10",
+         "pool": "2001:db8:10::101 - 2001:db8:10::149"}
+
+
+class TestEveryPathServesIPv6:
+    """IPv6 parity for board C (CLAUDE.md, the IPv6 rule; C2551's order, the operator,
+    2026-11-05: "IPv6 cases for every dhcp_subnets path"): the edit's pool, lifetimes, DNS
+    option and refusals, the apply, an add applied, and ZTP's IPv4-only refusal, each on the
+    captured IPv6 subnets beside the IPv4 tests above."""
+
+    def test_a_pool_change_plans_on_an_ipv6_subnet(self, moved):
+        p = S.plan("Lab", EDIT6, kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert any(sign == "+" and "2001:db8:10::101" in text and "2001:db8:10::149" in text
+                   for sign, text in p["change"]), p["change"]
+
+    def test_an_ipv6_subnet_takes_a_valid_and_a_preferred_lifetime(self, moved):
+        p = S.plan("Lab", dict(EDIT6, pool="", valid="4 h", preferred="2 h"), kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert ("+", "valid-lifetime: 14400") in p["change"], p["change"]
+        assert ("+", "preferred-lifetime: 7200") in p["change"], p["change"]
+
+    def test_an_ipv6_dns_server_is_its_own_option(self, moved):
+        """The form's DNS field becomes DHCPv6's `dns-servers` option in the dhcp6 space, its
+        value exactly the address typed (the captured subnet already carries one, so the
+        option is read from the plan's result, never found in the change's words)."""
+        p = S.plan("Lab", dict(EDIT6, pool="", dns="2001:db8::53"), kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert {"name": "dns-servers", "data": "2001:db8::53", "space": "dhcp6"} in \
+            p["after"]["option-data"], p["after"].get("option-data")
+
+    @pytest.mark.parametrize("values, words", [
+        (dict(EDIT6, pool="2001:db8:20::1 - 2001:db8:20::9"),
+         "does not lie inside 2001:db8:10::/64"),
+        (dict(EDIT6, pool="10.10.10.1 - 10.10.10.9"), "does not lie inside 2001:db8:10::/64"),
+        (dict(EDIT6, pool="2001:db8:10::9 - 2001:db8:10::1"), "ends before it starts"),
+        (dict(EDIT6, pool="", dns="dns.example"), "is not an address"),
+        (dict(EDIT6, pool="", valid="1 h", preferred="2 h"),
+         "the preferred lifetime is longer than the valid one"),
+        (dict(ADD6, ztp="1", pool=""), "ZTP reserves and serves IPv4 (DHCPv4) addresses only "
+                                       "(C1245)"),
+    ], ids=["outside", "ipv4-pool", "backwards", "dns-name", "preferred-longer", "ztp"])
+    def test_what_it_cannot_do_on_ipv6_is_refused_by_name(self, moved, values, words):
+        p = S.plan("Lab", values, kea=moved["kea"])
+        assert not p["ok"] and words in p["refused"], p["refused"]
+
+    def test_an_ipv6_edit_writes_reloads_dhcp6_and_reads_back(self, moved):
+        p = S.plan("Lab", EDIT6, kea=moved["kea"])
+        got = S.apply_edit("Lab", EDIT6, p["hash"], actor="p@example.invalid",
+                           reason="narrow the pool", kea=moved["kea"], run_test=_ok_test,
+                           record=lambda l, plan, **k: {"ok": True, "commit": "abc1234"})
+        assert got["ok"], got["error"]
+        assert "holds subnet 10 as written" in got["read_back"]
+        assert ("config-reload", "dhcp6") in moved["kea"].sent
+        assert ("config-reload", "dhcp4") not in moved["kea"].sent
+        assert "2001:db8:10::149" in open(moved["files"]["dhcp6"], encoding="utf-8").read()
+
+    def test_an_ipv6_add_applied_is_held_by_kea(self, moved):
+        p = S.plan("Lab", ADD6, kea=moved["kea"], intent={})
+        assert p["ok"], p["refused"]
+        got = S.apply_edit("Lab", ADD6, p["hash"], actor="p", reason="a new IPv6 segment",
+                           kea=moved["kea"], run_test=_ok_test, intent={},
+                           record=lambda l, plan, **k: {"ok": True, "commit": "abc"})
+        assert got["ok"], got["error"]
+        assert got["outcome"] == "added"
+        held = [s for s in moved["kea"].loaded["dhcp6"] if s["id"] == p["id"]]
+        assert held and held[0]["subnet"] == "2001:db8:40::/64"
 
 
 class TestPoolSpanReadsWhatKeaWrites:
