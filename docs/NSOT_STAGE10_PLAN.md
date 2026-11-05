@@ -688,6 +688,8 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 | **The name: a trademark search** (the operator, 2026-10-04: the product is "Mercury Network Automation Platform", "Mercury" for short) | Before the public release, a search for "Mercury Network Automation Platform" in the software classes (Nice classes 9 and 42), recorded with its date and where it was searched. And the README notes the name's origin: a nod to the first place the author worked as a network engineer |
 | **Rename the internals to Mercury** (the operator, 2026-10-04: house-cleaning, close to the public release, NOT before) | Today's internal names stay `nmas`: modules, scripts, services (`nmas-update`, `nmas-deploy`), paths, settings keys, the `NMAS_*` environment variables. Done near the release as ONE planned change: its own inventory (a scan of every `nmas` name), host steps for every host-installed file and service renamed, with old names kept as aliases for one release and then removed. The user-facing name moves first and separately (NSOT_STAGE7_PLAN 19) |
 
+**Bulk onboarding with NetBox as its source, with planning and discovery beside it:** designed in [NETBOX_PLANNING.md](NETBOX_PLANNING.md) (the operator's design, 2026-11-05; nothing built).
+
 ### 7.4 Hardware tiers: what an install is sized for (the operator, 2026-10-18)
 
 The tiers are the charter's (docs/MERCURY_CHARTER.md, "Hardware tiers"). They replace any

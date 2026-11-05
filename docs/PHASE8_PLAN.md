@@ -212,6 +212,10 @@ The operator's proposal, kept, with three changes where the evidence disagrees (
    walk has proven it.
 10. **Finish:** the manual, GUI reachability, the demo script (0.1.5).
 
+**After both labs: NetBox planning, discovery and onboarding** (the operator's design,
+2026-11-05; docs/NETBOX_PLANNING.md): its early splits S1 to S3 first, then its pieces in the
+order of its section 13.
+
 A workstream waiting on the operator does not stop the queue: the next item is worked meanwhile.
 
 **First, test and process integrity (the operator's direction, 2026-11-03 ~07:4x UTC):** board
