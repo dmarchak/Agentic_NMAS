@@ -171,12 +171,52 @@ extras (the operator, 2026-11-05).**
   they go through one gate run.
   - Cost: one refusal sends both back.
   - Prevents: gates run one at a time becoming two streams' bottleneck (about 17 minutes each).
-- **Every estimate uses the measured ratio and shows it.** One agent-day is about 1.3
-  wall-clock hours for one agent (0.7 to 2.6) and about 4M weighted tokens (2.5M to 9M).
-  Weighted tokens are input + 1.25 × cache write + 0.1 × cache read + 5 × output. The ratio is
-  measured again as items finish.
+- **Every estimate uses the measured ratio and shows it.** One agent-day is about 1.3 to 1.7
+  wall-clock hours for one agent, about 4 to 5M weighted tokens in its agents alone, and about
+  13 to 17M all-in (the agents, the main thread, and the work no estimate sized), which is
+  about 1.2 to 1.6% of a week (measured 2026-11-05, below). Weighted tokens are input + 1.25 ×
+  cache write + 0.1 × cache read + 5 × output. The ratio is measured again as items finish.
   - Cost: one conversion per estimate.
   - Prevents: plans read in engineer-days that overstate wall time about six times (C2380).
+
+**The usage calibration, measured 2026-11-05 (the operator's meter readings against the
+session transcripts' own token counts; the one home for these numbers).**
+- **The readings:** 29% at 2026-11-03 17:25 UTC; 32% at 20:17 UTC the same day; 59% at
+  2026-11-05 08:34 UTC; the week resets Sunday 2026-11-08 (its hour not recorded). Counted:
+  25,535 API calls, each once by message id, from 3 sessions and 66 agent transcripts; gaps over
+  20 minutes are not active time. Not visible: any claude.ai chat use, which moves the meter too.
+- **32% to 59% (the interval that measures it):** 55 commits, 40 agents, 286.4M weighted tokens
+  (the main thread 48%, the agents 52%), 29.4 active hours, and 17 to 22 agent-days landed by the
+  items' own estimates (H1 to H8 12.0, local CI's remainder 2 to 4, the laptop kit 3, parts of
+  H9 and H25 3.0); several items landed with no estimate (five designs, discovery, the OVS
+  configuration, CI step 3 among them), so the rates are all-in per estimated agent-day.
+- **The rates:**
+  - one meter percent ≈ **10.6M weighted tokens** (10.2 to 11.0M; the 29% to 32% interval gives
+    10.2M), not 12M;
+  - **1.23 to 1.59% of a week per estimated agent-day,** against the 0.33% assumed: about four
+    times. The Lab 10 build's agents used about 5M per agent-day, so 4M held for agent tokens;
+    the main thread adds 6.3 to 8.1M per agent-day;
+  - **0.92% per active hour** (0.73 from the week's start to 29%, 1.55 over the short 29% to
+    32% interval);
+  - **1.34 to 1.73 active hours per agent-day,** against 1.3.
+- **What the rest of the week buys:** the 41% left at 08:34 UTC buys 26 to 33 agent-days, or 16
+  to 21 keeping a 15% reserve; per day, (41 − reserve%) ÷ days to the reset ÷ (1.23 to 1.59).
+- **The sustainable capacity:** 85% of a week ÷ (1.23 to 1.59) ≈ **53 to 69 agent-days a week,
+  about 60.** The two labs' remaining work (docs/LAB_READINESS.md's totals): Lab 10 about 11 to
+  14, the final SDN lab about 50, together 62 to 64, which is 76 to 102% of a week's usage at this
+  rate. LAB_READINESS's "about 16% of a week" for the final SDN lab is about four times low; at
+  this rate the labs need about one week of usage, of the about 3.4 weeks left before 2026-11-30,
+  if lab work comes first.
+- **The three biggest levers (measured over 32% to 59%):**
+  1. **The main thread's context.** The median cache read per call was 410k to 473k tokens; in
+     this session 1,169 of 2,024 calls read over 400k (the largest 962k). A context held near
+     200k would have saved about 72M, about 6.8% of a week.
+  2. **Main-thread turns per commit.** 48 calls a commit, about 2.5M weighted each commit.
+     Halving the turns (batched gates, fewer status reads) saves about 69M (6.5%); it overlaps
+     lever 1, so the two do not add.
+  3. **Agents' context.** The median agent cache read was 224k, and 72% of agent calls read
+     over 150k. Agents held near 150k, by splitting long builds into increments, would have
+     saved about 48M (4.6%); the largest agents were H9's screens (13.8M) and H8 (10.9M).
 - **Each test run's temporary folders are its own,** and only a run whose recorded owner is
   gone has its folder removed, never one chosen by name or age (C2381).
   - Cost: none.
