@@ -922,4 +922,61 @@ EQUIVALENT = [
             'if ipaddress.ip_network(other.get("subnet", "XXXX"), strict=False).overlaps(net):'),
            "a Kea entry with no `subnet` raises ValueError whatever stands in for it (\"\", None "
            "or \"XXXX\"), and the scan continues past it either way"),
+    # ── Adoption and the bootstrap stanza (C2551 step 3b; mutation-nightly #68 of 2026-11-01;
+    # accepted by the operator, 2026-11-05: "Approved: 19 survivors marked equivalent with their
+    # reasons; the 51 _stop log-argument survivors are not equivalent and get a test."). The 19
+    # are the triage's 70 likely equivalents less the 51: these 14, and dhcp_subnets' five above.
+    *_each("modules.nsot.adopt._apply",
+           "convert_supplied=False, read=None, netbox_existing=None, netbox_preview=None, "
+           "open_session=None,",
+           ("convert_supplied=True, read=None, netbox_existing=None, netbox_preview=None, "
+            "open_session=None,",),
+           "the one caller, adopt.apply, always passes convert_supplied, so the default is "
+           "never read"),
+    *_each("modules.nsot.adopt._apply",
+           'promote=None, record_adoption=None, role="", send_profile=None) -> dict:',
+           ('promote=None, record_adoption=None, role="XXXX", send_profile=None) -> dict:',),
+           "the one caller, adopt.apply, always passes role, so the default is never read"),
+    *_each("modules.nsot.adopt._apply",
+           'def _step(name, ok, detail=""):', ('def _step(name, ok, detail="XXXX"):',),
+           "every _step call in _apply passes its detail, so the default is never read"),
+    *_each("modules.nsot.adopt._apply",
+           'result = {"ok": False, "device": hostname, "list": list_name, "state": "stopped",',
+           ('result = {"ok": True, "device": hostname, "list": list_name, "state": "stopped",',),
+           "every return in _apply is _stop(...) or _finish(), and _finish sets ok from the "
+           "steps, so the first value is always overwritten (21 returns read)"),
+    *_each("modules.nsot.adopt._apply",
+           'made = {(ep.strip("/"), e.get("id")) for ep, rows in (get_created(list_name) or '
+           '{}).items()',
+           ('made = {(ep.strip(None), e.get("id")) for ep, rows in (get_created(list_name) or '
+            '{}).items()',
+            'made = {(ep.strip("XX/XX"), e.get("id")) for ep, rows in (get_created(list_name) or '
+            '{}).items()'),
+           "netbox_guard.record_created strips the slashes before it stores an endpoint, so "
+           "no stored endpoint ends in a slash, a space or an X"),
+    *_each("modules.nsot.adopt._apply",
+           'source="adopt", actor=actor or "nmas", allow_new=False,',
+           ('source="adopt", actor=actor or "nmas", allow_new=None,',
+            'source="adopt", actor=actor or "nmas", message=f"adopt: {hostname} first capture")'),
+           "save_golden reads allow_new only as `if not allow_new`, with a False default, so "
+           "None and the argument dropped read the same"),
+    *_each("modules.nsot.adopt._apply",
+           'password=pw, secret="")', ('password=pw, secret=None)', 'password=pw, )'),
+           "promote_device reads secret only as (secret or \"\"), with an \"\" default"),
+    *_each("modules.nsot.bootstrap_config.manager_interface_lines",
+           'mask: str, gateway: str = "",', ('mask: str, gateway: str = "XXXX",',),
+           "the one caller, render_bootstrap, always passes gateway, so the default is never "
+           "read"),
+    *_each("modules.nsot.bootstrap_config.manager_interface_lines",
+           'platform_mgmt_interface: str = "",', ('platform_mgmt_interface: str = "XXXX",',),
+           "the one caller, render_bootstrap, always passes platform_mgmt_interface"),
+    *_each("modules.nsot.bootstrap_config.manager_interface_lines",
+           "reserved: dict = None, gateway_route: bool = True) -> list:",
+           ("reserved: dict = None, gateway_route: bool = False) -> list:",),
+           "the one caller, render_bootstrap, always passes gateway_route"),
+    *_each("modules.nsot.bootstrap_config.manager_interface_lines",
+           'dhcp = (address or "").strip().lower() == "dhcp"',
+           ('dhcp = (address or "XXXX").strip().lower() == "dhcp"',),
+           "the result is compared only with \"dhcp\", so a missing address reads as not DHCP "
+           "either way"),
 ]

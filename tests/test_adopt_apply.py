@@ -16,6 +16,7 @@ RESUMES rather than adding a second account.
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -152,7 +153,7 @@ def lab(monkeypatch, tmp_path):
     monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
     router = Router(_config())
-    calls = {"netbox": 0, "existing": 0}
+    calls = {"netbox": 0, "existing": 0, "capture": []}
     _forget_records()
 
     def verify(dev, user, pw):
@@ -173,9 +174,13 @@ def lab(monkeypatch, tmp_path):
         calls["authority"] = authority
         return {"ok": True, "created": [], "device_id": 7, "reason": ""}
 
+    def capture(ip, user, pw, secret, device_type):
+        # What it was asked with is kept, so a test can say whose login read the device.
+        calls["capture"].append((ip, user, pw, secret, device_type))
+        return {"ok": True, "config": router.text()}
+
     collab = {"read": router.reads, "open_session": lambda dev: Session(router),
-              "verify": verify, "persist": persist,
-              "capture": lambda ip, u, p, s, dt: {"ok": True, "config": router.text()},
+              "verify": verify, "persist": persist, "capture": capture,
               "netbox_existing": existing, "netbox": netbox,
               "netbox_preview": lambda *a, **k: {"ok": True, "create_count": 12,
                                             "update_count": 3, "creates_by_type": {},
@@ -642,6 +647,22 @@ class TestTheImporterHonoursAPreviewTextOnlyInADryRun:
         assert "error" not in scanned and scanned["interfaces"]
 
 
+PROFILE_LINE = "snmp-server community <redacted:snmp_community> RO"
+PROFILE_TRUE = "snmp-server community AdoptProfileValue RO"
+
+
+def _profile_for_capture(list_name, hostname, platform, role, capture, *, repo="", doc=None):
+    """A stand-in for `profile_apply.for_capture` with its shape: the profile's one line is
+    to send until the capture holds it."""
+    held = PROFILE_TRUE in capture
+    return {"applies": True, "why": "" if not held else "already holds every line",
+            "commands": [] if held else [PROFILE_TRUE],
+            "masked": [] if held else [PROFILE_LINE], "to_send": [], "in_place": [],
+            "by_section": {"snmp": []}, "sources": {}, "template": {},
+            "unmodeled": [], "fingerprint": "held" if held else "missing",
+            "capture_hash": "x"}
+
+
 class TestTheMonitoringProfileIsApplied:
     """P.9 step (c): adopt applies the network's monitoring profile, computed
     from the capture it reads (`profile_apply.for_capture`, tested on the
@@ -650,20 +671,12 @@ class TestTheMonitoringProfileIsApplied:
     fingerprint at the preview, sent after the accounts and before the save,
     read back, and in the first golden."""
 
-    LINE = "snmp-server community <redacted:snmp_community> RO"
-    TRUE = "snmp-server community AdoptProfileValue RO"
+    LINE = PROFILE_LINE
+    TRUE = PROFILE_TRUE
 
     @pytest.fixture
     def profiled(self, lab, monkeypatch):
-        def for_capture(list_name, hostname, platform, role, capture, *, repo="", doc=None):
-            held = self.TRUE in capture
-            return {"applies": True, "why": "" if not held else "already holds every line",
-                    "commands": [] if held else [self.TRUE],
-                    "masked": [] if held else [self.LINE], "to_send": [], "in_place": [],
-                    "by_section": {"snmp": []}, "sources": {}, "template": {},
-                    "unmodeled": [], "fingerprint": "held" if held else "missing",
-                    "capture_hash": "x"}
-        monkeypatch.setattr("modules.nsot.profile_apply.for_capture", for_capture)
+        monkeypatch.setattr("modules.nsot.profile_apply.for_capture", _profile_for_capture)
         sent = []
 
         def send(ip, user, pw, sec, dt, commands):
@@ -708,3 +721,295 @@ class TestTheMonitoringProfileIsApplied:
         assert out["ok"] is True, out["reason"]
         row = next(s for s in out["steps"] if s["step"] == "profile")
         assert row["ok"] and row["detail"].startswith("not sent: ")
+
+
+# ---------------------------------------------------------------------------
+# Every stop names its own step in the log (C2551 step 3b, mutation-nightly #68)
+# ---------------------------------------------------------------------------
+
+def _resumable(lab):
+    """A first run stopped at persist: the tool's account is added and recorded, so the
+    next run resumes."""
+    out = _apply(lab, persist=lambda *a: {"ok": False, "detail": "no startup"})
+    assert [r["step"] for r in out["remaining"]] == ["golden", "netbox", "promote"], out
+    return out
+
+
+def _refuse_login(dev):
+    raise RuntimeError("Authentication failed")
+
+
+def _stop_confirm_blocked(lab, monkeypatch, caplog):
+    lab["router"].load(_config(admin=CLEAR_ADMIN))      # refused: a password in clear
+    return _apply(lab, fingerprint="x")
+
+
+def _stop_confirm_moved(lab, monkeypatch, caplog):
+    return _apply(lab, fingerprint="not-the-previewed-one")
+
+
+def _stop_account_resumed(lab, monkeypatch, caplog):
+    _resumable(lab)
+    fingerprint = _plan(lab)["fingerprint"]
+    caplog.clear()
+    return _apply(lab, fingerprint=fingerprint, verify=lambda d, u, w: {
+        "ok": False, "error": "Authentication failed", "attempted": True})
+
+
+def _stop_account_fresh(lab, monkeypatch, caplog):
+    return _apply(lab, record=lambda ip, u, p: (_ for _ in ()).throw(OSError("store")))
+
+
+def _stop_owner_resumed_no_login(lab, monkeypatch, caplog):
+    _resumable(lab)
+    router = lab["router"]
+    router.running = [CLEAR_ADMIN if l == HASHED_ADMIN else l for l in router.running]
+    fingerprint = _plan(lab, convert_supplied=True)["fingerprint"]
+    caplog.clear()
+    return _apply(lab, fingerprint=fingerprint, convert_supplied=True,
+                  open_session=_refuse_login)
+
+
+def _stop_owner_not_converted(lab, monkeypatch, caplog):
+    lab["router"].store_as = {"admin": "Not-The-Owners-Password-1"}
+    lab["router"].load(_config(admin=CLEAR_ADMIN))
+    fingerprint = _plan(lab, convert_supplied=True)["fingerprint"]
+    return _apply(lab, fingerprint=fingerprint, convert_supplied=True)
+
+
+def _stop_credential_not_read_back(lab, monkeypatch, caplog):
+    return _apply(lab, record=lambda ip, u, p: None)       # nothing kept for the address
+
+
+def _stop_profile_not_applied(lab, monkeypatch, caplog):
+    monkeypatch.setattr("modules.nsot.profile_apply.for_capture", _profile_for_capture)
+    return _apply(lab, send_profile=lambda *a: {"ok": False, "error": "% Invalid input"})
+
+
+def _stop_profile_not_read_back(lab, monkeypatch, caplog):
+    monkeypatch.setattr("modules.nsot.profile_apply.for_capture", _profile_for_capture)
+    return _apply(lab, send_profile=lambda *a: {"ok": True, "error": ""},
+                  capture=lambda *a: {"ok": False, "error": "timed out"})
+
+
+def _stop_persist(lab, monkeypatch, caplog):
+    return _apply(lab, persist=lambda *a: {"ok": False, "detail": "no startup"})
+
+
+def _stop_golden_capture(lab, monkeypatch, caplog):
+    return _apply(lab, capture=lambda *a: {"ok": False, "error": "timed out"})
+
+
+def _stop_golden_save(lab, monkeypatch, caplog):
+    monkeypatch.setattr("modules.nsot.repo.save_golden",
+                        lambda *a, **k: {"ok": False, "error": "the repository refused"})
+    return _apply(lab)
+
+
+def _stop_netbox_read(lab, monkeypatch, caplog):
+    reads = []
+
+    def existing(hostname):             # the preview's and the confirm's reads answer
+        reads.append(hostname)
+        if len(reads) <= 2:
+            return {"ok": True, "objects": list(EXISTING), "error": ""}
+        return {"ok": False, "objects": [], "error": "NetBox could not be read"}
+    return _apply(lab, fingerprint=_plan(lab, netbox_existing=existing)["fingerprint"],
+                  netbox_existing=existing)
+
+
+def _stop_netbox_import(lab, monkeypatch, caplog):
+    return _apply(lab, netbox=lambda *a, **k: {"ok": False, "reason": "NetBox refused it"})
+
+
+def _stop_netbox_adoption_record(lab, monkeypatch, caplog):
+    return _apply(lab, record_adoption=lambda *a, **k: {"ok": False, "error": "read-only"})
+
+
+def _stop_promote_unkept(lab, monkeypatch, caplog):
+    monkeypatch.setattr("modules.nsot.onboard.commit_record", lambda *a, **k: {
+        "ok": False, "commit": "", "error": "index.lock exists"})
+    return _apply(lab)
+
+
+def _stop_promote(lab, monkeypatch, caplog):
+    return _apply(lab, promote=lambda *a, **k: {"ok": False, "error": "the row was refused"})
+
+
+#: Each of `_apply`'s seventeen stops: the step it names, how a run reaches it, and the three
+#: mutants of run #68 that changed that name in the log line (to None, "XX<name>XX" and upper
+#: case). The case id carries their numbers.
+STOPS = [
+    ("confirm", _stop_confirm_blocked, (161, 165, 166)),
+    ("confirm", _stop_confirm_moved, (177, 181, 182)),
+    ("account", _stop_account_resumed, (284, 288, 289)),
+    ("account", _stop_account_fresh, (356, 360, 361)),
+    ("owner_account", _stop_owner_resumed_no_login, (396, 400, 401)),
+    ("owner_account", _stop_owner_not_converted, (466, 470, 471)),
+    ("profile", _stop_credential_not_read_back, (486, 490, 491)),
+    ("profile", _stop_profile_not_applied, (582, 586, 587)),
+    ("profile", _stop_profile_not_read_back, (673, 677, 678)),
+    ("persist", _stop_persist, (738, 742, 743)),
+    ("golden", _stop_golden_capture, (787, 791, 792)),
+    ("golden", _stop_golden_save, (894, 898, 899)),
+    ("netbox", _stop_netbox_read, (929, 933, 934)),
+    ("netbox", _stop_netbox_import, (987, 991, 992)),
+    ("netbox", _stop_netbox_adoption_record, (1065, 1069, 1070)),
+    ("promote", _stop_promote_unkept, (1179, 1183, 1184)),
+    ("promote", _stop_promote, (1193, 1197, 1198)),
+]
+
+
+class TestEveryStopLogsItsOwnStep:
+    """The warning an adoption logs when it stops is how an operator reading the log learns
+    which step it stopped at (the operator, 2026-11-05: these are not equivalent). Each stop
+    is reached for real, and its one warning names its own step and its reason."""
+
+    @pytest.mark.parametrize("step, reach, mutants", STOPS, ids=[
+        f"{reach.__name__[len('_stop_'):]}-mutmut_" + "_".join(map(str, mutants))
+        for _step, reach, mutants in STOPS])
+    def test_kills_adopt__apply_mutmut_stop_log_arguments_each_stop_logs_its_own_step(
+            self, lab, monkeypatch, caplog, step, reach, mutants):
+        caplog.set_level(logging.WARNING, logger="modules.nsot.adopt")
+        out = reach(lab, monkeypatch, caplog)
+        assert out["ok"] is False and out["state"] != "refused", out
+        lines = [r.getMessage() for r in caplog.records
+                 if r.name == "modules.nsot.adopt" and " stopped at " in r.getMessage()]
+        assert lines == [f"adopt: {HOST} stopped at {step}: {out['reason']}"]
+
+
+# ---------------------------------------------------------------------------
+# The golden step: the first capture, the manifest entry, the save (group A9)
+# ---------------------------------------------------------------------------
+
+def _golden_commit():
+    """The one commit that wrote the device's golden (the promote's record commit comes
+    after it and touches only the manifest)."""
+    sha, = _git("log", "--format=%H", "--", f"golden/{HOST}.cfg").splitlines()
+    return sha
+
+
+def _entries_named(name):
+    from modules.nsot import manifest
+    return [(i, e) for i, e in manifest.load(_repo())["devices"].items()
+            if (e.get("name") or "").lower() == name]
+
+
+class TestTheGoldenStep:
+    """The golden step reads the device as the tool's own account, records the identity
+    (address, platform, role, adopted) before the save, and commits the first capture as the
+    person who adopted it; each way it can fail stops there and says why."""
+
+    def test_kills_adopt__apply_mutmut_756_to_760_the_first_capture_logs_in_as_the_tool(
+            self, lab):
+        from modules import credentials
+        _adopt_fully(lab)
+        held = credentials.resolve(IP)
+        (ip, user, pw, secret, device_type), = lab["calls"]["capture"]
+        assert (ip, user, device_type) == (IP, "nmas", _plan(lab)["device_type"])
+        # Compared, never printed: the tool's password is the login and the enable secret.
+        assert (pw == held["password"], secret == held["password"]) == (True, True)
+
+    @pytest.mark.parametrize("answer, detail, reason", [
+        ({"ok": False, "error": "timed out reading the running config"},
+         "timed out reading the running config", "timed out reading the running config"),
+        ({"ok": False}, "", "the device could not be read"),
+    ], ids=["named", "unnamed"])
+    def test_kills_adopt__apply_mutmut_771_to_798_a_failed_capture_stops_at_the_golden(
+            self, lab, answer, detail, reason):
+        out = _apply(lab, capture=lambda *a: dict(answer))
+        assert [s for s in out["steps"] if s["step"] == "golden"] == [
+            {"step": "golden", "ok": False, "detail": detail}]
+        assert {s["step"] for s in out["steps"]} == set(A.APPLY_STEPS)
+        assert out["reason"] == reason
+        assert [r["step"] for r in out["remaining"]] == ["netbox", "promote"]
+        assert lab["calls"]["netbox"] == 0 and "golden" not in out
+        assert _git("log", "--format=%H", "--", f"golden/{HOST}.cfg") == ""
+
+    @pytest.mark.parametrize("saving, saved, detail, reason", [
+        ("raises", {"ok": False, "error": "RuntimeError: the disk is full"},
+         "RuntimeError: the disk is full", "RuntimeError: the disk is full"),
+        ("refuses", {"ok": False, "error": "the repository refused"},
+         "the repository refused", "the repository refused"),
+        ("unnamed", {"ok": False}, "", "the golden was not saved"),
+    ], ids=["raises", "refuses", "unnamed"])
+    def test_kills_adopt__apply_mutmut_861_to_905_a_save_that_fails_stops_at_the_golden(
+            self, lab, monkeypatch, saving, saved, detail, reason):
+        def save_golden(*a, **k):
+            if saving == "raises":
+                raise RuntimeError("the disk is full")
+            return dict(saved)
+        monkeypatch.setattr("modules.nsot.repo.save_golden", save_golden)
+        out = _apply(lab)
+        assert out["golden"] == saved
+        assert [s for s in out["steps"] if s["step"] == "golden"] == [
+            {"step": "golden", "ok": False, "detail": detail}]
+        assert out["reason"] == reason
+        assert [r["step"] for r in out["remaining"]] == ["netbox", "promote"]
+        assert lab["calls"]["netbox"] == 0
+
+    def test_kills_adopt__apply_mutmut_836_to_892_the_first_capture_is_committed_as_the_person(
+            self, lab):
+        out = _adopt_fully(lab)
+        sha = _golden_commit()
+        body = _git("log", "-1", "--format=%B", sha).splitlines()
+        assert body[0] == f"adopt: {HOST} first capture"
+        assert "Actor: op@example.com" in body and "Source: adopt" in body
+        assert out["golden"]["ok"] is True and out["golden"]["commit"] == sha
+        assert [s for s in out["steps"] if s["step"] == "golden"] == [
+            {"step": "golden", "ok": True, "detail": sha}]
+        header = _git("show", f"{sha}:golden/{HOST}.cfg").splitlines()[0]
+        assert header == f"! Golden config — {HOST} ({IP})"
+
+    def test_kills_adopt__apply_mutmut_858_859_no_actor_commits_as_the_tool(self, lab):
+        fingerprint = _plan(lab)["fingerprint"]
+        out = A.apply(LIST, HOST, mgmt_ip=IP, platform="cisco_iosxe", supplied_username="admin",
+                      supplied_password=SUPPLIED_PW, confirmed_fingerprint=fingerprint,
+                      actor="", reason="", role="router", **lab["collab"])
+        assert out["golden"]["ok"] is True, out
+        assert "Actor: nmas" in _git("log", "-1", "--format=%B", _golden_commit()).splitlines()
+
+    def test_kills_adopt__apply_mutmut_848_852_860_a_device_the_manifest_lacks_gets_no_golden(
+            self, lab, monkeypatch):
+        """`save_golden` never mints an identity here: were the adoption's own manifest write
+        lost, the save refuses rather than create the device a second way, and it is refused
+        for that reason, the platform the person gave still carried to the save."""
+        from modules.nsot import manifest
+        real = manifest.upsert_device
+
+        def upsert_device(repo, identity, name, *a, **k):
+            if k.get("adopted"):                # the adoption's write, lost
+                return {}
+            return real(repo, identity, name, *a, **k)
+        monkeypatch.setattr(manifest, "upsert_device", upsert_device)
+        out = _apply(lab)
+        assert out["golden"]["ok"] is False and "is not in the manifest" in out["reason"]
+        assert _git("log", "--format=%H", "--", f"golden/{HOST}.cfg") == ""
+        assert _entries_named(HOST) == []
+
+    def test_kills_adopt__apply_mutmut_801_812_to_830_a_stopped_save_leaves_one_whole_entry(
+            self, lab, monkeypatch):
+        """A save that fails leaves the device's entry as adopt recorded it (its name,
+        address, platform, role and the adoption), and the next run finds that entry by name
+        and saves under it: one identity, never a second."""
+        from modules.nsot import repo as R
+        real = R.save_golden
+        monkeypatch.setattr(R, "save_golden", lambda *a, **k: {"ok": False, "error": "refused"})
+        _apply(lab)
+        (identity, entry), = _entries_named(HOST)
+        assert (entry["mgmt_ip"], entry["platform"], entry.get("role")) == (
+            IP, "cisco_iosxe", "router")
+        assert entry.get("adopted_at")
+        monkeypatch.setattr(R, "save_golden", real)
+        out = _apply(lab)
+        assert out["ok"], out
+        assert [i for i, _e in _entries_named(HOST)] == [identity]
+        assert _entries_named(HOST)[0][1].get("role") == "router"
+
+    def test_kills_adopt__apply_mutmut_806_807_a_minted_identity_is_logged_with_name_and_address(
+            self, lab, caplog):
+        caplog.set_level(logging.INFO, logger="modules.nsot.repo")
+        _adopt_fully(lab)
+        (identity, _entry), = _entries_named(HOST)
+        assert f"repo: adopting {HOST} ({IP}) as {identity}" in [
+            r.getMessage() for r in caplog.records if r.name == "modules.nsot.repo"]
