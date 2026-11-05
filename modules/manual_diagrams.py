@@ -1390,6 +1390,33 @@ def path_trace():
     ])
 
 
+def diagnose():
+    return svg(500, (
+        "Diagnose: a person picks the runbook and its target from intent, and the card lists "
+        "every read on each device before anything is asked; the plan is made again at the "
+        "press and refused if it moved; each device is held for the diagnosis, one at a time "
+        "per device, and read through the reads engine, read-only, its counters read twice; "
+        "the logs of the last hour are read from Loki; what was read is compared with intent "
+        "by the rule table, and the hypotheses are ranked; the diagnosis is recorded, and the "
+        "card draws it. Nothing is changed on any device."), [
+        lanes(20, 494),
+        person(14, 40, 186, 30, "You pick the runbook and target"), num(14, 40, 1),
+        doc("intent", 14, 84, 186, 36, "The plan, from intent", "every read, the worst case"),
+        num(14, 84, 2),
+        t(14, 136, "refused: nothing read", "sm"),
+        band(150, 160, "The run · a job, each device held"),
+        device(262, 170, 118, 124, "Each device", "reads only", top=True),
+        *rows([(190, "read", 3, "Read, then read again", "10 s apart, its counters"),
+               (240, None, 4, "Logs of the last hour", "Loki, configuration lines")]),
+        t(14, 290, "a device another holds: skipped, named", "sm"),
+        doc("box", 14, 326, 186, 40, "Compare with intent", "the rule table, ranked"),
+        num(14, 326, 5),
+        store(14, 384, 186, 40, "The diagnosis's record", "with each read"), num(14, 384, 6),
+        t(14, 446, "The card draws it; History › Reads holds the reads.", "sm"),
+        t(14, 474, "No device's configuration is changed.", "sm"),
+    ])
+
+
 def privileged():
     return svg(520, (
         "Run a privileged command: the plan refuses a command that is not offered or not yet "
@@ -1854,6 +1881,7 @@ DIAGRAMS = {
     "ask-in-words": ask_in_words,
     "intent-in-words": intent_in_words,
     "path-trace": path_trace,
+    "diagnose": diagnose,
     "privileged": privileged,
     "heal-proposal": heal_proposal,
     "sdn-flows": sdn_flows,

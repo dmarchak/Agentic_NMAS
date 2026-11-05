@@ -121,6 +121,7 @@ VOCABULARY = {
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
+    "diagnosis": "a diagnosis Diagnose… ran from the Device page (board H, H16): finished, ready to read by id",
     "fleet_change": "a layer change's plan (board FC4, modules/nsot/fleet_change.py): finished, "
                     "ready to read by id",
     "persist_read": "Persist's preview read of what a device runs against what it boots (C886): "
@@ -154,6 +155,7 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
+    "diagnosis": ("diagnosis",),  # modules/heal/diagnose_page.py: a diagnosis run's end (H16)
     "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
     # modules/nsot/fleet_change.py: a run's end (the approval and canary, or Go on's rest).
     "fleet-change-run": ("fleet_change", "deploy_job", "device_state", "baselines", "drift",
@@ -350,6 +352,9 @@ DECLARED = {
     # The third measured case, a drift run's state (today's /drift/check/sync until 7.8).
     "settings_v2.diag_drift_check": ("drift",),
     "device_v2.drift_check_now": ("drift",),
+    "device_v2.diagnose_run": Nothing("starts the diagnosis as a job and answers at once; the "
+                                      "job ANNOUNCES diagnosis when it ends (ANNOUNCERS "
+                                      "diagnosis)"),
     # A device and its files.
     "device_v2.persist_confirm": ("device_state",),   # persist_op.apply
     # C906: the key Mercury holds for the device, read by Needs attention and History.

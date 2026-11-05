@@ -46,6 +46,9 @@
               // A Reload's preview or run finished (modules/nsot/reload_op.py): its card
               // reads it by id (P.14, cutover blocker 6).
               'reload',
+              // A diagnosis Diagnose… ran finished (modules/heal/diagnose_page.py): its card
+              // reads it by id (board H, H16).
+              'diagnosis',
               // Coverage's not-reporting cells: when each device's data last arrived.
               'coverage_reporting',
               // A held device's operation reached its next step: a running card redraws its
@@ -681,6 +684,7 @@
   function relayRotation() { relay('rotation'); }
   function relayPrivileged() { relay('privileged'); }
   function relayReload() { relay('reload'); }
+  function relayDiagnosis() { relay('diagnosis'); }
   function relayPersistRead() { relay('persist_read'); }
   function relayFleetChange() { relay('fleet_change'); }
   function relayDeviceProgress() { relay('device_progress'); }
@@ -900,6 +904,7 @@
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
     NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
     NMAS.subscribe('reload', 'v2Reload', relayReload);
+    NMAS.subscribe('diagnosis', 'v2Diagnosis', relayDiagnosis);
     NMAS.subscribe('persist_read', 'v2PersistRead', relayPersistRead);
     NMAS.subscribe('fleet_change', 'v2FleetChange', relayFleetChange);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);

@@ -91,6 +91,8 @@ PAGES = (
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
+    ("diagnose", "Diagnose: a runbook's reads, ranked into hypotheses", H,
+     "how-it-works/diagnose.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -248,6 +250,9 @@ OPERATIONS = {
     "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
     # C235 (board H-S): a value typed for a secret reference, on the Intent tab.
     "set-secret-value": ("modules.nsot.secret_refs", "STEPS"),
+    # Board H's amendment, H16 (artboards I and J): Diagnose…, each runbook's steps.
+    "diagnose": ("modules.heal.diagnose", "STEPS"),
+    "diagnose-reach": ("modules.heal.diagnose_reach", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
@@ -275,7 +280,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "console-server-port": "installation-settings",
                   "console-server-key": "installation-settings",
                   "console-server-rekey": "rekey",
-                  "paired-deploy": "deploy"}
+                  "paired-deploy": "deploy", "diagnose-reach": "diagnose"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

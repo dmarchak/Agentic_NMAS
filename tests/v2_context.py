@@ -1400,6 +1400,40 @@ def _drift(client, _lab, _mp):
         assert r.status_code == 200, (url, r.status_code)
 
 
+def _diagnose(client, _lab, _mp):
+    """Diagnose… (board H, H16) on r3: the card on the fleet's real intent (each adjacency
+    offered, those with no protocol not offered, the reads on both ends; then Can't reach's
+    devices), the press as a job, and the diagnosis drawn by its job's card. The run is the
+    route test's recorded diagnosis (tests/test_heal_diagnose_v2.py `FAKE`), whose real run its
+    own tests make; its patches are undone before the next provider."""
+    import pytest
+
+    from modules.heal import diagnose as D
+    from modules.nsot import capture_job
+    from tests import test_heal_diagnose as T
+    from tests.test_heal_diagnose_v2 import FAKE
+
+    model, intents = T.fleet()
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(D, "_sources", lambda network, model_=None, intents_=None: (model, intents))
+        mp.setattr(D, "run", lambda network, runbook, target, actor: dict(FAKE))
+        body = client.get("/v2/device/r3/diagnose?back=overview").get_data(as_text=True)
+        fp = re.search(r'name="fingerprint" value="([0-9a-f]{16})"', body)
+        assert fp, "the card offers no run"
+        reach = client.get("/v2/device/r3/diagnose?back=overview&runbook=cant_reach")
+        assert reach.status_code == 200, reach.status_code
+        r = client.post("/v2/device/r3/diagnose/run", data={
+            "list": "Lab", "back": "overview", "runbook": "adjacency_down",
+            "adjacency": "link|r4|Gi4", "fingerprint": fp.group(1)})
+        job = re.search(r"/diagnose/job/([0-9a-f]+)", r.get_data(as_text=True))
+        assert job and capture_job.wait(job.group(1), 10), r.status_code
+        done = client.get(f"/v2/device/r3/diagnose/job/{job.group(1)}?back=overview")
+        assert "Diagnosis:" in done.get_data(as_text=True), done.status_code
+    finally:
+        mp.undo()
+
+
 def _in_progress(client, _lab, mp):
     """The top bar's In progress chip (C537) while r3 is held by a deploy: the walk's pages
     ask for it with nothing running, when it draws nothing. Its list carries the running row;
@@ -2994,7 +3028,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _attention_expected, _attention_explain, _attention_heal_analysis,
                    _attention_withheld,
                    _attention_quiet_period,
-                   _persist_read, _unlinked, _rekey, _drift,
+                   _persist_read, _unlinked, _rekey, _drift, _diagnose,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,

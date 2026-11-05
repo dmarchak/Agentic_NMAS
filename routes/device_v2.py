@@ -403,6 +403,8 @@ def device(name):
                        "list": ref.name, "back": tab} if op == "reload" else
                       _reload_verify_card(ref, dev, tab) if op == "reload_verify" else
                       _drift_check_card(ref, dev, tab) if op == "drift_check" else
+                      _diagnose_card(ref, dev, tab, _diagnose_fields(request.args))
+                      if op == "diagnose" else
                       # C537 (3), board C: no card asked for, and this device has an operation
                       # running, or one finished this person has not opened: THAT card.
                       _reopened(ref, dev, tab) if not op else None)
@@ -1318,6 +1320,85 @@ def drift_check_now(name):
     got["at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
     return _strict(render_template("v2/_drift_check.html",
                                    c=_drift_check_card(ref, dev, _back(request.form), got)))
+
+
+def _diagnose_card(ref, dev, back, args) -> dict:
+    """Diagnose…'s dialog (board H, artboard I; H16): the runbooks, the target chosen, and
+    every read the run will make, from intent alone."""
+    from modules.heal import diagnose_page
+    return diagnose_page.card(ref.name, dev.get("hostname", ""), back, args)
+
+
+def _diagnose_fields(fields) -> dict:
+    return {k: (fields.get(k) or "") for k in ("runbook", "adjacency", "to", "address")}
+
+
+@bp.route("/device/<name>/diagnose", methods=["GET"])
+def diagnose_card(name):
+    """Diagnose… (H16): the dialog in place of the tab, as the Actions menu's row asks it, and
+    again as its runbook or target changes; the device page draws the same card with
+    ``op=diagnose``. Reads intent only; asks no device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_diagnose.html", c=_diagnose_card(
+        ref, dev, _back(request.args), _diagnose_fields(request.args))))
+
+
+@bp.route("/device/<name>/diagnose/run", methods=["POST"])
+@no_store
+def diagnose_run(name):
+    """Run the diagnosis the card showed (H16), as the verified person, as a job: refused,
+    naming why with nothing read, when the target is not one the card offers or its plan moved
+    since the card was drawn. Every read is the runbook's, through the reads engine."""
+    from modules import identity
+    from modules.heal import diagnose_page
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_diagnose.html")
+    if refusal is not None:
+        return refusal
+    host, back = dev.get("hostname", ""), _back(request.form)
+    f = _diagnose_fields(request.form)
+    target, why = diagnose_page.target_of(host, f["runbook"], f["adjacency"], f["to"],
+                                          f["address"])
+    got = ({"error": f"Not diagnosed: {why}. Nothing was read."} if target is None else
+           diagnose_page.start(ref.name, host, f["runbook"], target,
+                               request.form.get("fingerprint", ""),
+                               identity.identify(request).actor or ""))
+    if "error" in got:
+        return _strict(render_template("v2/_diagnose.html", c={
+            "op": "diagnose", "state": "refused", "host": host, "list": ref.name, "back": back,
+            "error": got["error"]}), 409)
+    return _strict(render_template("v2/_diagnose.html", c={
+        "op": "diagnose", "state": "running", "host": host, "list": ref.name, "back": back,
+        "job": got["job"]}))
+
+
+@bp.route("/device/<name>/diagnose/job/<job>", methods=["GET"])
+def diagnose_job_card(name, job):
+    """The diagnosis's card by its job (H16): still running, the diagnosis drawn (artboard J),
+    the job's failure, or that this server holds no such job. Re-read when the job announces
+    ``diagnosis``."""
+    from modules.heal import diagnose_page
+    from modules.nsot import capture_job
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = {"op": "diagnose", "host": dev.get("hostname", ""), "list": ref.name,
+         "back": _back(request.args), "job": job}
+    j = capture_job.get(job)
+    if j is None or j.get("list") != ref.name or j.get("kind") != "diagnosis":
+        c.update(state="unknown")
+    elif j["state"] == "running":
+        c.update(state="running")
+    elif j["state"] == "failed" or not isinstance(j.get("payload"), dict):
+        c.update(state="failed", error=j.get("error") or "the job answered nothing")
+    else:
+        c.update(state="done", d=diagnose_page.result(j["payload"]))
+    return _strict(render_template("v2/_diagnose.html", c=c))
 
 
 @bp.route("/device/<name>/reload/verify/offer", methods=["GET"])

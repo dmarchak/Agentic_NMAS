@@ -70,8 +70,18 @@ compared" where intent was not compared), where board 2 (`DevCaptureResult`) dre
 which `preview_confirm.capture_result` already calls "partial". A capture at its intent is
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
-Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `49fac3323a4ab8c9875d0401423029cd5f35973e1d8df21c400cf316f9ec42b9`
+Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html, templates/v2/_diagnose.html
+Compared again 2026-11-05 (the main session, H16's gate): `_diagnose.html`'s "not offered"
+`<details>` gains `data-keep` (C472: a live region's details keeps its state across a redraw),
+an attribute no region draws; every region reads as before.
+Templates sha256: `20e2078c26ed7a66598677f7499cd2fc7f1e5456a2c30d7e3b9ee7505b2e7560`
+
+**Compared again 2026-11-05 ~11:4x UTC for H16** (board H's amendment, artboards I and J): the
+Actions menu gains **Diagnose…** after Check drift now…, always offered, opening its card in
+place of the tab (`_diagnose.html`, op `diagnose`), which joins the templates compared. Compared
+by reading the artboards against the rendered card, region by region, in "Board H's amendment,
+artboards I and J (H16)" below; no other region moved. Templates sha256 before:
+`49fac3323a4ab8c9875d0401423029cd5f35973e1d8df21c400cf316f9ec42b9`.
 
 **Compared again 2026-11-03 ~05:3x UTC for C2336** (the operator's sessions 7 and 8: "Check drift
 now" on the device's Actions menu and the drift row's Open…): the Actions menu gains **Check drift
@@ -323,3 +333,31 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | What it re-reads on | not drawn | a hold ending, a step, a window declared, reachability | **same** |
 | Hover | not drawn | the operation and who, or why it is held | **same** |
 | Words of a window with no hold | "Restarting as planned" (20.3) | "Restarting as planned · by … · back by ~…" | **same** |
+
+## Board H's amendment, artboards I and J (H16): Diagnose… and the diagnosis in place
+
+Compared 2026-11-05 ~11:4x UTC by reading `docs/boards/heal-to-intent.html`'s artboards I ("Diagnose…
+on a device and on an alert") and J ("A diagnosis, drawn in place") against `_actions_menu.html`
+and `_diagnose.html` as rendered by tests/test_heal_diagnose_v2.py on the fleet's real intent (r2
+and r3 in place of the board's r4). No shot was taken: tests/test_board_shots.py has no Diagnose…
+shot yet, so the comparison is of the board's regions against the rendered card's words and
+controls, region by region.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Actions menu: Diagnose… | after Check drift now…, before the rule and Re-key… | after Check drift now…, before Re-key…, with its (i); always offered | **same** |
+| The card's head | "Diagnose r4", How does this work? | "Diagnose r2", How does this work?, and Cancel in the head as every op card draws it | **deviation** (log: H16's Diagnose… card) |
+| What is wrong | two radios: "An adjacency is down with both ends at intent", "Can't reach a device or an address from r4" | the same two, the card drawn again for the one chosen | **same** |
+| Which adjacency | a select from intent: "r3 over GigabitEthernet4: OSPF, area 0 (intent)", a BGP neighbour | the same select, the interface as the network model names it ("r1 over Gi2: OSPF, area 0, OSPFv3, area 0 (intent)"), BGP neighbours with their AS; the adjacencies intent runs no protocol over listed under "N not offered" with why | **deviation** (log: H16's Diagnose… card) |
+| Can't reach's target | one select: "a device of Default, or an IPv4 or IPv6 address, checked as one address" | a select of the network's devices by their loopback in intent, and an address field beside it, checked as one address; the card says Can't reach reads IPv4 forwarding only | **deviation** (log: H16's Diagnose… card) |
+| What it reads | Device, Reads, At most; each read named; Loki, one query | the same columns, each command as it will be sent ("show interfaces GigabitEthernet2 (twice, 10 s apart)"), each device's count; Loki's row; for Can't reach, the reads at each hop as the path reaches it | **same** |
+| The run's time | "about 40 s, at most 90 s (an estimate until it is measured)" | the reads' own bounds added (minutes on a full plan) and "the run's time is not measured yet (an estimate of 30 to 60 s)" | **deviation** (log: H16's Diagnose… card) |
+| One diagnosis per device | the button replaced by "r4 is in diagnosis dg-41a7 …" before the press | the count against the cap of 70; a device in another diagnosis refused by name when the run starts, drawn in place | **later** H16's next part: reading the diagnosis lock without taking it |
+| Run the diagnosis | primary, busy on itself, then the diagnosis in its place; Cancel | the same, busy on itself ("Starting the diagnosis…"), then the card waiting on the job's announcement, then the diagnosis in its place | **same** |
+| The diagnosis's head | "Diagnosis: r4 GigabitEthernet4 ↔ r3 GigabitEthernet4, OSPF down", times, on demand or automatic, reads count; the chip "3 hypotheses · the first decisive" | "Diagnosis: adjacency down with both ends at intent, r2 and r1", times, on demand by whom, commands against the cap, its id and whether it was recorded; the same chip | **deviation** (log: H16's Diagnose… card) |
+| The hypotheses | #, Hypothesis, Layer · strength, Evidence (masked) with each read a link, Would rule it out; "evidence incomplete" chip | the same five columns; each read a link to its run on History › Reads; the chip with what it lacks | **same** |
+| Ruled out | a details, open, the checks joined | a part "Ruled out (N)", the checks joined | **same** |
+| Not checked | not drawn | a part "Not checked (N)", each with why | **deviation** (log: H16's Diagnose… card) |
+| Can't reach's path | a hop table: Hop, Read, Against intent, the diverging hop marked | every step in order (reach, trace, each hop, return, logs, compare, rank), the hop that diverges named in its step | **deviation** (log: H16's Diagnose… card) |
+| The result's controls | Run again, Open in History, "16 reads on History › Reads", How does this work?; Open r6's can't-fix row | Run again… and a link to each reads run on History › Reads, How does this work? | **later** H16's next part: History's kind diagnosis (Open in History), and the can't-fix row's link |
+| Diagnose… on an alert's card and on a can't-fix row | drawn (Monitoring › Alerts, Needs attention) | not built | **later** H16's next part |

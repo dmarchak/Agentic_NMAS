@@ -769,7 +769,14 @@ class TestTheShippedScripts:
         # reader's announcement, C2347).
         # +1 2026-11-03: ci_agreement (Needs attention redraws on the ci-agreement reader's
         # announcement, workstream 0).
-        assert len(keys) == 53
+        # +1 2026-11-05: diagnosis (Diagnose…'s card waits for its run's end and reads the
+        # result by job id, H16).
+        assert len(keys) == 54
+        # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
+        # it reads its job's network and kind, which the shared stand-in above does not carry.
+        monkeypatch.setattr(capture_job, "get", lambda job: {
+            "state": "running", "elapsed_s": 1, "list": "Lab", "kind": "diagnosis"})
+        heard += " " + _get(lab, "/v2/device/r3/diagnose/job/x")[1]
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

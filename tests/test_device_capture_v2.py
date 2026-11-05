@@ -108,7 +108,7 @@ class TestTheMenu:
         assert labels == ["Plan a deploy…", "Capture", "Seed intent…", "Restore from…",
                           "Remove lines (Mode B)…",
                           "Rotate credential…", "Persist", "Run a privileged command…",
-                          "Reload…", "Check drift now…", "Retire…"], labels
+                          "Reload…", "Check drift now…", "Diagnose…", "Retire…"], labels
 
     def test_without_script_the_row_opens_the_page_with_the_card(self, lab):
         html = lab["client"].get("/v2/device/r2?op=capture").get_data(as_text=True)

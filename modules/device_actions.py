@@ -344,6 +344,10 @@ JOB_STEPPERS = {
     "reload": ("modules.nsot.reload_op", "STEPS", None),
     # Adopt (board G): each step noted once it ends.
     "adopt": ("modules.nsot.adopt", "STEPPER", None),
+    "diagnose": ("one job: the runbook's reads, each device held for the diagnosis only while "
+                 "its reads run (DiagnosisLock), noting no step to the device hold; its card "
+                 "waits on nmas:diagnosis and draws every step, read and hypothesis once the "
+                 "run ends (board H's artboard J)"),
 }
 
 #: A reload's outcome -> (its heading chip, its level). Only `reloaded` is green.

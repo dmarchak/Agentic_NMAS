@@ -1,0 +1,125 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Diagnose… on the device page (board H's amendment, artboards I and J; H16 of
+    docs/HEAL_TO_INTENT.md 19.7): the card in place of the tab, opened by the Actions menu's row.
+    The dialog picks a runbook and its target from intent (never a typed command), lists every
+    read the run will make on which devices and the worst case, and runs it as a job, busy on
+    itself; the job's card re-reads on `diagnosis` and draws the diagnosis in place: the ranked
+    hypotheses with their evidence, what was ruled out, what was not checked, each step.
+    `modules/heal/diagnose_page.py`. Close puts back the tab. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if c.state == 'pick' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Diagnose {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('diagnose') }}{{ close_button('Cancel') }}</div></div>
+  <form hx-get="{{ url_for('device_v2.diagnose_card', name=c.host) }}" hx-trigger="change" hx-target="#device-op" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+    <div class="op-part"><h3>What is wrong</h3><div role="radiogroup" aria-label="Runbook">
+      {%- for ch in c.choices %}
+      <label class="op-choice"><input type="radio" name="runbook" value="{{ ch.value }}"{{ ' checked' if ch.value == c.runbook }}> <strong>{{ ch.label }}</strong> {{ ch.rest }}</label>
+      {%- endfor %}
+    </div></div>
+    <div class="op-part"><h3>{{ 'Which adjacency' if c.runbook == 'adjacency_down' else 'Which device or address' }}</h3><div>
+      {%- if c.runbook == 'adjacency_down' %}
+      <select name="adjacency" aria-label="Which adjacency">
+        {%- for o in c.options %}<option value="{{ o.value }}"{{ ' selected' if o.value == c.adjacency }}>{{ o.words }}</option>{% endfor %}
+      </select>
+      <p class="muted">From {{ c.host }}'s intent: {{ c.options | length }} adjacenc{{ 'y' if c.options | length == 1 else 'ies' }} offered.</p>
+      {%- if c.not_offered %}
+      <details data-keep="diag-not-offered-{{ c.host }}"><summary>{{ c.not_offered | length }} not offered</summary><ul>
+        {%- for n in c.not_offered %}<li>{{ n.words }}: {{ n.why }}</li>{% endfor %}
+      </ul></details>
+      {%- endif %}
+      {%- else %}
+      <select name="to" aria-label="Which device">
+        <option value=""{{ ' selected' if not c.to }}>an address, below</option>
+        {%- for o in c.options %}<option value="{{ o.value }}"{{ ' selected' if o.value == c.to and not c.address }}>{{ o.words }}</option>{% endfor %}
+      </select>
+      <label class="field">or an address <input type="text" name="address" value="{{ c.address }}" inputmode="text" autocomplete="off" spellcheck="false" aria-label="An IPv4 or IPv6 address"></label>
+      <p class="muted">A device of {{ c.list }} by its loopback in intent, or an address checked as one IPv4 or IPv6 address. {{ c.ipv4_only }}.</p>
+      {%- if c.without %}<p class="muted">Not offered, no loopback in intent: {{ c.without | join(', ') }}; give an address.</p>{% endif %}
+      {%- endif %}
+    </div></div>
+  </form>
+  {%- set p = c.plan %}
+  {%- if p %}
+  <div class="op-part"><h3>What it reads</h3><div>
+    <table class="table set-table"><thead><tr><th scope="col">Device</th><th scope="col">Reads (each on the read-only allowlist)</th><th scope="col">At most</th></tr></thead><tbody>
+      {%- for r in p.rows %}
+      <tr><td>{{ r.device }}</td><td class="mono">{{ r.reads | join(' · ') }}</td><td>{{ r.count }} read{{ '' if r.count == 1 else 's' }}</td></tr>
+      {%- endfor %}
+      {%- if p.per_hop %}
+      <tr><td>each routed hop, as the path reaches it</td><td>{{ p.per_hop | join(' · ') }}</td><td>about {{ p.per_hop | length + 1 }} a hop; about {{ p.hops_at_cap }} hops at the cap</td></tr>
+      {%- endif %}
+      <tr><td>Loki</td><td>each device's log of the last hour: its configuration lines</td><td>one query a device</td></tr>
+    </tbody></table>
+    <p class="muted">Read only: nothing is sent to any device but these reads, and nothing is changed. Each device is held while it is read, so another operation on it is refused by name meanwhile; a device another operation holds is skipped and named. {{ p.words }}: every read's own bound adds up to {{ p.worst }} at worst; the run's time is not measured yet (an estimate of 30 to 60 s).{{ ' ' ~ p.outside ~ '.' if p.outside }}</p>
+    <p class="muted">One diagnosis at a time per device, and at most {{ p.cap }} device commands per diagnosis; this one asks {{ p.count }}{{ ' to start, then the hops as the path reaches them' if p.per_hop }}. A device already in a diagnosis is refused by name when the run starts, never queued.</p>
+  </div></div>
+  <div class="op-part" id="diagnose-run"><h3>Run</h3><div>
+    <form hx-post="{{ url_for('device_v2.diagnose_run', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+      <input type="hidden" name="runbook" value="{{ c.runbook }}"><input type="hidden" name="adjacency" value="{{ c.adjacency }}">
+      <input type="hidden" name="to" value="{{ c.to }}"><input type="hidden" name="address" value="{{ c.address }}">
+      <input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="diagnose" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Run the diagnosis</span><span class="op-busy">Starting the diagnosis…</span></button>{{ how('diagnose', compact=True, op='a diagnosis') }}</span>
+    </form>
+  </div></div>
+  {%- else %}
+  <p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't plan a diagnosis: {{ c.error or 'no reason recorded' }}. Nothing was read.</span></p>
+  {%- endif %}
+</section>
+{%- elif c.state == 'running' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.diagnose_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:diagnosis from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Diagnose {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('diagnose') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Running</h3><div><p class="op-wait">Diagnosing on {{ c.list }}: reading, then comparing what was read with intent. Its reads are runs on History › Reads as they land; the diagnosis is drawn here when it ends.</p></div></div>
+</section>
+{%- elif c.state == 'done' %}
+{%- set d = c.d %}
+<section class="op-card{{ ' op-warn' if d.level in ('warn', 'danger') }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Diagnosis: {{ d.runbook_words }}{{ ', ' ~ d.devices | join(' and ') if d.devices }}</h2>
+    <div class="op-hd-actions">{{ badge(d.chip, d.level) }}{{ how('diagnose', 'the-result') }}{{ close_button('Close') }}</div></div>
+  <p class="muted">{{ stamp(d.started_at) }} to {{ stamp(d.finished_at) }} · {{ 'automatic, incident ' ~ d.incident if d.incident else 'on demand by ' ~ (d.actor or 'no one recorded') }} · {{ d.commands }} of at most {{ d.cap }} device commands · diagnosis {{ d.id }}, {{ 'recorded' if d.recorded else 'not recorded' }}</p>
+  <div class="op-part op-focus"><h3>What it found</h3><div>
+    <p>{{ d.words }}{{ '; ' ~ d.stopped if d.stopped }}</p>
+    {%- if d.hypotheses %}
+    <table class="table set-table"><thead><tr><th scope="col">#</th><th scope="col">Hypothesis</th><th scope="col">Layer · strength</th><th scope="col">Evidence (masked)</th><th scope="col">Would rule it out</th></tr></thead><tbody>
+      {%- for h in d.hypotheses %}
+      <tr><td>{{ h.n }}</td><td><strong>{{ h.claim }}</strong>{% if h.incomplete %} {{ badge('evidence incomplete', 'neutral', title=h.incomplete | join('; ')) }}<span class="muted"> {{ h.incomplete | join('; ') }}</span>{% endif %}{% if h.todo %}<span class="muted"> {{ h.todo }}</span>{% endif %}</td>
+        <td>{{ h.layer }} · {{ h.strength }}</td>
+        <td>{%- for e in h.evidence %}{% if e.run %}<a href="{{ url_for('reads_v2.show_commands_result', run_id=e.run, list=c.list) }}">{{ e.label }}</a>{% else %}{{ e.label }}{% endif %}{{ ': "' ~ e.line ~ '"' if e.line }}{{ '; intent: ' ~ e.intent if e.intent }}{{ '' if loop.last else '; ' }}{% endfor %}</td>
+        <td>{{ h.rule_out }}</td></tr>
+      {%- endfor %}
+    </tbody></table>
+    {%- if d.more %}<p class="muted">{{ d.more }} more not shown (at most five are).</p>{% endif %}
+    {%- endif %}
+  </div></div>
+  <div class="op-part"><h3>Ruled out ({{ d.ruled_out | length }})</h3><div><p class="muted">{{ d.ruled_out | join(' · ') if d.ruled_out else 'nothing' }}</p></div></div>
+  {%- if d.not_checked %}
+  <div class="op-part"><h3>Not checked ({{ d.not_checked | length }})</h3><div><ul>
+    {%- for n in d.not_checked %}<li>{{ n.check }}: {{ n.why }}</li>{% endfor %}
+  </ul></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Step by step</h3><div><ol>
+    {%- for s in d.steps %}<li><strong>{{ s.step }}</strong>{{ ' · ' ~ s.device if s.device }} · {{ s.result }}: {{ s.words }}</li>{% endfor %}
+  </ol></div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    <span class="op-act"><a class="btn btn-small" data-op="diagnose" href="{{ url_for('device_v2.device', name=c.host, tab=c.back, op='diagnose') }}" hx-get="{{ url_for('device_v2.diagnose_card', name=c.host, back=c.back) }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Run again…</span><span class="op-busy">Opening…</span></a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span>
+    {%- for r in d.runs %} <a href="{{ url_for('reads_v2.show_commands_result', run_id=r, list=c.list) }}">its reads, run {{ loop.index }} on History › Reads</a>{% endfor %}
+  </div></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Diagnose {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('diagnose') }}{{ close_button('Close') }}</div></div>
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>
+  {%- if c.state == 'refused_list' %}Refused: the card names no network this server knows ({{ c.list or 'none given' }}). Nothing was read.
+  {%- elif c.state == 'unknown' %}This server holds no diagnosis job {{ c.job }} in {{ c.list }} (it restarted, or the job is older than half an hour), so its diagnosis cannot be drawn here; run it again from the Actions menu.
+  {%- else %}{{ c.error or 'Not diagnosed: no reason recorded.' }}{% endif %}</span></p>
+</section>
+{%- endif %}
