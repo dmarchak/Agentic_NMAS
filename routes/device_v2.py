@@ -606,6 +606,11 @@ def update_available():
             # C2337: held, naming why, while the in-app update lacks the safe-deploy script's
             # gates or an SDN loop runs (the Update page's own gates, `update_op.plan`).
             from modules import update_op as U
+            if U.kit_refusal():
+                # A laptop kit is moved only by `kit repin`: held with that alone, never offered
+                # (the updater and the safe-deploy script are the host's, not the kit's).
+                return _strict(render_template("v2/_update_available.html",
+                                               avail=dict(avail, held=U.KIT_WORDS)))
             runs = U.updater_gates(U.install_state())
             held = [U.SAFE_DEPLOY_WORDS[g] for g in U.SAFE_DEPLOY_GATES if g not in runs]
             loops = U.sdn_loops_running()

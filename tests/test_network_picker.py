@@ -146,3 +146,79 @@ class TestChoosing:
         assert (networks["dir"] / "network_choices.json").read_text() == "{not json"
         _r, html = _get(networks, "/v2/devices")
         assert _shown(html) == "Default"
+
+
+@pytest.fixture
+def gate_open(networks, monkeypatch):
+    """The configure gate open to anyone, as the laptop kit's identity exception leaves it
+    (`require_identity_for_configure` false, docs/IDENTITY.md). The registry is the one file
+    for both its readers, as on an installation: `networks` points `device`'s at the temporary
+    store and leaves `config.get_current_list_name`'s on the harness's own."""
+    from modules import config, device
+
+    monkeypatch.setattr(config, "DEVICE_LISTS_CONFIG", device.DEVICE_LISTS_CONFIG)
+    p = networks["dir"] / "user_settings.json"
+    settings = json.loads(p.read_text())
+    settings["require_identity_for_configure"] = False
+    p.write_text(json.dumps(settings))
+    return networks
+
+
+@pytest.fixture
+def nobody_verified(gate_open, monkeypatch):
+    """An installation with no verified person: the gate open, and no request's assertion
+    verified (`identity.identify` answers the unidentified default)."""
+    monkeypatch.setattr(identity, "identify", lambda _request=None: identity.Identity())
+    return gate_open
+
+
+def _current_records(n):
+    p = n["dir"] / "settings_record.jsonl"
+    rows = [json.loads(line) for line in p.read_text().splitlines()] if p.exists() else []
+    return [r for r in rows if r.get("kind") == "network_current"]
+
+
+class TestNoVerifiedPerson:
+    """C2559: on an installation with no verified person (the laptop kit), the picker recorded
+    the choice under ``unverified`` and nothing read it back, so picking did nothing past the
+    page it opened. Now the choice makes the network the installation's current one, recorded
+    in History with who and how it was established; a verified person's stays their own."""
+
+    def test_choosing_takes_effect_on_every_page(self, nobody_verified):
+        from modules.nsot import listref
+
+        r = _choose(nobody_verified, "Remote", "/v2/history")
+        assert r.status_code == 204 and r.headers["HX-Redirect"] == "/v2/history?list=Remote"
+        _r, html = _get(nobody_verified, "/v2/devices")
+        assert _shown(html) == "Remote", "a page with no network in its address shows it"
+        assert listref.active().name == "Remote"
+        registry = json.loads((nobody_verified["dir"] / "device_lists.json").read_text())
+        assert registry["current_list"] == "Remote"
+        assert not (nobody_verified["dir"] / "network_choices.json").exists(), \
+            "nothing kept under 'unverified' that nobody reads"
+
+    def test_it_is_recorded_with_who_and_how(self, nobody_verified):
+        from modules import history_sources
+
+        _choose(nobody_verified, "Remote")
+        (row,) = _current_records(nobody_verified)
+        assert row["actor"] == identity.UNVERIFIED and row["actor_verified"] == "none"
+        assert row["changes"] == [{"key": "current_list", "label": "Current network",
+                                   "kind": "text", "old": "Default", "new": "Remote"}]
+        assert history_sources.SETTING_WORDS[row["kind"]] == \
+            "the installation's current network set"
+        _choose(nobody_verified, "Remote")
+        assert len(_current_records(nobody_verified)) == 1, "the same network again records none"
+
+    def test_an_unknown_network_changes_nothing(self, nobody_verified):
+        assert _choose(nobody_verified, "Nowhere").status_code == 404
+        assert _current_records(nobody_verified) == []
+
+    def test_a_verified_person_s_choice_stays_their_own_with_the_gate_open(self, gate_open,
+                                                                          as_person):
+        from modules.nsot import listref
+
+        assert _choose(gate_open, "Remote").status_code == 204
+        assert listref.active().name == "Default" and _current_records(gate_open) == []
+        stored = json.loads((gate_open["dir"] / "network_choices.json").read_text())
+        assert stored[ANA]["current"] == "Remote"

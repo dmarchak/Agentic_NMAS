@@ -78,6 +78,30 @@ def choose(actor: str, name: str) -> dict:
     return table[actor]
 
 
+def choose_for_request(name: str) -> dict:
+    """Record this request's choice of the network *name* (registered and resolved by the
+    caller). ``{"how": "person", ...}`` or ``{"how": "installation", ...}``.
+
+    A verified person (or service): their own choice (`choose`), exactly as board N decided.
+
+    No verified person (C2559): the gate admitted the request only because its kind is open
+    to anyone (`identity.may`, the laptop kit's identity exception, docs/IDENTITY.md), and a
+    choice kept under ``unverified`` is one `for_request` never reads back, so picking did
+    nothing. Such an installation has nobody to keep a choice for, so the choice makes *name*
+    the installation's current network (`network_admin.make_current`), recorded in the
+    installation's record that History draws, with `identity.request_actor()` and how it was
+    established (`identity.actor_verification`). Raises `network_admin.Refused` (a
+    ``ValueError``) naming the network when it cannot be made current."""
+    from modules import identity, network_admin
+
+    ident = identity.viewer()
+    if getattr(ident, "is_identified", False):
+        return dict(choose(identity.request_actor(), name), how="person")
+    actor = identity.request_actor()
+    got = network_admin.make_current(name, actor, identity.actor_verification(actor))
+    return dict(got, how="installation")
+
+
 def for_request() -> str:
     """The verified person's own choice on this request, or ""."""
     from modules import identity

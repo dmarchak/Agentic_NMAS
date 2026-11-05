@@ -150,6 +150,43 @@ class TestTheTopBar:
         assert f"Update to {TIP[:7]}: not offered: {words}" in body, body[:900]
         assert f" to {TIP[:7]} (held)" in body
 
+    def test_on_a_laptop_kit_it_is_held_saying_a_kit_updates_by_repin(self, monkeypatch,
+                                                                      running):
+        """A laptop kit is moved only by `kit repin <sha>` (docs/LAB9_LAPTOP_RUN.md): the pill
+        is drawn held with that alone, never offering the update, even with every in-app
+        gate passing; the safe-deploy script's advice is the host's, not the kit's."""
+        import html as _h
+
+        from modules import installation_kind as K
+        self._offerable(monkeypatch)
+        monkeypatch.setattr(K, "kind", lambda: K.LAPTOP_KIT)
+        body = _h.unescape(self._get(monkeypatch, _value()).get_data(as_text=True))
+        assert 'class="update-pill update-pill-held"' in body, body[:900]
+        assert (f"Update to {TIP[:7]}: not offered: a laptop kit updates by `kit repin <sha>`, "
+                "docs/LAB9_LAPTOP_RUN.md\"") in body, body[:900]
+        assert "safe-deploy" not in body and f" to {TIP[:7]} (held)" in body
+        # Pressed: the pill's link opens the Update page, which says how a kit updates and
+        # whose every Update button is disabled.
+        import re
+
+        import app as A
+        href = re.search(r'<a class="update-pill update-pill-held" href="([^"]+)"', body).group(1)
+        page = _h.unescape(A.app.test_client().get(href).get_data(as_text=True))
+        assert "a laptop kit updates by `kit repin <sha>`" in page, page[:900]
+        posts = re.findall(r'<button[^>]*id="update-confirm"[^>]*hx-post="/update/apply"[^>]*>',
+                           page)
+        assert posts and all(re.search(r"\sdisabled[\s>]", b) for b in posts), posts
+        # And what that button would send, sent anyway, is refused naming the kind.
+        sent = re.search(r"hx-vals='(\{[^']*\})'", posts[0]).group(1)
+        import json
+
+        from modules import update_op
+        before = update_op.pending()
+        r = A.app.test_client().post("/update/apply", data=json.loads(sent))
+        assert r.status_code == 409, r.get_data(as_text=True)[:600]
+        assert "this installation's kind is laptop_kit" in _h.unescape(r.get_data(as_text=True))
+        assert update_op.pending() == before, "a kit's refused update left a request behind"
+
     @pytest.mark.parametrize("value,last", [
         (_value(ci={"tip": TIP, "state": "pending"}), NO_UPDATE_ASKED),
         (_value(ci={"tip": TIP, "state": "failed"}), NO_UPDATE_ASKED),

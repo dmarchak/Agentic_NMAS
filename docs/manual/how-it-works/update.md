@@ -50,6 +50,11 @@ verdict, what lies beyond it, the host steps of the commits up to the target (a 
 commit beyond it is not this update's), and whether the checkout on the host is clean.
 Each of these is a gate, and any failing refuses the update:
 
+- this installation takes the in-app update. A laptop kit (`installation_kind` laptop_kit)
+  does not: it is pinned to one commit and moves only by `kit repin <sha>`
+  (docs/LAB9_LAPTOP_RUN.md). On a kit the top bar's Update is drawn held, saying so, the
+  preview leads with this gate, and a confirm or a wait for CI is refused naming the
+  installation kind, before anything is written;
 - the stored comparison is for the commit running now;
 - origin/main is ahead of it, and fetched;
 - CI passed the target;

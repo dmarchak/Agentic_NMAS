@@ -37,6 +37,12 @@ The choice is yours alone. It is remembered for you, as the verified person you 
 and never moves anyone else's pages: two people can look at two networks at once. A page whose
 address names a network shows that one, whatever you chose.
 
+On an installation with no verified person (the final SDN lab's laptop kit, whose identity
+exception opens the gates), there is nobody to remember a choice for, so choosing a network
+makes it the installation's current network: every page with no network in its address shows
+it, and so do the jobs. History records it as "the installation's current network set", with
+who chose it ("unverified") and how that was established ("none").
+
 A page keeps the network it was opened on. Everything it does after it is drawn names that
 network: each part it redraws when something changes, each row you expand, each button, each
 link and each filter. So the label, the network the picker marks and what the page shows are

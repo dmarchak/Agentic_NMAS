@@ -8,7 +8,9 @@ unreadable; an empty network with a repository raised drift "never", and Default
 formatting unreadable; the same network with one device added raised drift "never" again,
 plus two rows only a device brings (break-glass "could not be checked", the adjacency log
 unreadable), which an empty network never raises. So the marked checks are drift, baseline
-and intent formatting, per network. Held here:
+and intent formatting, per network; and (C2560, on the kit at ee620634, where NetBox is
+configured) NetBox against the committed goldens, whose Default row the survey's unconfigured
+NetBox never raised. Held here:
 - an empty network shows each as one line, "no devices yet: ...", and none of their rows;
 - the SAME network, one device added, raises them exactly as before;
 - an unreadable inventory is never "no devices": its checks stay rows;
@@ -223,6 +225,61 @@ class TestIntentFormat:
         res = A.intent_format_source(cached=_intent(net1=HAND),
                                      presence=lambda n: {"state": "unreadable", "why": "x"})
         assert [r["id"] for r in res["rows"]] == ["intent-format:net1:r1"]
+
+
+def _lag(**networks):
+    return {"state": "ok", "doc": {"stale_after_seconds": 900, "last_good": {
+        "value_at": "2026-11-05T05:52:45Z",
+        "value": {"configured": True, "networks": networks}}}}
+
+
+#: C2560's shape on the kit at ee620634: Default, with no repository, as the netbox-lag reader
+#: stores it (`readers/netbox_lag.committed_goldens`); and one device NetBox holds less of.
+NO_GOLDENS = {"error": "the committed goldens could not be listed (fatal: not a git repository)"}
+BEHIND = {"in_netbox": True, "checked": 1, "lldp_error": "", "devices": {
+    "r1": {"interfaces": ["GigabitEthernet0/1"], "addresses": [], "cables": [], "netbox_id": 7}}}
+
+
+@pytest.mark.parametrize("kind", KINDS)
+class TestNetBoxLag:
+    """C2560's fourth check: "NetBox against the committed goldens" raised "Default's goldens
+    could not be compared with NetBox" for a Default holding no device and no repository."""
+
+    def test_an_empty_network_is_its_own_line_never_its_unreadable_row(self, store, kind):
+        store["kind"](kind)
+        res = A.netbox_lag_source(cached=_lag(Default=NO_GOLDENS, net1=NO_GOLDENS),
+                                  writes=True, presence=device.presence)
+        assert res["rows"] == []
+        assert [n["check"] for n in res["not_applicable"]] == ["Default", "net1"]
+        assert all(n["mark"] == "no devices yet" for n in res["not_applicable"])
+        assert "2 network(s) with no devices yet" in res["checked"]
+
+    def test_the_reader_s_own_value_is_judged_by_presence(self, store, kind, monkeypatch):
+        store["kind"](kind)
+        monkeypatch.setattr("modules.reader_job.read_cached",
+                            lambda name: _lag(Default=NO_GOLDENS))
+        res = A.netbox_lag_source(writes=True)
+        assert res["rows"] == [] and [n["check"] for n in res["not_applicable"]] == ["Default"]
+
+    def test_the_same_network_with_a_device_raises_its_rows_as_before(self, store, kind):
+        store["kind"](kind)
+        store["add"]()
+        res = A.netbox_lag_source(cached=_lag(Default=NO_GOLDENS, net1=BEHIND), writes=True,
+                                  presence=device.presence)
+        assert [r["id"] for r in res["rows"]] == ["netbox-lag:net1:r1"]
+        assert [n["check"] for n in res["not_applicable"]] == ["Default"]
+
+    def test_a_planted_value_without_presence_is_read_as_before(self, store, kind):
+        store["kind"](kind)
+        res = A.netbox_lag_source(cached=_lag(Default=NO_GOLDENS), writes=True)
+        assert [r["id"] for r in res["rows"]] == ["netbox-lag:Default:unreadable"]
+        assert not res["not_applicable"]
+
+    def test_an_unreadable_inventory_keeps_its_row(self, store, kind):
+        store["kind"](kind)
+        res = A.netbox_lag_source(cached=_lag(Default=NO_GOLDENS), writes=True,
+                                  presence=lambda n: {"state": "unreadable", "why": "x"})
+        assert [r["id"] for r in res["rows"]] == ["netbox-lag:Default:unreadable"]
 
 
 @pytest.mark.parametrize("kind", KINDS)

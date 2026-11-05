@@ -249,7 +249,7 @@ GATES = {
     "settings_v2.network_source_apply": _g(K, "changes a network's inventory source as previewed, refreshes it, recorded"),
     "settings_v2.network_create": _g(K, "creates a network as previewed (its folder derived from its name), recorded (board I's pattern)"),
     "settings_v2.network_delete": _g(K, "deletes a network as previewed, its name typed: its folder moved aside, never erased, recorded"),
-    "network_v2.choose": _g(K, "records the verified person's own network choice (board N): what their pages show, never anyone else's"),
+    "network_v2.choose": _g(K, "records the verified person's own network choice (board N): what their pages show, never anyone else's; with no verified person (the gate open, C2559) it makes the network the installation's current one, recorded in History"),
     # Settings › Installation › Console servers (O8, routes/console_servers_v2.py).
     "console_servers_v2.port_save": _g(K, "adds or replaces how Mercury reaches one console-server port (driver, host, container or TCP port, a credential REFERENCE; modules/nsot/console_servers.py), recorded with who"),
     "console_servers_v2.port_remove": _g(K, "forgets how Mercury reaches one console-server port; NetBox's port and the key stay, recorded with who"),

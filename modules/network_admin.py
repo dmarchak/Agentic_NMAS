@@ -75,8 +75,9 @@ def create(name: str, fingerprint: str, actor: str, verified: str) -> dict:
 def make_current(name: str, actor: str, verified: str) -> dict:
     """Make the network *name* the installation's current one (`device.set_installation_list`),
     recorded in the installation's settings record when it moved (C2521: the laptop kit's
-    `init`, so Mercury opens on its network). No screen calls it: the picker records a person's
-    own choice. Raises `Refused` naming the network when it is not registered."""
+    `init`, so Mercury opens on its network; C2559: the picker on an installation with no
+    verified person, `network_choice.choose_for_request`), while a verified person's choice
+    stays their own. Raises `Refused` naming the network when it is not registered."""
     from modules import device
     from modules import installation_settings as IS
 

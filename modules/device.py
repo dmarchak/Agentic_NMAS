@@ -677,8 +677,9 @@ def set_installation_list(list_name: str) -> tuple[bool, str]:
     reads. ``(changed, message)``; an unregistered name is refused, naming it.
 
     For an installation with no verified person to choose (C2521: the laptop kit, whose `init`
-    makes its network current, `network_admin.make_current`): the picker records a PERSON's
-    choice (`network_choice`), and the installation's list stays frozen to every screen
+    makes its network current, `network_admin.make_current`, and C2559: its picker does the
+    same, `network_choice.choose_for_request`). A verified person's pick records only their own
+    choice (`network_choice`), and no other screen moves the installation's list
     (`get_current_device_list`, P7-26)."""
     config = _load_device_lists_config()
     lists = config.get("lists", {})

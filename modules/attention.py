@@ -3166,14 +3166,20 @@ NETBOX_WRITES_WHERE = ("NetBox writes are off for every network: the import's co
                        "Connections, the NetBox connection card")
 
 
-def netbox_lag_source(cached=None, writes=None) -> dict:
+def netbox_lag_source(cached=None, writes=None, presence=None) -> dict:
     """A device whose NetBox record holds less than its committed golden (C1344): the
     interfaces, addresses and LLDP cables the import would add, counted by the reader
     (`readers/netbox_lag`) from the committed goldens and NetBox, never per request. One row
     per device, its action the import scoped to it (its NetBox tab's Import into NetBox…);
     it resolves when the import lands, which wakes the reader. With writes off the row says the
-    import is off and where it comes on."""
-    from modules import reader_job
+    import is off and where it comes on.
+
+    A network with no devices is its own line, "no devices yet", never its rows (C2560: a fresh
+    Default, with no repository, raised "Default's goldens could not be compared with NetBox"),
+    judged by *presence* as intent formatting judges it (`device.presence` when the stored
+    value is the reader's own; a *cached* value given by a caller is read as given unless it
+    gives a *presence* too). An unreadable inventory is never "no devices"."""
+    from modules import device, reader_job
     from modules.netbox_guard import writes_allowed
 
     started = time.time()
@@ -3196,8 +3202,14 @@ def netbox_lag_source(cached=None, writes=None) -> dict:
                              checked=f"no NetBox configured ({v.get('why') or 'no reason'}): "
                                      "nothing to compare")
     off = not (writes_allowed() if writes is None else writes)
-    rows, checked, judged = [], 0, 0
+    rows, checked, judged, empty = [], 0, 0, []
+    judge = presence if presence is not None else (device.presence if cached is None else None)
     for name, net in sorted((v.get("networks") or {}).items()):
+        why = _no_devices_why(name, judge) if judge else ""
+        if why:
+            empty.append({"check": name, "mark": NO_DEVICES,
+                          "why": f"{why}, so there is no device's golden to compare with NetBox"})
+            continue
         if net.get("error"):
             rows.append(row(source="netbox-lag", kind="unreadable", key=f"{name}:unreadable",
                             level="unknown", what=f"{name}'s goldens could not be compared with "
@@ -3239,10 +3251,12 @@ def netbox_lag_source(cached=None, writes=None) -> dict:
                                                                    "list": name})}))
     return source_result(
         "netbox-lag", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
-        stale_after_seconds=promise, reader="netbox-lag",
+        stale_after_seconds=promise, reader="netbox-lag", not_applicable=empty,
         checked=(f"{checked} device(s) in {judged} network(s) in NetBox compared with their "
                  f"committed goldens, {len([r for r in rows if r['kind'] == 'behind'])} "
-                 "holding more than NetBox"))
+                 "holding more than NetBox"
+                 + (f"; {len(empty)} network(s) with {NO_DEVICES} (each on its own line)"
+                    if empty else "")))
 
 
 def netbox_inventory_source(names=None) -> dict:

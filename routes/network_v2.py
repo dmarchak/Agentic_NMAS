@@ -162,7 +162,9 @@ def choose():
                        f'{escape(repr(name))}: nothing was chosen.</p>', 404)
     name = listref.resolve(name).name
     try:
-        network_choice.choose(identity.request_actor(), name)
+        # A verified person's own choice; with no verified person, the installation's current
+        # network, recorded (C2559, `network_choice.choose_for_request`).
+        network_choice.choose_for_request(name)
     except (network_choice.Unreadable, ValueError) as exc:
         return _strict(f'<p class="notice notice-danger">Not chosen: {escape(str(exc))}.</p>',
                        409)

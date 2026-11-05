@@ -772,12 +772,81 @@ class TestOneDeployPath:
             == set()
 
 
+@pytest.fixture
+def laptop_kit(monkeypatch):
+    """This installation read as the laptop kit (`installation_kind` laptop_kit)."""
+    from modules import installation_kind as K
+    monkeypatch.setattr(K, "kind", lambda: K.LAPTOP_KIT)
+
+
+def _no_writes(tmp_path, monkeypatch):
+    from modules import update_op
+    for name in ("REQUEST_DIR", "STAGING_DIR"):
+        monkeypatch.setattr(update_op, name, str(tmp_path / name.lower()))
+    monkeypatch.setattr(update_op, "DEFERRED", str(tmp_path / "deferred" / "deferred.json"))
+    monkeypatch.setattr(update_op, "AUDIT", str(tmp_path / "audit.jsonl"))
+
+
+class TestALaptopKit:
+    """A laptop kit is pinned to one commit and moved only by `kit repin <sha>`
+    (docs/LAB9_LAPTOP_RUN.md); it installs no updater. Its preview fails the kit's gate
+    first, so it is neither offered nor waitable; a confirm or a wait for CI is refused naming
+    the installation kind, before anything is written. On a host the gate passes."""
+
+    def test_the_preview_is_not_offered_and_says_how_a_kit_updates(self, laptop_kit):
+        from modules import update_op
+        p = _plan()
+        assert not p["selectable"] and not p["waitable"]
+        assert p["gates"][0]["name"] == update_op.KIT_GATE and p["gates"][0]["state"] == "fail"
+        assert p["why_not"].startswith(
+            f"{update_op.KIT_GATE}: this installation's kind is laptop_kit (installation_kind): "
+            "a laptop kit updates by `kit repin <sha>`, docs/LAB9_LAPTOP_RUN.md"), p["why_not"]
+
+    def test_on_a_host_the_gate_passes_and_the_update_is_offered(self):
+        from modules import update_op
+        p = _plan()
+        assert p["gates"][0] == {"name": update_op.KIT_GATE, "state": "pass",
+                                 "detail": "yes (installation_kind host)"}
+        assert p["selectable"]
+
+    @pytest.mark.parametrize("call", ["request", "defer"])
+    def test_a_confirm_or_a_wait_is_refused_naming_the_kind(self, laptop_kit, tmp_path,
+                                                            monkeypatch, call):
+        from modules import update_op
+        _no_writes(tmp_path, monkeypatch)
+        got = getattr(update_op, call)(_plan()["hash"], ["c" * 40], "p@example.invalid",
+                                       **_plan_kw())
+        assert not got["ok"] and got["reason"].startswith(
+            "this installation's kind is laptop_kit (installation_kind)"), got["reason"]
+        assert "kit repin <sha>" in got["reason"]
+        assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+    def test_the_route_refuses_on_a_kit_and_draws_the_reason(self, laptop_kit, tmp_path,
+                                                             monkeypatch):
+        import html as _h
+
+        import app as A
+        from modules import update_op
+        _no_writes(tmp_path, monkeypatch)
+        real = update_op.plan
+        monkeypatch.setattr(update_op, "plan", lambda **kw: real(**_plan_kw()))
+        for when in ("", "ci"):
+            r = A.app.test_client().post("/update/apply", data={
+                "hash": real(**_plan_kw())["hash"], "host_step": ["c" * 40], "when": when})
+            body = _h.unescape(r.get_data(as_text=True))
+            assert r.status_code == 409, (when, body[:600])
+            assert ("Not requested: this installation's kind is laptop_kit (installation_kind): "
+                    "a laptop kit updates by `kit repin <sha>`") in body, when
+        assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
 class TestThePreview:
     def test_all_gates_pass_and_the_hash_is_stable(self):
         a, b = _plan(), _plan()
         assert a["selectable"] and a["hash"] == b["hash"]
-        # Nine: C2337 added the SDN loop's and the safe-deploy script's gates to the seven.
-        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 9
+        # Ten: C2337 added the SDN loop's and the safe-deploy script's gates to the seven, and
+        # the laptop kit's gate (installation_kind) leads them, passing on a host.
+        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 10
 
     @pytest.mark.parametrize("value,words", [
         (_value(ci={"tip": "b" * 40, "state": "pending", "sentence": "PENDING"}), "CI passed the target"),

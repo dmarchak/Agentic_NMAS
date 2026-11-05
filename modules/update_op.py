@@ -633,6 +633,23 @@ def wait_end_words(doc: dict) -> str:
 
 
 CI_GATE = "CI passed the target"
+#: The laptop kit (`installation_kind` laptop_kit, modules/installation_kind.py) is pinned to
+#: one commit and moved only by `kit repin`; it installs no updater. Its Update chip is drawn
+#: held with these words, its preview fails this gate, and a confirm is refused naming the kind.
+KIT_GATE = "this installation takes the in-app update"
+KIT_WORDS = "a laptop kit updates by `kit repin <sha>`, docs/LAB9_LAPTOP_RUN.md"
+
+
+def kit_refusal() -> str:
+    """Why the in-app update is refused on this installation, naming its kind, or "" on a
+    ``host`` (the default, where nothing changes)."""
+    from modules import installation_kind as K
+
+    if not K.is_laptop_kit():
+        return ""
+    return f"this installation's kind is {K.LAPTOP_KIT} (installation_kind): {KIT_WORDS}"
+
+
 #: The gate an update cannot pass while an operation holds a device (CONCURRENCY_AUDIT R5).
 OPERATIONS_GATE = "no operation is running on a device"
 #: C2337 (the operator, 2026-11-03: "one deploy path"): the safe-deploy script refuses while an
@@ -697,7 +714,7 @@ def operations_words(ops: list) -> str:
 
 def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
          holder=None, waiting=None, operations=None, pin=None, loops=None,
-         gates_run=None) -> dict:
+         gates_run=None, kit=None) -> dict:
     """What the Update preview draws, with its gates and its hash.
 
     The target is the newest commit since the running one that CI passed (the reader's
@@ -722,7 +739,10 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     def gate(name, ok, detail):
         gates.append({"name": name, "state": "pass" if ok else "fail", "detail": detail})
 
-    fresh = bool(v) and v.get("running") == running
+    # First, so "Not now" leads with it: on a laptop kit no other gate's advice applies.
+    kit_now = kit_refusal() if kit is None else kit
+    gate(KIT_GATE, not kit_now, kit_now or "yes (installation_kind host)")
+    fresh =bool(v) and v.get("running") == running
     gate("the comparison is for the commit running now", fresh,
          (f"stored {stored['value_at']}" if fresh else
           ("the reader has not compared the running commit yet"
@@ -893,6 +913,9 @@ def request(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> d
     """Write the request the root-owned updater acts on, after recomputing
     the preview. ``{"ok": False, "reason"}`` when refused; nothing written."""
     p = plan(**plan_kw)
+    kit = _kit_refused(p)
+    if kit:
+        return {"ok": False, "reason": kit, "plan": p}
     if not actor:
         return {"ok": False, "reason": "no verified person: an update is a person's step"}
     if not p["selectable"]:
@@ -901,6 +924,13 @@ def request(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> d
     if bad:
         return {"ok": False, "plan": p, "reason": bad}
     return _write_request(p, ack, actor)
+
+
+def _kit_refused(p: dict) -> str:
+    """The kit gate's refusal from *p* (it names the installation kind), or "": checked before
+    any other, so a kit is never told to install the updater or to wait for CI."""
+    g = next((g for g in p["gates"] if g["name"] == KIT_GATE), None)
+    return "" if g is None or g["state"] == "pass" else g["detail"]
 
 
 def _confirmed(p: dict, confirmed_hash: str, acknowledged) -> tuple:
@@ -978,6 +1008,9 @@ def defer(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> dic
     in the way."""
     from modules.filestore import PathLock, write_atomic
 
+    kit = kit_refusal() if plan_kw.get("kit") is None else plan_kw["kit"]
+    if kit:
+        return {"ok": False, "reason": kit}
     if not actor:
         return {"ok": False, "reason": "no verified person: an update is a person's step"}
     with PathLock(DEFERRED):
