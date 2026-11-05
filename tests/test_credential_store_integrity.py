@@ -133,3 +133,93 @@ def test_a_save_outside_the_lock_is_refused(store):
     credentials, _path = store
     with pytest.raises(RuntimeError, match="outside the store lock"):
         credentials._save({"profiles": {}, "device_overrides": {}})
+
+
+# What each write logs as changed (C156, `_key_changes`): mutation run #68's 11 survivors in
+# `_key_changes` (C2551, campaign step 3a). Every planted value is built by concatenation.
+PLANTED = "Pw" + "planted" + "3a1"
+PLANTED_2 = "Pw" + "planted" + "3a2"
+
+
+def _logged_changes(caplog) -> list:
+    """What each store write logged as changed: the last argument of its "write by pid" line."""
+    return [r.args[-1] for r in caplog.records
+            if r.getMessage().startswith("credentials: write by pid")]
+
+
+def test_kills_credentials__key_changes_mutmut_2_and_3_a_profile_write_names_its_profile(
+        store, caplog):
+    """A profile saved is logged by its name under ``profiles``. It kills mutants 2 and 3
+    (the section's name ``"profiles"`` replaced by ``"XXprofilesXX"`` or ``"PROFILES"``,
+    so a profile's write logged "no key changed")."""
+    credentials, _path = store
+    with caplog.at_level(logging.INFO, logger="modules.credentials"):
+        credentials.save_profile("ops", "admin", PLANTED)
+    assert _logged_changes(caplog) == ["profiles: +ops"]
+
+
+def test_kills_credentials__key_changes_mutmut_6_and_7_a_template_secret_write_names_its_key(
+        store, caplog):
+    """A template secret stored is logged by its key under ``template_secrets``. It kills
+    mutants 6 and 7 (``"template_secrets"`` replaced by ``"XXtemplate_secretsXX"`` or
+    ``"TEMPLATE_SECRETS"``, so a template secret's write logged "no key changed")."""
+    credentials, _path = store
+    with caplog.at_level(logging.INFO, logger="modules.credentials"):
+        credentials.set_template_secret("lab:r1:snmp_community", PLANTED)
+    assert _logged_changes(caplog) == ["template_secrets: +lab:r1:snmp_community"]
+
+
+def test_kills_credentials__key_changes_mutmut_10_and_11_a_controller_write_names_its_key(
+        store, caplog):
+    """An SDN controller's credential stored is logged by its key under
+    ``controller_credentials``. It kills mutants 10 and 11 (``"controller_credentials"``
+    replaced by ``"XXcontroller_credentialsXX"`` or ``"CONTROLLER_CREDENTIALS"``, so a
+    controller credential's write logged "no key changed")."""
+    credentials, _path = store
+    with caplog.at_level(logging.INFO, logger="modules.credentials"):
+        credentials.set_controller_credential("default/odl", username="admin",
+                                              password=PLANTED)
+    assert _logged_changes(caplog) == ["controller_credentials: +default/odl"]
+
+
+def test_kills_credentials__key_changes_mutmut_32_a_changed_entry_is_named_and_an_unchanged_one_is_not(
+        store, caplog):
+    """A profile saved again with a new password is logged as changed (``~ops``), and a
+    profile the write left as it was is not named. It kills mutant 32 (``a[k] != b[k]``
+    replaced by ``a[k] == b[k]``, which named the unchanged profile as changed and never the
+    changed one)."""
+    credentials, _path = store
+    credentials.save_profile("lab", "admin", PLANTED)
+    credentials.save_profile("ops", "admin", PLANTED)
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="modules.credentials"):
+        credentials.save_profile("ops", "admin", PLANTED_2)
+    assert _logged_changes(caplog) == ["profiles: ~ops"]
+
+
+def test_kills_credentials__key_changes_mutmut_38_a_sections_names_are_space_separated_in_order():
+    """Within one section the names are separated by one space: the added (``+``), then the
+    removed (``-``), then the changed (``~``). It kills mutant 38 (the names joined by
+    ``"XX XX"``)."""
+    from modules import credentials
+    assert credentials._key_changes({"profiles": {"b": 1, "c": 1}},
+                                    {"profiles": {"a": 1, "c": 2}}) == "profiles: +a -b ~c"
+
+
+def test_kills_credentials__key_changes_mutmut_43_sections_are_separated_by_a_semicolon():
+    """Two sections changed in one write are separated by ``"; "``, in the store's section
+    order. It kills mutant 43 (the sections joined by ``"XX; XX"``)."""
+    from modules import credentials
+    assert credentials._key_changes(
+        {}, {"profiles": {"a": {}}, "ssh_keys": {"k": {}}}) == "profiles: +a; ssh_keys: +k"
+
+
+def test_kills_credentials__key_changes_mutmut_44_and_45_a_write_changing_no_key_says_so(
+        store, caplog):
+    """A write that changes no key (a profile that does not exist, deleted) is logged as
+    exactly "no key changed". It kills mutants 44 and 45 (the words replaced by
+    ``"XXno key changedXX"`` or ``"NO KEY CHANGED"``)."""
+    credentials, _path = store
+    with caplog.at_level(logging.INFO, logger="modules.credentials"):
+        credentials.delete_profile("absent")
+    assert _logged_changes(caplog) == ["no key changed"]

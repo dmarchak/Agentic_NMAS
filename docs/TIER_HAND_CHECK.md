@@ -3772,3 +3772,55 @@ also entry points of tests/test_url_userinfo_masked.py's scan (a URL's user part
 **The result: 4 mutants with the canary, all killed; the worktree removed after each.** The
 cases are line shapes, not captures (no switch of these families had been read); a real
 capture's lines replace them after the sitting (the register's row).
+
+## 2026-11-05: mutation run #68's survivors in `credentials._key_changes` and `console_ztp._masked_program` (C2551, campaign step 3a), by hand
+
+**What is checked:** the open VERDICT survivors of mutation-nightly run #68 (2026-11-01, run
+41337732668, head 815a40c9, base 750c0550) in two functions of the tier:
+- `modules.credentials._key_changes`, 11 of its 45 mutants: what every credential-store write
+  logs as changed, by name, never a value (C156);
+- `modules.nsot.console_ztp._masked_program`, 2 of its 10 mutants: the masking `values` a
+  console preview's program is masked with (the operator, 2026-11-05: masking by value, so
+  whether a secret is caught).
+
+Neither function changed between 815a40c9 and main at 1e9b4bef. Each mutant was rebuilt from
+mutmut 3.8.0's own generator (`create_mutations`, the workflow's) on today's file. Its number
+and text match the run's summary for every mutant.
+
+**The method:** each mutant is the whole function's text replaced by its mutant, required to
+match once, in a `scripts/nmas-control` throwaway of this worktree's state on 1e9b4bef. Then
+the aimed file runs in CI's interpreter, confined, one process, with no `-x`, so every failing
+test is named. The file is restored after each and compared byte for byte
+(`scratchpad/m3a/handcheck.py`).
+- `_key_changes`: 06:43:54 to 06:44:22 UTC, tests/test_credential_store_integrity.py,
+  baseline 17 passed;
+- `_masked_program`: 06:44:34 to 06:47:19 UTC, tests/test_console_ztp.py, baseline 160
+  passed.
+
+Every kill below failed by an `AssertionError`, never by a crash.
+
+| function | mutant | result | killed by |
+|---|---|---|---|
+| `_key_changes` | C0 canary: the body replaced by a `raise` | killed (14 failed) | the 7 new tests, and 7 others |
+| `_key_changes` | 2 `"profiles"` → `"XXprofilesXX"` | killed | `test_kills_credentials__key_changes_mutmut_2_and_3_a_profile_write_names_its_profile` |
+| `_key_changes` | 3 `"profiles"` → `"PROFILES"` | killed | the same |
+| `_key_changes` | 6 `"template_secrets"` → `"XXtemplate_secretsXX"` | killed | `test_kills_credentials__key_changes_mutmut_6_and_7_a_template_secret_write_names_its_key` |
+| `_key_changes` | 7 `"template_secrets"` → `"TEMPLATE_SECRETS"` | killed | the same |
+| `_key_changes` | 10 `"controller_credentials"` → `"XXcontroller_credentialsXX"` | killed | `test_kills_credentials__key_changes_mutmut_10_and_11_a_controller_write_names_its_key` |
+| `_key_changes` | 11 `"controller_credentials"` → `"CONTROLLER_CREDENTIALS"` | killed | the same |
+| `_key_changes` | 32 `a[k] != b[k]` → `a[k] == b[k]` | killed | `test_kills_credentials__key_changes_mutmut_32_a_changed_entry_is_named_and_an_unchanged_one_is_not` |
+| `_key_changes` | 38 `" ".join(` → `"XX XX".join(` | killed | `test_kills_credentials__key_changes_mutmut_38_a_sections_names_are_space_separated_in_order` |
+| `_key_changes` | 43 `"; ".join(parts)` → `"XX; XX".join(parts)` | killed | `test_kills_credentials__key_changes_mutmut_43_sections_are_separated_by_a_semicolon` |
+| `_key_changes` | 44 `"no key changed"` → `"XXno key changedXX"` | killed | `test_kills_credentials__key_changes_mutmut_44_and_45_a_write_changing_no_key_says_so` |
+| `_key_changes` | 45 `"no key changed"` → `"NO KEY CHANGED"` | killed | the same |
+| `_masked_program` | C0 canary: the body replaced by a `raise` | killed (93 failed) | `TestWhatThePreviewReads` and 92 others |
+| `_masked_program` | 2 `redact_text(text, values)` → `redact_text(text, None)` | killed | `tests/test_console_ztp.py::TestWhatThePreviewReads::test_a_value_held_as_a_secret_is_masked_in_the_previewed_program` (C1587's, already there) |
+| `_masked_program` | 4 `redact_text(text, values)` → `redact_text(text, )` | killed | the same |
+
+**The result: 13 mutants and 2 canaries, all killed; the file restored after each; both
+worktrees removed.**
+- Seven new tests kill the 11 `_key_changes` survivors. Two mutants that differ only in their
+  replacement words share one test.
+- No new test was written for `_masked_program`. Its two mutants fail a test that already
+  exists, which was in run #68's selection, so their "survived" is a question about the
+  measurement, not the tests. That is the register's row.
