@@ -4,9 +4,9 @@ intent, that sends no command that is not a read, changes nothing and calls no m
 output is a **diagnosis**: the steps with their results, a ranked list of hypotheses with their
 evidence, and the checks that passed ("ruled out").
 
-**The runbooks** (`RUNBOOKS`): "adjacency down with both ends at intent" (this part, H14:
-OSPF, OSPFv3 and BGP) and "A can't reach B" (H15, on `path_trace`; refused "not built" until
-then, never run as something else).
+**The runbooks** (`RUNBOOKS`): "adjacency down with both ends at intent" (H14: OSPF, OSPFv3
+and BGP, here) and "A can't reach B" (H15, `modules/heal/diagnose_reach.py`, on `path_trace`:
+IPv4 now; its IPv6 form refused by name until `show ipv6 cef` is captured, C2415).
 
 **Every read goes through the one reads engine** (`modules/nsot/reads.py`), as its caller kind
 ``diagnosis``, whose `reads.EXTRAS` entry is empty: every command passes
@@ -68,8 +68,8 @@ log = logging.getLogger(__name__)
 
 RUNBOOKS = {"adjacency_down": "adjacency down with both ends at intent",
             "cant_reach": "A can't reach B"}
-#: The runbooks built so far (H15 adds ``cant_reach``).
-BUILT = ("adjacency_down",)
+#: The runbooks built so far.
+BUILT = ("adjacency_down", "cant_reach")
 #: The reads engine's caller kind for a diagnosis (`reads.EXTRAS`: none).
 KIND = "diagnosis"
 #: Device commands per diagnosis (N24): about 2.5 x the longest runbook's 28.
@@ -94,6 +94,8 @@ LOCK_DIR = os.path.join("heal", "diagnosis")
 
 #: An interface name intent holds, in its shape (a field spliced into a command is one token).
 _IFNAME = re.compile(r"[A-Za-z][A-Za-z-]{0,30}[0-9][0-9/.:]{0,15}")
+#: An access list's name or number as IOS takes it in `ip access-group`, one word.
+_ACLNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _STUCK = ("EXSTART", "EXCHANGE")
 _UP = ("FULL", "2WAY")
 
@@ -139,32 +141,44 @@ class DiagnosisLock:
         return os.path.join(list_data_path(self.network), LOCK_DIR, f"{safe}.lock")
 
     def __enter__(self):
-        import fcntl
-
         try:
             for host in self.hosts:
-                path = self._path(host)
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-                try:
-                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    text = os.read(fd, 1 << 16).decode("utf-8", "replace")
-                    os.close(fd)
-                    try:
-                        holder = json.loads(text) if text.strip() else {}
-                    except ValueError:
-                        holder = {}
-                    raise DiagnosisBusy(host, holder) from None
-                os.ftruncate(fd, 0)
-                os.write(fd, json.dumps({"pid": os.getpid(), "diagnosis": self.diagnosis,
-                                         "actor": self.actor,
-                                         "started_at": _iso(time.time())}).encode())
-                self.fds.append(fd)
+                self._take(host)
         except BaseException:
             self._release()
             raise
         return self
+
+    def _take(self, host: str) -> None:
+        import fcntl
+
+        path = self._path(host)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            text = os.read(fd, 1 << 16).decode("utf-8", "replace")
+            os.close(fd)
+            try:
+                holder = json.loads(text) if text.strip() else {}
+            except ValueError:
+                holder = {}
+            raise DiagnosisBusy(host, holder) from None
+        os.ftruncate(fd, 0)
+        os.write(fd, json.dumps({"pid": os.getpid(), "diagnosis": self.diagnosis,
+                                 "actor": self.actor,
+                                 "started_at": _iso(time.time())}).encode())
+        self.fds.append(fd)
+
+    def take(self, host: str) -> None:
+        """Hold one more device while held (a path's next hop, found as it is followed): a
+        device in another diagnosis raises `DiagnosisBusy` naming it, never waits; one already
+        held is held once."""
+        if host in self.hosts:
+            return
+        self._take(host)
+        self.hosts.append(host)
 
     def _release(self):
         import fcntl
@@ -209,11 +223,22 @@ TEMPLATES = {
     "bgp_ping_src": {"*": "ping {peer} source {src} repeat 5 timeout 2"},
     "bgp_ping6": {"*": "ping ipv6 {peer} repeat 5 timeout 2"},
     "bgp_ping6_src": {"*": "ping ipv6 {peer} source {src} repeat 5 timeout 2"},
+    # "A can't reach B" (H15; `diagnose_reach`): `{dest}` is B, `{nh}` a hop's next hop, `{acl}`
+    # an access list a hop's interface binds. `cef` is the path trace's own read
+    # (`path_trace.COMMAND`).
+    "reach_ping": {"*": "ping {dest} repeat 5 timeout 2"},
+    "reach_ping_src": {"*": "ping {dest} source {src} repeat 5 timeout 2"},
+    "cef": {"*": "show ip cef {dest}"},
+    "traceroute": {"*": "traceroute {dest} numeric timeout 2 probe 1 ttl 1 16"},
+    "route": {"*": "show ip route {dest}"},
+    "arp": {"*": "show ip arp {nh}"},
+    "acl_counters": {"*": "show ip access-lists {acl}"},
 }
 #: The kind a template's answer is parsed as (an IPv6 form is its IPv4 kind's twin).
 PARSE_KIND = {"link_ping6": "link_ping", "bgp_summary6": "bgp_summary",
               "bgp_neighbor6": "bgp_neighbor", "bgp_ping_src": "bgp_ping",
-              "bgp_ping6": "bgp_ping", "bgp_ping6_src": "bgp_ping"}
+              "bgp_ping6": "bgp_ping", "bgp_ping6_src": "bgp_ping",
+              "reach_ping_src": "reach_ping"}
 #: What each read is for, in the step's words.
 READ_WORDS = {
     "interfaces": "interface state, MTU and error counters",
@@ -230,7 +255,11 @@ READ_WORDS = {
     "bgp_neighbor6": "the BGP session's last reset (IPv6)",
     "bgp_ping": "the peer reachable", "bgp_ping_src": "the peer reachable from the update "
     "source", "bgp_ping6": "the peer reachable (IPv6)", "bgp_ping6_src": "the peer reachable "
-    "from the update source (IPv6)"}
+    "from the update source (IPv6)",
+    "reach_ping": "does A reach B", "reach_ping_src": "does A reach B, from its loopback",
+    "cef": "the forwarding path toward B", "traceroute": "the path past the managed devices",
+    "route": "the route toward B and its source", "arp": "the next hop resolved (ARP)",
+    "acl_counters": "an access list's match counters"}
 _DIALECT = {"cisco_iosxe": "cisco_iosxe", "cisco_xe": "cisco_iosxe", "cisco_ios": "cisco_ios"}
 
 
@@ -249,8 +278,8 @@ def dialect_of(value: str, host: str = "") -> str:
 def render(kind: str, dialect: str, **args) -> str:
     """*kind*'s command on *dialect*, each argument checked as one token of its shape: an
     interface name (`_IFNAME`), an address of the template's family (`ipaddress`, no zone), a
-    probe size the allowlist takes (`readonly_commands.PING_OPTIONS`). Raises Refused naming
-    the argument and its shape."""
+    probe size the allowlist takes (`readonly_commands.PING_OPTIONS`), an access list's name
+    (`_ACLNAME`). Raises Refused naming the argument and its shape."""
     from modules.readonly_commands import PING_OPTIONS
 
     forms = TEMPLATES[kind]
@@ -262,7 +291,11 @@ def render(kind: str, dialect: str, **args) -> str:
         if key in ("if", "src"):
             if not _IFNAME.fullmatch(text):
                 raise Refused(f"{text!r} is not an interface name, so `{template}` is not sent")
-        elif key in ("far", "peer"):
+        elif key == "acl":
+            if not _ACLNAME.fullmatch(text):
+                raise Refused(f"{text!r} is not an access list's name, so `{template}` is not "
+                              "sent")
+        elif key in ("far", "peer", "dest", "nh"):
             try:
                 address = None if "%" in text else ipaddress.ip_address(text)
             except ValueError:
@@ -397,13 +430,16 @@ def plan(network: str, runbook: str, target: dict, model: dict = None,
     if runbook not in RUNBOOKS:
         raise Refused(f"{runbook!r} is not a runbook ({', '.join(sorted(RUNBOOKS))})")
     if runbook not in BUILT:
-        raise Refused(f"the runbook \"{RUNBOOKS[runbook]}\" is not built yet (H15), so "
-                      "nothing was read")
+        raise Refused(f"the runbook \"{RUNBOOKS[runbook]}\" is not built yet, so nothing was "
+                      "read")
     if model is None or intents is None:
         model, intents = _sources(network, model, intents)
     from modules.neighbours import _all_lines
     lines = _all_lines(intents or {})
     target = dict(target or {})
+    if runbook == "cant_reach":
+        from modules.heal import diagnose_reach
+        return diagnose_reach.plan(network, target, lines)
     a = str(target.get("device") or "")
     if a not in lines:
         raise Refused(f"{a or 'no device'} has no committed intent in {network}, so there is "
@@ -670,6 +706,12 @@ def run(network: str, runbook: str, target: dict, actor: str, *, incident: str =
     except Refused as exc:
         out.update(state="refused", words=f"not diagnosed: {exc}", finished_at=_iso(time.time()))
         out["steps"].append({"step": "plan", "result": "refused", "words": str(exc)})
+        return _recorded(network, out, record)
+    if runbook == "cant_reach":
+        from modules.heal import diagnose_reach
+        diagnose_reach.run_plan(p, out, actor, session=session, logs=logs or _logs,
+                                sleep=sleep, started=started)
+        out["finished_at"] = _iso(time.time())
         return _recorded(network, out, record)
     out["devices"] = [e["host"] for e in p["ends"]]
     out["steps"].append({"step": "plan", "result": "ok", "words": (
@@ -1305,9 +1347,13 @@ def rank(hypotheses: list) -> list:
                                              order.get(h["rule"], 99)))
 
 
-def _judge(ctx: Context, out: dict) -> None:
-    found, ruled_out, not_checked = [], [], []
-    for rule in RULES:
+def _judge(ctx, out: dict, rules=None) -> None:
+    """Every rule of the runbook's table (*rules*, `RULES` by default) on *ctx*, ranked into
+    *out*: the hypotheses, the ruled-out list and what was not checked."""
+    rules = RULES if rules is None else rules
+    found, ruled_out = [], []
+    not_checked = list(out.get("not_checked") or [])
+    for rule in rules:
         try:
             hits, passed = rule.fn(rule, ctx)
         except Exception as exc:                      # noqa: BLE001 (a rule's own failure)
@@ -1327,7 +1373,7 @@ def _judge(ctx: Context, out: dict) -> None:
     out["hypotheses"], out["more"] = ranked[:MAX_SHOWN], max(0, len(ranked) - MAX_SHOWN)
     out["ruled_out"], out["not_checked"] = ruled_out, not_checked
     out["steps"].append({"step": "compare", "result": "ok", "words": (
-        f"{len(RULES)} checks: {len(found)} found something, {len(ruled_out)} ruled out, "
+        f"{len(rules)} checks: {len(found)} found something, {len(ruled_out)} ruled out, "
         f"{len(not_checked)} not checked")})
     if ranked:
         first = ranked[0]

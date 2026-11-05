@@ -230,10 +230,19 @@ class TestTheParsers:
     def test_a_read_with_no_capture_is_said_not_interpreted(self):
         from modules.heal.diagnose_parse import NOT_CAPTURED, parse
         assert NOT_CAPTURED == {"ospf_interface", "ospfv3_interface", "ipv6_interface",
-                                "link_ping", "df_ping", "bgp_neighbor", "bgp_ping"}
+                                "link_ping", "df_ping", "bgp_neighbor", "bgp_ping",
+                                "reach_ping", "traceroute", "route", "acl_counters"}
         for kind in NOT_CAPTURED:
             got = parse(kind, "anything at all")
             assert got["state"] == "not_parsed" and "C2414" in got["why"]
+
+    def test_a_dialect_keyed_read_without_its_dialect_is_refused(self):
+        """C452: `show ip arp` is read by the platform pack's pattern for the device's own
+        dialect; with no dialect it is refused, never read as IOS by default."""
+        from modules.heal.diagnose_parse import BY_DIALECT, parse
+        assert "arp" in BY_DIALECT
+        got = parse("arp", "Protocol  Address  Age (min)  Hardware Addr  Type  Interface\n")
+        assert got["state"] == "unsupported" and "dialect is not known" in got["why"], got
 
 
 # ── The pipe rule, the bounds and the templates ─────────────────────────────────────────────
@@ -249,7 +258,8 @@ def every_command():
             template = forms.get(dialect) or forms["*"]
             address = "2001:db8::1" if "ipv6" in template else "192.0.2.1"
             args = {"if": "GigabitEthernet0/1", "src": "Loopback0", "far": address,
-                    "peer": address, "mtu": "1500"}
+                    "peer": address, "mtu": "1500", "dest": address, "nh": address,
+                    "acl": "EDGE-IN"}
             names = [f for _, f, _, _ in string.Formatter().parse(template) if f]
             yield kind, dialect, D.render(kind, dialect, **{n: args[n] for n in names})
 
@@ -266,7 +276,7 @@ class TestThePipeRule:
             assert _cli_rule(kind, command) == "", command
             assert "|" not in command and not command.startswith("clear"), command
             seen += 1
-        assert seen == 2 * 20                          # the floor: every template, both dialects
+        assert seen == 2 * 27                          # the floor: every template, both dialects
 
     def test_a_diagnosis_has_no_extras_and_never_clears_counters(self):
         from modules.nsot import reads
@@ -374,8 +384,12 @@ class TestThePlan:
                 D.plan("Default", "adjacency_down", target, model=model, intents=intents)
             assert words in str(e.value), (target, str(e.value))
         with pytest.raises(D.Refused) as e:
+            D.plan("Default", "no_such_runbook", {"device": "r3"}, model=model,
+                   intents=intents)
+        assert "'no_such_runbook' is not a runbook" in str(e.value)
+        with pytest.raises(D.Refused) as e:                # built (H15): its own refusals
             D.plan("Default", "cant_reach", {"device": "r3"}, model=model, intents=intents)
-        assert "not built yet (H15)" in str(e.value)
+        assert str(e.value) == "'' is not one IPv4 or IPv6 address"
 
 
 # ── A run, through the one reads engine ─────────────────────────────────────────────────────

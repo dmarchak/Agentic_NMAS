@@ -10,7 +10,9 @@ needed it says its evidence is incomplete, never a guess.
 
 **One reader per output, never a second copy:** CDP and LLDP are the NetBox sync's own
 (`netbox_client._parse_cdp_neighbors`, `_parse_lldp_neighbors`), BGP's summary is
-`bgp_summary.parse_bgp_summary`, THE one BGP summary reader.
+`bgp_summary.parse_bgp_summary`, THE one BGP summary reader, and ARP's lines the platform
+pack's pattern (`endpoints.parse`, the endpoint layer's). `show ip cef` is the path trace's
+(`path_trace.parse_cef`), read inside the trace.
 
 Every parser takes the masked answer (the reads engine masks before anything is kept) and
 answers ``{"state", "facts", "why"}``: ``parsed``, ``unsupported`` (the device printed IOS's
@@ -23,7 +25,10 @@ import re
 
 #: The reads whose parser waits for a real capture (C2414; captured on an IOS-XE router and an IOS switch in H18).
 NOT_CAPTURED = frozenset({"ospf_interface", "ospfv3_interface", "ipv6_interface", "link_ping",
-                          "df_ping", "bgp_neighbor", "bgp_ping"})
+                          "df_ping", "bgp_neighbor", "bgp_ping",
+                          # "A can't reach B" (H15): the ping to B, the traceroute past the
+                          # managed devices, a hop's route and an access list's counters.
+                          "reach_ping", "traceroute", "route", "acl_counters"})
 NOT_CAPTURED_WORDS = ("read, and not yet interpreted: its parser waits for a real capture of "
                       "this read (C2414)")
 PARSED, UNSUPPORTED, NOT_PARSED, UNREADABLE = "parsed", "unsupported", "not_parsed", "unreadable"
@@ -183,6 +188,29 @@ def peers_from_summary(text: str, interface: str = "") -> dict:
          "established": bool(p["established"])} for p in got["peers"]]})
 
 
+#: ARP's header, both platforms (captures: a C8000v router and a vIOS-L2 switch,
+#: tests/fixtures/endpoints/).
+_ARP_HEAD = re.compile(r"^Protocol\s+Address\s+Age \(min\)\s+Hardware Addr", re.MULTILINE)
+#: An entry IOS has asked for and not resolved: the hardware address column says so.
+_ARP_INCOMPLETE = re.compile(r"^Internet\s+(?P<address>\d+\.\d+\.\d+\.\d+)\s+\S+\s+Incomplete\b",
+                             re.MULTILINE)
+
+
+def arp(text: str, interface: str, dialect: str) -> dict:
+    """`show ip arp <next hop>`: ``{"entries": [{address, mac, interface}], "incomplete":
+    [address]}``, each complete line read by the platform pack's own pattern (THE ARP reader,
+    `endpoints.parse`). An answer with neither ARP's header nor an entry is unreadable, never
+    read as "no entry"."""
+    from modules import endpoints
+    rows = endpoints.parse(dialect, "arp", text or "")
+    pending = [m.group("address") for m in _ARP_INCOMPLETE.finditer(text or "")]
+    if not rows and not pending and not _ARP_HEAD.search(text or ""):
+        return _out(UNREADABLE, why="no ARP table in the answer")
+    return _out(PARSED, {"entries": [{"address": r["address"], "mac": r["mac"],
+                                      "interface": r.get("interface") or ""} for r in rows],
+                         "incomplete": pending})
+
+
 def _canon(address: str) -> str:
     try:
         return str(ipaddress.ip_address(address))
@@ -193,11 +221,18 @@ def _canon(address: str) -> str:
 #: Each read kind's parser (`diagnose.READS` names the kinds).
 PARSERS = {"interfaces": interfaces, "ip_interface": ip_interface, "cdp": cdp, "lldp": lldp,
            "ospf_neighbor": ospf_neighbor, "ospfv3_neighbor": ospfv3_neighbor,
-           "bgp_summary": peers_from_summary}
+           "bgp_summary": peers_from_summary, "arp": arp}
+#: The parsers that read by the device's dialect (the platform pack's entries are per dialect).
+BY_DIALECT = frozenset({"arp"})
 
 
-def parse(kind: str, text: str, interface: str = "") -> dict:
-    """*kind*'s answer *text* as facts: ``{"state", "facts", "why"}``."""
+def parse(kind: str, text: str, interface: str = "", dialect: str = "") -> dict:
+    """*kind*'s answer *text* as facts: ``{"state", "facts", "why"}``. A read the platform pack
+    keys by dialect (`BY_DIALECT`) is refused without its device's dialect, never read as one
+    platform's by default (C452)."""
+    if kind in BY_DIALECT and not dialect:
+        return _out(UNSUPPORTED, why=f"the device's dialect is not known, so its {kind} answer is "
+                                     "refused rather than read as another platform's (C452)")
     if INVALID.search(text or ""):
         return _out(UNSUPPORTED, why="the device has no such read (it printed IOS's invalid "
                                      "input marker)")
@@ -207,6 +242,6 @@ def parse(kind: str, text: str, interface: str = "") -> dict:
     if fn is None:
         return _out(NOT_PARSED, why=f"no parser for the read kind {kind!r}")
     try:
-        return fn(text, interface)
+        return fn(text, interface, dialect) if kind in BY_DIALECT else fn(text, interface)
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         return _out(UNREADABLE, why=f"the answer could not be read ({type(exc).__name__})")
