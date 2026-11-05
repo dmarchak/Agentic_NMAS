@@ -560,6 +560,26 @@ class TestRepinRunsInitAndKeepsTheOperatorsValues:
         settings = json.loads((kit["home"] / "data" / "user_settings.json").read_text())
         assert "installation_kind" not in settings, "init ran on a refused repin"
 
+    def test_the_steps_after_the_move_are_the_new_commits(self, kit):
+        """C2569 (the operator's repin to ee620634, 2026-11-05): run from the worktree it
+        moves, as the operator runs it, a repin's steps after the checkout come from the NEW
+        commit's script; bash had read the old one's function first, so a step the new commit
+        added to repin itself never ran (its init, there)."""
+        path = kit["repo"] / "lab" / "sdn-laptop" / "kit"
+        text = path.read_text()
+        anchor = "cmd_after_repin() {   # the steps a repin runs after the move"
+        assert text.count(anchor) == 1
+        path.write_text(text.replace(anchor, "cmd_after_repin() {\n  echo \"the new "
+                                     "commit's own step\"  # the steps a repin runs after the move"))
+        self._git("-C", str(kit["repo"]), "commit", "-q", "-am", "three")
+        three = self._git("-C", str(kit["repo"]), "rev-parse", "HEAD")
+        r = subprocess.run([str(kit["home"] / "mercury" / "lab" / "sdn-laptop" / "kit"),
+                            "repin", three], capture_output=True, text=True, env=kit["env"])
+        assert r.returncode == 0, r.stderr
+        assert "the new commit's own step" in r.stdout, r.stdout
+        assert "installation settings: added" in r.stdout
+        assert f"PIN_SHA={three}" in (kit["home"] / "kit.env").read_text()
+
 
 class TestMakeCurrent:
     """`network_admin.make_current`, the installation's current network, for an installation

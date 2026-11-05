@@ -87,6 +87,12 @@ only when no current network was set: a History record of one, or a registry nam
 other than the first run's Default. kit.env is written only by `kit init` when absent; repin
 changes its `PIN_SHA` alone.
 
+**Every step after the move is the new commit's (C2569).** The kit script is run from the
+worktree repin moves, and bash has already read the old commit's repin by then, so after the
+checkout repin hands over to the worktree's script, now the new commit's, for the rest (its
+init). A repin FROM a commit before this fix (ee620634 and earlier) still runs the old steps:
+repin a second time to the same commit and the new commit's steps run.
+
 ## 3. Safety defaults on the kit
 
 | Default | How | Shown by |

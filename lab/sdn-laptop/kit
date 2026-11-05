@@ -145,8 +145,16 @@ cmd_repin() {    # the kit moved to another commit (a fix committed on lab9-live
   git -C "$WT" checkout -q --detach "$sha"
   sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
   echo "kit: repinned at $(git -C "$WT" log -1 --format='%h %s' | cut -c1-90)"
+  # Every step after the move is the NEW commit's (C2569): bash has already read this
+  # function from the old file, and the operator runs this script from the worktree just
+  # moved, so the rest runs from the worktree's script as the new commit has it.
+  exec "$WT/lab/sdn-laptop/kit" _after-repin
+}
+
+cmd_after_repin() {   # the steps a repin runs after the move, read from the new commit's script
+  load
   # The new commit's settings (the operator, 2026-11-05): init adds what is missing and keeps
-  # every value already stored; kit.env is never rewritten here, only its PIN_SHA above.
+  # every value already stored; kit.env is never rewritten here, only repin's PIN_SHA.
   in_wt "$PY" "$HERE/kit_settings.py" init
 }
 
@@ -261,6 +269,7 @@ cmd_reset() {
 case "${1:-}" in
   init) shift; cmd_init "$@" ;;
   repin) shift; cmd_repin "$@" ;;
+  _after-repin) cmd_after_repin ;;
   ensure-pepper) cmd_ensure_pepper ;;
   netbox-writes-on) shift; load; [ $# -gt 0 ] || die 'usage: kit netbox-writes-on "<reason>"'
     in_wt "$PY" "$HERE/kit_settings.py" netbox-writes-on "$@" ;;
