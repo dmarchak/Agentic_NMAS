@@ -903,4 +903,23 @@ EQUIVALENT = [
            ("want = key(chain[2:], line)",),
            "a program's line under a `line` stanza has no deeper parent (IOS nests nothing "
            "there), so the chain below the stanza is empty either way"),
+    # ── An add's overlap scan (C2551 step 3b, groups D1 and D2; mutation-nightly #68 of
+    # 2026-11-01; accepted by the operator, 2026-11-05: "Approved: dhcp_subnets mutants 21, 46,
+    # 50, 52 and 55 marked equivalent with their stated reasons."). The scan's other mutants
+    # are killed by tests/test_dhcp_subnets.py's TestTheOverlapScanChecksEverySubnet.
+    *_each("modules.dhcp_subnets._plan_add",
+           'net = ipaddress.ip_network(s["prefix"].strip(), strict=True)',
+           ('net = ipaddress.ip_network(s["prefix"].strip(), )',),
+           "`strict=True` is ip_network's default, so dropping it changes nothing"),
+    *_each("modules.dhcp_subnets._plan_add",
+           'if ipaddress.ip_network(other.get("subnet", ""), strict=False).overlaps(net):',
+           ('if ipaddress.ip_network(other.get("subnet", ""), strict=None).overlaps(net):',),
+           "ipaddress tests `if strict:`, and None is as false as False"),
+    *_each("modules.dhcp_subnets._plan_add",
+           'if ipaddress.ip_network(other.get("subnet", ""), strict=False).overlaps(net):',
+           ('if ipaddress.ip_network(other.get("subnet", None), strict=False).overlaps(net):',
+            'if ipaddress.ip_network(other.get("subnet", ), strict=False).overlaps(net):',
+            'if ipaddress.ip_network(other.get("subnet", "XXXX"), strict=False).overlaps(net):'),
+           "a Kea entry with no `subnet` raises ValueError whatever stands in for it (\"\", None "
+           "or \"XXXX\"), and the scan continues past it either way"),
 ]

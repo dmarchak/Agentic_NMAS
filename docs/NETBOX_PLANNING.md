@@ -946,6 +946,14 @@ Nothing here starts before both labs, except what the operator moves forward.
 
 Only what practice does not decide. Each carries a recommendation.
 
+**Decided (the operator, 2026-11-05):**
+- **3 and 4, the licences, approved:** "Approved: openpyxl (MIT) and the devicetype-library (CC0)
+  for the NetBox planning design." Both are listed in `docs/THIRD_PARTY.json` under
+  `approved_ahead` until the commit that adds each; CSV is built first, openpyxl only with P8.
+- **1, 2, 5, 6 and 7:** each recommendation below is taken when its work starts ("take your
+  recommendations when the work starts"). Decision 6 changes nothing before both labs: the
+  final SDN lab's kit relies on today's behaviour (C2566).
+
 1. **A dedicated port's address:** `oob_ip` only, with Mercury's one reader reading `oob_ip`
    first; or both `oob_ip` and the primary IP set to it. **Recommended: `oob_ip` only,** as the
    design says. One fact, one field, one reader.
