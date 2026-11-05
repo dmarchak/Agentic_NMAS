@@ -119,7 +119,7 @@ are section 2. No register row is tagged "Lab 9: blocks" but C2379 and C2427. Th
 | A2 | NSoT-driven OpenFlow configuration | 8 | in progress (2026-11-05) | section 1 A2 (partial: `RyuDriver._switches` read); read-only discovery (docs/LAB9_DISCOVERY.md); the OpenFlow templates, ZTP profiles and discovery reads in build, draft until a capture confirms each | templates, ZTP and discovery (about 2.5, under way); the confirm-and-push path per vendor once captures confirm (about 3, inferred, in place of item 1's full drivers, 9.5); item 2 onboarding (3); hardware integration (3); the board's sign-off, self-signed under the Phase 7 mode (section 7) | the captures from each switch; decision 6 (AOS-CX's netmiko) |
 | A3 | DNS blacklist | 10 | not started | section 1 A3 (missing); no commit | steering app (2); the filter service (2) | decision 4 (dnspython's licence); question 6 (the verdict service; any key typed by the operator) |
 | A4 | DHCP | 6 | in progress (2026-11-05): the router's pool as intent, built, not yet on a device | section 1 A4; "A4: the router's pool" below; the DHCP server pack (`modules/nsot/features/dhcp.py`), tests/test_feature_pack_dhcp.py | DHCP steering (1.25); the pool's remainder (about 0.75, below) | the router's running config once a pool is on it (one capture, below) |
-| A5 | SDN trace | 8 | not started | section 1 A5 (missing); C1911 | the trace by DPID (2.5) | none |
+| A5 | SDN trace | 8 | in progress (2026-11-05): the walk built, no screen yet | section 1 A5; C1911; "A5: the trace" below; `modules/sdn/trace.py`, tests/test_sdn_trace.py | the screen and its route, the manual, the Lab 9 capture (about 1.5, below) | the board's sign-off (self-signed under the Phase 7 mode) |
 | A6 | REST implementation | 8 | in progress | section 1 A6 (exists for flows and meters); C2427 | groups (in item 6's reroute, 1.5); port description (in item 7, 1) | question 5 (the controller server) |
 | B1 | AI Network Analyst | 8 | not started | section 1 B1 (partial: collection only); C2495 | item 7 (3.5) | the planted issues, in a sitting |
 | B2 | Intent Controller | 9 | not started | section 1 B2 (missing for SDN; board S9 drawn) | item 4 (7.5) | none |
@@ -128,7 +128,7 @@ are section 2. No register row is tagged "Lab 9: blocks" but C2379 and C2427. Th
 | B4 | Advanced Technique | 8 | in progress | H25's core (`e6493d19`), hand check (`6638af7f`), D1 to D4 (`77a78a82`); tests/test_ai_read_loop.py; C2419, C2427 | the rest of 6.0, up to about 10 (section 5): H24, H28's class (0.5), H26, H29 to H31 | the TA's answer (section 4); the fresh blind set's capture, 2 h 45 min (PHASE8_PLAN 0.4); the device state class on (D2) |
 | B5 | Reliability, Safety, and Cost | 5 | not started | section 1 B5 (partial: `modules/ai/calls.py` `record`); C2379 | item 10 export (1.75); item 8 economy tier (1.5); item 5 protected flows (2.5) | the AI-use disclosure and the production-readiness analysis (section 1 B5) |
 | +3 | DNS modified reply | +3 | not started | section 1 A3 | the block page (0.5) | none |
-| +3 | Trace ingress and egress ports | +3 | not started | section 1 A5 | the trace's ports (0.5) | none |
+| +3 | Trace ingress and egress ports | +3 | in progress (2026-11-05): each hop's in and out port, with its name, in the walk | section 1 A5; "A5: the trace" below | drawn on A5's screen (in A5's 1.5) | none |
 | +3 | Automated response to link failure | +3 | not started | section 1 B3; section 5, "link failure is repaired locally" | in item 6's reroute (1.5) | decision 3; the hardware |
 | Rule | The API key is kept out of the code repository | none given | done (evidence) | the key sealed in `modules/secrets_store.py` (`anthropic_api_key`), docs/SECRETS.md; tests/test_nothing_personal_is_published.py; tests/test_p3_secrets_write_only.py | none | none |
 
@@ -213,3 +213,82 @@ holds both, with what each vendor's client reads.
 - **DHCP steering, 1.25 agent-days** (LAB9_SDN_GAP section 2, item 3): the edge flows (a client's
   broadcast to the router's port, server replies dropped from any other port). **Its screen is a
   new tab, SDN › Apps, board B (LAB9_SDN_GAP section 7); none is drawn here.**
+
+### A5: the trace
+
+Written 2026-11-05 ~11:3x UTC (05:3x, UTC−6). **A5 is a source and a destination, given in the
+GUI or the CLI, and the DPIDs along the path; the bonus is each hop's ingress and egress port**
+(LAB9_SDN_GAP section 1, A5). Mercury's GUI meets "GUI or CLI" (no terminal steps), and the
+trace has one home, Topology's Path… gaining the controller's layer (LAB9_SDN_GAP section 5).
+
+**The design: a flow-table walk over the stored read** (`modules/sdn/trace.py`). The SDN reader
+already stores, per controller, its topology (switches with their ports, links, hosts) and each
+switch's whole flow table, every 30 s (`readers/sdn_controllers.py`). The trace reads that one
+value, asks no controller and writes nothing, so a request costs the hops it walks times each
+table's flows, never a read per switch (CLAUDE.md, "Enterprise scale"). It finds both hosts in
+the controller's host table (by an IPv4 or IPv6 address or a MAC), builds the packet a host
+would send (ICMP echo, or TCP or UDP to a port, in the addresses' family, untagged), and walks
+it from the source host's port: at each switch, table 0 first, the highest-priority flow that
+matches it (matching is `flow_intent`'s, one owner), its instructions in order, the action set
+at the end; then out the port, across the controller's link to the next switch. Every branch
+ends in one named outcome: delivered to the destination's port; left by another host's port;
+left the fabric; sent to the controller; to the switch's local port; dropped (by a flow, by
+no table-miss entry, by a port that does not exist, or back out its ingress port); a loop; or
+cannot tell, naming why. Each hop is its DPID, the port it came in by and the port it left by,
+each with its name (the bonus), and the flows it took.
+
+**What practice settles** (the Open Networking Foundation, OpenFlow Switch Specification
+1.3.5, https://opennetworking.org/wp-content/uploads/2014/10/openflow-switch-v1.3.5.pdf, read
+2026-11-05; Ryu's `ryu/lib/ofctl_utils.py` and `ofctl_v1_3.py`,
+https://raw.githubusercontent.com/faucetsdn/ryu/master/ryu/lib/, read 2026-11-05):
+
+- the pipeline starts at table 0 and goes only forward (5.1); the highest-priority matching flow
+  is taken, and two at one priority leave which applies "explicitly undefined" (5.3), so the
+  trace says it cannot tell unless their actions agree;
+- with no flow matching and no table-miss entry the packet is "dropped (discarded)" by default
+  (5.4); instructions run meter, apply-actions in order, clear, write-actions, write-metadata,
+  goto-table (5.9); the action set's output runs last, and with none the packet is dropped
+  (5.10);
+- back out the ingress port only by IN_PORT (4.5, appendix B); ALL is every standard port but
+  the ingress port, and FLOOD "in general" the same (4.5);
+- Ryu prints a flow's instructions in the switch's order, apply-actions inline
+  (`actions_to_str`), and a tagged VLAN match as the bare id (`match_vid_to_str` drops
+  OFPVID_PRESENT; `to_match_vid` adds it back), so an integer `vlan_vid` from the driver is a
+  tagged id.
+
+**What the walk does not model, said as "cannot tell":** groups (the tables are not read yet:
+A6's groups, LAB9_SDN_GAP item 6), NORMAL, VLAN, MPLS and PBB pushes and pops, a match on a
+field the packet could carry and the trace does not build (`tunnel_id`, IPv6's extension
+headers), an action the driver could not read, and a table the read did not hold whole. **Not
+traced:** ARP and IPv6 neighbour discovery (the destination MAC is the controller's host
+table's, as if resolved); a destination outside the fabric (a routed hop's gateway MAC); a
+path across two controllers' fabrics; TTL expiry; a meter's rate (a meter is noted on its
+hop).
+
+**Never let a wrong thing look like a working thing.** The flows are the last read's: a reactive
+controller that installs a flow on a packet's arrival shows the packet sent to it, said so; a
+read older than its promise is said beside the answer ("as last read at"); a host Ryu kept from
+an earlier run is a second place, and an address listed at two places is refused naming both.
+
+**This increment (code and tests only; no screen, no route):** the walk, the packet, the host
+lookup and the fabric from the stored read, and tests on the Lab 8 run's real tables (Ryu 4.34
+over Open vSwitch 2.17.12; tests/fixtures/sdn/ryu/topology_rest.json and
+tests/fixtures/sdn/lab8/): IPv4 from h1 to h3 carried to h4's port by the unauthorised flow
+(cookie 0xbad0) beside IPv6 delivered, h2 to h4 ending at the controller, and OpenFlow's rules
+each on a minimal edit of those tables, every IPv4 case with its IPv6 one.
+
+**Not measured: what the Lab 9 switches' tables look like.** The walk is checked on Open
+vSwitch's tables under Ryu only. One measurement settles it for each vendor switch: its table
+read through Mercury once A2 has it under the controller, kept as a fixture, and the trace
+over it.
+
+**What is left, about 1.5 agent-days:**
+
+- **the screen, about 1 agent-day:** Topology's Path… with the controller's layer, and SDN ›
+  Flows linking to it (LAB9_SDN_GAP section 5). **It needs board D, "Topology › Path…: the
+  trace through flow tables" (LAB9_SDN_GAP section 7); none is drawn here.** Then its route (a
+  read: `GET`, declared in neither `route_gates` nor `invalidation`), the hops drawn with their
+  ports, each flow on expand, and the large-fleet summary for a flood;
+- **the manual, about 0.25:** the Path… page's SDN section and its How it works page;
+- **the Lab 9 capture, about 0.25:** each vendor switch's table as a fixture, and any spelling
+  the walk then needs.
