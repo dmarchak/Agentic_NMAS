@@ -1552,10 +1552,21 @@ class TestClickingTheShippedButton:
         b.go(served_update["srv"].url("/v2/update"))
         b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
                    "&& !document.querySelector('#update-confirm').disabled")
+        # C1955: htmx binds a swapped-in element's hx-post in a settle task, after its
+        # settle delay (htmx 2.0.11's insertNodesBefore and makeAjaxLoadTask, defaultSettleDelay
+        # 20 ms), so the answer's new button is drawn enabled before it is bound, and a press
+        # inside that window posts nothing. The second press waits until the answer's new
+        # button is bound: htmx fires `htmx:load` on each new element once it has processed it
+        # (in that same settle task), so the press comes after a load holding the button, as a
+        # person's second press always comes later than 20 ms.
+        b.js("window.__nmasBound = 0; document.body.addEventListener('htmx:load', function (e) {"
+             " var t = e.target; if (t && (t.id === 'update-confirm' || (t.querySelector"
+             " && t.querySelector('#update-confirm')))) window.__nmasBound += 1; });")
         b.click("#update-confirm")
         b.wait_for("return document.querySelector('.confirm[data-update-hold=\"result\"]')")
         calls["answer"] = {"ok": False, "reason": "a second reason, after the first"}
-        b.wait_for("return window.Alpine && !document.querySelector('#update-confirm').disabled")
+        b.wait_for("return window.Alpine && window.__nmasBound >= 1 "
+                   "&& !document.querySelector('#update-confirm').disabled")
         b.click("#update-confirm")
         try:
             said = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
