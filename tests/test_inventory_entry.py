@@ -450,6 +450,44 @@ class TestAnObserveDeviceIsChangedByNothing:
         finally:
             D.release_many("lab9", held)
 
+    def test_the_plan_every_preview_draws_refuses_it_naming_the_mark(self, lab, monkeypatch):
+        """C2621: the batch preview, a fleet change's plan and the device page's Deploy… all
+        draw `routes.deploy.plan_devices`; an observe device and a host are planned as
+        refused, naming the mark, so no preview lists either as a target the apply would then
+        refuse. The inventory's rows are read once a plan, never once a device."""
+        from modules import inventory
+        from modules.preview_confirm import deploy_preview
+        from routes import deploy
+        lab.save_profile("default", "admin", "pw")
+        rows = list(adapt(lab_records(router={"context": OBSERVE, "local": OBSERVE}))[0]
+                    .values())
+        reads = []
+        monkeypatch.setattr(inventory, "cached_rows",
+                            lambda name: reads.append(name) or (rows if name == "lab9" else []))
+        # A managed device goes on to its build (here, none: nothing in the store to build).
+        monkeypatch.setattr(deploy, "_artifact_for", lambda name, host: (None, "not built"))
+        got = {e["device"]: e for e in deploy.plan_devices("lab9",
+                                                          ["router", "controller", "of-sw1"])}
+        assert reads == ["lab9"]
+        router, controller = got["router"], got["controller"]
+        assert router["deployable"] is False and router["management_refused"]
+        assert router["blocking_reasons"][0].startswith("REFUSED: a deploy on router: NetBox's "
+                                                        "config context sets mercury.management "
+                                                        "to observe (the device's local config "
+                                                        "context)"), router["blocking_reasons"]
+        assert controller["deployable"] is False and "mercury_kind is host" in \
+            controller["blocking_reasons"][0]
+        assert got["of-sw1"]["blocking_reasons"] == ["not built"], "a managed device is built"
+        assert not got["of-sw1"].get("management_refused")
+        import app as A
+        with A.app.test_request_context("/"):
+            from flask import request
+            preview = deploy_preview([router], request)
+        target = next(t for t in preview["what"]["targets"] if t["name"] == "router")
+        assert target["state"] == "blocked" and target["selectable"] is False
+        assert any(w["text"].startswith("Not sent: REFUSED: a deploy on router")
+                   for w in preview["what_not"]["items"]), preview["what_not"]
+
     def test_the_pipelines_gate_refuses_it_before_any_session(self, held_lab):
         from modules.pipeline import PipelineContext, PipelineStageError, _stage_ci_gate
         dev = held_lab["router"]

@@ -523,7 +523,25 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
     capture = _capture_source(capture, scope)
     devices = []
     intents_once = None
+    # C2621: a device Mercury may not change (NetBox's mercury.management observe, or a host)
+    # is planned as refused, naming the mark, so no preview lists it as a target its apply
+    # would then refuse. The rows are read once (the inventory's cache, no NetBox call), not
+    # once a device.
+    from modules import inventory as _inventory
+    from modules.inventory import management as _management
+    try:
+        marks = {d.get("hostname"): d for d in _inventory.cached_rows(list_name)}
+    except Exception as exc:                         # noqa: BLE001 - said; the holds still refuse
+        log.warning("plan_devices: %s's inventory rows could not be read: %s", list_name, exc)
+        marks = {}
     for hostname in hostnames:
+        refused = _management.refusal(marks.get(hostname), what="a deploy") \
+            if hostname in marks else ""
+        if refused:
+            devices.append({"device": hostname, "deployable": False,
+                            "blocking_reasons": [refused], "to_add": [],
+                            "removal_warnings": [], "management_refused": True})
+            continue
         built, error = _artifact_for(list_name, hostname)
         if built is None:
             devices.append({"device": hostname, "deployable": False,
