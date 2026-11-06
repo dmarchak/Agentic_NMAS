@@ -314,8 +314,9 @@ def netmiko_fake(monkeypatch):
 
 
 def _open(driver, ip):
+    # A plain-account driver's session is opened only for a caller that declares it (C2625).
     return C.open_ssh(C.connection_params({"device_type": driver, "ip": ip, "username": "u"},
-                                          password="p"), owner="test")
+                                          password="p"), owner="test", plain=C.is_plain(driver))
 
 
 class TestTheOvsSession:

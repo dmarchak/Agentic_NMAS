@@ -11,7 +11,10 @@ tell a NetBox-sourced device from a local one.
 
 A device that cannot be represented is **skipped with a per-device reason**,
 never dropped silently and never fatal to the list: nine good devices out of ten
-still load and work.
+still load and work. Only two facts skip a device, because each says what Mercury cannot be
+for it: no platform in the map (no driver to speak) and no primary IPv4 (no address to reach).
+A device no login covers is NOT skipped (C2607): NetBox owns its existence, so it loads in
+its "no login" state (``_login``), unreadable, never absent.
 """
 
 import logging
@@ -71,7 +74,7 @@ def kind_of(role_slug: str, kinds) -> tuple:
                     "yet (scripts/nmas-netbox-role-kind adds it), so its role "
                     f"'{role_slug}' says nothing of what it is")
     return "", (f"not classified in NetBox: its role '{role_slug}' has no Mercury kind; set "
-                f"`{FIELD}` (router, switch or firewall) on the role in NetBox")
+                f"`{FIELD}` (router, switch, firewall or host) on the role in NetBox")
 
 
 def _address_only(address: str) -> str:
@@ -87,7 +90,9 @@ def fetch_netbox_devices(filters: dict) -> dict:
     if not ok:
         return {"ok": False, "error": err, "devices": []}
 
-    params = {"limit": 500}
+    # The RENDERED config context (C2606): NetBox renders it only when asked (as
+    # `nsot.context._fetch_full_device` asks), and the observe-only mark is read from it.
+    params = {"limit": 500, "include": "config_context"}
     for key, nb_key in (("site", "site"), ("role", "role"),
                         ("tag", "tag"), ("status", "status")):
         value = (filters or {}).get(key, "")
@@ -119,6 +124,7 @@ def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = No
     * ``warnings`` — per-device dicts for devices that loaded with a caveat
     """
     from modules.credentials import resolve as resolve_credentials
+    from modules.inventory.management import mark as management_mark
 
     devices, skipped, warnings = [], [], []
 
@@ -154,11 +160,22 @@ def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = No
         # ── credentials ──────────────────────────────────────────────────────
         site_slug = (raw.get("site") or {}).get("slug", "")
         creds = resolve_credentials(mgmt_ip, role=role, site=site_slug,
-                                    credential_list=credential_list)
+                                    credential_list=credential_list, platform=platform_slug)
+        login = ""
         if not creds["ok"]:
-            skipped.append({"name": name, "netbox_id": nb_id, "field": "credentials",
-                            "reason": creds["error"]})
-            continue
+            # C2607 (decision 4): a device NetBox lists and no login covers is UNREADABLE,
+            # not absent: it loads in its "no login" state, its session reads refused naming
+            # it (`connection.connection_params`), and Needs attention counts it per network.
+            login = no_login_words(platform_slug, role, site_slug)
+            creds = {"username": "", "password": "", "secret": "", "source": ""}
+            warnings.append({"name": name, "netbox_id": nb_id, "field": "credentials",
+                             "reason": login})
+
+        # ── observe-only (C2606) ─────────────────────────────────────────────
+        managed = management_mark(raw)
+        if managed["problem"]:
+            warnings.append({"name": name, "netbox_id": nb_id, "field": "config_context",
+                             "reason": managed["problem"]})
 
         devices.append({
             "hostname":    name,
@@ -186,6 +203,23 @@ def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = No
             # The device type as NetBox names it (its model), which Mercury's platform table
             # declares capabilities by (`vlan_capability`, C1692); never sent to a device.
             "_model":       str(((raw.get("device_type") or {}).get("model")) or "").strip(),
+            # C2607: "" when a login resolved, else the "no login" state's words.
+            "_login":       login,
+            # C2606: observe or manage, from NetBox's rendered config context, and where
+            # NetBox set it (`inventory.management.mark`); never sent to a device.
+            "_management":  managed["mode"],
+            "_management_from": managed["from"],
+            "_management_problem": managed["problem"],
         })
 
     return devices, skipped, warnings
+
+
+def no_login_words(platform: str, kind: str, site: str) -> str:
+    """The "no login" state (C2607), naming the scopes a profile could cover the device by,
+    in the resolver's order (`credentials.PROFILE_SCOPES`)."""
+    scopes = ", ".join(f"{scope} {value}" for scope, value in
+                       (("platform", platform), ("kind", kind), ("site", site)) if value)
+    return (f"no login: no credential profile covers {scopes or 'it'} (and no device login, "
+            "network credential list or default profile does): add one on Credentials › "
+            "Profiles")

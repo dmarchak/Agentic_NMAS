@@ -124,6 +124,14 @@ def generate(devices=None, golden=None) -> dict:
         host, ip = (dev.get("hostname") or "").strip(), (dev.get("ip") or "").strip()
         if not host or not ip or by_address.get(ip) != f"{host} ({ref.name})":
             continue
+        # C2608: a host (its role's mercury_kind is host) is not a network device: no
+        # interface monitoring, said by name before its golden is asked for (it has none).
+        from modules.inventory.management import is_host
+        if is_host(dev):
+            why = "a host (its role's mercury_kind is host), not in interface monitoring"
+            notes.append(f"{host}: {why}")
+            excluded[host] = why
+            continue
         # ONLY A DEVICE CONFIGURED FOR SNMP IS A TARGET (the operator,
         # 2026-09-30): r6 became a target with no SNMP in its configuration and
         # Grafana called it "unreachable", which it was not. Its golden decides,

@@ -373,6 +373,8 @@ def device(name):
            "block": _block_state(ref, dev),
            # Re-key is offered only while a refused SSH host key is held (C2239): one read.
            "rekey": _rekey_held(dev),
+           # An observe-only device or a host is offered no change (C2606, C2608).
+           "changes": _changes_offered(dev),
            # Verify again is offered only while the last reload ended not verified (C2280).
            "verify_again": _verify_again_offered(ref, dev),
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
@@ -463,7 +465,7 @@ def actions_menu(name):
     ref, dev = found
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
                                    tab=_back(request.args), block=_block_state(ref, dev),
-                                   rekey=_rekey_held(dev),
+                                   rekey=_rekey_held(dev), changes=_changes_offered(dev),
                                    verify_again=_verify_again_offered(ref, dev)))
 
 
@@ -2012,6 +2014,19 @@ def restore_job_card(name, job):
 # ---------------------------------------------------------------------------
 # Revert and Retry, the two ways out of a rollback (7.3; the device-actions canvas, board 11)
 # ---------------------------------------------------------------------------
+
+def _changes_offered(dev) -> dict:
+    """C2606, C2608: ``{"offered", "state", "why", "host"}``: whether the Actions menu offers
+    the device-changing rows (deploy, Mode B, restore, rotate, persist, a privileged command),
+    read from the device's inventory row (`inventory.management`; no NetBox call). An
+    observe-only device names its key and where NetBox set it; a host is also offered no
+    capture or seed, having no golden."""
+    from modules.inventory import management
+    why = management.refusal(dev, what="a change")
+    return {"offered": not why, "state": management.state_words(dev),
+            "why": why.removeprefix("REFUSED: ").removesuffix(" Nothing was sent."),
+            "host": management.is_host(dev)}
+
 
 def _rekey_held(dev) -> dict:
     """C2239: whether Mercury holds a refused SSH host key for *dev*'s address now (one file

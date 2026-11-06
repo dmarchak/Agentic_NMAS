@@ -431,6 +431,21 @@ class TestGuards:
         assert (d["outcome"], d["guard"]["guard"], d["until"]) == ("held", 4, None)
         assert d["guard"]["operands"]["intent_match"] == "departs"
 
+    @pytest.mark.parametrize("mark,words", [
+        ({"_management": "observe", "_management_from": "the device's local config context"},
+         "mercury.management to observe (the device's local config context)"),
+        ({"role": "host"}, "mercury_kind is host")], ids=("observe", "host"))
+    def test_4_an_observe_device_or_a_host_has_no_state_to_heal_to(self, lab, mark, words):
+        """C2606, C2608: held under guard 4 before its golden is read, naming the mark; the
+        device is never read."""
+        class Marked(Fake):
+            def device(self, device):
+                return dict(super().device(device), **mark)
+        src = Marked(GOLDEN + ROUTE4)
+        d = one(GOLDEN + ROUTE4, src=src)
+        assert (d["outcome"], d["guard"]["guard"]) == ("held", 4)
+        assert words in d["words"] and src.reads == 0
+
     def test_5_the_topology_hold(self, lab):
         held = {"held": True, "until": iso(T0 + 600), "words": "held until then",
                 "minutes": 60, "changes": []}

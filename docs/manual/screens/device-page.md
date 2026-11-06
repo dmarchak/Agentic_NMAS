@@ -15,7 +15,14 @@ operations on the device.
 Everything is under **Actions**, one menu, Plan a deploy first: Plan a deploy, Capture, Seed
 intent, Restore from, Remove lines (Mode B),
 Revert intent, Retry rolled-back change, Rotate credential, Persist, Run a privileged command,
-Reload and Retire. **Capture runs here**: its card takes the place of the
+Reload and Retire. **An observe-only device** (NetBox's rendered config context sets
+`mercury.management` to `observe`) is read, captured and drift-reported, and offered nothing
+that changes it: the menu's note names the state and where NetBox set it ("observe (the
+device's local config context)"), and Plan a deploy, Restore from, Remove lines (Mode B),
+Rotate credential, Persist and Run a privileged command are greyed, each saying why on hover;
+every one of them is refused by the server too, naming the key. **A host** (its role's
+`mercury_kind` is `host`, a Linux host Mercury manages services on) is offered no Capture or
+Seed intent either: it has no golden. **Capture runs here**: its card takes the place of the
 tab you were on, reads the device, and shows what its golden would become, against the golden
 now and against committed intent, with the checks and the confirm bound to that read; once you
 record it, the same card shows the commit, who and when (the read's timings on hover), what is

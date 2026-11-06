@@ -134,6 +134,18 @@ class DeviceBusy(RuntimeError):
         super().__init__(describe(holder))
 
 
+class NotManaged(DeviceBusy):
+    """The device is observe-only, or a host (C2606, C2608: `inventory.management`): the
+    operation that asked to hold it would change it, and nothing does. A DeviceBusy, so every
+    caller that refuses a held device by name refuses this one too, with these words; its
+    holder names NetBox as what holds it, never a person."""
+
+    def __init__(self, hostname: str, words: str):
+        self.holder = {"device": hostname, "operation": "observe-only (NetBox)",
+                       "actor": "NetBox", "started": 0}
+        RuntimeError.__init__(self, words)
+
+
 class HoldsUnreadable(OSError):
     """A folder or lock file that says what is held could not be read (C988).
 
@@ -647,7 +659,15 @@ def holder(list_name: str, hostname: str):
 
 def acquire(list_name: str, hostname: str, operation: str, actor: str,
             detail: str = "", ip: str = "") -> None:
-    """Hold *hostname* for *operation*, or raise :class:`DeviceBusy`."""
+    """Hold *hostname* for *operation*, or raise :class:`DeviceBusy`.
+
+    An operation not on `inventory.management.MAY_HOLD` is refused on an observe-only device
+    or a host (:class:`NotManaged`, C2606 and C2608), naming the key and where NetBox set it,
+    before anything is held: every device-changing operation holds its device first."""
+    from modules.inventory.management import hold_refusal
+    refused = hold_refusal(list_name, hostname, operation)
+    if refused:
+        raise NotManaged(hostname, refused)
     key = (_list_key(list_name), hostname)
     me = threading.get_ident()
     now = time.time()

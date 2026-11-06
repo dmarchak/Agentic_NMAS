@@ -74,7 +74,19 @@ Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, t
 Compared again 2026-11-05 (the main session, H16's gate): `_diagnose.html`'s "not offered"
 `<details>` gains `data-keep` (C472: a live region's details keeps its state across a redraw),
 an attribute no region draws; every region reads as before.
-Templates sha256: `3b2f0b7c4c55bc7cb018c02d6312ef9591e101e6b453f5c0a1564dc89bd299a6`
+Compared again 2026-11-06 (P1b, C2606 and C2608): `_actions_menu.html` draws the changing rows
+(Plan a deploy…, Restore from…, Remove lines (Mode B)…, Rotate credential…, Persist, Run a
+privileged command…; and for a host Capture and Seed intent… too) greyed with "Not offered:
+<why>" on hover and for a screen reader, and the menu's note names the state ("router is
+observe (the device's local config context): nothing that changes it is offered"), only for a
+device NetBox's config context marks observe-only or whose kind is host. A managed device's
+menu is unchanged, row for row and word for word: every region below reads as before. No shot
+was taken (tests/test_board_shots.py draws no observe-only device); compared by the template
+and the menu tests/test_inventory_entry.py renders. The greyed rows are board 11's own pattern
+for Revert and Retry; no board draws an observe-only device, so the state is a deviation, a
+line in STANDING_APPROVAL_LOG.md. Templates sha256 before:
+`3b2f0b7c4c55bc7cb018c02d6312ef9591e101e6b453f5c0a1564dc89bd299a6`.
+Templates sha256: `0336b633b878443964c6e90d21c8ad87d09aa90bcef690660692fc9374bb0d01`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it

@@ -82,6 +82,19 @@ _COMWARE = ("display version", "display device manuinfo", "display current-confi
 _OVS = ("ovs-vsctl --version", "sudo -n ovs-vsctl show", "sudo -n ovs-vsctl list-br",
         "sudo -n ovs-vsctl --columns=target,is_connected list controller")
 
+#: A Linux host Mercury manages services on (C2608; the SDN design (revision 4) section 9a's
+#: ``linux_host`` driver, keyed here by netmiko's own driver for it, ``linux``, as every entry
+#: is keyed by the driver a session opens with). Its literal reads; the unit and folder reads
+#: are shapes (`_LINUX_SHAPES`), each with one token of its own shape, since the controller's
+#: unit and its app folder are the host's, not Mercury's.
+_LINUX_HOST = ("cat /etc/os-release", "systemctl list-units --type=service --no-pager")
+#: The host's shaped reads: the controller unit's status, its User and command line, its unit
+#: file with every drop-in (`systemctl cat`), and one app folder under /opt.
+_UNIT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}\Z")
+_FOLDER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+_LINUX_SHAPES = ("systemctl status --no-pager <unit>", "systemctl show -p User -p ExecStart <unit>",
+                 "systemctl cat <unit>", "ls -la /opt/<folder>")
+
 #: driver -> the family in words, its capture list, the command its platform-map Test asks,
 #: why netmiko's `enable()` for it is never sent (``no_enable``), and the one write its
 #: session may carry while the device is held (``held_write``).
@@ -99,7 +112,37 @@ DRIVERS = {
                        "version": "ovs-vsctl --version",
                        "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
                        "held_write": "the OpenFlow configuration's ovs-vsctl transaction"},
+    # C2608: the host kind's driver. Its one declared held write is controller management's
+    # deploy channel, which P6 builds: until then every write is refused, naming P6
+    # (`held_write_refusal`).
+    "linux":          {"family": "Linux host", "commands": _LINUX_HOST,
+                       "shapes": _LINUX_SHAPES,
+                       "version": "cat /etc/os-release",
+                       "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
+                       "held_write": ("controller management's deploy channel (not built: "
+                                      "P6)")},
 }
+
+
+def _linux_refusal(command) -> str:
+    """"" when *command* is one of a Linux host's reads (`_LINUX_HOST`, or a `_LINUX_SHAPES`
+    shape with its one token), else why. Case matters in a unit's name: read as given."""
+    words = str(command or "").split()
+    if " ".join(words) in _LINUX_HOST:
+        return ""
+    if len(words) == 4 and words[:3] == ["systemctl", "status", "--no-pager"] \
+            and _UNIT.match(words[3]):
+        return ""
+    if len(words) == 7 and words[:6] == ["systemctl", "show", "-p", "User", "-p", "ExecStart"] \
+            and _UNIT.match(words[6]):
+        return ""
+    if len(words) == 3 and words[:2] == ["systemctl", "cat"] and _UNIT.match(words[2]):
+        return ""
+    if len(words) == 3 and words[:2] == ["ls", "-la"] and words[2].startswith("/opt/") \
+            and _FOLDER.match(words[2][len("/opt/"):]):
+        return ""
+    return (f"REFUSED: {str(command or '')[:80]!r} is not one of a Linux host's reads "
+            f"({'; '.join(_LINUX_HOST + _LINUX_SHAPES)}). Nothing was sent.")
 
 #: OpenFlow instance names on ProCurve (`show openflow instance <name>`): one token of its shape.
 _INSTANCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}\Z")
@@ -139,6 +182,8 @@ def command_refusal(device_type, command) -> str:
         why = ovs.read_refusal(command)
         return why and (f"{why} This is an {DRIVERS[driver]['family']} ({driver}) session, "
                         "read only by these shapes. Nothing was sent.")
+    if driver == "linux":
+        return _linux_refusal(command)
     if want in allowed:
         return ""
     words = want.split()
@@ -191,6 +236,10 @@ def held_write_refusal(device_type, command) -> str:
     driver = str(device_type or "").strip().lower()
     if not DRIVERS.get(driver, {}).get("held_write"):
         return write_refusal(device_type, "a write") or "REFUSED: not a discovery driver."
+    if driver == "linux":
+        # Declared, not built (C2608): P6 builds controller management's deploy channel.
+        from modules.inventory.management import HOST_WRITE_REFUSAL
+        return HOST_WRITE_REFUSAL
     from modules.sdn import ovs
     return ovs.write_refusal(command)
 

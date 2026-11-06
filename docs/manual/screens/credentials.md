@@ -49,7 +49,12 @@ overdue.
 ## Where a credential comes from {#what-it-is-for}
 
 A device's credential is found in this order, first match wins: its own override, the list's
-designated credential list, a role profile, a site profile, the default profile. v2 does not
+designated credential list, a platform profile, a kind profile (its NetBox role's
+`mercury_kind`), a site profile, the default profile. A platform comes before the kind because
+logins differ by vendor, and a kind such as `switch` spans vendors. A NetBox device no source
+covers is not dropped: it is listed with the status **No login** (its words on hover name its
+platform, kind and site), nothing opens a session to it, and Needs attention raises one row per
+network counting them until each resolves. v2 does not
 yet draw which of these a device's credential came from: the device page's Credential check
 shows its age and its rotation policy only (a gap, registered, C1360). Values are write-only:
 none is ever shown back.
@@ -59,17 +64,23 @@ none is ever shown back.
 The **Profiles** tab lists the credential profiles, which apply to every network on this
 installation. A device a NetBox inventory brings in carries no login of its own, so it is
 given one in the order above; a local inventory's devices carry theirs in it and never read
-a profile. Each row says which devices it gives its login to: `role:<role>` every device with
-that role, `site:<site>` every device at that site, `default` every device nothing before it
-covers. A profile under any other name is stored and read by nothing, and its row says so.
+a profile. Each row says which devices it gives its login to: `platform:<slug>` every device on
+that NetBox platform, `role:<kind>` every device whose NetBox role has that `mercury_kind`
+(router, switch, firewall or host; never the NetBox role's own name), `site:<site>` every device
+at that site, `default` every device nothing before it covers. A profile under any other name,
+or `role:` with a NetBox role's name, is stored and read by nothing, and its row says so.
 The password and enable secret are shown only as set or not set, and **Password last set**
 says when the password was last changed.
 
-**Add a profile…** asks what it covers (a role, a site, or every device), the username, the
-password and, if its devices need one, the enable secret; a new profile needs the username and
-the password. **Edit…** keeps any field you leave empty; **Save the profile** saves the form.
-**Delete…** says what the profile covered and that those devices then take their login from
-the next source; one no source covers is skipped by its next NetBox import, which says so.
+**Add a profile…** asks what it covers (a platform, one of the kinds, each naming the NetBox
+roles it covers now, a site, or every device), the platform's or site's slug where it needs
+one, the username, the password and, if its devices need one, the enable secret; a new profile
+needs the username and the password. A name no device can match is refused, naming the scope
+and what exists: the kinds Mercury has, the platforms in the platform map, the sites a loaded
+NetBox device is at. **Edit…** keeps any field you leave empty; **Save the profile** saves the
+form. **Delete…** says what the profile covered and that those devices then take their login
+from the next source; one no source covers is listed with the status No login at its next
+NetBox import.
 **Delete <profile>** deletes it: the login is gone from the installation, kept nowhere the tool
 keeps. **Cancel** closes either card with nothing changed. Each needs a verified person, and
 each is recorded on History (Credential profiles): who, which profile, and the fields set,

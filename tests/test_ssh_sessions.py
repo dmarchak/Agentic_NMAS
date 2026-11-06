@@ -421,3 +421,105 @@ class TestTheConnectBoundIsChosen:
         conn = C.open_ssh({**_params(), "conn_timeout": 5}, owner="test")
         assert conn.params["conn_timeout"] == 5
         conn.disconnect()
+
+
+@pytest.fixture
+def enables(monkeypatch):
+    """Each `enable()` a session receives, by its driver."""
+    got = []
+    monkeypatch.setattr(FakeConn, "enable",
+                        lambda self: got.append(self.params.get("device_type")))
+    return got
+
+
+def _host(driver, ip=IP):
+    return {**_device(ip), "hostname": "controller", "device_type": driver}
+
+
+class TestAPlainAccountHostIsNeverElevated:
+    """C2625 (the operator's condition, 2026-11-06): no Mercury path calls `enable()`, config
+    mode or any escalation on a `linux` or `ovs_linux` session (netmiko's LinuxSSH `enable()`
+    runs sudo, which the dedicated account's sudoers refuses); reads run as the plain account;
+    a write is one explicit `sudo -n <command>`. `open_ssh` refuses such a session before it
+    connects unless the caller declares it plain."""
+
+    @pytest.mark.parametrize("driver", sorted(C.UNPRIVILEGED_DRIVERS))
+    def test_an_undeclared_caller_is_refused_before_it_connects(self, driver):
+        with pytest.raises(C.Unprivileged, match="refused before connecting"):
+            C.open_ssh({**_params(), "device_type": driver}, owner="pipeline:deploy")
+        assert FakeConn.opened == [] and C.held_sessions() == {}, "nothing claimed or opened"
+
+    def test_a_declared_plain_caller_connects(self):
+        conn = C.open_ssh({**_params(), "device_type": "linux"}, owner="test", plain=True)
+        assert len(FakeConn.opened) == 1
+        conn.disconnect()
+
+    @pytest.mark.parametrize("driver", sorted(C.UNPRIVILEGED_DRIVERS))
+    def test_the_generic_paths_sign_in_only(self, driver, enables):
+        assert C.with_temp_connection(_host(driver), lambda conn: conn.find_prompt()) == "r2#"
+        assert C.verify_device_connection(IP, "u", "p", "", driver) == "r2"
+        pool, lock = {}, threading.Lock()
+        C.get_persistent_connection(_host(driver), pool, lock)
+        C.close_persistent_connection(IP, pool, lock)
+        assert enables == [], enables
+
+    def test_a_network_device_is_still_elevated(self, enables):
+        C.with_temp_connection(_device(), lambda conn: None)
+        C.verify_device_connection(IP, "u", "p", "", "cisco_xe")
+        assert enables == ["cisco_xe", "cisco_xe"]
+
+    def test_a_planted_path_that_would_elevate_a_host_is_refused_before_it_connects(self):
+        """A path shaped like the deploy's: open, then `enable()` and a config set."""
+        def deploy_like(dev):
+            conn = C.open_ssh(C.stored_connection_params(dev), owner="planted:deploy")
+            conn.enable()
+            conn.send_config_set(["x"])
+
+        with pytest.raises(C.Unprivileged):
+            deploy_like(_host("linux"))
+        assert FakeConn.opened == [], "no connection was made"
+
+
+def elevations_unguarded(source: str) -> list:
+    """Each function that opens a session declared plain (`open_ssh(..., plain=...)`) and
+    calls `.enable()` outside an `if` whose test names `plain`: `(function, line)`."""
+    out = []
+    for fn in ast.walk(ast.parse(source)):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        declares = any(isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", ""))
+                       == "open_ssh" and any(k.arg == "plain" for k in n.keywords)
+                       for n in ast.walk(fn))
+        if not declares:
+            continue
+        guarded = set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.If) and "plain" in ast.unparse(node.test):
+                guarded.update(id(n) for n in ast.walk(node))
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "enable"
+                    and id(node) not in guarded):
+                out.append((fn.name, node.lineno))
+    return out
+
+
+class TestEveryPlainDeclarationGuardsItsEnable:
+    def test_no_function_declaring_plain_elevates_unguarded(self):
+        """The population: every tracked Python file under modules/ and routes/ and every
+        Python script under scripts/; a floor on the functions that declare plain."""
+        declaring, bad = 0, []
+        for path in tracked("modules", suffix=".py") + tracked("routes", suffix=".py"):
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                source = fh.read()
+            declaring += source.count("plain=plain")
+            bad += [(path, *b) for b in elevations_unguarded(source)]
+        assert declaring >= 3, "the three generic paths declare plain"
+        assert bad == [], bad
+
+    def test_the_scan_finds_a_planted_unguarded_elevation(self):
+        planted = ("def f(dev):\n"
+                   "    conn = open_ssh(params(dev), plain=is_plain(dev['device_type']))\n"
+                   "    conn.enable()\n")
+        assert elevations_unguarded(planted) == [("f", 3)]
+        guarded = planted.replace("    conn.enable()\n", "    if not plain:\n        conn.enable()\n")
+        assert elevations_unguarded(guarded) == []

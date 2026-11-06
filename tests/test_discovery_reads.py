@@ -24,7 +24,9 @@ from modules.nsot import device_ops as D
 
 LIST = "Lab"
 DRIVERS = ("arista_eos", "hp_procurve", "aruba_osswitch", "aruba_procurve", "aruba_os",
-           "hp_comware", "ovs_linux")
+           "hp_comware", "ovs_linux",
+           # C2608: the host kind's driver (the SDN design's `linux_host`, netmiko's `linux`).
+           "linux")
 ADDRESSES = ("192.0.2.31", "2001:db8::31")
 
 
@@ -97,8 +99,9 @@ def fake_netmiko(monkeypatch):
 
 
 def _open(driver, ip=ADDRESSES[0]):
+    # A plain-account driver's session is opened only for a caller that declares it (C2625).
     return C.open_ssh(C.connection_params({"device_type": driver, "ip": ip, "username": "u"},
-                                          password="p"), owner="test")
+                                          password="p"), owner="test", plain=C.is_plain(driver))
 
 
 class TestEachTypeOpensWithItsDriver:
@@ -114,7 +117,7 @@ class TestEachTypeOpensWithItsDriver:
         ("arista_eos", "AristaSSH"), ("hp_procurve", "HPProcurveSSH"),
         ("aruba_osswitch", "HPProcurveSSH"), ("aruba_procurve", "HPProcurveSSH"),
         ("aruba_os", "ArubaSSH"), ("hp_comware", "HPComwareSSH"),
-        ("ovs_linux", "OvsLinuxSSH")])
+        ("ovs_linux", "OvsLinuxSSH"), ("linux", "LinuxSSH")])
     def test_the_locked_netmiko_has_each_driver(self, driver, cls):
         from netmiko.ssh_dispatcher import CLASS_MAPPER
         assert CLASS_MAPPER[driver].__name__ == cls

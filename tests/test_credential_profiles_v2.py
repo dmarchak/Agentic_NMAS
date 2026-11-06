@@ -52,7 +52,8 @@ def _add(store, **over):
 def test_the_tab_says_the_order_and_that_none_is_set(store):
     html = store["client"].get("/v2/credentials/profiles?list=Lab").get_data(as_text=True)
     assert 'aria-current="page">Profiles</a>' in html
-    assert "then a profile for its <strong>role</strong>" in html
+    assert ("then a profile for its <strong>platform</strong>, then for its <strong>kind</strong>"
+            in html)
     assert "No profile is set (the store does not exist yet)" in html
     assert "Add a profile…" in html
 
@@ -73,7 +74,7 @@ def test_add_saves_records_and_resolves_without_a_value_returned(store):
     raw = (store["dir"] / "credential_changes.jsonl").read_text()
     assert PW not in raw and EN not in raw
     table = store["client"].get("/v2/credentials/profiles/region").get_data(as_text=True)
-    assert "every device with the role router" in table and PW not in table
+    assert "every router (its NetBox role has mercury_kind router)" in table and PW not in table
 
 
 def test_a_name_the_resolver_never_reads_says_so(store):
@@ -128,7 +129,7 @@ def test_delete_records_and_the_login_falls_to_the_next_source(store):
     _add(store, kind="default", value="", username="fallback", password=PW2)
     form = store["client"].get("/v2/credentials/profiles/delete?name=role:router") \
         .get_data(as_text=True)
-    assert "every device with the role router" in form and "next source" in form
+    assert "every router (its NetBox role has mercury_kind router)" in form and "next source" in form
     r = store["client"].post("/v2/credentials/profiles/delete", data={"name": "role:router"})
     assert r.status_code == 200 and "Deleted role:router" in r.get_data(as_text=True)
     got = credentials.resolve("192.0.2.40", role="router")

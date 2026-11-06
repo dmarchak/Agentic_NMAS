@@ -1,8 +1,9 @@
 """routes/credential_profiles_v2.py — Source of truth › Credentials › Profiles on v2 (the board
 drawn 2026-10-10 under the Phase 7 mode; CUTOVER's "Credential profiles").
 
-The profiles the resolver gives a NetBox inventory's devices (role, site, default), each with
-what it covers, set or not set, never a value; Add a profile…, Edit… and Delete… in place, each
+The profiles the resolver gives a NetBox inventory's devices (platform, kind, site, default),
+each with what it covers, set or not set, never a value; Add a profile…, Edit… and Delete… in
+place, each
 a verified person's, each recorded (modules/credential_profiles_page.py over the store's one
 write path). Installation-wide, as the store is: the page names the network it was opened from
 only for the top bar.
@@ -24,7 +25,9 @@ def _ctx(**extra) -> dict:
     from modules.nsot import scheduled_rotation as SR
     from modules.preview_confirm import confirm_part
 
-    return dict({"v": P.view(), "kinds": P.KINDS, "may": confirm_part(request, "configure"),
+    known = P.exists()
+    return dict({"v": P.view(), "kinds": P.choices(known), "exists_now": known,
+                 "may": confirm_part(request, "configure"),
                  "rot": SR.page_view(), "may_rotate": confirm_part(request, "confirm")},
                 **extra)
 

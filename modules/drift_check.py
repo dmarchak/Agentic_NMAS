@@ -599,9 +599,20 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         devices = [d for d in devices if d.get("hostname") == only]
         if not devices:
             return _result(ok=False, summary=f"{only} is not in {list_name}'s inventory")
+    # Not in config drift's population, each named (C2608, C2607): a host (its role's kind is
+    # host: no golden, its own service drift is controller management's), and a device in its
+    # "no login" state (unreadable, counted by its network's Needs attention row).
+    from modules.inventory.management import is_host
+    excluded = [{"hostname": d.get("hostname") or d.get("ip") or "(unnamed)",
+                 "reason": "a host: not in config drift" if is_host(d) else d["_login"]}
+                for d in devices if is_host(d) or d.get("_login")]
+    devices = [d for d in devices if not (is_host(d) or d.get("_login"))]
     if not devices:
         log.info("drift_check: inventory is empty — nothing to check")
-        return _result(summary="Inventory is empty — nothing to check")
+        return _result(summary="Inventory is empty — nothing to check" if not excluded else
+                       "Nothing to check: " + ", ".join(f"{e['hostname']} ({e['reason']})"
+                                                         for e in excluded) + ".",
+                       excluded=excluded)
 
     log.info("drift_check: %d device(s) in inventory [%s]", len(devices),
              triggered_by)
@@ -773,6 +784,9 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
             f"{h} ({r})" for h, r in skip_list) + "."
     if error_list:
         summary += " Unreachable: " + ", ".join(h for h, _ in error_list) + "."
+    if excluded:
+        summary += " Not in config drift: " + ", ".join(
+            f"{e['hostname']} ({e['reason']})" for e in excluded) + "."
 
     log.info("drift_check: complete — %s", summary)
 
@@ -786,6 +800,7 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         drifted_devices = [{"hostname": h, "diff_lines": n, **differing.get(h, {})}
                            for h, n in drifted_list],
         summary         = summary,
+        excluded        = excluded,
     )
 
 

@@ -18,7 +18,13 @@ import logging
 log = logging.getLogger(__name__)
 
 FIELD = "mercury_kind"
-KINDS = ("router", "switch", "firewall")
+#: ``host`` (C2608, the operator's decision 5 of 2026-11-06): a Linux host Mercury manages
+#: services on (a controller), not a network device: it is read by its platform's capture
+#: list and excluded from goldens, deploys, config drift, heal, features, the fabric view's
+#: switch rows and interface monitoring (`modules/inventory/management.py`).
+KINDS = ("router", "switch", "firewall", "host")
+#: The kinds that are network devices: everything but ``host``.
+NETWORK_KINDS = ("router", "switch", "firewall")
 #: The field's definition: text constrained to the kinds (NetBox 4's select needs a separate
 #: choice set; a validated text field is one object, and NetBox refuses anything else).
 FIELD_SPEC = {
@@ -27,8 +33,9 @@ FIELD_SPEC = {
     "type": "text",
     "object_types": ["dcim.devicerole"],
     "validation_regex": "^(" + "|".join(KINDS) + ")$",
-    "description": ("What Mercury treats devices of this role as: router, switch or firewall. "
-                    "Empty: not classified (C665)."),
+    "description": ("What Mercury treats devices of this role as: router, switch, firewall, "
+                    "or host (a Linux host Mercury manages services on). Empty: not "
+                    "classified (C665)."),
 }
 
 

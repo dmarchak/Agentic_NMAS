@@ -158,6 +158,12 @@ def floor_reads(conn, floor: float = None) -> None:
     conn._nmas_read_floor = floor
 
 
+class NoLogin(RuntimeError):
+    """The device is in its inventory's "no login" state (C2607): NetBox lists it and no
+    credential source covers it, so no session is opened. The message names the scopes a
+    profile could cover it by (`netbox_source.no_login_words`)."""
+
+
 def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
     """Build the ConnectHandler kwargs. The only place they are assembled.
 
@@ -180,7 +186,14 @@ def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
     stored and passes it straight through. Deciding internally whether to
     decrypt is what produced the r2 defect — a function that guesses which of
     those two it was handed will eventually guess wrong.
+
+    **A device in its "no login" state is refused here** (C2607), naming the state, before
+    any session is opened: every session's parameters are assembled here, so a read that
+    needs a session cannot reach such a device with an empty login.
     """
+    if dev.get("_login"):
+        raise NoLogin(f"REFUSED: {dev.get('hostname') or dev.get('ip')} is in its "
+                      f"inventory's {dev['_login']}. No session was opened.")
     return {
         "device_type": dev["device_type"],
         "ip": dev["ip"],
@@ -488,15 +501,45 @@ def _claim(ip: str, owner: str, pool: dict = None, pool_lock=None) -> tuple:
     return sid, budget
 
 
-def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None):
+#: Drivers whose sessions run as the plain account: no `enable()`, no config mode and no
+#: escalation on connect (the operator, 2026-11-06; C2625). Netmiko's LinuxSSH `enable()`
+#: runs `sudo`, which a dedicated account's sudoers refuses; reads need no privilege, and a
+#: write is one explicit `sudo -n <command>` (`ovs_config`'s `sudo -n ovs-vsctl`, controller
+#: management's `sudo -n /usr/local/sbin/mercury-ryu-apply`).
+UNPRIVILEGED_DRIVERS = frozenset({"linux", "ovs_linux"})
+
+
+class Unprivileged(PermissionError):
+    """A session to a plain-account driver asked for by a caller that did not declare it
+    plain (such a caller elevates): refused before anything connects."""
+
+
+def is_plain(device_type: str) -> bool:
+    """Whether *device_type*'s sessions run as the plain account (`UNPRIVILEGED_DRIVERS`)."""
+    return (device_type or "") in UNPRIVILEGED_DRIVERS
+
+
+def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None,
+             plain: bool = False):
     """Open ONE SSH session, counted, attributed, within the budget, and with the device's
     host key checked against Mercury's record before it signs in (C906).
 
     The only place in the program a Netmiko session is opened (a test holds
     it to that). Closing it with ``disconnect()`` removes it from the count.
+
+    *plain*: the caller declares it runs the session as the plain account, with no
+    `enable()`, config mode or escalation. A `UNPRIVILEGED_DRIVERS` session is opened only
+    for a caller that declares it; any other caller elevates, so it is refused with
+    `Unprivileged` before the session is claimed or anything connects (C2625).
     """
     ip = params["ip"]
     owner = owner or _caller_label()
+    driver = params.get("device_type") or ""
+    if is_plain(driver) and plain is not True:
+        raise Unprivileged(
+            f"refused before connecting to {ip}: a {driver} session runs as the plain account "
+            f"(no enable, config mode or escalation), and {owner} did not declare it plain; "
+            "a write to such a host is one explicit `sudo -n <command>`")
     sid, budget = _claim(ip, owner, pool, pool_lock)
     try:
         # Looked up at CALL time, like the callers that used to open their own
@@ -865,11 +908,13 @@ def verify_device_connection(
     Attempts to connect to a device using Netmiko and returns the hostname prompt.
     Raises exception if connection fails.
     """
+    plain = is_plain(device_type)
     conn = open_ssh(connection_params(
         {"device_type": device_type, "ip": ip, "username": username},
-        password=password, secret=secret), owner="verify_device_connection")
+        password=password, secret=secret), owner="verify_device_connection", plain=plain)
     try:
-        conn.enable()
+        if not plain:                      # a plain-account host signs in only (C2625)
+            conn.enable()
         prompt = conn.find_prompt()
     finally:
         # It returned before disconnecting when enable() or find_prompt()
@@ -957,10 +1002,12 @@ def get_persistent_connection(
                         raw.disconnect()
                 except Exception:
                     pass
+                plain = is_plain(dev.get("device_type"))
                 raw = open_ssh(stored_connection_params(dev), pool=connections,
-                               pool_lock=lock)
+                               pool_lock=lock, plain=plain)
                 try:
-                    raw.enable()
+                    if not plain:              # a plain-account host signs in only (C2625)
+                        raw.enable()
                 except Exception:
                     raw.disconnect()
                     raise
@@ -989,10 +1036,12 @@ def with_temp_connection(dev: dict, func) -> any:
         logger.debug(
             "Attempting connection to %s as %s", dev.get("ip"), dev.get("username")
         )
-        conn = open_ssh(stored_connection_params(dev))
+        plain = is_plain(dev.get("device_type"))
+        conn = open_ssh(stored_connection_params(dev), plain=plain)
         logger.debug("Connected to %s", dev.get("ip"))
         try:
-            conn.enable()
+            if not plain:                      # a plain-account host signs in only (C2625)
+                conn.enable()
             return func(conn)
         finally:
             try:

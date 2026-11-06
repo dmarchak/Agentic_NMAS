@@ -260,6 +260,17 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     passed("stops", f"no kill switch, the mode {mode.get('mode')}, no halt, no planned work",
            "approved")
     dev = src.device(device)
+    # C2606, C2608: an observe-only device or a host has no approved state Mercury may heal
+    # to; held under guard 4 (the approved state), naming the key and where NetBox set it.
+    from modules.inventory.management import refusal_for
+    why = refusal_for(network, device, what="heal",
+                      dev=dev if isinstance(dev, dict) else None)
+    if why:
+        return stop(guards.hit(4, "held", f"heal off for this device: {why}",
+                               {"management": (dev or {}).get("_management", "")
+                                if isinstance(dev, dict) else "",
+                                "role": (dev or {}).get("role", "")
+                                if isinstance(dev, dict) else ""}))
     golden = src.golden(device, dev)
     g = guards.g4_golden(golden)
     if g:

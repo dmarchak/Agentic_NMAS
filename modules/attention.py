@@ -154,6 +154,12 @@ ROW_KINDS = {
                                          "from NetBox, so the last good read is kept",
                                          "read NetBox's answer, then fix the network's filter "
                                          "or what it names in NetBox"),
+    # C2607 (decision 4): a device NetBox lists and no login covers loads in its "no login"
+    # state, unreadable; one row per network counts them.
+    ("netbox_inventory", "no_login"): ("devices NetBox lists have no login: no credential "
+                                       "source covers them, so Mercury reads nothing from "
+                                       "them", "add a credential profile for their platform "
+                                       "on Credentials › Profiles"),
     ("records", "unreachable"): ("a record store is on the records database and it does not "
                                  "answer, so what it records cannot be written",
                                  "make the database answer (its Test names why), or move the "
@@ -450,6 +456,9 @@ CLEARS = {
                                  "or removed), at the next hourly read"),
     ("netbox_inventory", "unreadable"): (("resolves",), "the network's next refresh reads "
                                          "NetBox (a refresh of the list, or its next load)"),
+    ("netbox_inventory", "no_login"): (("resolves",), "every one of the network's devices "
+                                       "resolves a login at its next load (a profile, a "
+                                       "credential list or a device login added)"),
     ("records", "mismatch"): (("resolves",), "the files and the table match again, or the store "
                               "is moved back to its files, at the next check (every 5 minutes)"),
     ("records", "unreachable"): (("resolves",), "the records database answers the next check "
@@ -3351,6 +3360,25 @@ def netbox_inventory_source(names=None) -> dict:
     sourced = [n for n in names if is_netbox_sourced(n)]
     rows = []
     for name in sourced:
+        # C2607: the network's devices in the "no login" state, from its last good inventory
+        # (on disk, the same in every process); clears when every one resolves a login.
+        nl = inventory.no_login(name)
+        if nl["devices"]:
+            count = len(nl["devices"])
+            shown = ", ".join(nl["devices"][:10]) + (f" and {count - 10} more"
+                                                     if count > 10 else "")
+            rows.append(row(
+                source="netbox_inventory", kind="no_login", key=f"{name}:no_login",
+                level="warning",
+                what=(f"{count} device{'' if count == 1 else 's'} in {name} "
+                      f"{'has' if count == 1 else 'have'} no login: add a profile for "
+                      f"{', '.join(nl['scopes'])}"),
+                cause=(f"NetBox lists {shown}, and no device login, credential list or "
+                       "credential profile covers them, so Mercury opens no session to them: "
+                       "they are drawn, and read nothing"),
+                operands={"network": name, "devices": count, "scopes": nl["scopes"]},
+                action={"label": f"Add a credential profile for {', '.join(nl['scopes'])} "
+                                 "on Credentials › Profiles"}))
         got = inventory.last_attempt(name)
         if not got or got.get("ok") is True:
             continue

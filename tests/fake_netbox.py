@@ -390,7 +390,9 @@ class FakeNetBox:
 
     def _matches(self, obj, params, endpoint=""):
         for key, value in (params or {}).items():
-            if key in ("limit", "offset", "brief", "depth"):
+            # `include`/`exclude` name response fields (`include=config_context`, the
+            # inventory's rendered context read, C2606), never a filter.
+            if key in ("limit", "offset", "brief", "depth", "include", "exclude"):
                 continue
             if (key in OBJECT_FILTERS.get(endpoint, {})
                     or (endpoint, key) in CHOICE_FILTERS):      # by what the value names

@@ -91,11 +91,16 @@ class TestSkipSemantics:
         assert devices == []
         assert skipped[0]["field"] == "platform"
 
-    def test_missing_credentials_is_skipped(self, tmp_path, monkeypatch):
+    def test_missing_credentials_loads_in_its_no_login_state(self, tmp_path, monkeypatch):
+        """C2607 (decision 4, 2026-11-06): the premise changed: a device no login covers is
+        unreadable, not absent, so it loads in its "no login" state, named, never skipped."""
         monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "empty.json"))
-        devices, skipped, _w = netbox_source.adapt_devices([_raw()])
-        assert devices == []
-        assert skipped[0]["field"] == "credentials"
+        devices, skipped, warnings = netbox_source.adapt_devices([_raw()])
+        assert skipped == [] and len(devices) == 1
+        assert devices[0]["_login"].startswith("no login: no credential profile covers "
+                                               "platform cisco-ios-xe")
+        assert [w["reason"] for w in warnings if w["field"] == "credentials"] == \
+            [devices[0]["_login"]]
 
     def test_one_bad_device_does_not_fail_the_list(self, creds):
         """The central promise: nine good devices out of ten still work."""

@@ -532,6 +532,11 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
             status = {"state": "warn" if planned["level"] == "plan" else "danger",
                       "words": planned["short"], "title": planned["title"],
                       "link": planned["link"], "since": None}
+        if dev.get("_login"):
+            # C2607: listed by NetBox, unreadable by Mercury: the state, never a probe's
+            # answer (no session is opened to it); its words on hover.
+            status = {"state": "warn", "words": "No login", "title": dev["_login"],
+                      "since": None}
         rows.append({"name": host, "pending": False, "status": status,
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,

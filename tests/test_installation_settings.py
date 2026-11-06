@@ -562,9 +562,9 @@ class TestPlatformsAndRoles:
                         _platform_form(remove="cisco-ios"))
         assert r.status_code == 409 and "cisco-ios is used by nb2 (Branch)" in html
         r, html = _post(networks, "/v2/settings/installation/platforms/preview",
-                        _platform_form(driver=["cisco_ios", "linux"]))
+                        _platform_form(driver=["cisco_ios", "juniper_junos"]))
         import html as html_mod
-        assert r.status_code == 409 and "'linux' is not one Mercury supports" in html_mod.unescape(html)
+        assert r.status_code == 409 and "'juniper_junos' is not one Mercury supports" in html_mod.unescape(html)
 
     def test_roles_are_netbox_s_and_no_role_change_is_previewed_here(self, networks,
                                                                     netbox_branch):

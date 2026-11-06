@@ -823,13 +823,26 @@ def clear_notify_secret(ref: str) -> bool:
     return had
 
 
+#: The scopes a profile name may carry, in the resolver's order after a device's own login and
+#: its network's credential list (C2605, the SDN design (revision 4) section 9a): ``platform:<NetBox
+#: platform slug>``, ``role:<Mercury kind>`` (the role's `mercury_kind`, never the NetBox role
+#: slug: C2604), ``site:<NetBox site slug>``, then ``default``. Platform comes before role
+#: because logins differ by vendor, and a kind such as ``switch`` spans vendors.
+PROFILE_SCOPES = ("platform", "role", "site")
+
+
 def resolve(mgmt_ip: str, role: str = "", site: str = "",
-            credential_list: str = "") -> dict:
+            credential_list: str = "", platform: str = "") -> dict:
     """Resolve credentials for one device.
+
+    The order: the device's own login (its override), its network's credential list, a
+    ``platform:<slug>`` profile, a ``role:<kind>`` profile (*role* is Mercury's kind), a
+    ``site:<slug>`` profile, then ``default`` (`PROFILE_SCOPES`).
 
     Returns ``{"ok", "username", "password", "secret", "source"}`` with
     **plaintext** values; the caller re-encrypts to match the CSV dict shape.
-    ``ok`` is False when nothing matched, which the adapter turns into a skip.
+    ``ok`` is False when nothing matched, which the adapter turns into the device's "no
+    login" state (C2607).
     """
     data = _load()
     profiles = data["profiles"]
@@ -846,17 +859,13 @@ def resolve(mgmt_ip: str, role: str = "", site: str = "",
         return {"ok": True, "username": inherited[0], "password": inherited[1],
                 "secret": inherited[2], "source": f"local-list:{credential_list}"}
 
-    if role:
-        found = _from_profile(profiles, f"role:{role}")
+    for scope, value in (("platform", platform), ("role", role), ("site", site)):
+        if not value:
+            continue
+        found = _from_profile(profiles, f"{scope}:{value}")
         if found:
             return {"ok": True, "username": found[0], "password": found[1],
-                    "secret": found[2], "source": f"profile:role:{role}"}
-
-    if site:
-        found = _from_profile(profiles, f"site:{site}")
-        if found:
-            return {"ok": True, "username": found[0], "password": found[1],
-                    "secret": found[2], "source": f"profile:site:{site}"}
+                    "secret": found[2], "source": f"profile:{scope}:{value}"}
 
     found = _from_profile(profiles, DEFAULT_PROFILE)
     if found:

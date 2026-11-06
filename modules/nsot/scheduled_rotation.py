@@ -286,10 +286,14 @@ def drop_device(hostname: str, *, actor: str, why: str, verified: str = "") -> d
 
 def governing_profile(dev: dict, names: set) -> str:
     """The profile whose policy *dev* follows: the most specific that exists, in the
-    resolver's order (role, site, default), or ""."""
+    resolver's order (platform, role, site, default; `credentials.PROFILE_SCOPES`), or "".
+    A NetBox inventory's row names its platform and site as ``_platform`` and ``_site``."""
     from modules.credentials import DEFAULT_PROFILE
-    for name in (f"role:{dev.get('role')}" if dev.get("role") else "",
-                 f"site:{dev.get('site')}" if dev.get("site") else "", DEFAULT_PROFILE):
+    platform = dev.get("_platform") or dev.get("platform")
+    site = dev.get("site") or dev.get("_site")
+    for name in (f"platform:{platform}" if platform else "",
+                 f"role:{dev.get('role')}" if dev.get("role") else "",
+                 f"site:{site}" if site else "", DEFAULT_PROFILE):
         if name and name in names:
             return name
     return ""

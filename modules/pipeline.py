@@ -651,6 +651,10 @@ def _stage_ci_gate(ctx: PipelineContext) -> None:
 
     Both were removed with Jenkins. A gate that describes a check it does not
     make is the wrong-and-looks-right state.
+
+    It also refuses a device Mercury changes nothing on (C2606, C2608): one NetBox's config
+    context marks observe-only, or a host (`inventory.management.refusal`), naming the key
+    and where NetBox set it.
     """
     from modules.nsot.authorisation import key as _auth_key
 
@@ -659,9 +663,19 @@ def _stage_ci_gate(ctx: PipelineContext) -> None:
     # name a line the same way.
     allowed: set[str] = set(ctx.params.get("allowed_dangerous", []))
 
+    from modules.inventory.management import refusal_for
+
     for ip, cmds in ctx.rendered_commands.items():
-        hostname = next((d.get("hostname", ip) for d in ctx.selected_devices
-                         if d["ip"] == ip), ip)
+        dev = next((d for d in ctx.selected_devices if d["ip"] == ip), {})
+        hostname = dev.get("hostname", ip)
+        # C2606, C2608: an observe-only device or a host is changed by nothing; every deploy,
+        # restore, batch apply, fleet change and heal runs this gate before any session.
+        # The device's own row when it carries the mark, else its network's loaded row (every
+        # production caller sets list_name; `_list_of`'s fallback is not asked here).
+        refused = refusal_for(getattr(ctx, "list_name", "") or "", hostname, what="a deploy",
+                              dev=dev)
+        if refused:
+            raise PipelineStageError(f"CI gate: {refused}")
         if not cmds:
             raise PipelineStageError(f"CI gate: no rendered commands for {hostname}")
         for cmd in cmds:

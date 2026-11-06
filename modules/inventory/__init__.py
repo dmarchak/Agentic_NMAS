@@ -37,7 +37,10 @@ _CACHE_FILE = "netbox_inventory_cache.json"
 
 #: Presentation-only keys, stripped before a dict reaches netmiko.
 _METADATA_KEYS = ("_source", "_netbox_id", "_cred_source", "_platform", "_site", "_stale",
-                  "_role_slug", "_model", "_tags")
+                  "_role_slug", "_model", "_tags",
+                  # C2607: the "no login" state's words; C2606: the observe-only mark and
+                  # where NetBox set it (modules/inventory/management.py).
+                  "_login", "_management", "_management_from", "_management_problem")
 
 # In-memory cache: list_name -> {devices, skipped, warnings, fetched_at, stale, error}
 _memory: dict = {}
@@ -158,18 +161,25 @@ def _rehydrate(list_name: str) -> dict:
         return {}
 
     from modules.credentials import resolve as resolve_credentials
-    from modules.inventory.netbox_source import _encrypt_for_shape
+    from modules.inventory.netbox_source import _encrypt_for_shape, no_login_words
 
     cfg = load_source(list_name)
     devices, skipped = [], list(payload.get("skipped", []))
     for dev in payload.get("devices", []):
         creds = resolve_credentials(dev.get("ip", ""), role=dev.get("role", ""),
                                     site=dev.get("_site", ""),
-                                    credential_list=cfg.get("credential_list", ""))
+                                    credential_list=cfg.get("credential_list", ""),
+                                    platform=dev.get("_platform", ""))
         if not creds["ok"]:
-            skipped.append({"name": dev.get("hostname", ""), "field": "credentials",
-                            "reason": creds["error"]})
+            # C2607: a device NetBox lists and no login covers is loaded in its "no login"
+            # state, as a live refresh loads it, never dropped.
+            devices.append({**dev, "username": "", "password": _encrypt_for_shape(""),
+                            "secret": _encrypt_for_shape(""), "_cred_source": "",
+                            "_login": no_login_words(dev.get("_platform", ""),
+                                                     dev.get("role", ""),
+                                                     dev.get("_site", ""))})
             continue
+        dev = {k: v for k, v in dev.items() if k != "_login"}
         devices.append({**dev,
                         "username": creds["username"],
                         "password": _encrypt_for_shape(creds["password"]),
@@ -296,6 +306,70 @@ def load_netbox_devices(list_name: str, use_cache: bool = True) -> tuple:
             "stale_reason": entry.get("stale_reason", ""),
             "warnings": entry.get("warnings", []), "never_loaded": False}
     return copy.deepcopy(entry["devices"]), list(entry.get("skipped", [])), meta
+
+
+def cached_row(list_name: str, hostname: str):
+    """*hostname*'s row in a NetBox-sourced *list_name*'s loaded inventory (the cache, never
+    NetBox), or None: a local list, or no such device. Read in place (no copy) from memory, or
+    from the persisted last good inventory when this process has not loaded it; starts no
+    refresh. A caller only reads it. For the per-device checks that run on every hold
+    (`inventory.management`)."""
+    if not is_netbox_sourced(list_name):
+        return None
+    with _lock:
+        entry = _memory.get(list_name)
+    devices = (entry.get("devices") or []) if entry is not None else loaded_rows(list_name)
+    return next((d for d in devices if d.get("hostname") == hostname), None)
+
+
+def loaded_rows(list_name: str) -> list:
+    """A NetBox-sourced *list_name*'s loaded devices, as identity fields (no credential): the
+    in-memory inventory, else the persisted last good one; ``[]`` for a local list or none.
+    Starts no refresh and creates nothing: for a page saying what exists (Credentials ›
+    Profiles, C2604)."""
+    if not is_netbox_sourced(list_name):
+        return []
+    with _lock:
+        entry = _memory.get(list_name)
+    if entry is not None:
+        rows = entry.get("devices") or []
+    else:
+        from modules.config import list_data_path
+        path = os.path.join(list_data_path(list_name), _CACHE_FILE)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                rows = (json.load(fh) or {}).get("devices") or []
+        except (OSError, ValueError):
+            rows = []
+    return [{k: v for k, v in d.items() if k not in ("username", "password", "secret")}
+            for d in rows if isinstance(d, dict)]
+
+
+def no_login(list_name: str) -> dict:
+    """``{"devices": [names], "scopes": [words]}``: the devices of *list_name*'s last good
+    inventory in the "no login" state (C2607), from the persisted cache (the same in every
+    process; creates nothing), and the scopes a profile would cover them by."""
+    from modules.config import list_data_path
+
+    path = os.path.join(list_data_path(list_name), _CACHE_FILE)
+    if not os.path.exists(path):
+        return {"devices": [], "scopes": []}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (OSError, ValueError):
+        return {"devices": [], "scopes": []}
+    names, scopes = [], []
+    for d in payload.get("devices") or []:
+        if not d.get("_login"):
+            continue
+        names.append(d.get("hostname") or d.get("ip") or "?")
+        scope = (f"platform:{d['_platform']}" if d.get("_platform") else
+                 f"role:{d['role']}" if d.get("role") else
+                 f"site:{d['_site']}" if d.get("_site") else "default")
+        if scope not in scopes:
+            scopes.append(scope)
+    return {"devices": names, "scopes": scopes}
 
 
 def load_devices_for_list(list_name: str, csv_path: str = "") -> list:
