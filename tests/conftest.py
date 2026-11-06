@@ -263,6 +263,12 @@ def _test_tier(request):
                              "children": guard.spawned_ours - spawned}) + "\n")
 
 
+#: The job gate's fixture folders (tests/test_job_gate.py and its neighbours): each holds a
+#: job's own `test_*.py`, some failing or asserting nothing ON PURPOSE (the planted cases), run
+#: by Mercury's job runner and, in a copy, by pytest; never collected as Mercury's own tests.
+collect_ignore = ["fixtures/jobs"]
+
+
 def pytest_configure(config):
     # This session's own id (C395), decided from the config, before xdist starts the workers
     # that inherit it: a pytest a test starts is a session of its own, never a worker.

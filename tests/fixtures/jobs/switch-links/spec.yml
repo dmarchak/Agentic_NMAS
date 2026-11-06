@@ -1,0 +1,22 @@
+kind: job
+name: switch-links
+summary: Each switch with its link count, and which are busy.
+permission: read
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  busy: {type: int, description: more links than this is busy (2 if not given)}
+outputs:
+  links: table
+examples:
+  - name: every switch is listed with its links
+    given: the recorded controller's switches and links
+    when: the job runs
+    then: each switch is a row with the number of links leaving it, in dpid order
+    fixture: ryu_recorded
+  - name: a switch past the threshold is busy
+    given: a threshold of 2
+    when: a switch has 3 links, another 2, another none
+    then: the first is busy, the second ok, the third isolated
+    fixture: ryu_recorded

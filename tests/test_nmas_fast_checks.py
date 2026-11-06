@@ -220,6 +220,25 @@ def test_the_changed_tests_run_then_the_scans_each_once(tmp_path):
     assert got == ["tests/test_a.py", "tests/test_doc_tests.py"]
 
 
+def test_a_changed_test_in_a_folder_conftest_ignores_is_not_named_to_pytest(tmp_path):
+    """pytest collects a file named on its command line even inside a `collect_ignore`d
+    folder, so the selector leaves those out itself: the job gate's fixture jobs hold planted
+    failing tests (2026-11-06, the first fast-checks run over them errored)."""
+    mod = _load()
+    (tmp_path / "tests" / "fixtures" / "jobs" / "a").mkdir(parents=True)
+    (tmp_path / "tests" / "fixtures" / "jobsy").mkdir(parents=True)
+    (tmp_path / "tests" / "conftest.py").write_text('collect_ignore = ["fixtures/jobs"]\n')
+    for name in ("tests/test_a.py", "tests/fixtures/jobs/a/test_job.py",
+                 "tests/fixtures/jobsy/test_b.py"):
+        (tmp_path / name).write_text("")
+    got = mod.tests_of(["tests/test_a.py", "tests/fixtures/jobs/a/test_job.py",
+                        "tests/fixtures/jobsy/test_b.py"], str(tmp_path))
+    assert got == ["tests/test_a.py", "tests/fixtures/jobsy/test_b.py"]
+    (tmp_path / "tests" / "conftest.py").write_text("")
+    got = mod.tests_of(["tests/fixtures/jobs/a/test_job.py"], str(tmp_path))
+    assert got == ["tests/fixtures/jobs/a/test_job.py"]
+
+
 def test_the_outer_run_goes_through_nmas_control(monkeypatch):
     mod = _load()
     seen = {}

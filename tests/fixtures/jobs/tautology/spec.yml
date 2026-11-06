@@ -1,0 +1,20 @@
+name: tautology
+summary: Whether a switch is busy.
+permission: read
+scope:
+  object_types: [dcim.device]
+inputs:
+  count: int
+outputs:
+  state: log
+examples:
+  - name: a busy switch is busy
+    given: a switch with more than 3 links
+    when: the job runs
+    then: it says busy
+    fixture: ryu_recorded
+  - name: a quiet switch is ok
+    given: a switch with 3 links or fewer
+    when: the job runs
+    then: it says ok
+    fixture: ryu_recorded

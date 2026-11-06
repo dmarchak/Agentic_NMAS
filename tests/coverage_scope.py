@@ -25,7 +25,7 @@ RULES = (
     ("modules/inventory/", AUTOMATION, "device inventory sources"),
     ("modules/integrations/", AUTOMATION, "NetBox, Kea, git, S3 and the other services"),
     ("modules/sdn/", AUTOMATION, "SDN controllers: their drivers, flows and responses"),
-    ("modules/jobs/", AUTOMATION, "jobs: their contract, SDK, change plan and lifecycle"),
+    ("modules/jobs/", AUTOMATION, "jobs: their contract, SDK, change plan, lifecycle and gate"),
     ("modules/apps/", AUTOMATION, "controller apps: their manifest"),
     ("modules/", AUTOMATION, "Mercury's modules, unless named below"),
     ("routes/", SUPPORT, "the web routes: the interface around the automation"),

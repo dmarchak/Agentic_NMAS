@@ -14,12 +14,31 @@ answer from fixtures the test hands it, with no Mercury running and nothing sent
 
 Any handle not given stays its signature, whose calls raise `NotBuilt`. `plan_run` builds the
 context, validates the inputs through the job's `Inputs` and runs the job in plan mode.
+
+**The fixtures a job's test asks for by name** (rev. 6, section 11a, item 2): a test parameter
+named `ctx`, `ryu` or `netbox` is given what `FIXTURES` maps it to, by `fixture(name, job)`,
+the one resolver Mercury's runner (`modules/jobs/runner.py`) and the folder's fixed
+`conftest.py` (under pytest) both call; a test may call the same helpers itself.
+- `ctx(job)`: a `FakeContext` for the job's `meta`, its controller the recorded Ryu's driver;
+- `ryu(job=None)`: the recorded Ryu (`tests/fixtures/sdn/ryu_recorded.RecordedRyu`);
+- `netbox(job=None, objects=None)`: a `FakeNetBox` over *objects*, read within the job's scope.
+  The masked NetBox export it will default to (`tests/fixtures/lab9_netbox/`, P1b) is not in
+  the repository yet, so without *objects* it raises, naming that path: an empty NetBox would
+  pass a test that reads nothing.
 """
 
 import copy
+import os
 
 from modules.jobs.base import ContractError, DeviceRef, Job, JobInputs, JobMeta, quoted
 from modules.jobs.sdk import ControllerHandle, Context
+
+__all__ = ["ControllerReads", "FakeContext", "FakeDevices", "FakeNetBox", "FakeNsot",
+           "FIXTURES", "RecordedOutput", "ctx", "fixture", "fixture_for", "job_class_in",
+           "netbox", "plan_run", "ryu"]
+
+#: The masked NetBox export `netbox()` will read (P1b), relative to the repository.
+NETBOX_EXPORT = os.path.join("tests", "fixtures", "lab9_netbox")
 
 #: The reads the controller handle offers: the signature's own public methods.
 CONTROLLER_READS = tuple(sorted(name for name in vars(ControllerHandle)
@@ -149,3 +168,88 @@ def plan_run(job_class, inputs, **fixtures) -> FakeContext:
     ctx = FakeContext(job_class.meta, **fixtures)
     job_class().run(ctx, given)
     return ctx
+
+
+# ── the fixtures a test asks for by name ─────────────────────────────────────────────────────
+
+def _meta(job, helper: str) -> JobMeta:
+    if isinstance(job, JobMeta):
+        return job
+    if isinstance(job, type) and issubclass(job, Job):
+        return job.meta
+    raise ContractError(f"the fixture {helper}", [f"job is the folder's Job class or its "
+                                                  f"JobMeta, not {quoted(job)}"])
+
+
+def job_class_in(modules) -> type:
+    """The one `Job` subclass defined in *modules* (the job folder's own modules, as the
+    runner or pytest imported them); refused, naming what was found, when there is not
+    exactly one."""
+    names = {getattr(m, "__name__", None) for m in modules}
+    found = []
+    for m in modules:
+        for value in vars(m).values():
+            if isinstance(value, type) and issubclass(value, Job) and value is not Job \
+                    and value.__module__ in names and value not in found:
+                found.append(value)
+    if len(found) != 1:
+        raise ContractError("the folder's job", [
+            f"the fixtures need exactly one Job class in the folder's modules "
+            f"({', '.join(sorted(n for n in names if n))}); found {len(found)}"
+            + (f": {', '.join(c.__name__ for c in found)}" if found else "")])
+    return found[0]
+
+
+def ryu(job=None):
+    """The recorded Ryu (`tests/fixtures/sdn/ryu_recorded.py`); *job* is not needed."""
+    from tests.fixtures.sdn.ryu_recorded import RecordedRyu
+
+    return RecordedRyu()
+
+
+def ctx(job, **fixtures) -> FakeContext:
+    """A plan-mode `FakeContext` for *job* (its class or its `JobMeta`), its controller the
+    recorded Ryu's driver unless *fixtures* gives another (`FakeContext`'s keywords)."""
+    meta = _meta(job, "ctx")
+    fixtures.setdefault("controller", ryu().driver())
+    return FakeContext(meta, **fixtures)
+
+
+def netbox(job=None, objects=None) -> FakeNetBox:
+    """A `FakeNetBox` over *objects* (`{object_type: [object, ...]}`), within *job*'s scope
+    when *job* is given (see the module's docstring for the export it will default to)."""
+    if objects is None:
+        raise LookupError(f"the masked NetBox export ({NETBOX_EXPORT}/, P1b) is not in this "
+                          "repository yet: give the objects, netbox(job, objects={...})")
+    return FakeNetBox(objects, _meta(job, "netbox") if job is not None else None)
+
+
+#: A test parameter's name -> the helper giving it, each called with the folder's job class.
+FIXTURES = {"ctx": ctx, "ryu": ryu, "netbox": netbox}
+
+
+def fixture(name: str, job):
+    """What the test parameter *name* is given, for the folder's *job* class: the one resolver
+    the runner and the folder's conftest.py both call. An unknown name is refused, naming the
+    fixtures there are."""
+    if name not in FIXTURES:
+        raise LookupError(f"no fixture named {name!r}: a job's test may ask for "
+                          f"{', '.join(sorted(FIXTURES))}")
+    return FIXTURES[name](job)
+
+
+def fixture_for(name: str, modules):
+    """`fixture(name, job)` for the job class in *modules* (the folder's own modules, as the
+    runner or pytest imported them). A fixture that needs no job (`ryu`) is given without
+    one; one that needs it, where the folder has not exactly one, raises `job_class_in`'s
+    refusal, naming what was found."""
+    try:
+        job, missing = job_class_in(modules), None
+    except ContractError as exc:
+        job, missing = None, exc
+    try:
+        return fixture(name, job)
+    except ContractError:
+        if missing is not None:
+            raise missing from None
+        raise

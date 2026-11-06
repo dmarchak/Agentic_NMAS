@@ -162,6 +162,10 @@ RATCHETS = (
     ("tests/test_v2_one_confirm.py", "POPULATION_FLOOR", "floor"),
     ("tests/test_v2_one_confirm.py", "PATTERN_FLOOR", "floor"),
     ("tests/test_v2_one_confirm.py", "V2_SCRIPTS_FLOOR", "floor"),
+    # ── The job gate (the SDN design rev. 6, 11a): fewer mutants measured is a weaker gate,
+    #    and every dunder a job may reach is one more path to the interpreter ─────────────
+    ("modules/jobs/mutate.py", "CEILING", "floor"),
+    ("modules/jobs/gate.py", "DUNDER_ALLOWED", "shrinks"),
     # ── The declared skip reasons (C2412): a reason, or a place it is allowed, only leaves ──
     ("tests/skip_reasons.py", "DECLARED", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────

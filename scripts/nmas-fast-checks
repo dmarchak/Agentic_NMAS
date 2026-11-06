@@ -31,6 +31,7 @@ reach, or a commit refused in CI by a check it adds (2026-11-03: H2 and H3's fir
 whole-repo scans blind to three untracked modules; item 5's commit, C2396).
 """
 import argparse
+import ast
 import os
 import shutil
 import subprocess
@@ -93,10 +94,34 @@ def commit_files(cwd, given):
     return sorted({p for p in changed if p} | set(untracked(cwd)))
 
 
+def collect_ignored(cwd):
+    """The folders tests/conftest.py's `collect_ignore` names, as `tests/<folder>/` prefixes,
+    PARSED from the file (never imported). pytest honours `collect_ignore` only while it walks
+    a folder: a file named on its command line is collected regardless, so a selector that
+    names one must leave these out itself (the job gate's fixture jobs, whose planted tests
+    fail on purpose, 2026-11-06). An unreadable conftest ignores nothing."""
+    try:
+        with open(os.path.join(cwd, "tests", "conftest.py"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+    except (OSError, SyntaxError, ValueError):
+        return ()
+    out = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "collect_ignore"
+                                                for t in node.targets) \
+                and isinstance(node.value, (ast.List, ast.Tuple)):
+            out += [f"tests/{e.value.strip('/')}/" for e in node.value.elts
+                    if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return tuple(out)
+
+
 def tests_of(files, cwd):
-    """The changed test files that exist, then SCANS, each once, in that order."""
+    """The changed test files that exist, outside what tests/conftest.py's `collect_ignore`
+    names, then SCANS, each once, in that order."""
+    ignored = collect_ignored(cwd)
     own = [f for f in files if f.startswith("tests/") and os.path.basename(f).startswith("test_")
-           and f.endswith(".py") and os.path.exists(os.path.join(cwd, f))]
+           and f.endswith(".py") and not f.startswith(ignored)
+           and os.path.exists(os.path.join(cwd, f))]
     return list(dict.fromkeys(own + [s for s in SCANS if os.path.exists(os.path.join(cwd, s))]))
 
 

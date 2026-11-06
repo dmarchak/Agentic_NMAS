@@ -1,0 +1,24 @@
+kind: job
+name: arp-guard
+summary: Send each switch's ARP to the controller at a given priority.
+permission: write
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  priority: int
+  limit: {type: int, description: at most this many switches (8 if not given)}
+outputs:
+  flows: plan
+  planned: log
+examples:
+  - name: one flow per switch
+    given: the recorded controller's switches
+    when: the job runs at priority 100
+    then: each switch gets one flow sending ARP to the controller at priority 100, in dpid order
+    fixture: ryu_recorded
+  - name: a priority out of range is refused
+    given: a priority of 0 or 65536
+    when: the job builds its flow
+    then: the job is refused, naming the priority given
+    fixture: ryu_recorded

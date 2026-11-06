@@ -237,17 +237,22 @@ def _mapping(loader, node, deep=False):
 _UniqueKeys.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
 
 
-def parse_manifest(text: str, source: str = MANIFEST) -> Manifest:
-    """*text* (a manifest's YAML) validated, or `ManifestError` naming *source* and each
-    problem."""
+def load_yaml(text: str, source: str, error=ContractError, what: str = "a manifest"):
+    """*text* read as YAML by the safe loader refusing a key given twice (the one reader the
+    manifest and the job's spec card share), or *error* naming *source* and the line."""
     try:
-        data = yaml.load(text, Loader=_UniqueKeys)  # noqa: S506 - a SafeLoader subclass
+        return yaml.load(text, Loader=_UniqueKeys)  # noqa: S506 - a SafeLoader subclass
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         where = f"line {mark.line + 1}" if mark is not None else "the file"
         why = getattr(exc, "problem", None) or str(exc)
-        raise ManifestError(source, [f"{where}: not YAML a manifest can be read from ({why})"]) \
-            from None
+        raise error(source, [f"{where}: not YAML {what} can be read from ({why})"]) from None
+
+
+def parse_manifest(text: str, source: str = MANIFEST) -> Manifest:
+    """*text* (a manifest's YAML) validated, or `ManifestError` naming *source* and each
+    problem."""
+    data = load_yaml(text, source, ManifestError)
     try:
         return Manifest.parse(data, source)
     except ContractError as exc:
