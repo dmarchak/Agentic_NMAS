@@ -1,0 +1,374 @@
+router#terminal length 0
+router#show version
+Cisco IOS Software, 3800 Software (C3825-ADVENTERPRISEK9-M), Version 15.1(4)M8, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2014 by Cisco Systems, Inc.
+Compiled Fri 07-Mar-14 09:12 by prod_rel_team
+
+ROM: System Bootstrap, Version 12.4(13r)T15, RELEASE SOFTWARE (fc1)
+
+router uptime is 8 weeks, 6 hours, 33 minutes
+System returned to ROM by power-on
+System restarted at 20:06:03 UTC Thu Sep 10 2026
+System image file is "flash:ios15.1.bin"
+Last reload type: Normal Reload
+
+This product contains cryptographic features and is subject to United
+States and local country laws governing import, export, transfer and
+use. Delivery of Cisco cryptographic products does not imply
+third-party authority to import, export, distribute or use encryption.
+Importers, exporters, distributors and users are responsible for
+compliance with U.S. and local country laws. By using this product you
+agree to comply with applicable laws and regulations. If you are unable
+to comply with U.S. and local laws, return this product immediately.
+
+A summary of U.S. laws governing Cisco cryptographic products may be found at:
+http://www.cisco.com/wwl/export/crypto/tool/stqrg.html
+
+If you require further assistance please contact us by sending email to
+export@cisco.com.
+
+Cisco 3825 (revision 1.0) with 691200K/95232K bytes of memory.
+Processor board ID <redacted>
+2 FastEthernet interfaces
+2 Gigabit Ethernet interfaces
+4 Serial interfaces
+4 <redacted> interfaces
+1 <redacted> Private Network (VPN) Module
+<redacted> configuration is 64 bits wide with parity enabled.
+<redacted> bytes of NVRAM.
+<redacted> bytes of ATA System CompactFlash (Read/Write)
+
+License Info:
+
+License UDI:
+
+-------------------------------------------------
+Device#	  PID			SN
+-------------------------------------------------
+*0  	  CISCO3825             <redacted>     
+
+Configuration register is 0x2102
+
+router#show inventory
+NAME: "3825 chassis", DESCR: "3825 chassis"
+PID: CISCO3825         , VID: V01 , SN: <redacted>
+
+NAME: "FastEthernet/WAN V2 on Slot 1", DESCR: "FastEthernet/WAN V2"
+PID: NM-2FE2W-V2=      , VID: 1.0, SN: <redacted>
+
+NAME: "WAN Interface Card - Serial 2T on Slot 1 SubSlot 0", DESCR: "WAN Interface Card - Serial 2T"
+PID: WIC-2T=           , VID: 1.0, SN: <redacted>   
+
+NAME: "WAN Interface Card - Serial 2T on Slot 1 SubSlot 1", DESCR: "WAN Interface Card - Serial 2T"
+PID: WIC-2T            , VID: V01, SN: <redacted>   
+
+NAME: "Four Port High-Speed Serial on Slot 2", DESCR: "Four Port High-Speed Serial"
+PID: NM-4T=            , VID: 1.1, SN: <redacted>   
+
+router#show ip interface brief
+Interface                  IP-Address      OK? Method Status                Protocol
+GigabitEthernet0/0         203.0.113.32    YES NVRAM  up                    up      
+GigabitEthernet0/1         198.51.100.254    YES manual up                    up      
+GigabitEthernet0/1.100     unassigned      YES manual deleted               down    
+FastEthernet1/0            192.0.2.7      YES manual up                    up      
+FastEthernet1/1            unassigned      YES NVRAM  administratively down down    
+Serial1/0/0                unassigned      YES unset  administratively down down    
+Serial1/0/1                unassigned      YES unset  administratively down down    
+Serial1/1/0                unassigned      YES unset  administratively down down    
+Serial1/1/1                unassigned      YES unset  administratively down down    
+Serial2/0                  unassigned      YES NVRAM  administratively down down    
+Serial2/1                  unassigned      YES NVRAM  administratively down down    
+Serial2/2                  unassigned      YES NVRAM  administratively down down    
+Serial2/3                  unassigned      YES NVRAM  administratively down down    
+NVI0                       unassigned      YES unset  administratively down down    
+router#show cdp neighbors detail
+-------------------------
+Device ID: mgmt-sw.sdn.lab
+Entry address(es): 
+  IP address: 192.0.2.254
+Platform: cisco WS-C2960-24TT-L,  Capabilities: Switch IGMP 
+Interface: FastEthernet1/0,  Port ID (outgoing port): FastEthernet0/2
+Holdtime : 162 sec
+
+Version :
+Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 12.2(58)SE2, RELEASE SOFTWARE (fc1)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2011 by Cisco Systems, Inc.
+Compiled Thu 21-Jul-11 02:13 by prod_rel_team
+
+advertisement version: 2
+Protocol Hello:  OUI=0x00000C, Protocol ID=0x0112; payload len=27, value=<redacted>
+VTP Management Domain: 'lab'
+Native VLAN: 100
+Duplex: full
+
+-------------------------
+Device ID: <upstream-device>
+Entry address(es): 
+  IP address: <redacted>
+Platform: cisco WS-C3750G-24TS-1U,  Capabilities: Switch IGMP 
+Interface: GigabitEthernet0/0,  Port ID (outgoing port): GigabitEthernet1/0/2
+Holdtime : 171 sec
+
+Version :
+Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 12.2(55)SE7, RELEASE SOFTWARE (fc1)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2013 by Cisco Systems, Inc.
+Compiled Mon 28-Jan-13 10:16 by prod_rel_team
+
+advertisement version: 2
+Protocol Hello:  OUI=0x00000C, Protocol ID=0x0112; payload len=27, value=<redacted>
+VTP Management Domain: 'vtplab'
+Native VLAN: 20
+Duplex: full
+
+router#show ip route
+Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
+       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area 
+       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
+       E1 - OSPF external type 1, E2 - OSPF external type 2
+       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
+       ia - IS-IS inter area, * - candidate default, U - per-user static route
+       o - ODR, P - periodic downloaded static route, H - NHRP, l - LISP
+       + - replicated route, % - next hop override
+
+Gateway of last resort is 203.0.113.1 to network 0.0.0.0
+
+S*    0.0.0.0/0 [1/0] via 203.0.113.1
+      10.0.0.0/8 is variably subnetted, 4 subnets, 2 masks
+C        198.51.100.0/24 is directly connected, GigabitEthernet0/1
+L        198.51.100.254/32 is directly connected, GigabitEthernet0/1
+C        192.0.2.0/24 is directly connected, FastEthernet1/0
+L        192.0.2.7/32 is directly connected, FastEthernet1/0
+      203.0.113.0/24 is variably subnetted, 2 subnets, 2 masks
+C        203.0.113.0/24 is directly connected, GigabitEthernet0/0
+L        203.0.113.32/32 is directly connected, GigabitEthernet0/0
+router#show ip nat statistics
+Total active translations: 9 (0 static, 9 dynamic; 9 extended)
+Peak translations: 63, occurred 00:25:30 ago
+Outside interfaces:
+  GigabitEthernet0/0
+Inside interfaces: 
+  GigabitEthernet0/1, FastEthernet1/0
+Hits: 64045  Misses: 0
+CEF Translated packets: 63356, CEF Punted packets: 674
+Expired translations: 259
+Dynamic mappings:
+-- Inside Source
+[Id: 2] access-list NAT-INSIDE interface GigabitEthernet0/0 refcount 9
+
+Total doors: 0
+Appl doors: 0
+Normal doors: 0
+Queued Packets: 0
+router#show ip dhcp pool
+
+Pool LAB9-DATA :
+ Utilization mark (high/low)    : 100 / 0
+ Subnet size (first/next)       : 0 / 0 
+ Total addresses                : 254
+ Leased addresses               : 0
+ Pending event                  : none
+ 1 subnet is currently in the pool :
+ Current index        IP address range                    Leased addresses
+ 198.51.100.1           198.51.100.1       - 198.51.100.254      0
+router#show ntp status
+Clock is synchronized, stratum 2, reference is 216.239.35.4  
+nominal freq is 250.0000 Hz, actual freq is 250.0000 Hz, precision is 2**24
+reference time is EE97BADB.C0812B79 (02:32:59.751 UTC Fri Nov 6 2026)
+clock offset is -18.6622 msec, root delay is 12.35 msec
+root dispersion is 35.48 msec, peer dispersion is 4.19 msec
+loopfilter state is 'CTRL' (Normal Controlled Loop), drift is -0.000000054 s/s
+system poll interval is 128, last update was 396 sec ago.
+router#show running-config
+Building configuration...
+
+Current configuration : 2601 bytes
+!
+! Last configuration change at 03:31:15 UTC Fri Nov 6 2026 by admin
+version 15.1
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname router
+!
+boot-start-marker
+boot-end-marker
+!
+!
+enable password <redacted:enable_secret>
+!
+no aaa new-model
+!
+memory-size iomem 15
+no network-clock-participate slot 1 
+!
+dot11 syslog
+ip source-route
+!
+ip cef
+!
+!
+ip dhcp excluded-address 198.51.100.1 198.51.100.9
+!
+ip dhcp pool LAB9-DATA
+ network 198.51.100.0 255.255.255.0
+ default-router 198.51.100.254 
+ dns-server 8.8.8.8 8.8.4.4 
+ lease 0 8
+!
+!
+ip domain name lab.local
+no ipv6 cef
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+voice-card 0
+!
+!
+!
+!
+!
+!
+!
+crypto pki token default removal timeout 0
+!
+!
+!
+!
+license udi pid CISCO3825 sn <redacted>
+username admin privilege 15 secret 5 <redacted:user_password>
+!
+redundancy
+!
+!
+ip ssh version 2
+! 
+!
+!
+!
+!
+!
+!
+!
+interface GigabitEthernet0/0
+ ip address 203.0.113.32 255.255.255.0
+ ip nat outside
+ ip virtual-reassembly in
+ duplex auto
+ speed auto
+ media-type rj45
+!
+interface GigabitEthernet0/1
+ description Data plane to arista-sw2 Et17 (OpenFlow, untagged)
+ ip address 198.51.100.254 255.255.255.0
+ ip nat inside
+ ip virtual-reassembly in
+ duplex auto
+ speed auto
+ media-type rj45
+!
+interface FastEthernet1/0
+ ip address 192.0.2.7 255.255.255.0
+ ip nat inside
+ ip virtual-reassembly in
+ duplex auto
+ speed auto
+!
+interface FastEthernet1/1
+ no ip address
+ shutdown
+ duplex auto
+ speed auto
+!
+interface Serial1/0/0
+ no ip address
+ shutdown
+ clock rate 2000000
+!
+interface Serial1/0/1
+ no ip address
+ shutdown
+ clock rate 2000000
+!
+interface Serial1/1/0
+ no ip address
+ shutdown
+ clock rate 2000000
+!
+interface Serial1/1/1
+ no ip address
+ shutdown
+ clock rate 2000000
+!
+interface Serial2/0
+ no ip address
+ shutdown
+ serial restart-delay 0
+!
+<redacted> Serial2/1
+ <redacted> ip address
+ <redacted>
+ <redacted> restart-delay 0
+!
+<redacted> Serial2/2
+ <redacted> ip address
+ <redacted>
+ <redacted> restart-delay 0
+!
+<redacted> Serial2/3
+ <redacted> ip address
+ <redacted>
+ <redacted> restart-delay 0
+!
+<redacted> forward-protocol nd
+<redacted> ip http server
+<redacted> ip http secure-server
+!
+!
+<redacted> nat inside source list NAT-INSIDE interface GigabitEthernet0/0 overload
+<redacted> route 0.0.0.0 0.0.0.0 203.0.113.1
+!
+<redacted> access-list standard NAT-INSIDE
+ <redacted> 198.51.100.0 0.0.0.255
+ <redacted> 192.0.2.0 0.0.0.255
+!
+!
+!
+!
+!
+!
+!
+<redacted>
+!
+!
+!
+!
+<redacted> profile default
+!
+!
+!
+!
+!
+!
+<redacted> con 0
+<redacted> aux 0
+<redacted> vty 0 4
+ <redacted> local
+ <redacted> input ssh
+<redacted> vty 5 15
+ <redacted> local
+ <redacted> input ssh
+!
+<redacted> allocate 20000 1000
+<redacted> server 216.239.35.0
+<redacted> server 216.239.35.4
+<redacted>
+
+router#exit

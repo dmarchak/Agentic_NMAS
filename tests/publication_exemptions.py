@@ -416,4 +416,10 @@ EXEMPT = {
     ('tests/fixtures/lab9_captures/mgmt-sw.txt', '38d05e1fa610'): ('VENDOR_TEXT', ('email',)),
     # tests/fixtures/lab9_captures/procurve-sw.txt, line 164: `show ip ssh`'s "Ciphers :" line, whose third cipher is Rijndael-CBC named by its OpenSSH @-form
     ('tests/fixtures/lab9_captures/procurve-sw.txt', 'ec410abe0aca'): ('VENDOR_TEXT', ('email',)),
+    # tests/fixtures/lab9_captures/2026-11-06/mgmt-sw.txt, line 29: IOS's export banner, its last line (Cisco's export contact address and a full stop, nothing else)
+    ('tests/fixtures/lab9_captures/2026-11-06/mgmt-sw.txt', '38d05e1fa610'): ('VENDOR_TEXT', ('email',)),
+    # tests/fixtures/lab9_captures/2026-11-06/router.txt, line 29: IOS's export banner, its last line (the same text)
+    ('tests/fixtures/lab9_captures/2026-11-06/router.txt', '38d05e1fa610'): ('VENDOR_TEXT', ('email',)),
+    # tests/fixtures/lab9_captures/2026-11-06/router.txt, line 139: `show ip route`'s classful summary header for the 10/8 network ("is variably subnetted, 4 subnets, 2 masks"); the subnets under it are masked
+    ('tests/fixtures/lab9_captures/2026-11-06/router.txt', '1297a59eed12'): ('CAPTURE', ('address',)),
 }

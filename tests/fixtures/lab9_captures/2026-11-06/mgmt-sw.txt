@@ -1,0 +1,357 @@
+mgmt-sw#terminal length 0
+mgmt-sw#show version
+Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 12.2(58)SE2, RELEASE SOFTWARE (fc1)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2011 by Cisco Systems, Inc.
+Compiled Thu 21-Jul-11 02:13 by prod_rel_team
+
+ROM: Bootstrap program is C2960 boot loader
+BOOTLDR: C2960 Boot Loader (C2960-HBOOT-M) Version 12.2(44)SE5, RELEASE SOFTWARE (fc1)
+
+mgmt-sw uptime is 8 weeks, 6 hours, 30 minutes
+System returned to ROM by power-on
+System restarted at 20:08:02 UTC Thu Sep 10 2026
+System image file is "flash:c2960-lanbasek9-mz.122-58.SE2.bin"
+
+This product contains cryptographic features and is subject to United
+States and local country laws governing import, export, transfer and
+use. Delivery of Cisco cryptographic products does not imply
+third-party authority to import, export, distribute or use encryption.
+Importers, exporters, distributors and users are responsible for
+compliance with U.S. and local country laws. By using this product you
+agree to comply with applicable laws and regulations. If you are unable
+to comply with U.S. and local laws, return this product immediately.
+
+A summary of U.S. laws governing Cisco cryptographic products may be found at:
+http://www.cisco.com/wwl/export/crypto/tool/stqrg.html
+
+If you require further assistance please contact us by sending email to
+export@cisco.com.
+
+cisco WS-C2960-24TT-L (PowerPC405) processor (revision D0) with 65536K bytes of memory.
+Processor board ID <redacted>
+Last reset from power-on
+2 Virtual Ethernet interfaces
+24 FastEthernet interfaces
+2 Gigabit Ethernet interfaces
+The password-recovery mechanism is enabled.
+
+64K bytes of flash-simulated non-volatile configuration memory.
+Base ethernet MAC Address       : 02:3e:19:9c:9b:3d
+Motherboard assembly number     : 73-10390-04
+Power supply part number        : 341-0097-02
+Motherboard serial number       : <redacted>
+Power supply serial number      : <redacted>
+Model revision number           : D0
+Motherboard revision number     : A0
+Model number                    : WS-C2960-24TT-L
+System serial number            : <redacted>
+Top Assembly Part Number        : 800-27221-03
+Top Assembly Revision Number    : B0
+Version ID                      : V03
+CLEI Code Number                : COM3L00BRB
+Hardware Board Revision Number  : 0x01
+
+Switch Ports Model              SW Version            SW Image                 
+------ ----- -----              ----------            ----------               
+*    1 26    WS-C2960-24TT-L    12.2(58)SE2           C2960-LANBASEK9-M        
+
+Configuration register is 0xF
+
+mgmt-sw#show inventory
+NAME: "1", DESCR: "WS-C2960-24TT-L"
+PID: WS-C2960-24TT-L   , VID: V03  , SN: <redacted>
+
+mgmt-sw#show ip interface brief
+Interface              IP-Address      OK? Method Status                Protocol
+Vlan1                  unassigned      YES NVRAM  up                    down    
+Vlan100                192.0.2.254    YES manual up                    up      
+FastEthernet0/1        unassigned      YES unset  up                    up      
+FastEthernet0/2        unassigned      YES unset  up                    up      
+FastEthernet0/3        unassigned      YES unset  up                    up      
+FastEthernet0/4        unassigned      YES unset  up                    up      
+FastEthernet0/5        unassigned      YES unset  down                  down    
+FastEthernet0/6        unassigned      YES unset  up                    up      
+FastEthernet0/7        unassigned      YES unset  down                  down    
+FastEthernet0/8        unassigned      YES unset  down                  down    
+FastEthernet0/9        unassigned      YES unset  down                  down    
+FastEthernet0/10       unassigned      YES unset  down                  down    
+FastEthernet0/11       unassigned      YES unset  down                  down    
+FastEthernet0/12       unassigned      YES unset  down                  down    
+FastEthernet0/13       unassigned      YES unset  down                  down    
+FastEthernet0/14       unassigned      YES unset  down                  down    
+FastEthernet0/15       unassigned      YES unset  down                  down    
+FastEthernet0/16       unassigned      YES unset  down                  down    
+FastEthernet0/17       unassigned      YES unset  down                  down    
+FastEthernet0/18       unassigned      YES unset  down                  down    
+FastEthernet0/19       unassigned      YES unset  down                  down    
+FastEthernet0/20       unassigned      YES unset  down                  down    
+FastEthernet0/21       unassigned      YES unset  down                  down    
+FastEthernet0/22       unassigned      YES unset  down                  down    
+FastEthernet0/23       unassigned      YES unset  down                  down    
+FastEthernet0/24       unassigned      YES unset  up                    up      
+GigabitEthernet0/1     unassigned      YES unset  up                    up      
+GigabitEthernet0/2     unassigned      YES unset  up                    up      
+mgmt-sw#show interfaces status
+
+Port      Name               Status       Vlan       Duplex  Speed Type
+Fa0/1     Controller         connected    trunk      a-full  a-100 10/100BaseTX
+Fa0/2     Arista SW1         connected    100        a-full  a-100 10/100BaseTX
+Fa0/3     Dell 003           connected    trunk      a-full  a-100 10/100BaseTX
+Fa0/4     Dell 004           connected    trunk      a-full  a-100 10/100BaseTX
+Fa0/5     Arista SW2         notconnect   1            auto   auto 10/100BaseTX
+Fa0/6     HP Switch          connected    trunk      a-full  a-100 10/100BaseTX
+Fa0/7                        notconnect   1            auto   auto 10/100BaseTX
+Fa0/8                        notconnect   1            auto   auto 10/100BaseTX
+Fa0/9                        notconnect   1            auto   auto 10/100BaseTX
+Fa0/10                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/11                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/12                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/13                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/14                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/15                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/16                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/17                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/18                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/19                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/20                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/21                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/22                       notconnect   1            auto   auto 10/100BaseTX
+Fa0/23    Laptop Access      notconnect   100          auto   auto 10/100BaseTX
+Fa0/24                       connected    100        a-full  a-100 10/100BaseTX
+Gi0/1     arista-sw2 connected    100        a-full a-1000 10/100/1000BaseTX
+Gi0/2                        connected    100        a-full a-1000 10/100/1000BaseTX
+mgmt-sw#show vlan brief
+
+VLAN Name                             Status    Ports
+---- -------------------------------- --------- -------------------------------
+1    default                          active    Fa0/5, Fa0/7, Fa0/8, Fa0/9, Fa0/10, Fa0/11, Fa0/12, Fa0/13, Fa0/14
+                                                Fa0/15, Fa0/16, Fa0/17, Fa0/18, Fa0/19, Fa0/20, Fa0/21, Fa0/22
+100  Management                       active    Fa0/2, Fa0/23, Fa0/24, Gi0/1, Gi0/2
+1002 fddi-default                     act/unsup 
+1003 token-ring-default               act/unsup 
+1004 fddinet-default                  act/unsup 
+1005 trnet-default                    act/unsup 
+mgmt-sw#show cdp neighbors detail
+-------------------------
+Device ID: router.lab.local
+Entry address(es): 
+  IP address: 192.0.2.7
+Platform: Cisco 3825,  Capabilities: Router Switch IGMP 
+Interface: FastEthernet0/2,  Port ID (outgoing port): FastEthernet1/0
+Holdtime : 163 sec
+
+Version :
+Cisco IOS Software, 3800 Software (C3825-ADVENTERPRISEK9-M), Version 15.1(4)M8, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2014 by Cisco Systems, Inc.
+Compiled Fri 07-Mar-14 09:12 by prod_rel_team
+
+advertisement version: 2
+VTP Management Domain: ''
+Duplex: full
+Management address(es): 
+
+mgmt-sw#show mac address-table dynamic
+          Mac Address Table
+-------------------------------------------
+
+Vlan    Mac Address       Type        Ports
+----    -----------       --------    -----
+ 100    020c.3248.373f    DYNAMIC     Fa0/2
+ 100    02d5.0279.01e6    DYNAMIC     Fa0/6
+ 100    0246.cc51.bf27    DYNAMIC     Gi0/2
+ 100    0267.1420.2caf    DYNAMIC     Gi0/1
+ 100    02d2.1b82.c8bb    DYNAMIC     Fa0/1
+ 100    02e8.4f5d.a476    DYNAMIC     Fa0/3
+ 100    029e.0877.e631    DYNAMIC     Fa0/4
+ 100    02f6.7b2a.4ac0    DYNAMIC     Fa0/24
+Total Mac Addresses for this criterion: 8
+mgmt-sw#show ntp status
+Clock is synchronized, stratum 3, reference is 192.0.2.7    
+nominal freq is 119.2092 Hz, actual freq is 119.2092 Hz, precision is 2**17
+reference time is EE97BA34.861BF0AF (02:30:12.523 UTC Fri Nov 6 2026)
+clock offset is 10.0475 msec, root delay is 13.91 msec
+root dispersion is 980.01 msec, peer dispersion is 4.95 msec
+loopfilter state is 'CTRL' (Normal Controlled Loop), drift is 0.000000038 s/s
+system poll interval is 64, last update was 511 sec ago.
+mgmt-sw#show running-config
+Building configuration...
+
+Current configuration : 4174 bytes
+!
+! Last configuration change at 06:15:00 UTC Mon Apr 26 1993 by admin
+!
+version 12.2
+no service pad
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname mgmt-sw
+!
+boot-start-marker
+boot-end-marker
+!
+!
+username admin privilege 15 secret 5 <redacted:user_password>
+no aaa new-model
+system mtu routing 1500
+!
+!
+ip domain-name sdn.lab
+!
+!
+crypto pki trustpoint TP-self-signed-1000000001
+ enrollment selfsigned
+ subject-name cn=IOS-Self-Signed-Certificate-351554688
+ revocation-check none
+ rsakeypair TP-self-signed-1000000001
+!
+!
+crypto pki certificate chain TP-self-signed-1000000001
+ certificate self-signed 01
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx 
+  xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
+  	quit
+!
+!
+!
+!
+spanning-tree mode pvst
+spanning-tree extend system-id
+no spanning-tree vlan 1
+!
+vlan internal allocation policy ascending
+!
+ip ssh version 2
+!
+!
+!
+!
+!
+interface FastEthernet0/1
+ description Controller
+ switchport access vlan 100
+ switchport trunk allowed vlan 100
+ switchport mode trunk
+!
+interface FastEthernet0/2
+ description Arista SW1
+ switchport access vlan 100
+ switchport trunk allowed vlan 100
+ switchport mode access
+!
+interface FastEthernet0/3
+ description Dell 003
+ switchport access vlan 100
+ switchport trunk allowed vlan 100
+ switchport mode trunk
+!
+interface FastEthernet0/4
+ description Dell 004
+ switchport access vlan 100
+ switchport trunk allowed vlan 100
+ switchport mode trunk
+!
+interface FastEthernet0/5
+ description Arista SW2
+!
+interface FastEthernet0/6
+ description HP Switch
+ switchport access vlan 100
+ switchport trunk allowed vlan 100
+ switchport mode trunk
+!
+interface FastEthernet0/7
+!
+interface FastEthernet0/8
+!
+interface FastEthernet0/9
+!
+interface FastEthernet0/10
+!
+interface FastEthernet0/11
+!
+interface FastEthernet0/12
+!
+interface FastEthernet0/13
+!
+interface FastEthernet0/14
+!
+interface FastEthernet0/15
+!
+interface FastEthernet0/16
+!
+interface FastEthernet0/17
+!
+interface FastEthernet0/18
+!
+interface FastEthernet0/19
+!
+interface FastEthernet0/20
+!
+interface FastEthernet0/21
+!
+interface FastEthernet0/22
+!
+interface FastEthernet0/23
+ description Laptop Access
+ switchport access vlan 100
+ switchport mode access
+!
+interface FastEthernet0/24
+ switchport access vlan 100
+ switchport mode access
+!
+interface GigabitEthernet0/1
+ description arista-sw2 Ma1
+ switchport access vlan 100
+ switchport mode access
+ spanning-tree portfast
+!
+interface GigabitEthernet0/2
+ switchport access vlan 100
+ switchport mode access
+ spanning-tree portfast
+!
+interface Vlan1
+ no ip address
+!
+interface Vlan100
+ ip address 192.0.2.254 255.255.255.0
+!
+ip http server
+ip http secure-server
+logging esm config
+!
+line con 0
+line vty 0 4
+ login local
+ transport input ssh
+ transport output ssh
+line vty 5 15
+ login local
+ transport input ssh
+ transport output ssh
+!
+ntp server 192.0.2.7
+end
+
+mgmt-sw#exit

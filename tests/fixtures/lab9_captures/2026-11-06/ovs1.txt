@@ -1,0 +1,88 @@
+ Static hostname: switch2
+       Icon name: computer-server
+         Chassis: server 🖳
+      Machine ID: <redacted>
+         Boot ID: <redacted>
+Operating System: Ubuntu 24.04.3 LTS              
+          Kernel: Linux 6.8.0-87-generic
+    Architecture: x86-64
+ Hardware Vendor: Dell Inc.
+  Hardware Model: PowerEdge R430
+Firmware Version: 1.5.4
+   Firmware Date: Mon 2015-10-05
+    Firmware Age: 11y 1month 1d                   
+### ip link
+lo               UNKNOWN        02:71:30:06:07:30 <LOOPBACK,UP,LOWER_UP> 
+eno1             UP             02:e8:4f:5d:a4:76 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+eno2             UP             02:9c:90:e0:25:ad <BROADCAST,MULTICAST,UP,LOWER_UP> 
+eno3             UP             02:88:a6:b6:9e:63 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+eno4             DOWN           02:27:f5:b7:b9:26 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+enp5s0f0         DOWN           02:0e:08:d5:0e:04 <BROADCAST,MULTICAST> 
+enp5s0f1         DOWN           02:ac:6d:63:1c:25 <BROADCAST,MULTICAST> 
+eno1.100@eno1    UP             02:e8:4f:5d:a4:76 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+ovs-system       DOWN           02:de:ec:59:b8:b8 <BROADCAST,MULTICAST> 
+br0              DOWN           02:9c:90:e0:25:ad <BROADCAST,MULTICAST> 
+### ip addr
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eno1             UP             
+eno2             UP             fe80::<redacted>/64 
+eno3             UP             fe80::<redacted>/64 
+eno4             DOWN           
+enp5s0f0         DOWN           
+enp5s0f1         DOWN           
+eno1.100@eno1    UP             192.0.2.3/24 
+ovs-system       DOWN           
+br0              DOWN           
+### vlan links
+10: <user>@eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether 02:e8:4f:5d:a4:76 brd 02:2b:d1:d5:5c:cc promiscuity 0  allmulti 0 minmtu 0 maxmtu 65535 
+    vlan protocol 802.1Q id 100 <REORDER_HDR> addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 
+### routes
+192.0.2.0/24 dev eno1.100 proto kernel scope link src 192.0.2.3 
+### ovs
+<redacted>
+    Bridge br0
+        Controller "tcp:192.0.2.1:6653"
+            is_connected: true
+        fail_mode: secure
+        Port eno4
+            tag: 200
+            Interface eno4
+        Port eno2
+            trunks: [200]
+            Interface eno2
+        Port br0
+            Interface br0
+                type: internal
+        Port eno3
+            trunks: [200]
+            Interface eno3
+    ovs_version: "3.3.4"
+name                : eno2
+ofport              : 1
+mac_in_use          : "02:9c:90:e0:25:ad"
+
+name                : eno3
+ofport              : 2
+mac_in_use          : "02:88:a6:b6:9e:63"
+
+name                : eno4
+ofport              : 3
+mac_in_use          : "02:27:f5:b7:b9:26"
+
+name                : br0
+ofport              : 65534
+mac_in_use          : "02:9c:90:e0:25:ad"
+### hardware
+[sudo] password <redacted> lab: 
+Dell Inc.
+PowerEdge R430
+### nic macs
+eno1 02:e8:4f:5d:a4:76 carrier=1
+eno1.100 02:e8:4f:5d:a4:76 carrier=1
+eno2 02:9c:90:e0:25:ad carrier=1
+eno3 02:88:a6:b6:9e:63 carrier=1
+eno4 02:27:f5:b7:b9:26 carrier=0
+enp5s0f0 02:0e:08:d5:0e:04 carrier=
+enp5s0f1 02:ac:6d:63:1c:25 carrier=
+Connection to 192.0.2.3 closed.

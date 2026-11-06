@@ -1,0 +1,644 @@
+arista-sw1>en
+arista-sw1#terminal length 0
+Pagination disabled.
+arista-sw1#show version
+Arista DCS-7050Q-16-F
+Hardware version:    01.04
+Serial number:       <redacted>
+System MAC address:  0203.a90a.b627
+
+Software image version: 4.17.0F
+Architecture:           i386
+Internal build version: 4.17.0F-3304146.4170F
+Internal build ID:      21f25f02-5d69-4be5-bd02-551cf79903b1
+
+Uptime:                 7 hours and 20 minutes
+Total memory:           3963776 kB
+Free memory:            2421732 kB
+
+arista-sw1#show inventory
+System information
+  Model                    Description                                         
+  ------------------------ ----------------------------------------------------
+  DCS-7050Q-16             16 QSFP+ +8 SFP 40Gb 1RU                            
+
+  HW Version  Serial Number  Mfg Date  
+  ----------- -------------- ----------
+  01.04       <redacted>    2014-02-07
+
+System has 2 power supply slots
+  Slot Model            Serial Number   
+  ---- ---------------- ----------------
+  1    PWR-460AC-F      <redacted>   
+  2    PWR-460AC-F      <redacted>   
+
+System has 4 fan modules
+  Module  Number of Fans  Model            Serial Number   
+  ------- --------------- ---------------- ----------------
+  1       1               FAN-7000-F       N/A             
+  2       1               FAN-7000-F       N/A             
+  3       1               FAN-7000-F       N/A             
+  4       1               FAN-7000-F       N/A             
+
+System has 73 ports
+  Type             Count
+  ---------------- ----
+  Management       1   
+  Switched         72  
+
+System has 24 transceiver slots
+  Port Manufacturer     Model            Serial Number    Rev 
+  ---- ---------------- ---------------- ---------------- ----
+  1    Not Present                                            
+  2    Not Present                                            
+  3    Not Present                                            
+  4    Not Present                                            
+  5    Not Present                                            
+  6    Not Present                                            
+  7    Not Present                                            
+  8    Not Present                                            
+  9    Not Present                                            
+  10   Not Present                                            
+  11   Not Present                                            
+  12   Not Present                                            
+  13   Not Present                                            
+  14   Not Present                                            
+  15   Not Present                                            
+  16   Not Present                                            
+  17   Not Present                                            
+  18   OEM              GLCTST           <redacted>         1.0 
+  19   OEM              GLCTST           <redacted>         1.0 
+  20   Not Present                                            
+  21   Not Present                                            
+  22   Not Present                                            
+  23   Not Present                                            
+  24   Not Present                                            
+
+arista-sw1#show ip interface brief
+Interface              IP Address         Status     Protocol         MTU
+Management1            192.0.2.2/24      up         up              1500
+arista-sw1#show interfaces Management1
+Management1 is up, line protocol is up (connected)
+  Hardware is Ethernet, address is 0267.1420.2caf (bia 0267.1420.2caf)
+  Internet address is 192.0.2.2/24
+  Broadcast address is 255.255.255.255
+  Address determined by manual configuration
+  IP MTU 1500 bytes , BW 1000000 kbit
+  Full-duplex, 1Gb/s, auto negotiation: on, uni-link: n/a
+  Up 2 hours, 17 minutes, 36 seconds
+  Loopback Mode : None
+  9 link status changes since last clear
+  Last clearing of "show interface" counters never
+  5 minutes input rate 344 bps (0.0% with framing overhead), 0 packets/sec
+  5 minutes output rate 459 bps (0.0% with framing overhead), 0 packets/sec
+     23721 packets input, 2734744 bytes
+     Received 196 broadcasts, 6 multicast
+     0 runts, 0 giants
+     0 input errors, 0 CRC, 0 alignment, 0 symbol, 0 input discards
+     0 PAUSE input
+     24034 packets output, 2841219 bytes
+     Sent 20 broadcasts, 298 multicast
+     0 output errors, 0 collisions
+     0 late collision, 0 deferred, 0 output discards
+     0 PAUSE output
+arista-sw1#show interfaces status
+Port       Name                           Status       Vlan     Duplex Speed  Type         Flags
+Et1/1      unused                         disabled     1        full   10G    Not Present       
+Et1/2      unused                         disabled     1        full   10G    Not Present       
+Et1/3      unused                         disabled     1        full   10G    Not Present       
+Et1/4      unused                         disabled     1        full   10G    Not Present       
+Et2/1      unused                         disabled     1        full   10G    Not Present       
+Et2/2      unused                         disabled     1        full   10G    Not Present       
+Et2/3      unused                         disabled     1        full   10G    Not Present       
+Et2/4      unused                         disabled     1        full   10G    Not Present       
+Et3/1      unused                         disabled     1        full   10G    Not Present       
+Et3/2      unused                         disabled     1        full   10G    Not Present       
+Et3/3      unused                         disabled     1        full   10G    Not Present       
+Et3/4      unused                         disabled     1        full   10G    Not Present       
+Et4/1      unused                         disabled     1        full   10G    Not Present       
+Et4/2      unused                         disabled     1        full   10G    Not Present       
+Et4/3      unused                         disabled     1        full   10G    Not Present       
+Et4/4      unused                         disabled     1        full   10G    Not Present       
+Et5/1      unused                         disabled     1        full   10G    Not Present       
+Et5/2      unused                         disabled     1        full   10G    Not Present       
+Et5/3      unused                         disabled     1        full   10G    Not Present       
+Et5/4      unused                         disabled     1        full   10G    Not Present       
+Et6/1      unused                         disabled     1        full   10G    Not Present       
+Et6/2      unused                         disabled     1        full   10G    Not Present       
+Et6/3      unused                         disabled     1        full   10G    Not Present       
+Et6/4      unused                         disabled     1        full   10G    Not Present       
+Et7/1      unused                         disabled     1        full   10G    Not Present       
+Et7/2      unused                         disabled     1        full   10G    Not Present       
+Et7/3      unused                         disabled     1        full   10G    Not Present       
+Et7/4      unused                         disabled     1        full   10G    Not Present       
+Et8/1      unused                         disabled     1        full   10G    Not Present       
+Et8/2      unused                         disabled     1        full   10G    Not Present       
+Et8/3      unused                         disabled     1        full   10G    Not Present       
+Et8/4      unused                         disabled     1        full   10G    Not Present       
+Et9/1      unused                         disabled     1        full   10G    Not Present       
+Et9/2      unused                         disabled     1        full   10G    Not Present       
+Et9/3      unused                         disabled     1        full   10G    Not Present       
+Et9/4      unused                         disabled     1        full   10G    Not Present       
+Et10/1     unused                         disabled     1        full   10G    Not Present       
+Et10/2     unused                         disabled     1        full   10G    Not Present       
+Et10/3     unused                         disabled     1        full   10G    Not Present       
+Et10/4     unused                         disabled     1        full   10G    Not Present       
+Et11/1     unused                         disabled     1        full   10G    Not Present       
+Et11/2     unused                         disabled     1        full   10G    Not Present       
+Et11/3     unused                         disabled     1        full   10G    Not Present       
+Et11/4     unused                         disabled     1        full   10G    Not Present       
+Et12/1     unused                         disabled     1        full   10G    Not Present       
+Et12/2     unused                         disabled     1        full   10G    Not Present       
+Et12/3     unused                         disabled     1        full   10G    Not Present       
+Et12/4     unused                         disabled     1        full   10G    Not Present       
+Et13/1     unused                         disabled     1        full   10G    Not Present       
+Et13/2     unused                         disabled     1        full   10G    Not Present       
+Et13/3     unused                         disabled     1        full   10G    Not Present       
+Et13/4     unused                         disabled     1        full   10G    Not Present       
+Et14/1     unused                         disabled     1        full   10G    Not Present       
+Et14/2     unused                         disabled     1        full   10G    Not Present       
+Et14/3     unused                         disabled     1        full   10G    Not Present       
+Et14/4     unused                         disabled     1        full   10G    Not Present       
+Et17       shut - management moved to Ma1 disabled     trunk    full   10G    Not Present       
+Et18       Link_to_OVS_SW2_eno2           connected    OpenFlow a-full a-1G   1000BASE-T        
+Et19       Link_to_HP_port2               connected    OpenFlow a-full a-1G   1000BASE-T        
+Et20                                      notconnect   1        full   10G    Not Present       
+Et21                                      notconnect   1        full   10G    Not Present       
+Et22                                      notconnect   1        full   10G    Not Present       
+Et23                                      notconnect   1        full   10G    Not Present       
+Et24                                      notconnect   1        full   10G    Not Present       
+Ma1                                       connected    routed   a-full a-1G   10/100/1000       
+
+arista-sw1#show vlan
+VLAN  Name                             Status    Ports
+----- -------------------------------- --------- -------------------------------
+1     default                          active   
+100   Mgmt                             active   
+200   Data                             active   
+
+arista-sw1#show lldp neighbors detail
+Interface Ethernet1/1 detected 0 LLDP neighbors:
+
+Interface Ethernet1/2 detected 0 LLDP neighbors:
+
+Interface Ethernet1/3 detected 0 LLDP neighbors:
+
+Interface Ethernet1/4 detected 0 LLDP neighbors:
+
+Interface Ethernet2/1 detected 0 LLDP neighbors:
+
+Interface Ethernet2/2 detected 0 LLDP neighbors:
+
+Interface Ethernet2/3 detected 0 LLDP neighbors:
+
+Interface Ethernet2/4 detected 0 LLDP neighbors:
+
+Interface Ethernet3/1 detected 0 LLDP neighbors:
+
+Interface Ethernet3/2 detected 0 LLDP neighbors:
+
+Interface Ethernet3/3 detected 0 LLDP neighbors:
+
+Interface Ethernet3/4 detected 0 LLDP neighbors:
+
+Interface Ethernet4/1 detected 0 LLDP neighbors:
+
+Interface Ethernet4/2 detected 0 LLDP neighbors:
+
+Interface Ethernet4/3 detected 0 LLDP neighbors:
+
+Interface Ethernet4/4 detected 0 LLDP neighbors:
+
+Interface Ethernet5/1 detected 0 LLDP neighbors:
+
+Interface Ethernet5/2 detected 0 LLDP neighbors:
+
+Interface Ethernet5/3 detected 0 LLDP neighbors:
+
+Interface Ethernet5/4 detected 0 LLDP neighbors:
+
+Interface Ethernet6/1 detected 0 LLDP neighbors:
+
+Interface Ethernet6/2 detected 0 LLDP neighbors:
+
+Interface Ethernet6/3 detected 0 LLDP neighbors:
+
+Interface Ethernet6/4 detected 0 LLDP neighbors:
+
+Interface Ethernet7/1 detected 0 LLDP neighbors:
+
+Interface Ethernet7/2 detected 0 LLDP neighbors:
+
+Interface Ethernet7/3 detected 0 LLDP neighbors:
+
+Interface Ethernet7/4 detected 0 LLDP neighbors:
+
+Interface Ethernet8/1 detected 0 LLDP neighbors:
+
+Interface Ethernet8/2 detected 0 LLDP neighbors:
+
+Interface Ethernet8/3 detected 0 LLDP neighbors:
+
+Interface Ethernet8/4 detected 0 LLDP neighbors:
+
+Interface Ethernet9/1 detected 0 LLDP neighbors:
+
+Interface Ethernet9/2 detected 0 LLDP neighbors:
+
+Interface Ethernet9/3 detected 0 LLDP neighbors:
+
+Interface Ethernet9/4 detected 0 LLDP neighbors:
+
+Interface Ethernet10/1 detected 0 LLDP neighbors:
+
+Interface Ethernet10/2 detected 0 LLDP neighbors:
+
+Interface Ethernet10/3 detected 0 LLDP neighbors:
+
+Interface Ethernet10/4 detected 0 LLDP neighbors:
+
+Interface Ethernet11/1 detected 0 LLDP neighbors:
+
+Interface Ethernet11/2 detected 0 LLDP neighbors:
+
+Interface Ethernet11/3 detected 0 LLDP neighbors:
+
+Interface Ethernet11/4 detected 0 LLDP neighbors:
+
+Interface Ethernet12/1 detected 0 LLDP neighbors:
+
+Interface Ethernet12/2 detected 0 LLDP neighbors:
+
+Interface Ethernet12/3 detected 0 LLDP neighbors:
+
+Interface Ethernet12/4 detected 0 LLDP neighbors:
+
+Interface Ethernet13/1 detected 0 LLDP neighbors:
+
+Interface Ethernet13/2 detected 0 LLDP neighbors:
+
+Interface Ethernet13/3 detected 0 LLDP neighbors:
+
+Interface Ethernet13/4 detected 0 LLDP neighbors:
+
+Interface Ethernet14/1 detected 0 LLDP neighbors:
+
+Interface Ethernet14/2 detected 0 LLDP neighbors:
+
+Interface Ethernet14/3 detected 0 LLDP neighbors:
+
+Interface Ethernet14/4 detected 0 LLDP neighbors:
+
+Interface Ethernet15/1 detected 0 LLDP neighbors:
+
+Interface Ethernet15/2 detected 0 LLDP neighbors:
+
+Interface Ethernet15/3 detected 0 LLDP neighbors:
+
+Interface Ethernet15/4 detected 0 LLDP neighbors:
+
+Interface Ethernet16/1 detected 0 LLDP neighbors:
+
+Interface Ethernet16/2 detected 0 LLDP neighbors:
+
+Interface Ethernet16/3 detected 0 LLDP neighbors:
+
+Interface Ethernet16/4 detected 0 LLDP neighbors:
+
+Interface Ethernet17 detected 0 LLDP neighbors:
+
+Interface Ethernet18 detected 0 LLDP neighbors:
+
+Interface Ethernet19 detected 0 LLDP neighbors:
+
+Interface Ethernet20 detected 0 LLDP neighbors:
+
+Interface Ethernet21 detected 0 LLDP neighbors:
+
+Interface Ethernet22 detected 0 LLDP neighbors:
+
+Interface Ethernet23 detected 0 LLDP neighbors:
+
+Interface Ethernet24 detected 0 LLDP neighbors:
+
+Interface Management1 detected 0 LLDP neighbors:
+
+arista-sw1#show openflow
+OpenFlow configuration: Enabled
+DPID: 0x00000203a90ab627
+Description: arista-sw1
+Controllers:
+  configured: 192.0.2.1:6653
+  connected:
+    192.0.2.1:6653
+      role: equal
+      negotiated version: Version 1.3
+  connection count: 3
+  keepalive period: 10 sec
+Flow table state: Enabled
+Flow table profile: full-match
+Forwarding pipeline: flow
+Bind mode: bindModeInterface
+  interfaces: 
+    Et18-19
+IP routing state: Disabled
+Shell command execution: Disabled
+Total matched: 10880 packets
+arista-sw1#show ntp status
+unsynchronised
+   polling server every 64 s
+
+arista-sw1#show running-config
+! Command: show running-config
+! device: arista-sw1 (DCS-7050Q-16, EOS-4.17.0F)
+!
+! boot system flash:/EOS-4.17.0F.swi
+!
+transceiver qsfp default-mode 4x10G
+!
+hostname arista-sw1
+!
+ntp source Management1
+ntp server 192.0.2.7
+!
+spanning-tree mode mstp
+!
+hardware port-group 1 select Et17-20
+hardware port-group 2 select Et21-24
+!
+no aaa root
+!
+username admin privilege 15 role network-admin secret sha512 <redacted>
+!
+vlan 100
+   name Mgmt
+!
+vlan 200
+   name Data
+!
+interface Ethernet1/1
+   description unused
+   shutdown
+!
+interface Ethernet1/2
+   description unused
+   shutdown
+!
+interface Ethernet1/3
+   description unused
+   shutdown
+!
+interface Ethernet1/4
+   description unused
+   shutdown
+!
+interface Ethernet2/1
+   description unused
+   shutdown
+!
+interface Ethernet2/2
+   description unused
+   shutdown
+!
+interface Ethernet2/3
+   description unused
+   shutdown
+!
+interface Ethernet2/4
+   description unused
+   shutdown
+!
+interface Ethernet3/1
+   description unused
+   shutdown
+!
+interface Ethernet3/2
+   description unused
+   shutdown
+!
+interface Ethernet3/3
+   description unused
+   shutdown
+!
+interface Ethernet3/4
+   description unused
+   shutdown
+!
+interface Ethernet4/1
+   description unused
+   shutdown
+!
+interface Ethernet4/2
+   description unused
+   shutdown
+!
+interface Ethernet4/3
+   description unused
+   shutdown
+!
+interface Ethernet4/4
+   description unused
+   shutdown
+!
+interface Ethernet5/1
+   description unused
+   shutdown
+!
+interface Ethernet5/2
+   description unused
+   shutdown
+!
+interface Ethernet5/3
+   description unused
+   shutdown
+!
+interface Ethernet5/4
+   description unused
+   shutdown
+!
+interface Ethernet6/1
+   description unused
+   shutdown
+!
+interface Ethernet6/2
+   description unused
+   shutdown
+!
+interface Ethernet6/3
+   description unused
+   shutdown
+!
+interface Ethernet6/4
+   description unused
+   shutdown
+!
+interface Ethernet7/1
+   description unused
+   shutdown
+!
+interface Ethernet7/2
+   description unused
+   shutdown
+!
+interface Ethernet7/3
+   description unused
+   shutdown
+!
+interface Ethernet7/4
+   description unused
+   shutdown
+!
+interface Ethernet8/1
+   description unused
+   shutdown
+!
+interface Ethernet8/2
+   description unused
+   shutdown
+!
+interface Ethernet8/3
+   description unused
+   shutdown
+!
+interface Ethernet8/4
+   description unused
+   shutdown
+!
+interface Ethernet9/1
+   description unused
+   shutdown
+!
+interface Ethernet9/2
+   description unused
+   shutdown
+!
+interface Ethernet9/3
+   description unused
+   shutdown
+!
+interface Ethernet9/4
+   description unused
+   shutdown
+!
+interface Ethernet10/1
+   description unused
+   shutdown
+!
+interface Ethernet10/2
+   description unused
+   shutdown
+!
+interface Ethernet10/3
+   description unused
+   shutdown
+!
+interface Ethernet10/4
+   description unused
+   shutdown
+!
+interface Ethernet11/1
+   description unused
+   shutdown
+!
+interface Ethernet11/2
+   description unused
+   shutdown
+!
+interface Ethernet11/3
+   description unused
+   shutdown
+!
+interface Ethernet11/4
+   description unused
+   shutdown
+!
+interface Ethernet12/1
+   description unused
+   shutdown
+!
+interface Ethernet12/2
+   description unused
+   shutdown
+!
+interface Ethernet12/3
+   description unused
+   shutdown
+!
+interface Ethernet12/4
+   description unused
+   shutdown
+!
+interface Ethernet13/1
+   description unused
+   shutdown
+!
+interface Ethernet13/2
+   description unused
+   shutdown
+!
+interface Ethernet13/3
+   description unused
+   shutdown
+!
+interface Ethernet13/4
+   description unused
+   shutdown
+!
+interface Ethernet14/1
+   description unused
+   shutdown
+!
+interface Ethernet14/2
+   description unused
+   shutdown
+!
+interface Ethernet14/3
+   description unused
+   shutdown
+!
+interface Ethernet14/4
+   description unused
+   shutdown
+!
+interface Ethernet17
+   description shut - management moved to Ma1
+   shutdown
+   switchport access vlan 100
+   switchport trunk allowed vlan 100
+   switchport mode trunk
+!
+interface Ethernet18
+   description Link_to_OVS_SW2_eno2
+   switchport trunk allowed vlan 200
+   switchport mode trunk
+   no lldp transmit
+   no lldp receive
+!
+interface Ethernet19
+   description Link_to_HP_port2
+   no lldp transmit
+   no lldp receive
+!
+interface Ethernet20
+!
+interface Ethernet21
+!
+interface Ethernet22
+!
+interface Ethernet23
+!
+interface Ethernet24
+!
+interface Management1
+   ip address 192.0.2.2/24
+!
+no ip routing
+!
+openflow
+   bind interface Et18-19
+   no shutdown
+   controller tcp:192.0.2.1:6653
+!
+!
+end
+arista-sw1#exit
