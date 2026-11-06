@@ -18,8 +18,8 @@ triage and Core 1.0's sign-off are the operator's, never a recommended option th
   refused (`scripts/hooks/claude-no-host-writes`, which reads the mode's flag). Proxmox stays
   read-only.
 - **The agent runs device operations and walks through Mercury** (deploys, saves, restarts,
-  redeploys), keeping the standing facts: nothing staged on s3, nothing in 08:30 to 09:10 UTC,
-  a planned-restart window declared before a restart.
+  redeploys), keeping the standing facts: nothing staged on s3, nothing in the nightly backup
+  window (02:30 to 03:30 America/Denver), a planned-restart window declared before a restart.
 - **Boards the agent draws count as signed off by the operator, and the agent takes its
   recommended option on a decision;** each is one line in `docs/STANDING_APPROVAL_LOG.md`.
 - Every commit passes the gate before it's pushed; CI runs on every push and doesn't block
@@ -375,8 +375,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 - **Never derive an event's time from a device's uptime** (slow vIOS clocks): a restart is the
   counter falling; an event's time is the syslog's receive time. [tests/test_restarts.py] [why](docs/LESSONS.md#device-clocks-and-event-times)
-- **Proxmox task logs are in the hypervisor's local time (UTC−6 in this lab), not UTC;** convert
-  before comparing. [not mechanised]
+- **Proxmox task logs are in the hypervisor's local time, America/Denver, not UTC: UTC−6 under
+  MDT, UTC−7 under MST;** convert by the zone at the logged date (`TZ=America/Denver date -d`),
+  never by a fixed offset (C2613: "UTC−6" was wrong from 2026-11-01). [not mechanised]
 - **Test data reaches every column and state a check photographs, clicks or asserts.** Fixtures are
   real captures with minimal edits, never typed from memory. [partly: tests/test_v2_layout_in_a_browser.py] [why](docs/LESSONS.md#fixtures-that-reach-the-case)
 - **Every new check is shown able to fail:** remove the property, see the aimed tests fail (not
@@ -454,13 +455,14 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   new automation module no unit test reaches, or a new test that asserts nothing fails CI; the
   baseline moves only by `scripts/nmas-coverage baseline`. [tests/test_nmas_coverage.py; the
   coverage job in .github/workflows/ci.yml]
-- **Mutation is a weekly measurement (the operator, 2026-10-25): scheduled, outside 08:30 to
-  09:10 UTC, its survivors registered, not worked, unless the operator directs a campaign; no
-  other run is dispatched but a change to the irreversible tier (egress, masking, data off the
-  host, and the code that writes, stores or masks secret values; docs/TESTING.md, "The deploy
-  bar"), whose targeted run comes before its deploy. One mutant at a time, after a canary that
-  must die; only an open VERDICT survivor turns a run red; an equivalent mutant is listed by
-  hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py
+- **Mutation is a weekly measurement (the operator, 2026-10-25): scheduled, outside the nightly
+  backup window (02:30 to 03:30 America/Denver), its survivors registered, not worked, unless
+  the operator directs a campaign; no other run is dispatched but a change to the irreversible
+  tier (egress, masking, data off the host, and the code that writes, stores or masks secret
+  values; docs/TESTING.md, "The deploy bar"), whose targeted run comes before its deploy. One
+  mutant at a time, after a canary that must die; only an open VERDICT survivor turns a run
+  red; an equivalent mutant is listed by hand with its reason, never chased with a test.**
+  [tests/test_nmas_mutation.py
   (`TestTheWorkflow`: the weekly schedule and its window guard); tests/test_mutation_canary.py;
   the dispatch rule: not mechanised]
   **Until the sprint's condition is met (PHASE8_PLAN 15.12: both the SDN Lab 8 slice and
@@ -618,10 +620,18 @@ NSoT config repository), `<account>` (the GitHub account).
 
 ## Standing facts about this lab
 
-- **No lab run, staged run or probe inside the nightly backup window, 08:30 to 09:10 UTC**
-  (the hypervisor logs it as 02:30 local; with fleecing and the 400 MiB/s bwlimit the job
-  runs about 30 minutes, measured 2026-10-04 and 05): the backup loads the lab host, and a
-  measurement taken then measures the backup. [not mechanised]
+- **No lab run, staged run, probe or deploy inside the nightly backup window, 02:30 to 03:30
+  America/Denver:** the hypervisor schedules the job at 02:30 in its own zone, so in UTC it is
+  08:30 to 09:30 under MDT (the second Sunday of March to the first Sunday of November) and
+  09:30 to 10:30 under MST. Measured 2026-11-06 from the hypervisor's task list: 02:30 local
+  every night either side of 2026-11-01; the last three ended 03:05, 03:06 and 03:07 local;
+  33 to 37 minutes, grown from about 30 (2026-10-04 and 05), so the end is 60 minutes after
+  the start, about 1.6 times the longest run (C2613). The backup loads the lab host, and
+  snapshots the NMAS host: a measurement taken then measures the backup, and a deploy then
+  races the snapshot. A guard states the window in its zone and converts at the instant it
+  asks, never a UTC constant, and refuses when it cannot read the zone. [every guard, one
+  window: tests/test_backup_window.py; deploys and Update check no window yet: not
+  mechanised, C1681]
 - **Staged runs and probes never run on s3:** it is CPU-starved and carries the management path
   for the fleet (C93). Use s1 for IOS and r2 for IOS-XE. [not mechanised]
 - **A lab node is never restarted by containerlab (`restart`, `restart -n`) or docker
