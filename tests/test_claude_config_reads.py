@@ -310,3 +310,67 @@ class TestTheSettings:
                    for h in entry["hooks"]):
                 wired |= set(entry["matcher"].split("|"))
         assert {"Bash", "Read", "Grep"} <= wired, wired
+
+    def test_every_agent_process_gets_a_scratch_store_outside_the_checkout(self):
+        """C2612 (the operator's approval, 2026-11-06): the settings' `env` gives every agent
+        tool process `NMAS_DATA_DIR` on a folder outside the checkout, named again in
+        `NMAS_AGENT_STORE` so `nmas-host` still finds the lab's hosts file."""
+        env = json.load(open(SETTINGS, encoding="utf-8")).get("env") or {}
+        store = env.get("NMAS_DATA_DIR") or ""
+        assert os.path.isabs(store), env
+        assert not (os.path.realpath(store) + os.sep).startswith(
+            os.path.realpath(ROOT) + os.sep), store
+        assert env.get("NMAS_AGENT_STORE") == store, env
+
+
+def store_hook(command, cwd=ROOT):
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
+    return subprocess.run([sys.executable, HOOK], input=payload, capture_output=True,
+                          text=True)
+
+
+class TestTheAgentsStoreStaysScratch:
+    """C2612: a command that takes the agent's process off its scratch store is refused: one
+    that unsets `NMAS_DATA_DIR`, sets it empty, or points it into the checkout. Each case is
+    planted; a scratch store outside the checkout, and ordinary work, run."""
+
+    @pytest.mark.parametrize("command", [
+        "unset NMAS_DATA_DIR; python3 peek.py",
+        "env -u NMAS_DATA_DIR python3 peek.py",
+        "env --unset=NMAS_DATA_DIR python3 peek.py",
+        "export -n NMAS_DATA_DIR && python3 peek.py",
+        "NMAS_DATA_DIR= python3 peek.py",
+        "NMAS_DATA_DIR=data python3 peek.py",
+        f"NMAS_DATA_DIR={ROOT}/data python3 peek.py",
+        f"export NMAS_DATA_DIR={ROOT}",
+        "python3 -c \"import os; os.environ.pop('NMAS_DATA_DIR'); import modules.config\"",
+        "python3 -c 'import os; del os.environ[\"NMAS_DATA_DIR\"]'",
+    ])
+    def test_leaving_the_scratch_store_is_refused(self, command):
+        r = store_hook(command)
+        assert r.returncode == 2, (command, r.stderr)
+        assert "NMAS_DATA_DIR" in r.stderr and "C2612" in r.stderr, r.stderr
+
+    def test_a_scratch_script_that_drops_it_is_refused(self, tmp_path):
+        script = tmp_path / "survey.py"
+        script.write_text("import os\nos.environ.pop('NMAS_DATA_DIR', None)\n"
+                          "import modules.settings_schema\n", encoding="utf-8")
+        r = store_hook(f"python3 {script}")
+        assert r.returncode == 2 and "survey.py" in r.stderr, r.stderr
+
+    @pytest.mark.parametrize("command", [
+        "NMAS_DATA_DIR=/tmp/nmas-scratch-store python3 peek.py",
+        "env NMAS_DATA_DIR=/tmp/elsewhere python3 -c 'print(1)'",
+        "scripts/nmas-test tests/test_repo.py -q",
+        "git status --porcelain",
+        "grep -n NMAS_DATA_DIR modules/config.py",
+    ])
+    def test_a_scratch_store_and_ordinary_work_run(self, command):
+        r = store_hook(command)
+        assert r.returncode == 0, (command, r.stderr)
+
+    def test_a_relative_path_resolves_against_the_calls_folder(self, tmp_path):
+        """`data` from the checkout is the live store; from a scratch folder it is not."""
+        assert store_hook("NMAS_DATA_DIR=data python3 peek.py", cwd=ROOT).returncode == 2
+        assert store_hook("NMAS_DATA_DIR=data python3 peek.py",
+                          cwd=str(tmp_path)).returncode == 0

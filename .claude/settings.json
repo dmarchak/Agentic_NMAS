@@ -1,4 +1,8 @@
 {
+  "env": {
+    "NMAS_DATA_DIR": "/tmp/nmas-agent-store",
+    "NMAS_AGENT_STORE": "/tmp/nmas-agent-store"
+  },
   "permissions": {
     "deny": [
       "mcp__claude_ai_Gmail",

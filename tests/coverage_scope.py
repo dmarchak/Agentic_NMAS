@@ -4,7 +4,7 @@ package structure decides, and this file names ONLY the exceptions, each with it
 
 The structure (`RULES`, first match wins):
 - `modules/nsot/`, `modules/readers/`, `modules/inventory/`, `modules/integrations/`,
-  `modules/sdn/`, and
+  `modules/sdn/`, `modules/jobs/`, `modules/apps/`, and
   every other module directly in `modules/`: **automation**, the code that reads, renders,
   checks, deploys and records network state;
 - `routes/` and `app.py`: **support**, the web layer around it.
@@ -25,6 +25,8 @@ RULES = (
     ("modules/inventory/", AUTOMATION, "device inventory sources"),
     ("modules/integrations/", AUTOMATION, "NetBox, Kea, git, S3 and the other services"),
     ("modules/sdn/", AUTOMATION, "SDN controllers: their drivers, flows and responses"),
+    ("modules/jobs/", AUTOMATION, "jobs: their contract, SDK, change plan and lifecycle"),
+    ("modules/apps/", AUTOMATION, "controller apps: their manifest"),
     ("modules/", AUTOMATION, "Mercury's modules, unless named below"),
     ("routes/", SUPPORT, "the web routes: the interface around the automation"),
     ("app.py", SUPPORT, "the web application's entry point and its legacy routes"),
@@ -103,6 +105,7 @@ EXCEPTIONS = {
     "modules/update_op.py": (SUPPORT, "the app's own update"),
     "modules/utils.py": (SUPPORT, "small shared helpers"),
     "modules/warmup.py": (SUPPORT, "the app's warm-up at start and the readiness it reports"),
+    "modules/jobs/testing.py": (SUPPORT, "the fixtures' context a job's unit test runs it in"),
     "modules/integrations/grafana.py": (SUPPORT, "dashboards for the monitoring pages"),
     "modules/integrations/loki.py": (SUPPORT, "log queries for the Logs pages"),
     "modules/integrations/prometheus.py": (SUPPORT, "metric queries for the monitoring pages"),

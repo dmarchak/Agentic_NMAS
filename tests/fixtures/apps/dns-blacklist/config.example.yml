@@ -1,0 +1,13 @@
+# An example config for dns_blacklist (documentation values only), valid against its
+# manifest's config_schema (tests/test_app_manifest.py). On a real network Mercury compiles the
+# config; the verdict service's address is the network's.
+verdict_service:
+  url: http://192.0.2.53:8053/verdict
+  timeout_seconds: 0.5
+  on_unavailable: allow
+cache:
+  max_entries: 10000
+  ttl_seconds: 300
+overrides:
+  allow: [allowed.example.invalid]
+  block: [blocked.example.invalid, "*.blocked-zone.example.invalid"]

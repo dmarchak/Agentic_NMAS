@@ -336,3 +336,17 @@ class TestItReadsTheSuitesStoreNotTheCheckouts:
         monkeypatch.delenv(H.HOSTS_FILE_ENV, raising=False)
         monkeypatch.delenv("NMAS_DATA_DIR", raising=False)
         assert H.hosts_path() == H.HOSTS_FILE
+
+    def test_the_agents_scratch_store_reads_the_checkouts_hosts(self, tmp_path, monkeypatch):
+        """C2612: the agent's processes run on a scratch store (`.claude/settings.json`),
+        named in NMAS_AGENT_STORE too; it holds no hosts file, so the checkout's is read."""
+        monkeypatch.delenv(H.HOSTS_FILE_ENV, raising=False)
+        monkeypatch.setenv("NMAS_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("NMAS_AGENT_STORE", str(tmp_path))
+        assert H.hosts_path() == H.HOSTS_FILE
+
+    def test_a_suites_store_beside_the_agents_is_still_the_suites(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(H.HOSTS_FILE_ENV, raising=False)
+        monkeypatch.setenv("NMAS_DATA_DIR", str(tmp_path / "suite"))
+        monkeypatch.setenv("NMAS_AGENT_STORE", str(tmp_path / "agent"))
+        assert H.hosts_path() == str(tmp_path / "suite" / "lab_hosts.json")

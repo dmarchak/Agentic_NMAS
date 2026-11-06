@@ -1,4 +1,10 @@
-# Runbooks and procedures: engineers' own repeatable work, without a script runner (a FUTURE design; not built)
+# Runbooks and procedures: engineers' own repeatable work (a FUTURE design; not built)
+
+**Amended 2026-11-06 (the operator's decision 2 on the SDN platform design):** I-1's jobs, saved
+and reviewed scripts run in a sandbox, reverse sections 4 and 5's "no script runner" on the
+terms those sections now state. The rest of this document, written 2026-10-17, describes the
+runbooks and procedures that sit beside jobs, and where it says Mercury runs no scripts it is
+superseded by sections 4 and 5.
 
 **FUTURE, post-cutover (Phase 8 or later); not Phase 7 work.** Decided by the operator on
 2026-10-17 and registered as C1147. Written that day from the operator's brief and from the code
@@ -11,8 +17,9 @@ Engineers want to save their own procedures and run them again: the checks they 
 after a change, the evidence they collect for a ticket, and the sequence of steps a recurring
 change takes. Elsewhere, they would write a script or an Ansible playbook for this.
 
-Mercury will not run their scripts (section 5 says why). Instead it offers three things, each
-built on a path that already has its guards:
+As written on 2026-10-17, Mercury would not run their scripts; since 2026-11-06 it runs reviewed
+ones as I-1's jobs, on section 5's amended terms. Beside jobs it offers three things, each built
+on a path that already has its guards:
 
 - **(a) Runbooks:** named, parameterised sets of READ commands across chosen devices, with
   optional parsers and a report.
@@ -131,16 +138,45 @@ procedure X" always names exactly which X ran.
 
 ## 4. What it must never do
 
+**Amended 2026-11-06, the operator's decision 2 of that day** (the SDN platform design r4,
+section 11, I-1; its first code is the contracts, `modules/jobs/`). Jobs, Mercury's saved
+Python scripts, reverse the last rule below on change A's terms. Its intent stands: **no
+unreviewed code commits a change.** Runbooks and procedures keep every rule as written. Jobs
+meet each rule's intent as the bullets say.
+
 - **No new write path to a device.** A test can hold this. Runbooks reach devices only through
   `reads.run`. Procedures reach devices only by calling the operations' own routes or functions.
   Neither module imports the sender, `open_ssh`, or a config-mode call.
+  - **A job's writes build a change plan** (`ctx.changes`, `modules/jobs/sdk.py`). Its commit
+    sends the plan only through the guarded write path: B, the approvals, the feature engine,
+    `flow_ops`, H's policy push, and the post-checks.
+  - A job reaches devices for reads only through the SDK's allowlisted reads. It is never
+    given the sender, `open_ssh`, a socket or a token.
 - **No stored or embedded credentials.** Runbooks and procedures name no credential. The reads
   engine and the operations resolve credentials as they do today.
+  - A job names none either. The SDK uses credentials as opaque handles the job cannot read.
 - **No second inventory.** Targets resolve from Mercury's own devices. An exported Ansible
   inventory is output, never read back.
-- **No unreviewed code.** A runbook is commands and a parser template. A procedure is a list of
-  operation names and their parameters. Neither carries Python, Jinja that runs on the server
-  outside the template sandbox, or a shell command.
+  - A job's scope (the NetBox object types and roles it may reach) resolves from NetBox
+    through Mercury.
+  - The broker enforces that scope in Mercury's own process, never inside the job's sandbox.
+- **No unreviewed code commits a change** (until 2026-11-06: "no unreviewed code"). A runbook
+  is commands and a parser template. A procedure is a list of operation names and their
+  parameters. Neither carries Python, Jinja that runs on the server outside the template
+  sandbox, or a shell command. A job is Python, and:
+  - **a Draft is unreviewed:** it runs for its author only, and in plan mode only. It records
+    its intended writes and applies nothing;
+  - **only a Published version commits.** It was reviewed by someone other than its author
+    (self-review only where the installation's policy is single-user, and recorded as such),
+    its harness tests passed, and it is pinned by its folder's content hash. Any edit returns
+    it to Draft (`modules/jobs/lifecycle.py`);
+  - **every job runs in the job sandbox,** Draft or Published, written by a person or by J:
+    the static check, the runner's audit hook, and the operating system's unit pair. An
+    installation without the sandbox refuses every job run by name. There is never a weaker
+    fallback.
+
+  **Built so far:** the contracts and the lifecycle's pure functions (phase P1). The runner,
+  the sandbox and the commit path are P4's, so until P4 lands no job runs on any installation.
 
 ## 5. Decided against: Mercury running arbitrary or AI-generated playbooks
 
@@ -163,6 +199,33 @@ The operator's decision, 2026-10-17, with its reasons:
 
 Ansible stays possible where it belongs: an organisation that runs Ansible can consume Mercury's
 export, and send its lines back through config to intent.
+
+**Amended 2026-11-06, the operator's decision 2 of that day: jobs (I-1) reverse this decision,
+on change A's terms.** The decision stands for Ansible playbooks, and for any code outside a
+job's terms. A job (the SDN platform design r4, section 11) meets each of the four reasons
+above as follows:
+
+1. **Intent:** a job's device change is a change plan, committed through the same feature
+   engine, B (the protected set) and post-checks as Mercury's own operations, with a receipt.
+   It is never a side channel to the device.
+2. **Credentials:** a job holds none. The SDK uses them as opaque handles the job cannot read.
+3. **A second inventory and a second supply chain:**
+   - the scope resolves from NetBox through Mercury;
+   - a job imports only the SDK and an allowlist of plain-data standard-library modules, by
+     the static check run before every job. No collection or package comes with a job.
+4. **Unreviewed code with privileged access:**
+   - a Draft runs only in plan mode, and only for its author;
+   - every job runs in the sandbox, behind the broker;
+   - only a Published version commits: reviewed by someone other than its author, and pinned
+     by its content hash;
+   - its commit goes through preview, confirm by hash, hold, verify and rollback, as every
+     device-changing operation does;
+   - every write carries the run's cookie or receipt id, so the run's undo removes exactly
+     what it made.
+
+   A job J writes is a Draft like any other, reviewed by a person before it can commit.
+
+Until P4 builds the runner and the sandbox, no job runs (section 4's note).
 
 ## 6. Size, and order
 

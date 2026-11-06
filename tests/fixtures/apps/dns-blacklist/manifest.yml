@@ -1,0 +1,97 @@
+# The contract fixture for the dns-blacklist controller app (the SDN platform design r4,
+# sections 12 and 14): the manifest the teammates' app ships, validated by
+# modules/apps/manifest.py (tests/test_app_manifest.py). Every value is a placeholder or a
+# documentation value (192.0.2.0/24, 2001:db8::/32, example.invalid); the network's own values
+# are its config, compiled by Mercury, never written here.
+#
+# The name is dns_blacklist: an app's name is a Python module path on the controller
+# (^[a-z][a-z0-9_]{0,40}$, the rule section 10's apply script checks), where a hyphen cannot go.
+name: dns_blacklist
+version: 0.1.0
+summary: Inspects DNS queries punted to the controller and answers or forwards each by its verdict.
+controllers:
+  ryu: ">=4.34"
+openflow_versions: ["1.3"]
+requires: []
+config_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+  required: [verdict_service, cache, overrides]
+  properties:
+    verdict_service:
+      description: >-
+        Where the controller asks for a domain's verdict, and how long it waits. An IPv6
+        literal is bracketed, as a URL writes it.
+      type: object
+      additionalProperties: false
+      required: [url, timeout_seconds]
+      properties:
+        url:
+          type: string
+          pattern: '^https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$'
+        timeout_seconds:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 10
+        on_unavailable:
+          description: >-
+            What a query gets while the verdict service does not answer. allow (the default;
+            the operator, 2026-11-06): DNS is a protected class with a must_reach invariant, so
+            failing closed would break DNS for every host whenever the service is down; a
+            verdict still in the cache is honoured for its TTL, and a domain with none is
+            allowed and logged, while the app's /health reports the service down, which
+            Mercury raises as a Needs attention row naming the service, clearing when it
+            answers. block is selectable per network; its explain-back says what it costs.
+          enum: [allow, block]
+          default: allow
+    cache:
+      description: Verdicts kept, and for how long.
+      type: object
+      additionalProperties: false
+      required: [max_entries, ttl_seconds]
+      properties:
+        max_entries:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        ttl_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+    overrides:
+      description: Domains decided here, before any verdict is asked; block wins over allow.
+      type: object
+      additionalProperties: false
+      properties:
+        allow:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/$defs/domain"}
+        block:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/$defs/domain"}
+  $defs:
+    domain:
+      description: A domain, or every name under one (a leading "*.").
+      type: string
+      pattern: '^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\.?$'
+rest:
+  prefix: /dns_blacklist
+  endpoints:
+    - path: /health
+      methods: [GET]
+      summary: The app is loaded and its verdict service answers.
+    - path: /validate
+      methods: [POST]
+      summary: Checks a policy without applying it.
+    - path: /policy
+      methods: [GET, PUT]
+      summary: The policy (this manifest's config) read back, or replaced.
+owns_flows:
+  cookie_prefix: "0xd500000000000000"
+  cookie_mask: "0xff00000000000000"
+  classes: [dns]
+tests:
+  - tests/test_dns_blacklist.py

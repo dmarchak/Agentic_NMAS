@@ -84,10 +84,19 @@ def hosts_path() -> str:
     """NMAS_LAB_HOSTS, else the data directory's file. The data directory is
     `NMAS_DATA_DIR` when set, as for the program (`config.DATA_DIR`), so a
     process the suite starts reads the suite's store and never this
-    checkout's real hosts (2026-09-29: the C46 test's sanitiser read them)."""
+    checkout's real hosts (2026-09-29: the C46 test's sanitiser read them).
+
+    C2612: the agent's tool processes run with `NMAS_DATA_DIR` on a scratch store, named again
+    in `NMAS_AGENT_STORE` (`.claude/settings.json`). That store holds no hosts file and is not
+    a test's, so when the two name the same folder this reads the checkout's file. A suite's
+    store is its own fresh folder, never the agent's, so a process the suite starts still
+    reads the suite's."""
     if os.environ.get(HOSTS_FILE_ENV):
         return os.environ[HOSTS_FILE_ENV]
     data = os.environ.get("NMAS_DATA_DIR")
+    agent = os.environ.get("NMAS_AGENT_STORE")
+    if data and agent and os.path.realpath(data) == os.path.realpath(agent):
+        return HOSTS_FILE
     return os.path.join(data, "lab_hosts.json") if data else HOSTS_FILE
 
 
