@@ -115,6 +115,38 @@ built. The need is a section of each feature card (PHASE8_PLAN section 3).
 2026-10-17). Every feature works on an IPv6-only management network; the audit, the designs and
 the measurement plan are `docs/IPV6_PARITY.md`, the epic C1245 (FUTURE, Phase 8's first).
 
+## Implement by concept, approve by outcome
+
+**Mercury lets someone who understands a technology conceptually implement it without knowing
+how to configure it** (the operator, 2026-11-06). Such a person can't judge CLI lines or flow
+rules, so asking them to approve a change set makes the approval a formality. Mercury asks them
+to approve what they can judge, and proves the rest. The outcome view is the default, never the
+only view: an expert can always work at the mechanism level, by hand.
+
+1. **Approve the outcome, not the mechanism.** Every preview of a change, and every AI
+   proposal, leads with what will be true afterwards, in concepts. Then come the blast radius
+   (the devices touched, the traffic classes affected, and each protected class untouched or
+   not), the checks that will prove it, and how to undo it. The exact change set is one level
+   down, never removed, and it is still what is confirmed and sent.
+2. **Verify against stated outcomes.** Every intent, and every generated job, carries
+   outcome checks in plain Given/When/Then, written or confirmed by the person. They are
+   checked before by simulation on the network's model, and after on the network. A failed
+   check before refuses the change; a failed check after rolls it back. A check Mercury cannot
+   decide is shown as "can't tell", never as a pass, and the person sees that before approving.
+3. **Trade-offs are asked, once.** A trade-off the person can't judge (failing open or closed,
+   a timeout, a wider scope) is never chosen silently: it is stated in plain terms, with the
+   cost of each side, and asked once per network. The answer is recorded (who, when, the costs
+   shown), shown in every later explain-back with how to change it, and asked again only when
+   its context changes.
+4. **Expert review happens once, in the catalogue.** What Mercury can do by intent is a
+   catalogue of typed entries, each with its compiler per platform and its verification,
+   reviewed once as code by someone who understands the mechanism. Applying an entry needs
+   only outcome-level approval, within the network's autonomy tiers. A request outside the
+   catalogue becomes a generated job, and a knowledgeable reviewer must publish it.
+
+**The test, beside the industry need:** a feature that changes the network states the outcome
+a non-expert approves, and the checks that prove it.
+
 ## AI-assisted actions
 
 The Actions menu distinguishes two kinds:
@@ -127,8 +159,10 @@ The Actions menu distinguishes two kinds:
 its expected effects, how success is verified, and its reasoning. It starts from a known
 pattern (the platform's drain profile, for example) and fills in what is specific (a
 neighbour's static route, for example).
-- **A person reviews, edits and confirms it.** It runs through the same pipeline as every
-  operation, and is recorded as "proposed by the agent, confirmed by <person>".
+- **A person reviews the outcome, the blast radius and the undo first (the change set one level
+  down), edits and confirms it** ("Implement by concept, approve by outcome", above). It runs
+  through the same pipeline as every operation, and is recorded as "proposed by the agent,
+  confirmed by <person>".
 - **The safety floor applies:** never the management path; success judged by measurement.
 - **With the agent off,** the action falls back to its built-in runbook or to manual intent
   edits. Nothing is possible ONLY with AI.
