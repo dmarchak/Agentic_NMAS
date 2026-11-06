@@ -91,6 +91,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c1836-flask-app-journal.sh",
             # C2125: Alloy's severity stage takes a mixed-case facility (2026-10-28).
             "c2125-alloy-mixed-case-facility.sh",
+            # C2613: no_change_windows set through write_settings, both seasons (2026-11-06).
+            "c2613-no-change-windows.sh",
             # C1917: NetBox admitted from the operator's laptop only, in DOCKER-USER (2026-10-27).
             "c1917-netbox-docker-user.sh",
             # C2323: the telemetry rules regenerated with their real detection time and

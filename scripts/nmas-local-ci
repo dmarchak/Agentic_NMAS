@@ -791,7 +791,7 @@ def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: st
 def in_quiet(window: str, now: float) -> bool:
     """Whether *now* is inside *window*, "HH:MM-HH:MM" in UTC, or "HH:MM-HH:MM@<zone>" in an
     IANA zone's local time, so a window a schedule keeps in local time (the lab's backup,
-    "02:30-03:10@America/Denver") holds across daylight saving (C2613); no space, since the
+    "02:30-03:30@America/Denver") holds across daylight saving (C2613); no space, since the
     environment file is read word by word. Empty: never. A zone this machine cannot read is
     quiet: a guard that cannot ask refuses."""
     m = re.match(r"^(\d\d):(\d\d)-(\d\d):(\d\d)(?:@(\S+))?$", (window or "").strip())

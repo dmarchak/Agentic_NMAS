@@ -5,9 +5,9 @@ The job runs at 02:30 in the hypervisor's local time, America/Denver, every nigh
 2026-11-06 from the hypervisor's task list: 02:30 MDT through 2026-10-31, 02:30 MST from
 2026-11-01, 33 to 37 minutes each). Every guard written before then held 08:30 to 09:10 UTC, so
 from 2026-11-01 each guarded an hour the backup no longer ran in and let a start through at
-09:30 UTC, inside it. The window is now stated as the job states it, 02:30 to 03:10
-America/Denver, and converted at the instant asked: 08:30 to 09:10 UTC under MDT, 09:30 to
-10:10 UTC under MST. A machine that cannot read the zone refuses.
+09:30 UTC, inside it. The window is now stated as the job states it, 02:30 to 03:30
+America/Denver, and converted at the instant asked: 08:30 to 09:30 UTC under MDT, 09:30 to
+10:30 UTC under MST. A machine that cannot read the zone refuses.
 
 The population is defined by the property, a guard: a tracked file under scripts/ or
 .github/workflows/ that names the backup window AND decides on it (a host step's
@@ -26,7 +26,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: The window as the job states it (CLAUDE.md, standing facts; C2613).
-ZONE, START, END = "America/Denver", "02:30", "03:10"
+ZONE, START, END = "America/Denver", "02:30", "03:30"
 
 #: What makes a file a guard on the window, beside naming it.
 _DECIDES = re.compile(r"echo inside|in_backup_window|ok=false")
@@ -100,10 +100,10 @@ def _host_step_checks():
 
 @pytest.mark.parametrize("utc, answer", [
     ("2026-10-30T08:29:00Z", "outside"), ("2026-10-30T08:30:00Z", "inside"),
-    ("2026-10-30T09:09:00Z", "inside"), ("2026-10-30T09:10:00Z", "outside"),      # MDT
+    ("2026-10-30T09:29:00Z", "inside"), ("2026-10-30T09:30:00Z", "outside"),      # MDT
     ("2026-11-06T08:30:00Z", "outside"), ("2026-11-06T09:29:00Z", "outside"),
-    ("2026-11-06T09:30:00Z", "inside"), ("2026-11-06T10:09:00Z", "inside"),
-    ("2026-11-06T10:10:00Z", "outside")])                                         # MST
+    ("2026-11-06T09:30:00Z", "inside"), ("2026-11-06T10:29:00Z", "inside"),
+    ("2026-11-06T10:30:00Z", "outside")])                                         # MST
 def test_each_host_steps_check_answers_in_both_seasons(utc, answer):
     at = calendar.timegm(time.strptime(utc, "%Y-%m-%dT%H:%M:%SZ"))
     for path, expr in _host_step_checks():

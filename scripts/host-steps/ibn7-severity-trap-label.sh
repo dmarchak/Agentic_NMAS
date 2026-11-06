@@ -30,7 +30,7 @@
 # `[trap-label]` reads it once the operator's port flap sends one. On any failure the previous
 # config is put back.
 #
-# Run on the NMAS host, as the operator's own user, outside the backup window, 02:30-03:10 America/Denver:
+# Run on the NMAS host, as the operator's own user, outside the backup window, 02:30-03:30 America/Denver:
 #     bash <checkout>/scripts/host-steps/ibn7-severity-trap-label.sh
 . "$(dirname "$0")/lib.sh"
 
@@ -158,7 +158,7 @@ ON_FAIL_WHAT="put the previous config back and restart Alloy"
 ON_FAIL="[ -e '$BEFORE' ] && sudo install -m 0644 -o root -g root '$BEFORE' '$CONFIG' && sudo systemctl restart alloy && systemctl is-active alloy"
 
 plan "run as the operator's own user, not root" \
-     "outside the backup window (02:30 to 03:10 America/Denver)" \
+     "outside the backup window (02:30 to 03:30 America/Denver)" \
      "Loki answers" \
      "the host label is the one Loki holds" \
      "the installed config is C722's (two process stages, no severity yet)" \
@@ -174,8 +174,8 @@ plan "run as the operator's own user, not root" \
      "a trap carries job=snmptrapd and trap_oid"
 
 not_root
-check "outside the backup window (02:30 to 03:10 America/Denver)" eq "outside" \
-    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 310 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
+check "outside the backup window (02:30 to 03:30 America/Denver)" eq "outside" \
+    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 330 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
 check "Loki answers" eq "ready" "curl -s --max-time 5 http://127.0.0.1:3100/ready"
 check "the host label is the one Loki holds" has "\"$HOSTLABEL\"" \
     "curl -sG --max-time 10 http://127.0.0.1:3100/loki/api/v1/label/host/values"

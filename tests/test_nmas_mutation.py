@@ -1367,9 +1367,9 @@ class TestTheWorkflow:
 
     def test_it_runs_weekly_outside_the_backup_window_and_by_hand_never_on_a_push(self):
         """The operator, 2026-10-25 (C835's condition met): WEEKLY, scheduled, as a measurement,
-        outside 08:30 to 09:10 UTC, and by hand; never on a push or a pull request. A schedule
-        can fire hours late (C772), so the `window` job refuses a start inside the window and
-        the mutation job runs only when it says so."""
+        outside the backup window (02:30 to 03:30 America/Denver), and by hand; never on a push
+        or a pull request. A schedule can fire hours late (C772), so the `window` job refuses a
+        start inside the window and the mutation job runs only when it says so."""
         doc = self.doc()
         on = doc[True]                           # YAML reads the bare key `on` as True
         assert set(on) == {"schedule", "workflow_dispatch"}
@@ -1377,21 +1377,21 @@ class TestTheWorkflow:
         minute, hour, dom, month, dow = cron.split()
         assert (dom, month) == ("*", "*") and dow.isdigit(), "once a week"
         start = int(hour) * 60 + int(minute)
-        # Outside the window in BOTH seasons (C2613): 08:30 to 09:10 UTC under MDT, 09:30 to
-        # 10:10 under MST.
+        # Outside the window in BOTH seasons (C2613): 08:30 to 09:30 UTC under MDT, 09:30 to
+        # 10:30 under MST.
         assert not 8 * 60 + 30 <= start < 10 * 60 + 10, cron
         assert doc["jobs"]["mutate"]["needs"] == "window"
         assert doc["jobs"]["mutate"]["if"] == "needs.window.outputs.ok == 'true'"
         guard = doc["jobs"]["window"]["steps"][0]["run"]
-        assert 'TZ=America/Denver' in guard and '-ge 230' in guard and '-lt 310' in guard
+        assert 'TZ=America/Denver' in guard and '-ge 230' in guard and '-lt 330' in guard
         assert "ok=false" in guard
 
     @pytest.mark.parametrize("utc,ok", [
         ("2026-10-30T08:29:00Z", True), ("2026-10-30T08:30:00Z", False),
-        ("2026-10-30T09:09:00Z", False), ("2026-10-30T09:10:00Z", True),     # MDT
+        ("2026-10-30T09:29:00Z", False), ("2026-10-30T09:30:00Z", True),     # MDT
         ("2026-11-06T08:30:00Z", True), ("2026-11-06T09:29:00Z", True),
-        ("2026-11-06T09:30:00Z", False), ("2026-11-06T10:09:00Z", False),
-        ("2026-11-06T10:10:00Z", True), ("2026-11-08T14:00:00Z", True)])     # MST
+        ("2026-11-06T09:30:00Z", False), ("2026-11-06T10:29:00Z", False),
+        ("2026-11-06T10:30:00Z", True), ("2026-11-08T14:00:00Z", True)])     # MST
     def test_the_window_guard_refuses_exactly_inside_the_backup_window(self, utc, ok, tmp_path):
         """The guard's own shell, run with the clock replaced by a real instant, the zone
         conversion its own: 02:30 to 03:09 America/Denver refused, in both seasons (C2613)."""
@@ -1405,8 +1405,10 @@ class TestTheWorkflow:
         assert out.read_text().strip() == f"ok={'true' if ok else 'false'}"
 
     def test_a_runner_that_cannot_read_the_zone_mutates_nothing(self, tmp_path):
-        """An unknown zone makes `date` answer in UTC silently; the guard reads the zone's name
-        and refuses, naming what it read."""
+        """An unknown zone makes `date` answer in UTC silently, under a name that varies by C
+        library and its zone data (this laptop's glibc prints "UTC", GitHub's ubuntu-24.04
+        runner the zone's own first part, "Nowhere": CI #1487); the guard reads the zone's name,
+        refuses anything but MST or MDT, and names what it read."""
         guard = self.doc()["jobs"]["window"]["steps"][0]["run"]
         noon = calendar.timegm((2026, 11, 6, 12, 0, 0, 0, 0, 0))
         script = guard.replace("t=$(date +%s)", f"t={noon}").replace(
@@ -1415,7 +1417,8 @@ class TestTheWorkflow:
         r = subprocess.run(["bash", "-c", script], env=dict(os.environ, GITHUB_OUTPUT=str(out)),
                            check=True, capture_output=True, text=True)
         assert out.read_text().strip() == "ok=false"
-        assert "reads the zone America/Denver as 'UTC'" in r.stdout, r.stdout
+        m = re.search(r"reads the zone America/Denver as '([^']*)'", r.stdout)
+        assert m and m.group(1) not in ("MST", "MDT"), r.stdout
 
     def test_a_labelled_dispatch_runs_beside_the_others_and_keeps_its_record_apart(self):
         """Lab 9, 2026-10-23 (the operator): the blocking function groups are measured in

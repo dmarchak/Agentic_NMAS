@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""C2613: read and set the installation's `no_change_windows` through the one write path,
+`settings_schema.write_settings()`, the app's side of the host step
+`scripts/host-steps/c2613-no-change-windows.sh`. The setting has no screen yet (C2611) and holds
+UTC only (C2614), so until both are fixed this is how it is set, never by editing the file.
+
+    nmas-no-change-windows show
+        # the windows as set, one JSON line (`[]` when none)
+    nmas-no-change-windows set --expect JSON --to JSON --actor WHO
+        # writes TO only when the windows set now are exactly EXPECT
+
+`set` refuses, naming both operands, when the windows set now are not EXPECT (so a value
+changed since it was read is never overwritten blind), when TO is not a list of
+`{start, end, reason}` the schema accepts, and when no actor is named. It prints the windows
+before and after, and reads them back: the write is judged by the read, not by its return.
+Window values are not secrets; nothing else in the settings is printed.
+
+Exit 0 done or shown, 1 refused, 2 the write did not read back as written.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+SETTING = "no_change_windows"
+
+
+def _current():
+    from modules.settings_schema import get_setting
+    return get_setting(SETTING, [])
+
+
+def _line(value) -> str:
+    return json.dumps(value, sort_keys=True)
+
+
+def show() -> int:
+    print(_line(_current()))
+    return 0
+
+
+def set_windows(expect, to, actor: str) -> int:
+    from modules.settings_schema import write_settings
+    if not actor.strip():
+        print("REFUSED: no --actor: who is accountable for this write")
+        return 1
+    if not isinstance(to, list) or not all(isinstance(w, dict) for w in to):
+        print(f"REFUSED: --to is not a list of windows: {_line(to)}")
+        return 1
+    before = _current()
+    print(f"before: {_line(before)}")
+    if _line(before) == _line(to):
+        print("already set: nothing written")
+        return 0
+    if _line(before) != _line(expect):
+        print(f"REFUSED: the windows set now are not the ones expected: set now "
+              f"{_line(before)}, expected {_line(expect)}; nothing written")
+        return 1
+    got = write_settings({SETTING: to}, actor=actor)
+    if not got.get("ok"):
+        print(f"REFUSED: write_settings refused it: {got.get('error')}; nothing written")
+        return 1
+    after = _current()
+    print(f"after: {_line(after)}")
+    if _line(after) != _line(to):
+        print(f"FAILED: the windows read back {_line(after)}, not {_line(to)}")
+        return 2
+    print(f"written by {actor}, read back as written")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="nmas-no-change-windows")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("show")
+    s = sub.add_parser("set")
+    s.add_argument("--expect", required=True, help="the windows set now, as JSON")
+    s.add_argument("--to", required=True, help="the windows to set, as JSON")
+    s.add_argument("--actor", default="", help="who is accountable")
+    args = ap.parse_args(argv)
+    if args.cmd == "show":
+        return show()
+    try:
+        expect, to = json.loads(args.expect), json.loads(args.to)
+    except ValueError as exc:
+        print(f"REFUSED: --expect or --to is not JSON: {exc}")
+        return 1
+    return set_windows(expect, to, args.actor)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

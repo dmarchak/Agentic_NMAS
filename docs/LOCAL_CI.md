@@ -171,7 +171,7 @@ file itself, in containers, which are the standard isolation for CI jobs.
 - **A fresh environment at the exact sha.** A fresh clone, and act's throwaway containers from an image pinned by content. Reproducible builds pin the build environment by content, not by tag.
 - **Bounds.** The workflow's own `timeout-minutes`, and a whole-run bound of 180 minutes: ci.yml's job bounds summed (3 + 5 x 26 + 10 = 143 minutes, its jobs one after another here) plus a quarter for container starts. It is re-derived as 2.5 times the median of the host's recorded `duration_s` once a week of runs exists (CLAUDE.md, bounds from measurement).
 - **Root-owned: the standard library and the system's python3-yaml only.** It runs as `/usr/bin/python3 -I`, by its shebang and by the unit's ExecStart, and never imports the user-writable checkout (the updater's rule, docs/UPDATE.md). git, act and docker run by absolute path, and root's git allows only the https and file transports. For that reason the runner does not take the app's interpreter or `repo.run_git`, as `scripts/nmas-oxidized-cred` does not. tests/test_app_interpreter.py exempts both from the app-interpreter rule and holds them to this one instead (`root_copy_problems`): the shebang and every unit running the copy name `/usr/bin/python3 -I`; every import, top-level or inside a function, is the standard library's or a declared system package's, never a name the checkout holds; and nothing adds to `sys.path` or loads a module by name or by file. A planted import from the checkout fails it. Docker access is root-equivalent, so the service runs as root, and the jobs' isolation is the containers.
-- **A quiet window** (`NMAS_LOCAL_CI_QUIET`, in the unit's environment file; `HH:MM-HH:MM` in UTC, or `HH:MM-HH:MM@<zone>` in an IANA zone's local time; this lab sets `02:30-03:10@America/Denver`, the nightly backup, which the hypervisor schedules in its own local time, so it is 08:30 to 09:10 UTC under MDT and 09:30 to 10:10 under MST, C2613): no run starts inside it, nor while the zone cannot be read.
+- **A quiet window** (`NMAS_LOCAL_CI_QUIET`, in the unit's environment file; `HH:MM-HH:MM` in UTC, or `HH:MM-HH:MM@<zone>` in an IANA zone's local time; this lab sets `02:30-03:30@America/Denver`, the nightly backup, which the hypervisor schedules in its own local time, so it is 08:30 to 09:30 UTC under MDT and 09:30 to 10:30 under MST; the end is about 1.6 times the longest measured run, 36.6 minutes, C2613): no run starts inside it, nor while the zone cannot be read.
 
 ## 3. The verdict record, per sha and tree
 
@@ -455,7 +455,7 @@ data/lab_hosts.json), and `<account>` the repository's owner, read from the chec
    - `NMAS_LOCAL_CI_ORIGIN=https://github.com/<account>/Agentic_NMAS.git`;
    - `NMAS_LOCAL_CI_PLATFORM=ubuntu-24.04=$img`, the ID from step 6, written out;
    - `NMAS_LOCAL_CI_SECCOMP=/etc/nmas/local-ci-seccomp.json`;
-   - `NMAS_LOCAL_CI_QUIET=02:30-03:10@America/Denver` (no space: the check below reads the
+   - `NMAS_LOCAL_CI_QUIET=02:30-03:30@America/Denver` (no space: the check below reads the
      file word by word; until 2026-11-06 this was `08:30-09:10`, UTC, wrong from 2026-11-01
      under MST, C2613).
    - Check: `sudo /usr/bin/env $(cat /etc/nmas/local-ci.env) /usr/bin/python3 -I
@@ -493,8 +493,8 @@ data/lab_hosts.json), and `<account>` the repository's owner, read from the chec
 
 ## 12. The first measured run (the main thread's, on the host)
 
-Outside the nightly backup, 02:30 to 03:10 America/Denver (08:30 to 09:10 UTC under MDT, 09:30
-to 10:10 under MST), with no walk in progress, after section 11's
+Outside the nightly backup, 02:30 to 03:30 America/Denver (08:30 to 09:30 UTC under MDT, 09:30
+to 10:30 under MST), with no walk in progress, after section 11's
 steps 1 to 8.
 
 **The command:**

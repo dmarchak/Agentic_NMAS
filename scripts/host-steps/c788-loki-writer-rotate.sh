@@ -2,7 +2,7 @@
 # C788 (the operator, 2026-10-14: rotate now, and move the secret out of the URL). Loki's
 # storage URL carried MinIO's loki-writer key inline (`s3: http://<user>:<secret>@<host>/loki`
 # in /etc/loki/local-config.yaml), and a survey printed it once. The operator's, on the NMAS
-# host, as their own user (sudo asked once), outside the backup window, 02:30 to 03:10 America/Denver:
+# host, as their own user (sudo asked once), outside the backup window, 02:30 to 03:30 America/Denver:
 #     bash <checkout>/scripts/host-steps/c788-loki-writer-rotate.sh
 #
 #   1. a dated copy of Loki's configuration and the container's definition, with this step's
@@ -224,7 +224,7 @@ undo() {
 export -f recreate ready policy_of undo
 
 plan "run as the operator's own user, not root" \
-     "outside the nightly backup window (02:30 to 03:10 America/Denver)" \
+     "outside the nightly backup window (02:30 to 03:30 America/Denver)" \
      "this is the NMAS host: Loki's container, MinIO's environment file, mc, Mercury's Python with boto3" \
      "the running Loki container is the one this step recreates" \
      "the dated copy reads back the same as the configuration" \
@@ -246,8 +246,8 @@ plan "run as the operator's own user, not root" \
      "neither secret appears in this run's output or in the configuration"
 
 not_root
-check "outside the nightly backup window (02:30 to 03:10 America/Denver)" eq "outside" \
-    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 310 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
+check "outside the nightly backup window (02:30 to 03:30 America/Denver)" eq "outside" \
+    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 330 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
 check "this is the NMAS host: Loki's container, MinIO's environment file, mc, Mercury's Python with boto3" eq "yes" \
     'sudo docker inspect loki >/dev/null 2>&1 && sudo test -f "$MINIO_ENV" && command -v mc >/dev/null && "$PY" -c "import boto3" 2>/dev/null && echo yes || echo no'
 check "the running Loki container is the one this step recreates" eq "grafana/loki:3.3.2 [-config.file=/etc/loki/local-config.yaml] 3100 /var/lib/loki:/loki /etc/loki/local-config.yaml:/etc/loki/local-config.yaml:ro unless-stopped bridge 10001 env-as-image" \

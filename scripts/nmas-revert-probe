@@ -35,8 +35,8 @@ will carry it: ``shutdown`` is one of ``pipeline._DANGEROUS_PATTERNS``).
 **Refused before anything is sent** (each naming the comparison and both operands):
 - a device declared never to be probed in ``lab/never-probe.json`` (the lab's own declaration:
   the product names no device; absent, the probe refuses, naming the file);
-- a run that would overlap the hypervisor's nightly backup, 02:30 to 03:10 America/Denver, the
-  hypervisor's zone, 08:30 to 09:10 UTC under MDT and 09:30 to 10:10 under MST (the window
+- a run that would overlap the hypervisor's nightly backup, 02:30 to 03:30 America/Denver, the
+  hypervisor's zone, 08:30 to 09:30 UTC under MDT and 09:30 to 10:30 under MST (the window
   ``nmas-tier2-probe`` refuses, read from it);
 - a device whose COMMITTED intent holds no configuration archive path (``archive.path``, H22's
   field, or until H22 an unmodelled ``archive`` block with a ``path`` line);
