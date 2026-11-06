@@ -286,7 +286,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   operator, 2026-11-05; C2568: NetBox's boot left netbox-secrets critical for its hourly
   interval). Cost: one backoff and one waiting state in the reader job. Prevents: a critical
   row about a dependency's boot that clears itself, which teaches people to ignore critical
-  rows. [not mechanised yet: C2568; the reader job's backoff will be tests/test_reader_job.py's]
+  rows. [modules/reader_job.py rule 14; tests/test_reader_job.py (`TestTheBackoff`,
+  `TestTheStartGrace`, `TestTheWaitOnScreen`)]
 - **Every device-changing operation: preview (the exact program, masked) → confirm by hash as a
   verified person → apply holding the device → verify → rollback on failure → record** (commit and
   receipt), readable again. [every confirm- and approve-gated route declares its five stages,
