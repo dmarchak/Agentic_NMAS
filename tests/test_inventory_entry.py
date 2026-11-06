@@ -367,7 +367,10 @@ def held_lab(lab, monkeypatch):
 
 class TestAnObserveDeviceIsChangedByNothing:
     @pytest.mark.parametrize("operation", ["deploy", "restore", "persist", "rotate", "save",
-                                           "privileged", "openflow config", "adopt"])
+                                           "privileged", "openflow config", "adopt",
+                                           # C2626: a reload restarts it; C2625: no flow
+                                           # onboards a device already in NetBox's inventory.
+                                           "reload", "onboard", "onboard (create)"])
     def test_every_changing_hold_is_refused_naming_the_key_and_where(self, held_lab, operation):
         from modules.nsot import device_ops as D
         with pytest.raises(D.NotManaged) as e:
@@ -376,11 +379,67 @@ class TestAnObserveDeviceIsChangedByNothing:
             in str(e.value)
         assert operation in str(e.value) and D.holder("lab9", "router") is None
 
-    @pytest.mark.parametrize("operation", ["read", "capture", "seed intent", "reload"])
+    @pytest.mark.parametrize("operation", ["read", "capture", "seed intent"])
     def test_its_reads_and_captures_are_held(self, held_lab, operation):
         from modules.nsot import device_ops as D
         with D.hold("lab9", "router", operation, "op@example.invalid"):
             assert D.holder("lab9", "router")["operation"] == operation
+
+    @pytest.mark.parametrize("address", ["192.0.2.11", "2001:db8::11", "198.51.100.11"],
+                             ids=("primary-ipv4", "primary-ipv6", "out-of-band"))
+    def test_an_onboarding_at_an_observe_devices_address_is_refused_by_address(
+            self, lab, monkeypatch, address):
+        """C2625 (the operator, 2026-11-06): the refusal follows the mark, never the name. The
+        router, observe-only, is renamed in NetBox (`edge-gw`), and an onboarding under a new
+        name at any of its management addresses is refused, naming the device and the mark."""
+        from modules import inventory
+        from modules.inventory import management
+        from modules.nsot import onboard
+        lab.save_profile("default", "admin", "pw")
+        records = lab_records(router={"context": OBSERVE, "local": OBSERVE})
+        router = next(r for r in records if r["name"] == "router")
+        router.update(name="edge-gw", display="edge-gw",
+                      primary_ip6={"address": "2001:db8::11/64", "display": "2001:db8::11/64"},
+                      oob_ip={"address": "198.51.100.11/24", "display": "198.51.100.11/24"})
+        rows = list(adapt(records)[0].values())
+        monkeypatch.setattr(inventory, "cached_rows",
+                            lambda name: rows if name == "lab9" else [])
+        said = onboard._observe_problem("lab9", address)
+        assert said.startswith(f"REFUSED: {address} is a management address of edge-gw"), said
+        assert "mercury.management observe" in said and "Nothing was sent." in said
+        plan = onboard.OnboardPlan(hostname="new-router", platform="ios", list_name="lab9",
+                                   observe_problem=said)
+        assert said in plan.blocking_reasons
+
+    def test_an_address_no_observe_device_answers_on_is_not_refused(self, lab, monkeypatch):
+        from modules import inventory
+        from modules.nsot import onboard
+        lab.save_profile("default", "admin", "pw")
+        rows = list(adapt(lab_records(router={"context": OBSERVE, "local": OBSERVE}))[0]
+                    .values())
+        monkeypatch.setattr(inventory, "cached_rows", lambda name: rows)
+        assert onboard._observe_problem("lab9", "192.0.2.13") == "", "of-sw1 is managed"
+        assert onboard._observe_problem("lab9", "192.0.2.99") == "", "nobody's"
+        assert onboard._observe_problem("lab9", "") == "", "no address given"
+
+    def test_a_reload_is_refused_saying_to_set_it_to_manage_first(self, held_lab):
+        """C2626 (the operator, 2026-11-06): observe means Mercury changes nothing on it, its
+        running state included; a router's reload takes down the lab's internet, DHCP and NTP.
+        To reload it through Mercury, a person sets it to manage first, on its record."""
+        from modules.nsot import device_ops as D
+        with pytest.raises(D.NotManaged) as e:
+            D.acquire("lab9", "router", "reload", "op@example.invalid")
+        said = str(e.value)
+        assert "set it to manage first in NetBox, on its record" in said, said
+        assert said.endswith("Nothing was sent.") and D.holder("lab9", "router") is None
+
+    def test_a_host_is_still_held_for_a_reload_and_a_managed_device_for_anything(self, held_lab):
+        """Each device is judged by its own list (C2625: the host list's operations were
+        allowed before the device was read)."""
+        from modules.inventory import management
+        assert management.hold_refusal("lab9", "controller", "reload") == ""
+        assert management.hold_refusal("lab9", "of-sw1", "reload") == ""
+        assert management.hold_refusal("lab9", "router", "reload") != ""
 
     def test_a_batch_refuses_it_alone(self, held_lab):
         from modules.nsot import device_ops as D

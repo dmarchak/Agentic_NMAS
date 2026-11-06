@@ -42,22 +42,30 @@ FROM_DEFAULT = "not set in NetBox: manage is the default"
 FROM_UNRENDERED = ("not read: NetBox's answer carried no rendered config context, so manage, "
                    "the default")
 
-#: The operations a device that is observe-only, or a host, may still be held for: reads and
-#: Mercury's own records (a capture commits a golden in git, never on the device). An
-#: allowlist: an operation not named here is refused, so a new device-changing operation is
-#: refused until it is judged and named.
+#: The operations an observe-only device may still be held for: reads and Mercury's own
+#: records (a capture commits a golden in git, never on the device). An allowlist: an
+#: operation not named here is refused, so a new device-changing operation is refused until it
+#: is judged and named.
+#: - **No `reload`** (the operator, 2026-11-06; C2626): observe means Mercury changes nothing on
+#:   the device, its running state included, and a router's reload takes down the lab's
+#:   internet, DHCP and NTP. To reload one through Mercury, a person sets it to manage first,
+#:   on NetBox's record.
+#: - **No `onboard` or `onboard (create)`** (C2625): no flow onboards a device that is already
+#:   in NetBox's inventory, which an observe device is; an onboarding that targets an observe
+#:   device's address under another name is refused by `observe_at`.
 MAY_HOLD = frozenset({
-    "read", "capture", "rekey", "retire", "onboard", "onboard (create)", "abandon",
+    "read", "capture", "rekey", "retire", "abandon",
     "seed intent", "revert intent", "decline a profile section", "undo a decline",
-    # A restart changes no configuration; its card judges its own gates, and a host's
-    # session refuses `reload` as a discovery driver's write (modules/discovery.py).
-    "reload",
 })
 
 #: A host has no golden and no intent (it is not a network device), so of those only the
-#: reads and Mercury's own lifecycle records remain.
+#: reads and Mercury's own lifecycle records remain. A host's session refuses `reload` as a
+#: discovery driver's write (modules/discovery.py).
 HOST_MAY_HOLD = frozenset({"read", "rekey", "retire", "onboard", "onboard (create)", "abandon",
                            "reload"})
+#: The refusal's last words for a reload of an observe device (C2626).
+RELOAD_WORDS = (" A reload restarts it, which observe forbids as it forbids a change: to reload "
+                "it through Mercury, set it to manage first in NetBox, on its record.")
 
 #: What a host is excluded from, in the order the design names them (section 9a).
 HOST_EXCLUDED = ("goldens", "deploys", "config drift", "heal", "features",
@@ -171,10 +179,63 @@ def refusal_for(list_name: str, hostname: str, what: str = "a device-changing op
 
 def hold_refusal(list_name: str, hostname: str, operation: str) -> str:
     """Why *operation* may not hold *hostname* (`device_ops.acquire`): "" for an operation on
-    `MAY_HOLD` (`HOST_MAY_HOLD` for a host), or for a device Mercury manages."""
-    if operation in HOST_MAY_HOLD:
-        return ""
+    `MAY_HOLD` (`HOST_MAY_HOLD` for a host), or for a device Mercury manages.
+
+    Each device is judged by its own list (C2625: an operation on the host list was allowed
+    before the device was read, so `onboard` and `reload` held an observe device too)."""
     dev = row_of(list_name, hostname)
-    if not dev or (operation in MAY_HOLD and not is_host(dev)):
+    if not dev:
         return ""
-    return refusal(dev, what=operation or "an operation")
+    if operation in (HOST_MAY_HOLD if is_host(dev) else MAY_HOLD):
+        return ""
+    words = refusal(dev, what=operation or "an operation")
+    if words and operation == "reload" and is_observe(dev):
+        words = words.removesuffix(" Nothing was sent.") + RELOAD_WORDS + " Nothing was sent."
+    return words
+
+
+def _addresses(dev: dict) -> list:
+    """*dev*'s management addresses (primary IPv4, primary IPv6, out-of-band), normalised."""
+    import ipaddress
+    out = []
+    for raw in ((dev or {}).get("ip"), (dev or {}).get("_ip6"), (dev or {}).get("_oob_ip")):
+        try:
+            out.append(ipaddress.ip_address(str(raw or "").split("/")[0].strip()))
+        except ValueError:
+            continue
+    return out
+
+
+def observe_at(list_name: str, addresses, devices: list = None) -> str:
+    """The refusal when any of *addresses* is a management address (primary IPv4 or IPv6, or
+    out-of-band) of an observe-only device in *list_name*'s loaded inventory, naming the device,
+    the address and the mark; "" otherwise (C2625: an onboarding under a new name, at an
+    address an observe device answers on, would change that device). *devices* (tests)
+    replaces the inventory."""
+    import ipaddress
+    wanted = []
+    for raw in addresses or ():
+        try:
+            wanted.append(ipaddress.ip_address(str(raw or "").split("/")[0].strip()))
+        except ValueError:
+            continue
+    if not wanted or not list_name:
+        return ""
+    if devices is None:
+        try:
+            from modules import inventory
+            devices = inventory.cached_rows(list_name) or []
+        except Exception as exc:                     # noqa: BLE001 - said, and judged absent
+            log.warning("management: %s's inventory could not be read: %s", list_name, exc)
+            return ""
+    for dev in devices:
+        if not is_observe(dev):
+            continue
+        hit = next((a for a in _addresses(dev) if a in wanted), None)
+        if hit is not None:
+            where = dev.get("_management_from") or FROM_ASSIGNED
+            return (f"REFUSED: {hit} is a management address of {dev.get('hostname')}, which "
+                    f"NetBox's config context marks {KEY_WORDS} observe ({where}): an "
+                    "onboarding at it would change that device. Set it to manage in NetBox, "
+                    "or onboard another address. Nothing was sent.")
+    return ""

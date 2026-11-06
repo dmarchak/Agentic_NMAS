@@ -40,7 +40,9 @@ _METADATA_KEYS = ("_source", "_netbox_id", "_cred_source", "_platform", "_site",
                   "_role_slug", "_model", "_tags",
                   # C2607: the "no login" state's words; C2606: the observe-only mark and
                   # where NetBox set it (modules/inventory/management.py).
-                  "_login", "_management", "_management_from", "_management_problem")
+                  "_login", "_management", "_management_from", "_management_problem",
+                  # C2625: the device's other management addresses, never sent.
+                  "_ip6", "_oob_ip")
 
 # In-memory cache: list_name -> {devices, skipped, warnings, fetched_at, stale, error}
 _memory: dict = {}
@@ -314,12 +316,17 @@ def cached_row(list_name: str, hostname: str):
     from the persisted last good inventory when this process has not loaded it; starts no
     refresh. A caller only reads it. For the per-device checks that run on every hold
     (`inventory.management`)."""
+    return next((d for d in cached_rows(list_name) if d.get("hostname") == hostname), None)
+
+
+def cached_rows(list_name: str) -> list:
+    """A NetBox-sourced *list_name*'s loaded inventory rows (the cache, never NetBox), read as
+    `cached_row` reads one; [] for a local list. A caller only reads them."""
     if not is_netbox_sourced(list_name):
-        return None
+        return []
     with _lock:
         entry = _memory.get(list_name)
-    devices = (entry.get("devices") or []) if entry is not None else loaded_rows(list_name)
-    return next((d for d in devices if d.get("hostname") == hostname), None)
+    return (entry.get("devices") or []) if entry is not None else loaded_rows(list_name)
 
 
 def loaded_rows(list_name: str) -> list:

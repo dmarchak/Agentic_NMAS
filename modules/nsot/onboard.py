@@ -107,6 +107,11 @@ class OnboardPlan:
     #: suggestion, and a blocking reason.
     role: str = ""
     role_problem: str = ""
+    #: C2625: why the target's address is an observe-only device's (its primary IPv4 or IPv6,
+    #: or out-of-band address), naming the device and the mark; "" when it is no observe
+    #: device's. Judged by the address, never by the name: an observe device renamed in NetBox
+    #: is still the device at that address.
+    observe_problem: str = ""
     #: What Kea said: ``reserved`` / ``not_reserved`` / ``unknown``.
     reservation_state: str = ""
     reservation_address: str = ""
@@ -227,6 +232,8 @@ class OnboardPlan:
 
         if self.role_problem:
             reasons.append(self.role_problem)
+        if self.observe_problem:
+            reasons.append(self.observe_problem)
 
         if not _NAME.match(self.hostname or ""):
             reasons.append(
@@ -988,6 +995,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         hostname=hostname, platform=platform, list_name=list_name,
         role=(role or "").strip().lower(),
         role_problem=_role_problem(role, list_name, platform),
+        observe_problem=_observe_problem(list_name, mgmt_ip, reservation.get("address", "")),
         source_kind=source_kind, mgmt_ip=mgmt_ip, mgmt_mask=mgmt_mask,
         address_source=address_source, mgmt_mac=mgmt_mac,
         reservation_state=reservation["state"],
@@ -1013,6 +1021,13 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         platform_mgmt_interface=(mgmt_interface or "").strip(),
         environment=environment.record(),
     )
+
+
+def _observe_problem(list_name: str, *addresses) -> str:
+    """C2625: the refusal when the onboarding's management address (static, or the DHCP
+    reservation's) is an observe-only device's in *list_name*, by address, never by name."""
+    from modules.inventory import management
+    return management.observe_at(list_name, [a for a in addresses if a])
 
 
 def _role_problem(role: str, list_name: str, platform: str) -> str:

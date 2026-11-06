@@ -304,9 +304,18 @@ def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: boo
     from modules.nsot import blast_radius, device_ops, onboard, repo as R, roundtrip
     from modules.nsot.intent_match import explain, intent_match
 
+    from modules.inventory import management
+
     repo = _repo(list_name)
     running, startup = reads.get("running", ""), reads.get("startup", "")
     gates = []
+    # C2626 (the operator, 2026-11-06): an observe-only device is restarted by nothing Mercury
+    # does; the hold refuses it too (`management.MAY_HOLD`), and this says so before a confirm.
+    observe = management.hold_refusal(list_name, host, "reload")
+    gates.append({"name": "Mercury may change it", "key": "management",
+                  "state": "fail" if observe else "pass",
+                  "detail": (observe.removeprefix("REFUSED: ").removesuffix(" Nothing was sent.")
+                             if observe else "it is not marked observe-only in NetBox")})
     same = roundtrip.startup_is_running(startup, running, (reads.get("dirs") or {}).get(NVRAM, ""))
     gates.append({"name": "running against startup", "key": "unsaved",
                   "state": "pass" if same.get("equal") else "fail",

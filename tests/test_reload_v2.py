@@ -92,6 +92,21 @@ def _gate(j, key):
 
 
 class TestTheGates:
+    def test_an_observe_device_fails_the_management_gate_before_a_confirm(self, lab,  # noqa: F811
+                                                                          monkeypatch):
+        """C2626 (the operator, 2026-11-06): a reload of an observe-only device is refused, and
+        its card says so before a confirm, telling the person to set it to manage first."""
+        from modules import inventory
+        row = {"hostname": "r2", "ip": "192.0.2.12", "_management": "observe",
+               "_management_from": "the device's local config context"}
+        monkeypatch.setattr(inventory, "cached_row",
+                            lambda name, host: row if (name, host) == ("Lab", "r2") else None)
+        gate = _gate(reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab)), "management")
+        assert gate["state"] == "fail" and "set it to manage first in NetBox" in gate["detail"]
+        monkeypatch.setattr(inventory, "cached_row", lambda name, host: None)
+        gate = _gate(reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab)), "management")
+        assert gate["state"] == "pass"
+
     def test_the_same_running_and_startup_pass(self, lab):  # noqa: F811
         j = reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab))
         assert _gate(j, "unsaved")["state"] == "pass"

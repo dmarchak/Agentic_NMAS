@@ -20,7 +20,12 @@ Reload and Retire. **An observe-only device** (NetBox's rendered config context 
 that changes it: the menu's note names the state and where NetBox set it ("observe (the
 device's local config context)"), and Plan a deploy, Restore from, Remove lines (Mode B),
 Rotate credential, Persist and Run a privileged command are greyed, each saying why on hover;
-every one of them is refused by the server too, naming the key. **A host** (its role's
+every one of them is refused by the server too, naming the key. **Reload** opens its card, and
+the card's first gate, "Mercury may change it", fails on an observe-only device: observe means
+Mercury changes nothing on it, its running state included (a router's reload takes down what it
+serves). To reload one through Mercury, set it to manage in NetBox first, on its record. No
+onboarding is accepted at an observe-only device's management address either (its primary IPv4
+or IPv6, or its out-of-band address), whatever name it is given. **A host** (its role's
 `mercury_kind` is `host`, a Linux host Mercury manages services on) is offered no Capture or
 Seed intent either: it has no golden. **Capture runs here**: its card takes the place of the
 tab you were on, reads the device, and shows what its golden would become, against the golden
