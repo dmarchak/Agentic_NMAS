@@ -23,6 +23,7 @@ REASONS = {
     "SSH_FORM": "git's SSH URL form (the git user at GitHub's host, then owner/repo), GitHub's account, not a person's address",
     "VENDOR": "Cisco's own call-home address, printed by IOS-XE in the captured config",
     "LICENCE": "a vendored third-party licence's own copyright line, kept verbatim as the licence requires (NSOT_STAGE10_PLAN 8.2); its author's address, not a person of this project",
+    "VENDOR_TEXT": "a vendor's own text quoted in captured device output (IOS's export-compliance contact, an SSH algorithm's @-name), not a person; each entry pins one line of one file, excused from the email rule only",
 }
 
 #: (path, line hash) -> (reason key, rules excused)
@@ -411,4 +412,8 @@ EXEMPT = {
     ('tests/test_store_integrity_c158_c160.py', '7b0cdff27a72'): ('INVENTED', ('address',)),
     # tests/test_syslog_block.py
     ('tests/test_syslog_block.py', 'caed4d780f5d'): ('INVENTED', ('address',)),
+    # tests/fixtures/lab9_captures/mgmt-sw.txt, line 28: IOS's export banner, its last line (Cisco's export contact address and a full stop, nothing else)
+    ('tests/fixtures/lab9_captures/mgmt-sw.txt', '38d05e1fa610'): ('VENDOR_TEXT', ('email',)),
+    # tests/fixtures/lab9_captures/procurve-sw.txt, line 164: `show ip ssh`'s "Ciphers :" line, whose third cipher is Rijndael-CBC named by its OpenSSH @-form
+    ('tests/fixtures/lab9_captures/procurve-sw.txt', 'ec410abe0aca'): ('VENDOR_TEXT', ('email',)),
 }

@@ -1,0 +1,178 @@
+Script started on 2026-11-05 15:06:13-07:00 [TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="118" LINES="55"]
+<user>@<redacted> exitssh <user>@192.0.2.34
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+
+Someone could be eavesdropping on you right now (man-in-the-middle attack)!
+
+It is also possible that a host key has just been changed.
+
+The fingerprint for the ED25519 key <redacted> by the remote host is
+SHA256:<redacted>.
+
+Please contact your system administrator.
+
+Add correct host key in <redacted> to get rid of this message.
+
+Offending ECDSA key <redacted> <redacted>
+
+  remove with:
+
+  ssh-keygen -f '<redacted> -R '192.0.2.4'
+
+Host key for 192.0.2.4 has changed and you have requested strict checking.
+
+Host key verification failed.
+
+<user>@<redacted> ssh <user>@192.0.2.4ssh-keygen -f '<redacted> -R '192.0.2.4'
+<user>@<redacted> ssh-keygen -f '<redacted> -R '192.0.2.4'
+
+
+# Host 192.0.2.4 found: line 41
+# Host 192.0.2.4 found: line 42
+# Host 192.0.2.4 found: line 43
+<redacted> updated.
+Original contents retained as <redacted>
+<user>@<redacted> ssh-keygen -f '<redacted> -R '192.0.2.4'
+<user>@<redacted>  <user>@192.0.2.4
+
+
+
+
+
+The authenticity of host '192.0.2.4 (192.0.2.4)' can't be established.
+ED25519 key <redacted> is: SHA256:<redacted>
+This key <redacted> not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '192.0.2.4' (ED25519) to the list of known hosts.
+
+
+<user>@192.0.2.4's password: 
+Welcome to Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Thu Nov  5 10:05:49 PM UTC 2026
+
+  System load:  0.0                Swap usage:  0%       Users logged in: 1
+  Usage of /:   12.9% of 97.87GB   Temperature: 53.0 C
+  Memory usage: 1%                 Processes:   234
+
+
+Expanded Security Maintenance for Applications is not enabled.
+
+224 updates can be applied immediately.
+166 of these updates are standard security updates.
+To see these additional updates run: apt list --upgradable
+
+3 additional security updates can be applied with ESM Apps.
+Learn more about enabling ESM Apps service at https://ubuntu.com/esm
+
+
+The list of available updates is more than a week old.
+To check for new updates run: sudo apt update
+Failed to connect to https://changelogs.ubuntu.com/meta-release-lts. Check your Internet connection or proxy settings
+
+
+Last login: Thu Nov  5 21:21:45 2026 from 127.0.0.1
+
+<user>@switch3:~$ hostnamectl
+
+lsb_release -a
+
+ip -br link
+
+ip -br addr
+
+ip route
+
+lspci | grep -i ethernet
+
+ovs-vsctl --version 2>/dev/null || echo "OVS not installed"
+
+python3 --version
+
+ls /var/lib/apt/lists | wc -lhostnamectl
+
+lsb_release -a
+
+ip -br link
+
+ip -br addr
+
+ip route
+
+lspci | grep -i ethernet
+
+ovs-vsctl --version 2>/dev/null || echo "OVS not installed"
+
+python3 --version
+
+ls /var/lib/apt/lists | wc -l
+
+ Static hostname: switch3
+       Icon name: computer-server
+         Chassis: server 🖳
+      Machine ID: <redacted>
+         Boot ID: <redacted>
+Operating System: Ubuntu 24.04.3 LTS              
+          Kernel: Linux 6.8.0-87-generic
+    Architecture: x86-64
+ Hardware Vendor: Dell Inc.
+  Hardware Model: PowerEdge R430
+Firmware Version: 1.5.4
+   Firmware Date: Mon 2015-10-05
+    Firmware Age: 11y 1month 1d                   
+No LSB modules are available.
+Distributor ID:	Ubuntu
+Description:	Ubuntu 24.04.3 LTS
+Release:	24.04
+Codename:	noble
+lo               UNKNOWN        02:71:30:06:07:30 <LOOPBACK,UP,LOWER_UP> 
+eno1             UP             02:9e:08:77:e6:31 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+eno2             DOWN           02:9a:d0:2d:f3:b3 <BROADCAST,MULTICAST> 
+eno3             DOWN           02:64:30:44:1a:ca <BROADCAST,MULTICAST> 
+enp5s0f0         DOWN           02:f9:6b:a8:a5:ae <BROADCAST,MULTICAST> 
+eno4             DOWN           02:c0:9f:d9:d5:4d <BROADCAST,MULTICAST> 
+enp5s0f1         DOWN           02:ae:03:87:6b:e9 <BROADCAST,MULTICAST> 
+eno1.100@eno1    UP             02:9e:08:77:e6:31 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eno1             UP             198.51.100.1/24 fe80::<redacted>/64 
+eno2             DOWN           
+eno3             DOWN           
+enp5s0f0         DOWN           
+eno4             DOWN           
+enp5s0f1         DOWN           
+eno1.100@eno1    UP             192.0.2.4/24 fe80::<redacted>/64 
+198.51.100.0/24 dev eno1 proto kernel scope link src 198.51.100.1 
+192.0.2.0/24 dev eno1.100 proto kernel scope link src 192.0.2.4 
+02:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+02:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+03:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+03:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+05:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme II BCM57810 10 Gigabit Ethernet (rev 10)
+05:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme II BCM57810 10 Gigabit Ethernet (rev 10)
+ovs-vsctl (Open vSwitch) 3.3.4
+DB Schema 8.5.1
+Python 3.12.3
+71
+<user>@switch3:~$ exit
+
+logout
+Connection to 192.0.2.4 closed.
+
+<user>@<redacted> exit
+
+
+exit
+
+Script done on 2026-11-05 15:07:08-07:00 [COMMAND_EXIT_CODE="0"]

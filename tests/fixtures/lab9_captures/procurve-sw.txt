@@ -1,0 +1,197 @@
+HP J8692A Switch 3500yl-24G
+
+Software revision K.16.02.0020
+
+ (C) Copyright 2017 Hewlett Packard Enterprise Development LP
+
+                      RESTRICTED RIGHTS LEGEND
+ Confidential computer software. Valid license from Hewlett Packard Enterprise
+ Development LP required for possession, use or copying. Consistent with FAR
+ 12.211 and 12.212, Commercial Computer Software, Computer Software
+ Documentation, and Technical Data for Commercial Items are licensed to the
+ U.S. Government under vendor's standard commercial license.
+
+Press any key to continueYour previous successful login (as manager) was on 2026-11-05 18:07:56     
+ from 192.0.2.100
+procurve-sw# no pageprocurve-sw# show versionImage stamp:    /ws/swbuildm/rel_spokane_qaoff/code/build/btm(swbuildm_rel_spokane_qaoff_rel_spokane)
+                Jul  5 2017 19:09:24
+                K.16.02.0020
+                666
+Boot Image:     Secondary
+
+Boot ROM Version:    K.15.30
+procurve-sw# show system
+ Status and Counters - General System Information
+
+  System Name        : procurve-sw                                   
+  System Contact     : 
+  System Location    : 
+
+  MAC Age Time (sec) : 300    
+
+  Time Zone          : 0    
+  Daylight Time Rule : None                      
+
+  Software revision  : K.16.02.0020         Base MAC Addr      : 02d502-7901e6
+  ROM Version        : K.15.30              Serial Number      : <redacted>  
+
+  Up Time            : 14 days              Memory   - Total   : 113,811,456 
+  CPU Util (%)       : 0                               Free    : 59,265,488  
+
+  IP Mgmt  - Pkts Rx : 56,188               Packet   - Total   : 6750        
+             Pkts Tx : 56,128               Buffers    Free    : 5086        
+                                                       Lowest  : 5076        
+                                                       Missed  : 0           
+
+procurve-sw# show modules
+ Status and Counters - Module Information
+
+  Chassis: 3500yl-24G J8692A         Serial Number:   <redacted>
+                              Allow V1 Modules:   Yes
+
+                                                                       Core  Mod
+  Slot  Module Description                     Serial Number  Status   Dump  Ver
+  ----- -------------------------------------- -------------- -------- ----- ---
+
+procurve-sw# show flashImage             Size (bytes) Date     Version 
+----------------- ------------ -------- --------------
+Primary Image    :     7566208 07/30/09 K.13.68              
+Secondary Image  :    15726592 07/05/17 K.16.02.0020        
+
+Boot ROM Version 
+----------------
+Primary Boot ROM Version   : K.15.30
+
+Default Boot Image   : Secondary
+
+procurve-sw# show running-config
+Running configuration:
+
+; J8692A Configuration Editor; Created on release #K.16.02.0020
+; Ver #10:08.01.81.30.02.34.59.2c.6b.ff.f7.fc.7f.ff.3f.ef:24
+hostname "procurve-sw"
+module 1 type j86xxa
+snmp-server community <redacted> unrestricted
+vlan 1
+   name "DEFAULT_VLAN"
+   untagged 1-24
+   ip address dhcp-bootp
+   exit
+vlan 100
+   name "mgmt"
+   tagged 1
+   ip address 192.0.2.5 255.255.255.0
+   exit
+no tftp server
+no autorun
+no dhcp config-file-update
+no dhcp image-file-update
+password <redacted:line_password>
+
+procurve-sw# show interfaces brief
+ Status and Counters - Port Status
+
+                    | Intrusion                           MDI  Flow Bcast
+  Port   Type       | Alert     Enabled Status Mode       Mode Ctrl Limit
+  ------ ---------- + --------- ------- ------ ---------- ---- ---- -----
+  1      100/1000T  | No        Yes     Up     100FDx     MDIX off  0    
+  2      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  3      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  4      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  5      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  6      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  7      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  8      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  9      100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  10     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  11     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  12     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  13     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  14     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  15     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  16     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  17     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  18     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  19     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  20     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  21     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  22     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  23     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+  24     100/1000T  | No        Yes     Down   1000FDx    Auto off  0    
+ 
+procurve-sw# show interfaces custom allIncomplete input: all
+procurve-sw# show vlans
+ Status and Counters - VLAN Information
+
+  Maximum VLANs to support : 256                  
+  Primary VLAN : DEFAULT_VLAN
+  Management VLAN :             
+
+  VLAN ID Name                             | Status     Voice Jumbo
+  ------- -------------------------------- + ---------- ----- -----
+  1       DEFAULT_VLAN                     | Port-based No    No   
+  100     mgmt                             | Port-based No    No   
+ 
+procurve-sw# show ip
+ Internet (IP) Service
+
+  IP Routing : Disabled
+
+  Default Gateway :                
+  Default TTL     : 64   
+  Arp Age         : 20  
+  Domain Suffix   :                               
+  DNS server      :                                         
+
+                       |                                            Proxy ARP 
+  VLAN                 | IP Config  IP Address      Subnet Mask     Std  Local
+  -------------------- + ---------- --------------- --------------- ----------
+  DEFAULT_VLAN         | DHCP/Bootp
+  mgmt                 | Manual     192.0.2.5      255.255.255.0    No    No
+ 
+procurve-sw# show lldp info remote-device
+ LLDP Remote Devices Information
+
+  LocalPort | ChassisId          PortId             PortDescr SysName           
+  --------- + ------------------ ------------------ --------- ------------------
+  1         | mgmt-sw... FastEthernet0/6                                
+ 
+procurve-sw# show ip ssh
+  SSH Enabled     : Yes                 Secure Copy Enabled : No 
+  TCP Port Number : 22                  Timeout (sec)       : 120  
+  Host Key Type   : RSA                 Host Key Size       : 2048
+
+  Ciphers : aes256-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-ctr,
+            aes192-cbc,aes128-ctr,aes128-cbc,3des-cbc
+  MACs    : hmac-sha1-96,hmac-md5,hmac-sha1,hmac-md5-96
+
+  Ses Type     | Source IP                                      Port 
+  --- -------- + ---------------------------------------------- -----
+  1   console  |
+  2   ssh      | 192.0.2.100                                   48530
+  3   inactive |
+  4   inactive |
+  5   inactive |
+  6   inactive |
+ 
+procurve-sw# show mac-address
+ Status and Counters - Port Address Table
+
+  MAC Address   Port   VLAN
+  ------------- ------ ----
+  0278c2-422ab8 1      1   
+  0278c2-422ab8 1      100 
+  026f4c-8e7ab5 1      100 
+  02f67b-2a4ac0 1      100 
+ 
+procurve-sw# show openflow
+ OpenFlow                     : Disabled  
+ Egress Only Ports Mode       : Disabled                      
+
+ Instance Information
+
+                                                 No. of     No. of     OpenFlow
+  Instance Name                     Oper. Status H/W Flows  S/W Flows  Version 
+  --------------------------------- ------------ ---------- ---------- --------
+ 
+procurve-sw# exitprocurve-sw> exitDo you want to log out (y/n)? yConnection to 192.0.2.5 closed by remote host.

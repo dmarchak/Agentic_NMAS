@@ -1,0 +1,128 @@
+Script started on 2026-11-05 15:05:20-07:00 [TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="118" LINES="55"]
+<user>@<redacted> ssh <user>@192.0.2.3
+
+
+
+<user>@192.0.2.3's password: 
+Welcome to Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Thu Nov  5 10:02:54 PM UTC 2026
+
+  System load:  0.08               Swap usage:  0%       Users logged in: 0
+  Usage of /:   12.7% of 97.87GB   Temperature: 63.0 C
+  Memory usage: 2%                 Processes:   231
+
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+The list of available updates is more than a week old.
+To check for new updates run: sudo apt update
+Failed to connect to https://changelogs.ubuntu.com/meta-release-lts. Check your Internet connection or proxy settings
+
+
+Last login: Thu Nov  5 21:34:56 2026 from 192.0.2.100
+
+<user>@switch2:~$ hostnamectl
+
+lsb_release -a
+
+ip -br link
+
+ip -br addr
+
+ip route
+
+lspci | grep -i ethernet
+
+ovs-vsctl --version 2>/dev/null || echo "OVS not installed"
+
+python3 --version
+
+ls /var/lib/apt/lists | wc -lhostnamectl
+
+lsb_release -a
+
+ip -br link
+
+ip -br addr
+
+ip route
+
+lspci | grep -i ethernet
+
+ovs-vsctl --version 2>/dev/null || echo "OVS not installed"
+
+python3 --version
+
+ls /var/lib/apt/lists | wc -l
+
+ Static hostname: switch2
+       Icon name: computer-server
+         Chassis: server 🖳
+      Machine ID: <redacted>
+         Boot ID: <redacted>
+Operating System: Ubuntu 24.04.3 LTS              
+          Kernel: Linux 6.8.0-87-generic
+    Architecture: x86-64
+ Hardware Vendor: Dell Inc.
+  Hardware Model: PowerEdge R430
+Firmware Version: 1.5.4
+   Firmware Date: Mon 2015-10-05
+    Firmware Age: 11y 1month 1d                   
+No LSB modules are available.
+Distributor ID:	Ubuntu
+Description:	Ubuntu 24.04.3 LTS
+Release:	24.04
+Codename:	noble
+lo               UNKNOWN        02:71:30:06:07:30 <LOOPBACK,UP,LOWER_UP> 
+eno1             UP             02:e8:4f:5d:a4:76 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+eno2             DOWN           02:9c:90:e0:25:ad <BROADCAST,MULTICAST> 
+eno3             DOWN           02:88:a6:b6:9e:63 <BROADCAST,MULTICAST> 
+eno4             DOWN           02:27:f5:b7:b9:26 <BROADCAST,MULTICAST> 
+enp5s0f0         DOWN           02:0e:08:d5:0e:04 <BROADCAST,MULTICAST> 
+enp5s0f1         DOWN           02:ac:6d:63:1c:25 <BROADCAST,MULTICAST> 
+ovs-system       DOWN           02:de:ec:59:b8:b8 <BROADCAST,MULTICAST> 
+br0              DOWN           02:e8:4f:5d:a4:76 <BROADCAST,MULTICAST> 
+eno1.100@eno1    UP             02:e8:4f:5d:a4:76 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eno1             UP             
+eno2             DOWN           
+eno3             DOWN           
+eno4             DOWN           
+enp5s0f0         DOWN           
+enp5s0f1         DOWN           
+ovs-system       DOWN           
+br0              DOWN           
+eno1.100@eno1    UP             192.0.2.3/24 
+192.0.2.0/24 dev eno1.100 proto kernel scope link src 192.0.2.3 
+02:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+02:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+03:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+03:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme BCM5720 Gigabit Ethernet PCIe
+05:00.0 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme II BCM57810 10 Gigabit Ethernet (rev 10)
+05:00.1 Ethernet controller: Broadcom Inc. and subsidiaries NetXtreme II BCM57810 10 Gigabit Ethernet (rev 10)
+ovs-vsctl (Open vSwitch) 3.3.4
+DB Schema 8.5.1
+Python 3.12.3
+66
+<user>@switch2:~$ exit
+
+logout
+Connection to 192.0.2.3 closed.
+
+<user>@<redacted> exit
+
+
+exit
+
+Script done on 2026-11-05 15:05:43-07:00 [COMMAND_EXIT_CODE="0"]

@@ -283,6 +283,37 @@ class TestTheScanCanFail:
         assert scan("docs/y.md", line, exempt=ex), "another file is not exempt"
         assert scan("docs/x.md", line + " edited", exempt=ex), "an edited line is read again"
 
+    def test_a_new_line_beside_an_exempted_line_is_still_found(self):
+        """An exemption pins one line of one file by that line's hash, never a pattern or a
+        region (the operator, 2026-11-06): a line written beside an exempted vendor line,
+        holding a denylisted term and an address, is found, and the exempted line itself,
+        once it holds the term too, is read again."""
+        path, term = "tests/fixtures/x.txt", "JaneRoe"
+        vendor = "export@" + "cisco.com."
+        ex = {(path, line_key(vendor)): ("VENDOR_TEXT", ("email",))}
+        assert scan(path, vendor, exempt=ex, denylist=[term]) == [], "the exempted line"
+        beside = "\n".join([vendor, f"login by {term} from {self.PLANTED_EMAIL}"])
+        hits = scan(path, beside, exempt=ex, denylist=[term])
+        assert sorted((n, rule) for _p, n, rule, _w in hits) == [
+            (2, "email"), (2, "local denylist")]
+        edited = scan(path, f"{vendor} {term}", exempt=ex, denylist=[term])
+        assert [rule for _p, _n, rule, _w in edited] == ["email", "local denylist"]
+        both = f"{vendor} {term}"  # one pinned line holding both: email excused, the term not
+        ex_both = {(path, line_key(both)): ("VENDOR_TEXT", ("email",))}
+        assert [rule for _p, _n, rule, _w in scan(path, both, exempt=ex_both, denylist=[term])
+                ] == ["local denylist"]
+
+    def test_every_vendor_text_entry_pins_one_line_and_the_email_rule_only(self):
+        from tests.publication_exemptions import EXEMPT
+
+        entries = {k: v for k, v in EXEMPT.items() if v[0] == "VENDOR_TEXT"}
+        assert len(entries) >= 2, "the population: the Lab 9 captures' vendor lines"
+        for (path, key), (_reason, rules) in entries.items():
+            assert rules == ("email",), f"{path}: excused from {rules}"
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                pinned = [ln for ln in fh.read().splitlines() if line_key(ln) == key]
+            assert len(pinned) == 1, f"{path}: {len(pinned)} lines carry {key}, not one"
+
     def test_an_exemption_covers_only_the_rules_it_names(self):
         line = f"{self.PLANTED_ADDRESS} seen by {self.PLANTED_EMAIL}"
         ex = {("docs/x.md", line_key(line)): ("VRNETLAB", ("address",))}

@@ -1,0 +1,77 @@
+Script started on 2026-11-05 15:08:21-07:00 [TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="118" LINES="55"]
+<user>@<redacted> exitssh <user>@192.0.2.1n
+
+
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+
+** This session may be vulnerable to "store now, decrypt later" attacks.
+
+** The server may need to be upgraded. See https://openssh.com/pq.html
+
+
+<user>@192.0.2.1's password: 
+Welcome to Ubuntu 16.04.5 LTS (GNU/Linux 4.4.0-131-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+135 packages can be updated.
+81 updates are security updates.
+
+
+Last login: Fri Dec 27 10:13:39 2019 from 192.0.2.100
+
+<user>@controller:~$ hostnamectl
+   Static hostname: controller
+         Icon name: computer-desktop
+           Chassis: desktop
+        Machine ID: <redacted>
+           Boot ID: <redacted>
+  Operating System: Ubuntu 16.04.5 LTS
+            Kernel: Linux 4.4.0-131-generic
+      Architecture: x86-64
+<user>@controller:~$ lsb_release -a
+No LSB modules are available.
+Distributor ID:	Ubuntu
+Description:	Ubuntu 16.04.5 LTS
+Release:	16.04
+Codename:	xenial
+<user>@controller:~$ ip -br link
+lo               UNKNOWN        02:71:30:06:07:30 <LOOPBACK,UP,LOWER_UP> 
+enp4s0           UP             02:d2:1b:82:c8:bb <BROADCAST,MULTICAST,UP,LOWER_UP> 
+enp2s0           DOWN           02:00:ab:79:fa:d5 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+ovs-system       DOWN           02:82:e7:91:1b:e7 <BROADCAST,MULTICAST> 
+team2            DOWN           02:60:2c:7b:86:9b <BROADCAST,MULTICAST> 
+enp4s0.100@enp4s0 UP             02:d2:1b:82:c8:bb <BROADCAST,MULTICAST,UP,LOWER_UP> 
+<user>@controller:~$ ip -br addr
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+enp4s0           UP             fe80::<redacted>/64 
+enp2s0           DOWN           203.0.113.127/24 fe80::<redacted>/64 
+ovs-system       DOWN           
+team2            DOWN           
+enp4s0.100@enp4s0 UP             192.0.2.1/24 fe80::<redacted>/64 
+<user>@controller:~$ ip route
+203.0.113.0/24 dev enp2s0  proto kernel  scope link  src 203.0.113.127 linkdown 
+192.0.2.0/24 dev enp4s0.100  proto kernel  scope link  src 192.0.2.1 
+<user>@controller:~$ lspci | grep -i ethernet
+02:00.0 Ethernet controller: Broadcom Corporation NetXtreme BCM5722 Gigabit Ethernet PCI Express
+04:00.0 Ethernet controller: Broadcom Corporation NetXtreme BCM5722 Gigabit Ethernet PCI Express
+<user>@controller:~$ ovs-vsctl --version 2>/dev/null || echo "OVS not installed"
+ovs-vsctl (Open vSwitch) 2.5.5
+Compiled Oct  4 2018 15:45:07
+DB Schema 7.12.1
+<user>@controller:~$ python3 --version
+Python 3.5.2
+<user>@controller:~$ ls /var/lib/apt/lists | wc -l
+53
+<user>@controller:~$ exit
+logout
+Connection to 192.0.2.1 closed.
+
+<user>@<redacted> exit
+
+
+exit
+
+Script done on 2026-11-05 15:08:43-07:00 [COMMAND_EXIT_CODE="0"]
