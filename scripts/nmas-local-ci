@@ -66,7 +66,8 @@ Environment (set by the root-owned unit, never by a commit):
   NMAS_LOCAL_CI_PLATFORM   act's -P value, image pinned by digest: the job image built on
                            the host, by its ID, ubuntu-24.04=sha256:<image ID>
                            (or a pulled one, ubuntu-24.04=<image>@sha256:<digest>)
-  NMAS_LOCAL_CI_QUIET      a UTC window no run starts in, HH:MM-HH:MM (empty: none)
+  NMAS_LOCAL_CI_QUIET      a window no run starts in, HH:MM-HH:MM in UTC, or HH:MM-HH:MM@<zone>
+                           in an IANA zone's local time (empty: none)
   NMAS_LOCAL_CI_SECCOMP    the jobs' seccomp profile, root's (`seccomp-profile` writes it)
   NMAS_LOCAL_CI_STORE      the store (default /var/lib/nmas-local-ci)
 """
@@ -788,12 +789,25 @@ def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: st
 # ---------------------------------------------------------------------------
 
 def in_quiet(window: str, now: float) -> bool:
-    """Whether *now* (UTC) is inside *window*, "HH:MM-HH:MM" (empty: never)."""
-    m = re.match(r"^(\d\d):(\d\d)-(\d\d):(\d\d)$", (window or "").strip())
+    """Whether *now* is inside *window*, "HH:MM-HH:MM" in UTC, or "HH:MM-HH:MM@<zone>" in an
+    IANA zone's local time, so a window a schedule keeps in local time (the lab's backup,
+    "02:30-03:10@America/Denver") holds across daylight saving (C2613); no space, since the
+    environment file is read word by word. Empty: never. A zone this machine cannot read is
+    quiet: a guard that cannot ask refuses."""
+    m = re.match(r"^(\d\d):(\d\d)-(\d\d):(\d\d)(?:@(\S+))?$", (window or "").strip())
     if not m:
         return False
-    t = time.gmtime(now)
-    cur = t.tm_hour * 60 + t.tm_min
+    if m.group(5):
+        import datetime
+        try:
+            from zoneinfo import ZoneInfo
+            local = datetime.datetime.fromtimestamp(now, ZoneInfo(m.group(5)))
+        except Exception:
+            return True
+        cur = local.hour * 60 + local.minute
+    else:
+        t = time.gmtime(now)
+        cur = t.tm_hour * 60 + t.tm_min
     a, b = int(m.group(1)) * 60 + int(m.group(2)), int(m.group(3)) * 60 + int(m.group(4))
     return a <= cur < b if a <= b else (cur >= a or cur < b)
 
@@ -907,9 +921,11 @@ def tick(store: str, env: dict, run=subprocess.run, clock=time.time) -> int:
     A workflow's `schedule:` trigger is never read: the scheduled workflows run on GitHub's
     schedule (the operator, 2026-11-04, C2504). One at a time (a lock), nothing started inside
     the quiet window."""
-    if in_quiet(env.get("NMAS_LOCAL_CI_QUIET", ""), clock()):
-        print(f"nmas-local-ci: inside the quiet window {env.get('NMAS_LOCAL_CI_QUIET')} UTC: "
-              "nothing started")
+    quiet = env.get("NMAS_LOCAL_CI_QUIET", "")
+    if in_quiet(quiet, clock()):
+        zoned = "@" in quiet
+        print(f"nmas-local-ci: inside the quiet window {quiet}{'' if zoned else ' UTC'}"
+              f"{' (or its zone is unreadable here)' if zoned else ''}: nothing started")
         return 0
     lock = _lock(store)
     if lock is None:

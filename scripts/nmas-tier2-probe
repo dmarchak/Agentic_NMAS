@@ -35,8 +35,9 @@ configured or saved.
 - ``clear ip bgp <peer> soft`` only with ``--allow-live-bgp``: it acts on a live session. The
   peer is the first Established one in ``show ip bgp summary`` unless ``--bgp-peer`` names one;
   the verdict compares the peer's Up/Down before and after (a reset starts it again);
-- never inside the hypervisor's nightly backup window, 08:30 to 09:10 UTC (a measurement taken
-  then measures the backup), refused naming the window.
+- never inside the hypervisor's nightly backup window, 02:30 to 03:10 in the hypervisor's zone
+  (08:30 to 09:10 UTC under MDT, 09:30 to 10:10 under MST; a measurement taken then measures
+  the backup), refused naming the window; refused too when the zone cannot be read.
 
 A step that cannot be measured (no BGP, a flag not given, no ARP interface named) is recorded as
 NOT MEASURED with the reason, never as a result.
@@ -85,19 +86,53 @@ STEPS = (
 ARP_WAIT = 120
 #: A kept before-state's cap, the reads engine's measured answer cap (reads.CAP_KIB).
 KEEP_BYTES = 32 * 1024
-#: The hypervisor's nightly backup, in UTC (CLAUDE.md, standing facts).
-BACKUP_WINDOW = ((8, 30), (9, 10))
+#: The hypervisor's nightly backup, in the hypervisor's OWN local time (CLAUDE.md, standing
+#: facts): the job is scheduled at 02:30 in its zone, so in UTC it moves with daylight saving,
+#: 08:30 to 09:10 UTC under MDT and 09:30 to 10:10 UTC under MST (measured 2026-11-06 from the
+#: hypervisor's task list: 02:30 local every night either side of 2026-11-01, 33 to 37 minutes;
+#: C2613). Every guard on the window states these three values (tests/test_backup_window.py).
+BACKUP_ZONE = "America/Denver"
+BACKUP_WINDOW = ((2, 30), (3, 10))
 
 _TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9/.:-]{0,63}\Z")
 _ADDRESS = re.compile(r"[0-9A-Fa-f.:]{3,45}\Z")
 _UPTIME = re.compile(r"(?:(\d+)y)?(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?\Z")
 
 
+def _backup_local(now: float):
+    """*now* in the backup's zone, or None when this machine cannot read the zone."""
+    import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.fromtimestamp(now, ZoneInfo(BACKUP_ZONE))
+    except Exception:                    # no zone data: the guard cannot ask, so it refuses
+        return None
+
+
 def in_backup_window(now: float = None) -> bool:
-    t = time.gmtime(time.time() if now is None else now)
-    (h0, m0), (h1, m1) = BACKUP_WINDOW
-    minute = t.tm_hour * 60 + t.tm_min
-    return h0 * 60 + m0 <= minute < h1 * 60 + m1
+    """Inside the window, or the zone unreadable (a guard that cannot ask refuses)."""
+    t = _backup_local(time.time() if now is None else now)
+    if t is None:
+        return True
+    (start_h, start_m), (end_h, end_m) = BACKUP_WINDOW
+    minute = t.hour * 60 + t.minute
+    return start_h * 60 + start_m <= minute < end_h * 60 + end_m
+
+
+def backup_window_words(now: float = None) -> str:
+    """The window as its zone states it, with that day's UTC: "02:30 to 03:10 America/Denver
+    (09:30 to 10:10 UTC on 2026-11-06)", or why it cannot be said."""
+    import datetime
+    now = time.time() if now is None else now
+    (start_h, start_m), (end_h, end_m) = BACKUP_WINDOW
+    local = f"{start_h:02d}:{start_m:02d} to {end_h:02d}:{end_m:02d} {BACKUP_ZONE}"
+    t = _backup_local(now)
+    if t is None:
+        return f"{local} (this machine cannot read the zone {BACKUP_ZONE}, so it refuses)"
+    utc = datetime.timezone.utc
+    a = t.replace(hour=start_h, minute=start_m, second=0, microsecond=0).astimezone(utc)
+    b = t.replace(hour=end_h, minute=end_m, second=0, microsecond=0).astimezone(utc)
+    return f"{local} ({a:%H:%M} to {b:%H:%M} UTC on {t:%Y-%m-%d})"
 
 
 def confirm_prompt(text: str) -> str:
@@ -208,8 +243,9 @@ def refusal(args, now: float = None) -> str:
         if not (args.list_name and args.device and args.actor):
             return "REFUSED: --apply needs --list, --device and --actor (who is accountable)"
         if in_backup_window(now):
-            return ("REFUSED: it is inside the hypervisor's nightly backup window, 08:30 to 09:10 "
-                    "UTC; a measurement taken now measures the backup. Run it after 09:10 UTC.")
+            return ("REFUSED: it is inside the hypervisor's nightly backup window, "
+                    f"{backup_window_words(now)}; a measurement taken now measures the backup. "
+                    "Run it after the window's end.")
     return ""
 
 

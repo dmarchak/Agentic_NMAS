@@ -23,7 +23,7 @@ export LINES
 RESTORE='sudo install -m 0644 -o root -g root "$BEFORE" "$CONFIG" && sudo systemctl restart alloy'
 
 plan "run as the operator's own user, not root" \
-     "outside the backup window (08:30 to 09:10 UTC)" \
+     "outside the backup window (02:30 to 03:10 America/Denver)" \
      "the installed stage takes an upper-case facility alone, once" \
      "the new config is valid Alloy" \
      "the new config differs only in that expression" \
@@ -32,8 +32,8 @@ plan "run as the operator's own user, not root" \
      "lines still arrive with a severity label" \
      "the installed stage takes a mixed-case facility"
 not_root
-check "outside the backup window (08:30 to 09:10 UTC)" eq "outside" \
-    'm=$((10#$(date -u +%H) * 60 + 10#$(date -u +%M))); [ $m -ge 510 ] && [ $m -lt 550 ] && echo inside || echo outside'
+check "outside the backup window (02:30 to 03:10 America/Denver)" eq "outside" \
+    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 310 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
 
 case $MODE in
 apply)

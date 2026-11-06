@@ -89,8 +89,9 @@ the lab host take three times as long. **The window is 60 minutes, about 2.5 tim
 restart or a new key up to 15 minutes after its end is still the window's
 (`restarts.PLANNED_SLACK_SECONDS`), so Mercury accepts the new keys for 75 minutes.
 
-Not inside the nightly backup window (08:30 to 09:10 UTC): start only when 08:30 UTC is more
-than 75 minutes away, or after 09:10 UTC.
+Not inside the nightly backup window, 02:30 to 03:10 America/Denver, the hypervisor's own
+local time (08:30 to 09:10 UTC under MDT, 09:30 to 10:10 UTC under MST; C2613): start only
+when the window's start is more than 75 minutes away, or after its end.
 
 ## The procedure
 

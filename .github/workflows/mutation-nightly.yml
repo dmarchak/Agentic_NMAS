@@ -22,7 +22,8 @@ on:
   # WEEKLY, as a measurement (the operator, 2026-10-25: the deploy bar is CI and the change's
   # own tests; mutation gates only egress and masking, by a targeted run before their deploy,
   # once that code exists; no on-demand dispatch until the testing model is approved). Sunday
-  # 14:00 UTC, outside the 08:30 to 09:10 UTC backup window; the `window` job below refuses a
+  # 14:00 UTC, outside the backup window in either season (02:30 to 03:10 America/Denver,
+  # 08:30 to 09:10 UTC under MDT, 09:30 to 10:10 under MST); the `window` job below refuses a
   # start inside it, since a schedule can fire hours late (C772: 5 h 26 min). C835's reason for
   # no schedule (a late night held the one slot and a dispatched fix waited) is gone: a
   # labelled run has a concurrency group of its own.
@@ -76,10 +77,13 @@ env:
 
 jobs:
   # Never inside the backup window (the hypervisor's nightly backup loads the lab host; a
-  # measurement taken then measures the backup): a start inside 08:30 to 09:10 UTC mutates
-  # nothing and says so, the run green; the next week's runs as usual.
+  # measurement taken then measures the backup). The job is scheduled at 02:30 in the
+  # hypervisor's zone, so the window is 02:30 to 03:10 America/Denver: 08:30 to 09:10 UTC under
+  # MDT, 09:30 to 10:10 UTC under MST (C2613: a UTC-only guard guarded the wrong hour from
+  # 2026-11-01). A start inside it, or on a runner that cannot read the zone, mutates nothing
+  # and says so, the run green; the next week's runs as usual.
   window:
-    name: outside the backup window (08:30 to 09:10 UTC)
+    name: outside the backup window (02:30 to 03:10 America/Denver)
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     outputs:
@@ -87,10 +91,19 @@ jobs:
     steps:
       - id: when
         run: |
-          now=$(date -u +%H%M)
-          if [ "$now" -ge 830 ] && [ "$now" -lt 910 ]; then
+          t=$(date +%s)
+          zone=$(TZ=America/Denver date -d "@$t" +%Z)
+          now=$(TZ=America/Denver date -d "@$t" +%H%M)
+          utc=$(date -u -d "@$t" +%H:%M)
+          case "$zone" in
+            MST|MDT) ;;
+            *) echo "ok=false" >> "$GITHUB_OUTPUT"
+               echo "::notice::refused: this runner reads the zone America/Denver as '${zone}', so whether ${utc} UTC is inside the backup window is unknown: nothing is mutated this time"
+               exit 0 ;;
+          esac
+          if [ "$now" -ge 230 ] && [ "$now" -lt 310 ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::refused: ${now} UTC is inside the backup window, 08:30 to 09:10 UTC: nothing is mutated this time"
+            echo "::notice::refused: ${utc} UTC (${now} ${zone}) is inside the backup window, 02:30 to 03:10 America/Denver: nothing is mutated this time"
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi

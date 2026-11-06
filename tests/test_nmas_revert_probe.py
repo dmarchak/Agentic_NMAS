@@ -373,14 +373,17 @@ class TestRefusedBeforeSending:
         why = P.never_probe("r3", str(tmp_path / "never-probe.json"))
         assert why.startswith("REFUSED: the lab's never-probe declaration") and "absent" in why
 
-    @pytest.mark.parametrize("h, m, refused", [(8, 25, False), (8, 27, True), (8, 45, True),
-                                               (9, 9, True), (9, 10, False), (12, 0, False)])
+    @pytest.mark.parametrize("h, m, refused", [(8, 30, False), (9, 25, False), (9, 27, True),
+                                               (9, 45, True), (10, 9, True), (10, 10, False),
+                                               (12, 0, False)])
     def test_the_backup_window_over_the_whole_run(self, h, m, refused):
-        """A one-minute timer and the watch run four minutes: started 08:27, it ends inside."""
+        """A one-minute timer and the watch run four minutes: started 09:27, it ends inside.
+        2026-11-04 is under MST, so the window (02:30 to 03:10 America/Denver) is 09:30 to 10:10
+        UTC and 08:30 UTC is outside it (C2613)."""
         now = calendar.timegm((2026, 11, 4, h, m, 0, 0, 0, 0))
         why = P.refusal(_args(), now=now)
-        assert ("overlaps the hypervisor's nightly backup window, 08:30 to 09:10 UTC" in why) \
-            is refused
+        assert ("overlaps the hypervisor's nightly backup window, 02:30 to 03:10 America/Denver "
+                "(09:30 to 10:10 UTC on 2026-11-04)" in why) is refused
         if refused:
             assert f"{h:02d}:{m:02d} to" in why
 
@@ -396,7 +399,7 @@ class TestRefusedBeforeSending:
         monkeypatch.setattr("sys.argv", argv("s3"))
         assert P.main() == 1
         assert "declared never-probe" in capsys.readouterr().out
-        lab.clock.now = calendar.timegm((2026, 11, 4, 8, 40, 0, 0, 0, 0))
+        lab.clock.now = calendar.timegm((2026, 11, 4, 9, 40, 0, 0, 0, 0))
         monkeypatch.setattr("sys.argv", argv("r3"))
         assert P.main() == 1
         assert "backup window" in capsys.readouterr().out

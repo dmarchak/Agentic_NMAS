@@ -94,9 +94,32 @@ class TestRefusedBeforeTouching:
     @pytest.mark.parametrize("h, m, inside", [(8, 29, False), (8, 30, True), (9, 9, True),
                                               (9, 10, False)])
     def test_the_backup_window(self, h, m, inside):
+        """2026-10-08, under MDT: 02:30 to 03:10 America/Denver is 08:30 to 09:10 UTC."""
         assert P.in_backup_window(_utc(h, m)) is inside
         why = P.refusal(_args(apply=True), now=_utc(h, m))
         assert ("backup window" in why) is inside
+
+    @pytest.mark.parametrize("h, m, inside", [(8, 30, False), (9, 9, False), (9, 29, False),
+                                              (9, 30, True), (10, 9, True), (10, 10, False)])
+    def test_the_backup_window_moves_with_daylight_saving(self, h, m, inside):
+        """C2613: the job is scheduled at 02:30 in the hypervisor's zone, so on 2026-11-06,
+        under MST, the window is 09:30 to 10:10 UTC, and 08:30 UTC is outside it (measured from
+        the hypervisor's task list: 02:30 local every night either side of 2026-11-01)."""
+        now = calendar.timegm((2026, 11, 6, h, m, 0, 0, 0, 0))
+        assert P.in_backup_window(now) is inside
+        why = P.refusal(_args(apply=True), now=now)
+        assert ("backup window" in why) is inside
+        if inside:
+            assert ("02:30 to 03:10 America/Denver (09:30 to 10:10 UTC on 2026-11-06)"
+                    in why), why
+
+    def test_a_zone_this_machine_cannot_read_refuses(self, monkeypatch):
+        """A guard that cannot ask refuses: no zone data, and every instant is held."""
+        monkeypatch.setattr(P, "BACKUP_ZONE", "Nowhere/Invalid")
+        noon = calendar.timegm((2026, 11, 6, 12, 0, 0, 0, 0, 0))
+        assert P.in_backup_window(noon) is True
+        why = P.refusal(_args(apply=True), now=noon)
+        assert "cannot read the zone Nowhere/Invalid" in why, why
 
     @pytest.mark.parametrize("kw, words", [
         ({"interface": "Lo0;reload"}, "is not one interface name"),

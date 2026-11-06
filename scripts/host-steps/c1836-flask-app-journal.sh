@@ -39,7 +39,7 @@ export SYSLOG_JOBS MERCURY_LINES
 RESTORE='sudo install -m 0644 -o root -g root "$DIR/without.alloy" "$CONFIG" && sudo systemctl restart alloy'
 
 plan "run as the operator's own user, not root" \
-     "outside the backup window (08:30 to 09:10 UTC)" \
+     "outside the backup window (02:30 to 03:10 America/Denver)" \
      "Loki is published on loopback only (C1916)" \
      "flask-app's journal holds no line in a device's syslog form" \
      "the new config is valid Alloy" \
@@ -50,8 +50,8 @@ plan "run as the operator's own user, not root" \
      "the config holds the block once" \
      "the config is unchanged outside the block"
 not_root
-check "outside the backup window (08:30 to 09:10 UTC)" eq "outside" \
-    'm=$((10#$(date -u +%H) * 60 + 10#$(date -u +%M))); [ $m -ge 510 ] && [ $m -lt 550 ] && echo inside || echo outside'
+check "outside the backup window (02:30 to 03:10 America/Denver)" eq "outside" \
+    't=$(date +%s); z=$(TZ=America/Denver date -d "@$t" +%Z); n=$(TZ=America/Denver date -d "@$t" +%H%M); case "$z" in MST|MDT) [ "$n" -ge 230 ] && [ "$n" -lt 310 ] && echo inside || echo outside;; *) echo "zone unreadable";; esac'
 check "Loki is published on loopback only (C1916)" eq "127.0.0.1:3100" \
     'sudo docker port loki 3100/tcp | sort -u | tr -d "\n"'
 

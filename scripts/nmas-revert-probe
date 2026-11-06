@@ -35,7 +35,8 @@ will carry it: ``shutdown`` is one of ``pipeline._DANGEROUS_PATTERNS``).
 **Refused before anything is sent** (each naming the comparison and both operands):
 - a device declared never to be probed in ``lab/never-probe.json`` (the lab's own declaration:
   the product names no device; absent, the probe refuses, naming the file);
-- a run that would overlap the hypervisor's nightly backup, 08:30 to 09:10 UTC (the window
+- a run that would overlap the hypervisor's nightly backup, 02:30 to 03:10 America/Denver, the
+  hypervisor's zone, 08:30 to 09:10 UTC under MDT and 09:30 to 10:10 under MST (the window
   ``nmas-tier2-probe`` refuses, read from it);
 - a device whose COMMITTED intent holds no configuration archive path (``archive.path``, H22's
   field, or until H22 an unmodelled ``archive`` block with a ``path`` line);
@@ -313,15 +314,14 @@ def never_probe(device: str, path: str = None) -> str:
 
 def window_refusal(now: float, seconds: float) -> str:
     """The run, from *now* for *seconds*, against the backup window (`nmas-tier2-probe`'s)."""
-    (start_h, start_m), (end_h, end_m) = _T2.BACKUP_WINDOW
     t = now
     while t <= now + seconds:
         if _T2.in_backup_window(t):
             return (f"REFUSED: the run, {time.strftime('%H:%M', time.gmtime(now))} to "
                     f"{time.strftime('%H:%M', time.gmtime(now + seconds))} UTC (the timer and "
                     f"{WATCH_PAST_S // 60} min), overlaps the hypervisor's nightly backup "
-                    f"window, {start_h:02d}:{start_m:02d} to {end_h:02d}:{end_m:02d} UTC; a "
-                    "measurement taken then measures the backup")
+                    f"window, {_T2.backup_window_words(t)}; a measurement taken then measures "
+                    "the backup")
         t += 60
     return ""
 

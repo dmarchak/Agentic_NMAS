@@ -233,7 +233,6 @@ INVENTORY = {
     "scripts/nmas-rotation-recover": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r2"),
     "scripts/nmas-stage-guard": (1, HISTORY, "a dated incident or finding names the device it happened on: r6"),
     "scripts/nmas-tftp-once": (1, PROVENANCE, "a measurement names the device it was taken on: r2, s1"),
-    "scripts/nmas-tier2-probe": (2, NOT_A_DEVICE, "local variables h0 and h1, not devices: h0, h1"),
     "scripts/nsot_first_runs.py": (4, LOGIC, "a one-time script's fleet lists, from the first runs (2026-09): r1, r2, r3, r4, r5, s1, s2, s3, s4"),
     "scripts/nsot_fix_description_ifnames.py": (2, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1"),
     "scripts/nsot_metric_diff.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r3"),

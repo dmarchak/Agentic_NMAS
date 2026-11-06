@@ -144,6 +144,7 @@ RATCHETS = (
     ("tests/test_concepts_are_taught.py", "MIN_WORDS", "floor"),
     ("tests/test_confirm_buttons_drawn.py", "FLOOR", "floor"),
     ("tests/test_heal_analysis_never_read.py", "FLOOR", "floor"),
+    ("tests/test_backup_window.py", "FLOOR", "floor"),
     ("tests/test_console_records_at_rest.py", "FLOOR", "floor"),
     ("tests/test_oxidized_settings_inert.py", "FLOOR", "floor"),
     ("tests/test_presence_only.py", "UI_TESTS_FLOOR", "floor"),

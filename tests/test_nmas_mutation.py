@@ -4,6 +4,7 @@ mutmut: what a night plans from a real git history and the record, how it reads 
 output (captured 2026-10-14 in tests/fixtures/mutation/), when the measurement is broken, when
 the night fails, and what it leaves for the next night. mutmut itself is dev-only and never
 installed here; the workflow is checked as a file."""
+import calendar
 import fnmatch
 import importlib.machinery
 import importlib.util
@@ -13,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
 import yaml
@@ -1375,22 +1377,45 @@ class TestTheWorkflow:
         minute, hour, dom, month, dow = cron.split()
         assert (dom, month) == ("*", "*") and dow.isdigit(), "once a week"
         start = int(hour) * 60 + int(minute)
-        assert not 8 * 60 + 30 <= start < 9 * 60 + 10, cron
+        # Outside the window in BOTH seasons (C2613): 08:30 to 09:10 UTC under MDT, 09:30 to
+        # 10:10 under MST.
+        assert not 8 * 60 + 30 <= start < 10 * 60 + 10, cron
         assert doc["jobs"]["mutate"]["needs"] == "window"
         assert doc["jobs"]["mutate"]["if"] == "needs.window.outputs.ok == 'true'"
         guard = doc["jobs"]["window"]["steps"][0]["run"]
-        assert '-ge 830' in guard and '-lt 910' in guard and "ok=false" in guard
+        assert 'TZ=America/Denver' in guard and '-ge 230' in guard and '-lt 310' in guard
+        assert "ok=false" in guard
 
-    @pytest.mark.parametrize("hhmm,ok", [("0829", True), ("0830", False), ("0909", False),
-                                         ("0910", True), ("1400", True)])
-    def test_the_window_guard_refuses_exactly_inside_the_backup_window(self, hhmm, ok, tmp_path):
-        """The guard's own shell, run with the clock replaced: 08:30 to 09:09 refused."""
+    @pytest.mark.parametrize("utc,ok", [
+        ("2026-10-30T08:29:00Z", True), ("2026-10-30T08:30:00Z", False),
+        ("2026-10-30T09:09:00Z", False), ("2026-10-30T09:10:00Z", True),     # MDT
+        ("2026-11-06T08:30:00Z", True), ("2026-11-06T09:29:00Z", True),
+        ("2026-11-06T09:30:00Z", False), ("2026-11-06T10:09:00Z", False),
+        ("2026-11-06T10:10:00Z", True), ("2026-11-08T14:00:00Z", True)])     # MST
+    def test_the_window_guard_refuses_exactly_inside_the_backup_window(self, utc, ok, tmp_path):
+        """The guard's own shell, run with the clock replaced by a real instant, the zone
+        conversion its own: 02:30 to 03:09 America/Denver refused, in both seasons (C2613)."""
         guard = self.doc()["jobs"]["window"]["steps"][0]["run"]
+        at = calendar.timegm(time.strptime(utc, "%Y-%m-%dT%H:%M:%SZ"))
+        assert "t=$(date +%s)" in guard
+        script = guard.replace("t=$(date +%s)", f"t={at}")
         out = tmp_path / "out"
-        script = guard.replace("$(date -u +%H%M)", hhmm)
         subprocess.run(["bash", "-c", script], env=dict(os.environ, GITHUB_OUTPUT=str(out)),
                        check=True, capture_output=True)
         assert out.read_text().strip() == f"ok={'true' if ok else 'false'}"
+
+    def test_a_runner_that_cannot_read_the_zone_mutates_nothing(self, tmp_path):
+        """An unknown zone makes `date` answer in UTC silently; the guard reads the zone's name
+        and refuses, naming what it read."""
+        guard = self.doc()["jobs"]["window"]["steps"][0]["run"]
+        noon = calendar.timegm((2026, 11, 6, 12, 0, 0, 0, 0, 0))
+        script = guard.replace("t=$(date +%s)", f"t={noon}").replace(
+            "TZ=America/Denver", "TZ=Nowhere/Invalid")
+        out = tmp_path / "out"
+        r = subprocess.run(["bash", "-c", script], env=dict(os.environ, GITHUB_OUTPUT=str(out)),
+                           check=True, capture_output=True, text=True)
+        assert out.read_text().strip() == "ok=false"
+        assert "reads the zone America/Denver as 'UTC'" in r.stdout, r.stdout
 
     def test_a_labelled_dispatch_runs_beside_the_others_and_keeps_its_record_apart(self):
         """Lab 9, 2026-10-23 (the operator): the blocking function groups are measured in

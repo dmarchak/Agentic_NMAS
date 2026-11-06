@@ -52,6 +52,7 @@ What is held:
   saying why in its own env.
 """
 import ast
+import calendar
 import importlib.machinery
 import importlib.util
 import io
@@ -60,6 +61,7 @@ import os
 import re
 import stat
 import subprocess
+import time
 import zipfile
 
 import pytest
@@ -699,6 +701,23 @@ class TestSchedules:
         assert LC.in_quiet("08:30-09:10", at) and LC.in_quiet("08:30-09:10", at + 39 * 60)
         assert not LC.in_quiet("08:30-09:10", at + 40 * 60) and not LC.in_quiet("", at)
         assert LC.in_quiet("23:00-01:00", at - 8 * 3600 - 30 * 60 + 24 * 3600 - 1800)
+
+    @pytest.mark.parametrize("utc, quiet", [
+        ("2026-10-30T08:30:00Z", True), ("2026-10-30T09:09:00Z", True),
+        ("2026-10-30T09:30:00Z", False),                      # MDT: 08:30 to 09:10 UTC
+        ("2026-11-06T08:30:00Z", False), ("2026-11-06T09:29:00Z", False),
+        ("2026-11-06T09:30:00Z", True), ("2026-11-06T10:09:00Z", True),
+        ("2026-11-06T10:10:00Z", False)])                     # MST: 09:30 to 10:10 UTC
+    def test_a_zoned_quiet_window_moves_with_daylight_saving(self, LC, utc, quiet):
+        """C2613: the lab's backup is scheduled at 02:30 in the hypervisor's zone, so its quiet
+        window is given in that zone and holds in both seasons."""
+        at = calendar.timegm(time.strptime(utc, "%Y-%m-%dT%H:%M:%SZ"))
+        assert LC.in_quiet("02:30-03:10@America/Denver", at) is quiet
+
+    def test_a_zone_it_cannot_read_is_quiet(self, LC):
+        noon = calendar.timegm((2026, 11, 6, 12, 0, 0, 0, 0, 0))
+        assert LC.in_quiet("02:30-03:10@Nowhere/Invalid", noon) is True
+        assert LC.in_quiet("02:30-03:10@America/Denver", noon) is False
 
 
 class TestTheSelfTest:
