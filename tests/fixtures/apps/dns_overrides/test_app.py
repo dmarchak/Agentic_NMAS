@@ -1,7 +1,7 @@
 """The worked app's tests: pytest's format, run by `mercury app check` and by pytest alike."""
 
 from dns_overrides import decide, matches
-from modules.jobs import covers
+from mercury_app.testing import covers
 
 BOTH = {"overrides": {"block": ["blocked.example.invalid"],
                       "allow": ["blocked.example.invalid", "allowed.example.invalid"]}}

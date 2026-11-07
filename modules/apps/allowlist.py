@@ -17,7 +17,8 @@ one instead. Nothing here runs the app's code: every rule is read from the sourc
   any private (`_`) name of one.
 
 Besides the table: the app's own modules (imported by name, never relatively); in its tests,
-pytest's `raises` and `modules.jobs`' `covers` and `refused` (`TEST_ONLY`); and the job
+pytest's `raises` and the app SDK's `mercury_app.testing` (`covers`, `refused` and the
+fixtures: `TEST_ONLY`; never `modules.jobs`', which need Mercury's Python: C2644); and the job
 allowlist's rules for every other node (`modules.jobs.gate.node_problems`: no `open`, `exec`,
 `eval`, `getattr` or other forbidden builtin, no dunder or frame attribute, no bare except).
 
@@ -57,9 +58,17 @@ SDK = "mercury_app"
 EGRESS = "egress"
 #: The SDK's published names (held to the stub's `__all__` by tests/test_app_allowlist.py).
 SDK_NAMES = frozenset({"EgressRefused", "NotDeployed", "egress"})
+#: The app SDK's testing module: what an app's tests take `covers`, `refused` and the fixtures
+#: they call from, written for the controller's Python (C2644: `modules.jobs`' need pydantic
+#: and Mercury's Python, and an app's tests run in the container harness on the controller's).
+SDK_TESTING = SDK + ".testing"
 #: What an app's tests may import besides the app's own allowlist, `{module: names}`.
-TEST_ONLY = {runner.PYTEST: frozenset({"raises"}), "modules.jobs": frozenset({"covers",
-                                                                             "refused"})}
+TEST_ONLY = {runner.PYTEST: frozenset({"raises"}),
+             SDK_TESTING: frozenset({"covers", "refused", "netbox", "RecordedRyu", "HARNESS",
+                                     "UnrecordedPath"})}
+#: Why a Mercury module is refused to an app, its code and its tests alike.
+NO_MERCURY = (f"an app imports no Mercury module: its tests take covers, refused and the "
+              f"fixtures from {SDK_TESTING}, which runs on the controller's Python")
 #: Why a forbidden builtin is refused, in an app's words.
 APP_REACH = ("an app reaches the network only by mercury_app.egress, reads no file, and runs "
              "no code it builds")
@@ -274,12 +283,11 @@ class _File:
             if name == runner.PYTEST and self.is_test:
                 self.bindings[bound] = name
                 continue
+            if self.is_test and name in TEST_ONLY:
+                self.refuse(node, f"`import {name}`: write `from {name} import <names>`")
+                continue
             if name.partition(".")[0] == "modules":
-                self.refuse(node, f"`import {name}`: "
-                            + (f"write `from {name} import <names>`" if self.is_test and
-                               name in TEST_ONLY else
-                               "an app imports no Mercury module but, in its tests, "
-                               "modules.jobs' covers and refused"))
+                self.refuse(node, f"`import {name}`: {NO_MERCURY}")
                 continue
             problem = module_problem(name) or self.too_new(name)
             if problem:
@@ -317,8 +325,7 @@ class _File:
                 self.bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
             return
         if module.partition(".")[0] == "modules":
-            self.refuse(node, f"`from {module} import ...`: an app imports no Mercury module "
-                              "but, in its tests, modules.jobs' covers and refused")
+            self.refuse(node, f"`from {module} import ...`: {NO_MERCURY}")
             return
         problem = module_problem(module) or self.too_new(module)
         if problem:

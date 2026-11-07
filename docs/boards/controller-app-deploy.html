@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Controller app deploy</title>
+<!-- Board for the controller app deploy screen (C2678; P6, the SDN platform design revision 6,
+     section 10 H, and revision 7). A PROPOSAL for the operator's sign-off before Lab 9's S3 (the
+     operator's decision 6 of 2026-11-07); not signed, not self-signed: the Apps boards are the
+     operator's (decision 11 of 2026-11-06). Artboards A to L, then the decisions. Self-contained:
+     no external fonts or scripts. Example names (campus-sdn, ctl-1, of-eos-1, of-eos-2, of-hp-1,
+     ovs-1, ovs-2) and documentation addresses (192.0.2.0/24, 2001:db8::/32) only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--add:#E6F4EA;--del:#FBE9E7;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--add:#183A26;--del:#3D1F1C}}
+:root[data-theme="dark"]{--ground:#161A1F;--surface:#1E242B;--surface-2:#232A32;--ink:#E6E9ED;--ink-2:#B2BAC4;--ink-3:#7D8792;--line:#343C46;--line-2:#2A3139;
+--accent:#6FA8D6;--accent-ink:#A9CBE8;--accent-soft:#1F3344;--ok:#5FC495;--ok-soft:#173327;--warn:#E3A35A;--warn-soft:#3A2A16;--danger:#F08A80;--danger-soft:#3D1F1C;--muted-soft:#2A3139;--on-accent:#0E1318;--add:#183A26;--del:#3D1F1C}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.boardhead p{margin:4px 0}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+.side .badge{float:right;background:var(--danger);color:#fff;border-radius:9px;font-size:11px;padding:0 6px}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+p{margin:0}
+.crumb{font-size:12.5px;color:var(--ink-2)}
+.sub{font-size:13px;color:var(--ink-2)}
+.mono{font-family:var(--mono);font-size:12.5px}
+pre.mono{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:8px 10px;white-space:pre-wrap;word-break:break-all;overflow:auto}
+pre .add{background:var(--add);display:block}
+pre .del{background:var(--del);display:block;text-decoration:line-through;text-decoration-color:var(--ink-3)}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.busy{opacity:.75;cursor:progress}
+.btn.busy::before{content:"";display:inline-block;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;margin-right:7px;vertical-align:-1px}
+.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}.small{font-size:12.5px}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 14px;text-decoration:none;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tab.new::after{content:" new";font-size:11px;color:var(--warn)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field input,.field select,.field textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.field .hint{font-size:12px;color:var(--ink-2)}
+input[type=search],select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.kv{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;font-size:13px;margin:0}
+.kv dt{color:var(--ink-2)}.kv dd{margin:0;min-width:0}
+.summary{display:flex;gap:22px;font-size:13px;flex-wrap:wrap}
+.summary b{font-size:18px;display:block}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+tr.grp td{background:var(--surface-2);font-weight:600}
+tr.changed td{background:var(--accent-soft)}
+.topbar{display:flex;justify-content:flex-end;gap:12px;align-items:center;font-size:13px}
+.aichip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.refusal{border-left:3px solid var(--danger);background:var(--danger-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.question{border-left:3px solid var(--warn);background:var(--warn-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.passed{border-left:3px solid var(--ok);background:var(--ok-soft);padding:8px 12px;border-radius:4px;font-size:13px}
+.note{border-left:3px solid var(--line);background:var(--surface-2);padding:8px 12px;border-radius:4px;font-size:13px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.built{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #B4232A;border-radius:6px;padding:6px 10px}
+.built::before{content:"Built today: ";font-weight:600;color:#8A1C1C}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;font-size:13px}
+.steps li{display:grid;grid-template-columns:26px 210px 1fr 110px;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-2);align-items:start}
+.steps .n{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;background:var(--muted-soft);color:var(--ink-2)}
+.steps li.done .n{background:var(--ok-soft);color:var(--ok)}
+.steps li.run .n{background:var(--accent-soft);color:var(--accent-ink)}
+.steps li.fail .n{background:var(--danger-soft);color:var(--danger)}
+.steps li.skip{color:var(--ink-3)}
+.steps .t{text-align:right;color:var(--ink-2);font-size:12.5px}
+.na{display:grid;grid-template-columns:96px 1fr auto;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line-2);align-items:start;border-left:4px solid var(--line)}
+.na.crit{border-left-color:var(--danger)}.na.warn{border-left-color:var(--warn)}.na.unk{border-left-color:var(--ink-3)}.na.wait{border-left-color:var(--accent);background:var(--surface-2)}
+.na .lvl{font-size:12px;font-weight:600}
+.na.crit .lvl{color:var(--danger)}.na.warn .lvl{color:var(--warn)}.na.unk .lvl{color:var(--ink-2)}.na.wait .lvl{color:var(--accent-ink)}
+.na .what{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.na .clears{font-size:12px;color:var(--ink-2)}
+.tip{display:inline-block;background:#15191E;color:#FFFFFF;font-size:12px;border-radius:5px;padding:3px 8px;margin-left:6px}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 18px;width:1404px;margin:0 auto 10px;font-size:13px;box-sizing:border-box}
+.q h3{margin-bottom:6px}
+.q ol{margin:6px 0 0 18px;padding:0}
+.q li{margin:2px 0}
+.phone{width:390px;background:var(--ground);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.phone .pbar{background:var(--side);color:#fff;padding:10px 14px;font-size:14px;font-weight:600;display:flex;justify-content:space-between}
+.phone .pbody{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
+.phone .pin{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px}
+.phone .kv{grid-template-columns:1fr}
+.phone .kv dt{font-size:12px}
+.manual{max-width:820px;display:flex;flex-direction:column;gap:12px;font-size:14px}
+.manual h2{font-size:18px;margin-top:6px}
+.manual ol,.manual ul{margin:0;padding-left:22px}
+.manual li{margin:3px 0}
+.manual figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px}
+.manual figcaption{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+svg text{font-family:var(--sans);fill:var(--ink)}
+svg .box{fill:var(--surface-2);stroke:var(--line)}
+svg .boxa{fill:var(--accent-soft);stroke:var(--accent)}
+svg .boxd{fill:var(--danger-soft);stroke:var(--danger)}
+svg .ln{stroke:var(--ink-2);fill:none;stroke-width:1.4}
+svg .lnd{stroke:var(--danger);fill:none;stroke-width:1.4;stroke-dasharray:4 3}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>The controller app deploy: board for the operator's sign-off (C2678)</h1>
+<p>P6's screen (the SDN platform design revision 6, section 10 H; revision 7). Deploying a network's managed controller apps to its controller is one operation on the device-change lifecycle: <strong>preview</strong> (the plan: files and hashes, conformance, the drop-in before and after, the restart and the switches that reconnect, each bound with its provenance), <strong>confirm</strong> by the plan's hash as a verified person, <strong>apply</strong> holding the controller (stage over SFTP as the deploy account, the request, the one command, the outcome), <strong>verify</strong> (the post-check), <strong>rollback</strong> on a miss (Mercury's second request), and <strong>record</strong> (the receipt, History).</p>
+<p>Twelve artboards at 1440 wide: <strong>A</strong> SDN › Apps at rest; <strong>B</strong> an app's page; <strong>C</strong> the plan; <strong>D</strong> plans refused, and a plan that changes nothing; <strong>E</strong> running; <strong>F</strong> results: deployed, and failed partway; <strong>G</strong> results: the post-check missed; <strong>H</strong> the receipt and History; <strong>I</strong> Needs attention; <strong>J</strong> drift; <strong>K</strong> the manual page; <strong>L</strong> phone width. Then the decisions, each a question with a recommendation. Yellow dashed notes are the board's annotations, not part of the screen; a note marked <em>Built today</em> names where the code on main differs from what is drawn. Every other link and control is one the built screen will have.</p>
+<p><strong>Not signed.</strong> A proposal: the Apps boards are the operator's (decision 11, 2026-11-06). It is a new file rather than artboards appended to <span class="mono">docs/boards/lab9-sdn.html</span>, because that board's artboard B draws "apps" as flows Mercury installs (DNS filtering and DHCP steering), the model revision 6's decision 3 replaced with controller apps; and because its D1 to D8 are settled, so an unsigned proposal inside it would blur which artboards are signed. This board supersedes lab9-sdn's artboard B's framing of the Apps tab; B's steering cards become each app's page (artboard B here).</p>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · SDN › Apps: the network's controller and its managed apps, at rest</strong>: a new tab on the SDN page. The controller card leads (what the controller runs, as read, against Mercury's record); then the apps, grouped by what to do. One controller per network today; a network with several draws one card each, folded but for the one with something to do.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">1</span></a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span>Network <select><option>campus-sdn</option></select></span><span class="aichip">AI $0.04 today · 1 background on</span><span>operator@example.com (verified)</span></div>
+<div><h1 class="page">SDN · Apps <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1><p class="sub">The apps the network's controller runs, deployed by Mercury from the network's code repository. Each deploy restarts the controller.</p></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Flows</a><a class="tab on new" href="#">Apps</a><a class="tab" href="#">Responses</a>
+</nav>
+<section class="card" aria-label="The controller">
+<div class="card-head"><div><h2>ctl-1 <span class="chip ok">runs Mercury's record</span></h2><div class="small muted">Ryu 4.34 · unit <span class="mono">ryu-manager.service</span>, User <span class="mono">ryu</span> · listening on 192.0.2.50 TCP 6653 (NetBox Service <span class="mono">openflow</span>) · 5 of 5 expected switches connected</div></div>
+<div class="row"><a class="btn primary" href="#">Preview a deploy…</a><a class="btn sm" href="#">Read again</a><span class="faint small" title="Read by the SDN reader at 15:02:10 UTC (systemctl show and systemctl cat over the deploy account's session; every 5 minutes)">read 40 s ago</span><a href="#" class="how"><i class="i">i</i>How does this work?</a></div></div>
+<dl class="kv">
+<dt>Last deploy</dt><dd><span class="chip ok">deployed</span> 2026-11-17 15:08 UTC by operator@example.com: switch_quirks 1.2.0 → 1.3.0; 5 of 5 switches back, the slowest of-hp-1 at 71 s after the restart · <a href="#">its receipt</a> · <a href="#">every deploy on History</a></dd>
+<dt>Rolls back to, on a miss</dt><dd>the request before the last deploy (2026-11-17 10:40 UTC: of_versions 1.0.0, switch_quirks 1.2.0, fabric_forwarding 0.1.0, dns_blacklist 0.4.0)</dd>
+<dt>Code repository</dt><dd><span class="mono">apps/</span> at commit <span class="mono">5d1e0a7</span>, fetched 2026-11-17 13:58 UTC · <a href="#">Fetch now</a> · set in <a href="#">Settings › campus-sdn › Integrations</a></dd>
+<dt>The host</dt><dd>ctl-1 in NetBox (parent of the <span class="mono">openflow</span> Service) · <a href="#">Open its device page</a> · <a href="#">Open in NetBox</a></dd>
+</dl>
+</section>
+<div class="summary"><div><b>4</b>apps enabled on ctl-1</div><div><b style="color:var(--danger)">1</b>/health failing</div><div><b style="color:var(--accent)">1</b>a newer Published version</div><div><b>1</b>Draft (deploys only in the harness)</div></div>
+<section class="card" style="padding:0">
+<table><thead><tr><th style="width:24px"></th><th>App</th><th>State on ctl-1</th><th>Running (load order)</th><th>Newest Published</th><th>OpenFlow</th><th>/health</th></tr></thead><tbody>
+<tr class="grp"><td></td><td colspan="6">/health failing (1)</td></tr>
+<tr><td>▸</td><td><a href="#">dns_blacklist</a></td><td><span class="chip bad">/health failing</span></td><td>0.4.0 · 4th</td><td>0.4.0</td><td>1.0, 1.3</td><td><span class="chip bad">503</span> "verdict service not answering" · <a href="#">its Needs attention row</a></td></tr>
+<tr class="grp"><td></td><td colspan="6">A newer Published version (1)</td></tr>
+<tr><td>▸</td><td><a href="#">fabric_forwarding</a></td><td><span class="chip at">0.2.0 Published</span></td><td>0.1.0 · 3rd</td><td>0.2.0, reviewed by reviewer@example.com</td><td>1.0, 1.3</td><td><span class="chip ok">OK</span></td></tr>
+<tr class="grp"><td></td><td colspan="6">Running as recorded (2)</td></tr>
+<tr><td>▸</td><td><a href="#">of_versions</a></td><td><span class="chip ok">as recorded</span></td><td>1.0.0 · 1st</td><td>1.0.0</td><td>1.0, 1.3</td><td><span class="chip ok">OK</span></td></tr>
+<tr><td>▸</td><td><a href="#">switch_quirks</a></td><td><span class="chip ok">as recorded</span></td><td>1.3.0 · 2nd</td><td>1.3.0 <span class="faint">(1.4.0 Draft)</span></td><td>1.0, 1.3</td><td><span class="chip ok">OK</span></td></tr>
+</tbody></table>
+</section>
+<p class="callout">No row buttons: a row opens its app's page (artboard B), where a version is chosen. "Preview a deploy…" opens the plan for the whole set (artboard C) with nothing changed but what the person picks there. The filter and search appear above five apps. Ryu's own <span class="mono">ofctl_rest</span> and <span class="mono">rest_topology</span> are not managed apps: they load last on every deploy and are named in the plan's drop-in, never in this table.</p>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · SDN › Apps › switch_quirks: an app's page</strong>: its versions as registered from the code repository (each pinned by commit and content hash), what its manifest declares, and the one action: preview deploying a chosen Published version. A Draft is drawn with its reason, never offered.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">1</span></a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="crumb"><a href="#">SDN</a> › <a href="#">Apps</a> › switch_quirks</div>
+<div><h1 class="page">switch_quirks <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1><p class="sub">Per-switch specifics (punt and meter tables) compiled from the platform profiles; loaded second, after of_versions. Runs 1.3.0 on ctl-1.</p></div>
+<div class="cols">
+<section class="card" aria-label="Versions">
+<div class="card-head"><h2>Versions (3)</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<table><thead><tr><th style="width:24px"></th><th>Version</th><th>State</th><th>Pinned</th><th>On ctl-1</th></tr></thead><tbody>
+<tr><td><input type="radio" name="v" aria-label="Choose 1.4.0" disabled></td><td>1.4.0</td><td><span class="chip warn">Draft</span><div class="small muted">deploys only in the container harness; Publish needs a reviewer other than its author</div></td><td class="mono small">commit 5d1e0a7 · sha256:e19b…04c3</td><td>-</td></tr>
+<tr><td><input type="radio" name="v" aria-label="Choose 1.3.0" checked></td><td>1.3.0</td><td><span class="chip ok">Published</span><div class="small muted">by reviewer@example.com, 2026-11-16; harness green</div></td><td class="mono small">commit 9a4f2c1 · sha256:3f7a…b2d9</td><td><span class="chip ok">running</span></td></tr>
+<tr><td><input type="radio" name="v" aria-label="Choose 1.2.0"></td><td>1.2.0</td><td><span class="chip ok">Published</span><div class="small muted">by reviewer@example.com, 2026-11-12</div></td><td class="mono small">commit 41c08de · sha256:a02c…71e6</td><td>ran until 15:08 UTC today</td></tr>
+</tbody></table>
+<div class="row"><a class="btn primary" href="#" aria-disabled="true" title="1.3.0 is what ctl-1 runs: choose another version">Preview deploying 1.3.0…</a><a class="btn" href="#">Compare 1.3.0 with 1.2.0</a><a class="btn sm" href="#">Open the review</a></div>
+<p class="small muted">Choosing 1.2.0 enables "Preview deploying 1.2.0…": the same plan as artboard C, every other app as running. The disabled button carries its reason on hover.</p>
+</section>
+<section class="card" aria-label="What the manifest declares">
+<h2>What 1.3.0 declares</h2>
+<dl class="kv">
+<dt>Controllers</dt><dd>ryu &gt;= 4.34</dd>
+<dt>OpenFlow versions</dt><dd>1.0, 1.3 (the controller offers the intersection of every app's: <a href="#">the plan's conformance</a>)</dd>
+<dt>Requires</dt><dd>of_versions</dd>
+<dt>REST</dt><dd><span class="mono">/switch_quirks/health</span> GET (read by the post-check and every 60 s after) · <span class="mono">/switch_quirks/tables</span> GET</dd>
+<dt>Owns flows</dt><dd>cookie prefix <span class="mono">0x5a00</span>; no protected class</dd>
+<dt>Egress</dt><dd>none</dd>
+<dt>Config</dt><dd>compiled by Mercury from the platform profiles: of-hp-1 punt table 100, meter table 100; the others table 0 · <a href="#">the compiled config</a></dd>
+</dl>
+<p class="built">the deploy request carries no config: the request's shape is name, version and content hash only, and a config file inside the version's folder would move its hash off the Published pin. Decision K9.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The plan: deploy switch_quirks 1.3.0 to ctl-1</strong>: opened from artboard B or A. Everything the person confirms, in one card: the target, the set in load order with each file and hash, conformance per expected switch, the drop-in before and after, the restart and every switch, link and app the post-check waits for with its bound and that bound's provenance, the window, and what a miss rolls back to. One decision, one control.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="crumb"><a href="#">SDN</a> › <a href="#">Apps</a> › Deploy to ctl-1</div>
+<div><h1 class="page">Deploy to ctl-1: switch_quirks 1.2.0 → 1.3.0 <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1><p class="sub">1 app changes, 3 stay as they run. The controller restarts, so all 5 switches drop and reconnect.</p></div>
+<div class="cols">
+<section class="card" aria-label="Target and set">
+<h2>The target</h2>
+<dl class="kv">
+<dt>Controller</dt><dd>ctl-1 (NetBox), reached at 192.0.2.50 as the deploy account <span class="mono">mercury</span>; host kind, driver linux</dd>
+<dt>Unit</dt><dd><span class="mono">ryu-manager.service</span>, User <span class="mono">ryu</span>, MainPID 4127, active (read 15:04:12 UTC: <span class="mono">systemctl show -p User -p ExecStart</span>)</dd>
+<dt>App folder</dt><dd><span class="mono">/opt/ryu-apps</span> <span class="mono">mercury:mercury drwxr-xr-x</span> (read 15:04:12 UTC: <span class="mono">ls -la</span>) · the deploy account can stage, and the unit does not run as root</dd>
+<dt>Listen</dt><dd>192.0.2.50 TCP 6653, from NetBox's <span class="mono">openflow</span> Service on ctl-1</dd>
+</dl>
+<h3>The set, in load order</h3>
+<table><thead><tr><th>#</th><th>App</th><th>Version</th><th>Pinned (commit · content hash)</th><th>Files</th></tr></thead><tbody>
+<tr><td>1</td><td>of_versions</td><td>1.0.0</td><td class="mono small">7b20e9f · sha256:5c1d…9e40</td><td>3 · the same bytes as now</td></tr>
+<tr class="changed"><td>2</td><td>switch_quirks</td><td><strong>1.2.0 → 1.3.0</strong></td><td class="mono small">9a4f2c1 · sha256:3f7a…b2d9</td><td>4 · <a href="#">new folder</a></td></tr>
+<tr><td>3</td><td>fabric_forwarding</td><td>0.1.0</td><td class="mono small">2e88b10 · sha256:d4a0…13fb</td><td>3 · the same bytes as now</td></tr>
+<tr><td>4</td><td>dns_blacklist</td><td>0.4.0</td><td class="mono small">c37a5e2 · sha256:6be2…a8c1</td><td>3 · the same bytes as now</td></tr>
+<tr><td>5, 6</td><td colspan="4" class="muted">Ryu's own <span class="mono">ryu.app.ofctl_rest</span> and <span class="mono">ryu.app.rest_topology</span> (Mercury's reads), always last</td></tr>
+</tbody></table>
+<h3>switch_quirks 1.3.0's files, staged to <span class="mono">/opt/ryu-apps/switch_quirks/1.3.0/</span></h3>
+<table><thead><tr><th>File</th><th>Mode</th><th>Bytes</th><th>Blob</th></tr></thead><tbody>
+<tr><td class="mono">switch_quirks.py</td><td>644</td><td>6,214</td><td class="mono small">blob 1f0c…7a2e</td></tr>
+<tr><td class="mono">manifest.yml</td><td>644</td><td>1,102</td><td class="mono small">blob 88d3…c901</td></tr>
+<tr><td class="mono">tests/test_quirks.py</td><td>644</td><td>3,870</td><td class="mono small">blob 0b6e…4d15</td></tr>
+<tr><td class="mono">README.md</td><td>644</td><td>912</td><td class="mono small">blob e7a1…220b</td></tr>
+<tr><td colspan="4" class="muted small">From git's blobs at commit 9a4f2c1, never a working tree; the folder's hash recomputed from what was staged equals the Published pin. 13 files in 4 folders in all · <a href="#">every app's files</a></td></tr>
+</tbody></table>
+</section>
+<section class="card" aria-label="Conformance">
+<div class="card-head"><h2>Conformance: every expected switch can connect</h2><span class="chip ok">5 of 5</span></div>
+<p class="small muted">The controller offers the versions every loaded app shares: 1.0 and 1.3, its hello 1.3 (of_versions 1.0, 1.3; switch_quirks 1.0, 1.3; fabric_forwarding 1.0, 1.3; dns_blacklist 1.0, 1.3; Ryu's own 1.0 to 1.5). Each switch is compared by the profile entry covering its OS version.</p>
+<table><thead><tr><th>Switch</th><th>Profile entry</th><th>Switch speaks</th><th>Refuses a hello above</th><th>Common</th><th></th></tr></thead><tbody>
+<tr><td>of-eos-1</td><td>arista-eos 4.17</td><td>1.0</td><td>1.3</td><td>1.0; hello 1.3 is not above 1.3</td><td><span class="chip ok">can connect</span></td></tr>
+<tr><td>of-eos-2</td><td>arista-eos 4.17</td><td>1.0</td><td>1.3</td><td>1.0; hello 1.3 is not above 1.3</td><td><span class="chip ok">can connect</span></td></tr>
+<tr><td>of-hp-1</td><td>aruba-procurve K.16</td><td>1.3</td><td>-</td><td>1.3</td><td><span class="chip ok">can connect</span></td></tr>
+<tr><td>ovs-1, ovs-2</td><td>ovs 2.13</td><td>1.0 to 1.5</td><td>-</td><td>1.0, 1.3</td><td><span class="chip ok">can connect</span></td></tr>
+</tbody></table>
+<p class="built">conformance's per-switch result carries only the common versions and the hello limit: the profile entry and the switch's own versions, two of this table's columns, are only in a refusal's words. Finding F6.</p>
+<h2>The drop-in, before and after</h2>
+<p class="small muted"><span class="mono">/etc/systemd/system/ryu-manager.service.d/mercury.conf</span>, rendered by the apply script's own function (Mercury previews the same text). The before is read from <span class="mono">systemctl cat</span>; the apply script keeps it as <span class="mono">mercury.conf.prev</span>.</p>
+<pre class="mono"># Rendered by mercury-ryu-apply for request 9c2e…51f0. Mercury's next deploy replaces it; mercury.conf.prev is the one before.
+[Service]
+User=ryu
+ExecStart=
+ExecStart=/usr/local/bin/ryu-manager --observe-links --ofp-listen-host 192.0.2.50 --ofp-tcp-listen-port 6653
+  /opt/ryu-apps/of_versions/1.0.0/of_versions.py
+<span class="del">  /opt/ryu-apps/switch_quirks/1.2.0/switch_quirks.py</span><span class="add">  /opt/ryu-apps/switch_quirks/1.3.0/switch_quirks.py</span>  /opt/ryu-apps/fabric_forwarding/0.1.0/fabric_forwarding.py
+  /opt/ryu-apps/dns_blacklist/0.4.0/dns_blacklist.py
+  ryu.app.ofctl_rest ryu.app.rest_topology</pre>
+<p class="small muted">The command line is one line on the controller, wrapped here at each app. The before's request was 3a7c…d912. Flags the unit's command line carries now and the render drops: none.</p>
+<p class="callout">"Flags dropped: none" is drawn from comparing the command line systemd holds with the render: if the unit sets the REST API's host or port today, the first deploy would drop it, and the plan names each such flag here (C2675).</p>
+</section>
+</div>
+<div class="cols">
+<section class="card" aria-label="The restart and the post-check">
+<h2>The restart, and what must come back</h2>
+<p class="small">The apply script restarts <span class="mono">ryu-manager.service</span> and judges it by identity: a new MainPID, active, User <span class="mono">ryu</span>, within <strong>60 s</strong> <span class="chip warn" title="UP_BOUND_S in the apply script: about 2.5 times the 25 s the operator expects of a Ryu start. Not measured: the unit's restart is timed to active at S1 or S3 (C2687).">placeholder</span>. Then the post-check waits, within <strong>225 s</strong> <span class="chip warn" title="2.5 times the slowest switch's reconnect, 90 s, the operator's figure. Not measured: S1 (2026-11-10) reads every switch's reconnect after a controller restart, the HP's 60 s backoff included (C2674).">placeholder</span>, for all of these, read from the controller every 5 s:</p>
+<table><thead><tr><th>Expected</th><th>From</th><th>Back when</th></tr></thead><tbody>
+<tr><td><strong>5 switches</strong>: of-eos-1 <span class="mono faint">001c7300a0000001</span>, of-eos-2 <span class="mono faint">001c7300a0000002</span>, of-hp-1 <span class="mono faint">000a000000003e01</span>, ovs-1 <span class="mono faint">0000000000000011</span>, ovs-2 <span class="mono faint">0000000000000022</span></td><td>NetBox: the switches marked for OpenFlow with this controller; all 5 connected now</td><td>its DPID is in the controller's switch list; of-hp-1's own backoff is 60 s (its profile), the slowest</td></tr>
+<tr><td><strong>6 links</strong> · <a href="#">show 6</a></td><td>NetBox: the cables between OpenFlow ports; all 6 listed now</td><td>the controller lists the pair of switch ports</td></tr>
+<tr><td><strong>4 apps' /health</strong></td><td>each app's manifest</td><td>it answers OK. dns_blacklist's fails now: <a href="#">its row</a></td></tr>
+</tbody></table>
+<div class="question"><strong>dns_blacklist's /health fails before the deploy.</strong> The post-check expects it OK, so unless the verdict service answers first, this deploy will miss and roll back. <a class="btn sm" href="#">Open its Needs attention row</a> <span class="muted">· decision K6</span></div>
+<p class="built">the plan carries the expected switches but not the expected links or apps, and neither these nor the rollback target are in the plan's hash. Finding F2.</p>
+</section>
+<section class="card" aria-label="Window, rollback, hash and confirm">
+<h2>Before, and if it misses</h2>
+<dl class="kv">
+<dt>Planned-restart window</dt><dd>declared before anything is staged: ctl-1 restarting, the 5 switches expected to drop, <strong>9 min 30 s</strong> (twice the restart's 60 s and the post-check's 225 s, room for a rollback). Inside it, Needs attention draws ctl-1 and its switches as "waiting, planned"; it ends when the post-check passes.</dd>
+<dt>Holds</dt><dd>ctl-1, as one operation: another deploy, a read that writes, or a Reload of ctl-1 is refused by name while this runs</dd>
+<dt>Sends</dt><dd>13 files over SFTP as <span class="mono">mercury</span> (only under <span class="mono">/opt/ryu-apps/&lt;app&gt;/&lt;version&gt;/</span>), the request last, then the one command <span class="mono">sudo -n /usr/local/sbin/mercury-ryu-apply</span>. Nothing is deleted on ctl-1; nothing is sent to a switch.</dd>
+<dt>If the post-check misses</dt><dd>Mercury applies the request ctl-1 runs now (of_versions 1.0.0, switch_quirks <strong>1.2.0</strong>, fabric_forwarding 0.1.0, dns_blacklist 0.4.0; deployed 10:40 UTC) as a second request, restarts again and post-checks again. The receipt says "rolled back" or "rollback failed".</dd>
+<dt>Plan hash</dt><dd class="mono">sha256:4b1d…e07a</dd>
+</dl>
+<p class="built">the window is 2 × (60 + 225) s, but the transport waits up to 150 s for the one command and staging is not counted, so a rollback's post-check can outlast the window. Finding F7.</p>
+<div class="row"><a class="btn primary" href="#">Deploy switch_quirks 1.3.0 and restart ctl-1</a><a class="btn" href="#">Cancel</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="small muted">Confirmed as operator@example.com (verified). At the confirm Mercury makes the plan again holding ctl-1; a hash other than this one sends nothing and says what moved (artboard D).</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · Plans refused, and a plan that changes nothing</strong>: a refused plan draws its refusals in place of the plan's controls, each naming the comparison and both operands; nothing was staged. Right: the confirm refused because the plan moved, and the preview of a set ctl-1 already runs.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="crumb"><a href="#">SDN</a> › <a href="#">Apps</a> › Deploy to ctl-1</div>
+<div class="cols">
+<section class="card" aria-label="Refused plans">
+<div class="card-head"><h2>Can't deploy to ctl-1: refused before anything was staged</h2><span class="chip bad">Refused</span></div>
+<p class="small muted">Each kind the plan refuses, one per box as a plan would draw it (a plan with several draws them all, in this order).</p>
+<div class="refusal"><strong>Runs as root (C2):</strong> ryu-manager.service's User is 'root' and /opt/ryu-apps is mercury:mercury drwxr-xr-x, which mercury may write; code it writes would run as root at the next restart. Move the unit to User=ryu first (S3 step 1). <span class="muted">Compared: the unit's User against root; the folder's owner and mode against the deploy account.</span></div>
+<div class="refusal"><strong>Cannot stage:</strong> mercury cannot stage into /opt/ryu-apps: it is root:root drwxr-xr-x (the folder changes owner at S3 step 1, after ryu-manager.service runs as User=ryu; its User is 'ryu' now).</div>
+<div class="refusal"><strong>Can't tell (conformance):</strong> whether of-hp-1 can connect: no entry of profile aruba-procurve covers its OS version WC.16.11 (entries: K.16). A check Mercury cannot decide is never a pass. <a href="#">Open the profile</a></div>
+<div class="refusal"><strong>Conformance:</strong> of-eos-1 (arista-eos, profile arista-eos 4.17) refuses a hello above 1.3, and the controller's hello is 1.4 (it offers 1.0, 1.3, 1.4: of_versions 1.1.0 (1.0, 1.3, 1.4), switch_quirks 1.3.0 (1.0, 1.3, 1.4), fabric_forwarding 0.1.0 (1.0, 1.3, 1.4), dns_blacklist 0.4.0 (1.0, 1.3, 1.4)); pin the set at or below 1.3. The same for of-eos-2.</div>
+<div class="refusal"><strong>Not Published:</strong> switch_quirks 1.4.0 is Draft: only a Published version deploys to a controller (a Draft deploys only in the container harness). <a href="#">Open its review</a></div>
+<div class="refusal"><strong>Not the version reviewed:</strong> the staged folder's hash sha256:91aa…0c3e is not the Published sha256:3f7a…b2d9 (switch_quirks 1.3.0, staged from commit 9a4f2c1).</div>
+<div class="refusal"><strong>Can't tell (the unit):</strong> ryu-manager.service's User or command line: <span class="mono">systemctl show -p User -p ExecStart ryu-manager.service</span> answered no User line or no command line, so whether Ryu runs as root is not known. <a href="#">Read again</a></div>
+<div class="refusal"><strong>A requirement missing:</strong> switch_quirks 1.3.0 requires of_versions, which the enabled set (dns_blacklist, fabric_forwarding, switch_quirks) does not hold.</div>
+<div class="refusal"><strong>Held:</strong> ctl-1 is held by another operation (a controller app deploy by other@example.com, started 15:01:40 UTC). Nothing was sent; this is not queued. <a href="#">Open it</a></div>
+<p class="callout">Each box's words are drawn as the built check writes them. The conformance box is the intersection rule (C2593): the controller's hello is the highest version every loaded app shares, so a set that lets 1.4 through is refused before the Aristas ever see its hello (C2598's case).</p>
+</section>
+<div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+<section class="card" aria-label="The confirm refused: the plan moved">
+<div class="card-head"><h2>Not deployed: the plan changed since you previewed it</h2><span class="chip bad">Refused</span></div>
+<div class="refusal">The plan made again at the confirm, holding ctl-1, has hash sha256:0e95…77b1, and you confirmed sha256:4b1d…e07a. What moved: <strong>the drop-in before</strong> (its request 3a7c…d912 then, 5f02…e3aa now: ctl-1 was deployed at 15:06 UTC by other@example.com). Nothing was staged or sent.</div>
+<div class="row"><a class="btn primary" href="#">Preview again</a><a class="btn sm" href="#">Open that deploy's receipt</a></div>
+</section>
+<section class="card" aria-label="A plan that changes nothing">
+<div class="card-head"><h2>Deploy to ctl-1: no app changes</h2><span class="chip">Nothing to deploy</span></div>
+<p class="small">ctl-1 already runs this set (read 15:04:12 UTC): every app at the chosen version, the drop-in the same as its render, User <span class="mono">ryu</span>. Deploying it would change no file and no line, and would still restart the controller, so all 5 switches drop and reconnect.</p>
+<div class="row"><a class="btn" href="#">Back to Apps</a><a class="btn sm" href="#">Redeploy the same set and restart ctl-1…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="callout">The redeploy is offered (decision K4) because drift repair needs it (artboard J: a drop-in edited on the host); it opens the full plan of artboard C, whose confirm then reads "Redeploy the same set and restart ctl-1".</p>
+</section>
+<section class="card" aria-label="The first deploy">
+<div class="card-head"><h2>Deploy to ctl-1: the first deploy through Mercury</h2><span class="chip warn">no rollback target</span></div>
+<p class="small">ctl-1 has never run a request Mercury recorded. Its drop-in before is the root-installed one of S3 step 1:</p>
+<pre class="mono"><span class="del">[Service]
+User=ryu</span><span class="add">[Service]
+User=ryu
+ExecStart=
+ExecStart=/usr/local/bin/ryu-manager --observe-links … of_versions/1.0.0/… switch_quirks/1.3.0/… ryu.app.ofctl_rest ryu.app.rest_topology</span></pre>
+<div class="question"><strong>If the post-check misses, nothing is rolled back:</strong> Mercury holds no previous request. The apply script keeps the drop-in before as <span class="mono">mercury.conf.prev</span> on ctl-1, the break-glass (decision K3).</div>
+<div class="row"><a class="btn primary" href="#">Deploy 2 apps and restart ctl-1, with no rollback</a><a class="btn" href="#">Cancel</a></div>
+</section>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · Running: ctl-1 held, the steps as they go</strong>: the confirm control is busy on itself ("Deploying…") until the receipt arrives; the steps below are the result drawn in place (the Update page's stepper pattern), never narration. A person on another tab sees the same card and the controller held.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="topbar"><span class="chip at">In progress 1</span><span>operator@example.com (verified)</span></div>
+<div class="crumb"><a href="#">SDN</a> › <a href="#">Apps</a> › Deploy to ctl-1</div>
+<div><h1 class="page">Deploy to ctl-1: switch_quirks 1.2.0 → 1.3.0</h1><p class="sub">ctl-1 held by operator@example.com since 15:08:02 UTC · plan sha256:4b1d…e07a</p></div>
+<div class="cols">
+<section class="card" aria-label="The steps">
+<div class="card-head"><h2>Running</h2><span class="chip at">Running</span></div>
+<ol class="steps">
+<li class="done"><span class="n">1</span><span>Window declared</span><span>ctl-1 restarting, 5 switches expected to drop, until 15:17:32 UTC</span><span class="t">15:08:02</span></li>
+<li class="done"><span class="n">2</span><span>Plan made again, holding ctl-1</span><span>sha256:4b1d…e07a, the one confirmed</span><span class="t">15:08:03</span></li>
+<li class="done"><span class="n">3</span><span>Stage (SFTP as mercury)</span><span>13 of 13 files, each checked against its blob first</span><span class="t">15:08:06</span></li>
+<li class="done"><span class="n">4</span><span>Request written</span><span class="mono small">/opt/ryu-apps/.apply/request.json · 9c2e…51f0</span><span class="t">15:08:06</span></li>
+<li class="done"><span class="n">5</span><span>The one command</span><span class="mono small">sudo -n /usr/local/sbin/mercury-ryu-apply</span><span class="t">15:08:06</span></li>
+<li class="done"><span class="n">6</span><span>Outcome</span><span>drop-in written, the before kept as mercury.conf.prev; restarted: MainPID 4127 → 5590, active, User ryu, in 19.4 s</span><span class="t">15:08:26</span></li>
+<li class="run"><span class="n">7</span><span>Post-check</span><span>switches 4 of 5 (of-hp-1 not yet; its backoff is 60 s) · links 4 of 6 · /health 4 of 4 · 7 reads, 31 s of 225 s</span><span class="t">running</span></li>
+<li class="skip"><span class="n">8</span><span>Record</span><span>the receipt and History</span><span class="t">-</span></li>
+</ol>
+<div class="row"><a class="btn primary busy" href="#" aria-disabled="true">Deploying…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="small muted">No Cancel once the command is sent: the restart cannot be taken back mid-way. Before step 5, closing the tab changes nothing; the operation runs to its receipt either way.</p>
+</section>
+<section class="card" aria-label="Switches coming back">
+<h2>Coming back</h2>
+<table><thead><tr><th>Switch</th><th>Back</th></tr></thead><tbody>
+<tr><td>ovs-1</td><td><span class="chip ok">back</span> 6 s after the restart</td></tr>
+<tr><td>ovs-2</td><td><span class="chip ok">back</span> 6 s after the restart</td></tr>
+<tr><td>of-eos-1</td><td><span class="chip ok">back</span> 14 s after the restart</td></tr>
+<tr><td>of-eos-2</td><td><span class="chip ok">back</span> 15 s after the restart</td></tr>
+<tr><td>of-hp-1</td><td><span class="chip at">waiting</span> 50 s since the restart, of 225 s</td></tr>
+</tbody></table>
+<p class="small muted">"After the restart" counts from the apply script's restart, not from the post-check's first read.</p>
+<p class="built">the post-check's times count from its own first read, after the apply script's wait for the unit (19.4 s here), so each switch's time reads short by that much. Finding F4.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · Results: deployed, and failed partway</strong>: drawn in place of the plan's card from the receipt, readable again from History. Colour is the outcome: green only when every expected switch, link and app came back.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="cols">
+<section class="card" aria-label="Deployed">
+<div class="card-head"><h2>Deployed: ctl-1 runs switch_quirks 1.3.0</h2><span class="chip ok">Succeeded</span></div>
+<p class="small">Every expected switch, link and app's /health was back 71 s after the restart (the bound 225 s, a placeholder). The window ended at 15:09:25 UTC.</p>
+<table><thead><tr><th>Switch</th><th>DPID</th><th>Back after the restart</th></tr></thead><tbody>
+<tr><td>ovs-1</td><td class="mono small">0000000000000011</td><td>6 s</td></tr>
+<tr><td>ovs-2</td><td class="mono small">0000000000000022</td><td>6 s</td></tr>
+<tr><td>of-eos-1</td><td class="mono small">001c7300a0000001</td><td>14 s</td></tr>
+<tr><td>of-eos-2</td><td class="mono small">001c7300a0000002</td><td>15 s</td></tr>
+<tr><td>of-hp-1</td><td class="mono small">000a000000003e01</td><td>71 s, the slowest</td></tr>
+</tbody></table>
+<dl class="kv"><dt>Links</dt><dd>6 of 6 listed at 73 s</dd><dt>/health</dt><dd>4 of 4 OK</dd><dt>The unit</dt><dd>MainPID 4127 → 5590, active, User ryu, 19.4 s to active</dd></dl>
+<div class="row"><a class="btn sm" href="#">Open the receipt</a><a class="btn sm" href="#">Back to Apps</a></div>
+</section>
+<div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+<section class="card" aria-label="Failed while staging">
+<div class="card-head"><h2>Not deployed: stopped while staging</h2><span class="chip bad">Failed</span></div>
+<p class="small">Stopped at staging: SSHException: the session closed. Staged 9 of 13 files, not staged 4 (switch_quirks 1.3.0's <a href="#">4 files</a>); the request was not written; the command was not sent. <strong>Nothing was deleted on ctl-1, and nothing restarted:</strong> it runs what it ran (read 15:08:40 UTC). The 9 staged files sit unused in their version folders; the next deploy writes the same bytes over them.</p>
+<p class="small muted">The window was ended at 15:08:41 UTC: nothing restarted.</p>
+<div class="row"><a class="btn primary" href="#">Preview again</a><a class="btn sm" href="#">Open the receipt</a></div>
+</section>
+<section class="card" aria-label="Failed after the drop-in">
+<div class="card-head"><h2>Not deployed: the unit did not come up, so Mercury rolled back</h2><span class="chip warn">Rolled back</span></div>
+<p class="small">The apply script wrote the new drop-in and restarted ryu-manager.service, which was not active with a new MainPID and User=ryu within 60 s (a placeholder, not measured): read 61 times, MainPID 0 (before 4127), ActiveState failed, User 'ryu'. What landed: the drop-in for request 9c2e…51f0. Mercury applied the previous request (switch_quirks 1.2.0): active in 18.8 s, MainPID 6012; 5 of 5 switches, 6 of 6 links and 4 of 4 /health back 70 s after that restart.</p>
+<div class="row"><a class="btn sm" href="#">Open the receipt</a><a class="btn sm" href="#">Read ryu-manager.service's log</a></div>
+<p class="built">a failed apply is the end of the deploy: no rollback runs even when the script's outcome says the new drop-in was written and the unit restarted. Finding F1.</p>
+</section>
+<section class="card" aria-label="Outcome not known">
+<div class="card-head"><h2>ctl-1's deploy: the outcome is not known</h2><span class="chip">Unknown</span></div>
+<p class="small">The command was sent at 15:08:06 UTC and no answer came within 150 s (2.5 times the script's restart bound, a placeholder). Whether the script ran is not known: its outcome file holds a run started 10:40:12 UTC, not this one. The files and the request were staged; nothing was deleted.</p>
+<div class="row"><a class="btn primary" href="#">Read the outcome again</a><a class="btn sm" href="#">Preview a rollback…</a><a class="btn sm" href="#">Open the receipt</a></div>
+<p class="small muted">The window stays until it ends; past it, ctl-1 and any switch not back are Needs attention rows (artboard I). Decision K7.</p>
+</section>
+</div>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ G -->
+<div class="artlabel"><strong>G · Results: the post-check missed</strong>: the post-check names what did not come back, the bound, its provenance and how many reads ran. Left, rolled back to the previous request; middle, the rollback itself missed; right, no previous request, so nothing was rolled back.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">1</span></a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="cols3">
+<section class="card" aria-label="Rolled back">
+<div class="card-head"><h2>Rolled back to switch_quirks 1.2.0</h2><span class="chip warn">Rolled back</span></div>
+<p class="small">The post-check's bound fired after 225 s and 46 reads of the switches, the links and every enabled app's /health: <strong>switches not back: of-hp-1</strong> (000a000000003e01); links not back: of-hp-1:1 to ovs-1:3, of-hp-1:2 to of-eos-2:4. The bound is 225 s, 2.5 times the slowest switch's reconnect of 90 s (a placeholder: the operator's figure, not measured).</p>
+<p class="small">Mercury applied the previous request: active in 18.6 s; every expected switch, link and app's /health was back 72 s after that restart. ctl-1 runs what it ran before.</p>
+<table><thead><tr><th>Step</th><th></th></tr></thead><tbody>
+<tr><td>Deploy, post-check</td><td><span class="chip bad">missed</span> of-hp-1</td></tr>
+<tr><td>Rollback apply</td><td><span class="chip ok">active</span> MainPID 5590 → 6203</td></tr>
+<tr><td>Rollback post-check</td><td><span class="chip ok">5 of 5</span></td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Open the receipt</a><a class="btn sm" href="#">Open of-hp-1 on SDN › Switches</a></div>
+</section>
+<section class="card" aria-label="Rollback failed">
+<div class="card-head"><h2>Rollback failed: ctl-1 is not back as it was</h2><span class="chip bad">Failed</span></div>
+<p class="small">The deploy's post-check missed (of-hp-1), and so did the rollback's: after the previous request was applied (active in 18.9 s), the bound fired after 225 s and 46 reads: <strong>switches not back: of-hp-1</strong>. ctl-1 runs the previous request; of-hp-1 is not connected.</p>
+<p class="small">Both checks missed the same switch, so the cause is likely of-hp-1's, not the apps': its port and its route to 192.0.2.50 are the next things to read.</p>
+<div class="row"><a class="btn sm" href="#">Open its Needs attention row</a><a class="btn sm" href="#">Open the receipt</a></div>
+</section>
+<section class="card" aria-label="No previous request">
+<div class="card-head"><h2>Post-check missed: nothing was rolled back</h2><span class="chip bad">Failed</span></div>
+<p class="small">The post-check's bound fired after 225 s and 46 reads: <strong>apps not healthy: switch_quirks (500 "table 100 missing on 000a000000003e01")</strong>. This was ctl-1's first deploy through Mercury, so <strong>no previous request</strong> is recorded to roll back to. ctl-1 runs the new set.</p>
+<p class="small"><strong>The break-glass:</strong> <span class="mono">/etc/systemd/system/ryu-manager.service.d/mercury.conf.prev</span> on ctl-1, kept by the apply script: the drop-in before this deploy (<span class="mono">[Service] User=ryu</span>).</p>
+<div class="row"><a class="btn primary" href="#">Preview a deploy…</a><a class="btn sm" href="#">Open the receipt</a></div>
+<p class="built">this case's receipt outcome is "rollback failed", though no rollback was tried: two states in one word. Finding F5. Putting the break-glass back is a root step on the host today, outside Mercury: decision K3.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ H -->
+<div class="artlabel"><strong>H · The receipt, and History</strong>: the receipt is the deploy's whole record, masked as History masks; History lists every controller deploy with a summary first, grouped by day, searchable, each opening its receipt.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#" class="on">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">History <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<div class="row"><input type="search" placeholder="Search apps, versions, hashes, people" style="width:320px"><select><option>Kind: controller app deploy</option><option>Every kind</option></select><select><option>Every outcome</option><option>Deployed</option><option>Rolled back</option><option>Rollback failed</option><option>Apply failed</option><option>Refused</option><option>Unknown</option></select><select><option>Every controller</option><option>ctl-1</option></select></div>
+<div class="summary"><div><b>12</b>controller deploys, last 30 days</div><div><b style="color:var(--ok)">9</b>deployed</div><div><b style="color:var(--warn)">2</b>rolled back</div><div><b style="color:var(--danger)">0</b>failed</div><div><b>1</b>refused at the confirm</div></div>
+<div class="cols">
+<section class="card" style="padding:0" aria-label="The list">
+<table><thead><tr><th>When (UTC)</th><th>What</th><th>Outcome</th><th>By</th></tr></thead><tbody>
+<tr class="grp"><td colspan="4">2026-11-17 (3)</td></tr>
+<tr><td>15:08</td><td><a href="#">ctl-1: switch_quirks 1.2.0 → 1.3.0</a></td><td><span class="chip ok">deployed</span></td><td>operator@example.com</td></tr>
+<tr><td>14:51</td><td><a href="#">ctl-1: switch_quirks 1.2.0 → 1.3.0</a></td><td><span class="chip warn">rolled back</span> of-hp-1</td><td>operator@example.com</td></tr>
+<tr><td>10:40</td><td><a href="#">ctl-1: 4 apps, the first deploy through Mercury</a></td><td><span class="chip ok">deployed</span></td><td>operator@example.com</td></tr>
+<tr class="grp"><td colspan="4">▸ 2026-11-12 (9)</td></tr>
+</tbody></table>
+</section>
+<section class="card" aria-label="The receipt">
+<div class="card-head"><h2>Receipt: ctl-1, 2026-11-17 15:08 UTC</h2><span class="chip ok">deployed</span></div>
+<dl class="kv">
+<dt>Confirmed by</dt><dd>operator@example.com, verified by the access proxy's assertion, 15:08:02 UTC</dd>
+<dt>Plan</dt><dd class="mono">sha256:4b1d…e07a</dd>
+<dt>Request</dt><dd><span class="mono">9c2e…51f0</span>: of_versions 1.0.0, switch_quirks 1.3.0, fabric_forwarding 0.1.0, dns_blacklist 0.4.0 · listen 192.0.2.50 6653</dd>
+<dt>Before</dt><dd>request <span class="mono">3a7c…d912</span> (switch_quirks 1.2.0) · <a href="#">its receipt</a></dd>
+<dt>Files</dt><dd>13 staged, each with its blob and the four folders' content hashes · <a href="#">the list</a></dd>
+<dt>Drop-in</dt><dd>before <span class="mono">sha256:77e0…1b4c</span>, after <span class="mono">sha256:c5a9…6d02</span> · <a href="#">both texts</a></dd>
+<dt>Window</dt><dd>15:08:02 to 15:17:32 UTC declared; ended 15:09:25 by the post-check</dd>
+<dt>The apply script</dt><dd>started 15:08:06, finished 15:08:26; MainPID 4127 → 5590; User ryu; 19.4 s to active (bound 60 s, a placeholder) · <a href="#">its outcome, whole</a></dd>
+<dt>Post-check</dt><dd>passed after 12 reads; switches back 6, 6, 14, 15, 71 s after the restart; 6 links; 4 /health OK (bound 225 s, a placeholder)</dd>
+<dt>Steps</dt><dd><a href="#">8 steps with their times</a></dd>
+</dl>
+<div class="row"><a class="btn sm" href="#">Download the receipt (JSON)</a><a class="btn sm" href="#">Open the controller</a></div>
+<p class="callout">Where the receipt is kept, and so what drift and rollback compare with, is decision K2. The bounds are recorded with their provenance, so a receipt written on a placeholder says so for good.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ I -->
+<div class="artlabel"><strong>I · Needs attention: the rows this operation raises and clears</strong>: each names what is wrong and the action, and says how it clears. Inside a declared window the controller and its switches are drawn as waiting, never critical.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#" class="on">Needs attention <span class="badge">4</span></a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">Needs attention <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1></div>
+<section class="card" style="padding:0" aria-label="Rows">
+<div class="na crit"><span class="lvl">Critical</span><div class="what"><strong>dns_blacklist's /health fails on ctl-1</strong><span>It answers 503 "verdict service not answering" since 14:30 UTC (6 reads). While it fails, names with no cached verdict are allowed and logged (on_unavailable: allow). Check the verdict service in dns_blacklist's settings, or reach it from ctl-1.</span><span class="clears">Clears when /health answers OK on the next read (every 60 s).</span></div><div class="row"><a class="btn sm" href="#">Open dns_blacklist</a></div></div>
+<div class="na crit"><span class="lvl">Critical</span><div class="what"><strong>fabric_forwarding is not loaded on ctl-1</strong><span>Mercury's record runs it 3rd, and its /health path answers 404: the controller started without it. Preview the redeploy to load the recorded set again.</span><span class="clears">Clears when /health answers OK, or by a deploy that leaves it out of the set.</span></div><div class="row"><a class="btn sm" href="#">Preview the redeploy…</a></div></div>
+<div class="na crit"><span class="lvl">Critical</span><div class="what"><strong>of-hp-1 is not connected to ctl-1, outside any planned window</strong><span>Its DPID 000a000000003e01 left the controller's switch list at 16:20 UTC (3 reads); no window covers it. Its port and its route to 192.0.2.50 are the next things to check.</span><span class="clears">Clears when the controller lists its DPID again, or when acknowledged with a reason (for up to 24 h).</span></div><div class="row"><a class="btn sm" href="#">Open it on SDN › Switches</a><a class="btn sm" href="#">Acknowledge…</a></div></div>
+<div class="na warn"><span class="lvl">Warning</span><div class="what"><strong>Link of-eos-1:3 to of-eos-2:3 is missing on ctl-1</strong><span>NetBox cables these OpenFlow ports; the controller has not listed the pair since 16:22 UTC (3 reads); both switches are connected. Check the cable and both ports.</span><span class="clears">Clears when the controller lists the link again, or when acknowledged with a reason.</span></div><div class="row"><a class="btn sm" href="#">Open it on Topology</a><a class="btn sm" href="#">Acknowledge…</a></div></div>
+<div class="na wait"><span class="lvl">Waiting, planned</span><div class="what"><strong>ctl-1 is restarting for a controller app deploy</strong><span>Declared by operator@example.com at 15:08:02 UTC, until 15:17:32 UTC; 5 switches expected to drop and reconnect (4 back).</span><span class="clears">Ends when the deploy's post-check passes, or at 15:17:32; past it, each switch not back is a row as above.</span></div><div class="row"><a class="btn sm" href="#">Open the deploy</a></div></div>
+<div class="na unk"><span class="lvl">Unknown</span><div class="what"><strong>ctl-1's deploy outcome is not known</strong><span>The command was sent at 15:08:06 UTC and no outcome of this run was read in 150 s. Read the outcome again, or preview a rollback.</span><span class="clears">Clears when the outcome of that run is read, or by the next deploy's receipt.</span></div><div class="row"><a class="btn sm" href="#">Read the outcome again</a></div></div>
+<div class="na warn"><span class="lvl">Warning</span><div class="what"><strong>ctl-1 runs switch_quirks 1.2.0; Mercury's record says 1.3.0</strong><span>What systemd holds for ryu-manager.service differs from the last deploy's request (read 16:40 UTC). Preview the redeploy to put the record back, or deploy 1.2.0 to make it the record.</span><span class="clears">Clears when the unit reads as the record (the next read, every 5 minutes), or by a deploy.</span></div><div class="row"><a class="btn sm" href="#">Preview the redeploy…</a></div></div>
+</section>
+<p class="callout">The rows' sources: /health and the connection rows are the SDN reader's (every 60 s); drift is the controller read of artboard A (every 5 minutes). A deploy's success clears the waiting row and any drift row; a rollback that failed leaves the switch's own row standing (artboard G). Not drawn again: the existing SDN rows (a controller not answering, the loop stopped).</p>
+</main>
+</div>
+
+<!-- ============================================================ J -->
+<div class="artlabel"><strong>J · Drift: the controller runs what Mercury did not record</strong>: artboard A's controller card when the read differs, each line naming both sides and the action. It says what it read: what systemd holds, not the running process's own command line.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention <span class="badge">1</span></a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#" class="on">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div><h1 class="page">SDN · Apps</h1></div>
+<nav class="tabs" aria-label="SDN">
+<a class="tab" href="#">Controllers</a><a class="tab" href="#">Flows</a><a class="tab on" href="#">Apps</a><a class="tab" href="#">Responses</a>
+</nav>
+<div class="cols">
+<section class="card" aria-label="Drift">
+<div class="card-head"><h2>ctl-1 <span class="chip warn">differs from Mercury's record</span></h2><span class="faint small" title="Read at 16:40:05 UTC by the controller read: systemctl show -p User -p ExecStart and systemctl cat ryu-manager.service, as the deploy account">read 2 min ago</span></div>
+<table><thead><tr><th>What</th><th>Mercury's record (deploy of 15:08 UTC)</th><th>ctl-1's unit says</th></tr></thead><tbody>
+<tr><td>switch_quirks</td><td>1.3.0</td><td><strong>1.2.0</strong></td></tr>
+<tr><td>of_versions, fabric_forwarding, dns_blacklist</td><td>1.0.0, 0.1.0, 0.4.0</td><td>the same</td></tr>
+<tr><td>User</td><td>ryu</td><td>ryu</td></tr>
+<tr><td>The drop-in</td><td>the render of request 9c2e…51f0</td><td><strong>not that render</strong> (rendered for request 3a7c…d912: mercury.conf.prev was copied back)</td></tr>
+</tbody></table>
+<p class="small muted">Read from what systemd holds for ryu-manager.service. The running process's own command line (its MainPID's) is not among the host's reads, so a unit changed and not yet restarted reads as changed here.</p>
+<div class="row"><a class="btn primary" href="#">Preview the redeploy…</a><a class="btn" href="#">Read again</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<p class="small muted">To keep what the controller runs instead, choose switch_quirks 1.2.0 on its page and deploy it: the deploy makes it the record.</p>
+</section>
+<section class="card" aria-label="Can't tell and IPv6">
+<h2>When drift can't be told</h2>
+<div class="note"><strong>Can't tell:</strong> ryu-manager.service's command line cannot be read, so drift can't be told (<span class="mono">systemctl show</span> answered no ExecStart line, 16:45 UTC). Never drawn as matching. <a href="#">Read again</a></div>
+<h2>A controller listening on IPv6</h2>
+<p class="small">The listen address is NetBox's; an IPv6 one renders the same way, and the apply script accepts either family:</p>
+<pre class="mono">ExecStart=/usr/local/bin/ryu-manager --observe-links --ofp-listen-host 2001:db8:10::50 --ofp-tcp-listen-port 6653 …</pre>
+<p class="small muted">Mercury reaches ctl-1 over IPv6 the same way, by its NetBox primary address.</p>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ K -->
+<div class="artlabel"><strong>K · The manual: How it works, "Deploy apps to an SDN controller"</strong>: every "How does this work?" on artboards A to J opens <span class="mono">/v2/help/controller-app-deploy</span> at its section; the screen page <span class="mono">/v2/help/sdn#apps</span> describes the tab. The diagram sits in the flow of the text; each step is one the code declares.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a><a href="#">Topology</a><a href="#">SDN</a><a href="#">Show commands</a><a href="#">Logs</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Intent</a><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#" class="on">Help</a><a href="#">Settings</a>
+</nav>
+<main>
+<div class="crumb"><a href="#">Help</a> › <a href="#">How it works</a> › Deploy apps to an SDN controller</div>
+<div class="manual">
+<h1 class="page" style="font-size:22px">Deploy apps to an SDN controller</h1>
+<p>A network's controller apps (Ryu apps such as <span class="mono">of_versions</span>, <span class="mono">switch_quirks</span> and <span class="mono">dns_blacklist</span>) come from the network's code repository. Only a Published version deploys, byte for byte the version reviewed. Every deploy sends the whole set the controller will run and restarts the controller, so every switch drops and reconnects; Mercury checks they all come back and, if they don't, puts the set before back. You start it on <a href="#">SDN › Apps</a>.</p>
+<figure>
+<svg viewBox="0 0 780 190" width="780" height="190" role="img" aria-label="The deploy: plan, confirm by hash, declare the window, hold the controller, stage the files, write the request, run the one command, read the outcome, post-check; on a miss, apply the previous request and post-check again; record.">
+<rect class="box" x="4" y="20" width="84" height="40" rx="6"/><text x="46" y="44" font-size="12" text-anchor="middle">Plan</text>
+<rect class="boxa" x="104" y="20" width="96" height="40" rx="6"/><text x="152" y="38" font-size="12" text-anchor="middle">You confirm</text><text x="152" y="53" font-size="10.5" text-anchor="middle">by its hash</text>
+<rect class="box" x="216" y="20" width="96" height="40" rx="6"/><text x="264" y="38" font-size="12" text-anchor="middle">Window,</text><text x="264" y="53" font-size="10.5" text-anchor="middle">then hold</text>
+<rect class="box" x="328" y="20" width="96" height="40" rx="6"/><text x="376" y="38" font-size="12" text-anchor="middle">Stage files</text><text x="376" y="53" font-size="10.5" text-anchor="middle">SFTP, request last</text>
+<rect class="box" x="440" y="20" width="110" height="40" rx="6"/><text x="495" y="38" font-size="12" text-anchor="middle">The one command</text><text x="495" y="53" font-size="10.5" text-anchor="middle">drop-in, restart</text>
+<rect class="box" x="566" y="20" width="96" height="40" rx="6"/><text x="614" y="44" font-size="12" text-anchor="middle">Post-check</text>
+<rect class="box" x="680" y="20" width="94" height="40" rx="6"/><text x="727" y="44" font-size="12" text-anchor="middle">Record</text>
+<path class="ln" d="M88 40H104M200 40H216M312 40H328M424 40H440M550 40H566M662 40H680"/>
+<rect class="boxd" x="440" y="120" width="222" height="40" rx="6"/><text x="551" y="138" font-size="12" text-anchor="middle">A miss: apply the previous request,</text><text x="551" y="153" font-size="10.5" text-anchor="middle">restart, post-check again</text>
+<path class="lnd" d="M614 60V120M662 140H727V60"/>
+<text x="620" y="96" font-size="10.5">missed</text>
+</svg>
+<figcaption>The deploy. Every arrow is a step the code declares; a refusal at the plan or at the confirm stops before the window, and nothing is sent.</figcaption>
+</figure>
+<h2>The steps</h2>
+<ol>
+<li><strong>Plan.</strong> Mercury reads the controller (its unit's User and command line, the app folder's owner and mode, its drop-in), stages each app's folder from git's blobs at its pinned commit and checks its hash, checks conformance for every expected switch, and renders the drop-in the apply script will write. A refusal names what it compared, and nothing is staged.</li>
+<li><strong>Confirm.</strong> You confirm as yourself; the button names the work. At the confirm the plan is made again, holding the controller: a different hash sends nothing and says what moved.</li>
+<li><strong>Window.</strong> A planned-restart window is recorded for the controller, its switches expected to drop, before anything is sent.</li>
+<li><strong>Stage.</strong> The files go over SFTP as the deploy account, only into <span class="mono">/opt/ryu-apps/&lt;app&gt;/&lt;version&gt;/</span>; the request is written last.</li>
+<li><strong>The one command.</strong> <span class="mono">sudo -n /usr/local/sbin/mercury-ryu-apply</span>, with no argument: the only thing the deploy account may run as root. The script checks the request and every folder's hash again, writes the drop-in (keeping the one before as <span class="mono">mercury.conf.prev</span>), restarts the unit and judges it by identity: a new MainPID, active, User <span class="mono">ryu</span>.</li>
+<li><strong>Post-check.</strong> Every expected switch, link and app's /health, within a bound shown with where it comes from.</li>
+<li><strong>Rollback.</strong> On a miss, Mercury applies the request the controller ran before, the same way, and checks again. The script never rolls back by itself. With no request before, nothing is rolled back, and the receipt names the break-glass.</li>
+<li><strong>Record.</strong> The receipt, on History.</li>
+</ol>
+<h2>What each result means</h2>
+<ul><li><strong>Deployed</strong>: everything came back, each switch with its time. <strong>Rolled back</strong>: it missed, and the set before is back. <strong>Rollback failed</strong>: it missed and so did the rollback. <strong>Failed</strong>: it stopped partway, the receipt says what landed; nothing is ever deleted on the controller. <strong>Unknown</strong>: the command was sent and its outcome not read.</li></ul>
+<h2>The bounds</h2>
+<p>Both are about 2.5 times a measured time. Until they are measured, each is marked a placeholder wherever it appears, and the receipt keeps that.</p>
+<p class="small muted"><a href="#">SDN › Apps on the SDN page</a> · <a href="#">Planned restarts</a> · <a href="#">Change an SDN switch's flows</a></p>
+</div>
+</main>
+</div>
+
+<!-- ============================================================ L -->
+<div class="artlabel"><strong>L · Phone width (390)</strong>: the plan opens full-screen, its confirm pinned at the bottom; tables become stacked rows; the drop-in scrolls inside its own box. Then running, and a result.</div>
+<div class="art" style="padding:24px 32px;gap:28px;align-items:flex-start;flex-wrap:wrap;box-sizing:border-box">
+<div class="phone">
+<div class="pbar"><span>☰ SDN · Apps</span><span>campus-sdn</span></div>
+<div class="pbody">
+<h2>Deploy to ctl-1: switch_quirks 1.2.0 → 1.3.0</h2>
+<p class="small muted">1 app changes, 3 stay. The controller restarts; 5 switches reconnect.</p>
+<dl class="kv"><dt>Controller</dt><dd>ctl-1 · ryu-manager.service · User ryu</dd><dt>Set</dt><dd>1 of_versions 1.0.0 · <strong>2 switch_quirks 1.3.0</strong> · 3 fabric_forwarding 0.1.0 · 4 dns_blacklist 0.4.0 · <a href="#">13 files</a></dd><dt>Conformance</dt><dd><span class="chip ok">5 of 5 can connect</span> offers 1.0, 1.3 · <a href="#">each switch</a></dd></dl>
+<pre class="mono" style="white-space:pre;max-height:96px">ExecStart=/usr/local/bin/ryu-manager --observe-links --ofp-listen-host 192.0.2.50 …
+<span class="del">  …/switch_quirks/1.2.0/switch_quirks.py</span><span class="add">  …/switch_quirks/1.3.0/switch_quirks.py</span></pre>
+<dl class="kv"><dt>Must come back</dt><dd>5 switches, 6 links, 4 /health, within 225 s <span class="chip warn">placeholder</span></dd><dt>Window</dt><dd>9 min 30 s, declared first</dd><dt>On a miss</dt><dd>back to switch_quirks 1.2.0</dd><dt>Plan hash</dt><dd class="mono">4b1d…e07a</dd></dl>
+<a href="#" class="how"><i class="i">i</i>How does this work?</a>
+</div>
+<div class="pin"><a class="btn primary" href="#" style="flex:1;white-space:normal">Deploy switch_quirks 1.3.0 and restart ctl-1</a><a class="btn" href="#">Cancel</a></div>
+</div>
+<div class="phone">
+<div class="pbar"><span>☰ SDN · Apps</span><span>campus-sdn</span></div>
+<div class="pbody">
+<h2>Deploy to ctl-1 <span class="chip at">Running</span></h2>
+<ol class="steps" style="font-size:12.5px">
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">1</span><span>Window declared · 15:08:02</span></li>
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">2</span><span>Plan made again · the one confirmed</span></li>
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">3</span><span>Staged 13 of 13 files</span></li>
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">4</span><span>Request written</span></li>
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">5</span><span>The one command sent</span></li>
+<li class="done" style="grid-template-columns:24px 1fr"><span class="n">6</span><span>Restarted: active, User ryu, 19.4 s</span></li>
+<li class="run" style="grid-template-columns:24px 1fr"><span class="n">7</span><span>Post-check: switches 4 of 5 · links 4 of 6 · /health 4 of 4</span></li>
+<li class="skip" style="grid-template-columns:24px 1fr"><span class="n">8</span><span>Record</span></li>
+</ol>
+</div>
+<div class="pin"><a class="btn primary busy" href="#" aria-disabled="true" style="flex:1">Deploying…</a></div>
+</div>
+<div class="phone">
+<div class="pbar"><span>☰ SDN · Apps</span><span>campus-sdn</span></div>
+<div class="pbody">
+<h2>Rolled back to switch_quirks 1.2.0 <span class="chip warn">Rolled back</span></h2>
+<p class="small">The post-check's bound fired after 225 s (a placeholder) and 46 reads: <strong>of-hp-1 not back</strong>; 2 links not back. The previous request was applied: 5 of 5 back 72 s after that restart.</p>
+<table><tbody>
+<tr><td>▸ <strong>ovs-1</strong> · back 6 s</td></tr>
+<tr><td>▸ <strong>of-eos-1</strong> · back 14 s</td></tr>
+<tr><td>▸ <strong>of-hp-1</strong> · <span class="chip bad">not back</span> in the deploy · back 70 s in the rollback</td></tr>
+<tr><td class="muted">▸ ovs-2, of-eos-2 · <a href="#">show 2</a></td></tr>
+</tbody></table>
+<div class="row"><a class="btn sm" href="#">Open the receipt</a><a class="btn sm" href="#">Open of-hp-1</a></div>
+</div>
+</div>
+<p class="callout" style="max-width:1226px">At phone width the conformance table, the files and the expected links open on their own links, one level down; the drop-in shows the changed lines, the whole text scrolling inside its box. The confirm stays one tap away.</p>
+</div>
+
+<!-- ============================================================ Decisions -->
+<div class="artlabel"><strong>Decisions for the operator</strong>: each a question, with the board's recommendation; none is taken. K1 to K9 shape the screen; the findings the board raised (F1 to F7) are listed after them for the register.</div>
+<div class="q">
+<h3>K1 · Where the screen lives</h3>
+<ol><li><strong>Recommended:</strong> a new SDN › Apps tab per network, the controller card first and each app's page under it (artboards A and B); SDN › Controllers' row for the controller links to it. Revision 6's section 16a already places H's apps on SDN › Apps; the deploy is about the controller's whole set, and apps are what people choose.</li><li>On SDN › Controllers, as a section of the controller's row: the connection view and the deploy view in one table, the apps a level further down.</li></ol>
+</div>
+<div class="q">
+<h3>K2 · What Mercury's record of the controller's set is (what drift compares with, and what a miss rolls back to)</h3>
+<ol><li><strong>Recommended:</strong> the last deploy's receipt whose outcome left the controller running its request (deployed, or rolled back to the one before), kept in Mercury's records with the other receipts. No separate "enabled" file: choosing a version and deploying it is one decision. The rollback target is the request before, shown in the plan and bound into its hash.</li><li>An <span class="mono">apps/enabled.yml</span> per network, as revision 6 had it: a second record to keep in step, and in the configuration repository, which revision 7 (11c.4) keeps apps' tools from reading, or in the code repository, which Mercury never writes.</li></ol>
+</div>
+<div class="q">
+<h3>K3 · A miss with no previous request (the first deploy)</h3>
+<ol><li><strong>Recommended for S3:</strong> the plan says before the confirm that there is no rollback target, and the confirm names it ("… with no rollback", artboard D); a miss's receipt names <span class="mono">mercury.conf.prev</span> as the break-glass, which is a root step on the host, listed as LABOUR in docs/MANUAL_STEPS.md with its finding.</li><li>After S3: a second request kind the apply script accepts, "put the drop-in before back", so even a first deploy's miss is rolled back by Mercury. It changes the root script, a host-installed file, and its host step.</li></ol>
+</div>
+<div class="q">
+<h3>K4 · Redeploying the set the controller already runs</h3>
+<ol><li><strong>Recommended:</strong> offered, as a secondary "Redeploy the same set and restart ctl-1…" on a plan that changes nothing (artboard D), because drift repair needs it (a drop-in edited on the host); the preview says no file or line changes and the restart still happens.</li><li>Refused as "nothing to deploy": drift whose cause is the drop-in alone could then be repaired only by deploying another version and back.</li></ol>
+</div>
+<div class="q">
+<h3>K5 · The bounds on placeholders at S3</h3>
+<ol><li><strong>Recommended:</strong> S3's deploys run on the placeholders if S1 has not replaced them, each marked "placeholder" in the plan, the result and the receipt; S3's first receipt records the unit's time to active and each switch's reconnect after the restart, which are C2687's and C2674's measurements, and the bounds take them after.</li><li>No deploy to a real controller until both bounds are measured: S3's step 2 waits on a restart timed by hand outside Mercury.</li></ol>
+</div>
+<div class="q">
+<h3>K6 · What the post-check expects when something is already wrong before the deploy</h3>
+<ol><li><strong>Recommended:</strong> it expects every switch and link NetBox names and every enabled app's /health, as built; the plan draws what is already missing or failing beside it (artboard C's question) and the confirm names it ("… expecting dns_blacklist's /health to recover"), so a miss that was there before is never a surprise.</li><li>It expects back only what answered at plan time, naming the rest as not expected: a deploy can then pass with a switch down, and the deploy never fixes what it cannot see.</li></ol>
+</div>
+<div class="q">
+<h3>K7 · An unknown outcome (the command sent, no outcome of this run read)</h3>
+<ol><li><strong>Recommended:</strong> Mercury reads the outcome and the unit once more after the bound; still unknown, the receipt says "Unknown", the window runs to its end, a Needs attention row (Unknown) offers "Read the outcome again", and a rollback is offered as a preview, never run by itself.</li><li>Roll back at once: a second restart when the first may have succeeded.</li></ol>
+</div>
+<div class="q">
+<h3>K8 · Each switch's time</h3>
+<ol><li><strong>Recommended:</strong> counted from the apply script's restart (the post-check's own time plus the unit's time to active), drawn "back N s after the restart", because that is the reconnect the bound and S3's PASS line are about.</li><li>Counted from the post-check's first read, as built, and labelled so.</li></ol>
+</div>
+<div class="q">
+<h3>K9 · How an app's compiled config reaches the controller</h3>
+<ol><li><strong>Recommended:</strong> a config file per app staged beside its version, <span class="mono">/opt/ryu-apps/&lt;app&gt;/&lt;version&gt;.config.json</span>, its hash in the request (the request gains <span class="mono">config_sha256</span>), shown in the plan and checked by the script; the Published folder's hash stays the reviewed code's. For what an app needs at start (switch_quirks' tables).</li><li>Pushed over the app's REST policy endpoint after the restart (revision 6's "policy as data"): no change to the script, but the app runs without its config until the push, and the post-check would judge it before.</li><li>Both: start-time config by (1), runtime policy (dns_blacklist's verdict service) by (2).</li></ol>
+</div>
+<div class="q">
+<h3>Findings in the built code (for the register; the board draws the intended behaviour, each marked "Built today")</h3>
+<ol>
+<li><strong>F1 (B):</strong> <span class="mono">post_check.deploy</span> ends at "apply failed" with no rollback even when the script's outcome says the new drop-in was written and the unit restarted (step daemon-reload, restart or wait): what landed stays.</li>
+<li><strong>F2 (B):</strong> <span class="mono">channel.plan</span> carries neither the rollback target nor the post-check's expected links and apps, and its hash body (request, drop-in after, unit, controller, switches) covers neither.</li>
+<li><strong>F3 (B):</strong> the request and the staged folder have no place for an app's compiled config (decision K9).</li>
+<li><strong>F4 (B):</strong> <span class="mono">post_check.wait</span>'s per-switch times count from its first read, after the script's wait for the unit, so they understate each reconnect by the unit's time to active.</li>
+<li><strong>F5 (C):</strong> the receipt's outcome is "rollback failed" when no rollback was tried (no previous request).</li>
+<li><strong>F6 (B):</strong> <span class="mono">conformance.check</span>'s <span class="mono">checked</span> rows lack the profile entry and the switch's own versions, so a passing row cannot draw both operands.</li>
+<li><strong>F7 (B):</strong> <span class="mono">channel.window_seconds</span> is 2 × (UP_BOUND_S + the post-check's bound), but the transport waits 2.5 × UP_BOUND_S for the command and staging is uncounted, so a rollback can outlast the window.</li>
+</ol>
+</div>
+<div style="height:40px"></div>
+</body>
+</html>

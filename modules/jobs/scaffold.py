@@ -15,8 +15,11 @@ answers, and J's JobProposal (part (b)) will call the same functions.
 - the tests: `test_job.py` (`test_app.py` for an app), one test per acceptance example, each
   `@covers` its example and failing until written (`assert False`, naming the example), so
   `job check`'s `tests` check fails naming each until a person or their assistant writes it;
-- `conftest.py`, the fixed one (`templates/conftest.py.template`; the job fixtures carry the
-  same file), so the folder runs unchanged under pytest;
+- `conftest.py`, the fixed one, so the folder runs unchanged under pytest: a job's
+  (`templates/conftest.py.template`, on Mercury's Python, through `modules.jobs.testing`) or an
+  app's (`templates/app_conftest.py.template`, written for a 3.5 controller's Python, through
+  the app SDK's `mercury_app.testing`, since an app's tests run in the container harness on its
+  network's controller Python: C2652); the job and app fixtures carry the same files;
 - `AUTHORING.md`, the guide for a person's AI assistant (`templates/AUTHORING.md`);
 - for an app, `manifest.yml` (`templates/manifest.yml`, the dns_blacklist manifest's shape).
 
@@ -40,6 +43,11 @@ from modules.jobs.base import APP_NAME, JOB_NAME, ContractError
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 AUTHORING = "AUTHORING.md"
 CONFTEST = "conftest.py"
+#: The template each kind's conftest.py is written from.
+CONFTEST_TEMPLATE = {"job": "conftest.py.template", "app": "app_conftest.py.template"}
+#: Where each kind's tests take `covers` from: the job SDK on Mercury's Python, the app SDK's
+#: testing module on the controller's (C2644).
+COVERS_FROM = {"job": "modules.jobs", "app": "mercury_app.testing"}
 MANIFEST = "manifest.yml"
 KINDS = ("job", "app")
 #: The test file a kind's folder holds.
@@ -316,7 +324,7 @@ def stub_tests(kind: str, examples, subject: str) -> str:
         '(conftest.py)."""',
         "",
         f"from {module} import {imported}  # noqa: F401 - used once the tests are written",
-        "from modules.jobs import covers",
+        f"from {COVERS_FROM[kind]} import covers",
     ]
     if kind == "job":
         lines.append("from modules.jobs.testing import plan_run  # noqa: F401 - the same")
@@ -375,7 +383,7 @@ def files(kind: str, *, name: str = "", card_text: str = None, blank: bool = Fal
         out[f"{name}.py"] = app_stub(name, summary)
         out[MANIFEST] = manifest_text(name, summary)
     out[TEST_FILE[kind]] = stub_tests(kind, examples, name)
-    out[CONFTEST] = template("conftest.py.template")
+    out[CONFTEST] = template(CONFTEST_TEMPLATE[kind])
     out[AUTHORING] = authoring_text()
     return out
 

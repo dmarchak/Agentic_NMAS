@@ -1,14 +1,16 @@
-"""The fixed conftest.py `mercury job new` and `mercury app new` write in every folder (the SDN
-platform design rev. 6, section 11a, item 2; modules/jobs/templates/): under pytest, a test's parameter named for one of the
-SDK's fixtures (`ctx`, `ryu`, `netbox`) gets what Mercury's runner gives it, through the same
-resolver, `modules.jobs.testing.fixture_for`. Mercury's runner ignores this file."""
+"""The fixed conftest.py `mercury app new` writes in every app's folder (C2652; the SDN platform
+design rev. 6, section 11a, item 2; modules/jobs/templates/): under pytest, a test's parameter
+named for one of the app SDK's fixtures (`ctx`, `ryu`, `netbox`) gets what
+`mercury_app.testing.fixture_for` gives it. An app's tests run in the container harness on
+its network's controller Python, so this file is written for 3.5 and imports no Mercury module
+but the app SDK, `mercury_app`. Mercury's runner ignores this file."""
 
 import importlib
 import os
 
 import pytest
 
-from modules.jobs import testing
+from mercury_app import testing
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -26,4 +28,4 @@ def _make(name):
 
 
 for _name in testing.FIXTURES:
-    globals()[f"_fixture_{_name}"] = _make(_name)
+    globals()["_fixture_" + _name] = _make(_name)

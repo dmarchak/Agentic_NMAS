@@ -49,7 +49,8 @@ RULES = {
               "no grammar, module or name that version lacks, and passes the app allowlist: "
               "imports only of the app's own "
               f"modules, ryu, the app SDK ({allowlist.SDK}) and the standard library's data "
-              "modules (in tests, also pytest's raises and modules.jobs' covers and refused); "
+              f"modules (in tests, also pytest's raises and {allowlist.SDK_TESTING}'s covers, "
+              "refused and fixtures); "
               "no network, process, file or interpreter module; the network reached only by "
               f"{allowlist.SDK}.egress, its destination a string literal the manifest "
               "declares; and the job allowlist's builtin, dunder and except rules.",

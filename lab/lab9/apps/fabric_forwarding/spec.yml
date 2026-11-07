@@ -1,0 +1,27 @@
+kind: app
+name: fabric_forwarding
+summary: Forwards between hosts on shortest paths, rerouting on link down, loop-safe on a ring.
+permission: write
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  dpid: dpid
+outputs:
+  flows: table
+examples:
+  - name: a host is reached on the shortest path of the recorded ring
+    given: the five switches and links Ryu recorded at the bring-up (2026-11-06), a host on each Open vSwitch
+    when: the paths between the two hosts are computed
+    then: they take the one ring link between the two switches, and each switch's flow names its next hop
+    fixture: ryu_recorded
+  - name: a ring link going down reroutes the other way round
+    given: the recorded ring with the link between the two Open vSwitch hosts down
+    when: the paths are computed again
+    then: they go round the ring through its other two switches, and no switch's next hops loop
+    fixture: ryu_recorded
+  - name: reconcile changes only the app's own flows
+    given: a switch holding the app's flows, one of them stale, one missing, and another owner's flow on a key the app wants
+    when: the switch reconnects and is reconciled
+    then: the missing flow is added, the stale one removed, the other owner's flow is named as a conflict and left, and a flow already right is not sent again
+    fixture: ryu_recorded

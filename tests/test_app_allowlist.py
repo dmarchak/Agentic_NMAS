@@ -131,7 +131,9 @@ def test_a_ryu_app_is_allowed_for_an_app_and_refused_for_a_job():
                                        "published names"),
     ("from . import helper", "a relative import"),
     ("from json import *", "`from json import *` hides what is imported"),
-    ("from modules.jobs import covers", "modules.jobs is for the app's tests, not its code"),
+    ("from modules.jobs import covers", "an app imports no Mercury module"),
+    ("from mercury_app.testing import covers", "mercury_app.testing is for the app's tests, not "
+                                               "its code"),
     ("from modules.nsot.repo import list_goldens", "an app imports no Mercury module"),
 ])
 def test_a_refused_import_is_named_with_its_file_line_and_why(line, words):
@@ -166,10 +168,18 @@ def test_a_refused_use_of_an_allowed_module_or_builtin_is_named(code, words):
 
 
 def test_the_tests_alone_take_pytest_raises_and_covers():
-    test = ("import pytest\nfrom app import decide\nfrom modules.jobs import covers, refused\n\n\n"
+    test = ("import pytest\nfrom app import decide\n"
+            "from mercury_app.testing import covers, refused\n\n\n"
             "@covers('x')\ndef test_x():\n    with pytest.raises(ValueError):\n"
             "        decide()\n")
     assert problems("def decide():\n    raise ValueError()\n", test) == []
+    # C2644: modules.jobs' covers need pydantic and Mercury's Python, which the controller's
+    # image lacks, so an app's tests take them from the app SDK alone.
+    got = problems("", "from modules.jobs import covers\nimport mercury_app.testing\n")
+    assert got == [
+        "test_app.py line 1: `from modules.jobs import ...`: " + A.NO_MERCURY,
+        "test_app.py line 2: `import mercury_app.testing`: write `from mercury_app.testing "
+        "import <names>`"], got
     got = problems("", "from modules.jobs.testing import plan_run\nimport pytest\n"
                        "pytest.fixture\n")
     assert any("test_app.py line 1: `from modules.jobs.testing import ...`: an app imports no "
@@ -391,7 +401,7 @@ import logging
 logging.getLogger("planted.app").error("the app's test module was imported")
 
 from dns_overrides import decide  # noqa: E402 - imported after the log line on purpose
-from modules.jobs import covers  # noqa: E402
+from mercury_app.testing import covers  # noqa: E402
 
 
 @covers("a blocked name is blocked even when it is also allowed")

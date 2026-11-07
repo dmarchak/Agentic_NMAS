@@ -1,0 +1,76 @@
+# fabric_forwarding v0 (the SDN platform design revision 6, section 14; P7a): the fabric's
+# forwarding app, the network's code (Lab 9's), held to Mercury's app contract
+# (modules/apps/manifest.py). Its path choice, fabric_paths.shortest_path, is the team's to
+# replace; tests/test_fabric_paths.py is the contract a replacement passes.
+name: fabric_forwarding
+version: 0.1.0
+summary: Forwards between hosts on shortest paths, rerouting on link down, loop-safe on a ring.
+controllers:
+  ryu: ">=4.34"
+# 1.3 only: v0 encodes OpenFlow 1.3's tables and instructions, so it says so here, and the
+# controller then offers 1.3 alone, which every lab switch negotiated (C2598) and the
+# ProCurve, Arista and Open vSwitch profiles accept (modules/apps/conformance.py, T17).
+openflow_versions: ["1.3"]
+requires: []
+config_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+  $defs:
+    tables:
+      type: object
+      additionalProperties: false
+      required: [forward_table, punt_table]
+      properties:
+        forward_table:
+          description: The table the host flows go in (the ProCurve's 100, hardware).
+          type: integer
+          minimum: 0
+          maximum: 254
+        punt_table:
+          description: The table the miss and ARP go to the controller from (the ProCurve's 200).
+          type: integer
+          minimum: 0
+          maximum: 254
+  properties:
+    switches:
+      description: Each switch's tables, by datapath id in decimal, compiled by Mercury from its platform profile.
+      type: object
+      additionalProperties: false
+      patternProperties:
+        "^[0-9]+$": {$ref: "#/$defs/tables"}
+      default: {}
+    default_tables:
+      description: The tables of a switch the switches mapping does not name; absent, such a switch is not served.
+      $ref: "#/$defs/tables"
+    settle_s:
+      description: Seconds with no link found before the app removes its own extra flows, and before a new port counts as an edge.
+      type: number
+      minimum: 0
+      maximum: 60
+      default: 3
+    dedup_s:
+      description: Seconds within which the controller relays one frame once.
+      type: number
+      minimum: 0
+      maximum: 10
+      default: 0.5
+rest:
+  prefix: /fabric_forwarding
+  endpoints:
+    - path: /health
+      methods: [GET]
+      summary: The app is loaded, configured, and serves every connected switch.
+    - path: /config
+      methods: [GET, PUT]
+      summary: The app's config, pushed by Mercury's policy push.
+    - path: /state
+      methods: [GET]
+      summary: The switches, links, edge ports, hosts and counters the app holds.
+owns_flows:
+  cookie_prefix: "0x4646000000000000"
+  cookie_mask: "0xffff000000000000"
+  classes: []
+tests:
+  - tests/test_fabric_paths.py
+  - tests/test_fabric_logic.py

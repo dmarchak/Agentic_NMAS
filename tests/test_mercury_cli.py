@@ -417,8 +417,9 @@ def test_new_writes_the_authoring_guide_and_conftest_byte_for_byte(tmp_path, cap
 @pytest.mark.parametrize("folder", [os.path.join(JOBS, n) for n in FIXTURE_JOBS]
                          + [os.path.join(APPS, APP)])
 def test_every_fixtures_conftest_is_the_one_new_writes(folder):
+    kind = "app" if os.path.dirname(folder) == APPS else "job"
     assert read(os.path.join(folder, "conftest.py")) == \
-        read(os.path.join(S.TEMPLATES, "conftest.py.template"))
+        read(os.path.join(S.TEMPLATES, S.CONFTEST_TEMPLATE[kind]))
 
 
 def test_every_check_has_its_rule_and_action():

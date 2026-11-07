@@ -297,8 +297,18 @@ On a real network, Mercury compiles the config. The app never holds an address o
   `base64`, `collections`, `copy`, `dataclasses`, `datetime`, `enum`, `fnmatch`,
   `functools`, `hashlib`, `ipaddress`, `itertools`, `json`, `logging` (not its file or socket
   handlers), `math`, `re`, `string`, `struct`, `time`, `typing`, `uuid` (not `uuid1` or
-  `getnode`). An app's tests may also use `pytest.raises` and `modules.jobs`' `covers` and
-  `refused`.
+  `getnode`). An app's tests may also use `pytest.raises` and, from the app SDK's
+  `mercury_app.testing`, `covers`, `refused`, `netbox`, `RecordedRyu`, `HARNESS` and
+  `UnrecordedPath`; never `modules.jobs`, which needs pydantic and Mercury's Python (C2644).
+- **An app's tests run on the controller's Python, in the container harness:**
+  `modules/apps/sdk/mercury_app/testing.py` and the app's fixed `conftest.py`
+  (`modules/jobs/templates/app_conftest.py.template`; a job's is `conftest.py.template`) are
+  written for 3.5, on the standard library alone. A test parameter named `ryu` is given the
+  recorded Ryu, and `netbox` a NetBox over the objects a test gives
+  (`netbox(objects={...})`); `ctx` is a job's, and an app's is refused, naming why.
+  `tests/test_app_sdk_testing.py` holds its answers to `modules.jobs.testing`'s on the same
+  inputs, and `mercury_app.testing.RecordedRyu` is the one parser of the recordings
+  (`tests/fixtures/sdn/ryu_recorded.py` extends it with Mercury's Ryu driver).
 - **Refused, by name:** every network, process, file or interpreter module (`socket`,
   `ssl`, `http`, `urllib`, `requests`, `subprocess`, `threading`, `os`, `sys`, `importlib`
   and the rest the table lists), any module not in the table, a private (`_`) name of an
