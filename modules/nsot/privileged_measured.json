@@ -11,6 +11,33 @@
         "at": "2026-11-07T19:44:58Z",
         "reset": false,
         "evidence": "scripts/nmas-tier2-probe --step bgp-soft (eBGP neighbour 198.51.100.3, route refresh and enhanced refresh both advertised and received), in a planned window declared first: the device printed its prompt and asked nothing; 2.4 s from the send to the prompt read back; Up/Down 2w2d before and after, 3 prefixes received before and after; read after through the reads engine: Established, Route Refresh sent 0 then 1, Refresh Epoch 1 then 2, Refresh End-of-RIB received about 1 s after it was sent, Connections established 1; dropped 0, Last reset never"
+      },
+      "clear-bgp-peer": {
+        "prompt": null,
+        "answer": "",
+        "settle_s": 3.5,
+        "device": "the Default network's IOS-XE router whose eBGP neighbour is 198.51.100.3",
+        "at": "2026-11-07T22:26:52Z",
+        "reset": true,
+        "evidence": "scripts/nmas-tier2-probe --step bgp-hard --allow-live-bgp --bgp-peer 198.51.100.3, its planned window declared first (22:26:56 to 22:32:56 UTC, naming GigabitEthernet2): the device printed its prompt and asked nothing; the neighbour Established again 3.5 s after the send, read every second; Connections established 1 then 2, dropped 0 then 1, up for 2w2d then 00:00:01, Last reset never then 00:00:02, 3 prefixes received before and after"
+      },
+      "clear-bgp-soft-ipv6": {
+        "prompt": null,
+        "answer": "",
+        "settle_s": 4.7,
+        "device": "the Default network's IOS-XE router whose IPv6 BGP neighbour is 2001:DB8:51:1::2",
+        "at": "2026-11-07T22:27:19Z",
+        "reset": false,
+        "evidence": "scripts/nmas-tier2-probe --step bgp-soft --bgp-family ipv6 --allow-live-bgp --bgp-peer 2001:DB8:51:1::2: `clear bgp ipv6 unicast 2001:DB8:51:1::2 soft`, the device printed its prompt and asked nothing; 4.7 s from the send to the prompt read back; Up/Down 2w2d before and after; Connections established 1, dropped 0 before and after; Route Refresh sent 0 then 1; 3 prefixes received before and after"
+      },
+      "clear-bgp-peer-ipv6": {
+        "prompt": null,
+        "answer": "",
+        "settle_s": 5.0,
+        "device": "the Default network's IOS-XE router whose IPv6 BGP neighbour is 2001:DB8:51:1::2",
+        "at": "2026-11-07T22:27:47Z",
+        "reset": true,
+        "evidence": "scripts/nmas-tier2-probe --step bgp-hard --bgp-family ipv6 --allow-live-bgp --bgp-peer 2001:DB8:51:1::2, its planned window declared first (22:27:51 to 22:33:51 UTC): `clear bgp ipv6 unicast 2001:DB8:51:1::2`, the device printed its prompt and asked nothing; the neighbour Established again 5.0 s after the send; Connections established 1 then 2, dropped 0 then 1, up for 2w2d then 00:00:03, 3 prefixes received before and after"
       }
     }
   },
@@ -19,18 +46,15 @@
       "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
       "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
       "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
-      "clear-bgp-peer": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
-      "clear-bgp-peer-ipv6": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
-      "clear-bgp-soft": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
-      "clear-bgp-soft-ipv6": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first"
+      "clear-bgp-peer": "not run yet: H21's probe step bgp-hard (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
+      "clear-bgp-peer-ipv6": "not run yet: H21's probe step bgp-hard with --bgp-family ipv6 on an IOS device's IPv6 BGP neighbour, inside a planned window declared first",
+      "clear-bgp-soft": "not run yet: H21's probe step bgp-soft (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour",
+      "clear-bgp-soft-ipv6": "not run yet: H21's probe step bgp-soft with --bgp-family ipv6 on an IOS device's IPv6 BGP neighbour"
     },
     "cisco_iosxe": {
       "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
       "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
-      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
-      "clear-bgp-peer": "not run yet: H21's probe step bgp-hard (scripts/nmas-tier2-probe) on an IOS-XE router's eBGP neighbour, inside a planned window declared first",
-      "clear-bgp-peer-ipv6": "not run yet: H21's probe step bgp-hard with --bgp-family ipv6 on an IOS-XE router's IPv6 neighbour, inside a planned window declared first",
-      "clear-bgp-soft-ipv6": "not run yet: H21's probe step bgp-soft with --bgp-family ipv6 on an IOS-XE router's IPv6 neighbour"
+      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first"
     }
   }
 }

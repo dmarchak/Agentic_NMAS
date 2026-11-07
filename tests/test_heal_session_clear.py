@@ -178,22 +178,29 @@ class TestThePlan:
         p = self.plan(sessions=[session(down()), session("% BGP not active")])
         assert not p["ok"] and "was not read as one neighbour's session" in p["refused"]
 
-    def test_the_shipped_record_measures_the_soft_clear_on_iosxe_and_not_the_hard(self):
+    def test_the_shipped_record_measures_every_clear_on_iosxe_and_none_on_ios(self):
+        # r4, 2026-11-07: the IPv4 soft clear at 19:44:58, the hard clear and both IPv6 clears
+        # from 22:26 UTC, each run by scripts/nmas-tier2-probe, the hard ones in a window first.
         rec = P().reset_measured()
         assert rec["state"] == "ok"
-        soft = rec["by_dialect"]["cisco_iosxe"]["clear-bgp-soft"]
-        assert (soft["prompt"], soft["settle_s"], soft["reset"]) == (None, 2.4, False)
-        assert soft["at"] == "2026-11-07T19:44:58Z"
+        xe = rec["by_dialect"]["cisco_iosxe"]
+        got = {k: (xe[k]["prompt"], xe[k]["settle_s"], xe[k]["reset"]) for k in xe}
+        assert got == {"clear-bgp-soft": (None, 2.4, False), "clear-bgp-peer": (None, 3.5, True),
+                       "clear-bgp-soft-ipv6": (None, 4.7, False),
+                       "clear-bgp-peer-ipv6": (None, 5.0, True)}, got
+        assert xe["clear-bgp-soft"]["at"] == "2026-11-07T19:44:58Z"
         assert self.plan("clear-bgp-soft", sessions=[session(ESTABLISHED)])["bound_s"] == 6
-        hard = self.plan()
-        assert not hard["ok"] and "is not measured on cisco_iosxe" in hard["refused"]
-        assert "bgp-hard" in hard["refused"] and "clear-bgp-peer" in hard["refused"]
-        assert hard["command"] == f"clear ip bgp {PEER}", "the refusal still names the command"
-        for dialect in ("cisco_ios", "cisco_iosxe"):
-            for key in ("clear-bgp-peer", "clear-bgp-peer-ipv6", "clear-bgp-soft-ipv6"):
-                assert rec["unmeasured"][dialect][key], (dialect, key)
+        assert self.plan()["bound_s"] == 9                  # 2.5 x 3.5 s, rounded up
+        for key in ("clear-bgp-peer", "clear-bgp-peer-ipv6", "clear-bgp-soft",
+                    "clear-bgp-soft-ipv6"):
+            assert key not in rec["unmeasured"]["cisco_iosxe"], key
+            assert rec["unmeasured"]["cisco_ios"][key], key
         ios = self.plan("clear-bgp-soft", sessions=[session(ESTABLISHED)], dialect="cisco_ios")
         assert not ios["ok"] and "is not measured on cisco_ios" in ios["refused"]
+        hard = self.plan(dialect="cisco_ios")
+        assert not hard["ok"] and "is not measured on cisco_ios" in hard["refused"]
+        assert "bgp-hard" in hard["refused"] and "clear-bgp-peer" in hard["refused"]
+        assert hard["command"] == f"clear ip bgp {PEER}", "the refusal still names the command"
 
     def test_the_bound_is_two_and_a_half_times_the_measured_settle(self, measured):
         assert self.plan()["bound_s"] == 50 and self.plan()["settle_s"] == 20
@@ -538,7 +545,16 @@ class TestTheDecision:
         assert d["outcome"] == "cant_fix" and d["guard"]["guard"] == "13d", d
         assert "was cleared once in this incident" in d["words"]
 
-    def test_a_clear_not_measured_on_the_platform_is_refused_by_name(self, stores):
+    def test_a_clear_not_measured_on_the_platform_is_refused_by_name(self, stores, tmp_path,
+                                                                     monkeypatch):
+        # The shipped record with its IOS-XE hard clear taken back out (measured on r4,
+        # 2026-11-07), so the platform's clear is unmeasured again.
+        rec = json.loads(open(P().RESET_MEASURED_FILE, encoding="utf-8").read())
+        del rec["by_dialect"]["cisco_iosxe"]["clear-bgp-peer"]
+        rec["unmeasured"]["cisco_iosxe"]["clear-bgp-peer"] = "not run yet: a test's record"
+        path = tmp_path / "unmeasured.json"
+        path.write_text(json.dumps(rec))
+        monkeypatch.setattr(P(), "RESET_MEASURED_FILE", str(path))
         d = consider(Src())[1][-1]
         assert d["outcome"] == "cant_fix" and d["tier"] == 3, d
         assert d["guard"]["guard"] == "clear" and "is not measured on cisco_iosxe" in d["words"]

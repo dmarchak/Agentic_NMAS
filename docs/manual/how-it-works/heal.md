@@ -249,8 +249,10 @@ drawn. It comes in two forms:
 last reset names a wrong remote AS: a clear cannot fix those, so the incident stays an Alert with
 its diagnosis. A clear must also be **measured on the device's platform** first: what it asks,
 what answers it, and how long the session takes to come back, by a probe on a real device. The
-soft clear is measured on IOS-XE (no question asked, the session not reset); the hard clear is
-not measured yet, so it is refused, naming the measurement it waits for.
+clears are measured on IOS-XE, in both address families: neither asks a question; the soft clear
+resets nothing, and the hard clear's session is back in about 3.5 s (IPv4) and 5 s (IPv6), so
+verify waits about 2.5 times that. On IOS none is measured yet, so a clear there is refused,
+naming the measurement it waits for.
 
 **Where it runs, and who decides.** On a network marked lab it is Tier 1: the Self-healing tab's
 **BGP session clear** under Tier 1 allows it in Auto, and in **Dry run** it is recorded as "would
