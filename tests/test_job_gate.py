@@ -61,6 +61,22 @@ def test_the_same_folder_gets_the_same_verdict_check_by_check():
     assert "timings" in first.as_dict() and "run_seconds" in first.timings
 
 
+def test_a_job_whose_tests_sit_in_a_tests_subfolder_passes_every_check_the_same(tmp_path):
+    """C2636: the runner, the static, examples and asserts checks and the mutation step read
+    a job's tests in its tests/ subfolder as at its root, with the same verdict."""
+    folder = copy(tmp_path, "switch-links")
+    os.mkdir(os.path.join(folder, "tests"))
+    os.rename(os.path.join(folder, "test_job.py"), os.path.join(folder, "tests", "test_job.py"))
+    verdict = G.check(folder)
+    assert verdict.passed, [(c.name, c.summary, c.details) for c in verdict.checks
+                            if not c.passed]
+    root = G.check(os.path.join(JOBS, "switch-links"))
+    assert [c.summary for c in verdict.checks] == [c.summary for c in root.checks]
+    assert all(t.startswith("tests/test_job.py::") for t in verdict.timings["tests"])
+    assert any("tests/test_job.py::test_every_switch_is_listed_with_its_links" in d
+               for d in verdict.check("examples").details)
+
+
 def test_every_failed_check_names_an_action():
     verdict = G.check(os.path.join(JOBS, "tautology"))
     failed = [c for c in verdict.checks if not c.passed]

@@ -5,7 +5,9 @@ no thread: the sandbox's `TasksMax=1`), and it never imports pytest.
 **The format stays pytest's**, so the same folder runs unchanged under pytest (T24 holds the
 two agree, test by test):
 - the tests are the module-level functions whose names start `test` in the folder's
-  `test_*.py` files (pytest's default `python_functions`), run in file order, then line
+  `test_*.py` files, at its root or in its `tests/` subfolder and nowhere else (C2636, one
+  layout rule for jobs and apps, `test_location_problem`; pytest's default `python_functions`
+  and discovery), run in file order, then line
   order; a `Test*` class or an `async` test is refused by name (the runner does not run
   them, and a test the runner skips silently would look like a test that passed);
 - a test's parameters are fixtures, each given by `modules.jobs.testing.fixture(name, job)`
@@ -66,6 +68,9 @@ MAX_FILE_BYTES = 256 * 1024
 TEST_PREFIX = "test_"
 TEST_FUNCTION_PREFIX = "test"
 CONFTEST = "conftest.py"
+#: The one subfolder a folder's tests may sit in, besides its root (C2636).
+TESTS_FOLDER = "tests"
+PYCACHE = "__pycache__"
 #: The standard library a job and its tests may import: pure computation, no I/O, no process,
 #: no introspection of the interpreter.
 SAFE_STDLIB = frozenset({
@@ -113,7 +118,9 @@ class BoundFired(BaseException):
 @dataclass(frozen=True)
 class Sources:
     """A job folder held in memory: `job` (`{module name: source}`: every top-level `.py`
-    file but the tests and `conftest.py`) and `tests` (`{file name: source}`)."""
+    file but the tests and `conftest.py`) and `tests` (`{file: source}`, each file named
+    relative to the folder: `test_x.py` at its root, `tests/test_x.py` in its tests/
+    subfolder)."""
 
     folder: str
     job: dict
@@ -123,11 +130,72 @@ class Sources:
         return f"{module}.py"
 
 
+def test_location_problem(path: str) -> str:
+    """Why *path* (relative to a job's or app's folder, `/`-separated) is not where a test may
+    sit, or "" when it is: a `test_*.py` file at the folder's root or in its `tests/`
+    subfolder, and nowhere else (C2636: the one layout rule the runner, the gates and an
+    app's manifest share)."""
+    parts = path.split("/")
+    base = parts[-1]
+    if not (base.startswith(TEST_PREFIX) and base.endswith(".py")):
+        return f"{path!r} is not a {TEST_PREFIX}*.py file"
+    if len(parts) == 1 or (len(parts) == 2 and parts[0] == TESTS_FOLDER):
+        return ""
+    return (f"{path!r} is not at the folder's root or in its {TESTS_FOLDER}/ subfolder, "
+            "where tests sit")
+
+
+def _read(path: str, shown: str, problems: list):
+    """*path*'s text, or None with its problem (a link, too large, not UTF-8) in *problems*."""
+    if os.path.islink(path):
+        problems.append(f"{shown}: is a symbolic link; a job's file is a regular file")
+        return None
+    size = os.path.getsize(path)
+    if size > MAX_FILE_BYTES:
+        problems.append(f"{shown}: is {size} bytes, more than the {MAX_FILE_BYTES} a job's "
+                        "file may be")
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except UnicodeDecodeError as exc:
+        problems.append(f"{shown}: is not UTF-8 ({exc.reason} at byte {exc.start})")
+        return None
+
+
+def _holds_python(path: str) -> bool:
+    return any(f.endswith(".py") for _d, _s, fs in os.walk(path) for f in fs)
+
+
+def _tests_folder(folder: str, problems: list, tests: dict) -> None:
+    """The tests in *folder*'s `tests/` subfolder: its `test_*.py` files (its `conftest.py`
+    ignored, as at the root); any other Python there, or a subfolder of it holding Python, is
+    refused by name."""
+    where = os.path.join(folder, TESTS_FOLDER)
+    for name in sorted(os.listdir(where)):
+        path, shown = os.path.join(where, name), f"{TESTS_FOLDER}/{name}"
+        if os.path.isdir(path) and not os.path.islink(path):
+            if name != PYCACHE and _holds_python(path):
+                problems.append(f"{shown}/: holds Python, and a folder's tests sit at its root "
+                                f"or in {TESTS_FOLDER}/ itself")
+            continue
+        if not name.endswith(".py") or name == CONFTEST:
+            continue
+        if not name.startswith(TEST_PREFIX):
+            problems.append(f"{shown}: {TESTS_FOLDER}/ holds {TEST_PREFIX}*.py files (and a "
+                            f"{CONFTEST}) only; a job's modules sit at its folder's root")
+            continue
+        text = _read(path, shown, problems)
+        if text is not None:
+            tests[shown] = text
+
+
 def load_sources(folder) -> Sources:
     """*folder*'s Python files, read once (see `Sources`); refused, naming each file, when one
     is a link, larger than `MAX_FILE_BYTES`, not UTF-8, a module whose name is not an
-    identifier or would shadow one the folder may import, or when Python sits in a
-    subfolder (the gate checks a folder's top level only)."""
+    identifier or would shadow one the folder may import, when Python sits in a subfolder
+    other than `tests/` (whose Python is its tests alone), or when a test file's name is
+    both at the root and in `tests/` (pytest imports each by its file's name)."""
     folder = os.fspath(folder)
     if not os.path.isdir(folder):
         raise SourceError(folder, ["is not a folder"])
@@ -135,26 +203,16 @@ def load_sources(folder) -> Sources:
     for name in sorted(os.listdir(folder)):
         path = os.path.join(folder, name)
         if os.path.isdir(path) and not os.path.islink(path):
-            if name != "__pycache__" and any(f.endswith(".py") for _d, _s, fs in os.walk(path)
-                                             for f in fs):
+            if name == TESTS_FOLDER:
+                _tests_folder(folder, problems, tests)
+            elif name != PYCACHE and _holds_python(path):
                 problems.append(f"{name}/: holds Python, and a job's modules sit in its "
-                                "folder's top level")
+                                f"folder's top level, its tests there or in {TESTS_FOLDER}/")
             continue
         if not name.endswith(".py") or name == CONFTEST:
             continue
-        if os.path.islink(path):
-            problems.append(f"{name}: is a symbolic link; a job's file is a regular file")
-            continue
-        size = os.path.getsize(path)
-        if size > MAX_FILE_BYTES:
-            problems.append(f"{name}: is {size} bytes, more than the {MAX_FILE_BYTES} a job's "
-                            "file may be")
-            continue
-        try:
-            with open(path, encoding="utf-8") as fh:
-                text = fh.read()
-        except UnicodeDecodeError as exc:
-            problems.append(f"{name}: is not UTF-8 ({exc.reason} at byte {exc.start})")
+        text = _read(path, name, problems)
+        if text is None:
             continue
         stem = name[:-3]
         if name.startswith(TEST_PREFIX):
@@ -164,6 +222,10 @@ def load_sources(folder) -> Sources:
                             f"nothing it may import, not {stem!r}")
         else:
             job[stem] = text
+    for name in sorted(tests):
+        if name.startswith(f"{TESTS_FOLDER}/") and os.path.basename(name) in tests:
+            problems.append(f"{name}: a test file of the same name is at the folder's root; "
+                            "pytest imports each by its file's name, so give each its own")
     if problems:
         raise SourceError(folder, problems)
     return Sources(folder=folder, job=job, tests=tests)
@@ -555,7 +617,9 @@ def run(prepared: Prepared, *, job_codes: dict = None, bound: float = FIRST_RUN_
             if stopped or (fail_fast and any(not r.passed for r in results)):
                 results.extend(TestResult(s.id, "not run") for s in specs)
                 continue
-            namespace = {"__builtins__": allowed, "__name__": file[:-3], "__file__": file,
+            # pytest's name for the module: its file's, wherever it sits (rootdir import mode)
+            namespace = {"__builtins__": allowed, "__name__": os.path.basename(file)[:-3],
+                         "__file__": file,
                          **_HELPERS}
             try:
                 exec(code, namespace)                   # noqa: S102 - the folder's tests

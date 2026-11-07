@@ -127,6 +127,7 @@ def plant(tmp_path, tests: dict, job: str = JOB, name: str = "job") -> str:
     if job is not None:
         (folder / "job.py").write_text(job)
     for file, text in tests.items():
+        (folder / file).parent.mkdir(parents=True, exist_ok=True)
         (folder / file).write_text(text)
     return str(folder)
 
@@ -326,6 +327,49 @@ def test_the_conftest_is_ignored_and_pycache_is_no_subfolder(tmp_path):
     assert got.passed
 
 
+PASSING = "from job import double\n\n\ndef test_x():\n    assert double(2) == 4\n"
+
+
+def test_tests_at_the_root_and_in_a_tests_subfolder_are_both_found_and_run(tmp_path):
+    """C2636: the conventional tests/ subfolder, and the folder's root, and nowhere else."""
+    got = run(tmp_path, {"test_root.py": PASSING, "tests/test_sub.py": PASSING,
+                         "tests/conftest.py": "raise RuntimeError('read by the runner')\n"})
+    assert got.passed
+    assert [t.id for t in got.tests] == ["test_root.py::test_x", "tests/test_sub.py::test_x"]
+
+
+def test_a_failure_in_the_tests_subfolder_names_its_file_and_line(tmp_path):
+    got = run(tmp_path, {"tests/test_sub.py": "def test_x():\n    assert 1 == 2\n"})
+    assert got.tests[0].message == "assert 1 == 2: left 1, right 2 (==) (at tests/test_sub.py:2)"
+
+
+@pytest.mark.parametrize("files, words", [
+    ({"tests/helpers.py": "x = 1\n"}, "tests/helpers.py: tests/ holds test_*.py files (and a "
+                                      "conftest.py) only"),
+    ({"tests/unit/test_deep.py": PASSING}, "tests/unit/: holds Python, and a folder's tests "
+                                           "sit at its root or in tests/ itself"),
+    ({"checks/test_elsewhere.py": PASSING}, "checks/: holds Python, and a job's modules sit in "
+                                            "its folder's top level, its tests there or in "
+                                            "tests/"),
+    ({"tests/test_root.py": PASSING}, "tests/test_root.py: a test file of the same name is at "
+                                      "the folder's root"),
+])
+def test_a_test_anywhere_else_is_refused_by_name(tmp_path, files, words):
+    folder = plant(tmp_path, {"test_root.py": PASSING, **files})
+    with pytest.raises(R.SourceError) as exc:
+        R.load_sources(folder)
+    assert exc.value.problems == [words] or any(p.startswith(words)
+                                                for p in exc.value.problems), exc.value.problems
+
+
+@pytest.mark.parametrize("path, ok", [
+    ("test_a.py", True), ("tests/test_a.py", True), ("a_test.py", False),
+    ("tests/helpers.py", False), ("tests/unit/test_a.py", False), ("lib/test_a.py", False),
+    ("test_a.txt", False)])
+def test_the_one_layout_rule(path, ok):
+    assert (R.test_location_problem(path) == "") is ok
+
+
 def test_a_test_class_and_an_async_test_are_refused_by_name(tmp_path):
     got = run(tmp_path, {"test_a.py": (
         "class TestThings:\n    def test_x(self):\n        assert 1\n\n\n"
@@ -439,7 +483,8 @@ def pytest_outcomes(folder: str, tmp_path) -> dict:
     assert xml.exists(), out.stdout[-1500:] + out.stderr[-800:]
     got = {}
     for case in ET.parse(xml).getroot().iter("testcase"):
-        module = case.get("classname").rsplit(".", 1)[-1]
+        # `job.test_x` at the folder's root, `job.tests.test_x` in its tests/ subfolder
+        module = case.get("classname").split(".", 1)[1].replace(".", "/")
         bad = [c for c in case if c.tag in ("failure", "error", "skipped")]
         got[f"{module}.py::{case.get('name')}"] = not bad
     return got
@@ -450,6 +495,17 @@ def test_pytest_and_the_runner_agree_on_each_fixture_job(name, tmp_path):
     folder = os.path.join(JOBS, name)
     ours = R.run_folder(folder).outcomes()
     assert ours and all(ours.values())
+    assert pytest_outcomes(folder, tmp_path) == ours
+
+
+def test_pytest_and_the_runner_agree_on_tests_in_a_tests_subfolder(tmp_path):
+    """C2636: the same ids and outcomes from pytest's discovery of tests/ as from the
+    runner's, a passing and a failing test in each place."""
+    folder = plant(tmp_path, {"test_root.py": PASSING, "tests/test_sub.py": PASSING
+                              + "\n\ndef test_y():\n    assert double(2) == 5\n"})
+    ours = R.run_folder(folder).outcomes()
+    assert ours == {"test_root.py::test_x": True, "tests/test_sub.py::test_x": True,
+                    "tests/test_sub.py::test_y": False}
     assert pytest_outcomes(folder, tmp_path) == ours
 
 

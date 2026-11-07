@@ -42,6 +42,10 @@ or anything that touches a device directly.
   - It reads every network-specific value from its config, never from constants.
   - On switch connect it reconciles: it adds or removes only the difference, and never wipes
     flows.
+  - It runs in the controller, on the controller's Python 3.9, and is held to its own
+    allowlist, not a job's ("An app's allowlist", below).
+- **Tests** sit at the folder's root, beside the code, or in its `tests/` subfolder, and
+  nowhere else, for jobs and apps alike.
 
 ## Where things run
 
@@ -220,9 +224,15 @@ exits 0 only when every check passes:
    didn't notice when line 14's `>` became `>=`", with the line quoted.
 
 **`mercury app new|check`** are the same for a controller app, with `manifest.yml` beside the
-card: the app's verdict adds `manifest` (the manifest is valid and names the card's app) and
-`reconcile` (the reconcile test in the container harness, not run until that lands, so an app's
-verdict cannot pass before then).
+card, and with three differences in its verdict (`modules/apps/gate.py`):
+- it adds `manifest` (the manifest is valid, names the card's app, lists its tests where tests
+  sit, and lists each network destination it declares, for the reviewer) and `reconcile` (the
+  reconcile test);
+- its `static` check is the app allowlist's (below), not the job's;
+- **it runs no app code.** An app's tests run in the container harness, never in the job
+  sandbox, so its `tests`, `mutation`, `survivors` and `reconcile` checks say "not run" until
+  the harness runs them, and an app's verdict cannot pass before then. Its `spec`, `manifest`,
+  `static`, `examples` and `asserts` checks read the source.
 
 ## A controller app
 
@@ -242,7 +252,8 @@ malformed field is refused by name. The contract fixture is the `dns_blacklist` 
 | `config_schema` | a JSON Schema (draft 2020-12) whose top level is an object |
 | `rest` | `prefix` and `endpoints`, each a `path` and its `methods`; `/health` answering GET is required; `/validate`, if offered, answers POST |
 | `owns_flows` | optional: `cookie_prefix` and `cookie_mask` (64-bit hex), and the protected `classes` it owns |
-| `tests` | optional: its unit tests, as paths relative to the app's folder |
+| `egress` | optional: every network destination the app reaches, each a unique `name`, the `from_config` key whose value is its address (dotted, such as `verdict_service.url`: a string key `config_schema` declares through `properties`) and its `purpose`; none means the app reaches no destination of its own |
+| `tests` | optional: its unit tests, as paths relative to the app's folder: a `test_*.py` file at its root or in `tests/` |
 
 The manifest file itself:
 - a key given twice is refused;
@@ -274,6 +285,40 @@ The manifest file itself:
 - **`overrides`:** `allow` and `block`, lists of domains (`*.` for every name under one).
 
 On a real network, Mercury compiles the config. The app never holds an address of its own.
+
+### An app's allowlist
+
+`modules/apps/allowlist.py` holds it, in one table (`IMPORTS`), separate from a job's:
+- **Imports:** the app's own modules, `ryu` and its submodules (but the few that open their
+  own connections or load code by name: `ryu.lib.rpc`, `ryu.lib.ovs`, `ryu.lib.snortlib`,
+  `ryu.services`, `ryu.contrib`, `ryu.cmd`, `ryu.utils`, and `ryu.lib.hub`'s `connect`,
+  `listen` and servers), the app SDK `mercury_app`, and the standard library's data modules:
+  `base64`, `collections`, `copy`, `dataclasses`, `datetime`, `enum`, `fnmatch`,
+  `functools`, `hashlib`, `ipaddress`, `itertools`, `json`, `logging` (not its file or socket
+  handlers), `math`, `re`, `string`, `struct`, `time`, `typing`, `uuid` (not `uuid1` or
+  `getnode`). An app's tests may also use `pytest.raises` and `modules.jobs`' `covers` and
+  `refused`.
+- **Refused, by name:** every network, process, file or interpreter module (`socket`,
+  `ssl`, `http`, `urllib`, `requests`, `subprocess`, `threading`, `os`, `sys`, `importlib`
+  and the rest the table lists), any module not in the table, a private (`_`) name of an
+  allowed one, and, as for a job, `open`, `exec`, `eval`, `getattr` and the other forbidden
+  builtins.
+- **The network only through `mercury_app.egress`, to a destination the manifest declares:**
+  `egress("<name>", method, path, body, timeout)`, its destination a string literal naming an
+  entry of the manifest's `egress`; the SDK reads the address from the network's config at
+  that entry's `from_config` key. An undeclared name, a computed one, or `egress` passed,
+  stored or wrapped is refused at check. The `manifest` check lists each declared destination,
+  and the `static` check each call it read, so the reviewer sees every place the app reaches.
+  `dns_blacklist` declares one, its verdict service (`verdict_service.url`).
+- **Python 3.9:** every file is parsed as Python 3.9, the controller's interpreter
+  (`lab/sdn/ryu/Dockerfile`). That refuses `match`, `except*`, the `type` statement and type
+  parameters; it cannot refuse parenthesized context managers, PEP 701 f-strings, `a[*b]`, an
+  `int | str` annotation evaluated at run time, or a library call newer than 3.9, which only
+  a run on 3.9, in the container harness, finds.
+
+The app SDK's contract is `modules/apps/sdk/mercury_app/` (a stub: the container harness and
+the controller deploy the working package beside the app). The allowlist is the check a person
+can read; the controller's container and its network policy are the boundary.
 
 ## The lifecycle (jobs and apps alike)
 

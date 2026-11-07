@@ -25,8 +25,8 @@ the marks made on it.
 
 Each check's rule in words is `RULES[name]`, and the action it prints when it fails
 `ACTIONS[name]`: one table, which the gate uses and the authoring guide quotes
-(`modules/jobs/scaffold.py`). A controller app's verdict is this one with two checks around it
-(`modules/apps/gate.py`).
+(`modules/jobs/scaffold.py`). A controller app's verdict (`modules/apps/gate.py`) has the same
+check names with two around them, its own allowlist, and runs no app code (C2635).
 
 The verdict's `details` and `summary` hold no timings, so the same folder at the same revision
 gives the same verdict, check by check, however loaded the host; the times are in `timings`.
@@ -96,7 +96,7 @@ ACTIONS = {
                  "person, never an AI) mark it equivalent with a reason.",
 }
 #: The static check's action when a file itself is refused (a link, too large, not UTF-8, a
-#: shadowing name, Python in a subfolder), before any use is read.
+#: shadowing name, Python in a subfolder other than tests/), before any use is read.
 FOLDER_ACTION = "Correct each file named."
 #: A check whose input was refused: "not run", naming the check to clear first.
 NOT_RUN_ACTION = "Clear the {first} check first."
@@ -246,41 +246,54 @@ def _import_problems(node, file: str, own: set, is_test: bool) -> list:
             f"({', '.join(sorted(runner.SAFE_STDLIB))})"]
 
 
+#: Why a forbidden builtin is refused, in a job's words (an app's gate gives its own).
+JOB_REACH = "a job reaches the world only through ctx, and runs no code it builds"
+
+
 def _file_problems(tree, file: str, own: set, is_test: bool) -> list:
     out = []
     for node in ast.walk(tree):
-        line = getattr(node, "lineno", 0)
-        where = f"{file} line {line}"
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             out.extend(_import_problems(node, file, own, is_test))
-        elif isinstance(node, ast.Name):
-            if node.id in runner.FORBIDDEN_BUILTINS:
-                out.append(f"{where}: `{node.id}` is not allowed: a job reaches the world only "
-                           "through ctx, and runs no code it builds")
-            elif _is_dunder(node.id) and node.id != "__name__":
-                out.append(f"{where}: `{node.id}` is not allowed: it reaches the interpreter's "
-                           "internals")
-        elif isinstance(node, ast.Attribute):
-            if (_is_dunder(node.attr) and node.attr not in DUNDER_ALLOWED) \
-                    or node.attr in INTROSPECTION:
-                out.append(f"{where}: the attribute `.{node.attr}` is not allowed: it reaches "
-                           "the interpreter's internals")
-            elif isinstance(node.value, ast.Name) and node.value.id == runner.PYTEST \
-                    and node.attr != "raises":
-                out.append(f"{where}: `pytest.{node.attr}`: the runner's pytest offers raises "
-                           "alone (fixtures are parameters; use plain functions)")
-        elif isinstance(node, ast.ExceptHandler):
-            caught = node.type
-            names = [e.id for e in (caught.elts if isinstance(caught, ast.Tuple) else [caught])
-                     if isinstance(e, ast.Name)] if caught is not None else []
-            if caught is None or "BaseException" in names:
-                out.append(f"{where}: `except{'' if caught is None else ' BaseException'}:` is "
-                           "not allowed: catch Exception or narrower, so the runner's bound "
-                           "can stop the code")
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
-                and _FORMAT_DUNDER.search(node.value):
-            out.append(f"{where}: a format string reaching a dunder attribute "
-                       f"({node.value[:40]!r}) is not allowed")
+        else:
+            out.extend(node_problems(node, f"{file} line {getattr(node, 'lineno', 0)}",
+                                     JOB_REACH))
+    return out
+
+
+def node_problems(node, where: str, reach: str) -> list:
+    """The allowlist's rules for one node that is not an import, shared by the job gate and
+    the app gate's own allowlist (`modules/apps/allowlist.py`): no forbidden builtin (*reach*
+    says why), no dunder or frame attribute, no bare except, no format string reaching a
+    dunder."""
+    out = []
+    if isinstance(node, ast.Name):
+        if node.id in runner.FORBIDDEN_BUILTINS:
+            out.append(f"{where}: `{node.id}` is not allowed: {reach}")
+        elif _is_dunder(node.id) and node.id != "__name__":
+            out.append(f"{where}: `{node.id}` is not allowed: it reaches the interpreter's "
+                       "internals")
+    elif isinstance(node, ast.Attribute):
+        if (_is_dunder(node.attr) and node.attr not in DUNDER_ALLOWED) \
+                or node.attr in INTROSPECTION:
+            out.append(f"{where}: the attribute `.{node.attr}` is not allowed: it reaches "
+                       "the interpreter's internals")
+        elif isinstance(node.value, ast.Name) and node.value.id == runner.PYTEST \
+                and node.attr != "raises":
+            out.append(f"{where}: `pytest.{node.attr}`: the runner's pytest offers raises "
+                       "alone (fixtures are parameters; use plain functions)")
+    elif isinstance(node, ast.ExceptHandler):
+        caught = node.type
+        names = [e.id for e in (caught.elts if isinstance(caught, ast.Tuple) else [caught])
+                 if isinstance(e, ast.Name)] if caught is not None else []
+        if caught is None or "BaseException" in names:
+            out.append(f"{where}: `except{'' if caught is None else ' BaseException'}:` is "
+                       "not allowed: catch Exception or narrower, so the runner's bound "
+                       "can stop the code")
+    elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
+            and _FORMAT_DUNDER.search(node.value):
+        out.append(f"{where}: a format string reaching a dunder attribute "
+                   f"({node.value[:40]!r}) is not allowed")
     return out
 
 
@@ -361,13 +374,35 @@ def assertion_free(trees: dict) -> list:
     return found
 
 
+def parsed_tests(sources: "runner.Sources") -> dict:
+    """`{file: tree}` of *sources*' test files that parse (one that does not is named by the
+    static or the tests check)."""
+    trees = {}
+    for name, text in sources.tests.items():
+        try:
+            trees[name] = ast.parse(text, filename=name)
+        except (SyntaxError, ValueError):
+            continue
+    return trees
+
+
+def asserts_check(sources: "runner.Sources", count: int) -> Check:
+    """The `asserts` check over *sources*' tests, read from the source (shared by the app
+    gate); *count* is the number of tests the summary names."""
+    empty = assertion_free(parsed_tests(sources))
+    if empty:
+        return Check("asserts", False, f"{len(empty)} tests assert nothing", ACTIONS["asserts"],
+                     tuple(f"{t} asserts nothing" for t in empty))
+    return Check("asserts", True, f"every one of {count} tests asserts", "")
+
+
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────
 
-def _not_run(name: str, why: str, first: str) -> Check:
+def not_run(name: str, why: str, first: str) -> Check:
     return Check(name, False, f"not run: {why}", NOT_RUN_ACTION.format(first=first))
 
 
-def _spec_check(folder):
+def spec_check(folder):
     try:
         card = spec_card.load_spec(folder)
     except ContractError as exc:
@@ -377,14 +412,16 @@ def _spec_check(folder):
                                      f"{len(card.examples)} examples", "")
 
 
-def _examples_check(card, prepared) -> Check:
+def examples_check(card, tests) -> Check:
+    """The `examples` check over *tests* (`runner.TestSpec`s, read from the source: nothing
+    runs), shared by the app gate."""
     if card is None:
-        return _not_run("examples", "the spec card is refused, so its examples cannot be "
+        return not_run("examples", "the spec card is refused, so its examples cannot be "
                                     "mapped", "spec")
     names = card.example_names()
     covering = {n: [] for n in names}
     unknown = []
-    for test in prepared.tests:
+    for test in tests:
         for name in test.covers:
             if name in covering:
                 covering[name].append(test.id)
@@ -405,7 +442,7 @@ def _mutation_checks(prepared, run, marks, changed_lines, timings):
     if run is None or not run.passed:
         why = "the tests do not pass on the unmutated code" if run is not None else \
             "the tests were not run"
-        return None, [_not_run("mutation", why, "tests"), _not_run("survivors", why, "tests")]
+        return None, [not_run("mutation", why, "tests"), not_run("survivors", why, "tests")]
     report = mutate.run_mutants(prepared, run.seconds, changed_lines=changed_lines)
     timings.update({"mutation_seconds": report.seconds, "mutant_bound": report.mutant_bound,
                     "step_bound": report.step_bound})
@@ -453,7 +490,7 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
     `EquivalenceMark`s the review holds; *changed_lines* (`{module: {line, ...}}`) orders the
     mutants past the ceiling."""
     folder = str(folder)
-    card, spec = _spec_check(folder)
+    card, spec = spec_check(folder)
     checks, timings = [spec], {}
     try:
         sources = runner.load_sources(folder)
@@ -461,14 +498,14 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
         checks.append(Check("static", False, "the folder is refused", FOLDER_ACTION,
                             tuple(exc.problems)))
         why = "the folder's files are refused"
-        checks.extend(_not_run(n, why, "static") for n in CHECKS[2:])
+        checks.extend(not_run(n, why, "static") for n in CHECKS[2:])
         return Verdict(folder, checks, timings)
     problems = static_problems(sources)
     if problems:
         checks.append(Check("static", False, f"{len(problems)} uses refused",
                             ACTIONS["static"], tuple(problems)))
         why = "the static check refused the code, and no code runs until it passes"
-        checks.extend(_not_run(n, why, "static") for n in CHECKS[2:])
+        checks.extend(not_run(n, why, "static") for n in CHECKS[2:])
         return Verdict(folder, checks, timings)
     checks.append(Check("static", True, f"{len(sources.job)} modules and {len(sources.tests)} "
                                         "test files allowed", ""))
@@ -485,24 +522,12 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
                                                     for t in run.failures())
         if not run.tests:
             details += (f"the folder has no tests: a {runner.TEST_PREFIX}*.py file of "
-                        "test functions",)
+                        f"test functions, at its root or in {runner.TESTS_FOLDER}/",)
         summary = (f"stopped: {run.stopped}" if run.stopped else
                    f"{len(run.failures())} of {len(run.tests)} tests did not pass")
         checks.append(Check("tests", False, summary, ACTIONS["tests"], details))
-    checks.append(_examples_check(card, prepared))
-    trees = {}
-    for name, text in sources.tests.items():
-        try:
-            trees[name] = ast.parse(text, filename=name)
-        except (SyntaxError, ValueError):
-            continue                        # the tests check names it
-    empty = assertion_free(trees)
-    if empty:
-        checks.append(Check("asserts", False, f"{len(empty)} tests assert nothing",
-                            ACTIONS["asserts"], tuple(f"{t} asserts nothing" for t in empty)))
-    else:
-        checks.append(Check("asserts", True, f"every one of {len(run.tests)} tests asserts",
-                            ""))
+    checks.append(examples_check(card, prepared.tests))
+    checks.append(asserts_check(sources, len(run.tests)))
     report, last = _mutation_checks(prepared, run, marks, changed_lines, timings)
     checks.extend(last)
     return Verdict(folder, checks, timings, run, report)

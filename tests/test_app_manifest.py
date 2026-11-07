@@ -43,6 +43,23 @@ def test_the_dns_blacklist_manifest_is_valid():
     assert m.owns_flows.classes == ("dns",)
 
 
+def test_it_declares_its_one_network_destination_the_verdict_service():
+    """C2635: the app reaches the network only through mercury_app.egress, to a destination
+    its manifest declares; dns_blacklist's is its verdict service, whose address is the
+    network's config at verdict_service.url."""
+    m = M.load_manifest(FIXTURE)
+    assert m.egress_names() == ("verdict_service",)
+    assert (m.egress[0].from_config, m.egress[0].purpose) == (
+        "verdict_service.url", "Asks the verdict service for each queried domain's verdict.")
+    assert M.config_key_problem(m.config_schema, "verdict_service.url") == ""
+
+
+def test_an_app_that_declares_no_destination_is_valid():
+    data = fixture_data()
+    del data["egress"]
+    assert M.parse_manifest(yaml.safe_dump(data)).egress == ()
+
+
 def test_its_config_schema_declares_the_verdict_service_the_cache_and_the_overrides():
     schema = M.load_manifest(FIXTURE).config_schema
     assert set(schema["required"]) == {"verdict_service", "cache", "overrides"}
@@ -73,6 +90,7 @@ def test_a_verdict_service_that_does_not_answer_fails_open_unless_the_network_sa
 def test_defaults_fill_only_what_is_absent_at_each_declared_level():
     manifest = M.parse_manifest(yaml.safe_dump({
         **fixture_data(),
+        "egress": [],                       # this schema declares no verdict service
         "config_schema": {"type": "object", "properties": {
             "a": {"type": "integer", "default": 1},
             "b": {"type": "object", "properties": {"c": {"type": "string", "default": "x"}}},
@@ -174,6 +192,28 @@ PLANTED = [
      "a cookie 'd5' does not match"),
     ("class", lambda d: d["owns_flows"].update(classes=["DNS traffic"]),
      "a protected class 'DNS traffic' does not match"),
+    ("egress-unknown-key", lambda d: d["egress"][0].update(from_config="verdict_service.host"),
+     "egress 'verdict_service': from_config 'verdict_service.host' is not a key config_schema "
+     "declares: verdict_service declares on_unavailable, timeout_seconds, url, not 'host'"),
+    ("egress-unknown-top", lambda d: d["egress"][0].update(from_config="resolver.url"),
+     "'resolver.url' is not a key config_schema declares: the config declares cache, "
+     "overrides, verdict_service, not 'resolver'"),
+    ("egress-not-a-string", lambda d: d["egress"][0].update(
+        from_config="verdict_service.timeout_seconds"),
+     "'verdict_service.timeout_seconds' carries an address, a string, and config_schema "
+     "types it 'number'"),
+    ("egress-object", lambda d: d["egress"][0].update(from_config="verdict_service"),
+     "'verdict_service' carries an address, a string, and config_schema types it 'object'"),
+    ("egress-key-shape", lambda d: d["egress"][0].update(from_config="verdict_service..url"),
+     "a dotted config key 'verdict_service..url' does not match"),
+    ("egress-twice", lambda d: d["egress"].append(copy.deepcopy(d["egress"][0])),
+     "egress names lists 'verdict_service' more than once"),
+    ("egress-name", lambda d: d["egress"][0].update(name="Verdict-Service"),
+     "an egress destination's name 'Verdict-Service' does not match"),
+    ("egress-purpose", lambda d: d["egress"][0].update(purpose=" "),
+     "a purpose is one sentence, 1 to 200 characters"),
+    ("egress-missing-key", lambda d: d["egress"][0].pop("from_config"),
+     "egress.0.from_config: missing (a required field)"),
     ("test-parent", lambda d: d.update(tests=["../outside.py"]),
      "relative and without '..', not '../outside.py'"),
     ("test-absolute", lambda d: d.update(tests=["/tmp/x.py"]), "not '/tmp/x.py'"),

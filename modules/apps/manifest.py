@@ -18,7 +18,14 @@ The fields:
   is required**, and `/validate`, if offered, answers POST;
 - `owns_flows`: the cookie prefix and mask its flows carry, and the protected classes it owns,
   for B (optional; a cookie is 64-bit hex, the prefix having no bit outside the mask);
-- `tests`: its unit tests, as paths relative to the app's folder (optional).
+- `egress`: every network destination the app reaches, each a `name` (unique), the
+  `from_config` key whose value is its address (dotted, `verdict_service.url`: a string key
+  the `config_schema` declares through `properties`) and its `purpose` (one sentence); the
+  app reaches the network only by `mercury_app.egress("<name>", ...)` (C2635; the app
+  allowlist, `modules/apps/allowlist.py`, refuses any other), and `mercury app check` prints
+  each for the reviewer (optional: none means the app reaches no destination of its own);
+- `tests`: its unit tests, as paths relative to the app's folder (optional; the app gate
+  holds each to the layout rule, a `test_*.py` file at the root or in `tests/`).
 
 The file itself: a regular file (never a link) of at most `MAX_BYTES`, one YAML mapping, and a
 key given twice is refused (YAML would otherwise keep the last silently).
@@ -49,6 +56,10 @@ ENDPOINT_PATH = re.compile(r"^/[a-z0-9_{}/-]{0,100}$")
 COOKIE = re.compile(r"^0x[0-9a-f]{1,16}$")
 TEST_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
 HEALTH, VALIDATE = "/health", "/validate"
+#: An egress destination's name: what the app's `mercury_app.egress` call writes.
+EGRESS_NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
+#: A config key, dotted through the schema's `properties` (`verdict_service.url`).
+CONFIG_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$")
 
 
 class ManifestError(ContractError):
@@ -124,6 +135,56 @@ class OwnsFlows(Contract):
         return self
 
 
+class Egress(Contract):
+    """One network destination the app reaches (see the module's docstring)."""
+
+    name: str
+    from_config: str
+    purpose: str
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return matches(EGRESS_NAME, v, "an egress destination's name")
+
+    @field_validator("from_config")
+    @classmethod
+    def _from_config(cls, v):
+        return matches(CONFIG_KEY, v, "a dotted config key")
+
+    @field_validator("purpose")
+    @classmethod
+    def _purpose(cls, v):
+        if not v.strip() or len(v) > SUMMARY_MAX:
+            raise ValueError(f"a purpose is one sentence, 1 to {SUMMARY_MAX} characters, not "
+                             f"{len(v)}")
+        return v
+
+    def words(self) -> str:
+        """The destination as `app check` prints it for the reviewer."""
+        return (f"egress {self.name!r}: to the address in the config's {self.from_config}: "
+                f"{self.purpose}")
+
+
+def config_key_problem(schema: dict, key: str) -> str:
+    """Why *key* (dotted) is not a string key *schema* declares through `properties`, or ""
+    when it is. A `$ref` is not followed: an address's key is declared where it is read."""
+    node, walked = schema, []
+    for part in key.split("."):
+        props = node.get("properties") if isinstance(node, dict) else None
+        here = ".".join(walked) or "the config"
+        if not isinstance(props, dict) or part not in props:
+            declared = ", ".join(sorted(props)) if isinstance(props, dict) else "nothing"
+            return (f"{key!r} is not a key config_schema declares: {here} declares "
+                    f"{declared}, not {part!r}")
+        node = props[part]
+        walked.append(part)
+    if not isinstance(node, dict) or node.get("type") != "string":
+        got = node.get("type") if isinstance(node, dict) else node
+        return f"{key!r} carries an address, a string, and config_schema types it {got!r}"
+    return ""
+
+
 class Manifest(Contract):
     name: str
     version: str
@@ -134,7 +195,11 @@ class Manifest(Contract):
     config_schema: dict
     rest: Rest
     owns_flows: Optional[OwnsFlows] = None
+    egress: Tuple[Egress, ...] = ()
     tests: Tuple[str, ...] = ()
+
+    def egress_names(self) -> tuple:
+        return tuple(e.name for e in self.egress)
 
     @field_validator("name")
     @classmethod
@@ -215,6 +280,15 @@ class Manifest(Contract):
     def _not_itself(self):
         if self.name in self.requires:
             raise ValueError(f"{self.name} requires itself")
+        return self
+
+    @model_validator(mode="after")
+    def _egress_from_declared_keys(self):
+        no_duplicates([e.name for e in self.egress], "egress names")
+        problems = [f"egress {e.name!r}: from_config {why}" for e in self.egress
+                    for why in [config_key_problem(self.config_schema, e.from_config)] if why]
+        if problems:
+            raise ValueError("; ".join(problems))
         return self
 
 

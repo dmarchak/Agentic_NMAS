@@ -20,5 +20,10 @@ rest:
     - path: /health
       methods: [GET]
       summary: The app is loaded and answers.
+# Every network destination the app reaches, each through mercury_app.egress("<name>", ...):
+# a name, the config key whose value is its address (a string key config_schema declares),
+# and its purpose, as `- {name: verdict_service, from_config: verdict_service.url, purpose:
+# ...}`. None: the app reaches no destination of its own.
+egress: []
 tests:
   - test_app.py

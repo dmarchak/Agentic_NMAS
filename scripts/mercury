@@ -3,8 +3,9 @@
 11a, item 3): the gate an author's assistant iterates against, and a new folder to start from.
 
     mercury job check <folder> [--json]      the job gate's verdict, check by check
-    mercury app check <folder> [--json]      the app gate's: the manifest, the same checks,
-                                             and the reconcile test (not run until P2a)
+    mercury app check <folder> [--json]      the app gate's: the manifest, the app allowlist
+                                             and the source's checks; it runs no app code,
+                                             whose checks wait for the container harness
     mercury job new <folder> --from <spec.yml> | --blank
     mercury app new <folder> --from <spec.yml> | --blank
 

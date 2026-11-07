@@ -1,51 +1,80 @@
-"""A controller app's gate: the job gate's ONE verdict (`modules/jobs/gate.py`) with two checks
-around it (the SDN platform design rev. 6, section 11a, item 3: `mercury app check` and an
-app's Publish call this one function, so the two cannot drift, T24).
+"""A controller app's gate: ONE verdict on an app's folder, which `mercury app check` and an
+app's Publish call (the SDN platform design rev. 6, section 11a, item 3, and revision 7,
+section 11c.6; T24: the two cannot drift, because there is one function).
 
-The checks, in order (`APP_CHECKS`):
+**It runs no app code** (C2635, the operator, 2026-11-07): an app is a Ryu controller app, not
+a job, and its tests run in the container harness, never in Mercury's job sandbox. The checks,
+in order (`APP_CHECKS`, the job gate's names with two around them):
 1. `manifest`: `manifest.yml` is valid (`modules/apps/manifest.load_manifest`), its `name` is
-   the spec card's, the card's `kind` is `app`, and every test the manifest names is a
-   `test_*.py` file in the folder's top level, where the gate's runner reads tests (a test the
-   manifest names that the gate never runs would look checked and not be);
-2. to 8. the job gate's checks (`modules.jobs.gate.CHECKS`), over the app folder's Python
-   modules and tests, exactly as for a job;
-9. `reconcile`: the reconcile test (T16: connect, disconnect, reconnect with another owner's
-   flows) in the container harness. **Not run until the harness lands with P2a**, and a check
-   not run is not passed, so an app's verdict cannot pass before then: a pass without it would
-   be a wrong thing looking right.
+   the spec card's, the card's `kind` is `app`, and every test it names is a `test_*.py` file
+   at the folder's root or in its `tests/` subfolder (C2636, `runner.test_location_problem`),
+   and present. Passed, it lists each network destination the manifest declares (`egress`),
+   for the reviewer;
+2. `spec`: the spec card, as the job gate reads it;
+3. `static`: the APP allowlist (`modules/apps/allowlist.py`), not the job's: every module and
+   test parsed as Python 3.9 and walked; passed, it lists each egress call it read;
+4. `tests`, 7. `mutation`, 8. `survivors`, 9. `reconcile`: they need the app's code run, so
+   each says "not run: app tests run in the container harness, which lands with P2a" and
+   fails until the harness runs them. A check not run is not passed, so an app's verdict
+   cannot pass before then: a pass without them would be a wrong thing looking right;
+5. `examples` and 6. `asserts`: the job gate's, read from the source (`@covers` and the
+   asserts), over the app's tests wherever they sit.
 """
 
 import os
 
+from modules.apps import allowlist
 from modules.apps.manifest import MANIFEST, load_manifest
 from modules.jobs import gate as job_gate, runner, spec as spec_card
 from modules.jobs.base import ContractError
 
 APP_CHECKS = ("manifest",) + job_gate.CHECKS + ("reconcile",)
-RECONCILE_NOT_RUN = "not run: the container harness lands with P2a"
+#: The checks that need the app's code run, and what each says until the harness runs it.
+HARNESS_CHECKS = ("tests", "mutation", "survivors", "reconcile")
+HARNESS_NOT_RUN = ("not run: app tests run in the container harness, which lands with P2a")
 
 RULES = {
-    "manifest": f"{MANIFEST} is valid, names the app the spec card names, and every test it "
-                "lists is a test_*.py file in the folder's top level.",
+    "manifest": f"{MANIFEST} is valid, names the app the spec card names, lists each test as "
+                "a test_*.py file at the folder's root or in tests/, and declares every "
+                "network destination the app reaches (egress), which the check lists.",
     **job_gate.RULES,
+    "static": "Every module and test of the app parses as Python 3.9, the controller's "
+              "interpreter, and passes the app allowlist: imports only of the app's own "
+              f"modules, ryu, the app SDK ({allowlist.SDK}) and the standard library's data "
+              "modules (in tests, also pytest's raises and modules.jobs' covers and refused); "
+              "no network, process, file or interpreter module; the network reached only by "
+              f"{allowlist.SDK}.egress, its destination a string literal the manifest "
+              "declares; and the job allowlist's builtin, dunder and except rules.",
+    "tests": "The app's tests pass in the container harness, on the controller's Python; "
+             "never in the job sandbox.",
+    "mutation": "The app's code is mutated and every mutant run, in the container harness.",
+    "survivors": "Every mutant the app's tests did not notice is killed by a new test, or "
+                 "marked equivalent by the reviewer, a person, with a reason.",
     "reconcile": "The reconcile test (T16) passes in the container harness: the app is "
                  "connected, disconnected and reconnected with another owner's flows, and "
                  "adds or removes only the difference.",
 }
+#: What clears a check the harness runs, until it is installed.
+HARNESS_ACTION = ("Run `mercury app check` again once the container harness (P2a) is "
+                  "installed: an app's code runs there, never in the job sandbox, and until "
+                  "it runs, the app's verdict cannot pass.")
 ACTIONS = {
     "manifest": f"Correct each field named in {MANIFEST}.",
     **job_gate.ACTIONS,
-    "reconcile": "Run `mercury app check` again once the container harness (P2a) is "
-                 "installed: until it runs, the app's verdict cannot pass.",
+    "static": f"Remove each use named: an app imports ryu, {allowlist.SDK} and the standard "
+              "library's data modules, and reaches the network only by "
+              f"{allowlist.SDK}.egress(\"<a destination {MANIFEST} declares>\", ...).",
+    **{name: HARNESS_ACTION for name in HARNESS_CHECKS},
 }
 
 
-def _manifest_check(folder: str) -> job_gate.Check:
+def _manifest_check(folder: str):
+    """`(manifest or None, the manifest check)`."""
     try:
         manifest = load_manifest(folder)
     except ContractError as exc:
-        return job_gate.Check("manifest", False, f"{MANIFEST} is refused", ACTIONS["manifest"],
-                              tuple(exc.problems))
+        return None, job_gate.Check("manifest", False, f"{MANIFEST} is refused",
+                                    ACTIONS["manifest"], tuple(exc.problems))
     problems = []
     try:
         card = spec_card.load_spec(folder)
@@ -59,25 +88,63 @@ def _manifest_check(folder: str) -> job_gate.Check:
             problems.append(f"{MANIFEST}'s name {manifest.name!r} is not {spec_card.SPEC}'s "
                             f"{card.name!r}: one app, one name")
     for test in manifest.tests:
-        base = os.path.basename(test)
-        if "/" in test or not base.startswith(runner.TEST_PREFIX) or not base.endswith(".py"):
-            problems.append(f"tests: {test!r} is not a {runner.TEST_PREFIX}*.py file in the "
-                            "folder's top level, where the gate's runner reads tests")
-        elif not os.path.isfile(os.path.join(folder, test)):
+        where = runner.test_location_problem(test)
+        if where:
+            problems.append(f"tests: {where}")
+        elif not os.path.isfile(os.path.join(folder, *test.split("/"))):
             problems.append(f"tests: {test!r} is not in the folder")
     if problems:
-        return job_gate.Check("manifest", False, f"{len(problems)} problems with {MANIFEST}",
-                              ACTIONS["manifest"], tuple(problems))
-    return job_gate.Check("manifest", True, f"{MANIFEST}: {manifest.name} {manifest.version}",
-                          "")
+        return manifest, job_gate.Check("manifest", False, f"{len(problems)} problems with "
+                                                           f"{MANIFEST}", ACTIONS["manifest"],
+                                        tuple(problems))
+    egress = tuple(e.words() for e in manifest.egress) or (
+        "egress: none declared, so the app reaches no network destination of its own",)
+    return manifest, job_gate.Check("manifest", True, f"{MANIFEST}: {manifest.name} "
+                                                      f"{manifest.version}, "
+                                                      f"{len(manifest.egress)} egress "
+                                                      "destinations", "", egress)
+
+
+def _harness(name: str) -> job_gate.Check:
+    return job_gate.Check(name, False, HARNESS_NOT_RUN, ACTIONS[name])
+
+
+def _static_check(sources, manifest):
+    found = allowlist.check(sources, manifest.egress_names() if manifest is not None else None)
+    if found.problems:
+        return job_gate.Check("static", False, f"{len(found.problems)} uses refused",
+                              ACTIONS["static"], tuple(found.problems))
+    return job_gate.Check("static", True, f"{len(sources.job)} modules and "
+                                          f"{len(sources.tests)} test files allowed, "
+                                          f"{len(found.egress)} egress calls", "",
+                          tuple(found.egress))
 
 
 def check(folder, *, marks=(), changed_lines: dict = None) -> job_gate.Verdict:
-    """The app gate's verdict on *folder* (see the module's docstring); *marks* and
-    *changed_lines* are the job gate's."""
+    """The app gate's verdict on *folder* (see the module's docstring). *marks* and
+    *changed_lines* are the job gate's, kept for Publish's one call: they are the mutation
+    step's, which the harness runs."""
+    del marks, changed_lines                # the harness's, once it lands
     folder = str(folder)
-    manifest = _manifest_check(folder)
-    inner = job_gate.check(folder, marks=marks, changed_lines=changed_lines)
-    reconcile = job_gate.Check("reconcile", False, RECONCILE_NOT_RUN, ACTIONS["reconcile"])
-    return job_gate.Verdict(folder, [manifest, *inner.checks, reconcile], inner.timings,
-                            inner.run, inner.mutation)
+    manifest, manifest_check = _manifest_check(folder)
+    card, spec = job_gate.spec_check(folder)
+    by_name = {"manifest": manifest_check, "spec": spec}
+    try:
+        sources = runner.load_sources(folder)
+    except ContractError as exc:
+        by_name["static"] = job_gate.Check("static", False, "the folder is refused",
+                                           job_gate.FOLDER_ACTION, tuple(exc.problems))
+        why = "the folder's files are refused"
+        for name in ("examples", "asserts"):
+            by_name[name] = job_gate.not_run(name, why, "static")
+    else:
+        by_name["static"] = _static_check(sources, manifest)
+        tests = []
+        for file, tree in job_gate.parsed_tests(sources).items():
+            found, _problems = runner.collect(tree, file)
+            tests.extend(found)
+        by_name["examples"] = job_gate.examples_check(card, tests)
+        by_name["asserts"] = job_gate.asserts_check(sources, len(tests))
+    for name in HARNESS_CHECKS:
+        by_name[name] = _harness(name)
+    return job_gate.Verdict(folder, [by_name[name] for name in APP_CHECKS], {})

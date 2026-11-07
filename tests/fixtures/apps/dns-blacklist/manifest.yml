@@ -93,5 +93,11 @@ owns_flows:
   cookie_prefix: "0xd500000000000000"
   cookie_mask: "0xff00000000000000"
   classes: [dns]
+# The one destination the app reaches, through mercury_app.egress("verdict_service", ...); its
+# address is the network's config, at verdict_service.url (C2635).
+egress:
+  - name: verdict_service
+    from_config: verdict_service.url
+    purpose: Asks the verdict service for each queried domain's verdict.
 tests:
   - tests/test_dns_blacklist.py

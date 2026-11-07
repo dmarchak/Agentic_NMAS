@@ -139,16 +139,24 @@ def test_the_script_starts_and_answers_as_a_program(tmp_path):
 
 def test_app_check_runs_the_manifest_and_every_job_check_and_waits_for_the_harness(tmp_path,
                                                                                   capsys):
+    """C2635: an app's tests run in the container harness, never in the job sandbox, so the
+    checks that run its code say so and fail; the ones that read its source pass."""
     folder = copy(tmp_path, os.path.join(APPS, APP))
     code, out, _err = run(capsys, "app", "check", folder)
     verdict = app_gate.check(folder)
     assert code == 1 and not verdict.passed
     assert [c.name for c in verdict.checks] == list(app_gate.APP_CHECKS)
-    assert [c.name for c in verdict.checks if not c.passed] == ["reconcile"]
-    reconcile = verdict.check("reconcile")
-    assert reconcile.summary == "not run: the container harness lands with P2a"
-    assert out.splitlines()[0].endswith("NOT PASSED: 1 of 9 checks did not pass (reconcile)")
-    assert verdict.check("survivors").summary == "no survivors"
+    assert [c.name for c in verdict.checks if not c.passed] == [
+        "tests", "mutation", "survivors", "reconcile"]
+    for name in ("tests", "mutation", "survivors", "reconcile"):
+        assert verdict.check(name).summary == ("not run: app tests run in the container "
+                                               "harness, which lands with P2a")
+        assert verdict.check(name).action == app_gate.HARNESS_ACTION
+    assert out.splitlines()[0].endswith("NOT PASSED: 4 of 9 checks did not pass (tests, "
+                                        "mutation, survivors, reconcile)")
+    assert verdict.check("static").summary == "1 modules and 1 test files allowed, 0 egress " \
+                                              "calls"
+    assert verdict.check("asserts").summary == "every one of 5 tests asserts"
 
 
 def test_an_app_whose_manifest_names_another_app_is_refused_by_name(tmp_path):
@@ -161,15 +169,33 @@ def test_an_app_whose_manifest_names_another_app_is_refused_by_name(tmp_path):
 
 
 @pytest.mark.parametrize("listed, words", [
-    ("tests/test_app.py", "'tests/test_app.py' is not a test_*.py file in the folder's top "
-                          "level, where the gate's runner reads tests"),
+    ("lib/test_app.py", "'lib/test_app.py' is not at the folder's root or in its tests/ "
+                        "subfolder, where tests sit"),
+    ("tests/unit/test_app.py", "'tests/unit/test_app.py' is not at the folder's root or in "
+                               "its tests/ subfolder, where tests sit"),
+    ("app_test.py", "'app_test.py' is not a test_*.py file"),
     ("test_missing.py", "'test_missing.py' is not in the folder"),
+    ("tests/test_missing.py", "'tests/test_missing.py' is not in the folder"),
 ])
 def test_a_manifest_test_the_gate_never_runs_is_refused(tmp_path, listed, words):
     folder = copy(tmp_path, os.path.join(APPS, APP))
     rewrite(os.path.join(folder, "manifest.yml"), "  - test_app.py", f"  - {listed}")
     manifest = app_gate.check(folder).check("manifest")
     assert not manifest.passed and manifest.details == (f"tests: {words}",)
+
+
+def test_an_apps_tests_in_a_tests_subfolder_are_listed_and_read(tmp_path):
+    """C2636: the conventional tests/ subfolder is accepted, in the manifest and by the gate's
+    static, examples and asserts checks."""
+    folder = copy(tmp_path, os.path.join(APPS, APP))
+    os.mkdir(os.path.join(folder, "tests"))
+    os.rename(os.path.join(folder, "test_app.py"), os.path.join(folder, "tests", "test_app.py"))
+    rewrite(os.path.join(folder, "manifest.yml"), "  - test_app.py", "  - tests/test_app.py")
+    verdict = app_gate.check(folder)
+    assert verdict.check("manifest").passed, verdict.check("manifest").details
+    assert verdict.check("static").passed and verdict.check("asserts").passed
+    examples = verdict.check("examples")
+    assert examples.passed and all("tests/test_app.py::test_a_" in d for d in examples.details)
 
 
 def test_a_job_card_in_an_app_folder_is_refused(tmp_path):
@@ -323,7 +349,9 @@ def test_a_blank_cards_every_open_field_is_refused_by_name(tmp_path, capsys, kin
                      "examples[1].then", "examples[1].fixture"]
     assert all("an open question" in d for d in spec.details)
     tests = verdict.check("tests")
-    assert not tests.passed and tests.summary == "2 of 2 tests did not pass"
+    # A job's stub tests run and fail; an app's run in the container harness, not here (C2635).
+    assert not tests.passed and tests.summary == ("2 of 2 tests did not pass" if kind == "job"
+                                                  else app_gate.HARNESS_NOT_RUN)
     assert verdict.check("examples").summary.startswith("not run: the spec card is refused")
     code, _out, _err = run(capsys, kind, "check", folder)
     assert code == 1
