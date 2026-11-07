@@ -40,7 +40,7 @@ A Flask application that manages, automates and monitors Cisco IOS and IOS-XE de
 [Author], being converted into a Network Source of Truth: intent and golden configs in git,
 rendered through templates, previewed as an exact program, confirmed by hash, pushed merge-only,
 verified, rolled back on failure, and recorded. Single host; identity comes from an access
-proxy's verified assertion. **Stack:** Python 3.10+ (CI 3.12.3), Flask, Flask-SocketIO, Netmiko,
+proxy's verified assertion. **Stack:** Python 3.12+ (CI 3.12.3), Flask, Flask-SocketIO, Netmiko,
 NetBox, Grafana/Prometheus/Loki, Kea. The v2 interface
 (`templates/v2/`, vendored htmx and Alpine, strict CSP) is the interface; today's Bootstrap
 pages were removed at cutover (7.8, P7-27). Jenkins was removed in P.4.
