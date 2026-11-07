@@ -22,6 +22,13 @@ triage and Core 1.0's sign-off are the operator's, never a recommended option th
   window (02:30 to 03:30 America/Denver), a planned-restart window declared before a restart.
 - **Boards the agent draws count as signed off by the operator, and the agent takes its
   recommended option on a decision;** each is one line in `docs/STANDING_APPROVAL_LOG.md`.
+- **Protected guards are outside this standing approval** (the operator, 2026-11-07): a change
+  to red-green (`scripts/nmas-red-green`), the test-weakening check
+  (`scripts/nmas-test-weakening-check`), the stage guard (`scripts/nmas-stage-guard`), the
+  hooks (`scripts/hooks/`), `.github/workflows/ci.yml`, `tests/ratchet_lists.py` or
+  `.claude/settings.json` needs the operator's words for that change, quoted in its
+  `Approved-By:` (docs/TEST_INTEGRITY.md, D2); no board, recommendation or related decision
+  stands in for them.
 - Every commit passes the gate before it's pushed; CI runs on every push and doesn't block
   the next commit; a red CI is fixed forward before any new work is pushed, and nothing is
   deployed from a sha CI (GitHub or the local runner) has not passed.
