@@ -71,6 +71,9 @@ OPERATION_WORDS = {
     # Self-healing's port bounce (board H, H20: modules/heal/bounce.py).
     "port bounce": "having a port bounced by self-healing (shut and no shut inside its revert "
                    "timer, never saved)",
+    # Self-healing's BGP session clear (board H, H21: modules/heal/session_clear.py).
+    "session clear": "having one BGP neighbour cleared by self-healing (no configuration "
+                     "changed)",
     "read": "read (show commands)",
     # Out-of-band ZTP (modules/nsot/console_ztp.py): over its console, not its address.
     "console survey": "surveyed over its console (read-only)",

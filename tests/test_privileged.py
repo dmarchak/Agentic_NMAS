@@ -148,7 +148,8 @@ class TestThePlan:
         ("clear-counters", "GigabitEthernet99", "is not an interface of r3"),
         ("clear-counters", "", "choose an interface"),
         ("clear-logging", "GigabitEthernet2", "takes no argument"),
-        ("clear-bgp-soft", "", "not measured yet"),
+        # H21: the BGP clears are self-healing's (privileged.SESSION_CLEARS), not this menu's.
+        ("clear-bgp-soft", "", "is not on this menu"),
         ("reload", "", "is not a Tier 2 command here"),
     ])
     def test_refused_before_anything_is_read(self, t2, key, arg, words):

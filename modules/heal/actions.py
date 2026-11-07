@@ -14,9 +14,12 @@ after its one bounce (Tier 2, a change to intent, a person's).
 
 **Built, each by its own part** (`NOT_BUILT`, `BUILT`): H20 built the port bounce and the OSPF
 adjacency reset through it (`modules/heal/bounce.py`: its program, its revert timer, guard
-13c's CEF and only-path reads, 13f). H21 (the BGP clears, measured on devices) and H22 (the
-dampening field and its proposal) are not built: until its part lands a kind is refused by
-name, "not built yet: H21", never allowed by a policy (`policy.actions_not_built`) and never
+13c's CEF and only-path reads, 13f). H21 built the BGP session clear
+(`modules/heal/session_clear.py`: the hard clear of one named neighbour not Established in two
+reads, the soft clear of an Established one, each a measured privileged operation,
+`privileged.SESSION_CLEARS`, refused by name on a platform where it is not measured). H22 (the
+dampening field and its proposal) is not built: until its part lands a kind is refused by
+name, "not built yet: H22", never allowed by a policy (`policy.actions_not_built`) and never
 offered. `judge` refuses it before any guard runs, so nothing is read for it.
 
 **The guards** (`GUARDS`, after section 6's guard 13, in this order; each answers None or a hit
@@ -34,7 +37,11 @@ failing closed):
   no egress refused too; (3) the device's only path, by the blast radius of its shutdown
   (`blast_radius.radius_of_shutdowns`, IPv4 intent only, so an unknown radius is refused,
   saying so). The reads and their words are the bounce's (`bounce.cef_refusal`,
-  `radius_refusal`), which the act judges again on its own held session;
+  `radius_refusal`), which the act judges again on its own held session. For a hard session
+  clear (`g13c_session`, H21): "a session whose loss would withdraw the manager's route is
+  Never too", by the device's own route toward Mercury's source address (`show ip route`, or
+  `show ipv6 route` for an IPv6 manager) learned by BGP from that neighbour, a BGP route whose
+  source cannot be told refused too; a soft clear withdraws nothing, so it passes unread;
 - **13d, once** (`g13d_once`): a port is bounced at most once an hour
   (``heal_bounce_per_port_hour``), and a second need within ``heal_repeat_halts_hours`` is the
   dampening proposal instead; a session is cleared once per incident, a second need being
@@ -47,9 +54,10 @@ failing closed):
 """
 
 import logging
+import re
 import time
 
-log = logging.getLogger(__name__)
+log =logging.getLogger(__name__)
 
 KINDS = ("port_bounce", "session_clear", "ospf_reset", "dampening_proposal")
 #: Each kind as a record, a notice and a screen name it: an action, never a heal.
@@ -63,10 +71,10 @@ KIND_WORDS = {
 LAB_ONLY_AUTO = ("session_clear",)
 #: Each kind's operation not built yet, with the part that builds it and what it lacks.
 NOT_BUILT = {
-    "session_clear": ("H21", "the clears, measured on devices"),
     "dampening_proposal": ("H22", "intent's dampening field and its measured shape"),
 }
-#: The kinds whose operation is built: the port bounce and the OSPF reset through it (H20).
+#: The kinds whose operation is built: the port bounce and the OSPF reset through it (H20), the
+#: BGP session clear (H21).
 BUILT = tuple(k for k in KINDS if k not in NOT_BUILT)
 
 #: The action guards after guard 13, in order: (id, name, the settings it reads, the kinds it
@@ -75,7 +83,8 @@ GUARDS = (
     ("13a", "the precondition read fresh, and again just before the send", (),
      ("port_bounce", "session_clear", "ospf_reset", "dampening_proposal")),
     ("13b", "the far end up and not held", (), ("port_bounce", "ospf_reset")),
-    ("13c", "never Mercury's path, never the only path", (), ("port_bounce", "ospf_reset")),
+    ("13c", "never Mercury's path, never the only path", (),
+     ("port_bounce", "ospf_reset", "session_clear")),
     ("13d", "once", ("heal_bounce_per_port_hour", "heal_repeat_halts_hours"),
      ("port_bounce", "session_clear", "ospf_reset")),
     ("13e", "a flap is measured, not felt", ("heal_flap_transitions", "heal_flap_minutes"),
@@ -317,6 +326,76 @@ def g13c_path(device: str, interface: str, *, mgmt_ip: str, intent: dict, cef: d
         return hit("13c", "cant_fix", f"Not bounced: {why}", dict(ops, networks=list(nets)),
                    tier=4)
     return None
+
+
+def route_command(manager: str) -> str:
+    """The device's own route toward Mercury's *manager* address, IPv4 or IPv6."""
+    import ipaddress
+
+    return (f"show ipv6 route {manager}"
+            if ipaddress.ip_address(str(manager).split("%", 1)[0]).version == 6
+            else f"show ip route {manager}")
+
+
+def g13c_session(device: str, peer: str, variant: str, *, route: dict = None):
+    """13c for a session clear (H21): "a session whose loss would withdraw the manager's route
+    is Never too". *route* (``{"manager", "command", "answer"}``, *answer* None when it was not
+    read) is the device's own route toward Mercury's source address. A route learned by BGP
+    from *peer*, or by BGP from a source the answer does not name, is Never (Tier 4); a route
+    not learned by BGP, or none in the table (Mercury's session is not routed by it), passes.
+    A soft clear resets nothing, so it withdraws nothing, and passes unread."""
+    import ipaddress
+
+    if variant == "soft":
+        return None
+    route = route or {}
+    ops = {"device": device, "peer": peer, "manager": route.get("manager") or "",
+           "route_command": route.get("command") or ""}
+    if not route.get("manager"):
+        return hit("13c", "cant_fix", (f"Not cleared: the address Mercury reaches {device} from "
+                                       f"is not known ({route.get('why') or 'not read'}), so "
+                                       f"whether {device}'s route to Mercury is learned from "
+                                       f"{peer} cannot be told"), ops, tier=4)
+    answer = route.get("answer")
+    if answer is None:
+        return hit("13c", "cant_fix", (f"Not cleared: {device}'s route to Mercury "
+                                       f"({route['manager']}) was not read "
+                                       f"({route.get('why') or 'not asked'}), so whether a "
+                                       f"clear of {peer} withdraws it cannot be told"), ops,
+                   tier=4)
+    text = answer or ""
+    if re.search(r"not in table|Route not found|No route", text, re.I) or not text.strip():
+        return None
+    if not re.search(r'Known via "bgp|^\s*B[ *]', text, re.M):
+        return None
+    try:
+        want = ipaddress.ip_address(peer)
+    except ValueError:
+        want = None
+    named = set()
+    for tok in re.findall(r"[0-9A-Fa-f:.]{3,45}", text):
+        try:
+            named.add(ipaddress.ip_address(tok.strip(".,")))
+        except ValueError:
+            continue
+    sources = set()
+    for tok in re.findall(r"\b[Ff]rom ([0-9A-Fa-f:.]{3,45})", text):
+        try:
+            sources.add(ipaddress.ip_address(tok.strip(".,")))
+        except ValueError:
+            continue
+    if want is not None and want in named:
+        return hit("13c", "cant_fix", (f"Not cleared: {device} reaches Mercury "
+                                       f"({route['manager']}) by a route learned by BGP from "
+                                       f"{peer} (`{route['command']}` on {device}), so a hard "
+                                       f"clear would withdraw Mercury's own route to {device}"),
+                   ops, tier=4)
+    if sources:
+        return None
+    return hit("13c", "cant_fix", (f"Not cleared: {device} reaches Mercury ({route['manager']}) "
+                                   f"by a route learned by BGP (`{route['command']}` on "
+                                   f"{device}) whose source the answer does not name, so a hard "
+                                   f"clear of {peer} could withdraw it"), ops, tier=4)
 
 
 # ── 13d: once ───────────────────────────────────────────────────────────────────────────────

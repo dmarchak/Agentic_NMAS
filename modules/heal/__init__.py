@@ -53,4 +53,9 @@ the fixed program, its hash and authorisation, guard 13c's CEF and only-path rea
 archive and measured platform, the planned window declared before the send, the held send, the
 confirm only once Mercury is back in, verify, the stability window and the repair), the
 decision made before an Alert's notice (`consider`) and the act `act.run` takes to it.
+
+H21 is the BGP session clear (19.4, N16): `session_clear` (the decision on the diagnosis's
+choice, Tier 1 on a network marked lab and a proposal elsewhere, and the act as the policy or
+as the approving person), on `privileged.SESSION_CLEARS` (the command policy, the measured
+prompt and settle time, the one held send, its verify and its Tier 2 record).
 """

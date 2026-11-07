@@ -34,7 +34,20 @@ configured or saved.
   version defaulted counters to Loopback0, which carries that address in this lab);
 - ``clear ip bgp <peer> soft`` only with ``--allow-live-bgp``: it acts on a live session. The
   peer is the first Established one in ``show ip bgp summary`` unless ``--bgp-peer`` names one;
-  the verdict compares the peer's Up/Down before and after (a reset starts it again);
+  the verdict compares the peer's Up/Down before and after (a reset starts it again), and the
+  neighbour's own read (``show ip bgp neighbors <peer>``, kept) says whether a connection
+  dropped and a refresh was sent;
+- ``clear ip bgp <peer>``, the HARD clear self-healing's session clear sends (board H, H21),
+  only when ``--step bgp-hard`` names it (never in a run of every step), with
+  ``--allow-live-bgp`` and ``--bgp-peer``: it RESETS that one session. A planned window is
+  declared on the device BEFORE it is sent, naming the neighbour's interface
+  (`restarts.record_planned`, C2702's lesson: a drop no window explains is an unexplained
+  row), or nothing is sent; then the neighbour is read every second, up to `BGP_WAIT`, until it
+  is Established again, and the seconds are recorded: the settle time the session clear's
+  verify bound is 2.5 times of;
+- ``--bgp-family ipv6`` runs either clear on an IPv6 neighbour (``clear bgp ipv6 unicast
+  <peer>``, its summary ``show bgp ipv6 unicast summary``); the commands are
+  `privileged.SESSION_CLEARS`', the one home of their text;
 - never inside the hypervisor's nightly backup window, 02:30 to 03:30 in the hypervisor's zone
   (08:30 to 09:30 UTC under MDT, 09:30 to 10:30 under MST; a measurement taken then measures
   the backup), refused naming the window; refused too when the zone cannot be read.
@@ -45,7 +58,11 @@ NOT MEASURED with the reason, never as a result.
     nmas-tier2-probe                                                   # dry run: the plan
     nmas-tier2-probe --list Default --device <device> --apply --actor you@example.com \\
         --interface GigabitEthernet2 --arp-interface GigabitEthernet2 --allow-live-bgp \\
-        --out /dev/shm/tier2-<device>.json
+        --out ~/nmas-probe-out/tier2-<device>.json
+    nmas-tier2-probe --step bgp-hard --allow-live-bgp --bgp-peer 192.0.2.3      # its dry run
+    nmas-tier2-probe --list Default --device <device> --apply --actor you@example.com \\
+        --step bgp-hard --allow-live-bgp --bgp-peer 192.0.2.3 \\
+        --out ~/nmas-probe-out/tier2-<device>-bgp-hard.json
 
 Run it on one device of each platform (cisco_iosxe, cisco_ios). Exit 0 measured (whatever the
 results), 1 refused before touching the device, 2 stopped on a question it would not answer.
@@ -78,8 +95,21 @@ STEPS = (
     {"key": "undebug-all", "command": "undebug all",
      "before": "show debugging", "after": "show debugging"},
     {"key": "bgp-soft", "command": "clear ip bgp {peer} soft",
-     "before": "show ip bgp summary", "after": "show ip bgp summary", "needs": "peer"},
+     "before": "show ip bgp summary", "after": "show ip bgp summary", "needs": "peer",
+     "clear": "clear-bgp-soft"},
+    # H21: the hard clear resets the session, so it runs only when --step names it.
+    {"key": "bgp-hard", "command": "clear ip bgp {peer}",
+     "before": "show ip bgp summary", "after": "show ip bgp summary", "needs": "peer",
+     "clear": "clear-bgp-peer", "drops": True, "named_only": True},
 )
+#: The summary each address family's clear reads before and after.
+SUMMARY_READ = {"ipv4": "show ip bgp summary", "ipv6": "show bgp ipv6 unicast summary"}
+#: A hard clear's return to Established is watched up to this long, every second. Unmeasured:
+#: the probe measures it, and a return slower than this is recorded as "not back within 300 s"
+#: with the last state read. 300 s is past IOS's 180 s default hold time and its connect retry.
+BGP_WAIT = 300
+#: The planned window a hard clear declares runs this long past its watch (the read after).
+BGP_WINDOW_MARGIN_S = 60
 
 #: ARP's return is watched up to this long; every second. Unmeasured: the probe measures it, and
 #: a return slower than this is recorded as "not back within 120 s" with the count reached.
@@ -171,18 +201,16 @@ def uptime_seconds(text: str):
 
 def bgp_peers(summary: str) -> dict:
     """``{peer: {"up": text, "seconds": int|None, "state": text, "established": bool}}`` from
-    ``show ip bgp summary``'s neighbour table."""
-    out, table = {}, False
-    for line in (summary or "").splitlines():
-        if line.startswith("Neighbor") and "Up/Down" in line:
-            table = True
-            continue
-        cols = line.split()
-        if not table or len(cols) < 10 or not _ADDRESS.match(cols[0]):
-            continue
-        up, state = cols[8], " ".join(cols[9:])
-        out[cols[0]] = {"up": up, "seconds": uptime_seconds(up), "state": state,
-                        "established": state.isdigit()}
+    ``show ip bgp summary``'s (or ``show bgp ipv6 unicast summary``'s) neighbour table, read by
+    THE one BGP summary reader (`modules.bgp_summary`, which joins an IPv6 neighbour's wrapped
+    row)."""
+    from modules.bgp_summary import parse_bgp_summary
+
+    out = {}
+    for p in parse_bgp_summary(summary or "")["peers"]:
+        up, state = p.get("up_down") or "", p.get("state") or ""
+        out[p["neighbor"]] = {"up": up, "seconds": uptime_seconds(up), "state": state,
+                              "established": bool(p.get("established"))}
     return out
 
 
@@ -218,18 +246,31 @@ def bgp_verdict(before: dict, after: dict) -> dict:
 
 def plan(args) -> list:
     """Each step with its arguments filled, or why it is not measured."""
+    from modules.nsot.privileged import SESSION_CLEARS
+
     fill = {"interface": args.interface, "arp_interface": args.arp_interface,
             "peer": args.bgp_peer or "<the first Established peer>"}
+    family = getattr(args, "bgp_family", "") or "ipv4"
     out = []
-    chosen = getattr(args, "step", None) or [s["key"] for s in STEPS]
+    chosen = getattr(args, "step", None) or [s["key"] for s in STEPS if not s.get("named_only")]
     for s in (s for s in STEPS if s["key"] in chosen):
         row = {k: v.format(**fill) if isinstance(v, str) else v for k, v in s.items()}
+        if s.get("clear"):
+            spec = SESSION_CLEARS[s["clear"]]
+            row.update(peer=args.bgp_peer or "",
+                       command=spec["command"][family].format(peer=fill["peer"]),
+                       before=SUMMARY_READ[family], after=SUMMARY_READ[family], family=family,
+                       neighbour=spec["read"][family].format(peer=fill["peer"]))
         if s.get("needs") == "interface" and not args.interface:
             row["unmeasured"] = "no --interface named (a data interface)"
         if s.get("needs") == "arp_interface" and not args.arp_interface:
             row["unmeasured"] = "no --arp-interface named"
         if s.get("needs") == "peer" and not args.allow_live_bgp:
-            row["unmeasured"] = "a soft refresh acts on a live session: --allow-live-bgp not given"
+            row["unmeasured"] = (f"a {'hard clear' if s.get('drops') else 'soft refresh'} acts "
+                                 "on a live session: --allow-live-bgp not given")
+        elif s.get("drops") and not args.bgp_peer:
+            row["unmeasured"] = ("a hard clear resets the session it names: --bgp-peer not "
+                                 "given (it is never the first peer found)")
         out.append(row)
     return out
 
@@ -244,6 +285,14 @@ def refusal(args, now: float = None) -> str:
             return f"REFUSED: {name} {value!r} is not one interface name"
     if args.bgp_peer and not _ADDRESS.match(args.bgp_peer):
         return f"REFUSED: --bgp-peer {args.bgp_peer!r} is not an address"
+    family = getattr(args, "bgp_family", "") or "ipv4"
+    if family not in SUMMARY_READ:
+        return f"REFUSED: --bgp-family {family!r} is ipv4 or ipv6"
+    if args.bgp_peer:
+        from modules.nsot.privileged import family_of
+        if family_of(args.bgp_peer) != family:
+            return (f"REFUSED: --bgp-peer {args.bgp_peer} is an {family_of(args.bgp_peer) or '?'}"
+                    f" address, and --bgp-family is {family}")
     if args.apply:
         if not (args.list_name and args.device and args.actor):
             return "REFUSED: --apply needs --list, --device and --actor (who is accountable)"
@@ -263,9 +312,11 @@ def _session(device):
 
 
 def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
-            clock=time.time) -> tuple:
+            clock=time.time, declare=None) -> tuple:
     """``(results, stopped)``: each step measured on *conn*; *stopped* names a question the
-    probe would not answer (the run ends there)."""
+    probe would not answer (the run ends there). *declare(device, interface, seconds, why)*
+    records a hard clear's planned window (`restarts.record_planned`'s answer); a window not
+    recorded sends nothing."""
     from modules.commands import run_device_command
     from modules.redact import redact_text
 
@@ -291,16 +342,47 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
                                         "session runs on"}
             continue
         before = read(s["before"])
-        peer = None
-        if s["key"] == "bgp-soft":
+        peer, was = None, {}
+        if s.get("clear"):
+            from modules.nsot.privileged import SESSION_CLEARS, bgp_session
+            spec, family = SESSION_CLEARS[s["clear"]], s.get("family") or "ipv4"
             peers = bgp_peers(before)
-            peer = next((p for p, v in peers.items() if v["established"]), None) \
-                if "<the first" in s["command"] else s["command"].split()[3]
-            if not peer or peer not in peers:
+            if "<the first" in s["command"]:
+                peer = next((p for p, v in peers.items() if v["established"]), None)
+            else:
+                named = (s.get("peer") or s["command"].split()[-2 if s["command"].endswith(
+                    " soft") else -1]).lower()
+                peer = next((p for p in peers if p.lower() == named), None)
+            if not peer:
                 results[s["key"]] = {**row, "result": "not measured",
-                                     "why": "no Established BGP peer in show ip bgp summary"}
+                                     "why": f"no such Established BGP peer in {s['before']}"}
                 continue
-            row["command"] = s["command"] = f"clear ip bgp {peer} soft"
+            row["command"] = s["command"] = spec["command"][family].format(peer=peer)
+            neighbour = spec["read"][family].format(peer=peer)
+            text = read(neighbour)
+            was = bgp_session(text)
+            row.update(neighbour_read=neighbour, neighbour_before=text[:KEEP_BYTES],
+                       session_before={k: was.get(k) for k in (
+                           "state", "up_for", "connections", "dropped", "received",
+                           "refresh_sent", "interface", "last_reset")})
+            if s.get("drops"):
+                # A hard clear resets the session: its planned window first (C2702), naming the
+                # neighbour's interface, or nothing is sent.
+                w = (declare or _declare)(device, was.get("interface") or "",
+                                          BGP_WAIT + BGP_WINDOW_MARGIN_S,
+                                          f"{s['command']} measured by scripts/nmas-tier2-probe "
+                                          f"(board H, H21): the session to {peer} resets and "
+                                          "forms again")
+                rec = (w or {}).get("record") or {}
+                row["planned_window"] = ({k: rec.get(k) for k in ("from", "until", "via",
+                                                                   "interfaces")}
+                                         if (w or {}).get("ok") else
+                                         {"error": (w or {}).get("error") or "not recorded"})
+                if not (w or {}).get("ok"):
+                    results[s["key"]] = {**row, "result": "not measured", "why": (
+                        "the planned window for the clear could not be recorded "
+                        f"({row['planned_window']['error']}); nothing was sent")}
+                    continue
         row["before"] = before[:KEEP_BYTES]
         row["before_cut"] = len(before.encode()) > KEEP_BYTES
         started = clock()
@@ -332,11 +414,59 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
                           "words": (f"{got} of {want} entries back after {waited:g} s"
                                     if got >= want else
                                     f"{got} of {want} entries, not back within {ARP_WAIT} s")}
-        if s["key"] == "bgp-soft":
+        if s.get("clear") and s.get("drops") and row.get("result") != "refused":
+            # The hard clear's settle time: the session read every second until Established.
+            seen, waited, back = [], 0.0, None
+            while waited <= BGP_WAIT:
+                sess = bgp_session(read(neighbour))
+                if sess.get("state") and (not seen or seen[-1] != sess["state"]):
+                    seen.append(sess["state"])
+                if sess.get("established"):
+                    back = round(clock() - started, 1)
+                    break
+                sleep(1.0)
+                waited += 1.0
+            row["bgp"] = {"back_after_s": back, "states": seen,
+                          "dropped": (was.get("dropped"), sess.get("dropped")),
+                          "words": (f"Established again {back} s after the send (states seen: "
+                                    f"{' > '.join(seen)})" if back is not None else
+                                    f"not back within {BGP_WAIT} s (last state "
+                                    f"{(seen or ['not read'])[-1]})")}
+        elif s.get("clear"):
+            from modules.nsot.privileged import clear_verify
+            sess = bgp_session(read(neighbour))
             row["bgp"] = bgp_verdict(bgp_peers(before).get(peer), bgp_peers(after).get(peer))
+            row["session"] = clear_verify({"variant": "soft", "peer": peer}, was, sess)
+        if s.get("clear"):
+            row["session_after"] = {k: sess.get(k) for k in (
+                "state", "up_for", "connections", "dropped", "received", "refresh_sent",
+                "last_reset")}
         row.setdefault("result", "measured")
         results[s["key"]] = row
     return results, stopped
+
+
+def _declare(device: dict, interface: str, seconds: float, why: str) -> dict:
+    """No window without a list and an actor to record it under (`main` gives `_window_for`'s):
+    a hard clear measured with this sends nothing."""
+    return {"ok": False, "error": "no list or actor to record a window under"}
+
+
+def _window_for(args):
+    """The hard clear's planned window on *args*' device, recorded BEFORE it is sent
+    (`restarts.record_planned`, naming the neighbour's interface, as the probe's actor)."""
+    def declare(device: dict, interface: str, seconds: float, why: str) -> dict:
+        from modules import restarts
+
+        now = time.time()
+        try:
+            return restarts.record_planned([device.get("hostname", "")], now, now + seconds,
+                                           args.actor, why, "nmas-tier2-probe",
+                                           list_name=args.list_name,
+                                           interfaces=[interface] if interface else [])
+        except Exception as exc:                      # noqa: BLE001 (nothing sent, said)
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return declare
 
 
 def main() -> int:
@@ -350,6 +480,7 @@ def main() -> int:
     ap.add_argument("--arp-interface", default="")
     ap.add_argument("--allow-live-bgp", action="store_true")
     ap.add_argument("--bgp-peer", default="")
+    ap.add_argument("--bgp-family", default="ipv4", choices=sorted(SUMMARY_READ))
     ap.add_argument("--step", action="append", default=[],
                     help="measure only this step (repeatable): " + ", ".join(s["key"] for s in STEPS))
     ap.add_argument("--out", default="")
@@ -367,6 +498,13 @@ def main() -> int:
             print(f"{s['key']}: {s['command']}"
                   + (f"   NOT MEASURED: {s['unmeasured']}" if s.get("unmeasured") else ""))
             print(f"  before: {s['before']}\n  after:  {s['after']}")
+            if s.get("neighbour"):
+                print(f"  the neighbour, before and after (kept): {s['neighbour']}")
+            if s.get("drops"):
+                print(f"  first: a planned window of {BGP_WAIT + BGP_WINDOW_MARGIN_S} s on the "
+                      "device, naming the neighbour's interface (nothing is sent without it); "
+                      f"then the neighbour read every second, up to {BGP_WAIT} s, until "
+                      "Established")
         print("\n--apply --list <list> --device <device> --actor <you> measures them.")
         return 0
 
@@ -385,7 +523,8 @@ def main() -> int:
     with device_ops.hold(args.list_name, args.device, "probe", args.actor, detail="tier 2"):
         conn = _session(device)
         try:
-            record["results"], stopped = measure(conn, steps, device, known_secret_values())
+            record["results"], stopped = measure(conn, steps, device, known_secret_values(),
+                                                 declare=_window_for(args))
         finally:
             conn.disconnect()
     if stopped:
@@ -393,7 +532,7 @@ def main() -> int:
               "session was closed, abandoning the command. The steps before it are recorded.")
     for key, row in record["results"].items():
         extra = row.get("prompt") or row.get("why") or (row.get("arp") or {}).get("words") \
-            or (row.get("bgp") or {}).get("why") or ""
+            or (row.get("bgp") or {}).get("why") or (row.get("bgp") or {}).get("words") or ""
         print(f"{key}: {row['result']}" + (f"  ({extra})" if extra else ""))
     text = json.dumps(record, indent=2, sort_keys=True)
     if args.out:

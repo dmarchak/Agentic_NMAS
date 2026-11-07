@@ -2,7 +2,8 @@
 
 A deploy moves a device toward its committed intent: it sends the lines intent has and the
 device lacks, checks the device is still working, and records what landed. It changes the
-device's running configuration, its startup configuration (saved only once verify passes),
+device's running configuration, its startup configuration (saved only once verify passes;
+held for a person when verify does not pass),
 its golden in the list's repository, and the deploy record.
 
 ![The deploy in three bands. In the tool, the plan reads the committed golden and committed intent and builds the exact program, which a person confirms; the run then reads the device, sends the program over SSH, reads the device again on a new session and verifies; the batch commits one golden and writes a receipt per device. A failed verify sends an undo program back to the device.](diagrams/deploy.svg)
@@ -228,10 +229,20 @@ the run ends. Its stages, in the order the code declares them:
    with each cause (a sent line not read back is named, masked: "3 sent line(s) did not read
    back: …"), and the card's headline says the deploy was done and its verify did not pass;
    it never reads "Verify passed" while the receipt records otherwise.
-9. `save_startup`. Read: nothing. Sent: `write memory`, on a fresh SSH session, to each device
-   whose push completed, once verify did not fail. Recorded: whether each saved; the result
-   says "Saved to startup after verify" only when verify passed, and "Saved to startup,
-   although verify did not pass" when it did not without failing. A save that
+9. `save_startup`. Read: verify's result for each device. Sent: `write memory`, on a fresh SSH
+   session, to each device whose push completed AND whose verify passed; nothing to any other.
+   Recorded: whether each saved; the result says "Saved to startup after verify". A device
+   whose verify did not pass without failing (a protocol intent declares not up, a read not
+   trusted, a sent line not read back), or recorded no verify at all, is not saved: its save
+   is **held** until a person decides, recorded as its own state, and the result says "Held,
+   NOT saved to startup: verify did not pass (…)" with verify's own words, then that Persist…
+   on its device page saves it, or roll back. No control rolls back a change whose verify did
+   not fail yet; until it is saved, startup holds the device as it was before the change, so
+   a reload returns it there. A hold starts no rollback and is not a failed save. Needs
+   attention keeps a row for it (a warning, its button Persist on the device's page) until a
+   save of the device reads its startup config back saved (Persist, or Save) or a later
+   deploy finishes clean. A receipt recorded before the hold says "Saved to startup, although
+   verify did not pass", as it did then. The confirm says the save waits on verify. A save that
    fails leaves the change running and NOT in startup (a reload would lose it): said in the
    result, never rolled back over, since the change itself passed. Needs attention keeps a
    row for it whose button opens Persist on the device's page, until a save of the device
@@ -430,7 +441,8 @@ starts the apply as a job. Its steps, in the order the code declares them:
    lifts it, on each device. The capture each end handed the batch is dropped: the device is
    back, so it is not its golden.
 7. `save_both`. When nothing failed, the held saves run on both ends (the one save there is,
-   recorded per device as above).
+   recorded per device as above): an end whose own verify did not pass stays held for a
+   person, as a single device's does.
 8. `record`. Each device's receipt is written once the pair has settled: what it was sent, its
    own verify, and, under the link, the link's verify and why the end was rolled back when its
    far end or the link failed. The job's card says the link's verify, and a failed pair offers

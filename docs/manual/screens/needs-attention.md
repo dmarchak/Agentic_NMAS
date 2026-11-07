@@ -101,7 +101,11 @@ baselines, the remote's publication, unplanned device restarts (a crash file sav
 reader that finishes announces it, and the page redraws in place.
 
 The other rows, each with its own cause and action: deploys that failed or were verified and
-not saved to startup; a deploy that landed and was saved while verify could not read back some
+not saved to startup; a deploy that landed and whose verify did not pass, its save to startup
+held for a person (a warning naming verify's own words; **Persist <device>…** saves it, and no
+control rolls back a change whose verify did not fail yet, so the row says that until it is
+saved startup holds the device as it was before the change); a deploy, recorded before saves
+were held, that landed and was saved while verify could not read back some
 of the lines it sent, a warning naming the lines (read them in the device's golden on its
 History tab: acknowledge the row with that reason when the device prints them in another
 form, or plan the deploy again when they are absent; a later deploy that misses a line raises
@@ -172,8 +176,8 @@ unless changed). A drifted device's row carries both answers: **Capture** record
 holds as its golden (the change was wanted), and **Deploy intent** puts its committed intent back
 (it was not); each opens its card on the device's page, with its preview and confirm.
 
-**Persist <device>…** is the action of two rows: a deploy that was verified and not saved to
-startup, and job health's row for a device whose running configuration holds the only working
+**Persist <device>…** is the action of three rows: a deploy that was verified and not saved to
+startup, a deploy whose save was held because its verify did not pass, and job health's row for a device whose running configuration holds the only working
 credential. It opens the device's Persist card on its page, with its preview and confirm (see
 [Persist](persist)); the row clears once a save's read-back matches. A device's "not monitored"
 row offers **Preview the apply…** when the network's monitoring profile already covers what is

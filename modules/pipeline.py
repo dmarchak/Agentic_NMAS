@@ -254,7 +254,9 @@ class PipelineContext:
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
     pending_convergence: list = field(default_factory=list)  # not-yet-converged notes
-    #: Stage 8.2 (C501): ip -> {"ok", "error"}, the save to startup after verify passed.
+    #: Stage 8.2 (C501): ip -> {"ok", "error"}, the save to startup after verify passed, or
+    #: ``{"ok": False, "held": True, "why"}`` when verify did not pass (C2701): not saved,
+    #: waiting for a person, with verify's words.
     saved_startup:       dict = field(default_factory=dict)
     golden_result:       dict = field(default_factory=dict)  # Stage 8.5
     golden_skipped:      list = field(default_factory=list)
@@ -388,7 +390,7 @@ STAGE_WORDS = {
                                           "change touches management sections only, so no "
                                           "protocol settle window is waited)"}),
     "save_startup": ("Save", "the running configuration written to startup, only once verify "
-                             "passed"),
+                             "passed; a verify that did not pass holds it for a person"),
     "save_golden": ("Record golden", "the golden recorded from what was sent"),
     "audit_log": ("Audit", "the receipt written"),
 }
@@ -2382,16 +2384,35 @@ def _restore_config(conn, commands) -> None:
 # Stage 8.5 — Save golden
 # ---------------------------------------------------------------------------
 
+def verify_hold(verify: dict) -> str:
+    """Why the save to startup is HELD for *verify*, one device's `verify_result` (C2701), in
+    verify's own words, masked (`preview_confirm.verify_verdict`, the verdict every result
+    draws); ``""`` when verify passed. Only ``ok is True`` passes: a verify that did not pass
+    without failing (a protocol intent declares not up, a read not trusted, a sent line not
+    read back) and one that recorded nothing for the device both hold it."""
+    if (verify or {}).get("ok") is True:
+        return ""
+    if not verify:
+        return "verify recorded no result for this device, and a verify not read never passes"
+    from modules.preview_confirm import verify_verdict
+    return "; ".join(verify_verdict(dict(verify, ran=True))["causes"])
+
+
 def _stage_save_startup(ctx: PipelineContext) -> None:
     """Write running to startup on every device whose change was pushed and VERIFIED, and on
     no other (C501). The push used to save two seconds after it landed, before verify, so a
     change that failed verify was in startup whatever the rollback then did; on tw-ztp-a a
     shutdown that broke BGP survived the rollback and would have survived a reload.
 
-    Runs after verify passed (a failed verify rolls back and never reaches this stage), on a
-    fresh connection (C272: the push's session can be unreadable after a save). A save that
-    fails leaves the change running and NOT in startup: recorded per device and reported
-    ("continue"), never rolled back over, because the change itself passed."""
+    Runs after verify did not FAIL (a failed verify rolls back and never reaches this stage),
+    and saves only a device whose verify PASSED (C2701): one whose verify did not pass without
+    failing, or recorded nothing, is HELD (`saved_startup[ip]["held"]`, with verify's words),
+    never saved, until a person decides (Persist… on its page saves it); startup still holds
+    the device as it was before the change. The hold is a decision waiting, never a failed
+    save, and starts no rollback. On a fresh connection (C272: the push's session can be
+    unreadable after a save). A save that fails leaves the change running and NOT in startup:
+    recorded per device and reported ("continue"), never rolled back over, because the change
+    itself passed."""
     # The ONE save there is (`onboard.persist_on_device`: write memory, then the startup read
     # back), so the deploy and onboarding cannot disagree about what "saved" means.
     from modules.nsot.onboard import persist_on_device
@@ -2408,6 +2429,13 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
         if not result.get("ok") or result.get("skipped"):
             continue
         hostname = dev.get("hostname", ip)
+        held = verify_hold(ctx.verify_result.get(ip))
+        if held:
+            # C2701: verify did not pass, so the save waits for a person; nothing is sent.
+            ctx.saved_startup[ip] = {"ok": False, "held": True, "why": held}
+            log.warning("pipeline[save_startup]: %s NOT saved to startup, held: verify did "
+                        "not pass (%s)", hostname, held)
+            continue
         try:
             # The row holds encrypted tokens; decrypted here as `stored_connection_params`
             # does for every other session to the device.
@@ -2425,8 +2453,10 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
             ctx.saved_startup[ip] = {"ok": False, "error": got.get("detail") or "not saved"}
             log.error("pipeline[save_startup]: %s NOT saved to startup: %s", hostname,
                       got.get("detail"))
+    # A held save is a decision waiting (C2701), recorded as its own state, never a failed one.
     unsaved = [d.get("hostname", d["ip"]) for d in ctx.selected_devices
-               if not (ctx.saved_startup.get(d["ip"]) or {"ok": True}).get("ok")]
+               if not (ctx.saved_startup.get(d["ip"]) or {"ok": True}).get("ok")
+               and not (ctx.saved_startup.get(d["ip"]) or {}).get("held")]
     if unsaved:
         raise PipelineStageError(
             "verified and running, NOT saved to startup (a reload loses the change): "

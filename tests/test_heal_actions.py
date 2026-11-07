@@ -91,9 +91,10 @@ class TestTheKinds:
         assert A().tier_of("port_bounce", False) == 1
 
     def test_every_kind_is_refused_by_name_before_any_guard(self):
-        # H20 built the bounce and the OSPF reset through it; the clears and dampening wait.
-        assert A().BUILT == ("port_bounce", "ospf_reset")
-        for kind, part in (("session_clear", "H21"), ("dampening_proposal", "H22")):
+        # H20 built the bounce and the OSPF reset through it, H21 the session clear; dampening
+        # waits.
+        assert A().BUILT == ("port_bounce", "session_clear", "ospf_reset")
+        for kind, part in (("dampening_proposal", "H22"),):
             got = A().judge(kind, {})
             assert got["outcome"] == "cant_fix" and f"not built yet: {part}" in got["words"]
             assert [s["step"] for s in got["steps"]] == ["built"], got
@@ -102,11 +103,15 @@ class TestTheKinds:
 
     def test_no_policy_may_allow_an_unbuilt_action(self, networks):
         from modules.heal import policy as H
-        for key, kind, part in ((H.KINDS_AUTO_KEY, "session_clear", "H21"),
-                                (H.KINDS_PROPOSE_KEY, "dampening_proposal", "H22")):
+        for key, kind, part in ((H.KINDS_PROPOSE_KEY, "dampening_proposal", "H22"),):
             with pytest.raises(H.PolicyRefused) as e:
                 H.plan("Default", {"heal_mode": "dry_run", key: [kind]}, T0)
             assert f"{kind} ({A().KIND_WORDS[kind]}): not built yet: {part}" in str(e.value)
+        # H21 built the session clear: a policy may name it in either list (Tier 1 on a lab
+        # network, a proposal elsewhere), and none does by default.
+        for key in (H.KINDS_AUTO_KEY, H.KINDS_PROPOSE_KEY):
+            got = H.plan("Default", {"heal_mode": "dry_run", key: ["session_clear"]}, T0)
+            assert "session_clear" in got["after"][key], got
 
     def test_the_action_guards_settings_are_guard_13s(self):
         from modules.heal import policy as H

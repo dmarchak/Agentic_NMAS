@@ -86,6 +86,12 @@ ROW_KINDS = {
     ("deploys", "unmet"): ("a deploy landed, and a protocol its intent declares was not up "
                            "after it (often a peer not built yet)",
                            "build or check the peer; read the receipt if the peer exists"),
+    # C2701: landed, and verify did not pass without failing, so its save to startup is HELD
+    # until a person decides; Persist saves it.
+    ("deploys", "held"): ("a deploy landed and its verify did not pass, so its save to startup "
+                          "is held: what it runs is not in startup",
+                          "decide: persist it from the device's page, or roll it back (no "
+                          "control rolls back a change verify did not fail yet)"),
     # C1542: sent whole, accepted and saved, with only lines verify could not read back.
     ("deploys", "read_back"): ("a deploy landed and was saved, and verify could not read back "
                                "some of the lines it sent",
@@ -412,6 +418,9 @@ CLEARS = {
     ("deploys", "unsaved"): (("resolves",), "a save of the device after the deploy reads its "
                              "startup config back saved (its page's Persist, or Save), or a "
                              "later deploy or restore to it finishes clean"),
+    ("deploys", "held"): (("resolves",), "a save of the device after the deploy reads its "
+                          "startup config back saved (its page's Persist, or Save), or a later "
+                          "deploy or restore to it finishes clean"),
     ("deploys", "unmet"): (("resolves",), "the adjacency reader, reading after the deploy, sees "
                            "each protocol it names up on the device, or a later deploy or "
                            "restore to it finishes clean"),
@@ -1568,6 +1577,19 @@ def _only_unsaved(r: dict) -> bool:
                              receipt_ok=True) == "success")
 
 
+def _only_held(r: dict) -> bool:
+    """A receipt row whose save to startup is HELD because verify did not pass (C2701): it
+    landed (deployed, nothing rolled back, stopped at no stage, the program sent the one
+    confirmed, its commit recorded), and what it runs waits on a person's decision. Anything
+    worse about it is the `failed` row's, which says the hold too."""
+    from modules.nsot import receipts
+
+    return (r.get("outcome") == "deployed" and not receipts.is_pending(r)
+            and (r.get("saved_startup") or {}).get("state") == "held"
+            and not (r.get("rollback") or {}).get("performed") and not r.get("stage")
+            and r.get("matches_confirmed") is not False)
+
+
 def _persist_action(lst: str, host: str, label: str) -> dict:
     """Persist on the device's page (`open`, drawn as its button in `v2/_attention.html`)."""
     return {"label": label, "open": "persist", "device": host, "list": lst}
@@ -1615,7 +1637,10 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     The action follows the outcome (C543): a change verified and running and NOT saved to
     startup is its own kind, `unsaved`, a warning whose action is Persist on the device's
     page, and a save read back SAFE after the receipt clears it; any other fault reads its
-    receipt and plans again, offering Persist too when the change is also unsaved."""
+    receipt and plans again, offering Persist too when the change is also unsaved. A change
+    that landed and whose verify did not pass has its save HELD (C2701): its own kind, `held`,
+    naming verify's words, whose action is the person's decision (Persist on the device's
+    page) and which a save read back after the receipt clears, as `unsaved`'s does."""
     from modules.nsot import receipts
     from modules.preview_confirm import (OUTCOME_WORDS, SAVED_STARTUP_WORDS, read_back_missed,
                                          result_level)
@@ -1638,7 +1663,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     rows, pending_named, saved_later, met_later, adj = [], 0, 0, 0, None
     # Read only when a device's one fault is the save: one read of one record, not per device.
     saved_at, saves_unread = ((_saved_since(saves)) if any(
-        _only_unsaved(r) for r in latest.values()) else ({}, ""))
+        _only_unsaved(r) or _only_held(r) for r in latest.values()) else ({}, ""))
     for host, r in sorted(latest.items()):
         if receipts.is_pending(r) and _pending_is_named(lst, host, r):
             # Written as the device finished, its batch's commit not recorded yet: its batch
@@ -1652,6 +1677,34 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
         unsaved_words = (SAVED_STARTUP_WORDS["not_saved"] + ": "
                          + (saved.get("detail") or "no reason was recorded")
                          if saved.get("state") == "not_saved" else "")
+        # C2701: verify did not pass, so the deploy held its save for a person.
+        held_words = (f"{SAVED_STARTUP_WORDS['held']} "
+                      f"({saved.get('detail') or 'verify recorded no cause'})"
+                      if saved.get("state") == "held" else "")
+        if _only_held(r):
+            # Saved since (a Persist or a Save read back after the receipt): decided.
+            if saved_at.get(host, 0) >= (_ts(r.get("completed_at") or r.get("at"))
+                                         or float("inf")):
+                saved_later += 1
+                continue
+            rows.append(row(
+                source="deploys", kind="held", key=f"{lst}:{host}", level="warning",
+                what=(f"The last {receipts.noun(r)} to {host} landed and its verify did not "
+                      "pass: its save to startup is HELD, so what it runs is not in startup"),
+                cause=(held_words + ". The push raised nothing and the program sent matches "
+                       "the one confirmed; nothing rolled it back, since verify did not fail"
+                       + (f"; {saves_unread}" if saves_unread else "")),
+                action=_persist_action(lst, host, (
+                    f"Decide for {host}: read the receipt on its History tab, then Persist… on "
+                    "its device page saves what it runs to startup and reads it back. To roll "
+                    "it back instead: no control rolls back a change whose verify did not fail "
+                    f"yet; until it is saved, startup holds {host} as it was before the change, "
+                    "and a reload returns it there")),
+                devices=[host], since=_ts(r.get("at")),
+                operands={"list": lst, "action": r.get("action"),
+                          "outcome": r.get("outcome", ""),
+                          "sent_lines": r.get("program_lines") or 0, "by": r.get("actor")}))
+            continue
         if _only_unsaved(r):
             # At or after the receipt's last line, to the second both are recorded in: the
             # deploy held the device until then, so a save of it in that second came after.
@@ -1686,7 +1739,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
         landed = (outcome == "deployed" and not issues and not unread
                   and not rb.get("performed") and not r.get("stage")
                   and r.get("matches_confirmed") is not False and not receipts.is_pending(r)
-                  and not unsaved_words)
+                  and not unsaved_words and not held_words)
         if landed and missed and not unmet:
             # C1542: sent whole (the push raised nothing and the program sent is the one
             # confirmed) and saved to startup, its golden then recorded from what the device
@@ -1723,7 +1776,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                 and not missed
                 and not unread and not rb.get("performed") and not r.get("stage")
                 and r.get("matches_confirmed") is not False and not receipts.is_pending(r)
-                and not unsaved_words):
+                and not unsaved_words and not held_words):
             # C1450: landed, read back and saved; only a protocol intent declares was not up
             # after it, often for want of a peer not built yet. It clears when the adjacency
             # reader, reading after the receipt, sees each up; until then it says what is unmet.
@@ -1768,7 +1821,9 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
             "its receipt was written as the device finished and never completed with its "
             "batch's commit" if receipts.is_pending(r) else "",
             # C543: said with whatever else is wrong, never dropped from the cause.
-            unsaved_words) if x) or \
+            unsaved_words,
+            # C2701: a held save too.
+            held_words) if x) or \
             f"its receipt records {outcome or 'no outcome'} with no reason"
         words = OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')
         if receipts.is_pending(r):
@@ -1785,7 +1840,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
             cause=cause,
             action=(_persist_action(lst, host, read_it + f"; what {host} runs now is not "
                                     "saved to startup, and Persist… on its device page saves "
-                                    "it meanwhile") if unsaved_words else
+                                    "it meanwhile") if unsaved_words or held_words else
                     {"label": read_it, "href": f"/v2/device/{host}?tab=history"}),
             devices=[host], since=_ts(r.get("at")),
             operands={"list": lst, "action": r.get("action"), "outcome": outcome,

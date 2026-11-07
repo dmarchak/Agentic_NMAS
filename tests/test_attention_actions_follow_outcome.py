@@ -232,18 +232,19 @@ class TestNotSavedToStartupOffersPersist:
 
 
 class TestAnotherFaultBesidesTheSave:
-    """Verify did not pass without failing (intent declares a protocol still not up), and the
-    save did not land: read the receipt and plan again, with Persist offered too."""
+    """Verify did not pass without failing (intent declares a protocol still not up): since
+    C2701 the save is HELD, never attempted, so the row is the held save's, naming verify's
+    words, reading the receipt and offering Persist (the person's decision)."""
 
     def test_it_reads_the_receipt_and_offers_persist(self, monkeypatch, store):
         unmet = dict(VERIFY_OK, ok=False, intent_unmet=["bgp"])
         _out, row = _apply(monkeypatch, startup=NO_STARTUP, verify=unmet)
         assert row["outcome"] == "deployed" and row["checks"]["ok"] is False
+        assert row["saved_startup"] == {"state": "held", "detail": "bgp"}, row["saved_startup"]
         (r,) = _s4_rows(A.deploy_source())
-        assert r["kind"] == "failed" and r["level"] == "danger"
-        assert "declared by intent and not up after: bgp" in r["cause"]
-        assert "NOT saved to startup" in r["cause"]
-        assert "History tab" in r["action"]["label"] and "plan again" in r["action"]["label"]
+        assert r["kind"] == "held" and r["level"] == "warning"
+        assert "Held, NOT saved to startup: verify did not pass (bgp)" in r["cause"]
+        assert "History tab" in r["action"]["label"] and "Persist" in r["action"]["label"]
         assert r["action"].get("open") == "persist"
         assert ">Persist s4…</a>" in _drawn(r)
 

@@ -198,14 +198,18 @@ def _authorised_record(given) -> list:
 
 def _saved_startup(result: dict) -> dict:
     """Whether the change was saved to startup after verify (C511): ``{"state", "detail"}``,
-    the state `saved`, `not_saved` (verified and running, a reload loses it) or `not_run`,
-    with why. Since C501 the save follows a passed verify, so "saved" and "running and not
-    saved" are different results, and a receipt that said neither read them alike."""
+    the state `saved`, `held` (verify did not pass, so the save waits for a person, C2701; the
+    detail is verify's own words), `not_saved` (verified and running, a reload loses it) or
+    `not_run`, with why. Since C501 the save follows a passed verify, so "saved" and "running
+    and not saved" are different results, and a receipt that said neither read them alike."""
     from modules.redact import redact_text
 
     got = result.get("saved_startup") or {}
     if got.get("ok") is True:
         return {"state": "saved", "detail": ""}
+    if got.get("held"):
+        return {"state": "held",
+                "detail": redact_text(got.get("why") or "verify recorded no cause")}
     if got:
         return {"state": "not_saved",
                 "detail": redact_text(got.get("error") or "no reason was recorded")}

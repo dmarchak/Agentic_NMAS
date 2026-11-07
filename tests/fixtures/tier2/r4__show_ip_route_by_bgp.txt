@@ -1,0 +1,11 @@
+Routing entry for 10.255.1.15/32
+  Known via "bgp 65001", distance 20, metric 0
+  Tag 65002, type external
+  Last update from 198.51.100.3 2w2d ago
+  Routing Descriptor Blocks:
+  * 198.51.100.3, from 198.51.100.3, 2w2d ago
+      opaque_ptr 0x7F7A587B96D8
+      Route metric is 0, traffic share count is 1
+      AS Hops 1
+      Route tag 65002
+      MPLS label: none

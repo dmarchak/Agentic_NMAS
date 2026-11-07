@@ -117,7 +117,10 @@ for the commands each stage sends and reads):
    device back exactly as a deploy does (see
    [When verify fails](deploy#when-verify-fails-the-rollback)).
 9. `save_startup`. Sent: `write memory`, only once verify passed (a restore that fails verify
-   never reaches startup). Recorded: whether it saved.
+   never reaches startup). A verify that did not pass without failing holds the save for a
+   person, as a deploy's does (see [Deploy a change](deploy#the-run-stage-by-stage)): the card
+   says it is held, with verify's words, and that Persist… on the device page saves it.
+   Recorded: whether it saved, or that it was held and why.
 10. `save_golden`. Read: the post-change running configuration. Sent: nothing. Recorded: the
    capture, staged and handed to the batch.
 11. `audit_log`. Recorded: the run's audit entry, as for a deploy (the latest per device).

@@ -218,6 +218,15 @@ def _stops(network: str, decision: dict, now: float, src) -> str:
     return ""
 
 
+def _steps_of(decision: dict) -> tuple:
+    """The approved act's steps: a session clear's (H21) or a heal's."""
+    from modules.heal import session_clear
+
+    if (decision.get("action") or {}).get("kind") in session_clear.KINDS:
+        return session_clear.STEPS
+    return STEPS
+
+
 def _find(network: str, decision_id: str) -> dict:
     from modules.heal import decisions
 
@@ -286,7 +295,7 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
             "refusals": refusals, "confirmable": not refusals,
             "person": (d.get("person") or {}).get("words") or "", "policy": d.get("policy") or {},
             "triggers": [t for t in d.get("triggers") or [] if t], "words": d.get("words") or "",
-            "at": d.get("at"), "steps": [w for _n, w in STEPS],
+            "at": d.get("at"), "steps": [w for _n, w in _steps_of(d)],
             "withdrawn": dict(d["withdrawn"]) if d.get("withdrawn") else None}
 
 
@@ -356,8 +365,8 @@ def start(network: str, decision: dict, approval: dict, *, sources=None, ident=N
         try:
             with identity.carried(ident):
                 return {"ok": True, "result": act._guarded(
-                    network, decision, lambda: apply_approved(network, decision, approval,
-                                                              sources=sources))}
+                    network, decision, lambda: _approved_for(network, decision, approval,
+                                                             sources=sources))}
         finally:
             interrupted.release(network, decision["id"])
 
@@ -365,6 +374,17 @@ def start(network: str, decision: dict, approval: dict, *, sources=None, ident=N
                                       f"{approval['by']})", approval["by"], work, kind=act.KIND,
                              announce_keys=act.DONE_KEYS, announcer=act.ANNOUNCER,
                              device=decision["device"])
+
+
+def _approved_for(network: str, decision: dict, approval: dict, *, sources=None) -> dict:
+    """An approved proposal's act: a BGP session clear's (19.4, H21: Tier 2 on a network not
+    marked lab, `session_clear.apply_approved`, as the person), or a heal's
+    (`apply_approved`). One approval, one take, one record, whichever it is."""
+    from modules.heal import session_clear
+
+    if (decision.get("action") or {}).get("kind") in session_clear.KINDS:
+        return session_clear.apply_approved(network, decision, approval)
+    return apply_approved(network, decision, approval, sources=sources)
 
 
 def _said(got: dict) -> str:

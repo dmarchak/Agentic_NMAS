@@ -40,6 +40,7 @@ STATE_WORDS = {
     "bulk": "Changing by a bulk operation", "file": "Changing by a file action",
     "probe": "Probing removal shapes",
     "port bounce": "Bouncing a port (self-healing)",
+    "session clear": "Clearing a BGP neighbour (self-healing)",
     "monitoring profile apply": "Applying its monitoring profile",
     "IP SLA send": "Sending its IP SLA probes",
     "monitoring templates deploy": "Sending its monitoring templates",

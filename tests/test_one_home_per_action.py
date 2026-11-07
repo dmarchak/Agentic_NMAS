@@ -45,6 +45,10 @@ DECLARED_DYNAMIC = {
     # each, holding the device; self-healing's bounce and the revert-timer probe
     # (scripts/nmas-revert-probe) both send through it.
     ("modules/heal/bounce.py", "send"): ("port bounce",),
+    # H21 (board H 19.4, N16): the BGP session clear's one held send (`privileged.run_clear`:
+    # the command `send_clear` sends once, and only its measured prompt's answer), holding the
+    # device; self-healing's clear, as the policy or as the approving person, sends through it.
+    ("modules/nsot/privileged.py", "run_clear"): ("bgp session clear",),
     # An Open vSwitch server's OpenFlow configuration (docs/LAB9_OPENFLOW.md): the confirmed
     # `sudo -n ovs-vsctl` transaction, its undo on a failure, and the OVS reads around them,
     # each sent once holding the server; the session sends nothing else (modules/sdn/ovs.py).

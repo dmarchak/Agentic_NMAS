@@ -71,10 +71,14 @@ MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",
          # 19.4's marks for an action (H20, `bounce.OUTCOMES`): bounced, and each way it was not.
          "bounced": "bounced", "still_flapping": "bounced, still flapping",
          "not_formed": "bounced, adjacency not formed", "unverified": "bounced, not verified",
-         "reverted": "reverted by its timer", "repaired": "repaired"}
+         "reverted": "reverted by its timer", "repaired": "repaired",
+         # 19.4's marks for a session clear (H21, `session_clear.OUTCOMES`).
+         "cleared": "cleared", "not_back": "cleared, session not back",
+         "reset": "soft clear reset the session", "rejected": "clear refused by the device"}
 #: The outcomes that are not a success: drawn amber or red, never as healed.
 NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupted",
-              "still_flapping", "not_formed", "unverified", "reverted", "repaired")
+              "still_flapping", "not_formed", "unverified", "reverted", "repaired",
+              "not_back", "reset", "rejected")
 MODE_WORDS = {"auto": "AUTO", "dry_run": "dry run", "off": "off"}
 
 

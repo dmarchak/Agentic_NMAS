@@ -393,6 +393,14 @@ def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
     return notes, extra
 
 
+#: What a deploy's or restore's confirm says of the save to startup (C2701): the pipeline's
+#: `_stage_save_startup` saves a device only once its verify passed.
+SAVE_WAITS_ON_VERIFY = ("The save to startup waits on verify: a device is saved only once its "
+                        "verify passes; a failed verify rolls back what landed, and a verify "
+                        "that does not pass without failing holds the save until you decide "
+                        "(Persist… on its device page saves it).")
+
+
 def verify_note(commands: list, scope: str = ""):
     """The program part's note saying which verify runs after this program
     and why (the operator, 2026-10-01): the pipeline's own classifier, so
@@ -625,7 +633,7 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         targets=targets, what_not=what_not,
         nothing_left_out=("Nothing: every planned device can be sent, and no line on "
                           "any device lies outside intent."),
-        confirm=confirm_part(request),
+        confirm=dict(confirm_part(request), effect=SAVE_WAITS_ON_VERIFY),
         explain={
             "what_not": [{"concept": "merge-only",
                           "text": ("Lines are added or replaced. A line on the device that "
@@ -793,7 +801,7 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
         targets=targets, what_not=what_not,
         nothing_left_out="Nothing: every device can be re-applied, and nothing on "
                          "any device lies outside this ref.",
-        confirm=confirm_part(request),
+        confirm=dict(confirm_part(request), effect=SAVE_WAITS_ON_VERIFY),
         explain={
             "what_not": [{"concept": "merge-only",
                           "text": "A re-apply adds and replaces. A line on the device "
@@ -928,8 +936,9 @@ def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) ->
              and all(r.get("matches_confirmed") is True for r in done if r.get("sent"))
              and all((r.get("checks") or {}).get("ok") is True
                      for r in done if (r.get("checks") or {}).get("ran"))
-             # Verified and running, not in startup: a reload loses it, so never green (C511).
-             and not any((r.get("saved_startup") or {}).get("state") == "not_saved"
+             # Verified and running, not in startup: a reload loses it, so never green (C511);
+             # held for a person because verify did not pass (C2701), never green either.
+             and not any((r.get("saved_startup") or {}).get("state") in ("not_saved", "held")
                          for r in done))
     return "success" if clean else "partial"
 
@@ -937,27 +946,44 @@ def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) ->
 #: What a result says of the save to startup after verify (C511), by the receipt's state.
 SAVED_STARTUP_WORDS = {
     "saved": "Saved to startup after verify",
+    # C2701: verify did not pass, so the save waits for a person; the detail is verify's words.
+    "held": "Held, NOT saved to startup: verify did not pass",
     "not_saved": "Verified and running, NOT saved to startup (a reload loses the change)",
     "not_run": "Not saved to startup",
 }
 
+#: The person's decision a held save waits on (C2701), with the controls that exist for it.
+#: Persist… saves it; no control rolls back a change whose verify did not FAIL (Revert and
+#: Retry stand only behind a rollback's block), so the words say so, and say what a reload
+#: would do meanwhile.
+HELD_DECISION = ("Persist… on its device page saves it, or roll back: no control rolls back "
+                 "a change whose verify did not fail yet, and until it is saved, startup "
+                 "holds the device as it was before the change (a reload returns it there)")
+
 
 def saved_startup_words(saved) -> dict:
     """``{"state", "words"}`` for a receipt row's ``saved_startup``; a row recorded before the
-    save was (C511) says so rather than reading as either."""
+    save was (C511) says so rather than reading as either. A held save (C2701) says verify's
+    own words and the decision it waits on: "Held, NOT saved to startup: verify did not pass
+    (…); Persist… … saves it, or roll back …"."""
     if not saved:
         return {"state": "unrecorded",
                 "words": "Whether it was saved to startup is not in this receipt (recorded "
                          "before the save was)"}
     words = SAVED_STARTUP_WORDS.get(saved.get("state"), saved.get("state") or "")
     detail = saved.get("detail") or ""
+    if saved.get("state") == "held":
+        return {"state": "held", "words": f"{words} ({detail or 'verify recorded no cause'}); "
+                                          + HELD_DECISION}
     return {"state": saved.get("state", ""), "words": words + (f": {detail}" if detail else "")}
 
 
 def _saved_after(row: dict) -> dict:
     """A receipt row's save, in words. "Saved to startup after verify" reads as a verify that
     passed; a verify that did not pass without failing (a read-back miss, a protocol unmet, a
-    read not trusted) rolls nothing back and still saves (C1541), so it says that instead."""
+    read not trusted) rolled nothing back and, before C2701, still saved (C1541), so a receipt
+    recorded then says that instead. Since C2701 such a save is held (`held`), said by
+    `saved_startup_words`; the older receipts keep their words (expand, then contract)."""
     saved = saved_startup_words(row.get("saved_startup"))
     checks = row.get("checks") or {}
     if saved["state"] == "saved" and checks.get("ran") and checks.get("ok") is not True:
@@ -1123,6 +1149,11 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                             "text": SAVED_STARTUP_WORDS["not_saved"] + ": "
                                     + (r["saved_startup"].get("detail") or "no reason")
                                     + ". Save it with Persist, from its Device page.",
+                            "lines": []})
+        if (r.get("saved_startup") or {}).get("state") == "held":
+            # C2701: verify did not pass, so the save waits for a person's decision.
+            did_not.append({"target": name, "kind": "held",
+                            "text": saved_startup_words(r["saved_startup"])["words"],
                             "lines": []})
         if outcome != "deployed":
             did_not.append({"target": name, "kind": outcome,

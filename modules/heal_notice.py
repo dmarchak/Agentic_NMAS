@@ -262,14 +262,25 @@ def _diagnosis_thread(network: str, incident_id: str, diagnose) -> tuple:
     return held, done
 
 
+def _action_consider(network: str, incident_id: str, diagnosis: dict) -> dict:
+    """The action module the diagnosis's choice belongs to (`diagnose.action_for`): the port
+    bounce and the OSPF reset (`bounce.consider`, H20), or the BGP session clear
+    (`session_clear.consider`, H21); each answers ``none`` for a choice not its own."""
+    from modules.heal import bounce, diagnose, session_clear
+
+    kind = diagnose.action_for(diagnosis or {}).get("kind")
+    if kind in session_clear.KINDS:
+        return session_clear.consider(network, incident_id, diagnosis)
+    return bounce.consider(network, incident_id, diagnosis)
+
+
 def _consider(network: str, incident_id: str, diagnosis: dict, consider=None) -> dict:
     """The action the diagnosis chooses, judged and recorded before the notice is sent
     (`bounce.consider`: in dry run "would bounce", nothing sent; in AUTO a ``heal`` decision
     the act's runner takes). Never raises: a notice is sent whatever it found."""
     try:
         if consider is None:
-            from modules.heal import bounce
-            consider = bounce.consider
+            consider = _action_consider
         return consider(network, incident_id, diagnosis)
     except Exception as exc:                          # said in the log; the notice still goes
         log.error("heal notice: %s's action for %s was not considered: %s", network,

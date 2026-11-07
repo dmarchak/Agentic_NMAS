@@ -177,6 +177,10 @@ class TestAChangeIsSavedOnlyOnceItPasses:
                     ctx.push_results = {IP: {"ok": True, "output": ""}}
                 if _n == "verify" and not verify_passes:
                     raise PipelineStageError("bgp established 1 -> 0")
+                if _n == "verify":
+                    # What the real stage records for a device whose verify passed (C2701: the
+                    # save reads it, and a verify that recorded nothing holds the save).
+                    ctx.verify_result = {IP: {"ok": True, "issues": []}}
             if name != "save_startup":
                 monkeypatch.setattr(P, f"_stage_{name}", stage)
         saved = []
@@ -202,6 +206,8 @@ class TestAChangeIsSavedOnlyOnceItPasses:
         monkeypatch.setattr("modules.nsot.onboard.persist_on_device", boom)
         ctx = _ctx()
         ctx.push_results = {IP: {"ok": True}}
+        # Verify passed, as the real stage records it (C2701: only a passed verify is saved).
+        ctx.verify_result = {IP: {"ok": True, "issues": []}}
         with pytest.raises(PipelineStageError, match="NOT saved to startup"):
             P._stage_save_startup(ctx)
         assert ctx.saved_startup[IP]["ok"] is False

@@ -1,0 +1,6 @@
+Routing entry for 192.0.2.0/24
+  Known via "ospf 1", distance 110, metric 20, type extern 2, forward metric 1
+  Last update from 10.255.3.12 on GigabitEthernet3, 1w1d ago
+  Routing Descriptor Blocks:
+  * 10.255.3.12, from 10.255.1.12, 1w1d ago, via GigabitEthernet3
+      Route metric is 20, traffic share count is 1

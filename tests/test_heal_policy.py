@@ -110,7 +110,12 @@ def test_the_kinds_tiers_in_code_are_the_schemas():
     props = SCHEMA["properties"]
     assert tuple(props["heal_kinds_auto"]["items"]["enum"]) == H.TIER1_KINDS
     assert tuple(props["heal_kinds_propose"]["items"]["enum"]) == H.TIER2_KINDS
-    assert DEFAULTS["heal_kinds_propose"] == list(H.TIER2_KINDS)
+    # Every Tier 2 heal kind is proposed by default; no action kind is (H21: the session
+    # clear is Tier 2 off a lab network, and no policy names it by default).
+    from modules.heal.actions import KINDS as ACTIONS
+    assert DEFAULTS["heal_kinds_propose"] == [k for k in H.TIER2_KINDS if k not in ACTIONS]
+    assert "session_clear" in H.TIER2_KINDS and "session_clear" in H.TIER1_KINDS
+    assert not set(ACTIONS) & set(DEFAULTS["heal_kinds_propose"] + DEFAULTS["heal_kinds_auto"])
 
 
 def test_the_guards_are_section_6s_in_order_and_each_setting_named_once():

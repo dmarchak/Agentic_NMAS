@@ -38,6 +38,28 @@ not measured, naming why: nothing is answered by resemblance. It is sent on the 
 heal's apply holds (`send_reset`), between the pipeline's verify and the save to startup; its
 before-state is kept; its verify reads the neighbour table again until the adjacencies formed
 before are formed again, within about 2.5 times the measured settle time.
+
+**The BGP session clears** (board H, part H21; docs/HEAL_TO_INTENT.md 19.4 and N16):
+`SESSION_CLEARS`, the same six steps for one named BGP neighbour, NOT on the Actions menu: they
+are sent by self-healing's session clear (`modules/heal/session_clear.py`), as the policy on a
+network marked lab and as the approving person elsewhere. The command policy changes for one
+shape only (N16), and `clear_plan` is where it is judged:
+- a **hard clear** (`clear-bgp-peer`, `clear ip bgp <peer>`; `clear bgp ipv6 unicast <peer>`
+  for an IPv6 neighbour) only of a session **not Established in two reads in a row**: it
+  carried no routes to lose;
+- a **soft clear** (`clear-bgp-soft`, `... soft`, a route refresh: RFC 2918, RFC 7313) only of
+  an **Established** session; it resets nothing (measured on IOS-XE, 2026-11-07: no prompt,
+  Up/Down unchanged, "Connections established 1; dropped 0" before and after);
+- **never** `clear ip bgp *` or anything but one address (the peer is intent's, never typed);
+- **no clear at all** for a peer in Idle (Admin), an administratively shut neighbour, or a
+  configuration mismatch (its last reset naming a bad peer AS): a clear cannot fix those.
+Each command's prompt, answer and settle time are a platform measurement in the same record as
+the resets' (`privileged_measured.json`, by dialect and address family, `measured_key`), and a
+clear with no row is refused as not measured, naming why. `send_clear` reads the session again
+and KEEPS it (its last reset reason is the evidence a hard clear destroys, T2-4), refuses with
+nothing sent when the session no longer reads as the plan's variant needs, answers the measured
+prompt alone, and reads the session until it is Established (a soft clear: still Established,
+no connection dropped, a refresh sent) within about 2.5 times the measured settle time.
 """
 
 import hashlib
@@ -89,11 +111,13 @@ COMMANDS = {
         "rollback": "a debug turned off is not turned back on; nothing it printed is lost"},
 }
 
-#: Tier 2 commands not yet measured: refused, naming why (the operator decides on r4's run).
+#: Tier 2 commands not on this menu: refused, naming why. The BGP clears are `SESSION_CLEARS`,
+#: sent by self-healing's session clear (board H, H21), never chosen here.
 NOT_MEASURED = {
-    "clear-bgp-soft": ("clear ip bgp <peer> soft is not measured yet: whether a soft refresh "
-                       "resets the session on these platforms is r4's probe run, the "
-                       "operator's decision"),
+    "clear-bgp-soft": ("clear ip bgp <peer> soft is not on this menu: a BGP clear is "
+                       "self-healing's session clear (one named neighbour from intent, its "
+                       "session read twice first), measured per platform; a person's run of it "
+                       "from here is not built"),
 }
 
 #: `show debugging` with nothing on, as measured (whitespace collapsed, blank lines dropped):
@@ -736,6 +760,398 @@ def reset_record(list_name: str, plan: dict, got: dict, *, actor: str, reason: s
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
            "reset_state": got.get("state"),
            "state": RESET_RECORD_STATE.get(got.get("state"), "failed")}
+    rec.update({k: got[k] for k in ("why", "before", "before_cut", "printed", "answered",
+                                    "after", "verify", "waited_s") if k in got})
+    return record(list_name, rec)
+
+
+# --------------------------------------------------------------------------- the BGP clears
+
+#: The BGP session clears (board H, H21; the module's docstring): each one named neighbour's,
+#: its command and read by address family (`clear bgp ipv6 unicast` for an IPv6 neighbour: the
+#: family the session is in, never inferred), the session state it needs (the variant), what it
+#: affects, what it will not do and why rollback does not apply.
+SESSION_CLEARS = {
+    "clear-bgp-peer": {
+        "label": "hard clear of one BGP neighbour", "variant": "hard",
+        "command": {"ipv4": "clear ip bgp {peer}", "ipv6": "clear bgp ipv6 unicast {peer}"},
+        "read": {"ipv4": "show ip bgp neighbors {peer}",
+                 "ipv6": "show bgp ipv6 unicast neighbors {peer}"},
+        "needs": "not Established in two reads in a row",
+        "affects": "the BGP session from {device} to {peer} is reset and forms again. It was not "
+                   "Established, so it carried no routes to lose",
+        "not_doing": "no configuration is changed, and no other BGP neighbour is touched "
+                     "(Mercury never sends `clear ip bgp *`)",
+        "rollback": "a session that was not Established had nothing to lose, so there is "
+                    "nothing to put back; it forms again by itself or it does not, and Verify "
+                    "reads which"},
+    "clear-bgp-soft": {
+        "label": "soft clear of one BGP neighbour", "variant": "soft",
+        "command": {"ipv4": "clear ip bgp {peer} soft",
+                    "ipv6": "clear bgp ipv6 unicast {peer} soft"},
+        "read": {"ipv4": "show ip bgp neighbors {peer}",
+                 "ipv6": "show bgp ipv6 unicast neighbors {peer}"},
+        "needs": "Established",
+        "affects": "{device} and {peer} send each other their routes again (a route refresh, "
+                   "RFC 2918 and RFC 7313); the session stays Established",
+        "not_doing": "no configuration is changed and the session is not reset (measured: no "
+                     "connection dropped)",
+        "rollback": "a route refresh resets nothing, so there is nothing to put back"},
+}
+#: What is never cleared, whatever asks: every neighbour at once, or anything but one address.
+NEVER_CLEAR = ("*", "all")
+#: A clear's verify reads the session again this often while it waits.
+CLEAR_POLL_S = 2
+#: The session's own states, as the Tier 2 record names them (History's `privileged` source).
+CLEAR_RECORD_STATE = {"done": "done", "unverified": "unverified", "not_back": "failed",
+                      "reset": "failed", "refused": "refused", "rejected": "failed"}
+#: A last reset naming a remote AS that is not the configured one (RFC 4271's OPEN message
+#: error, Bad Peer AS), in the words IOS prints it: a configuration cause no clear fixes.
+_BAD_PEER_AS = re.compile(r"bad (?:peer|remote) AS|peer AS mismatch|wrong (?:remote )?AS", re.I)
+
+
+def family_of(peer: str) -> str:
+    """``ipv4`` or ``ipv6`` for one neighbour address, or ``""`` when *peer* is not one."""
+    import ipaddress
+
+    try:
+        return "ipv6" if ipaddress.ip_address(str(peer or "").strip()).version == 6 else "ipv4"
+    except ValueError:
+        return ""
+
+
+def _addr(text):
+    """One address, compared as an address (an IPv6 neighbour in any case or form), or None."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_address(str(text or "").strip())
+    except ValueError:
+        return None
+
+
+def clear_hash(list_name: str, device: str, ip: str, command: str) -> str:
+    """What a clear's confirm binds (the policy's decision or a person's approval): the network,
+    the device, the address Mercury reaches it on and the command."""
+    return hashlib.sha256(json.dumps({"list": list_name, "device": device, "ip": ip,
+                                      "command": command}, sort_keys=True).encode()
+                          ).hexdigest()[:16]
+
+
+def measured_key(key: str, family: str) -> str:
+    """The clear's row in the platform record: its key, IPv6's with ``-ipv6``."""
+    return key + ("-ipv6" if family == "ipv6" else "")
+
+
+def bgp_session(text: str) -> dict:
+    """One neighbour's ``show ip bgp neighbors <peer>`` (or ``show bgp ipv6 unicast neighbors
+    <peer>``), as IOS-XE prints it (captured 2026-11-07, tests/fixtures/tier2/'s
+    neighbour reads): ``{"read", "peer", "remote_as",
+    "state", "established", "admin", "up_for", "connections", "dropped", "last_reset",
+    "bad_peer_as", "received", "refresh_sent", "interface"}``. *read* False when the answer
+    holds no ``BGP neighbor is`` header: an answer whose shape was not recognised decides
+    nothing."""
+    text = text or ""
+    head = re.search(r"^BGP neighbor is (\S+?),?\s+remote AS (\d+)", text, re.M)
+    out = {"read": bool(head), "peer": head.group(1) if head else "",
+           "remote_as": head.group(2) if head else "", "state": "", "established": False,
+           "admin": False, "up_for": "", "connections": None, "dropped": None,
+           "last_reset": "", "bad_peer_as": False, "received": None, "refresh_sent": None,
+           "interface": ""}
+    if not head:
+        return out
+    st = re.search(r"BGP state = ([^,\n]+?)\s*(?:,|$)", text, re.M)
+    out["state"] = st.group(1).strip() if st else ""
+    out["established"] = out["state"] == "Established"
+    out["admin"] = ("admin" in out["state"].lower()
+                    or bool(re.search(r"Administratively shut down", text)))
+    up = re.search(r"BGP state = Established, up for (\S+)", text)
+    out["up_for"] = up.group(1) if up else ""
+    c = re.search(r"Connections established (\d+); dropped (\d+)", text)
+    if c:
+        out["connections"], out["dropped"] = int(c.group(1)), int(c.group(2))
+    lr = re.search(r"^\s*Last reset (.+?)\s*$", text, re.M)
+    out["last_reset"] = lr.group(1) if lr else ""
+    out["bad_peer_as"] = bool(_BAD_PEER_AS.search(out["last_reset"]))
+    p = re.search(r"Prefixes Current:\s+(\d+)\s+(\d+)", text)
+    out["received"] = int(p.group(2)) if p else None
+    rr = re.search(r"^\s*Route Refresh:\s+(\d+)\s+(\d+)", text, re.M)
+    out["refresh_sent"] = int(rr.group(1)) if rr else None
+    i = re.search(r"Interface associated: (\S+)", text)
+    out["interface"] = i.group(1) if i else ""
+    return out
+
+
+def _session_words(s: dict) -> str:
+    if not s or not s.get("read"):
+        return "not read"
+    return (s["state"] or "no state") + (f", up for {s['up_for']}" if s.get("up_for") else "")
+
+
+def clear_plan(key: str, peer: str, *, dialect: str, device: str = "", sessions=(),
+               intent_peers=None) -> dict:
+    """What the clear would send and why it would refuse (the six steps' ``refuse``), judged on
+    the measurement record, intent's neighbours and *sessions* (the reads the decision was made
+    on, oldest first, each `bgp_session`'s; a hard clear needs the last two not Established);
+    never the device. *intent_peers* (the neighbour addresses intent holds on *device*) None
+    means intent was not read, which refuses. ``{"ok", "refused", "key", "variant", "family",
+    "peer", "command", "read", "prompt", "answer", "settle_s", "bound_s", "affects",
+    "not_doing", "rollback", "measured", "label"}``."""
+    import math
+
+    out = {"ok": False, "refused": "", "key": key, "variant": "", "family": "", "peer": peer,
+           "dialect": dialect, "device": device, "command": "", "read": "", "prompt": None,
+           "answer": "", "settle_s": None, "bound_s": None, "measured": {}, "affects": "",
+           "not_doing": "", "rollback": "", "label": ""}
+
+    def refuse(words):
+        out["refused"] = words + ". Nothing was sent"
+        return out
+
+    spec = SESSION_CLEARS.get(key)
+    if spec is None:
+        return refuse(f"{key!r} is not a BGP clear here (they are: "
+                      f"{', '.join(sorted(SESSION_CLEARS))})")
+    out.update(variant=spec["variant"], label=spec["label"], not_doing=spec["not_doing"],
+               rollback=spec["rollback"])
+    text = str(peer or "").strip()
+    if text.lower() in NEVER_CLEAR or "*" in text:
+        return refuse(f"{text!r} is every neighbour at once: Mercury never sends "
+                      "`clear ip bgp *`, a hard reset of every session (N16)")
+    family = family_of(text)
+    if not family or " " in text:
+        return refuse(f"{text!r} is not one neighbour address, and a neighbour spliced into "
+                      "a command is one address token")
+    fill = {"peer": text, "device": device or "the device"}
+    out.update(family=family, command=spec["command"][family].format(**fill),
+               read=spec["read"][family].format(**fill), affects=spec["affects"].format(**fill))
+    if intent_peers is None:
+        return refuse(f"{fill['device']}'s committed intent could not be read, so whether it "
+                      f"holds {text} as a BGP neighbour cannot be told (the peer is intent's, "
+                      "never typed)")
+    if _addr(text) not in {_addr(p) for p in intent_peers}:
+        return refuse(f"{text} is not a BGP neighbour of {fill['device']} in its committed "
+                      f"intent ({len(intent_peers)} are): the peer is intent's, never typed")
+    reads = [s for s in sessions or () if isinstance(s, dict)]
+    last = reads[-1] if reads else {}
+    if not last.get("read"):
+        return refuse(f"{out['read']} was not read as one neighbour's session, so its state "
+                      "is unknown")
+    if last.get("admin"):
+        return refuse(f"{text} is {last['state'] or 'administratively shut down'}: shut by "
+                      "configuration, so no clear would bring it up (N16: no clear at all)")
+    if last.get("bad_peer_as"):
+        return refuse(f"{text}'s last reset names a configuration mismatch "
+                      f"({last['last_reset']}): it comes back down at once, so no clear at all "
+                      "(N16)")
+    if spec["variant"] == "hard":
+        two = reads[-2:]
+        if len(two) < 2 or any(not s.get("read") for s in two):
+            return refuse(f"a hard clear needs {text}'s session read twice in a row, not "
+                          f"Established both times; {len([s for s in two if s.get('read')])} "
+                          "such read(s) were made")
+        up = [s for s in two if s.get("established")]
+        if up:
+            return refuse(f"{text}'s session is Established ({_session_words(up[-1])}) in "
+                          f"{len(up)} of the last two reads: a hard clear is sent only to a "
+                          "session not Established in two reads in a row, and an Established "
+                          "one gets a soft clear (N16)")
+    elif not last.get("established"):
+        return refuse(f"{text}'s session is {_session_words(last)}, not Established: a soft "
+                      "clear refreshes an Established session's routes, and resets nothing")
+    rec = reset_measured()
+    name = os.path.basename(RESET_MEASURED_FILE)
+    row_key = measured_key(key, family)
+    if rec["state"] != "ok":
+        return refuse(f"the platform measurement record ({name}) is {rec['state']}"
+                      + (f" ({rec['error']})" if rec.get("error") else "")
+                      + ", and an unmeasured clear is never sent")
+    row = (rec["by_dialect"].get(dialect) or {}).get(row_key)
+    if row is None:
+        why = (rec["unmeasured"].get(dialect) or {}).get(row_key) or "no run of it is recorded"
+        return refuse(f"`{out['command']}` is not measured on {dialect or 'an unknown platform'}"
+                      f" ({why}): what it asks, what answers it and how long the session takes "
+                      f"are measured on a real device first ({name}, {row_key})")
+    bad = _measured_row(row)
+    if bad:
+        return refuse(f"the measurement of `{out['command']}` on {dialect} is incomplete: {bad}")
+    out.update(ok=True, prompt=row["prompt"], answer=row.get("answer") or "",
+               settle_s=row["settle_s"], bound_s=int(math.ceil(row["settle_s"] * SETTLE_FACTOR)),
+               measured={"device": row["device"], "at": row["at"]})
+    return out
+
+
+def clear_verify(plan: dict, before: dict, after: dict) -> dict:
+    """``{"ok": True|False|None, "words", "reset"}`` by the measured rule for the plan's
+    variant, on `bgp_session`'s *before* and *after*: a hard clear, the session Established; a
+    soft clear, still Established, no connection dropped and a refresh sent (``reset`` True
+    when a connection dropped: the soft clear reset it). None decides nothing (an after-read
+    whose shape was not recognised)."""
+    if not (after or {}).get("read"):
+        return {"ok": None, "reset": False, "words": "the read after the clear holds no "
+                                                     "neighbour's session, so its state is "
+                                                     "unknown"}
+    peer = plan.get("peer") or "the neighbour"
+    if plan.get("variant") == "hard":
+        ok = bool(after["established"])
+        return {"ok": ok, "reset": True,
+                "words": f"the session to {peer} is {_session_words(after)}"}
+    b, a = (before or {}).get("dropped"), after.get("dropped")
+    reset = b is not None and a is not None and a > b
+    sent = ((before or {}).get("refresh_sent"), after.get("refresh_sent"))
+    refreshed = None not in sent and sent[1] > sent[0]
+    words = (f"the session to {peer} is {_session_words(after)}; connections dropped "
+             f"{b if b is not None else '?'} then {a if a is not None else '?'}; route refreshes "
+             f"sent {sent[0] if sent[0] is not None else '?'} then "
+             f"{sent[1] if sent[1] is not None else '?'}; "
+             f"{after['received'] if after.get('received') is not None else '?'} route(s) "
+             "received")
+    if reset or not after["established"]:
+        return {"ok": False, "reset": reset, "words": words}
+    if b is None or a is None or not refreshed:
+        return {"ok": None, "reset": False, "words": words}
+    return {"ok": True, "reset": False, "words": words}
+
+
+def run_clear(list_name: str, dev: dict, plan: dict, *, actor: str, operation: str,
+              values: dict, session, prepare=None, on_hold=None, clock=time.time,
+              sleep=time.sleep) -> dict:
+    """The clear's one held send: hold *dev* (one operation per device, `device_ops`), open its
+    session (*session(dev, work)*), let *prepare(read)* refuse before anything is sent (its
+    answer a refusal, ``{"state": "refused", "why", "step"}``, or None), then `send_clear` on
+    that session, every answer masked by the one redactor. `send_clear`'s answer; a refusal
+    naming its step when the hold, *prepare* or the session refused first; ``unverified`` with
+    ``printed`` when the session failed after the command was written (never "nothing was
+    sent"). *on_hold()* is called once the device is held."""
+    from modules.commands import run_device_command
+    from modules.nsot import device_ops
+    from modules.redact import redact_text
+    from modules.utils import error_text
+
+    state = {"sent": False, "got": None}
+
+    def work(conn):
+        def read(cmd):
+            return redact_text(run_device_command(conn, cmd) or "", values)
+
+        def send(text):
+            state["sent"] = True
+            return redact_text(conn.send_command_timing(text, strip_prompt=False,
+                                                        strip_command=False, read_timeout=30,
+                                                        last_read=2.0) or "", values)
+
+        why = prepare(read) if prepare else None
+        if why:
+            return why
+        state["got"] = send_clear(plan, read=read, send=send, clock=clock, sleep=sleep)
+        return state["got"]
+
+    host = dev.get("hostname", "")
+    try:
+        with device_ops.hold(list_name, host, operation, actor, detail=plan.get("command"),
+                             ip=dev.get("ip", "")):
+            if on_hold:
+                on_hold()
+            return session(dev, work) or {"state": "refused", "step": "send",
+                                          "why": "the session answered nothing"}
+    except device_ops.DeviceBusy as exc:
+        return {"state": "refused", "step": "hold", "why": str(exc)}
+    except Exception as exc:                          # noqa: BLE001 (the device's failure, named)
+        why = redact_text(error_text(exc), values)[:400]
+        if state["got"]:
+            return state["got"]
+        if state["sent"]:
+            return {"state": "unverified", "printed": "", "why": (
+                f"the session failed after the clear was sent ({why}), so whether the session "
+                "came back was not read")}
+        return {"state": "refused", "step": "send",
+                "why": f"{host}'s session failed before anything was sent ({why})"}
+
+
+def send_clear(plan: dict, *, read, send, clock=time.time, sleep=time.sleep,
+               needs=None) -> dict:
+    """Send a planned clear on a session the caller holds (the six steps' ``send`` and
+    ``verify``): *read(cmd)* and *send(text)* answer masked text. The session is read again and
+    KEPT (its last reset reason is evidence a hard clear destroys, T2-4); when it no longer
+    reads as the variant needs (*needs*, the caller's check on that read, `bgp_session`'s, a
+    refusal's words or ""; by default the variant's own: a hard clear refused on an
+    Established session, a soft clear on one not Established), nothing is sent. The command is
+    sent once; the MEASURED prompt alone is answered with the MEASURED answer, and any other
+    question is not answered; then the session is read until the verify passes or its bound
+    ends. ``{"state": "done"|"not_back"|"reset"|"unverified"|"refused"|"rejected", "why",
+    "before", "session_before", "printed", "after", "session_after", "verify", "waited_s"}``:
+    *refused* and *rejected* clear nothing."""
+    if not plan.get("ok"):
+        return {"state": "refused", "why": plan.get("refused") or "the clear is not planned"}
+    before = read(plan["read"])
+    was = bgp_session(before)
+    out = {"before": before[:KEEP_BYTES], "before_cut": len(before.encode()) > KEEP_BYTES,
+           "command": plan["command"], "why": "", "session_before": was}
+    if needs is None:
+        def needs(s):
+            if not s.get("read"):
+                return f"{plan['read']} was not read as one neighbour's session"
+            if plan.get("variant") == "hard" and s.get("established"):
+                return (f"the session is Established now ({_session_words(s)}): a hard clear "
+                        "is never sent to an Established session")
+            if plan.get("variant") == "soft" and not s.get("established"):
+                return f"the session is {_session_words(s)} now, not Established"
+            return ""
+    why = needs(was)
+    if why:
+        out.update(state="refused", why=why)
+        return out
+    first = send(plan["command"])
+    out["printed"] = first
+    last = _last_line(first)
+    if plan.get("prompt"):
+        if last != plan["prompt"]:
+            out.update(state="refused", why=(f"the device asked {last!r}, not the measured "
+                                             f"prompt {plan['prompt']!r}; it was not answered"))
+            return out
+        out["answered"] = plan["prompt"]
+        out["printed"] += send(plan["answer"])
+    elif last.endswith(("]", "?", ":")) and not re.search(r"[#>]\s*$", last):
+        out.update(state="refused", why=f"the device asked {last!r}, and the measurement "
+                                        "records no question; it was not answered")
+        return out
+    if re.search(r"^%", out["printed"], re.M):
+        out.update(state="rejected", why=next(ln for ln in out["printed"].splitlines()
+                                              if ln.startswith("%")))
+        return out
+    started = clock()
+    deadline = started + float(plan.get("bound_s") or 0)
+    after = read(plan["read"])
+    sess = bgp_session(after)
+    v = clear_verify(plan, was, sess)
+    while v["ok"] is not True and not (plan.get("variant") == "soft" and v["reset"]) \
+            and clock() < deadline:
+        sleep(CLEAR_POLL_S)
+        after = read(plan["read"])
+        sess = bgp_session(after)
+        v = clear_verify(plan, was, sess)
+    state = ("done" if v["ok"] else "reset" if v["reset"] and plan.get("variant") == "soft"
+             else "unverified" if v["ok"] is None else "not_back")
+    out.update(after=after[:KEEP_BYTES], session_after=sess, verify=v,
+               waited_s=round(clock() - started, 1), state=state)
+    return out
+
+
+def clear_record(list_name: str, plan: dict, got: dict, *, actor: str, reason: str,
+                 hash_: str, decision: str, started: float, run_id: str = "") -> dict:
+    """The clear's record (the six steps' ``record``), as every Tier 2 run's: written as the
+    policy's setter or the approving person, with the reason, the session before kept, what the
+    device printed and the verdict; History shows it (`history_sources.privileged`)."""
+    from modules.nsot import reads
+
+    rec = {"id": run_id or reads.new_id(), "list": list_name, "device": plan.get("device"),
+           "key": plan.get("key"), "command": plan.get("command"), "actor": actor,
+           "reason": (reason or "").strip(), "started_at": started, "finished_at": time.time(),
+           "hash": hash_, "decision": decision, "peer": plan.get("peer"),
+           "variant": plan.get("variant"), "family": plan.get("family"),
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
+           "clear_state": got.get("state"),
+           "state": CLEAR_RECORD_STATE.get(got.get("state"), "failed")}
     rec.update({k: got[k] for k in ("why", "before", "before_cut", "printed", "answered",
                                     "after", "verify", "waited_s") if k in got})
     return record(list_name, rec)

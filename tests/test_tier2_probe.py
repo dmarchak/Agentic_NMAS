@@ -35,6 +35,11 @@ def _cap(name):
         return fh.read()
 
 
+def _tier2(name):
+    with open(os.path.join(ROOT, "tests", "fixtures", "tier2", name), encoding="utf-8") as fh:
+        return fh.read()
+
+
 SUMMARY = _cap("r3__show_ip_bgp_summary.txt")
 BRIEF = _cap("r1__show_ip_interface_brief.txt")
 
@@ -184,7 +189,14 @@ def _reads(arp_after=None):
                 ARP + ROW.format(n=1) + ROW.format(n=2)],
             "show logging": "Syslog logging: enabled\nLog Buffer (8192 bytes):\n*line one",
             "show debugging": "",
-            "show ip bgp summary": [SUMMARY, SUMMARY.replace("4d13h", "4d14h")]}
+            "show ip bgp summary": [SUMMARY, SUMMARY.replace("4d13h", "4d14h")],
+            # H21: the neighbour's own read before and after (r4's, 2026-11-07, its peer
+            # renamed to r3's summary's).
+            "show ip bgp neighbors 198.51.100.1": [
+                _tier2("r4__show_ip_bgp_neighbors_established_before_soft.txt").replace(
+                    "198.51.100.3", "198.51.100.1"),
+                _tier2("r4__show_ip_bgp_neighbors_established_after_soft.txt").replace(
+                    "198.51.100.3", "198.51.100.1")]}
 
 
 SENDS = {"clear counters Loopback0": 'Clear "show interface" counters on this interface [confirm]',
@@ -241,3 +253,104 @@ class TestMeasuring:
         monkeypatch.setattr("sys.argv", ["nmas-tier2-probe"])
         assert P.main() == 0
         assert "DRY RUN: nothing connects" in capsys.readouterr().out
+
+
+# ── H21: the BGP clears self-healing sends (board H 19.4, N16) ──────────────────────────────
+
+ESTABLISHED = _tier2("r4__show_ip_bgp_neighbors_established_before_soft.txt").replace(
+    "198.51.100.3", "198.51.100.1")
+
+
+def _down(text=ESTABLISHED):
+    return text.replace("BGP state = Established, up for 2w2d", "BGP state = Active")
+
+
+def _back(text=ESTABLISHED):
+    return (text.replace("up for 2w2d", "up for 00:00:05")
+            .replace("Connections established 1; dropped 0",
+                     "Connections established 2; dropped 1"))
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def time(self):
+        return self.now
+
+    def sleep(self, s):
+        self.now += s
+
+
+class TestTheBgpClears:
+    def test_the_hard_clear_runs_only_when_named_and_only_on_a_named_peer(self):
+        assert "bgp-hard" not in [s["key"] for s in P.plan(_args(allow_live_bgp=True,
+                                                                 bgp_peer="198.51.100.1"))]
+        rows = {s["key"]: s for s in P.plan(_args(step=["bgp-hard"], allow_live_bgp=True))}
+        assert "--bgp-peer not given" in rows["bgp-hard"]["unmeasured"]
+        rows = {s["key"]: s for s in P.plan(_args(step=["bgp-hard"]))}
+        assert "--allow-live-bgp not given" in rows["bgp-hard"]["unmeasured"]
+        row = P.plan(_args(step=["bgp-hard"], allow_live_bgp=True, bgp_peer="198.51.100.1"))[0]
+        assert (row["command"], row["neighbour"]) == ("clear ip bgp 198.51.100.1",
+                                                      "show ip bgp neighbors 198.51.100.1")
+        assert "unmeasured" not in row
+
+    def test_the_family_and_the_peer_must_agree(self):
+        why = P.refusal(_args(bgp_peer="198.51.100.1", bgp_family="ipv6"), now=_utc(12, 0))
+        assert "is an ipv4 address, and --bgp-family is ipv6" in why
+        assert "is ipv4 or ipv6" in P.refusal(_args(bgp_family="ipx"), now=_utc(12, 0))
+        row = P.plan(_args(step=["bgp-soft"], allow_live_bgp=True, bgp_family="ipv6",
+                           bgp_peer="2001:DB8:51:1::2"))[0]
+        assert row["command"] == "clear bgp ipv6 unicast 2001:DB8:51:1::2 soft"
+        assert row["before"] == "show bgp ipv6 unicast summary"
+
+    def _hard(self, device, declare, reads):
+        conn = Conn({**_reads(), "show ip bgp neighbors 198.51.100.1": reads}, SENDS)
+        steps = P.plan(_args(step=["bgp-hard"], allow_live_bgp=True, bgp_peer="198.51.100.1"))
+        clock = Clock()
+        results, _s = P.measure(conn, steps, device, {}, sleep=clock.sleep, clock=clock.time,
+                                declare=declare)
+        return conn, results["bgp-hard"]
+
+    def test_a_window_first_then_the_seconds_back_to_established(self, device):
+        seen = []
+
+        def declare(dev, interface, seconds, why):
+            seen.append((dev["hostname"], interface, seconds, list(conn_sent)))
+            return {"ok": True, "record": {"from": "a", "until": "b", "via": "nmas-tier2-probe",
+                                           "interfaces": [interface]}}
+
+        conn_sent = []
+        conn, row = self._hard(device, declare, [ESTABLISHED, _down(), _down(), _back()])
+        conn_sent[:] = conn.sent
+        assert seen == [("r2", "GigabitEthernet2", P.BGP_WAIT + P.BGP_WINDOW_MARGIN_S, [])]
+        assert conn.sent == ["clear ip bgp 198.51.100.1"]
+        assert row["result"] == "measured" and row["bgp"]["back_after_s"] == 2.0, row
+        assert row["bgp"]["states"] == ["Active", "Established"]
+        assert row["session_before"]["dropped"] == 0 and row["session_after"]["dropped"] == 1
+        assert row["neighbour_before"] == ESTABLISHED, "the session before is kept"
+
+    def test_no_window_sends_nothing(self, device):
+        conn, row = self._hard(device, lambda *a: {"ok": False, "error": "unreadable"},
+                               [ESTABLISHED])
+        assert conn.sent == [] and row["result"] == "not measured"
+        assert "the planned window for the clear could not be recorded (unreadable)" in row["why"]
+
+    def test_a_session_not_back_is_said_with_its_last_state(self, device, monkeypatch):
+        monkeypatch.setattr(P, "BGP_WAIT", 3)
+        _c, row = self._hard(device, lambda *a: {"ok": True, "record": {}},
+                             [ESTABLISHED, _down()])
+        assert row["bgp"]["back_after_s"] is None
+        assert row["bgp"]["words"] == "not back within 3 s (last state Active)"
+
+    def test_the_ipv6_soft_clear_reads_the_wrapped_summary_row(self, device):
+        six = _tier2("r4__show_bgp_ipv6_unicast_neighbors_established.txt")
+        summary = _cap("r4__show_bgp_ipv6_unicast_summary.txt")
+        conn = Conn({**_reads(), "show bgp ipv6 unicast summary": summary,
+                     "show bgp ipv6 unicast neighbors 2001:DB8:51:1::2": six}, SENDS)
+        steps = P.plan(_args(step=["bgp-soft"], allow_live_bgp=True, bgp_family="ipv6",
+                             bgp_peer="2001:db8:51:1::2"))
+        results, _s = P.measure(conn, steps, device, {}, sleep=lambda s: None)
+        row = results["bgp-soft"]
+        assert conn.sent == ["clear bgp ipv6 unicast 2001:DB8:51:1::2 soft"], row
+        assert row["bgp"]["verdict"] == "not reset" and row["session"]["reset"] is False

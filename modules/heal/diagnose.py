@@ -1451,9 +1451,11 @@ ACTIONS = (
     {"rule": "ospf_not_full_one_neighbour", "case": "", "kind": "ospf_reset", "variant": ""},
 )
 #: The rules `ACTIONS` names that no runbook has yet, each with the part that builds it: the
-#: soft clear's "Established, fewer routes than intent expects" (H21). The OSPF reset's
-#: "exactly one neighbour on the interface, not FULL" is H20's (`_r_ospf_one_neighbour`).
-ACTION_RULES_NOT_BUILT = {"bgp_fewer_routes": "H21"}
+#: soft clear's "Established, fewer routes than intent expects": its operation is built and
+#: measured (H21, `privileged.SESSION_CLEARS`), but intent holds no count of the routes a
+#: neighbour is expected to send, so no rule can compare one yet. The OSPF reset's "exactly one
+#: neighbour on the interface, not FULL" is H20's (`_r_ospf_one_neighbour`).
+ACTION_RULES_NOT_BUILT = {"bgp_fewer_routes": "intent's expected routes per neighbour (none)"}
 
 
 def action_for(diagnosis: dict) -> dict:

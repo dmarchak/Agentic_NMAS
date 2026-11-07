@@ -1057,6 +1057,13 @@ def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict
     moment = moment or payload.get("ref", "")
     c.update(op="restore", moment=moment,
              moment_words="golden now" if moment == "HEAD" else moment)
+    if c.get("state") == "result":
+        # `_restore.html` draws no `saved` line: a save not made or held (C2701) is said among
+        # what did not happen, with its decision, so a restore's held save is never silent.
+        result = payload.get("result") or {}
+        c["did_not"] = [i.get("text", "") for i in (result.get("did_not") or {}).get("items")
+                        or [] if i.get("target") == host
+                        and i.get("kind") in SAID_AS_SAVED] + list(c.get("did_not") or [])
     if c.get("state") == "deploying":
         c["state"] = "restoring"
     return c
@@ -1096,6 +1103,10 @@ def reopened_words(job: dict, viewer: str) -> str:
         return f"Reopened: started by {who} at {_iso(job['started_at'])[11:16]} UTC"
     return (f"Finished at {_iso(job.get('finished_at') or 0)[11:16]} UTC, while you were "
             f"elsewhere; started by {who}")
+
+
+#: The result's did-not items the deploy card says as its `saved` line instead (C511, C2701).
+SAID_AS_SAVED = ("not_saved", "held")
 
 
 def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
@@ -1178,10 +1189,10 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                 rollback_state=rollback.get("state", ""),
                 rollback_detail=rollback.get("detail", ""),
                 # The save to startup after verify (C511), said once: `saved` here, so the
-                # not-saved item is left out of the list below.
+                # not-saved and held (C2701) items are left out of the list below.
                 saved=target.get("saved") or {},
                 did_not=[i.get("text", "") for i in (result.get("did_not") or {}).get("items")
                          or [] if i.get("target") in (host, "this batch")
-                         and i.get("kind") != "not_saved"],
+                         and i.get("kind") not in SAID_AS_SAVED],
                 record=(result.get("record") or {}).get("statement", ""),
                 not_watched=result.get("not_watched", ""))

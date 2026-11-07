@@ -1,19 +1,36 @@
 {
-  "_about": "The OSPF process resets' platform record (modules/nsot/privileged.py, PROCESS_RESETS; board H section 5 and N17): per dialect and reset, what the device ASKED when the reset was sent (`prompt`, or null when it asked nothing), what answered it (`answer`), how long its adjacencies took to form again (`settle_s`, seconds), and where and when it was measured (`device`, `at`). Written from a run on a real device, never typed from memory. A reset with no row here is refused, naming why (`unmeasured`), and allows nothing. Whether an empty neighbour table prints nothing or a header is part of the same measurement.",
+  "_about": "The platform record of the privileged operations self-healing sends (modules/nsot/privileged.py): the OSPF process resets (PROCESS_RESETS; board H section 5 and N17) and the BGP session clears (SESSION_CLEARS; board H 19.4 and N16, part H21, keyed by `measured_key`: the clear's key, IPv6's with -ipv6). Per dialect and operation: what the device ASKED when it was sent (`prompt`, or null when it asked nothing), what answered it (`answer`), how long it took to settle (`settle_s`, seconds: a reset's adjacencies formed again; a hard clear's session Established again; a soft clear's send to the device's prompt, its refresh's End-of-RIB inside it), and where and when it was measured (`device`, `at`). Written from a run on a real device (scripts/nmas-tier2-probe for the clears), never typed from memory. An operation with no row here is refused, naming why (`unmeasured`), and allows nothing. Whether an empty neighbour table prints nothing or a header is part of the same measurement.",
   "by_dialect": {
     "cisco_ios": {},
-    "cisco_iosxe": {}
+    "cisco_iosxe": {
+      "clear-bgp-soft": {
+        "prompt": null,
+        "answer": "",
+        "settle_s": 2.4,
+        "device": "the Default network's IOS-XE router whose eBGP neighbour is 198.51.100.3",
+        "at": "2026-11-07T19:44:58Z",
+        "reset": false,
+        "evidence": "scripts/nmas-tier2-probe --step bgp-soft (eBGP neighbour 198.51.100.3, route refresh and enhanced refresh both advertised and received), in a planned window declared first: the device printed its prompt and asked nothing; 2.4 s from the send to the prompt read back; Up/Down 2w2d before and after, 3 prefixes received before and after; read after through the reads engine: Established, Route Refresh sent 0 then 1, Refresh Epoch 1 then 2, Refresh End-of-RIB received about 1 s after it was sent, Connections established 1; dropped 0, Last reset never"
+      }
+    }
   },
   "unmeasured": {
     "cisco_ios": {
       "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
       "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
-      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first"
+      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
+      "clear-bgp-peer": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
+      "clear-bgp-peer-ipv6": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
+      "clear-bgp-soft": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
+      "clear-bgp-soft-ipv6": "not run yet: H21's probe steps (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first"
     },
     "cisco_iosxe": {
       "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
       "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
-      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first"
+      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
+      "clear-bgp-peer": "not run yet: H21's probe step bgp-hard (scripts/nmas-tier2-probe) on an IOS-XE router's eBGP neighbour, inside a planned window declared first",
+      "clear-bgp-peer-ipv6": "not run yet: H21's probe step bgp-hard with --bgp-family ipv6 on an IOS-XE router's IPv6 neighbour, inside a planned window declared first",
+      "clear-bgp-soft-ipv6": "not run yet: H21's probe step bgp-soft with --bgp-family ipv6 on an IOS-XE router's IPv6 neighbour"
     }
   }
 }

@@ -524,12 +524,14 @@ def act_one(network: str, decision_id: str, *, now: float = None, sources=None,
 
 def _apply_for(network: str, decision: dict, *, now: float = None, sources=None) -> dict:
     """A taken decision's act: an action's (19.4, H20: the port bounce and the OSPF reset
-    through it, `bounce.apply`), or a heal's (`apply_decision`). One taker (`run`), one mark,
-    one record, whichever it is."""
-    from modules.heal import bounce
+    through it, `bounce.apply`; H21: the BGP session clear, `session_clear.apply`), or a heal's
+    (`apply_decision`). One taker (`run`), one mark, one record, whichever it is."""
+    from modules.heal import bounce, session_clear
 
     if (decision.get("action") or {}).get("kind") in bounce.KINDS:
         return bounce.apply(network, decision, now=now)
+    if (decision.get("action") or {}).get("kind") in session_clear.KINDS:
+        return session_clear.apply(network, decision, now=now)
     return apply_decision(network, decision, **({"now": now} if now is not None else {}),
                           sources=sources)
 
@@ -770,6 +772,13 @@ def _judge(device, r, report, src, via, step, finish, symptom):
         return finish("failed", f"{r.get('reason') or outcome}; nothing was rolled back",
                       sent=True, report=report)
     saved = r.get("saved_startup") or {}
+    if saved.get("held"):
+        # C2701: verify did not pass, so the pipeline held the save for a person.
+        why = saved.get("why") or "no cause recorded"
+        step("saved", "partial", f"NOT saved to startup, held: verify did not pass ({why})")
+        return finish("partial", (f"healed, its verify did not pass ({why}), and its save to "
+                                  "startup is held for a person: a reload returns the device "
+                                  "to before the heal"), sent=True, report=report)
     if saved and not saved.get("ok"):
         step("saved", "partial", f"verified, NOT saved to startup: {saved.get('error')}")
         return finish("partial", (f"healed and verified, and NOT saved to startup "

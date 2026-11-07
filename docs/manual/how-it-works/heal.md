@@ -147,8 +147,9 @@ bounce of a port within the repeat window becomes the dampening proposal), and a
 from the logs.
 
 The **port bounce** and the **OSPF adjacency reset** through it are built ([The port
-bounce](#bounce)); the clear of a BGP neighbour and the dampening proposal are not yet: a policy
-cannot allow either, and each is refused by name ("not built yet: H21"). Under all of them runs
+bounce](#bounce)), and so is the **clear of one BGP neighbour** ([The BGP session
+clear](#clear)); the dampening proposal is not yet: a policy cannot allow it, and it is refused
+by name ("not built yet: H22"). Under all of them runs
 the **flap record**: each time the network's syslog is read, every `%LINK-3-UPDOWN` and
 `%LINEPROTO-5-UPDOWN` line is recorded as a transition of its interface at the time Mercury
 received it, never by the device's clock, for networks whose self-healing is on. A link and its
@@ -229,6 +230,78 @@ RESTORED** (a reload returns it, since nothing was saved); or **nothing was sent
 refused it at its apply). Reverted, repaired and not restored also **halt** the network's
 healing until a person lifts it. A bounce **held** by a guard (the far end held or being worked
 on) is an item too: it is not tried again by itself.
+
+## The BGP session clear {#clear}
+
+A **session clear** resets one BGP neighbour's session, the one intent holds, named by its
+address: never every neighbour at once (`clear ip bgp *` is never sent), and never an address
+typed by anyone. It changes no configuration line and is named as an action wherever it is
+drawn. It comes in two forms:
+
+- a **hard clear** (`clear ip bgp <neighbour>`, or `clear bgp ipv6 unicast <neighbour>` for an
+  IPv6 neighbour), only of a session that was **not Established in two reads in a row**: it had
+  no routes to lose;
+- a **soft clear** (the same with `soft`, a route refresh), only of an **Established** session;
+  it resets nothing. Nothing chooses it yet: it is for a session receiving fewer routes than
+  intent expects, and intent does not yet say how many routes a neighbour should send.
+
+**No clear at all** for a neighbour in **Idle (Admin)**, one shut by configuration, or one whose
+last reset names a wrong remote AS: a clear cannot fix those, so the incident stays an Alert with
+its diagnosis. A clear must also be **measured on the device's platform** first: what it asks,
+what answers it, and how long the session takes to come back, by a probe on a real device. The
+soft clear is measured on IOS-XE (no question asked, the session not reset); the hard clear is
+not measured yet, so it is refused, naming the measurement it waits for.
+
+**Where it runs, and who decides.** On a network marked lab it is Tier 1: the Self-healing tab's
+**BGP session clear** under Tier 1 allows it in Auto, and in **Dry run** it is recorded as "would
+have cleared <device>'s BGP neighbour <address>" for a person to mark right or wrong, with
+nothing sent. On any other network it is Tier 2: with **BGP session clear** under Tier 2 set to
+Propose, it waits on Needs attention for a person's **Approve…** with a reason, and runs as that
+person. Neither is on by default.
+
+**How it is decided.** When self-healing cannot fix a BGP session down (an Alert), Mercury
+diagnoses it first. Only when the diagnosis's first hypothesis is the session not Established
+with no configuration cause is a clear considered:
+
+1. `choose`: the clear is chosen from the diagnosis's first, complete hypothesis, never from AI
+   text.
+2. `stops`: the kill switch, the mode, a halt and planned work, as for any heal.
+3. `rates`: the heals per device and per network an hour.
+4. `fresh`: the neighbour is read again (the second of the two reads), with the device's own
+   route back to Mercury.
+5. `guards`: the session still not Established (one that came back by itself is left alone);
+   never a clear that would withdraw the route the device reaches Mercury by (a hard clear of
+   the neighbour that route is learned from is never sent); once per neighbour per incident;
+   then the clear's own plan: the neighbour is intent's, the two reads, no shut neighbour or
+   wrong remote AS, and the clear measured on the device's platform.
+6. `decide`: on a lab network in Auto, with the kind allowed, it clears; elsewhere it is
+   proposed; otherwise it records what it would have done.
+7. `record`: the decision is recorded in the network's heal decisions and its step log.
+
+**How it runs**, as the policy on a lab network or as the person who approved it elsewhere:
+
+1. `take`: the decision, once.
+2. `stops`: the kill switch, the mode, the network marked lab (for the policy), the policy and
+   planned work, again.
+3. `plan`: the clear is planned again and refused unless its hash is the decision's.
+4. `hold`: the device is held, so no other operation runs on it.
+5. `route`: the device's route back to Mercury is read again on the clear's own session.
+6. `window`: a planned window is recorded on the device, naming the neighbour's interface,
+   before anything is sent: the clear's verify bound and a minute. The session drop it causes
+   is explained, never an item. A window that cannot be recorded sends nothing.
+7. `send`: the neighbour is read again and kept (its last reset reason is evidence a clear
+   destroys); a hard clear is never sent to a session Established by then. The command is sent
+   once, and only the question its measurement recorded is answered.
+8. `verify`: the session is read until it is Established, within about 2.5 times the time its
+   measurement took (a soft clear: still Established, no connection dropped, the refresh sent).
+9. `record`: the run on the device's **History** (a privileged command, with its reason and the
+   session as it was before) and the outcome, kind Self-healing.
+
+**What it ends with.** Cleared; cleared and the session **not back** within its bound; a soft
+clear that **reset** the session (which halts the network's healing until a person lifts it);
+**not verified** (the read after could not be understood); **refused by the device** (nothing
+was cleared); or **nothing was sent**. Rollback does not apply, and the record says why: a
+session that was not Established had nothing to lose, and a route refresh resets nothing.
 
 ## What it never does {#never}
 

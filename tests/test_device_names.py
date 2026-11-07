@@ -165,7 +165,7 @@ INVENTORY = {
     "modules/nsot/persist_op.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r2"),
     "modules/nsot/platform_defaults.json": (11, PROVENANCE, "a measurement names the device it was taken on: r1, r2, r6, s1, s3"),
     "modules/nsot/platform_defaults.py": (2, PROVENANCE, "a measurement names the device it was taken on: s2"),
-    "modules/nsot/privileged.py": (3, PROVENANCE, "a measurement names the device it was taken on: r2, r4, s1"),
+    "modules/nsot/privileged.py": (1, PROVENANCE, "a measurement names the device it was taken on: r2, s1"),
     "modules/nsot/profile.py": (4, HISTORY, "a dated incident or finding names the device it happened on: r1, r6"),
     "modules/nsot/profile_propose.py": (5, PROVENANCE, "a measurement names the device it was taken on: r1, r4, r6"),
     "modules/nsot/reads.py": (1, PROVENANCE, "a measurement names the device it was taken on: s3"),
