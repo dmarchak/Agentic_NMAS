@@ -244,7 +244,14 @@ operator.
   this commit ADDS (checked against the commit's own added paths); any other collection error
   on the parent (a fixture, a conftest, a syntax error elsewhere) is refused, naming the error."
 - **D2. A guard's approval is a quoted trailer** until the operator can sign. The limit is
-  said in the item.
+  said in the item. **The quote is an approval given for that specific change, never one
+  borrowed from a related decision** (the operator, 2026-11-06, after 2179843c quoted r5's
+  approval of the mutation engine for two additions to tests/ratchet_lists.py; the operator
+  then approved those two in their own words: "The two ratchet additions in 2179843c (the
+  mutant ceiling as a floor; the gate's allowed dunders shrink-only): approved, in my words,
+  now."). Where no such words exist, the change waits and the operator is asked. Cost: one
+  question per guard change the operator has not named. Prevents: a guard loosened, or a
+  ratchet moved, under an approval given for something else.
 - **D3. TESTING.md's per-file table is not a guard;** its rule sections are.
 - **D4. The bypass scanner parses where it can and matches text where it cannot,** and says
   which it did for each finding.
