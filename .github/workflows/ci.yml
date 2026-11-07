@@ -501,3 +501,37 @@ jobs:
             coverage.html
             coverage.json
           retention-days: 30
+
+  harness:
+    # The container harness (P2a; the SDN platform design revision 6, section 15): real Ryu 4.34
+    # on each controller Python the harness has measured constraints for, and real Open vSwitch
+    # on its userspace datapath, with the operator's conditions checked on the running
+    # containers (scripts/nmas-harness verify). The operator, 2026-11-07: "Add the container
+    # harness job to ci.yml, running scripts/nmas-harness check on Python 3.5 and 3.9 on every
+    # non-docs push; its bound set from its first run."
+    name: container harness (Ryu on the controller's Python ${{ matrix.python }})
+    needs: scope
+    if: ${{ needs.scope.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-24.04
+    # A placeholder until the first run is measured; then 2.5 times that run, written beside it
+    # (CLAUDE.md, "Bounds are about 2.5x a measured time").
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.5", "3.9"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"
+
+      - name: The harness's checks on Python ${{ matrix.python }}
+        run: scripts/nmas-harness check --python ${{ matrix.python }}
+
+      - name: Down, whatever happened
+        if: ${{ always() }}
+        run: scripts/nmas-harness down

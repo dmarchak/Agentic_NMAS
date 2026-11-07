@@ -46,6 +46,10 @@ HOST_STEP_PATHS = (
     # Mercury's records database (Phase 4, P4-1): installed by the operator as
     # /opt/mercury-postgres/ (scripts/host-steps/postgres-6a.sh).
     "deploy/postgres/",
+    # The SDN controller's root apply script and its drop-in (P6, C2672), installed root-owned
+    # on the controller host as /usr/local/sbin/mercury-ryu-apply
+    # (scripts/host-steps/p6-controller-apply-install.sh).
+    "deploy/controller/",
 )
 
 #: The host-installed paths a check can answer for (modules/host_steps.py CHECKS; the

@@ -82,6 +82,11 @@ SCANS = (
     "tests/test_source_index.py",
     # And at H19's first gate: a new store keyed by a raw network name.
     "tests/test_network_keys.py",
+    # And at H26's second gate: a new History source no operation names.
+    "tests/test_history_declared.py",
+    # And at the guards commit's first gate: a host-step path the helpers' registry did not
+    # cover (the pair is held together there, not in the check's own tests).
+    "tests/test_host_helpers.py",
 )
 
 #: The operator's local files the publication scan reads (gitignored by design): copied from

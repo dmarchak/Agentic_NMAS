@@ -26,6 +26,11 @@ RENDERED = ("deploy/systemd/",)
 #: records database's compose file and init script (/opt/mercury-postgres/, P4-1). The database
 #: itself is measured by the records settings' Test, not by a drift row.
 BY_HAND = ("deploy/postgres/",)
+#: Installed root-owned on ANOTHER host by its host step, never on Mercury's: the SDN
+#: controller's root apply script and its drop-in (P6, C2672; /usr/local/sbin/mercury-ryu-apply,
+#: scripts/host-steps/p6-controller-apply-install.sh). Compared with this release by nothing
+#: here: the deploy's own drift read is the controller's (C2676).
+OTHER_HOSTS = ("deploy/controller/",)
 
 
 def registry() -> list:
@@ -65,9 +70,10 @@ def folds() -> dict:
 
 
 def sources() -> list:
-    """Every repository path a root-installed file comes from, the rendered units' folder and
-    the folders installed by hand included."""
-    return sorted({h["source"] for h in registry()} | set(RENDERED) | set(BY_HAND))
+    """Every repository path a root-installed file comes from, the rendered units' folder, the
+    folders installed by hand and those installed on another host included."""
+    return sorted({h["source"] for h in registry()} | set(RENDERED) | set(BY_HAND)
+                  | set(OTHER_HOSTS))
 
 
 #: Job health's rows about a root-installed file, by unit: each is the same file the host-step

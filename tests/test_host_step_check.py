@@ -70,6 +70,15 @@ class TestTheRange:
         assert sha[:12] in p.stderr and "scripts/nmas-deploy" in p.stderr
         assert "Host-Step-None" in p.stderr
 
+    def test_the_controller_s_root_apply_script_with_nothing_said_is_refused_by_name(self, repo):
+        """C2672: the SDN controller's root apply script is installed root-owned on the
+        controller host, so a change to it is not live until a person installs it."""
+        sha = _commit(repo, "deploy/controller/mercury-ryu-apply", "change the root script")
+        p = _run(repo, "--range", "HEAD~1..HEAD")
+        assert p.returncode == 1
+        assert sha[:12] in p.stderr and "deploy/controller/mercury-ryu-apply" in p.stderr
+        assert "Host-Step-None" in p.stderr
+
     @pytest.mark.parametrize("path", ["deploy/update/nmas-update", "deploy/systemd/x.service",
                                       "deploy/postgres/docker-compose.yml", "scripts/nmas-deploy"])
     def test_a_step_said_passes(self, repo, path):

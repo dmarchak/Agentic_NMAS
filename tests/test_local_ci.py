@@ -206,9 +206,7 @@ def _ci_log(ci_yml, drop=None, fail=()):
     after a failure (probe 2, act-0.2.89-soft-hard.jsonl: "Skipping step ... due to ''")."""
     lines = []
     for job_id, jdoc in ci_yml["jobs"].items():
-        runs = [{"shard": s} for s in ("browser1", "browser2", "browser3", "a", "b")] \
-            if "strategy" in jdoc else [None]
-        for m in runs:
+        for m in _runs(jdoc):
             broken = False
             for i, s in enumerate(jdoc.get("steps") or []):
                 if (job_id, i) == drop:
@@ -222,6 +220,20 @@ def _ci_log(ci_yml, drop=None, fail=()):
     return lines
 
 
+def _runs(jdoc):
+    """A job's runs as act reports them: one with no matrix; a matrix written as one static
+    list (the harness's `python`), one run per value; the test job's matrix, read from the
+    scope job's output at run time, as its five shards."""
+    if "strategy" not in jdoc:
+        return [None]
+    static = {k: v for k, v in (jdoc["strategy"].get("matrix") or {}).items()
+              if isinstance(v, list)}
+    if len(static) == 1:
+        ((key, values),) = static.items()
+        return [{key: v} for v in values]
+    return [{"shard": s} for s in ("browser1", "browser2", "browser3", "a", "b")]
+
+
 def _wf_step_name(s):
     """A workflow step's name as the runner names it (`_step_name`) for the two shapes the
     failures here name: its `name`, else "Run <uses>"."""
@@ -232,12 +244,13 @@ class TestTheRealWorkflow:
     """Every job and step of the repository's own ci.yml, as act would report them."""
 
     def test_every_step_reported_is_passed(self, LC, ci_yml):
-        # The floor, measured 2026-11-03: 3 jobs, 31 steps in all.
-        assert set(ci_yml["jobs"]) == {"scope", "test", "coverage"}
+        # The floor, measured 2026-11-03: 3 jobs, 31 steps in all; the container harness's job
+        # joined 2026-11-07 (the operator's words, in ci.yml beside it), two matrix runs.
+        assert set(ci_yml["jobs"]) == {"scope", "test", "coverage", "harness"}
         assert sum(len(j.get("steps") or []) for j in ci_yml["jobs"].values()) >= 30
         v = LC.judge(ci_yml, LC.read_act_log(_ci_log(ci_yml)))
         assert v["state"] == "passed", v["not_run"][:3]
-        assert len(v["jobs"]) == 7
+        assert len(v["jobs"]) == 9
 
     def test_a_step_missing_from_acts_log_is_named(self, LC, ci_yml):
         i = next(i for i, s in enumerate(ci_yml["jobs"]["test"]["steps"])
