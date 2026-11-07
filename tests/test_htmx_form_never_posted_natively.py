@@ -54,17 +54,32 @@ document.addEventListener('htmx:configRequest', function (e) {
 });
 return 1;
 """
+#: This test's own elements settled: the form and its submitter no longer requesting, the target
+#: no longer swapping or settling. Scoped to them, not the page (C2460, 2026-11-07): CI #1499
+#: failed here with the answer drawn, sent once and the submitter no longer busy, only the
+#: page-wide clause unmet; once the held htmx is released it processes the whole history page,
+#: and another element's request under CI's load is not this test's subject. `_ready` keeps
+#: the page-wide SETTLED, where a test starts.
+OWN_SETTLED = ("!document.querySelector('#c2217-form.htmx-request, #c2217-press.htmx-request, "
+               "#c2217-target.htmx-swapping, #c2217-target.htmx-settling, "
+               "#c2217-target .htmx-swapping, #c2217-target .htmx-settling')")
 #: The answer drawn in the target: the pack built again.
-ANSWERED = "return !!document.querySelector('#c2217-target .pack[data-pack]') && " + SETTLED
+ANSWERED = ("return !!document.querySelector('#c2217-target .pack[data-pack]') && "
+            + OWN_SETTLED)
 #: What the page then held, for a failure: still this page, its landmark, the target, the
-#: trace nmas_early.js keeps.
+#: trace nmas_early.js keeps, and every element on the page still in an htmx request, swap or
+#: settle (its tag, id and hx-get or hx-post), so a failure names what was still moving.
 STATE = ("return {url: location.href, same_page: window.__c2217page === 1, "
          "landmark: !!document.getElementById('alert-history'), "
          "target: (document.getElementById('c2217-target') || {innerHTML: '(none)'})"
          ".innerHTML.slice(0, 160), sent: window.__c2217sent, "
          "busy: (document.getElementById('c2217-press') || {getAttribute: function () "
          "{ return '(none)'; }}).getAttribute('aria-busy'), "
-         "early: (window.__nmasEarly || []).join('; ')}")
+         "early: (window.__nmasEarly || []).join('; '), "
+         "moving: Array.prototype.map.call(document.querySelectorAll("
+         "'.htmx-swapping, .htmx-settling, .htmx-request'), function (e) { return e.tagName + "
+         "'#' + e.id + ' ' + (e.getAttribute('hx-get') || e.getAttribute('hx-post') || '') + "
+         "' ' + e.className; })}")
 
 
 def _browser_or_skip():
