@@ -862,7 +862,7 @@ class TestTheDeclarations:
         assert mutating == set(_bp().gates()) == set(_bp().invalidates())
         assert {k: g.kind for k, g in _bp().gates().items()} == {
             "heal_proposal_v2.approve": "confirm", "heal_proposal_v2.decline": "configure",
-            "heal_proposal_v2.lift": "configure"}
+            "heal_proposal_v2.lift": "configure", "heal_proposal_v2.mark": "configure"}
         assert all(g.reason and g.kind != NOT_DEVICE for g in _bp().gates().values())
 
     def test_the_invalidations_are_in_the_vocabulary(self):
@@ -909,7 +909,7 @@ class TestTheDeclarations:
             return
         assert registered == {
             "heal_proposal_v2.proposal", "heal_proposal_v2.approve", "heal_proposal_v2.decline",
-            "heal_proposal_v2.lift"}
+            "heal_proposal_v2.lift", "heal_proposal_v2.mark"}
         assert set(_bp().gates()) <= set(route_gates.GATES)
         assert set(_bp().invalidates()) <= set(invalidation.DECLARED)
         assert set(_bp().stages()) <= set(operation_stages.STAGES)

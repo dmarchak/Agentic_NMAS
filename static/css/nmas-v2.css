@@ -2841,6 +2841,14 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .heal-form { display: flex; flex-direction: column; gap: 10px; }
 /* Board H, artboard E's second row (C2471): a halt's reason and Lift the halt, in its row. */
 .heal-halt { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; min-width: 0; }
+/* Board H, artboard C's dry-run record (C2399): Was this the right fix? Right, Wrong…. */
+.heal-mark { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; min-width: 0; }
+.heal-mark-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.heal-mark-wrong { display: flex; flex-direction: column; gap: 8px; }
+.heal-mark-wrong > summary { list-style: none; cursor: pointer; align-self: flex-start; width: fit-content; }
+.heal-mark-wrong .op-act { align-self: flex-start; }
+.heal-mark-wrong > summary::-webkit-details-marker { display: none; }
+.heal-mark-wrong[open] { flex-basis: 100%; }
 .heal-what { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .heal-radio { display: flex; gap: 16px; font-size: 13px; align-items: center; flex-wrap: wrap; }
 .heal-radio label { display: inline-flex; align-items: center; gap: 4px; }

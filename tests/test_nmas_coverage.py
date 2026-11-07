@@ -150,6 +150,41 @@ class TestTheLabsExample:
         assert "<code>modules/ip_connectivity.py</code>" in page and "50.0% unit" in page
 
 
+class TestNarrowedToOnePackage:
+    """Board H's video (HEAL_TO_INTENT section 14): the report drawn for `modules/heal/` alone,
+    `--only`. Its totals are the package's, each output says it is narrowed and that the
+    ratchet is the whole report's, and a path no module is under is refused, never an empty
+    report drawn as a measured one."""
+
+    def test_the_totals_and_outputs_are_the_packages(self, lab):
+        got = C.narrowed(lab, "modules/ip_connectivity.py")
+        assert list(got["modules"]) == ["modules/ip_connectivity.py"]
+        assert C.totals(got)["functions"] == 6 and C.totals(got)["untested_modules"] == []
+        assert "modules/bgp_cfg.py" not in C.table(got)
+        said = ("Shown: only the modules under modules/ip_connectivity.py; the ratchet is the "
+                "whole report's.")
+        import html
+        for out in (C.table(got), C.summary_markdown(got, []), C.html_report(got, [])):
+            assert said in html.unescape(out)
+        assert said not in C.table(lab), "the whole report says nothing of a narrowing"
+        assert C.totals(C.narrowed(lab, "modules/"))["functions"] == C.totals(lab)["functions"]
+
+    def test_its_pages_carry_its_own_ratchet_failures_and_count_the_others(self):
+        failures = ["modules/heal/act.py: 2 more uncovered", "modules/ai/cases.py: new, untested",
+                    "modules/heal/: no rule or exception places it"]
+        assert C.failures_under(failures, "modules/heal/") == [
+            "modules/heal/act.py: 2 more uncovered",
+            "modules/heal/: no rule or exception places it",
+            "1 more outside modules/heal/ (the whole report's ratchet)"]
+        assert C.failures_under(failures[:1], "modules/heal/") == failures[:1]
+
+    def test_a_path_no_module_is_under_is_refused(self, lab):
+        with pytest.raises(ValueError, match="no measured module is under 'modules/heal/'"):
+            C.narrowed(lab, "modules/heal/")
+        with pytest.raises(ValueError):
+            C.narrowed(lab, "modules/ip_conn")   # a file's prefix is not a folder
+
+
 class TestTheTiers:
     def test_a_function_reached_only_by_another_tier_is_shown_apart(self, tmp_path, lab):
         """The headline counts the unit tier; a function reached only by a spawns or browser

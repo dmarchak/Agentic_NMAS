@@ -4082,3 +4082,53 @@ def test_read_account_and_ai_classes(tmp_path, monkeypatch):
                widths=widths)
         _shoot("ai-classes-on", "", lambda w: "/v2/settings/network/Default?tab=network",
                served, widths=widths, act=turn_on)
+
+
+def test_heal_mark(tmp_path, monkeypatch):
+    """Board H, artboard C's dry-run record (heal-to-intent.html, 1440) beside History, kind
+    Self-healing, holding a real dry-run decision on edge-b (tests/test_heal_mark_and_held.py's
+    `dry_run`: an added static route, Default in dry run): the row opened and Wrong… opened with
+    a reason typed (`heal-mark`); then Right pressed in the browser and its answer read in
+    place (C2399)."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from tests.test_heal_mark_and_held import dry_run
+    from tests.test_heal_policy import confirm, mark
+    from tests.test_sdn_connections import make_networks
+    # tests/test_heal_decide.py's `lab`: Default marked lab, in dry run, nothing held.
+    make_networks(tmp_path, monkeypatch)
+    mark("Default")
+    confirm("Default", heal_mode="dry_run")
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+                          ("modules.nsot.device_ops.holder", lambda n, d: None),
+                          ("modules.change_windows.holding", lambda now=None, given=None: None),
+                          ("modules.heal.detect.wake", lambda: None),
+                          # edge-b is the decision's lab device, in no inventory of Default.
+                          ("modules.history_sources._mine", lambda ctx, device: True)):
+        monkeypatch.setattr(target, value)
+    d = dry_run()
+    card = f"#heal-mark-{d['id']}"
+
+    def wrong(b):
+        b.js("document.querySelector('details.tl-row[data-kind=heal]').open = true; return 1")
+        b.wait_for(f"return !!document.querySelector('{card}')")
+        b.js(f"document.querySelector('{card} details.heal-mark-wrong').open = true; "
+             f"document.querySelector('{card} input[name=why]').value = "
+             "'the route was a planned change'; return 1")
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("heal-mark", "", lambda w: "/v2/history?kind=heal&since=", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=wrong)
+        from tests.browser import Browser
+        with Browser() as b:
+            b.go(served.url("/v2/history?kind=heal&since="))
+            b.js("document.querySelector('details.tl-row[data-kind=heal]').open = true; "
+                 "return 1")
+            b.js(f"document.querySelector('{card} button[hx-vals*=yes]').click(); return 1")
+            b.wait_for(f"return /Marked right by you/.test((document.querySelector('{card}') "
+                       "|| {}).textContent || '')", 15)
+    from modules.heal import decisions
+    assert decisions.find("Default", d["id"])["mark"]["right"] is True

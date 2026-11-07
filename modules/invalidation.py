@@ -327,6 +327,9 @@ DECLARED = {
     "heal_proposal_v2.decline": ("drift",),
     # Lift the halt (C2471): the halted row (`attention.heal_source`, riding on drift) leaves.
     "heal_proposal_v2.lift": ("drift",),
+    # Right / Wrong (C2399): the dry-run record's row (`attention.heal_source`, riding on
+    # drift) leaves; the History row it was pressed on draws the mark in place.
+    "heal_proposal_v2.mark": ("drift",),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a
     # setting's companion; teams, destinations, codes and sends move the notifications record.
     "notify_v2.relay_password": ("settings",),

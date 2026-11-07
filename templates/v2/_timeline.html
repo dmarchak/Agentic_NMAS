@@ -72,6 +72,8 @@
         {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
         {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
         {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
+        {#- A self-healing dry-run record's Right / Wrong (board H artboard C, C2399). -#}
+        {%- if e.heal_mark %}{% with list_name=e.heal_mark.list, decision_id=e.heal_mark.decision, mark=e.heal_mark.mark, unreadable=e.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {%- if others or e.sha or e.call or e.intent_commit %}<p class="small tl-links">
           {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha or e.produced %} · {% endif %}{% endfor %}

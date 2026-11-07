@@ -195,6 +195,44 @@ def lift(list_name, halt_id):
     return _answer({"lifted": row})
 
 
+def _mark_card(list_name: str, decision_id: str, code: int = 200, **ctx):
+    """A dry-run record's Right / Wrong (board H artboard C, C2399), drawn again with its
+    answer in place: the mark recorded, or the refusal with the reason typed kept."""
+    from routes.device_v2 import _strict
+
+    html = render_template("v2/_heal_mark.html", list_name=list_name, decision_id=decision_id,
+                           answered=True, **ctx)
+    return _strict(html, code)
+
+
+@bp.route("/network/<list_name>/heal/decision/<decision_id>/mark", methods=["POST"])
+def mark(list_name, decision_id):
+    """Mark a dry-run record right or wrong (board H artboard C, "Was this the right fix?";
+    docs/HEAL_TO_INTENT.md section 7, C2399): a verified person; Wrong with why it was wrong.
+    Recorded in the network's heal decisions (`decisions.mark`), counted per fix kind as the
+    false-positive rate the enablement path reads; the record's Needs attention item leaves.
+    Sends nothing."""
+    from modules.heal import decisions
+
+    right = (request.form.get("right") or "").strip().lower()
+    why = request.form.get("why") or ""
+    w = _who()
+    try:
+        if right not in ("yes", "no"):
+            raise decisions.Refused(f"a mark is right=yes or right=no, and {right or 'nothing'!r}"
+                                    " was sent")
+        d = decisions.mark(list_name, decision_id, right == "yes", by=w["actor"],
+                           actor_verified=w["actor_verified"], person=w["person"], why=why)
+    except (decisions.Refused, RuntimeError) as exc:
+        code = 403 if isinstance(exc, decisions.NotAPerson) else 409
+        if _htmx():
+            return _mark_card(list_name, decision_id, code, refused=str(exc), why=why)
+        return _answer({"ok": False, "error": str(exc)}, code)
+    if _htmx():
+        return _mark_card(list_name, decision_id, mark=d.get("mark") or {}, marked=True)
+    return _answer({"mark": d.get("mark") or {}})
+
+
 @bp.route("/network/<list_name>/heal/proposal/<decision_id>/decline", methods=["POST"])
 def decline(list_name, decision_id):
     """Decline the proposal: a verified person and a reason; nothing is sent."""

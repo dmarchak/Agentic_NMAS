@@ -20,7 +20,24 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `a5d588173b044c71601e0698e8dd33400d45f9bb84866529cbe420608592579c`
+Templates sha256: `6cb8af5ab5e76f1b41b1f69fce3055f9b3d47a13357839959bf944c3341790dd`
+
+Compared again 2026-11-07 (board H, H9's rest, C2399), against board H's artboard C (its
+dry-run record, heal-to-intent.html, 1440) and the shots `tests/test_board_shots.py::
+test_heal_mark` (`heal-mark` at 1440, 1280 and 390: a real dry-run decision on edge-b, its row
+opened and Wrong… opened with a reason typed; then Right pressed in the browser, "Marked right
+by you" read in place): `_timeline.html` includes `templates/v2/_heal_mark.html` under a
+self-healing row whose outcome is would heal (dry run). The board's "Was this the right fix?",
+**Right** and **Wrong…**: **same** words and order. Drawn in the opened row under its steps, not
+on the record's head as the board's card draws it, since History draws one line per record (the
+large-fleet rule): **deviation** (log: Board H built: Right / Wrong in the opened History row).
+Wrong… opens its reason in place, **Mark it wrong** beside it: **deviation** (log: Board H
+built: Wrong… asks why in place). The board's **Open** is the row itself (it opens to the
+record), so it is not drawn again: **deviation** (log: Board H built: no Open beside Right /
+Wrong). The mark drawn once made ("Marked right by <who> at <when>"), and decisions that cannot
+be read said, are states the board does not draw, compared by tests/test_heal_mark_and_held.py.
+No other region of this tab moved. Templates sha256 before:
+`a5d588173b044c71601e0698e8dd33400d45f9bb84866529cbe420608592579c`.
 
 Compared again 2026-11-05 (board H's amendment, H16's second part), by the template diff:
 `_timeline.html`'s kind table gains `diagnosis` ("diagnosis", info); a device's History tab

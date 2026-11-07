@@ -224,6 +224,9 @@ GATES = {
     # Lift the halt (board H artboard E's second row, C2471): refuses anyone but a verified
     # person too (modules/heal/decisions.lift), whatever a service is granted.
     "heal_proposal_v2.lift": _g(K, "lifts the halt in force on one network's self-healing (a rate cap, a repeat or a rolled-back heal), by its id, as a verified person with a reason of three words or more: recorded in the network's heal decisions with who, when and why; self-healing then runs under its policy again; sends nothing to a device"),
+    # Right / Wrong on a dry-run record (board H artboard C, C2399): refuses anyone but a
+    # verified person too (modules/heal/decisions.mark), whatever a service is granted.
+    "heal_proposal_v2.mark": _g(K, "marks one self-healing dry-run record right or wrong, by its decision's id, as a verified person (Wrong with why it was wrong): recorded in the network's heal decisions with who, when and why, and counted per fix kind as the dry run's false-positive rate; sends nothing to a device"),
     # Settings › Installation › Notifications (board H, artboard B; H9; routes/notify_v2.py):
     # the relay's password, the teams and their destinations, codes and test sends.
     "notify_v2.relay_password": _g(K, "stores the email relay's password a person typed, encrypted in the credential store, never drawn back; recorded with who and when in the installation's settings record"),

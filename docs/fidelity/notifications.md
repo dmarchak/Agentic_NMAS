@@ -11,7 +11,14 @@ beside the board's shot from `test_heal_tab` (`heal-tab-board-1440`, artboard B)
 shots do not draw (each form open, a refusal, a code typed, an edit to a new URL, a removal's
 question) are compared by the templates and tests/test_notify_v2.py.
 Templates compared: templates/v2/_notify.html, templates/v2/_notify_relay.html
-Templates sha256: `93b7f828057f8c217d4e955526425de4e19b6c3c77a3c8c9cb9970a411b448b8`
+Templates sha256: `550af5f42a12d7e802eedb99a1f63898443344bb0110fc6eab59ee05619c8b97`
+
+**Compared again 2026-11-07 (board H, H10):** a webhook's **Test send** keeps its words and
+place; its "How does this work?" (i) now opens the manual's new page on notifications (its
+section on destinations) in place of the Settings page's Notifications section, and the button's
+`data-op` names that page. Nothing drawn moved: the shot `notifications` taken again at 1440,
+1280 and 390 draws every region as before. Templates sha256 before:
+`93b7f828057f8c217d4e955526425de4e19b6c3c77a3c8c9cb9970a411b448b8`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

@@ -235,6 +235,12 @@ ROW_KINDS = {
     # halted on a network by a guard (a rate cap, a repeat, a rollback) until a person lifts it.
     ("heal", "halted"): ("self-healing stopped on a network (a rate cap, a repeat, a rollback)",
                          "read why, then lift the halt with a reason"),
+    # Board H, H9 (docs/HEAL_TO_INTENT.md section 9's table, C2401): a device held from
+    # healing by a guard only a person resolves (its golden departs from its intent, healed
+    # past its rate, or many devices departed at once).
+    ("heal", "held"): ("a device is held from healing until a person resolves what holds it",
+                       "resolve what the hold names (adopt into intent or capture, find what "
+                       "keeps changing it, or find the rollout that moved many)"),
     # Board H, H8 (docs/HEAL_TO_INTENT.md sections 9 and 12): self-healing stopped at can't
     # fix; opened, What to do first, then Mercury's facts, then the AI analysis, advisory.
     ("heal", "cant_fix"): ("self-healing could not fix a device's problem",
@@ -558,6 +564,9 @@ CLEARS = {
     ("heal", "halted"): (("resolves",),
                          "a person lifts the halt on this item with a reason (Lift the halt), "
                          "recorded with their name in the network's heal decisions"),
+    ("heal", "held"): (("resolves", "acknowledge"),
+                       "a later decision of the device (its next incident, judged again) "
+                       "replaces it; or acknowledged with what was resolved"),
     ("heal", "cant_fix"): (("resolves", "acknowledge"),
                            "a later decision finds the device with nothing to heal, or a later "
                            "heal of it is healed and verified; or acknowledged with a reason"),
@@ -644,6 +653,8 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "interrupted"),
                                # One can't-fix incident (board H, H8), by its incident's id.
                                ("heal", "cant_fix"),
+                               # One hold a person resolves (board H, H9), by its decision.
+                               ("heal", "held"),
                                # One change of a network's controller Python, by its id
                                # (the operator, 2026-11-07): a later change raises it again.
                                ("controller_python", "changed")})
@@ -5343,9 +5354,11 @@ def heal_source(got=None, now=None, found=None) -> dict:
     interrupted_n = len(out) - marked
     out += _heal_proposal_rows(lst, rows)
     proposals_n = len(out) - marked - interrupted_n
+    held = _heal_held_rows(lst, rows)
+    out += held
     said = []
     out += _heal_cant_fix_rows(lst, rows, now, said)
-    cant_fix_n = len(out) - marked - interrupted_n - proposals_n
+    cant_fix_n = len(out) - marked - interrupted_n - proposals_n - len(held)
     out += _heal_capped_rows(lst, now, said)
     try:
         halted = _heal_halted_rows(lst)
@@ -5358,7 +5371,8 @@ def heal_source(got=None, now=None, found=None) -> dict:
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
                                   f"{interrupted_n} interrupted heal(s), "
-                                  f"{proposals_n} proposal(s) waiting, {cant_fix_n} can't-fix "
+                                  f"{proposals_n} proposal(s) waiting, {len(held)} hold(s) a "
+                                  f"person resolves, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
 
@@ -5544,6 +5558,68 @@ def _heal_capped_rows(lst: str, now: float, said: list) -> list:
                           "incident": got["incident"]})]
 
 
+#: The guards whose hold a person resolves (docs/HEAL_TO_INTENT.md section 6: ``held`` without
+#: *until*): each guard's action, its link and whether its row is one per network. A hold with
+#: an *until* (3, 5, 7, 8) is checked again by self-healing itself at that time, so it is a fact
+#: on the device's History, never a row (CLAUDE.md, "Needs attention": a fact nobody acts on).
+HEAL_HELD_ACTIONS = {
+    4: ("Adopt the change into {host}'s intent, or capture {host} after reverting it, so its "
+        "golden matches intent again", "/v2/device/{host}?tab=intent", False),
+    6: ("Read which devices departed together (History, kind Self-healing), and find the "
+        "rollout, template or event that moved them", "/v2/history?kind=heal", True),
+    9: ("Read why {host} keeps departing (its History), and fix what changes it",
+        "/v2/device/{host}?tab=history", False),
+}
+
+
+def _heal_held_rows(lst: str, rows: list) -> list:
+    """Board H, H9 (docs/HEAL_TO_INTENT.md section 9's table, C2401): ONE row per device whose
+    NEWEST decision is held by a guard a person resolves (`HEAL_HELD_ACTIONS`: 4, its golden
+    departs from its intent; 9, healed past its rate), naming the guard and both operands; and
+    ONE row per network for guard 6 (many devices departed at once), naming how many. A later
+    decision of the device replaces it (resolves: its next incident is judged again), or a
+    person acknowledges it with what they resolved. Read from the rows already read."""
+    newest = {}
+    for d in rows:
+        host = d.get("device") or ""
+        if host and float(d.get("epoch") or 0) >= float(newest.get(host, {}).get("epoch") or 0):
+            newest[host] = d
+    out, fleet = [], []
+    for host, d in sorted(newest.items()):
+        g = d.get("guard") or {}
+        if d.get("outcome") != "held" or d.get("until") or g.get("guard") not in HEAL_HELD_ACTIONS:
+            continue
+        if HEAL_HELD_ACTIONS[g["guard"]][2]:
+            fleet.append(d)
+            continue
+        label, href, _one = HEAL_HELD_ACTIONS[g["guard"]]
+        out.append(row(
+            source="heal", kind="held", key=d.get("id") or "?", level="warning",
+            event=d.get("id"), devices=[host], since=float(d.get("epoch") or 0) or None,
+            what=f"Self-healing holds {host} on {lst}: {g.get('name') or 'a guard applied'}",
+            cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. Self-healing "
+                   f"sends nothing to {host} for this until it is resolved"),
+            action={"label": label.format(host=host), "href": href.format(host=host)},
+            operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                      **(g.get("operands") or {})}))
+    if fleet:
+        d = max(fleet, key=lambda x: float(x.get("epoch") or 0))
+        g = d.get("guard") or {}
+        hosts = sorted(x.get("device") for x in fleet)
+        label, href, _one = HEAL_HELD_ACTIONS[6]
+        out.append(row(
+            source="heal", kind="held", key=d.get("id") or "?", level="warning",
+            event=d.get("id"), devices=hosts, since=float(d.get("epoch") or 0) or None,
+            what=(f"Self-healing holds {len(hosts)} device(s) on {lst}: "
+                  f"{g.get('name') or 'many devices at once'}"),
+            cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. A fleet-wide "
+                   "departure is escalated, never healed"),
+            action={"label": label, "href": href},
+            operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                      "devices": len(hosts), **(g.get("operands") or {})}))
+    return out
+
+
 def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
     """Board H, H6: ONE row per heal whose job ended before it recorded its outcome, recorded
     (`interrupted.reap`, outcome ``interrupted``) or found at this read and not yet recorded
@@ -5580,6 +5656,10 @@ def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
             halt = {"words": f"whether it is halted cannot be read ({exc})", "id": "?"}
         halted = (f" Self-healing on {lst} is halted (guard {halt.get('guard')}): nothing more "
                   "is healed there until the halt is lifted." if halt.get("id") else "")
+        # C2441: the halt an interrupted heal leaves is lifted on its own item (the halted row,
+        # `_heal_halted_rows`, carries Lift the halt), named here so the way out is on screen.
+        lift = (" Then lift the halt with a reason on its own item, “Self-healing halted on "
+                f"{lst}” (Lift the halt…)" if halt.get("id") and halt.get("id") != "?" else "")
         out.append(row(
             source="heal", kind="interrupted", key=d.get("id") or "?", level="danger",
             event=d.get("id"), devices=[host] if host else [], since=at or None,
@@ -5591,7 +5671,7 @@ def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
                    + halted),
             action={"label": (f"Read the heal's steps on {host}'s History, read {host} against "
                               "its golden (Check drift now on its page), then acknowledge with "
-                              "what you found"),
+                              "what you found" + (f".{lift}" if lift else "")),
                     "href": f"/v2/device/{host}?tab=history"},
             operands={"list": lst, "decision": d.get("id"), "incident": d.get("incident"),
                       "recorded": recorded}))

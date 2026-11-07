@@ -492,7 +492,8 @@ def test_the_routes_are_the_apps_and_gated_as_declared():
     rules = {r.endpoint: r for r in A.app.url_map.iter_rules()
              if r.endpoint.startswith("heal_proposal_v2.")}
     assert set(rules) == {"heal_proposal_v2.proposal", "heal_proposal_v2.approve",
-                          "heal_proposal_v2.decline", "heal_proposal_v2.lift"}
+                          "heal_proposal_v2.decline", "heal_proposal_v2.lift",
+                          "heal_proposal_v2.mark"}
     assert GATES["heal_proposal_v2.approve"].kind == "confirm"
     assert GATES["heal_proposal_v2.decline"].kind == "configure"
     assert GATES["heal_proposal_v2.lift"].kind == "configure"

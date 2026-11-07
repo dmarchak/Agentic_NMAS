@@ -69,6 +69,15 @@ SCANS = (
     "tests/test_netbox_census.py",
     "tests/test_one_home_per_action.py",
     "tests/test_session_write_guard.py",
+    # C2685 (2026-11-07): H17's gate was refused by these two on a new module and a new case
+    # fixture the changed tests did not reach (a device name in a docstring; a fixture with
+    # no network).
+    "tests/test_device_names.py",
+    "tests/test_network_one_id.py",
+    # The same, at lane 1's first gate: a new template's <details> with no data-keep, and a new
+    # module's platform literal with no keying declared.
+    "tests/test_live_details_keep.py",
+    "tests/test_platform_keying.py",
 )
 
 #: The operator's local files the publication scan reads (gitignored by design): copied from

@@ -32,7 +32,17 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `ecd1f599966a88a880623895baffbca979ea5c7a4de363a0b121257210a48c19`
+Templates sha256: `67e2b64f6a1f5452586836766b08ff4e92c81fcc390b0e8343bf61969eabb779`
+
+Compared again 2026-11-07 (board H, H9's rest, C2399: a dry-run record's Right / Wrong), against
+board H's artboard C and the shots `heal-mark` (1440, 1280 and 390; tests/test_board_shots.py::
+test_heal_mark): `_timeline.html` draws "Was this the right fix?", **Right** and **Wrong…**
+(templates/v2/_heal_mark.html) in a self-healing dry-run row, opened. The regions and their
+verdicts are tab-history.md's of the same date (one template draws both): **same** words,
+**deviation** (log: Board H built: Right / Wrong in the opened History row; Board H built:
+Wrong… asks why in place; Board H built: no Open beside Right / Wrong). No other region of the
+page moved. Templates sha256 before:
+`ecd1f599966a88a880623895baffbca979ea5c7a4de363a0b121257210a48c19`.
 
 Compared again 2026-11-05 (board H's amendment, H16's second part: History's kind diagnosis),
 by the template diff: `_timeline.html`'s kind table gains `diagnosis` ("diagnosis", info), and

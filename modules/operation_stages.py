@@ -460,6 +460,11 @@ HISTORY = {
     "heal_proposal_v2.lift": ("n/a: a halt lifted is kept in the network's heal decisions "
                               "(modules/heal/decisions.py) with who, when and why, a "
                               "network's record, never one device's"),
+    # Right / Wrong on a dry-run record (board H artboard C, C2399): kept in the network's heal
+    # decisions, and drawn on the dry-run record's own History row.
+    "heal_proposal_v2.mark": ("n/a: a mark is kept in the network's heal decisions "
+                              "(modules/heal/decisions.py) with who, when and why, and drawn "
+                              "on the dry-run record's own History row (kind heal)"),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     # C2003: a page's own stall, kept as a local record and drawn on History › Page stalls.
     "v2.stall_capture": ("page_stalls",),

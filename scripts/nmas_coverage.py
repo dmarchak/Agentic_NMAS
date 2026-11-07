@@ -331,12 +331,16 @@ def measure(data_file: str, tiers_dir: str, root: str = ROOT, files=None, scope=
 
 def data_line(report: dict, drilldown: str = "") -> str:
     """Which measurement a report stands on, and where the per-test drill-down is (C773: a push
-    measures by tier, the nightly per test)."""
+    measures by tier, the nightly per test). A report narrowed to one package (`narrowed`)
+    says so, and that its ratchet is the whole report's."""
+    only = (f" Shown: only the modules under {report['only']}; the ratchet is the whole "
+            "report's." if report.get("only") else "")
     if report.get("data") == "by tier":
         return ("Data: each test's run phase by tier (sys.monitoring, lines only), this push. "
                 "The tests reaching each function, and branch coverage: the nightly coverage run"
-                + (f" ({drilldown})." if drilldown else " (none found)."))
-    return "Data: a context per test, with branches (the nightly coverage run's measurement)."
+                + (f" ({drilldown})." if drilldown else " (none found).") + only)
+    return ("Data: a context per test, with branches (the nightly coverage run's measurement)."
+            + only)
 
 
 def scope_tests(root: str = ROOT) -> list:
@@ -347,6 +351,31 @@ def scope_tests(root: str = ROOT) -> list:
 
 def _tier_counts(tiers: dict) -> dict:
     return {t: sum(1 for v in tiers.values() if v == t) for t in TIERS}
+
+
+def narrowed(report: dict, prefix: str) -> dict:
+    """*report* drawn for the modules under *prefix* only (a folder ending "/" or one file),
+    for a report shown about one package (board H's video: `modules/heal/`, HEAL_TO_INTENT
+    section 14). The ratchet is always the whole report's; a prefix no module is under is
+    refused, naming it, so a typo never draws an empty report as if it were a measured one."""
+    mods = {p: m for p, m in report["modules"].items()
+            if p == prefix or (prefix.endswith("/") and p.startswith(prefix))}
+    if not mods:
+        raise ValueError(f"no measured module is under {prefix!r}")
+    return dict(report, modules=mods, only=prefix)
+
+
+def failures_under(failures: list, prefix: str) -> list:
+    """The ratchet's *failures* naming a path under *prefix* (each failure starts with its
+    path), plus one line counting the others, so a page narrowed to one package neither hides
+    that the ratchet failed elsewhere nor lists another package's failures as its own."""
+    def under(f):
+        path = f.split(":", 1)[0]
+        return path == prefix or (prefix.endswith("/") and path.startswith(prefix))
+    mine = [f for f in failures if under(f)]
+    others = len(failures) - len(mine)
+    return mine + ([f"{others} more outside {prefix} (the whole report's ratchet)"]
+                   if others else [])
 
 
 def totals(report: dict, category: str = "automation") -> dict:

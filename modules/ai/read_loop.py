@@ -55,9 +55,10 @@ background feature's entry, so the estimate an admin sees at Turn on counts both
 way into a model stays the feature's own background job or press (tests/test_ai_entry_points.py
 scans for unreferenced callers of the gateway); every call carries the trigger it was given.
 
-**What plugs in later (seams, not built here):** the router CLI family (H24's `AI_READS`: its
-command shapes, the device scope and the held-device skip, run by the reads engine as kind
-``ai_analysis``, read-only account H28) is one more `ReadFamily` over ``cli``; the SDN family
+**What plugs in later (seams, not built here):** the router CLI family is built
+(`modules/ai/router_reads.py`, H24's `AI_READS`: its command shapes, the device scope and the
+held-device skip, run by the reads engine as kind ``ai_analysis``, which signs in as H28's
+read-only account) as one more `ReadFamily` over ``cli``; the SDN family
 (B4-1 to B4-3: `ReadOnlyDriver` behind an ``http`` family, its arguments compared with the live
 switch list) is another; the device state class's switch is H28's
 (`egress_classes.device_state_allowed`, built: off by default on every network, on per network

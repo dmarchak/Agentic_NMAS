@@ -1995,6 +1995,7 @@ def heal(ctx):
     got = steplog.incidents(ctx["ref"].name, device=ctx["device"])
     if got["state"] == "unreadable":
         return _out(errors=[f"the self-healing step log could not be read: {got['error']}"])
+    marks = _heal_marks(ctx["ref"].name, got["entries"])
     events = []
     for e in reversed(got["entries"]):
         host = e["device"]
@@ -2029,10 +2030,37 @@ def heal(ctx):
                     ("NetBox journal", m(journal.get("words")))]
             # A Tier 2 proposal a person approved or declined (board H, H5): who, and why.
             + ([("Approval", m(rec["approval"]))] if rec.get("approval") else []) + steps))
+        if outcome == "would_heal" and e.get("decisions"):
+            # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong…
+            # (H9, C2399), marking the incident's dry-run decision, its mark read from the
+            # network's heal decisions (one read for the page, `_heal_marks`).
+            did = e["decisions"][-1]
+            got_mark = marks.get(did)
+            events[-1]["heal_mark"] = {
+                "list": ctx["ref"].name, "decision": did,
+                "unreadable": marks.get(":unreadable", ""),
+                "mark": ({"right": bool(got_mark["right"]), "by": got_mark.get("by") or "",
+                          "at": got_mark.get("at") or "", "why": m(got_mark.get("why"))}
+                         if got_mark else None)}
         if len(events) >= ctx["limit"]:
             break
     return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]
                 if len(events) >= ctx["limit"] else [])
+
+
+def _heal_marks(network: str, entries: list) -> dict:
+    """``{decision id: its newest mark}`` for the dry-run incidents among *entries*, from ONE
+    read of the network's heal decisions; ``{":unreadable": why}`` when they cannot be read
+    (the Right / Wrong control then says so, never "unmarked")."""
+    from modules.heal import decisions as HD
+
+    if not any(e.get("outcome") == "would_heal" for e in entries):
+        return {}
+    try:
+        rows = HD.decisions(network)
+    except Exception as exc:                            # noqa: BLE001 (said on the control)
+        return {":unreadable": f"{network}'s heal decisions could not be read ({exc})"}
+    return {d.get("id"): d.get("mark") for d in rows if d.get("mark")}
 
 
 def diagnoses(ctx):

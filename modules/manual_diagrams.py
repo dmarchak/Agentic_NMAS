@@ -1476,6 +1476,74 @@ def heal_proposal():
     ])
 
 
+def heal():
+    return svg(600, (
+        "Self-healing, one incident: a trigger (a log line, an alert, an adjacency, a drift "
+        "record) opens an incident on a device; the detect pass reads the device, the same read "
+        "as Check drift now, until the grace period settles it; the decision finds the approved "
+        "state, the golden that matched intent, checks the guards in order and compares the "
+        "device with it, classing each unit and its tier: in dry run it records what it would "
+        "have done for a person to mark right or wrong; in Auto a Tier 1 fix is applied as the "
+        "policy, holding the device, through the deploy's nine stages, verified and rolled back "
+        "on failure; a Tier 2 fix waits for a person; anything else is can't fix. Every step is "
+        "recorded in the step log and History, a healed device's golden committed and read "
+        "again, and the network's team is told."), [
+        lanes(20, 594),
+        doc("box", 14, 40, 186, 36, "A trigger", "a log line, an alert, a drift"),
+        num(14, 40, 1),
+        clock(186, 104), t(14, 108, "the grace period: read, then read again", "sm"),
+        band(122, 120, "Detect · the device read, nothing sent"),
+        device(262, 150, 118, 330, "The device", "what it runs", top=True),
+        *rows([(166, "read", 2, "Read again until settled", "Check drift now's read")]),
+        band(250, 112, "Decide · the guards in order"),
+        doc("golden", 14, 278, 186, 36, "The approved state", "the golden that matched intent"),
+        num(14, 278, 3),
+        t(14, 336, "each unit classed, its tier; the program", "sm"),
+        t(14, 349, "and its hash; a guard that applies stops it", "sm"),
+        band(370, 120, "Act · Auto, Tier 1, as the policy"),
+        *rows([(400, "send", 4, "Applied, the device held", "the deploy's nine stages"),
+               (446, "read", 5, "Verified, symptom read again", "rolled back on failure")]),
+        t(14, 476, "dry run: nothing sent; Tier 2: a person", "sm"),
+        store(14, 502, 186, 40, "The step log", "each step, History"), num(14, 502, 6),
+        doc("golden", 262, 502, 118, 40, "Its golden", "committed, re-read"),
+        arrow("rec", 202, 522, 260, 522),
+        t(14, 566, "Then the network's team is told.", "sm"),
+        t(14, 580, "Marked right or wrong in dry run.", "sm"),
+    ])
+
+
+def notifications():
+    return svg(470, (
+        "A notification of a can't-fix: the notifier finds each new can't-fix recorded in the "
+        "last ten minutes and not yet told, and takes it once under the store's lock; if the "
+        "network's AI analysis is on it starts it as a background call and waits for it at "
+        "most 60 seconds; it then sends Mercury's facts, the analysis or its state (pending, "
+        "not run, couldn't analyse), and the link, to the network's team: an email through "
+        "the relay and each webhook, signed; each attempt is a row in the delivery log, a "
+        "failure tried three times and then raised under Needs attention; a pending analysis "
+        "that arrives later is sent on the same thread. Nothing reaches a device."), [
+        lanes(20, 464, right="THE TEAM"),
+        store(14, 40, 186, 40, "A can't-fix", "recorded, not yet told"), num(14, 40, 1),
+        t(14, 98, "taken once, under the store's lock", "sm"),
+        doc("box", 14, 116, 186, 36, "The AI analysis", "a background call, if on"),
+        num(14, 116, 2),
+        clock(186, 170), t(14, 174, "waited for at most 60 s", "sm"),
+        band(190, 130, "Send · the facts first"),
+        svc(262, 222, 118, 30, "Email", "through the relay"),
+        svc(262, 272, 118, 30, "Webhook", "signed, HMAC-SHA256"),
+        t(36, 232, "Mercury's facts, then", "tb"),
+        t(36, 246, "the analysis or its state", "sm"),
+        num(22, 228, 3),
+        t(36, 300, "then the link to Mercury", "sm"),
+        store(14, 336, 186, 40, "The delivery log", "each attempt, History"), num(14, 336, 4),
+        t(14, 394, "a failure tried three times, then", "sm"),
+        t(14, 407, "a Needs attention item", "sm"),
+        t(14, 432, "A pending analysis follows", "sm"),
+        t(14, 445, "on the same thread.", "sm"),
+        nosend(320, 380, ("nothing reaches", "a device")),
+    ])
+
+
 def sdn_flows():
     return svg(520, (
         "A change to an SDN switch's flows, a person's or a response's: the plan reads the "
@@ -1884,6 +1952,8 @@ DIAGRAMS = {
     "diagnose": diagnose,
     "privileged": privileged,
     "heal-proposal": heal_proposal,
+    "heal": heal,
+    "notifications": notifications,
     "sdn-flows": sdn_flows,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,

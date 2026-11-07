@@ -236,7 +236,7 @@ def mark(network: str, decision_id: str, right: bool, *, by: str, actor_verified
     needs why. Marked again, the newest mark counts, and every mark stays in the record."""
     now = time.time() if now is None else float(now)
     if not by or actor_verified in ("", "none") or not person:
-        raise Refused(f"a dry-run record is marked by a verified person, and this request is "
+        raise NotAPerson(f"a dry-run record is marked by a verified person, and this request is "
                       f"not one (actor {by or 'none'}, verified {actor_verified or 'none'})")
     if not right and not (why or "").strip():
         raise Refused("Wrong is recorded with why it was wrong, and none was given")
