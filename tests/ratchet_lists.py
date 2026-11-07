@@ -166,6 +166,13 @@ RATCHETS = (
     #    and every dunder a job may reach is one more path to the interpreter ─────────────
     ("modules/jobs/mutate.py", "CEILING", "floor"),
     ("modules/jobs/gate.py", "DUNDER_ALLOWED", "shrinks"),
+    # ── T25, code apart from state (the SDN design revision 7, 11c.4; the operator,
+    #    2026-11-07: "Register T25's three lists in tests/ratchet_lists.py; they only
+    #    shrink"): the names a job or app may import from the repository's module and the
+    #    folder names excused only shrink; the population's floor is never lowered ───────────
+    ("tests/test_code_apart_from_state.py", "REPO_ALLOWED", "shrinks"),
+    ("tests/test_code_apart_from_state.py", "EXCUSED", "shrinks"),
+    ("tests/test_code_apart_from_state.py", "FLOOR", "floor"),
     # ── The declared skip reasons (C2412): a reason, or a place it is allowed, only leaves ──
     ("tests/skip_reasons.py", "DECLARED", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────

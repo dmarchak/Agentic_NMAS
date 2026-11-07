@@ -1742,6 +1742,8 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
+**1277 open at 2026-11-07 ~03:0x UTC, COUNTED from the rows (A 4, B 260, UNKNOWN 141, C 872; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** T25 landed (no job, app or code-repository module reads the configuration repository), its three lists registered in tests/ratchet_lists.py in the operator's words; no row moved. **Blocking: Phase 8 54 of 60; Lab 10 23; Lab 9 16.**
+
 **1277 open at 2026-11-07 ~02:4x UTC, COUNTED from the rows (A 4, B 260, UNKNOWN 141, C 872; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** C2635 and C2636 closed (apps' own allowlist with declared egress, app tests left to the harness; tests at the root or in `tests/`); T25's scan waits for the operator's words on registering its three lists in tests/ratchet_lists.py; new C2642 and C2643 (B: the source check cannot enforce egress or 3.9 at run time; the harness must), C2644 (UNKNOWN: the authoring helpers under 3.9), C2645 (C: `mercury_app.egress` a stub). **Blocking: Phase 8 54 of 60; Lab 10 23; Lab 9 16.**
 
 **1275 open at 2026-11-07 ~02:1x UTC, COUNTED from the rows (A 4, B 260, UNKNOWN 140, C 871; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** C2640 closed (`.claude/settings.json` a protected guard, the operator's words); new C2641 (C: the waiter that matched its own command line) recorded and closed, fixed in practice. **Blocking: Phase 8 53 of 60; Lab 10 25; Lab 9 16.**
