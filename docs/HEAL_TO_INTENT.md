@@ -712,7 +712,7 @@ Never, whatever the policy says:
 - **Never an IPv4-only path:** an IPv6 static route (`global.ipv6-route`, measured exact) and
   an OSPFv3 adjacency are healed and tested like their IPv4 forms. A webhook or relay at an IPv6
   address works (CLAUDE.md's IPv6 rule).
-- **Never a staged run or probe on s3, nor inside 08:30 to 09:10 UTC** (the standing facts):
+- **Never a staged run or probe on s3, nor inside 02:30 to 03:30 America/Denver (the nightly backup window, C2613)** (the standing facts):
   the walks and the removal probe follow them.
 
 ---
@@ -761,7 +761,7 @@ Each scenario is the operator's sheet (outside the repository), run as written e
 this table says. **The change is made at the device's CLI by the operator, as the sheet's.** The
 revert is the heal's, not the sheet's, except where nothing is healed. A planned order respects
 the rails (one heal per device per hour, six per network per hour), never on s3, never inside
-08:30 to 09:10 UTC.
+02:30 to 03:30 America/Denver (the nightly backup window, C2613).
 
 | # | Scenario (sheet) | Device | What the heal detects | Tier | What it does | What verify reads | What the person sees |
 |---|---|---|---|---|---|---|---|
@@ -887,7 +887,7 @@ schedule: board Nov 3 to 5; build Nov 5 to 14; walks Nov 15 to 19; video Nov 20 
 - a course lab's due date is a dependency (CLAUDE.md, "Sequence by dependency");
 - a lab step wins over video and AI work;
 - the credit expires 11-29, so the AI measurement rounds must land before it (0.5);
-- no deploy during a sitting; nothing in 08:30 to 09:10 UTC.
+- no deploy during a sitting; nothing in 02:30 to 03:30 America/Denver (the nightly backup window, C2613).
 
 **Superseded in review (2026-11-03): the operator's roadmap through 2026-11-30 replaces
 PHASE8_PLAN 0.3's schedule.** Its order is: workstream 0, local CI, first; Lab 10 (this board),
@@ -1181,7 +1181,7 @@ captured is captured in H18 before its parser is written, because fixtures are r
 - **No read the runbooks need is refused.** The allowlist is shaped by verb, so every `show`
   passes, and ping and traceroute pass inside their bounds.
 - **Captures and parsers are missing** for the reads marked **no** above. H18 captures them on
-  r2 (IOS-XE) and s1 (IOS), never on s3, never inside 08:30 to 09:10 UTC.
+  r2 (IOS-XE) and s1 (IOS), never on s3, never inside 02:30 to 03:30 America/Denver (the nightly backup window, C2613).
 - **The path trace reads IPv4 only:** `path_trace.refusal` says "the trace reads IPv4
   forwarding only". The IPv6 form of "A can't reach B" needs `show ipv6 cef` parsed and
   followed. That is H15's, under the IPv6 rule (a capability that cannot serve IPv6 says so by
@@ -1380,7 +1380,7 @@ allowed in AUTO one at a time, after their dry-run scenario (N8). These are adde
 
 **The operator's step: one revert-timer trial on r4, before H20 ships the bounce.** It is a
 measured probe (preview and record, `scripts/nmas-removal-probe`'s pattern). It runs outside
-08:30 to 09:10 UTC, not on s3, and restarts no node. Before it, `archive` with a path is in r4's
+02:30 to 03:30 America/Denver (the nightly backup window, C2613), not on s3, and restarts no node. Before it, `archive` with a path is in r4's
 intent and deployed.
 1. **The revert path.** Enter `configure terminal revert timer 1` on r4, bounce Gi4 (no
    management on it), send no confirm, and wait past the timer. Record:
@@ -1683,7 +1683,7 @@ unmeasured). Neither router then logs a CONFIG_I. This is lab tooling under `lab
 product.
 
 **The operator's step: one trial on the lab host, before the sheet is written.**
-1. Outside 08:30 to 09:10 UTC, not on s3, with no restart of any node (the standing facts),
+1. Outside 02:30 to 03:30 America/Denver (the nightly backup window, C2613), not on s3, with no restart of any node (the standing facts),
    take r4 Gi4's virtual link down once at the hypervisor process, for about 15 s, then up.
 2. Record **what r4 sees:** whether Gi4 reads "down, line protocol is down" while
    "administratively up", the UPDOWN lines it logs, and the time each takes.

@@ -9,6 +9,40 @@ agent-days, as each cited document gives them; one agent-day is about 1.3 wall-c
 
 ## The head
 
+**Re-measured 2026-11-07 02:54 UTC (Nov 6 19:54 MST), at facf6370, on the operator's course
+correction.** Lab 10 was behind, not on plan. The lanes are split 1:1 from Sat Nov 7: lane 1
+runs Lab 10's build to Nov 14 at the latest, then walk fixes through Nov 19; lane 2 runs Lab 9.
+The plan update (the agent's report of 2026-11-07 03:00 UTC) holds the lane tables and the
+tripwire. The Nov 5 lines below are kept as history.
+- **Lab 10, left: 16.0 to 17.75 agent-days,** about 12.25 to 14.0 with HEAL_TO_INTENT 19.8's
+  item-2 cuts.
+  - **Stream A, 8.0:** H11 0.5, H12 0.75, H19 to H23 6.75.
+  - **Stream B, 8.0 to 9.75:** the rest of H9, H10, H15 and H25, plus H13, H17, H18, H24,
+    H26, H27, and H28 2.0 (unbuilt).
+  - **Since the Nov 5 table:** H14, H15's IPv4 part and all of H16 landed. Nothing has landed
+    since Nov 5 06:50 MST.
+  - **Blocking rows:** 34 open rows are tagged "Lab 10: blocks" (23 B, 11 UNKNOWN). C2628 and
+    C2629 are re-tagged Lab 9's.
+- **Lane 1's order:**
+  1. H11;
+  2. H28, which unblocks the operator's password and the device state class;
+  3. H13, H17, H18;
+  4. H24, then H25's wiring, H26 and H27;
+  5. H12, and the rest of H9, H10 and H15;
+  6. stream A's H19 to H23, cut first if the tripwire fires.
+- **The tripwire, read at the end of Tue Nov 10 UTC:** fewer than 8 of Lab 10's agent-days
+  landed, and 19.8's item-2 cuts are applied and lane 2 joins Lab 10 for Nov 11 to 14 (P6 and
+  P7a then land Nov 15 and 16, still before S3).
+- **What the split costs Part A: nothing.** Lane 2 lands P2a (Nov 9), P6 (Nov 12), P7a
+  (Nov 13), P2, P3 and P7-dns (Nov 17), P4 and P5 (Nov 20), and P7 (Nov 21), each on or before
+  r6's date.
+  - Part B's P8 and P9a need lane 1 back from Nov 20 to land for S5 (Nov 24). Otherwise they
+    land about Nov 27, and the pre-agreed cuts 1 and 3 answer it.
+- **The operator's Lab 10 steps,** in critical-path order with PASS lines: the agent's report
+  of 2026-11-07 03:00 UTC ("Lab 10: the operator's steps").
+
+**As written 2026-11-05:**
+
 - **Lab 10:** due Mon 2026-11-23 23:59 MT (2026-11-24 06:59 UTC), **19.2 days left**. 8 objectives (R1 to R4, V1 to V4): 0 done, 4 built and not walked, 2 in progress, 2 not started.
 - **The final SDN lab:** due 2026-11-30 (no hour recorded), **about 25 days left**. 11 graded rows (100 points), 3 bonus rows (+9) and 1 rule row: the rule done, 14 left.
 - **Open decisions, Lab 10: 0.** HEAL_TO_INTENT 18 (N1 to N13) and 19.10 (N14 to N24) are decided; 19.10 by the operator's approval in commit `c94d8b08`. What waits on the operator is trials, a password, switches turned on and sittings (the table).
