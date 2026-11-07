@@ -14,7 +14,8 @@ commit as the work it guards.
 and its parts (`scripts/nmas-gate`, `scripts/nmas-stage-guard`,
 `scripts/nmas-test-weakening-check`, `scripts/nmas-host-step-check`, `scripts/nmas-red-green`);
 this check itself; the ratchets (`tests/ratchet_lists.py`, `tests/coverage_baseline.json`);
-`CLAUDE.md`; and docs/TESTING.md's rule sections, NOT its per-file table (D3).
+`.claude/settings.json`, which enables the Claude Code hooks (C2640); `CLAUDE.md`; and
+docs/TESTING.md's rule sections, NOT its per-file table (D3).
 
 **What is a change.** Each path the commit adds, modifies, deletes or changes the type or mode
 of, against its first parent (`git diff-tree -r --no-renames --raw`, or `git diff-index
@@ -115,6 +116,11 @@ GUARDS = {
     "tests/test_claude_prose_edit_hook.py": WHOLE,
     "tests/test_claude_record_edits_hook.py": WHOLE,
     "tests/test_claude_restore_hook.py": WHOLE,
+    # C2640 (the operator, 2026-11-07: "Add .claude/settings.json to the guard checker's
+    # protected list, so a change to it needs my quoted approval like the other guards"): it
+    # enables the hooks above and C2612's scratch store, so an agent able to edit it unapproved
+    # could switch its own guards off.
+    ".claude/settings.json": WHOLE,
     "CLAUDE.md": WHOLE,
     "docs/TESTING.md": RULES,
 }

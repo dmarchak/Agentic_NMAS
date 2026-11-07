@@ -62,7 +62,9 @@ GUARD_PATHS = ["scripts/hooks/commit-msg", "scripts/hooks/a-new-hook", "scripts/
                "scripts/nmas-local-ci", "deploy/systemd/nmas-local-ci.service",
                "deploy/systemd/nmas-local-ci.timer",
                # The slice that caps the runner and its job containers (2026-11-04).
-               "deploy/systemd/nmas-local-ci.slice"]
+               "deploy/systemd/nmas-local-ci.slice",
+               # C2640 (the operator, 2026-11-07): the file that enables the Claude Code hooks.
+               ".claude/settings.json"]
 
 TESTING = """# What the test suite checks
 
