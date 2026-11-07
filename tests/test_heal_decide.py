@@ -211,8 +211,10 @@ class TestKinds:
         assert classify(GOLDEN + ROUTE4, related=True)["kind"] == "multi_device"
 
     def test_an_unmeasured_removal_is_blocked_naming_the_probe(self):
+        # A line no measured shape covers (the OSPF authentication shapes, this test's example
+        # until 2026-11-07, are measured exact now: C2373).
         got = classify(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf "
-                                "authentication message-digest\n")))
+                                "hello-interval 5\n")))
         assert "scripts/nmas-removal-probe" in got["blocked"]["why"]
 
     def test_the_strictest_unit_is_the_incidents_tier(self):
@@ -341,8 +343,9 @@ class TestOutcomes:
         assert d["program"] == [], "nothing is computed for a fix that is never sent"
 
     def test_a_blocked_unit_cannot_be_fixed_yet(self, lab):
-        d = one(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf authentication "
-                         "message-digest\n")))
+        # A line no measured shape covers (C2373 measured the OSPF authentication shapes).
+        d = one(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf hello-interval "
+                         "5\n")))
         assert d["outcome"] == "cant_fix" and "nmas-removal-probe" in d["words"]
 
     def test_a_program_that_would_cut_mercurys_path_is_tier_4(self, lab, monkeypatch):

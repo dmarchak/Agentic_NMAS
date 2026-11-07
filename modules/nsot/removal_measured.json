@@ -86,8 +86,20 @@
         "device": "s4",
         "result": "exact"
       },
+      "interface.ospf-authentication": {
+        "at": "2026-11-07T04:43:34Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
       "interface.ospf-cost": {
         "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
+      "interface.ospf-message-digest-key": {
+        "at": "2026-11-07T04:45:37Z",
         "detail": "",
         "device": "s1",
         "result": "exact"
@@ -107,6 +119,12 @@
       "ospf.max-metric": {
         "at": "2026-10-07T04:24:23Z",
         "detail": "every form (bare, on-startup, external-lsa, include-stub summary-lsa external-lsa) removed exactly by the bare `no max-metric router-lsa`; `no <the line>` had removed only the options (IOS treats them as modifiers of one setting)",
+        "device": "s1",
+        "result": "exact"
+      },
+      "ospf.network": {
+        "at": "2026-11-07T04:46:40Z",
+        "detail": "",
         "device": "s1",
         "result": "exact"
       },
@@ -196,8 +214,20 @@
         "device": "r3",
         "result": "exact"
       },
+      "interface.ospf-authentication": {
+        "at": "2026-11-07T04:43:06Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
       "interface.ospf-cost": {
         "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
+      "interface.ospf-message-digest-key": {
+        "at": "2026-11-07T04:43:18Z",
         "detail": "",
         "device": "r2",
         "result": "exact"
@@ -223,6 +253,12 @@
       "ospf.max-metric": {
         "at": "2026-10-07T04:22:17Z",
         "detail": "every form (bare, on-startup, external-lsa, include-stub summary-lsa external-lsa) removed exactly by the bare `no max-metric router-lsa`; `no <the line>` had removed only the options (IOS treats them as modifiers of one setting)",
+        "device": "r2",
+        "result": "exact"
+      },
+      "ospf.network": {
+        "at": "2026-11-07T04:43:25Z",
+        "detail": "",
         "device": "r2",
         "result": "exact"
       },

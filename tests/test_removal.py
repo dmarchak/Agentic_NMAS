@@ -425,7 +425,15 @@ class TestTheCommittedRecord:
             # re-measured with the bare negation, s1, 2026-10-07:
             "ospf.max-metric",
             # the IP SLA re-create's delete, s1 (and r2), 2026-10-21 (C1485's tuning sprint):
-            "global.ip-sla-operation"}
+            "global.ip-sla-operation",
+            # C2373 (H11, Lab 10's R3 and V1), s1 (and r2), 2026-11-07, the agent's run under
+            # the Phase 7 mode: the OSPF authentication lines and `router ospf`'s `network`.
+            "interface.ospf-authentication", "interface.ospf-message-digest-key",
+            "ospf.network"}
+        for dialect in ("cisco_ios", "cisco_iosxe"):
+            for key in ("interface.ospf-authentication", "interface.ospf-message-digest-key",
+                        "ospf.network"):
+                assert rec["by_dialect"][dialect][key]["result"] == "exact", (dialect, key)
         # vIOS-L2 rejects the IPv6 forms themselves: a fact about the platform, recorded.
         assert rows["interface.ipv6-ospf-cost"]["result"] == "unsupported"
         assert rows["ospfv3.max-metric"]["result"] == "unsupported"
