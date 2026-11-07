@@ -75,7 +75,12 @@ KIND_WORDS = {
 GUARD_KEYS = ("heal_topology_hold_minutes", "heal_max_devices_drifting",
               "heal_person_working_changes", "heal_person_working_minutes",
               "heal_grace_seconds", "heal_max_per_device_hour", "heal_max_per_network_hour",
-              "heal_repeat_halts_hours", "heal_max_removed_units", "heal_max_units")
+              "heal_repeat_halts_hours", "heal_max_removed_units", "heal_max_units",
+              "heal_flap_transitions", "heal_flap_minutes", "heal_bounce_per_port_hour")
+#: The action guards' settings (19.4, H19: 13d and 13e), added after the policies confirmed
+#: before them. A policy's fingerprint leaves each out while it holds its default, so a policy
+#: a person confirmed before H19 is still the one they confirmed (`policy_fingerprint`).
+ACTION_GUARD_KEYS = ("heal_flap_transitions", "heal_flap_minutes", "heal_bounce_per_port_hour")
 GUARD_WORDS = {
     "heal_topology_hold_minutes": "a recent change holds healing for (minutes)",
     "heal_max_devices_drifting": "more devices than this drifting at once escalates",
@@ -87,6 +92,9 @@ GUARD_WORDS = {
     "heal_repeat_halts_hours": "the same deviation healed twice within (hours) halts",
     "heal_max_removed_units": "removal units a heal",
     "heal_max_units": "sections a heal",
+    "heal_flap_transitions": "a flap: UPDOWN transitions of one interface",
+    "heal_flap_minutes": "a flap: within (minutes), the stability window too",
+    "heal_bounce_per_port_hour": "bounces per port an hour",
 }
 #: N1 and N3: on a network marked lab, a hard stop the network does not set reads these.
 LAB_DEFAULTS = {"heal_grace_seconds": 120, "heal_topology_hold_minutes": 60}
@@ -106,7 +114,8 @@ GUARDS = (
     (10, "rate: per network", ("heal_max_per_network_hour",)),
     (11, "the same deviation healed twice", ("heal_repeat_halts_hours",)),
     (12, "the program's size", ("heal_max_removed_units", "heal_max_units")),
-    (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY)),
+    # With its action guards, 13a to 13e (19.4; `heal.actions.GUARDS`, their own table).
+    (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + ACTION_GUARD_KEYS),
     (14, "a rolled-back heal", ()),
 )
 
@@ -165,8 +174,14 @@ def _hash(obj) -> str:
 
 def policy_fingerprint(values: dict) -> str:
     """The fingerprint of a policy's values (`POLICY_KEYS`): what a person confirmed, and what
-    each heal records as the authority it stands on (section 11)."""
-    return _hash({k: values.get(k) for k in POLICY_KEYS})
+    each heal records as the authority it stands on (section 11). An action guard's setting
+    (`ACTION_GUARD_KEYS`) counts only once it is not its default (absent counts as the default):
+    a policy confirmed before those settings existed keeps its fingerprint, and setting one to
+    anything else is a change a person confirms."""
+    from modules.settings_schema import DEFAULTS
+
+    return _hash({k: values.get(k) for k in POLICY_KEYS
+                  if k not in ACTION_GUARD_KEYS or values.get(k) not in (None, DEFAULTS.get(k))})
 
 
 def _words(value) -> str:
@@ -367,6 +382,9 @@ def _proposed(before: dict, proposed: dict, now: float) -> dict:
     for key, allowed, tier in ((KINDS_AUTO_KEY, TIER1_KINDS, "Tier 1"),
                                (KINDS_PROPOSE_KEY, TIER2_KINDS, "Tier 2")):
         got = after.get(key)
+        unbuilt = actions_not_built(got)
+        if unbuilt:
+            raise PolicyRefused(f"{key} names {unbuilt}, so no policy may allow it")
         if not isinstance(got, list) or any(k not in allowed for k in got):
             bad = got if not isinstance(got, list) else [k for k in got if k not in allowed]
             raise PolicyRefused(f"{key} names {tier} kinds only ({', '.join(allowed)}), not "
@@ -377,6 +395,19 @@ def _proposed(before: dict, proposed: dict, now: float) -> dict:
     if not ok:
         raise PolicyRefused(f"not a heal policy: {why}")
     return after
+
+
+def actions_not_built(kinds) -> str:
+    """The first action kind (19.4) in *kinds* whose operation is not built yet, in words
+    naming the part that builds it (`heal.actions.not_built`), or "": an unbuilt action is
+    refused by name, never allowed and never offered."""
+    from modules.heal import actions
+
+    for k in kinds if isinstance(kinds, list) else []:
+        why = actions.not_built(k) if k in actions.KINDS else ""
+        if why:
+            return f"{k} ({actions.KIND_WORDS[k]}): {why}"
+    return ""
 
 
 def plan(network: str, proposed: dict, now: float = None) -> dict:

@@ -40,4 +40,11 @@ ranking; "adjacency down with both ends at intent" built, "A can't reach B" H15'
 `diagnose_parse` (each read's parser, only where a real capture exists). Its record is the step
 log's ``diagnosis`` row. Read-only and deterministic: it sends no command that is not a read
 and calls no model.
+
+H19 is the action remediations' declarations (the amendment's item 2, 19.4): `actions` (the four
+action kinds in the tier table, guards 13a to 13e, `judge`; every kind refused by name until
+its part, H20 to H22, builds its operation), `flaps` (the `logs-tail` reader's after-store step
+recording each interface's UPDOWN transitions at their receive time, for 13e), and
+`diagnose.ACTIONS` with `diagnose.action_for` (an action chosen only from the diagnosis's first,
+complete hypothesis).
 """

@@ -1038,6 +1038,9 @@ def start(announce=None) -> list:
     # Board H, H2: the heal triggers ride on the readers' stores ("check this device now").
     from modules.heal import triggers as heal_triggers
     heal_triggers.install()
+    # Board H, H19: the flap record (guard 13e) rides on the logs-tail reader's store.
+    from modules.heal import flaps as heal_flaps
+    heal_flaps.install()
     if _STARTED_AT is None:
         # Rule 14: Mercury's start, the grace's start where a dependency's own cannot be read.
         mark_started(time.time())

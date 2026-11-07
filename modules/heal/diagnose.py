@@ -885,10 +885,19 @@ class Context:
 
 
 def finding(rule, claim: str, evidence: list, *, rule_out: str = "", todo: str = "",
-            incomplete=(), strength: str = "", agree: int = 1) -> dict:
-    return {"rule": rule.name, "layer": rule.layer, "strength": strength or rule.strength,
-            "claim": claim, "evidence": [e for e in evidence if e], "rule_out": rule_out,
-            "todo": todo, "incomplete": [w for w in incomplete if w], "agree": agree}
+            incomplete=(), strength: str = "", agree: int = 1, case: str = "",
+            at: dict = None) -> dict:
+    """One hypothesis. *case* names which of a rule's findings it is, where `ACTIONS` tells
+    them apart (``far_end_up``); *at* is the end it names (``{"host", "interface"}``), what an
+    action would act on. Both are kept only when given."""
+    out = {"rule": rule.name, "layer": rule.layer, "strength": strength or rule.strength,
+           "claim": claim, "evidence": [e for e in evidence if e], "rule_out": rule_out,
+           "todo": todo, "incomplete": [w for w in incomplete if w], "agree": agree}
+    if case:
+        out["case"] = case
+    if at:
+        out["at"] = dict(at)
+    return out
 
 
 def ev(reference: str, line: str = "", intent: str = "") -> dict:
@@ -952,6 +961,9 @@ def _r_down_admin_up(rule, ctx):
                                     ev(ctx.ref_of(far, "interfaces"),
                                        f"{ff['name']} is up, line protocol is {ff['protocol']}")],
                                 rule_out=f"{ctx.name(e)} reading up", agree=2,
+                                case="far_end_up",
+                                at={"host": e["host"], "interface": e["interface"],
+                                    "far_host": far["host"], "far_interface": far["interface"]},
                                 todo="Check the cable and the port at "
                                      f"{ctx.name(e)}" + (f" ({f['reason']})" if f["reason"]
                                                          else "")))
@@ -1292,6 +1304,7 @@ def _r_bgp_not_established(rule, ctx):
                                 f"remote-as {peer['remote_as']}")],
                             incomplete=[ctx.missing(e, "bgp_ping", 2),
                                         ctx.missing(e, "bgp_neighbor", 2)],
+                            at={"host": e["host"], "peer": peer["address"]},
                             rule_out="a ping from the update source failing (then the peer "
                                      "is unreachable, a network cause)",
                             todo="Read the session's last reset reason on History › Reads"))
@@ -1377,6 +1390,54 @@ def rank(hypotheses: list) -> list:
                                              1 if h["incomplete"] else 0,
                                              LAYERS.index(h["layer"]), -h["agree"],
                                              order.get(h["rule"], 99)))
+
+
+#: The fixed table from a diagnosis rule to the action it may choose (19.4, "When an action is
+#: chosen"; H19). Chosen only from the deterministic diagnosis, never from AI text: an action
+#: is chosen only when the diagnosis's FIRST hypothesis is complete and is the action's own
+#: rule (and its case, where the rule has several findings). Anything above it, a decisive MTU
+#: mismatch, a cabling mismatch or an access list, means no action: the action could not fix
+#: it. Each entry: the rule, its case ("" for any), the action kind (`heal.actions.KINDS`) and
+#: its variant. The dampening proposal is not chosen here: it is guard 13d's second need.
+ACTIONS = (
+    {"rule": "down_admin_up", "case": "far_end_up", "kind": "port_bounce", "variant": ""},
+    {"rule": "bgp_not_established", "case": "", "kind": "session_clear", "variant": "hard"},
+    {"rule": "bgp_fewer_routes", "case": "", "kind": "session_clear", "variant": "soft"},
+    {"rule": "ospf_not_full_one_neighbour", "case": "", "kind": "ospf_reset", "variant": ""},
+)
+#: The rules `ACTIONS` names that no runbook has yet, each with the part that builds it: the
+#: soft clear's "Established, fewer routes than intent expects" (H21) and the OSPF reset's
+#: "not FULL in two reads, exactly one neighbour on the interface" (`show ip ospf neighbor
+#: <if>`, H20).
+ACTION_RULES_NOT_BUILT = {"bgp_fewer_routes": "H21", "ospf_not_full_one_neighbour": "H20"}
+
+
+def action_for(diagnosis: dict) -> dict:
+    """The action *diagnosis* chooses by `ACTIONS`: ``{"state", "kind", "variant", "rule",
+    "at", "hypothesis", "words"}``, *state* ``chosen`` or ``none`` (then *kind* is "" and
+    *words* say why, naming the first hypothesis). Never a guess: no hypothesis, a first one
+    whose evidence is incomplete, or a first one that is no action's rule, chooses none."""
+    hyps = (diagnosis or {}).get("hypotheses") or []
+    none = {"state": "none", "kind": "", "variant": "", "rule": "", "at": {}, "hypothesis": ""}
+    if not hyps:
+        return dict(none, words="no action: the diagnosis found no cause, and an action is "
+                                "never a guess")
+    first = hyps[0]
+    said = f"the first hypothesis ({first.get('rule')}, {first.get('strength')})"
+    if first.get("incomplete"):
+        return dict(none, rule=first.get("rule") or "", hypothesis=first.get("id") or "",
+                    words=(f"no action: {said} lacks evidence "
+                           f"({(first.get('incomplete') or [''])[0]}), and an action is chosen "
+                           "only on a complete one"))
+    row = next((a for a in ACTIONS if a["rule"] == first.get("rule")
+                and a["case"] in ("", first.get("case") or "")), None)
+    if row is None:
+        return dict(none, rule=first.get("rule") or "", hypothesis=first.get("id") or "",
+                    words=f"no action: {said} is no action's rule, so an action could not fix it")
+    return {"state": "chosen", "kind": row["kind"], "variant": row["variant"],
+            "rule": row["rule"], "at": dict(first.get("at") or {}),
+            "hypothesis": first.get("id") or "",
+            "words": f"{said} is the {row['kind'].replace('_', ' ')}'s rule: {first['claim']}"}
 
 
 def _judge(ctx, out: dict, rules=None) -> None:

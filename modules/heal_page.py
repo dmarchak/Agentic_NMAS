@@ -46,6 +46,13 @@ GUARD_ROWS = (
     ("Largest heal", ("heal_max_removed_units", "heal_max_units"),
      "{0} removal unit (an added line; one feature on one interface, N13), or {1} section "
      "re-applied"),
+    # The action guards (19.4, H19): 13e's flap, measured from the logs; 13d's once. No bounce
+    # is built yet (H20), and the row says so rather than look like one that runs.
+    ("A flap: transitions of one interface within",
+     ("heal_flap_transitions", "heal_flap_minutes"), "{0} in {1} min"),
+    ("A port is bounced at most", ("heal_bounce_per_port_hour",),
+     "{0} an hour; a second need within the repeat window is a proposal (no bounce is built "
+     "yet: H20)"),
 )
 #: The guards that are always on, never settings (section 6).
 ALWAYS = (("Planned work, held devices, no-change windows", "always: never during them"),

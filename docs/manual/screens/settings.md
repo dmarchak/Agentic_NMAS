@@ -223,7 +223,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   its default, with **Edit…**, previewed and confirmed as a mode change is. On a network marked
   lab the grace period and the hold after a nearby change read 120 s and 60 minutes unless set.
   Planned work, held devices and no-change windows always stop a heal; a rolled-back heal always
-  halts the policy until a person lifts it.
+  halts the policy until a person lifts it. **A flap: transitions of one interface within** (3 in
+  10 minutes by default) is how Mercury measures a flapping port from the syslog it receives, and
+  **A port is bounced at most** (once an hour) is the limit on a port bounce; no bounce or other
+  action is built yet, and the row says so ([Self-healing](heal)).
 - **Who is told**: the team told about this network's healing (its addresses and webhooks are on
   [Notifications](#notifications)) and the events that tell it: can't fix, a fix waiting for a
   person, halted or held, every automatic heal, and cleared. **Save** is refused when the team

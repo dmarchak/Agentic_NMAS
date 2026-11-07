@@ -721,6 +721,14 @@ DEFAULTS: dict = {
     "heal_repeat_halts_hours": 24,
     "heal_max_removed_units": 1,
     "heal_max_units": 1,
+    # The action guards (board H's amendment, 19.4; H19), the operator's figures, N18: a flap is
+    # 3 UPDOWN transitions of one interface in 10 minutes (the stability window is the same 10
+    # minutes), revisited from the lab's recorded flaps; a port is bounced at most once an hour
+    # (13d, the lecture's "once"; the schema's ceiling), a second need within the repeat window
+    # being the dampening proposal. The flap record keeps an hour, so the window is at most 60.
+    "heal_flap_transitions": 3,
+    "heal_flap_minutes": 10,
+    "heal_bounce_per_port_hour": 1,
     # Who is told about a network's self-healing (board H, artboard A's "Who is told";
     # docs/HEAL_TO_INTENT.md section 10's `heal_notify_*`): the team (its id in the teams store,
     # modules/notify/teams.py) and the events that notify it. Each network's own, never
@@ -1201,6 +1209,9 @@ SCHEMA: dict = {
         "heal_repeat_halts_hours": {"type": "integer", "minimum": 1, "maximum": 720},
         "heal_max_removed_units": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_max_units": {"type": "integer", "minimum": 0, "maximum": 1},
+        "heal_flap_transitions": {"type": "integer", "minimum": 2, "maximum": 100},
+        "heal_flap_minutes": {"type": "integer", "minimum": 1, "maximum": 60},
+        "heal_bounce_per_port_hour": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_stopped": _BOOL,
         "heal_notify_team": {"type": "string", "pattern": r"^(|[0-9a-f]{12})$"},
         "heal_notify_events": {"type": "array", "uniqueItems": True, "items": {

@@ -86,7 +86,8 @@ SCOPES: dict = {
              "heal_max_devices_drifting", "heal_person_working_changes",
              "heal_person_working_minutes", "heal_grace_seconds", "heal_max_per_device_hour",
              "heal_max_per_network_hour", "heal_repeat_halts_hours", "heal_max_removed_units",
-             "heal_max_units"),
+             "heal_max_units", "heal_flap_transitions", "heal_flap_minutes",
+             "heal_bounce_per_port_hour"),
     # The device state class (N20, H28): the switch and who turned it on, one group. Each
     # network's own (`OWN_ONLY`): Default's on must not send every inheriting network's read
     # answers. Written only by `modules/ai/egress_classes.py` (`CARDLESS`), drawn on the

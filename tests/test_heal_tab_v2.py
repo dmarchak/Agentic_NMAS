@@ -92,7 +92,11 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
                   "Stop self-healing everywhere…", "Production's bar", "Policy fingerprint",
                   "Network stage", "A rolled-back heal", "4 never"):
         assert words in tab, words
-    assert tab.count(">Edit…</a>") == 8
+    # Ten, as the board draws them: section 6's eight and the amendment's flap and bounce rows
+    # (19.4, H19).
+    assert tab.count(">Edit…</a>") == 10
+    assert "A flap: transitions of one interface within" in tab and "3 in 10 min" in tab
+    assert "no bounce is built yet: H20" in tab
     # Off by default: nothing heals, so no Turn off; the defaults heal nothing.
     assert ">Turn off<" not in tab and "never confirmed: the defaults are in force" in tab
     for kind in H.TIER1_KINDS + H.TIER2_KINDS:

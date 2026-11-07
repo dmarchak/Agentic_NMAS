@@ -222,10 +222,16 @@ class TestKinds:
         assert (got["tier"], got["kind"]) == (4, "security_acl")
 
     def test_the_tiers_are_a_ceiling_in_code_matching_the_policy(self):
+        from modules.heal.actions import NOT_BUILT
         from modules.heal.policy import TIER1_KINDS, TIER2_KINDS
 
-        assert {k for k, t in K.TIER.items() if t == 1} == set(TIER1_KINDS)
-        assert {k for k, t in K.TIER.items() if t == 2} == set(TIER2_KINDS)
+        # An action kind (19.4, H19) is in the tier table before its operation is built, and
+        # no policy may name it until then; once built it must be in the policy's lists.
+        built = {k: t for k, t in K.TIER.items() if k not in NOT_BUILT}
+        assert {k for k, t in built.items() if t == 1} == set(TIER1_KINDS)
+        assert {k for k, t in built.items() if t == 2} == set(TIER2_KINDS)
+        assert set(NOT_BUILT) <= set(K.TIER)
+        assert not set(NOT_BUILT) & set(TIER1_KINDS + TIER2_KINDS)
 
     def test_a_record_holds_masked_lines_only(self):
         got = classify(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf "

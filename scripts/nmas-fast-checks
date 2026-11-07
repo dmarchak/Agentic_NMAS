@@ -80,6 +80,8 @@ SCANS = (
     "tests/test_platform_keying.py",
     # And at P6's transport's first gate: a new test walking the checkout on disk.
     "tests/test_source_index.py",
+    # And at H19's first gate: a new store keyed by a raw network name.
+    "tests/test_network_keys.py",
 )
 
 #: The operator's local files the publication scan reads (gitignored by design): copied from

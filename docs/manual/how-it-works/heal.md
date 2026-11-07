@@ -130,6 +130,30 @@ halts the network too; one that ended before its apply sent nothing and halts no
 says to read the heal's steps and the device against its golden and acknowledge with what you
 found, and, when the network halted, to lift the halt on its own item.
 
+## Actions, and the flap record {#actions}
+
+Some faults are not configuration: a port down while it is administratively up with its far end
+up, a BGP session that is not Established with no configuration cause, an OSPF adjacency stuck
+on an interface with one neighbour, or a port still flapping. For these self-healing will have
+**actions**: a port bounce, a clear of one named BGP neighbour, an OSPF adjacency reset (the
+bounce on that interface) and a dampening change proposed for a person. An action changes no
+configuration line, or proposes a change to intent, and is named as an action wherever it is
+drawn. An action is chosen only from the diagnosis's first hypothesis, when its evidence is
+complete and it is that action's rule; a decisive finding above it, such as an MTU mismatch,
+means no action. Before anything is sent it must pass its guards in order: the state read again
+just before the send (a port that came back by itself is left alone), the far end read up and
+not held or being worked on, never the interface Mercury reaches the device on, once (a second
+bounce of a port within the repeat window becomes the dampening proposal), and a flap measured
+from the logs.
+
+**None of these actions is built yet**: a policy cannot allow one, and each is refused by name
+("not built yet: H20"). What runs now is the **flap record**: each time the network's syslog is
+read, every `%LINK-3-UPDOWN` and `%LINEPROTO-5-UPDOWN` line is recorded as a transition of its
+interface at the time Mercury received it, never by the device's clock, for networks whose
+self-healing is on. A link and its line protocol going down together count once. A flap is
+**A flap: transitions of one interface within** on the Self-healing tab (3 in 10 minutes by
+default); the record keeps an hour.
+
 ## What it never does {#never}
 
 Self-healing never adds what intent does not hold, never acts on a device held by another

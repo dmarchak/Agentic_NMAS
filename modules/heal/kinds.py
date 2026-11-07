@@ -47,7 +47,12 @@ log = logging.getLogger(__name__)
 TIER = {"missing_line": 1, "changed_line": 1, "added_line": 1, "admin_down": 1,
         "process_reset": 2, "qos_policy": 2, "secret_added_back": 2,
         "physical": 3, "unknown_cause": 3,
-        "security_acl": 4, "credentials": 4, "management_path": 4, "multi_device": 4}
+        "security_acl": 4, "credentials": 4, "management_path": 4, "multi_device": 4,
+        # The action kinds (19.4, H19): no configuration line changes (a bounce, a clear), or a
+        # change to intent is proposed (dampening). `heal.actions` holds their guards, their
+        # choice from the diagnosis and which are built; a session clear is Tier 1 only on a
+        # network marked lab, Tier 2 elsewhere (N16, `actions.tier_of`).
+        "port_bounce": 1, "session_clear": 1, "ospf_reset": 1, "dampening_proposal": 2}
 KIND_WORDS = {
     "missing_line": "a missing line", "changed_line": "a changed line",
     "added_line": "an added line", "admin_down": "admin down where intent says up",
@@ -56,7 +61,12 @@ KIND_WORDS = {
     "physical": "a link down while administratively up, configuration at intent",
     "unknown_cause": "a symptom with the configuration at intent",
     "security_acl": "a security ACL", "credentials": "credentials or AAA",
-    "management_path": "Mercury's management path", "multi_device": "a cause spanning devices"}
+    "management_path": "Mercury's management path", "multi_device": "a cause spanning devices",
+    "port_bounce": "a port bounce (an action: configuration unchanged)",
+    "session_clear": "a BGP session clear of one named neighbour (an action)",
+    "ospf_reset": "an OSPF adjacency reset, the port bounce on its one-neighbour interface "
+                  "(an action)",
+    "dampening_proposal": "dampening proposed on a port still flapping (a change to intent)"}
 #: Why each Tier 3 and 4 kind is never automatic (section 5's last column).
 NEVER_WHY = {
     "physical": "configuration cannot fix a cable, an optic or a far end",
