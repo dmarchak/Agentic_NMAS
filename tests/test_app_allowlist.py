@@ -31,6 +31,9 @@ APPS = os.path.join(ROOT, "tests", "fixtures", "apps")
 APP = "dns_overrides"
 STUB = os.path.join(ROOT, "modules", "apps", "sdk", "mercury_app", "__init__.py")
 DECLARED = ("verdict_service",)
+#: The controller Python these cases are written for (the version-dependent cases, each
+#: target chosen, are tests/test_controller_python.py's).
+PYTHON = (3, 9)
 
 
 def sources(code: str = "", test: str = "", module: str = "app") -> runner.Sources:
@@ -40,7 +43,7 @@ def sources(code: str = "", test: str = "", module: str = "app") -> runner.Sourc
 
 
 def problems(code: str = "", test: str = "", declared=DECLARED) -> list:
-    return A.check(sources(code, test), declared).problems
+    return A.check(sources(code, test), declared, python=PYTHON).problems
 
 
 def read(path: str) -> str:
@@ -176,7 +179,8 @@ def test_the_tests_alone_take_pytest_raises_and_covers():
 
 
 def test_an_app_module_named_like_an_import_is_refused():
-    got = A.check(runner.Sources("planted", {"ryu": "x = 1\n"}, {}), DECLARED).problems
+    got = A.check(runner.Sources("planted", {"ryu": "x = 1\n"}, {}), DECLARED,
+                  python=PYTHON).problems
     assert got == ["ryu.py: an app's module is named like one it may import or is refused "
                    "('ryu'); name it for the app"]
 
@@ -202,7 +206,7 @@ def test_every_module_the_table_allows_is_imported_clean_and_every_other_refused
     "from mercury_app import egress as ask\nask('verdict_service')\n",
 ])
 def test_an_egress_call_to_a_declared_destination_is_allowed_and_listed(code):
-    found = A.check(sources(code), DECLARED)
+    found = A.check(sources(code), DECLARED, python=PYTHON)
     assert found.problems == []
     assert found.egress == ["app.py line 2: egress to 'verdict_service'"]
 
@@ -232,7 +236,7 @@ def test_egress_reached_through_the_apps_own_module_is_refused():
     found = A.check(runner.Sources("planted", {
         "helper": "from mercury_app import egress\n",
         "app": "from helper import egress\nimport helper\nhelper.egress('verdict_service')\n"},
-        {}), DECLARED)
+        {}), DECLARED, python=PYTHON)
     assert found.problems == [
         "app.py line 1: `from helper import egress`: mercury_app.egress is imported from "
         "mercury_app itself, where each call is read",
@@ -278,7 +282,7 @@ def test_python_3_9_syntax_is_allowed():
 # ── the SDK's contract stub ─────────────────────────────────────────────────────────────────
 
 def test_the_sdk_stub_publishes_the_names_the_allowlist_accepts_and_parses_as_3_9():
-    tree = ast.parse(read(STUB), feature_version=A.PYTHON)
+    tree = ast.parse(read(STUB), feature_version=PYTHON)
     published = next(n.value for n in tree.body if isinstance(n, ast.Assign)
                      and n.targets[0].id == "__all__")
     assert set(ast.literal_eval(published)) == A.SDK_NAMES
@@ -310,7 +314,7 @@ def test_the_guides_egress_example_passes_against_the_contract_fixtures_declarat
     block = guide[start + len("```python\n"):guide.index("```", start + 3)]
     with open(os.path.join(APPS, "dns-blacklist", "manifest.yml"), encoding="utf-8") as fh:
         declared = tuple(e["name"] for e in yaml.safe_load(fh)["egress"])
-    found = A.check(sources(block), declared)
+    found = A.check(sources(block), declared, python=PYTHON)
     assert found.problems == [] and len(found.egress) == 1
 
 
@@ -337,16 +341,26 @@ def app_folder(tmp_path) -> str:
 
 
 def test_the_manifest_check_lists_each_declared_destination_and_static_each_call(tmp_path,
-                                                                                capsys):
+                                                                                capsys,
+                                                                                monkeypatch):
+    from modules import config
+    from modules.sdn import controller_runtime
+
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "data" / "lists"))
+    controller_runtime.record_python("lab9", answer="Python 3.5.2",
+                                     read_command="/opt/app-venv/bin/python --version",
+                                     host="ctl-1", at="2026-11-05T18:00:00Z", by="read-run-1")
     folder = app_folder(tmp_path)
-    verdict = app_gate.check(folder)
+    verdict = app_gate.check(folder, python=controller_runtime.target("lab9"))
     manifest, static = verdict.check("manifest"), verdict.check("static")
     assert manifest.passed and manifest.details == (
         "egress 'verdict_service': to the address in the config's verdict_service.url: Asks "
         "the verdict service for a domain's verdict.",)
-    assert static.passed and len(static.details) == 1
+    assert static.passed and len(static.details) == 2
     assert static.details[0].startswith(f"{APP}.py line ")
     assert static.details[0].endswith(": egress to 'verdict_service'")
+    assert static.details[1].startswith("checked against Python 3.5 on lab9's controller")
     import importlib.machinery
     import importlib.util
 
@@ -354,7 +368,7 @@ def test_the_manifest_check_lists_each_declared_destination_and_static_each_call
                                                   os.path.join(ROOT, "scripts", "mercury"))
     cli = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     loader.exec_module(cli)
-    assert cli.main(["app", "check", folder]) == 1
+    assert cli.main(["app", "check", folder, "--network", "lab9"]) == 1
     out = capsys.readouterr().out
     assert f"  - {manifest.details[0]}\n" in out and f"  - {static.details[0]}\n" in out
 
@@ -364,9 +378,10 @@ def test_an_egress_the_manifest_does_not_declare_fails_the_static_check(tmp_path
     path = os.path.join(folder, f"{APP}.py")
     with open(path, "a", encoding="utf-8") as fh:
         fh.write("\n\ndef leak():\n    return egress(\"elsewhere\")\n")
-    static = app_gate.check(folder).check("static")
+    static = app_gate.check(folder, python=PYTHON).check("static")
     assert not static.passed and static.action == app_gate.ACTIONS["static"]
-    assert len(static.details) == 1 and "egress call to 'elsewhere'" in static.details[0]
+    assert len(static.details) == 2 and "egress call to 'elsewhere'" in static.details[0]
+    assert static.details[1] == "checked against Python 3.9, as given to the check"
 
 
 PLANTED = '''"""A test that logs if it is ever run: on import and in its body."""
@@ -402,7 +417,7 @@ def test_the_app_gate_runs_no_app_code(tmp_path, monkeypatch, caplog):
                         (mutate, "run_mutants")):
         monkeypatch.setattr(owner, name, never)
     caplog.set_level(logging.DEBUG)
-    verdict = app_gate.check(folder)
+    verdict = app_gate.check(folder, python=PYTHON)
     assert [r.getMessage() for r in caplog.records if r.name == "planted.app"] == []
     assert verdict.check("static").passed, verdict.check("static").details
     assert "tests/test_planted.py::test_planted" in " ".join(

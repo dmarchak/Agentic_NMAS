@@ -12,7 +12,12 @@ in order (`APP_CHECKS`, the job gate's names with two around them):
    for the reviewer;
 2. `spec`: the spec card, as the job gate reads it;
 3. `static`: the APP allowlist (`modules/apps/allowlist.py`), not the job's: every module and
-   test parsed as Python 3.9 and walked; passed, it lists each egress call it read;
+   test parsed as the controller's MEASURED Python (*python*: the network's record,
+   `modules/sdn/controller_runtime.target`, which the CLI's `--network` and Publish pass) and
+   walked, refusing grammar and standard-library names that version lacks; passed, it lists
+   each egress call it read and the version it checked against, with where that was
+   measured. A version not known (none recorded, unreadable, no network named) is "can't
+   tell", and the check FAILS on it, never passes and never assumes one;
 4. `tests`, 7. `mutation`, 8. `survivors`, 9. `reconcile`: they need the app's code run, so
    each says "not run: app tests run in the container harness, which lands with P2a" and
    fails until the harness runs them. A check not run is not passed, so an app's verdict
@@ -25,6 +30,7 @@ import os
 
 from modules.apps import allowlist
 from modules.apps.manifest import MANIFEST, load_manifest
+from modules.discovery import PYTHON_READ
 from modules.jobs import gate as job_gate, runner, spec as spec_card
 from modules.jobs.base import ContractError
 
@@ -38,8 +44,10 @@ RULES = {
                 "a test_*.py file at the folder's root or in tests/, and declares every "
                 "network destination the app reaches (egress), which the check lists.",
     **job_gate.RULES,
-    "static": "Every module and test of the app parses as Python 3.9, the controller's "
-              "interpreter, and passes the app allowlist: imports only of the app's own "
+    "static": "Every module and test of the app parses as the Python its network's controller "
+              "runs apps on, as measured and recorded for the network (never assumed), uses "
+              "no grammar, module or name that version lacks, and passes the app allowlist: "
+              "imports only of the app's own "
               f"modules, ryu, the app SDK ({allowlist.SDK}) and the standard library's data "
               "modules (in tests, also pytest's raises and modules.jobs' covers and refused); "
               "no network, process, file or interpreter module; the network reached only by "
@@ -66,6 +74,11 @@ ACTIONS = {
               f"{allowlist.SDK}.egress(\"<a destination {MANIFEST} declares>\", ...).",
     **{name: HARNESS_ACTION for name in HARNESS_CHECKS},
 }
+#: What clears a `static` check that cannot tell which Python to check against.
+PYTHON_ACTION = ("Name the app's network (`mercury app check <folder> --network <network>`). "
+                 "Its controller's Python is the network's record, measured by the controller "
+                 f"host's interpreter read (`{PYTHON_READ}`); a network whose record holds "
+                 "none cannot be checked until that read records it.")
 
 
 def _manifest_check(folder: str):
@@ -109,21 +122,33 @@ def _harness(name: str) -> job_gate.Check:
     return job_gate.Check(name, False, HARNESS_NOT_RUN, ACTIONS[name])
 
 
-def _static_check(sources, manifest):
-    found = allowlist.check(sources, manifest.egress_names() if manifest is not None else None)
+def _static_check(sources, manifest, python):
+    found = allowlist.check(sources, manifest.egress_names() if manifest is not None else None,
+                            python=python)
+    if found.python:
+        # Can't tell: the version-dependent checks could not run, so the check fails on that,
+        # and names whatever else the walk refused.
+        action = PYTHON_ACTION + (f" Then: {ACTIONS['static']}" if found.problems else "")
+        return job_gate.Check("static", False, found.python, action, tuple(found.problems))
     if found.problems:
         return job_gate.Check("static", False, f"{len(found.problems)} uses refused",
-                              ACTIONS["static"], tuple(found.problems))
+                              ACTIONS["static"], tuple(found.problems)
+                              + (f"checked against {found.target.words}",))
+    version = ".".join(str(n) for n in found.target.version)
+    if found.target.provisional:
+        version += " (provisional)"
     return job_gate.Check("static", True, f"{len(sources.job)} modules and "
-                                          f"{len(sources.tests)} test files allowed, "
-                                          f"{len(found.egress)} egress calls", "",
-                          tuple(found.egress))
+                                          f"{len(sources.tests)} test files allowed on Python "
+                                          f"{version}, {len(found.egress)} egress calls", "",
+                          tuple(found.egress) + (f"checked against {found.target.words}",))
 
 
-def check(folder, *, marks=(), changed_lines: dict = None) -> job_gate.Verdict:
-    """The app gate's verdict on *folder* (see the module's docstring). *marks* and
-    *changed_lines* are the job gate's, kept for Publish's one call: they are the mutation
-    step's, which the harness runs."""
+def check(folder, *, python=None, marks=(), changed_lines: dict = None) -> job_gate.Verdict:
+    """The app gate's verdict on *folder* (see the module's docstring). *python* is the
+    controller's Python to check against (`python_versions.as_target`'s: the network's
+    `controller_runtime.target`, or `(3, 5)`); None, the default, is not known, so `static`
+    says "can't tell" and fails. *marks* and *changed_lines* are the job gate's, kept for
+    Publish's one call: they are the mutation step's, which the harness runs."""
     del marks, changed_lines                # the harness's, once it lands
     folder = str(folder)
     manifest, manifest_check = _manifest_check(folder)
@@ -138,7 +163,7 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> job_gate.Verdict:
         for name in ("examples", "asserts"):
             by_name[name] = job_gate.not_run(name, why, "static")
     else:
-        by_name["static"] = _static_check(sources, manifest)
+        by_name["static"] = _static_check(sources, manifest, python)
         tests = []
         for file, tree in job_gate.parsed_tests(sources).items():
             found, _problems = runner.collect(tree, file)

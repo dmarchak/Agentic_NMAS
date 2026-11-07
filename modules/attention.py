@@ -270,6 +270,14 @@ ROW_KINDS = {
                                            "check the controller answers at its URL, then read "
                                            "its error on SDN › Controllers and correct its "
                                            "connection in the network's Settings if it moved"),
+    # The operator, 2026-11-07: a provisional controller Python replaced by a measured one of
+    # another minor version (modules/sdn/controller_runtime.py) leaves the network's apps
+    # checked against the wrong version.
+    ("controller_python", "changed"): ("a network's controller Python is now recorded as "
+                                       "another minor version than the one its apps were "
+                                       "checked against",
+                                       "re-check the network's apps against the version now "
+                                       "recorded, then acknowledge with what the check found"),
     ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
@@ -509,6 +517,12 @@ CLEARS = {
                                            "30 s) finds each controller named answering, or "
                                            "the connection is removed from the network's "
                                            "Settings"),
+    ("controller_python", "changed"): (("resolves", "acknowledge"),
+                                       "the network's apps are re-checked against the version "
+                                       "now recorded (the check of its registered apps records "
+                                       "the re-check), or a person acknowledges this change "
+                                       "with a reason; a later change of minor version raises "
+                                       "it again"),
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
@@ -629,7 +643,10 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # One interrupted heal (board H, H6), by its decision's id.
                                ("heal", "interrupted"),
                                # One can't-fix incident (board H, H8), by its incident's id.
-                               ("heal", "cant_fix")})
+                               ("heal", "cant_fix"),
+                               # One change of a network's controller Python, by its id
+                               # (the operator, 2026-11-07): a later change raises it again.
+                               ("controller_python", "changed")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -4004,6 +4021,68 @@ def sdn_controllers_source(found=None, now: float = None) -> dict:
                                      "reader row says why)" if never else "")))
 
 
+def controller_python_source(found=None, now: float = None) -> dict:
+    """Each network whose controller Python is now recorded as another minor version than the
+    one before it (the operator, 2026-11-07: a provisional value replaced by a measured one
+    that differs): ONE row per network, naming both values and their sources, when it
+    changed, and the action, re-checking the network's apps against the version now recorded.
+    `mercury app check --network` targets the network's record, so every app checked before
+    the change was checked against the old version. It resolves when the network's apps are
+    re-checked against the new version (`controller_runtime.record_recheck`, which the check
+    of its registered apps calls) or a person acknowledges the change (its event is the
+    change's id, so a later change raises it again). The same minor replacing a value records
+    no change and raises no row. One file read per network, never a host.
+    *found* is ``{network: controller_runtime.read's answer}`` (tests)."""
+    from modules.nsot import listref
+    from modules.sdn import controller_runtime as CR
+
+    started = time.time() if now is None else now
+    label = "SDN controllers: their Python"
+    try:
+        got = found if found is not None else {n: CR.read(n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("controller_python", label, read_at=started, took_ms=0,
+                             error=f"the networks' controller records could not be read: "
+                                   f"{type(exc).__name__}")
+    unreadable = [f"{n} ({g.get('error') or 'no reason given'})" for n, g in sorted(got.items())
+                  if g.get("state") == "unreadable"]
+    if unreadable:
+        return source_result("controller_python", label, read_at=started, took_ms=0,
+                             error=("the controller Python record could not be read for "
+                                    + ", ".join(unreadable)))
+    rows, recorded = [], 0
+    for network, g in sorted(got.items()):
+        if g.get("state") in ("measured", "provisional"):
+            recorded += 1
+        change = CR.unresolved_change(g)
+        if change is None:
+            continue
+        old, new = change.get("from") or {}, change.get("to") or {}
+        rows.append(row(
+            source="controller_python", kind="changed", key=network, level="warning",
+            since=_ts(change.get("at")), event=change.get("id"),
+            what=(f"{network}'s controller Python is now {new.get('version')}, not "
+                  f"{old.get('version')}: its apps were checked against "
+                  f"{old.get('version')}"),
+            cause=(f"Before: Python {old.get('version')}, {CR.source_words(old)}. Now: Python "
+                   f"{new.get('version')}, {CR.source_words(new)}, recorded "
+                   f"{change.get('at')}. `mercury app check --network {network}` checks "
+                   "against the version recorded, so an app checked before this was checked "
+                   "against the wrong version"),
+            operands={"network": network, "from": old.get("version") or "",
+                      "to": new.get("version") or "", "change": change.get("id") or "",
+                      "from_provisional": bool(old.get("provisional")),
+                      "to_provisional": bool(new.get("provisional"))},
+            action={"label": (f"Re-check each of {network}'s apps against Python "
+                              f"{new.get('version')} (`mercury app check <folder> --network "
+                              f"{network}`), then acknowledge with what the checks found"),
+                    "href": "/v2/sdn?" + urlencode({"list": network})}))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    return source_result("controller_python", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"{recorded} network(s) with a controller Python recorded: "
+                                  f"{len(rows)} changed since their apps were checked"))
+
+
 # ---------------------------------------------------------------------------
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
@@ -6062,7 +6141,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reload_unverified_source, host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
-           sdn_mitigation_source, sdn_controllers_source, notify_source, heal_source)
+           sdn_mitigation_source, sdn_controllers_source, notify_source, heal_source,
+           controller_python_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -6146,6 +6226,9 @@ SOURCE_KEYS = {
     "notify_source": ("notifications",),
     # Board H, H3: a decision recorded (`heal-decide`) re-reads the drift row it rides on.
     "heal_source": ("drift",),
+    # A controller Python recorded or a re-check recorded announces sdn
+    # (controller_runtime.ANNOUNCE_KEYS).
+    "controller_python_source": ("sdn",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.
@@ -6470,7 +6553,9 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 # A destination's last failed delivery (board H, H7).
                 "notify": "notify_source",
                 # An interrupted heal (board H, H6).
-                "heal": "heal_source"}
+                "heal": "heal_source",
+                # A change of a network's controller Python (the operator, 2026-11-07).
+                "controller_python": "controller_python_source"}
 
 #: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
 #: instructions are a true positive (someone aimed them at the model: investigate), benign or

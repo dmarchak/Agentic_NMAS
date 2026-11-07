@@ -89,11 +89,28 @@ _OVS = ("ovs-vsctl --version", "sudo -n ovs-vsctl show", "sudo -n ovs-vsctl list
 #: unit and its app folder are the host's, not Mercury's.
 _LINUX_HOST = ("cat /etc/os-release", "systemctl list-units --type=service --no-pager")
 #: The host's shaped reads: the controller unit's status, its User and command line, its unit
-#: file with every drop-in (`systemctl cat`), and one app folder under /opt.
+#: file with every drop-in (`systemctl cat`), one app folder under /opt, and the interpreter
+#: of a virtual environment under /opt (the controller app runtime's Python, which `mercury
+#: app check` targets: `modules/sdn/controller_runtime.py`; the operator, 2026-11-07).
 _UNIT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}\Z")
 _FOLDER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+#: The interpreter read, declared and not yet run by any read Mercury has (the controller
+#: host's read, P1b, runs it and records its answer through `controller_runtime`).
+PYTHON_READ = "/opt/<folder>/bin/python --version"
+_PYTHON_BIN = ("python", "python3")
 _LINUX_SHAPES = ("systemctl status --no-pager <unit>", "systemctl show -p User -p ExecStart <unit>",
-                 "systemctl cat <unit>", "ls -la /opt/<folder>")
+                 "systemctl cat <unit>", "ls -la /opt/<folder>", PYTHON_READ)
+
+
+def is_python_read(command) -> bool:
+    """Is *command* the interpreter read (`PYTHON_READ`: `/opt/<folder>/bin/python
+    --version`, or `python3`), whole, with one folder token of its shape?"""
+    words = str(command or "").split()
+    if len(words) != 2 or words[1] != "--version":
+        return False
+    parts = words[0].split("/")
+    return (len(parts) == 5 and parts[0] == "" and parts[1] == "opt"
+            and bool(_FOLDER.match(parts[2])) and parts[3] == "bin" and parts[4] in _PYTHON_BIN)
 
 #: driver -> the family in words, its capture list, the command its platform-map Test asks,
 #: why netmiko's `enable()` for it is never sent (``no_enable``), and the one write its
@@ -140,6 +157,8 @@ def _linux_refusal(command) -> str:
         return ""
     if len(words) == 3 and words[:2] == ["ls", "-la"] and words[2].startswith("/opt/") \
             and _FOLDER.match(words[2][len("/opt/"):]):
+        return ""
+    if is_python_read(command):
         return ""
     return (f"REFUSED: {str(command or '')[:80]!r} is not one of a Linux host's reads "
             f"({'; '.join(_LINUX_HOST + _LINUX_SHAPES)}). Nothing was sent.")

@@ -42,8 +42,9 @@ or anything that touches a device directly.
   - It reads every network-specific value from its config, never from constants.
   - On switch connect it reconciles: it adds or removes only the difference, and never wipes
     flows.
-  - It runs in the controller, on the controller's Python 3.9, and is held to its own
-    allowlist, not a job's ("An app's allowlist", below).
+  - It runs in the controller, on the Python its network's controller runs apps on, as
+    measured for that network, and is held to its own allowlist, not a job's ("An app's
+    allowlist" and "The controller's Python", below).
 - **Tests** sit at the folder's root, beside the code, or in its `tests/` subfolder, and
   nowhere else, for jobs and apps alike.
 
@@ -310,15 +311,88 @@ On a real network, Mercury compiles the config. The app never holds an address o
   stored or wrapped is refused at check. The `manifest` check lists each declared destination,
   and the `static` check each call it read, so the reviewer sees every place the app reaches.
   `dns_blacklist` declares one, its verdict service (`verdict_service.url`).
-- **Python 3.9:** every file is parsed as Python 3.9, the controller's interpreter
-  (`lab/sdn/ryu/Dockerfile`). That refuses `match`, `except*`, the `type` statement and type
-  parameters; it cannot refuse parenthesized context managers, PEP 701 f-strings, `a[*b]`, an
-  `int | str` annotation evaluated at run time, or a library call newer than 3.9, which only
-  a run on 3.9, in the container harness, finds.
+- **The controller's Python, as measured:** every file is held to the version the network's
+  controller runs apps on (below).
 
 The app SDK's contract is `modules/apps/sdk/mercury_app/` (a stub: the container harness and
 the controller deploy the working package beside the app). The allowlist is the check a person
 can read; the controller's container and its network policy are the boundary.
+
+### The controller's Python
+
+An app is checked against the Python its network's controller runs apps on, as measured for
+that network, never a fixed version (`modules/apps/python_versions.py`):
+- **The record:** `modules/sdn/controller_runtime.py` keeps each network's own, in the
+  network's folder (`controller_runtime.json`): the minor version, derived from what the
+  controller app runtime's interpreter answered (`Python 3.5.2` is 3.5), the read that
+  measured it (the Linux host capture list's `/opt/<folder>/bin/python --version`), the host,
+  and when. It is a measurement, so it is neither a setting nor NetBox data, and it is kept
+  outside the network's configuration repository, which the app gate never reads. There is
+  no default.
+- **Provisional, then measured:** a record may hold a provisional value (an earlier read's
+  answer that is not the app runtime's own interpreter, with a note saying why), which the
+  check targets and marks "(provisional)", naming its source. The interpreter read's
+  measurement replaces it, and a provisional value never replaces a measurement. A value
+  replaced by another minor version is a Needs attention row (`controller_python`,
+  `changed`) naming both values and their sources; it clears when the network's apps are
+  re-checked against the new version (`controller_runtime.record_recheck`) or a person
+  acknowledges the change, and a later change raises it again.
+- **The check:** `mercury app check <folder> --network <network>` (and
+  `modules.apps.gate.check(folder, python=controller_runtime.target(network))`, the one
+  function both call) parses each file with `ast.parse`'s `feature_version` at that version,
+  then refuses what the parser lets through (f-strings and asynchronous generators on 3.5,
+  among others) and every module, name or builtin newer than it, naming the file, the line,
+  the version it needs and the controller's. A module the allowlist allows is refused on a
+  controller older than it (`dataclasses` on 3.5).
+- **Not known is a failure:** without `--network`, or for a network whose record holds none
+  (or cannot be read), the `static` check says "can't tell: the controller's Python is not
+  measured for <network>" and fails, never passes and never assumes a version.
+- **On a 3.5 controller** (Ubuntu 16.04's `python3`): no f-strings (`str.format` or `%`), no
+  variable annotations, no underscores in numbers, no asynchronous generators or `await` in a
+  comprehension, no `:=`, no positional-only parameters, no `dataclasses`, `secrets` or
+  `contextvars`, and every other row of the tables below.
+- **What no static check sees:** a method of a value (`str.removeprefix`), an operator on a
+  type (`dict | dict`), a keyword argument newer than its call (`zip(strict=...)`),
+  behaviour (insertion-ordered dicts from 3.7) and grammar the parsed tree does not keep (a
+  parenthesized `with`, `f"{x=}"`, `a[*b]`): only the app's tests run on the controller's
+  version, in the container harness, find those.
+
+The tables, generated from the check's own (tests/test_controller_python.py holds this file
+and AUTHORING.md to them):
+
+<!-- the controller's Python: generated by modules/jobs/scaffold.controller_python_markdown -->
+
+| Grammar | Needs | On an older controller, instead |
+|---|---|---|
+| an f-string | 3.6 | use str.format or % |
+| a variable annotation (`x: int = 1`) | 3.6 | leave it out, or write a `# type:` comment |
+| an underscore in a numeric literal (`1_000`) | 3.6 | write the digits without it |
+| an asynchronous generator (`yield` in an `async def`) | 3.6 | a Ryu app runs on ryu.lib.hub's green threads: spawn and sleep |
+| `await` in a comprehension | 3.6 | await each in a loop |
+| `async for` in a comprehension | 3.6 | write the loop out |
+| an assignment expression (`:=`) | 3.8 | assign on its own line first |
+| a positional-only parameter (`/`) | 3.8 | leave the `/` out |
+| a decorator that is not a dotted name or a call of one (PEP 614) | 3.9 | bind it to a name first |
+| a `match` statement | 3.10 | use if and elif |
+| `except*` | 3.11 | use except |
+| the `type` statement | 3.12 | assign the alias |
+| a type parameter list (`def f[T]`) | 3.12 | leave it out |
+
+What the standard library lacks before each version, from Python's documentation ("New in version"); a 3.5 controller lacks every row:
+
+| Needs | Modules, names and builtins |
+|---|---|
+| 3.6 | `ModuleNotFoundError` (builtin), `collections.abc.AsyncGenerator`, `collections.abc.Collection`, `collections.abc.Reversible`, `enum.Flag`, `enum.IntFlag`, `enum.auto`, `hashlib.blake2b`, `hashlib.blake2s`, `hashlib.scrypt`, `hashlib.sha3_224`, `hashlib.sha3_256`, `hashlib.sha3_384`, `hashlib.sha3_512`, `hashlib.shake_128`, `hashlib.shake_256`, `math.tau`, `re.RegexFlag`, `secrets` (module), `typing.AsyncIterable` (3.5.2), `typing.AsyncIterator` (3.5.2), `typing.Awaitable` (3.5.2), `typing.ClassVar` (3.5.3), `typing.Collection`, `typing.ContextManager` (3.5.4, 3.6.0), `typing.Coroutine` (3.5.3), `typing.DefaultDict` (3.5.2), `typing.NewType` (3.5.2), `typing.TYPE_CHECKING` (3.5.2), `typing.Text` (3.5.2), `typing.Type` (3.5.2) |
+| 3.7 | `contextvars` (module), `dataclasses` (module), `datetime.date.fromisoformat`, `datetime.datetime.fromisoformat`, `datetime.time.fromisoformat`, `math.remainder`, `re.Match`, `re.Pattern`, `time.clock_gettime_ns`, `time.clock_settime_ns`, `time.monotonic_ns`, `time.perf_counter_ns`, `time.process_time_ns`, `time.thread_time_ns`, `time.thread_time`, `time.time_ns`, `typing.AsyncContextManager` (3.5.4, 3.6.2), `typing.AsyncGenerator` (3.6.1), `typing.ChainMap` (3.5.4, 3.6.1), `typing.Counter` (3.5.4, 3.6.1), `typing.Deque` (3.5.4, 3.6.1), `typing.NoReturn` (3.5.4, 3.6.2) |
+| 3.8 | `datetime.date.fromisocalendar`, `datetime.datetime.fromisocalendar`, `functools.cached_property`, `functools.singledispatchmethod`, `math.comb`, `math.dist`, `math.isqrt`, `math.perm`, `math.prod`, `typing.Final`, `typing.Literal`, `typing.OrderedDict` (3.7.2), `typing.Protocol`, `typing.SupportsIndex`, `typing.TypedDict`, `typing.final`, `typing.get_args`, `typing.get_origin`, `typing.runtime_checkable` |
+| 3.9 | `functools.cache`, `graphlib` (module), `math.lcm`, `math.nextafter`, `math.ulp`, `typing.Annotated`, `zoneinfo` (module) |
+| 3.10 | `EncodingWarning` (builtin), `aiter` (builtin), `anext` (builtin), `base64.b32hexdecode`, `base64.b32hexencode`, `itertools.pairwise`, `typing.Concatenate`, `typing.ParamSpec`, `typing.TypeAlias`, `typing.TypeGuard`, `typing.is_typeddict` |
+| 3.11 | `BaseExceptionGroup` (builtin), `ExceptionGroup` (builtin), `datetime.UTC`, `enum.EnumCheck`, `enum.EnumType`, `enum.FlagBoundary`, `enum.ReprEnum`, `enum.StrEnum`, `enum.global_enum`, `enum.member`, `enum.nonmember`, `enum.property`, `enum.verify`, `hashlib.file_digest`, `logging.getLevelNamesMapping`, `math.cbrt`, `math.exp2`, `re.NOFLAG`, `string.Template.get_identifiers`, `string.Template.is_valid`, `tomllib` (module), `typing.LiteralString`, `typing.Never`, `typing.NotRequired`, `typing.Required`, `typing.Self`, `typing.TypeVarTuple`, `typing.Unpack`, `typing.assert_never`, `typing.assert_type`, `typing.dataclass_transform`, `typing.reveal_type` |
+| 3.12 | `collections.abc.Buffer`, `itertools.batched`, `logging.getHandlerByName`, `logging.getHandlerNames`, `math.sumprod`, `typing.TypeAliasType`, `typing.override` |
+| 3.13 | `base64.z85decode`, `base64.z85encode`, `copy.replace`, `math.fma`, `re.PatternError`, `typing.ReadOnly`, `typing.TypeIs` |
+| 3.14 | `uuid.uuid6`, `uuid.uuid7`, `uuid.uuid8` |
+
+<!-- end of the controller's Python -->
 
 ## The lifecycle (jobs and apps alike)
 

@@ -1,7 +1,8 @@
 """`mercury_app`, the app SDK's contract (C2635; the SDN platform design revision 7, section
 11c.6): what a controller app imports to reach the network. Deployed beside the app by the
-container harness and the controller; this is the stub that fixes the contract, and it parses
-as Python 3.9, the controller's interpreter.
+container harness and the controller; this is the stub that fixes the contract, and it is
+written for the oldest controller Python the app check knows, 3.5 (no f-strings, no variable
+annotations), since it runs on whichever the network's controller measures.
 
 **`egress(destination, method="GET", path="", body=None, timeout=None)`** is the app's one way
 to the network. *destination* is a name its `manifest.yml` declares under `egress`, written as a

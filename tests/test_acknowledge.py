@@ -127,7 +127,10 @@ class TestEveryKindSaysHowItClears:
                                      # One interrupted heal, by its decision (board H, H6).
                                      ("heal", "interrupted"),
                                      # One can't-fix incident, by its id (board H, H8).
-                                     ("heal", "cant_fix")}
+                                     ("heal", "cant_fix"),
+                                     # One change of a network's controller Python, by its
+                                     # id (the operator, 2026-11-07).
+                                     ("controller_python", "changed")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

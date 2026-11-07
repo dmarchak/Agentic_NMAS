@@ -3,9 +3,14 @@
 11a, item 3): the gate an author's assistant iterates against, and a new folder to start from.
 
     mercury job check <folder> [--json]      the job gate's verdict, check by check
-    mercury app check <folder> [--json]      the app gate's: the manifest, the app allowlist
-                                             and the source's checks; it runs no app code,
-                                             whose checks wait for the container harness
+    mercury app check <folder> --network <name> [--json]
+                                             the app gate's: the manifest, the app allowlist
+                                             and the source's checks, against the Python the
+                                             network's controller runs apps on, as measured
+                                             (without --network, or with none recorded, its
+                                             static check says "can't tell" and fails); it
+                                             runs no app code, whose checks wait for the
+                                             container harness
     mercury job new <folder> --from <spec.yml> | --blank
     mercury app new <folder> --from <spec.yml> | --blank
 
@@ -38,11 +43,15 @@ adopt(__name__)
 OK, NOT_PASSED, REFUSED = 0, 1, 2
 
 
-def verdict_of(kind: str, folder: str):
-    """The one verdict: the job gate's, or the app gate's around it."""
+def verdict_of(kind: str, folder: str, network: str = ""):
+    """The one verdict: the job gate's, or the app gate's around it, given the network's
+    controller Python as recorded (`controller_runtime.target`; None when no network is
+    named, which the gate reads as not known)."""
     if kind == "app":
         from modules.apps import gate as app_gate
-        return app_gate.check(folder)
+        from modules.sdn import controller_runtime
+        python = controller_runtime.target(network) if network else None
+        return app_gate.check(folder, python=python)
     from modules.jobs import gate
     return gate.check(folder)
 
@@ -71,7 +80,7 @@ def check(kind: str, args) -> int:
     if not os.path.isdir(folder):
         print(f"mercury {kind} check: {folder} is not a folder", file=sys.stderr)
         return REFUSED
-    verdict = verdict_of(kind, folder)
+    verdict = verdict_of(kind, folder, getattr(args, "network", "") or "")
     if args.json:
         print(json.dumps(verdict.as_dict(), indent=2, sort_keys=False))
     else:
@@ -121,6 +130,10 @@ def parser() -> argparse.ArgumentParser:
         c = actions.add_parser("check", help=f"the {kind} gate's verdict on a folder")
         c.add_argument("folder")
         c.add_argument("--json", action="store_true", help="print the verdict as JSON, whole")
+        if kind == "app":
+            c.add_argument("--network", default="", metavar="NAME",
+                           help="the app's network: its controller's Python, as measured, is "
+                                "what the code is checked against")
         n = actions.add_parser("new", help=f"write a new {kind}'s folder")
         n.add_argument("folder", help="the folder to write")
         how = n.add_mutually_exclusive_group(required=True)

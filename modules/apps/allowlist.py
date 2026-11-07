@@ -28,14 +28,17 @@ value (passed, stored or wrapped) or reached through the app's own modules is re
 the file and line. The calls found are listed in the passed check, beside the manifest's
 declared destinations, for the reviewer.
 
-**Python 3.9, the controller's interpreter** (lab/sdn/ryu/Dockerfile: Ryu 4.34 on
-`python:3.9-slim`): every file is parsed with `ast.parse(..., feature_version=(3, 9))`. That
-refuses the grammar 3.9 lacks that the parser gates (measured on CI's Python 3.12.3,
-2026-11-06): `match` statements, `except*`, the `type` statement and type parameter lists. It
-does NOT refuse, being best-effort: parenthesized context managers, PEP 701 f-strings (a quote
-reused inside), `a[*b]`, an `int | str` annotation evaluated at run time, or any library call
-newer than 3.9 (`itertools.pairwise`, `zip(strict=...)`). Those are found only by running the
-tests on 3.9, in the container harness.
+**The controller's MEASURED Python, never a constant** (the operator, 2026-11-07;
+`modules/apps/python_versions.py`): `check` is given the target, the minor version its
+network's record holds (`modules/sdn/controller_runtime.target`), and parses every file with
+`ast.parse(..., feature_version=<that version>)`, then refuses what the parser lets through
+(f-strings and async generators on 3.5, among others: `python_versions.GRAMMAR`), and every
+module or name of an allowed module, or builtin, newer than the target (`python_versions.
+MODULES`, `NAMES`, `BUILTINS`: `dataclasses` is refused for a 3.5 controller, naming why). A
+target not known is "can't tell" (`Found.python`): the walk still runs, on Mercury's own
+grammar, so its other refusals are named, and the gate's `static` check fails on it. What no
+static check sees (a method of a value, behaviour) is found only by running the tests on the
+controller's version, in the container harness.
 
 **This is the check a person can read, not the boundary:** the controller's container and its
 network policy are. Ryu's own modules reach the network in ways a static list cannot follow
@@ -45,6 +48,7 @@ everywhere; the table refuses the ones named.
 import ast
 from dataclasses import dataclass, field
 
+from modules.apps import python_versions as versions
 from modules.jobs import gate as job_gate
 from modules.jobs import runner
 
@@ -53,8 +57,6 @@ SDK = "mercury_app"
 EGRESS = "egress"
 #: The SDK's published names (held to the stub's `__all__` by tests/test_app_allowlist.py).
 SDK_NAMES = frozenset({"EgressRefused", "NotDeployed", "egress"})
-#: The controller's interpreter: lab/sdn/ryu/Dockerfile's `python:3.9-slim`.
-PYTHON = (3, 9)
 #: What an app's tests may import besides the app's own allowlist, `{module: names}`.
 TEST_ONLY = {runner.PYTEST: frozenset({"raises"}), "modules.jobs": frozenset({"covers",
                                                                              "refused"})}
@@ -160,9 +162,12 @@ IMPORTS = {
 }
 
 
-def allowed_modules() -> list:
-    """The table's allowed entries, sorted (what the authoring guide lists)."""
-    return sorted(m for m, r in IMPORTS.items() if r.allowed)
+def allowed_modules(python=None) -> list:
+    """The table's allowed entries, sorted (what the authoring guide lists); given a target
+    (`python_versions.as_target`'s), only those its Python has."""
+    target = None if python is None else versions.as_target(python)
+    return sorted(m for m, r in IMPORTS.items() if r.allowed
+                  and (target is None or not versions.name_problem(m, target)))
 
 
 def lookup(module: str):
@@ -216,19 +221,24 @@ _OWN = "own:"
 
 @dataclass
 class Found:
-    """The allowlist's answer on a folder: one line per refusal (`problems`), and each egress
-    call it allowed (`egress`), as the reviewer reads them."""
+    """The allowlist's answer on a folder: one line per refusal (`problems`), each egress
+    call it allowed (`egress`), as the reviewer reads them, and the target it checked
+    against (`target`, a `python_versions.Target`). `python` is "" when the target could be
+    checked against, else its "can't tell" words, which no refusal list can stand in for."""
 
     problems: list
     egress: list
+    target: versions.Target = None
+    python: str = ""
 
 
 class _File:
     """One file's walk: its bindings (`{name: dotted target}`), and its refusals."""
 
-    def __init__(self, tree, file: str, own: set, is_test: bool, declared):
+    def __init__(self, tree, file: str, own: set, is_test: bool, declared,
+                 target: versions.Target):
         self.tree, self.file, self.own, self.is_test = tree, file, own, is_test
-        self.declared = declared
+        self.declared, self.target = declared, target
         self.bindings, self.problems, self.egress = {}, [], []
         self.modules = set()                # the bound names that are modules of the table
         self.parents = {}
@@ -241,6 +251,15 @@ class _File:
 
     def refuse(self, node, words: str) -> None:
         self.problems.append(f"{self.where(node)}: {words}")
+
+    def too_new(self, dotted: str) -> str:
+        """Why the controller's Python lacks *dotted* or a package of it, or ""."""
+        parts = dotted.split(".")
+        for i in range(1, len(parts) + 1):
+            why = versions.name_problem(".".join(parts[:i]), self.target)
+            if why:
+                return why
+        return ""
 
     # imports ─────────────────────────────────────────────────────────────────────────────
 
@@ -262,7 +281,7 @@ class _File:
                                "an app imports no Mercury module but, in its tests, "
                                "modules.jobs' covers and refused"))
                 continue
-            problem = module_problem(name)
+            problem = module_problem(name) or self.too_new(name)
             if problem:
                 self.refuse(node, f"`import {name}`: {problem}")
             else:
@@ -301,12 +320,13 @@ class _File:
             self.refuse(node, f"`from {module} import ...`: an app imports no Mercury module "
                               "but, in its tests, modules.jobs' covers and refused")
             return
-        problem = module_problem(module)
+        problem = module_problem(module) or self.too_new(module)
         if problem:
             self.refuse(node, f"`from {module} import ...`: {problem}")
             return
         for alias in node.names:
-            problem = name_problem(module, alias.name)
+            problem = name_problem(module, alias.name) or self.too_new(
+                f"{module}.{alias.name}")
             if problem:
                 self.refuse(node, f"`from {module} import {alias.name}`: {problem}")
             else:
@@ -345,6 +365,7 @@ class _File:
         current = target
         for attr in attrs:
             problem = name_problem(current, attr) if lookup(current)[1] is not None else ""
+            problem = problem or versions.name_problem(f"{current}.{attr}", self.target)
             if problem:
                 self.refuse(node, problem)
                 return
@@ -388,23 +409,49 @@ class _File:
                 self.visit_import(node)
             elif isinstance(node, ast.ImportFrom):
                 self.visit_import_from(node)
+        own_names = self.own_names()
         for node in ast.walk(self.tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
             if isinstance(node, (ast.Name, ast.Attribute)) and not isinstance(
                     self.parents.get(node), ast.Attribute):
                 self.visit_reference(node)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) \
+                    and node.id not in self.bindings and node.id not in own_names:
+                why = versions.name_problem(node.id, self.target) \
+                    if node.id in versions.BUILTINS else ""
+                if why:
+                    self.refuse(node, why)
             self.problems.extend(job_gate.node_problems(node, self.where(node), APP_REACH))
 
+    def own_names(self) -> set:
+        """Every name the file binds itself (so a builtin's name it binds is its own)."""
+        out = set()
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+                out.add(node.id)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out.add(node.name)
+            elif isinstance(node, ast.arg):
+                out.add(node.arg)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                out.add(node.name)
+        return out
 
-def parse_problem(text: str, file: str):
-    """`(tree, "")` for *text* parsed as Python 3.9, or `(None, why)`."""
+
+def parse_problem(text: str, file: str, target: versions.Target):
+    """`(tree, "")` for *text* parsed as *target*'s Python (Mercury's own grammar when the
+    target cannot be checked against), or `(None, why)`."""
+    checkable = not target.problem()
     try:
-        return ast.parse(text, filename=file, feature_version=PYTHON), ""
+        if checkable:
+            return ast.parse(text, filename=file, feature_version=tuple(target.version)), ""
+        return ast.parse(text, filename=file), ""
     except SyntaxError as exc:
-        return None, (f"{file} line {exc.lineno}: does not parse as Python "
-                      f"{'.'.join(map(str, PYTHON))}, the controller's interpreter "
-                      f"({exc.msg})")
+        python = (f"Python {versions.shown(target.version)}, the controller's interpreter"
+                  if checkable else "Python (Mercury's own grammar: the controller's is not "
+                                    "known)")
+        return None, f"{file} line {exc.lineno}: does not parse as {python} ({exc.msg})"
     except ValueError as exc:
         return None, f"{file}: does not parse ({exc})"
 
@@ -414,10 +461,13 @@ def _shadowing(module: str) -> bool:
     return top in {k.partition(".")[0] for k in IMPORTS} or top in (runner.PYTEST, "modules")
 
 
-def check(sources: "runner.Sources", declared) -> Found:
+def check(sources: "runner.Sources", declared, *, python) -> Found:
     """The app allowlist over *sources* (`runner.load_sources`'s): every module and test parsed
-    as Python 3.9 and walked (see the module's docstring). *declared* is the manifest's egress
-    names, or None when the manifest is refused."""
+    as the controller's Python and walked (see the module's docstring). *declared* is the
+    manifest's egress names, or None when the manifest is refused. *python* is the target
+    (`python_versions.as_target`'s: a Target, `(3, 5)`, or None for not known), required, so
+    no caller checks against a version it did not choose."""
+    target = versions.as_target(python)
     own = set(sources.job)
     problems, egress = [], []
     for module in sorted(own):
@@ -427,12 +477,13 @@ def check(sources: "runner.Sources", declared) -> Found:
     files = [(sources.job_file(m), t, False) for m, t in sources.job.items()]
     files += [(name, t, True) for name, t in sources.tests.items()]
     for file, text, is_test in files:
-        tree, why = parse_problem(text, file)
+        tree, why = parse_problem(text, file, target)
         if tree is None:
             problems.append(why)
             continue
-        walk = _File(tree, file, own, is_test, declared)
+        problems.extend(versions.grammar_problems(tree, text, file, target))
+        walk = _File(tree, file, own, is_test, declared, target)
         walk.walk()
         problems.extend(walk.problems)
         egress.extend(walk.egress)
-    return Found(problems, egress)
+    return Found(problems, egress, target, target.problem())

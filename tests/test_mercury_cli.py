@@ -138,12 +138,22 @@ def test_the_script_starts_and_answers_as_a_program(tmp_path):
 # ── app check: the manifest, the job gate's checks, and the reconcile test ───────────────────
 
 def test_app_check_runs_the_manifest_and_every_job_check_and_waits_for_the_harness(tmp_path,
-                                                                                  capsys):
+                                                                                  capsys,
+                                                                                  monkeypatch):
     """C2635: an app's tests run in the container harness, never in the job sandbox, so the
-    checks that run its code say so and fail; the ones that read its source pass."""
+    checks that run its code say so and fail; the ones that read its source pass, against the
+    network's measured controller Python."""
+    from modules import config
+    from modules.sdn import controller_runtime
+
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "data" / "lists"))
+    controller_runtime.record_python("lab9", answer="Python 3.5.2",
+                                     read_command="/opt/app-venv/bin/python --version",
+                                     host="ctl-1", at="2026-11-05T18:00:00Z", by="read-run-1")
     folder = copy(tmp_path, os.path.join(APPS, APP))
-    code, out, _err = run(capsys, "app", "check", folder)
-    verdict = app_gate.check(folder)
+    code, out, _err = run(capsys, "app", "check", folder, "--network", "lab9")
+    verdict = app_gate.check(folder, python=controller_runtime.target("lab9"))
     assert code == 1 and not verdict.passed
     assert [c.name for c in verdict.checks] == list(app_gate.APP_CHECKS)
     assert [c.name for c in verdict.checks if not c.passed] == [
@@ -154,8 +164,8 @@ def test_app_check_runs_the_manifest_and_every_job_check_and_waits_for_the_harne
         assert verdict.check(name).action == app_gate.HARNESS_ACTION
     assert out.splitlines()[0].endswith("NOT PASSED: 4 of 9 checks did not pass (tests, "
                                         "mutation, survivors, reconcile)")
-    assert verdict.check("static").summary == "1 modules and 1 test files allowed, 0 egress " \
-                                              "calls"
+    assert verdict.check("static").summary == "1 modules and 1 test files allowed on Python " \
+                                              "3.5, 0 egress calls"
     assert verdict.check("asserts").summary == "every one of 5 tests asserts"
 
 
@@ -191,7 +201,7 @@ def test_an_apps_tests_in_a_tests_subfolder_are_listed_and_read(tmp_path):
     os.mkdir(os.path.join(folder, "tests"))
     os.rename(os.path.join(folder, "test_app.py"), os.path.join(folder, "tests", "test_app.py"))
     rewrite(os.path.join(folder, "manifest.yml"), "  - test_app.py", "  - tests/test_app.py")
-    verdict = app_gate.check(folder)
+    verdict = app_gate.check(folder, python=(3, 5))
     assert verdict.check("manifest").passed, verdict.check("manifest").details
     assert verdict.check("static").passed and verdict.check("asserts").passed
     examples = verdict.check("examples")
@@ -370,7 +380,8 @@ def test_app_new_writes_a_valid_manifest_and_failing_tests(tmp_path, capsys):
     assert manifest.name == APP and manifest.tests == ("test_app.py",)
     assert manifest.summary == "Decides a DNS query by the app's overrides, before any " \
                                "verdict is asked."
-    verdict = app_gate.check(folder)
+    # What `new` writes is written for the oldest controller Python the check knows.
+    verdict = app_gate.check(folder, python=(3, 5))
     assert verdict.check("manifest").passed and verdict.check("static").passed
     assert verdict.check("examples").passed
     assert not verdict.check("tests").passed
