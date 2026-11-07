@@ -2,6 +2,18 @@
 # Agentic Network Management
 # Device Manager web application
 
+# The interpreter floor, first, before any import that might not parse on an older one: Mercury
+# needs Python 3.12 or later (CLAUDE.md, README.md, docs/DEPLOY_LINUX.md; C2634: it has not run
+# on 3.10 since 46e1519f). An older interpreter is refused here, naming itself, rather than
+# failing with a SyntaxError deep in an import. tests/test_python_floor.py holds this file to
+# the one floor.
+import sys as _sys
+
+PYTHON_FLOOR = (3, 12)
+if _sys.version_info < PYTHON_FLOOR:
+    _sys.exit(f"Mercury needs Python {'.'.join(map(str, PYTHON_FLOOR))} or later; this is "
+              f"{_sys.version.split()[0]} ({_sys.executable}). See docs/DEPLOY_LINUX.md.")
+
 # Load .env file if present (an install's environment variables, without needing system env vars;
 # the AI key it once held left with the AI family, D15).
 # Use an absolute path (where /settings once wrote it) instead of relying on

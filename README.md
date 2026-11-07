@@ -55,7 +55,7 @@ being retired ([docs/CUTOVER.md](docs/CUTOVER.md)).
 
 ## Running it
 
-Python 3.10 or later (CI uses 3.12.3).
+Python 3.12 or later (CI uses 3.12.3); `app.py` refuses an older interpreter, naming it.
 
 ```bash
 pip install -r requirements.txt

@@ -298,7 +298,7 @@ network devices. Built by [Author] as a capstone/school project. The app is
 a single-host management tool — not a multi-tenant SaaS — so there is no built-in
 auth system.
 
-**Stack:** Python 3.10+, Flask, Flask-SocketIO, Netmiko/Paramiko (SSH), Bootstrap 5,
+**Stack:** Python 3.12+, Flask, Flask-SocketIO, Netmiko/Paramiko (SSH), Bootstrap 5,
 NetBox (source of truth). Jenkins was removed in P.4 (docs/NSOT_CI.md); vis.js (today's
 topology tab) at 7.8; the Anthropic Claude API (the AI agent) with the AI family (D15,
 2026-10-14).

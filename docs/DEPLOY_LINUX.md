@@ -9,6 +9,9 @@ specific to any network — every address below is a placeholder.
 sudo apt install python3 python3-venv python3-pip git
 ```
 
+Python 3.12 or later is required: Ubuntu 24.04's `python3` is 3.12.3, the interpreter CI tests.
+Check with `python3 --version`. `app.py` refuses an older interpreter, naming it.
+
 `git` is required: the config repository uses `subprocess` git, not a library.
 
 ## Install
