@@ -29,7 +29,8 @@ plans, guards (but the grace period) or sends.
 **The runner** (`start`): one thread in the app's process, a pass over every network with a
 watching or ready incident each `PASS_SECONDS`, and at once when a trigger was sighted
 (`wake`); after each network's pass, the decision (`decide.run`, H3) takes what it settled,
-and each heal it made is started as its own job (`act.run`, H4). After every network's pass,
+each proposal it made is diagnosed once in its own thread (`auto_diagnose.proposals_step`,
+H17), and each heal it made is started as its own job (`act.run`, H4). After every network's pass,
 the notify step (H8, `_notify_step`): each new can't-fix on any network is told about once,
 with its AI analysis, by the notifier (`modules/heal_notice.py`), whose answer the runner
 never reads.
@@ -323,6 +324,14 @@ def _loop() -> None:
                 decide.run(name)
             except Exception as exc:
                 log.error("heal: %s's decision failed: %s: %s", name, type(exc).__name__, exc)
+            try:
+                # H17 (N14): each proposal waiting for a person is diagnosed once, in its own
+                # thread, so its card draws Mercury's diagnosis beside Approve….
+                from modules.heal import auto_diagnose
+                auto_diagnose.proposals_step(name)
+            except Exception as exc:
+                log.error("heal: %s's proposals could not be diagnosed: %s: %s", name,
+                          type(exc).__name__, exc)
             try:
                 # H4: each heal the decision made is taken once and run as its own job.
                 from modules.heal import act

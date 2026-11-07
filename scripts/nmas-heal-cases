@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+"""The AI analysis of a can't-fix, measured on its recorded cases (board H, part H13;
+docs/HEAL_TO_INTENT.md section 12; tests/fixtures/ai_cases/heal_analysis/recorded.json).
+
+    # on the host, the deployed copy run as a file: a walk's kept pack, printed as a case's
+    nmas-host nmas -- <checkout>/scripts/nmas-heal-cases --capture --network <network> \\
+        --incident <incident id> --out /tmp/heal-case-<key>.json
+    # no call: every case's pack captured, and its expectations borne out by it
+    nmas-host nmas -- <checkout>/scripts/nmas-heal-cases --check
+    # the measurement: three cases, ten runs each (about $1), recorded as an evaluation
+    nmas-host nmas -- <checkout>/scripts/nmas-heal-cases --network <network> --runs 10 \\
+        --stop-usd 2 --yes --out /tmp/heal-cases.json
+
+**Capture** (`--capture`): the newest analysis row Mercury kept for the incident
+(`heal_analysis.latest`), its pack as it was asked (masked, hashed when built), printed as a
+case's ``pack`` to be pasted into the case file: never typed, and nothing asked. An analysis
+refused because the feature was off keeps its pack too, so a walk captures with the feature
+off.
+
+**Check** (`--check`, and first thing in every recording): a case with no pack, or an
+expected citation its pack does not hold, stops the recording before anything is asked or
+spent (5), said by case (`cases.heal_analysis_unready`).
+
+**The recording** asks each case's pack as the feature asks it
+(`heal_analysis.ask_prepared(request_of(pack))`: the same request, the same check), with an
+evaluation's trigger, never a person's (C1784, C1846): the actor ``evaluation:<run>``, so its
+spend counts against the caps under its run. Without ``--yes`` it prints the estimate (cases ×
+runs × the measured cost per call) and asks nothing (6). Each run is judged by Explain's judge
+(`cases.heal_analysis_misses`); per case it reports the passes and whether every run passed
+(**reliable**), and the confidently wrong candidates (a miss on an answer not asking for a
+person). It prints the `heal_analysis.MEASURED` record a person writes into the module once the
+bar is met (each case reliable, none confidently wrong). A refusal that is Mercury's or the
+provider's stops the run with nothing more spent (3); a run past ``--stop-usd`` stops (4).
+``--out`` may not be inside the checkout (2).
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+CASES = os.path.join("tests", "fixtures", "ai_cases", "heal_analysis", "recorded.json")
+#: The analysis's states that are Mercury's or the provider's refusal: the run stops.
+STOPS = ("off", "capped", "no_answer")
+
+
+def capture(network: str, incident: str) -> dict:
+    """``{"pack"}`` or ``{"error"}``: the incident's newest kept analysis's pack."""
+    from modules.ai import heal_analysis as HA
+
+    try:
+        kept = HA.latest(network, incident)
+    except Exception as exc:                          # said, nothing written
+        return {"error": f"{network}'s analyses cannot be read: {exc}"}
+    if not kept:
+        return {"error": f"no analysis of {incident} is kept on {network}"}
+    if not kept.get("pack"):
+        return {"error": (f"the analysis of {incident} kept no pack (its state "
+                          f"{kept.get('state')!r}: {kept.get('words') or ''})")}
+    return {"pack": kept["pack"], "state": kept.get("state"), "at": kept.get("at")}
+
+
+def check(checkout: str, case_file: str = CASES) -> list:
+    from modules.ai import cases
+
+    data = cases.load(os.path.join(checkout, case_file))
+    return [p for c in data["cases"] for p in cases.heal_analysis_unready(c)]
+
+
+def estimate(n_cases: int, runs: int) -> dict:
+    from modules.ai import background
+    from modules.ai import heal_analysis as HA
+
+    got = background.measured_cost(HA.FEATURE)
+    per = got.get("usd_per_call") if isinstance(got, dict) else None
+    return {"calls": n_cases * runs, "usd_per_call": per,
+            "usd": None if per is None else round(per * n_cases * runs, 4),
+            "basis": (got or {}).get("basis", "") if isinstance(got, dict) else ""}
+
+
+def record(checkout: str, network: str, actor: str, out: str, runs: int, stop_usd: float,
+           yes: bool, case_file: str = CASES) -> int:
+    from modules.ai import cases, triggers
+    from modules.ai import heal_analysis as HA
+
+    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-heal-cases: --out {out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    actor, refusal = cases.evaluation_actor(actor, "heal-cases")
+    if refusal:
+        print(f"nmas-heal-cases: {refusal}", file=sys.stderr)
+        return 2
+    problems = check(checkout, case_file)
+    if problems:
+        for p in problems:
+            print(f"nmas-heal-cases: not ready: {p}", file=sys.stderr)
+        print(f"nmas-heal-cases: {len(problems)} case(s) not ready; nothing asked, nothing "
+              "spent", file=sys.stderr)
+        return 5
+    data = cases.load(os.path.join(checkout, case_file))
+    est = estimate(len(data["cases"]), runs)
+    print(f"nmas-heal-cases: {est['calls']} call(s), about "
+          f"{'$%.2f' % est['usd'] if est['usd'] is not None else 'an unmeasured cost'}"
+          f" ({est['basis']}); stops past ${stop_usd:.2f}")
+    if not yes:
+        print("nmas-heal-cases: nothing asked: run again with --yes to spend it",
+              file=sys.stderr)
+        return 6
+    by_case, spent, status = {c["n"]: [] for c in data["cases"]}, 0.0, 0
+    for run in range(1, runs + 1):
+        for case in data["cases"]:
+            prep = HA.request_of(case["pack"])
+            t0 = time.monotonic()
+            got = HA.ask_prepared(prep, trigger=triggers.evaluation(actor))
+            took = time.monotonic() - t0
+            spent += float(got.get("cost_usd") or 0)
+            if got.get("state") in STOPS:
+                print(f"nmas-heal-cases: run {run} case {case['n']} refused ({got['state']}: "
+                      f"{got.get('words', '')}); stopped, ${spent:.4f} spent", file=sys.stderr)
+                status = 3
+                break
+            misses = cases.heal_analysis_misses(case["expect"], got, case["pack"])
+            answer = cases.heal_analysis_answer(got)
+            by_case[case["n"]].append({
+                "run": run, "state": got.get("state"), "misses": misses,
+                "confidently_wrong_candidate": cases.confidently_wrong_candidate(misses,
+                                                                                 answer),
+                "call_id": got.get("call_id"), "cost_usd": got.get("cost_usd"),
+                "latency_s": round(took, 2)})
+            print(f"run {run} case {case['n']} ({case['key']}, {took:.1f} s): "
+                  + ("pass" if not misses else "MISS: " + "; ".join(misses)), flush=True)
+            if spent > stop_usd:
+                print(f"nmas-heal-cases: ${spent:.4f} spent, past --stop-usd; stopped",
+                      file=sys.stderr)
+                status = 4
+                break
+        if status:
+            break
+    summary = [{"n": n, "passed": sum(not r["misses"] for r in rs), "runs": len(rs),
+                "reliable": bool(rs) and all(not r["misses"] for r in rs),
+                "confidently_wrong": sum(r["confidently_wrong_candidate"] for r in rs)}
+               for n, rs in by_case.items()]
+    reliable = sum(s["reliable"] for s in summary)
+    measured = {"at": time.strftime("%Y-%m-%d", time.gmtime()), "prompt": list(HA.PROMPT),
+                "model": data["model"], "cases": len(summary), "runs": runs,
+                "reliable": reliable}
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"actor": actor, "runs": by_case, "summary": summary, "spent_usd": spent,
+                   "status": status, "measured": measured}, fh, indent=2, sort_keys=True)
+    for s in summary:
+        print(f"case {s['n']}: {s['passed']} of {s['runs']} runs passed, "
+              f"{'reliable' if s['reliable'] else 'NOT reliable'}, "
+              f"{s['confidently_wrong']} confidently wrong candidate(s)")
+    met = reliable == len(summary) and not any(s["confidently_wrong"] for s in summary)
+    print(f"nmas-heal-cases: {reliable} of {len(summary)} cases reliable, ${spent:.4f}; "
+          + (f"the bar is met: write heal_analysis.MEASURED = {measured!r}" if met and
+             not status else "the bar is not met: MEASURED stays None"))
+    return status
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--checkout", default=ROOT)
+    ap.add_argument("--network", default="")
+    ap.add_argument("--incident", default="")
+    ap.add_argument("--capture", action="store_true")
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--runs", type=int, default=10)
+    ap.add_argument("--stop-usd", type=float, default=2.0)
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--yes", action="store_true")
+    a = ap.parse_args(argv)
+    if a.check:
+        problems = check(a.checkout)
+        for p in problems:
+            print(f"nmas-heal-cases: not ready: {p}")
+        print(f"nmas-heal-cases: {len(problems)} case(s) not ready")
+        return 5 if problems else 0
+    if not a.network:
+        print("nmas-heal-cases: --network is required", file=sys.stderr)
+        return 2
+    if a.capture:
+        if not a.incident or not a.out:
+            print("nmas-heal-cases: --capture needs --incident and --out", file=sys.stderr)
+            return 2
+        got = capture(a.network, a.incident)
+        if got.get("error"):
+            print(f"nmas-heal-cases: {got['error']}", file=sys.stderr)
+            return 3
+        if os.path.realpath(a.out).startswith(os.path.realpath(a.checkout) + os.sep):
+            print(f"nmas-heal-cases: --out {a.out} is inside the checkout", file=sys.stderr)
+            return 2
+        with open(a.out, "w", encoding="utf-8") as fh:
+            json.dump({"pack": got["pack"]}, fh, indent=2, sort_keys=True)
+        print(f"nmas-heal-cases: {a.incident}'s pack ({got['state']}, kept {got['at']}) "
+              f"written to {a.out}: paste it as its case's pack")
+        return 0
+    if not a.out:
+        print("nmas-heal-cases: --out is required", file=sys.stderr)
+        return 2
+    return record(a.checkout, a.network, a.actor, a.out, a.runs, a.stop_usd, a.yes)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

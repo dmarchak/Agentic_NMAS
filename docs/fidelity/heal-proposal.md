@@ -14,7 +14,15 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
-Templates sha256: `8d29086cb75f0da05ebd0bbf1174640007cc64c4c8dd31039a19455568ab16eb`
+Templates sha256: `2abbcd1bd30323b0c68ae4df67278e73a8c84dc3b56343bdd987ae2d81b6ec5e`
+
+**Compared again 2026-11-07 for H17** (board H's amendment, artboard E's teal insert, approved
+with section 19 on 2026-11-04): the card gains Mercury's diagnosis under its table, before the
+refusals and Reason, where the insert sits. Compared by the template diff against the insert
+(no new shot: the walk's provider in tests/v2_context.py draws its done state, and
+tests/test_heal_auto_diagnose.py the rest). One deviation, logged (the table's "Mercury's
+diagnosis" row below). Every other region is unchanged. Templates sha256 before:
+`8d29086cb75f0da05ebd0bbf1174640007cc64c4c8dd31039a19455568ab16eb`.
 
 **Compared again 2026-11-04 ~17:3x UTC (C2472):** the card's `<form>` became a `div` of the same
 class, so Enter in the reason field submits nothing (measured first in a real browser: on a form
@@ -54,7 +62,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Expected effects | the adjacencies that drop, and the blast radius | what the measured reset drops (every adjacency of the process) until it forms again; no blast radius (no topology read is made for a card) | **deviation** (log: Board H E built: Expected effects without the blast radius) |
 | Verify reads | "both adjacencies FULL within 120 s; no duplicate router-id logged on r4" | the deploy's verify, then the neighbour table until the adjacencies formed before form again, within the measured bound; the symptom read again once released | **deviation** (log: Board H E built: Verify reads as the approved act verifies) |
 | Rollback | "the router-id back; a reset cannot be undone" | the same, and "It will not": the reset changes no configuration and no other process | **same** |
-| Mercury's diagnosis | the teal insert, "run before this was offered" | not drawn: an amendment for review, not approved | **later** (H17, the diagnosis on a Propose incident, once the amendment is approved) |
+| Mercury's diagnosis | the teal insert, "run before this was offered (16 reads on r6, r4 and r7, 18:12:10): 1. … (decisive; …); 2. … The fix proposed addresses hypothesis 1. The diagnosis" | built (H17, 2026-11-07), under the card's table: "Mercury's diagnosis, run before this was offered: <runbook>, N read(s) on <devices>, <when>", its chip, each hypothesis whole with its strength, layer and what to do, what was ruled out, where it stopped, and a link to the device's History with its (i); running ("it is drawn here when it ends. Approving does not wait for it"), not made (its words), unreadable and not yet recorded each said. It runs once the fix is proposed, in its own thread, so the card can be opened while it runs. It never says a fix addresses a hypothesis: only that the fix does not change a decisive physical or link first hypothesis | **deviation** (log: Board H built: the proposal's diagnosis runs once it is offered, and says only what a fix cannot change) |
 | Reason | the field, "at least three words" | the same; a refusal keeps what was typed | **same** |
 | Approve and run on r6 | the primary button | the same words; bound to the proposal's hash in the form; drawn disabled with each refusal (a reset not measured, a stop, taken already) as its title and a Not confirmable line above; busy on itself ("Approving…") | **same** |
 | Decline… | the button | **Decline**, posting the same reason at once; nothing is sent | **deviation** (log: Board H E built: Decline without its ellipsis) |

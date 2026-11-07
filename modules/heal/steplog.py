@@ -228,11 +228,13 @@ def _fold(rows: list) -> list:
                            "words": "", "mode": "", "kind": "", "policy": {}, "by": "",
                            "first_at": r.get("at"), "at": r.get("at"),
                            "epoch": float(r.get("epoch") or 0), "state": "decided",
-                           "units": [], "triggers": [], "person": "", "guard": {}}
+                           "units": [], "triggers": [], "person": "", "guard": {}, "tier": 0}
         if r.get("decision") and r["decision"] not in e["decisions"]:
             e["decisions"].append(r["decision"])
         e["at"], e["epoch"] = r.get("at"), float(r.get("epoch") or 0)
-        for k in ("mode", "kind"):
+        # The tier its decision recorded (H17: an Alert incident, Tier 3, is diagnosed before
+        # its notice).
+        for k in ("mode", "kind", "tier"):
             if r.get(k):
                 e[k] = r[k]
         if (r.get("policy") or {}).get("fingerprint"):

@@ -135,7 +135,9 @@ SECTION_WORDS = {"alert": "The alert",
                                      "the onset",
                  "sdn":"The SDN flows and port rates the detection rests on",
                  "incident": "The heal incident: what started it",
-                 "tried": "What Mercury tried, each step and its result"}
+                 "tried": "What Mercury tried, each step and its result",
+                 "diagnosis": "Mercury's diagnosis: its own read-only runbook's ranked "
+                              "hypotheses, by kind"}
 #: The section only an SDN detection's pack holds (`build_detection`, PHASE8_PLAN 17.1 S6), kept
 #: out of `SECTIONS` so a Grafana alert's pack, and Explain's pack format (the cached prefix,
 #: `explain.vocabulary`), are unchanged: the section rides as pack data, naming itself in its
@@ -1554,6 +1556,9 @@ def build_detection(inst: dict, *, network: str, sdn: dict, now: float, trigger:
 #: section is, so an alert's pack and Explain's pack format are unchanged.
 INCIDENT_SECTION = "incident"
 TRIED_SECTION = "tried"
+#: Mercury's diagnosis of the incident (H17, 19.3), when self-healing ran one before asking:
+#: each hypothesis a piece ``diag:<n>``, each check it ruled out ``diag:ruled-out:<n>``.
+DIAGNOSIS_SECTION = "diagnosis"
 #: The most tried steps a pack keeps (an incident's decisions and its act, each step one line):
 #: the first ones, the rest counted. A decision is about 8 steps and an act about 11
 #: (`decide.STEPS`, `act.STEPS`); an incident checked again later holds each decision.
@@ -1643,6 +1648,47 @@ def tried_section(entry: dict, units, now: float) -> dict:
     return _section(TRIED_SECTION, source, now, "ok", pieces=pieces, **extra)
 
 
+def diagnosis_section(entry: dict, now: float) -> dict:
+    """Mercury's diagnosis (H17; 19.3, N23): the diagnosis attached to the incident's step log
+    entry (`steplog.incidents`' ``diagnosis``), BY KIND only (`auto_diagnose.summary`): each
+    hypothesis its rule's words, the ends or hops it read, its layer and strength, cited as
+    ``diag:<n>``; each check it ruled out as ``diag:ruled-out:<n>``. Never the values it
+    compared (N23: those wait for the device state class, C2419), an access list's entries, a
+    key or a configuration line; any of the incident's lines its words held is withheld. None
+    attached, or none made, is said."""
+    from modules.heal import auto_diagnose as AD
+
+    source = "the heal step log (modules/heal/steplog.py), this incident's diagnosis"
+    d = (entry or {}).get("diagnosis") or {}
+    if not d:
+        return _section(DIAGNOSIS_SECTION, source, now, "absent",
+                        "no diagnosis ran for this incident (only an Alert incident is "
+                        "diagnosed before it is told, and only once its runbook fits)")
+    s = AD.summary(d)
+    if s["state"] != "done":
+        return _section(DIAGNOSIS_SECTION, source, now, "absent", s["words"] or "not diagnosed")
+    lines = config_lines(entry, ())
+    pieces = [{"what": "hypothesis", "words": withhold(h["claim"], lines),
+               "layer": h["layer"], "strength": h["strength"],
+               "incomplete": h["incomplete"]} for h in s["hypotheses"]]
+    pieces += [{"what": "ruled_out", "words": withhold(r, lines)} for r in s["ruled_out"]]
+    out = _section(DIAGNOSIS_SECTION, source, now, "ok" if s["hypotheses"] else "empty",
+                   pieces=pieces, reads=s["reads"], outcome_words=s["words"],
+                   values="not sent: the values a diagnosis compared are the device state "
+                          "class, which is not built (C2419)")
+    n = 0
+    for p in out["pieces"]:
+        if p["what"] == "hypothesis":
+            n += 1
+            p["ref"] = f"diag:{n}"
+    m = 0
+    for p in out["pieces"]:
+        if p["what"] == "ruled_out":
+            m += 1
+            p["ref"] = f"diag:ruled-out:{m}"
+    return out
+
+
 def incident_section(incident: dict, now: float) -> dict:
     """What started the incident (`modules/heal/incidents.py`'s record): its device, its cause
     or symptom, and its newest triggers, each its kind, time, source and words (a log line's
@@ -1678,8 +1724,9 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
     source that fails is its section saying so. Its sections: what started it (`incident`),
     the device, its recent History, its Intent check (with the masked intent-diff lines, at most
     `INTENT_LINES`, N10), its neighbours, the network around it as observed, its health and the
-    monitoring side, its log lines around the incident's opening, and what Mercury tried
-    (`tried`), the incident's configuration said only by kind. *entry* is the incident's step
+    monitoring side, its log lines around the incident's opening, what Mercury tried
+    (`tried`), the incident's configuration said only by kind, and Mercury's diagnosis by kind
+    (`diagnosis`, H17). *entry* is the incident's step
     log entry, *units* its decisions' masked units; *now* the incident's time (its latest
     step), as of which every time series is read."""
     from modules import device_page
@@ -1737,6 +1784,7 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
                                          _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
     sections.append(tried_section(entry, units, clock))
+    sections.append(diagnosis_section(entry, clock))
     for s in sections:
         mark(s, "captured", "read when self-healing stopped at can't fix")
     pack = {"schema": SCHEMA, "id": incident_pack_id(network, (incident or {}).get("id") or (

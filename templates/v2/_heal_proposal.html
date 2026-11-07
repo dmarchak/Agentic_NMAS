@@ -46,6 +46,33 @@
     {%- if v.reset %}<dt>It will not</dt><dd>{{ v.reset.not_doing }}</dd>{% endif %}
     <dt>Proposal hash</dt><dd class="mono">{{ v.hash }}</dd>
   </dl>
+  {#- Board H's amendment, artboard E's insert (H17; 19.3, N14): Mercury's diagnosis, run
+      once the fix was proposed, read-only; it never withdraws the proposal. -#}
+  {%- set dg = v.diagnosis or {} %}
+  <div class="heal-diag">
+  {%- if dg.state == 'done' %}
+  {%- set dd = dg.result %}
+  <p class="small"><strong>Mercury's diagnosis</strong>, run before this was offered: <span title="diagnosis of incident {{ dd.incident }} by {{ dd.actor }}">{{ dd.runbook_words }}</span>, {{ dd.commands }} read(s) on {{ dd.devices | join(', ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}: {{ badge(dd.chip, dd.level) }}</p>
+  {%- if dd.hypotheses %}
+  <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
+  {%- else %}
+  <p class="small">{{ dd.words or 'no cause found in what Mercury reads' }}.</p>
+  {%- endif %}
+  {%- if dd.more %}<p class="small muted">{{ dd.more }} more not shown.</p>{% endif %}
+  {%- if dd.ruled_out %}<p class="small muted">Ruled out: {{ dd.ruled_out | join('; ') }}.</p>{% endif %}
+  {%- if dd.stopped %}<p class="small warn-text">{{ dd.stopped }}.</p>{% endif %}
+  {%- if dg.addresses %}<p class="small warn-text">{{ dg.addresses[:1] | upper }}{{ dg.addresses[1:] }}.</p>{% endif %}
+  {%- elif dg.state == 'not' %}
+  <p class="small warn-text"><strong>Mercury's diagnosis:</strong> {{ dg.result.words }}.</p>
+  {%- elif dg.state == 'running' %}
+  <p class="small muted"><strong>Mercury's diagnosis</strong> is running (diagnosis <span class="mono">{{ dg.running.diagnosis }}</span> on {{ host }}, by {{ dg.running.actor }}{% if dg.running.since %}, since {{ stamp(dg.running.since) }}{% endif %}); it is drawn here when it ends. Approving does not wait for it.</p>
+  {%- elif dg.state == 'unreadable' %}
+  <p class="small warn-text"><strong>Mercury's diagnosis</strong> cannot be read: {{ dg.error }}.</p>
+  {%- else %}
+  <p class="small muted"><strong>Mercury's diagnosis</strong> is not recorded yet: self-healing runs one once a fix is proposed, read-only.</p>
+  {%- endif %}
+  <p class="small"><a href="{{ url_for('device_v2.device', name=host, list=list_name, tab='history') }}">The diagnosis and each read on {{ host }}'s History</a> {{ how('diagnose', 'automatic', compact=True, op='a diagnosis') }}</p>
+  </div>
   {%- for r in v.refusals %}
   <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Not confirmable:</strong> {{ r }}.</p></div>
   {%- endfor %}

@@ -21,7 +21,9 @@ incident's evidence. **It advises only.**
 started it, the device, History, the Intent check with its masked intent-diff lines, at most 20
 (N10), neighbours, the network as observed, health, the monitoring side, log lines) and its
 ``tried`` section, each step from the step log (`steplog.incident`, H6's seam) cited as
-``tried:<n>``. **Egress, by kind:** the step log's configuration lines never leave as text:
+``tried:<n>``, and Mercury's diagnosis when self-healing ran one first (H17: an Alert
+incident's, `evidence_pack.diagnosis_section`), each hypothesis cited as ``diag:<n>``, by kind
+(N23: the values it compared are not sent). **Egress, by kind:** the step log's configuration lines never leave as text:
 each unit is said by its kind ("a security ACL added outside intent on Gi2, 2 lines, content
 withheld", `evidence_pack.unit_by_kind`), the program by its size and hash, and any of the
 incident's lines a step's words held is withheld (`evidence_pack.withhold`). The pack's own
@@ -70,7 +72,7 @@ FINDING = "heal_incident"
 CANT_FIX = ("cant_fix", "symptom_remains", "rolled_back")
 #: The pack's sections, in the order the pack format names them.
 SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
-            "observer", "logs", "tried")
+            "observer", "logs", "tried", "diagnosis")
 #: The can't-fix incidents a day are measured over this many days of the heal's own record.
 FREQUENCY_DAYS = 14
 #: At most this many hypotheses (Explain's).
@@ -305,7 +307,13 @@ def tried_format() -> str:
         "section's lines are the committed golden's difference from intent, masked.",
         "The section's outcome is where self-healing stopped: can't fix (it will not or cannot "
         "fix this kind), symptom remains (the configuration healed, the symptom did not "
-        "clear), or rolled back (verify failed and Mercury undid its own fix)."])
+        "clear), or rolled back (verify failed and Mercury undid its own fix).",
+        "diagnosis is Mercury's own diagnosis of the incident, when it ran one before asking: "
+        "a fixed runbook of read-only device reads compared with committed intent, no model. "
+        "Each hypothesis is a piece diag:<n>, in rank order (decisive before strong before "
+        "circumstantial, then bottom-up by layer), said by its rule, the ends or hops it read "
+        "and its strength; each check it ruled out is diag:ruled-out:<n>. The values it "
+        "compared are not sent. Its state absent says why none ran."])
 
 
 def _decide_steps():

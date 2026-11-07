@@ -1,0 +1,67 @@
+{
+  "task": "heal_analysis",
+  "network": "default",
+  "prompt": ["heal_analysis", 1],
+  "model": "claude-sonnet-5-5",
+  "source": "docs/HEAL_TO_INTENT.md section 12 (H13): three recorded cases, ten runs each; each case's pack is captured in the build's lab runs (section 15's walks 7, 8 and 9) by scripts/nmas-heal-cases --capture, never typed. The expectations below were written 2026-11-07, before any pack was captured and before any run.",
+  "bar": "each case reliable over 10 runs (every run passes), and none confidently wrong (15.12): a run that misses on an answer not asking for a person is a confidently wrong candidate, judged by a person on the run named",
+  "cases": [
+    {
+      "n": 1,
+      "key": "C4",
+      "walk": 7,
+      "title": "won't fix, notifies: an inbound ACL permitting TCP and UDP only, added outside intent on r6 Gi2, the interface Mercury reaches r6 by; r7 unreachable folded in",
+      "pack": null,
+      "awaiting": "walk 7 (C4) on r6: the pack is the analysis row's, captured by --capture once the walk's can't-fix is kept",
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "hypotheses_max": 3,
+        "lead_cites": [["tried:*"]],
+        "says_any": ["acl", "access list", "access-list", "access-group"],
+        "says_why": "the cause is the security ACL the decision classified; the tried steps say so",
+        "no_text": ["remove the acl automatically", "self-healing will remove"],
+        "no_text_why": "self-healing never removes a security control: a person decides"
+      },
+      "flag": "whether the claim explains why OSPF dropped (the ACL permits TCP and UDP only, so IP protocol 89 is dropped) is a person's to judge on the recording"
+    },
+    {
+      "n": 2,
+      "key": "I5",
+      "walk": 8,
+      "title": "physical: r3 Gi4 down while administratively up, the configuration at intent, the link flapping from r4's side",
+      "pack": null,
+      "awaiting": "walk 8 (I5) on r3 and r4: captured by --capture once the walk's can't-fix is kept; its pack carries Mercury's diagnosis (H17) as the diagnosis section",
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "hypotheses_max": 3,
+        "lead_cites": [["tried:*", "diagnosis:*", "logs:*", "incident:*"]],
+        "says_any": ["physical", "link", "cable", "far end", "far-end", "optic", "flap", "interface down", "port"],
+        "says_why": "the configuration is at intent, so the cause is outside it",
+        "no_text": ["access list", "access-list", "configuration change caused"],
+        "no_text_why": "nothing in the configuration departed from intent"
+      },
+      "flag": "whether the analysis names the person working on r4 (guard 7) is a person's to judge on the recording"
+    },
+    {
+      "n": 3,
+      "key": "V1",
+      "walk": 9,
+      "title": "a failed verify, rolled back: an OSPF network statement added outside intent, its removal dropping an adjacency verify did not predict, so Mercury undid its own fix",
+      "pack": null,
+      "awaiting": "walk 9 (V1) on an IOS-XE router from the lab's intent: captured by --capture once the walk's rolled-back incident is kept (not staged if no link fits, said)",
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "hypotheses_max": 3,
+        "lead_cites": [["tried:*"]],
+        "says_any": ["ospf", "adjacency", "neighbor", "neighbour", "network statement", "rolled back", "verify"],
+        "says_why": "verify saw the adjacency drop and rolled the heal back; the tried steps say so",
+        "no_text": ["physical fault", "cable"],
+        "no_text_why": "the drop followed Mercury's own removal, not a link"
+      },
+      "flag": "whether the analysis says the statement may belong in intent (the halt's What to do) is a person's to judge on the recording"
+    }
+  ]
+}

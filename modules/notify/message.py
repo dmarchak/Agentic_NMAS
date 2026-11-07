@@ -17,6 +17,13 @@ follow-up, the event ``analysis``, threaded under the incident's first message (
 notifier's (`modules/heal_notice.py`), which has withheld the incident's configuration lines
 from it.
 
+**Mercury's diagnosis block** (H17, 19.3): an Alert incident's message carries, after what
+was detected and before the steps, its diagnosis by kind (`DIAGNOSIS_FIELDS`: its state's
+words, how many reads on which devices, at most five hypotheses each its rule's words, the
+ends it read and its strength, and what was ruled out), never a value it compared or a
+configuration line; or that it did not finish within its bound, its result following on the
+same thread (the event ``diagnosis`` when the analysis was already final).
+
 **The egress mask.** Everything a message carries, an email's subject and text and a
 webhook's whole JSON, goes through `redact.egress_payload` at its sender, the one place per
 channel (`relay.build`, `webhook.request`) (masked by
@@ -35,11 +42,19 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           "halted": "self-healing halted", "held": "a device held from healing",
           "healed": "healed, verified", "cleared": "cleared",
           "analysis": "AI analysis of what could not be fixed",
+          "diagnosis": "Mercury's diagnosis of what could not be fixed",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 FIELDS = {"incident": 80, "event": 20, "network": 80, "device": 80, "kind": 80,
           "outcome": 200, "detected": 400, "detected_at": 40, "steps": 20, "todo": 400,
-          "link": 400, "analysis": 1}
+          "link": 400, "analysis": 1, "diagnosis": 1}
+#: Mercury's diagnosis block's fields (H17) and each one's bound; its hypotheses at most
+#: `DIAGNOSIS_HYPOTHESES` (the diagnosis's own `MAX_SHOWN`), each `DIAGNOSIS_HYPOTHESIS_FIELDS`;
+#: what was ruled out at most `DIAGNOSIS_RULED_OUT` checks.
+DIAGNOSIS_FIELDS = {"state": 20, "words": 400, "reads": 200, "hypotheses": 5,
+                    "ruled_out": 20}
+DIAGNOSIS_HYPOTHESIS_FIELDS = {"claim": 300, "strength": 20}
+DIAGNOSIS_HYPOTHESES, DIAGNOSIS_RULED_OUT = 5, 20
 STEP_FIELDS = {"what": 200, "result": 200}
 #: The AI analysis block's fields (H8) and each one's bound; its hypotheses at most
 #: `ANALYSIS_HYPOTHESES`, each `HYPOTHESIS_FIELDS`.
@@ -77,8 +92,10 @@ def check_event(event: dict) -> dict:
     link = str(event.get("link") or "")
     if link and not _LINK.match(link):
         raise ValueError(f"the link {link[:80]!r} is not a Mercury page's path (/v2/...)")
-    out = {k: _line(event.get(k), FIELDS[k]) for k in FIELDS if k not in ("steps", "analysis")}
+    out = {k: _line(event.get(k), FIELDS[k]) for k in FIELDS
+           if k not in ("steps", "analysis", "diagnosis")}
     out["analysis"] = _analysis(event.get("analysis"))
+    out["diagnosis"] = _diagnosis(event.get("diagnosis"))
     steps = event.get("steps") or []
     if not isinstance(steps, list):
         raise ValueError("an event's steps are a list")
@@ -107,6 +124,45 @@ def _analysis(block) -> dict:
             raise ValueError(f"a hypothesis carries only {', '.join(HYPOTHESIS_FIELDS)}")
         out["hypotheses"].append({k: _line(h.get(k), b) for k, b in HYPOTHESIS_FIELDS.items()})
     return out
+
+
+def _diagnosis(block) -> dict:
+    """Mercury's diagnosis block as a message may carry it (`DIAGNOSIS_FIELDS`), or ``{}`` for
+    none; an unknown field refused by name, each line bounded."""
+    if not block:
+        return {}
+    if not isinstance(block, dict) or set(block) - set(DIAGNOSIS_FIELDS):
+        raise ValueError(f"a diagnosis block carries only {', '.join(DIAGNOSIS_FIELDS)}")
+    out = {k: _line(block.get(k), b) for k, b in DIAGNOSIS_FIELDS.items()
+           if k not in ("hypotheses", "ruled_out")}
+    hyps, ruled = block.get("hypotheses") or [], block.get("ruled_out") or []
+    if not isinstance(hyps, list) or not isinstance(ruled, list):
+        raise ValueError("a diagnosis block's hypotheses and ruled-out checks are lists")
+    out["hypotheses"] = []
+    for h in hyps[:DIAGNOSIS_HYPOTHESES]:
+        if not isinstance(h, dict) or set(h) - set(DIAGNOSIS_HYPOTHESIS_FIELDS):
+            raise ValueError("a diagnosis hypothesis carries only "
+                             f"{', '.join(DIAGNOSIS_HYPOTHESIS_FIELDS)}")
+        out["hypotheses"].append({k: _line(h.get(k), b)
+                                  for k, b in DIAGNOSIS_HYPOTHESIS_FIELDS.items()})
+    out["ruled_out"] = [_line(r, 200) for r in ruled[:DIAGNOSIS_RULED_OUT]]
+    return out
+
+
+def diagnosis_lines(block: dict) -> list:
+    """Mercury's diagnosis in a message's words: its reads, each hypothesis by kind, what was
+    ruled out; or its state's words alone (not made, or not finished in time)."""
+    if not block:
+        return []
+    if not block.get("hypotheses") and block.get("state") != "done":
+        return [f"Mercury's diagnosis: {block.get('words') or 'not recorded'}"]
+    lines = ["Mercury's diagnosis" + (f" ({block['reads']})" if block.get("reads") else "")]
+    if not block.get("hypotheses"):
+        lines.append(f"  {block.get('words') or 'no cause found in what Mercury reads'}")
+    lines += [f"  {i}. {h['claim']}" for i, h in enumerate(block.get("hypotheses") or [], 1)]
+    if block.get("ruled_out"):
+        lines.append("  Ruled out: " + "; ".join(block["ruled_out"]))
+    return lines
 
 
 def analysis_lines(block: dict) -> list:
@@ -177,6 +233,10 @@ def text(facts: dict, *, sent_at: float = None) -> str:
         lines.append(f"Detected: {facts['detected']}{when}")
     if facts.get("kind"):
         lines.append(f"Fix kind: {facts['kind']}")
+    if facts.get("diagnosis"):
+        # Mercury's own reads (board H's artboard L): after what was detected, before the
+        # steps; by kind, never a value or a configuration line.
+        lines += diagnosis_lines(facts["diagnosis"])
     if facts["steps"]:
         lines.append("What Mercury tried:")
         lines += [f"  {i}. {s['what']}: {s['result']}" for i, s in enumerate(facts["steps"], 1)]
@@ -204,4 +264,5 @@ def payload(facts: dict, *, sent_at: float = None) -> dict:
             "outcome": facts.get("outcome", ""), "detected": facts.get("detected", ""),
             "detected_at": facts.get("detected_at", ""), "steps": facts["steps"],
             "todo": facts.get("todo", ""), "link": url, "sent_at": sent,
-            **({"analysis": facts["analysis"]} if facts.get("analysis") else {})}
+            **({"analysis": facts["analysis"]} if facts.get("analysis") else {}),
+            **({"diagnosis": facts["diagnosis"]} if facts.get("diagnosis") else {})}

@@ -134,7 +134,8 @@
         <dt>Sent for</dt>
         <dd class="heal-events">{%- for key, words, _covers in h.choices %}<label class="set-switch"><input type="checkbox" name="events" value="{{ key }}"{% if key in h.told.choices %} checked{% endif %}> {{ words }}</label>{% endfor %}</dd>
         <dt>AI analysis of a can't-fix</dt>
-        <dd>{{ badge('off for ' ~ net, 'muted') }} <span class="muted">the advisory analysis is not built yet, so nothing is analysed</span> <a href="{{ url_for('settings_v2.installation', tab='ai') }}">Settings › Installation › AI</a></dd>
+        {#- C2647: from the background feature's own state on this network, never fixed text. -#}
+        <dd>{{ badge(h.analysis.badge, h.analysis.level) }} <span class="muted">{{ h.analysis.words }}</span> <a href="{{ url_for('settings_v2.installation', tab='ai') }}">Settings › Installation › AI</a> {{ how('ai-background', compact=True, op='a background AI feature') }}</dd>
       </dl>
       <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'self-healing', compact=True, op='saving who is told') }}</span></div>
     </form>

@@ -5500,6 +5500,16 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
                           "outcome": e.get("outcome"), "kind": e.get("kind"),
                           "mode": e.get("mode")})
         r["heal_analysis"] = {"network": lst, "incident": e["incident"]}
+        # H17 (19.3, N14): Mercury's diagnosis attached to the incident, from the entry
+        # already read; an Alert incident's (Tier 3) runs by itself before its notice, so one
+        # not yet recorded is asked of its device's diagnosis lock (a file read, never a
+        # device), and drawn running.
+        from modules.heal import auto_diagnose
+        alert = auto_diagnose.is_alert(e)
+        got = auto_diagnose.drawn(lst, e["incident"], host if alert else "",
+                                  d=e.get("diagnosis"), read=False)
+        got.pop("addresses", None)                # a proposal's card's, never a can't-fix's
+        r["heal_diagnosis"] = dict(got, auto=alert, device=host)
         # Board H's amendment, artboard I (H16): Diagnose…, its runbook and target from the
         # incident's trigger, read from the row already read (nothing more is asked).
         r["diagnose"] = diagnose_page.from_incident(lst, e, triggers.get(e["incident"]))

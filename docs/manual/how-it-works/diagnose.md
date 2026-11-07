@@ -116,6 +116,34 @@ seen its result; the top bar's In progress lists it meanwhile.
 
 "Diagnosed" is not a fix: a diagnosis on demand acts on nothing and clears nothing.
 
+## When self-healing runs it by itself {#automatic}
+
+Self-healing runs the same runbooks itself, once per incident, on two kinds of incident:
+
+- **Alert:** an incident it cannot fix with the configuration at intent (an interface down
+  while administratively up, or a symptom with no cause in the configuration). The diagnosis
+  runs before the team is told, and the notice waits for it up to 150 s. The email and the
+  webhook carry it after what was detected, by kind only: each hypothesis's rule, the ends or
+  hops it read and its strength, and what was ruled out, never a value it compared or a
+  configuration line. If it has not finished by then, the notice says so and a follow-up on
+  the same thread carries it. Its AI analysis, when that is on, reads it too, by kind.
+- **Propose:** a fix that waits for a person. The diagnosis runs once the fix is proposed, and
+  the proposal's card draws it beside Approve and Decline, so the person approving sees what
+  Mercury read. When its first hypothesis is decisive and is a physical or link fault, the card
+  says the fix does not change it. A diagnosis never withdraws a proposal.
+
+It chooses the runbook from what raised the incident: an alert that the device is unreachable
+runs "can't reach" toward the device's loopback from its first neighbour by intent; an alert
+naming an interface, or an adjacency down, runs "an adjacency is down" on that adjacency, and
+only on it. A named interface that intent holds no adjacency over is not diagnosed, and the row
+says so: no other link is read in its place.
+
+At most 3 run at once on a network. A fourth says "not diagnosed: 3 diagnoses already running"
+on its row, and **Diagnose…** there runs one. Each is recorded on its incident's row (Needs
+attention, under "Mercury's diagnosis") and on the History of every device it read. A Never
+incident (a security ACL, a change to Mercury's path) is not diagnosed by itself: Diagnose… on
+its row runs one.
+
 ## What it never does
 
 It sends no configuration command, no `clear counters`, no `send log` and no `terminal`

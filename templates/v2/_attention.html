@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key).
     Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
@@ -156,6 +156,39 @@
         <p class="att-cause">{{ r.cause }}</p>
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
       </div>
+      {#- Board H's amendment, H17 (19.3, artboards J and L): Mercury's diagnosis attached to
+          the incident, read-only and deterministic, after Mercury's facts and before the AI
+          analysis; an Alert incident's runs by itself before its notice, a Never incident's
+          only by Diagnose…. -#}
+      {%- if r.heal_diagnosis %}
+      {%- set hd = r.heal_diagnosis %}
+      <div class="att-why heal-diag">
+        <h3>Mercury's diagnosis</h3>
+        {%- if hd.state == 'done' %}
+        {%- set dd = hd.result %}
+        <p>{{ badge(dd.chip, dd.level) }} <span class="small muted">{{ dd.runbook_words }}{% if dd.actor %}, by {{ dd.actor }}{% endif %}, {{ dd.commands }} read(s) on {{ dd.devices | join(' and ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}{% if dd.incident %}, incident <span class="mono">{{ dd.incident }}</span>{% endif %}</span></p>
+        {%- if dd.hypotheses %}
+        <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
+        {%- else %}
+        <p class="small">{{ dd.words or 'no cause found in what Mercury reads' }}.</p>
+        {%- endif %}
+        {%- if dd.more %}<p class="small muted">{{ dd.more }} more not shown (the five ranked first are).</p>{% endif %}
+        {%- if dd.ruled_out %}<p class="small muted">Ruled out: {{ dd.ruled_out | join('; ') }}.</p>{% endif %}
+        {%- if dd.stopped %}<p class="small warn-text">{{ dd.stopped }}.</p>{% endif %}
+        {%- elif hd.state == 'not' %}
+        <p class="small warn-text">{{ hd.result.words }}.</p>
+        {%- elif hd.state == 'running' %}
+        <p class="small muted">Running now: diagnosis <span class="mono">{{ hd.running.diagnosis }}</span> on {{ hd.device }}, by {{ hd.running.actor }}{% if hd.running.since %}, since {{ stamp(hd.running.since) }}{% endif %}. It is drawn here when it ends.</p>
+        {%- elif hd.state == 'unreadable' %}
+        <p class="small warn-text">The diagnosis cannot be read: {{ hd.error }}.</p>
+        {%- elif hd.auto %}
+        <p class="small muted">No diagnosis is recorded for this incident: self-healing runs one by itself before it tells the team. Diagnose… above runs one now.</p>
+        {%- else %}
+        <p class="small muted">Not diagnosed by itself: self-healing diagnoses an Alert incident before telling the team, and a proposal before it is approved, not this one. Diagnose… above runs one.</p>
+        {%- endif %}
+        <p class="small"><a href="{{ url_for('device_v2.device', name=hd.device, list=r.heal_analysis.network if r.heal_analysis else none, tab='history') }}">Each read and the diagnosis on {{ hd.device }}'s History</a> {{ how('diagnose', 'automatic', compact=True, op='a diagnosis') }}</p>
+      </div>
+      {%- endif %}
       {#- Board H, H8: a can't-fix's AI analysis, after Mercury's facts, read from what it kept
           when the item opens (never a call), advisory. -#}
       {%- if r.heal_analysis %}

@@ -3032,12 +3032,39 @@ def _heal_proposal(client, _lab, _mp):
                                                       "by": "v2-context", "reason": "dry run"},
             "triggers": ["r3 logged a configuration change from vty0 by lab"],
             "words": d["words"], "at": "2026-11-04T18:12:30Z", "steps": [w for _k, w in P.STEPS]}
+    # H17 (artboard E's insert): Mercury's diagnosis, run before the proposal was offered, on
+    # the card; and on a can't-fix row of the same network, under "Mercury's diagnosis".
+    from modules.heal import auto_diagnose as AD
+    from modules.heal import steplog as SL
+    diag = {"id": "dg-0123456789abcdef", "runbook": "adjacency_down",
+            "runbook_words": "adjacency down with both ends at intent", "incident":
+            "hi-0123456789", "actor": AD.ACTOR, "state": "done", "words": "", "steps": [],
+            "hypotheses": [{"rule": "down_admin_up", "layer": "physical",
+                            "strength": "decisive", "incomplete": [], "agree": 2,
+                            "claim": "r3 Gi4 is down while administratively up, and r4 Gi4 is up",
+                            "evidence": [{"read": "read:rr-1:r3:show interfaces "
+                                                  "GigabitEthernet4", "line": "", "intent": ""}],
+                            "rule_out": "", "todo": "Check the link"}],
+            "more": 0, "ruled_out": [{"check": "both ends on one subnet", "rule": "subnet"}],
+            "not_checked": [], "commands": 16, "cap": 70, "runs": ["rr-1"], "stopped": "",
+            "devices": ["r3", "r4"], "started_at": "2026-11-04T18:12:10Z",
+            "finished_at": "2026-11-04T18:12:40Z"}
+    view["diagnosis"] = AD.drawn(net, "hi-0123456789", host, d=diag)
+    entry = {"incident": "hi-0123456780", "device": host, "network": net, "decisions": [],
+             "steps": [{"step": "decide", "result": "cant_fix", "words": "physical"}],
+             "program": [], "program_hash": "", "records": {}, "outcome": "cant_fix",
+             "words": "self-healing will not fix it: physical (Tier 3)", "mode": "dry_run",
+             "kind": "physical", "tier": 3, "epoch": _time.time() - 120,
+             "diagnosis": dict(diag, incident="hi-0123456780")}
     refused = dict(view, confirmable=False, reset=dict(reset, measured={}, bound_s=None,
                                                        refused="not measured"),
                    refusals=["`clear ip ospf 1 process` is not measured on cisco_iosxe"])
     mp = pytest.MonkeyPatch()
     try:
         mp.setattr(HD, "decisions", lambda n: [d] if n == net else [])
+        mp.setattr(SL, "incidents", lambda n, device="": (
+            {"state": "ok", "entries": [entry], "error": ""} if n == net else
+            {"state": "absent", "entries": [], "error": ""}))
         state = {"v": view}
 
         def read(n, i, **_kw):
@@ -3047,6 +3074,8 @@ def _heal_proposal(client, _lab, _mp):
         mp.setattr(P, "view", read)
         r = client.get(f"/v2/attention?list={net}")
         assert r.status_code == 200 and "Review the fix" in r.get_data(as_text=True)
+        assert "Mercury&#39;s diagnosis" in r.get_data(as_text=True) or \
+            "Mercury's diagnosis" in r.get_data(as_text=True)
         base = f"/v2/network/{net}/heal/proposal/{did}"
         assert client.get(base, headers=hx).status_code == 200
         state["v"] = refused

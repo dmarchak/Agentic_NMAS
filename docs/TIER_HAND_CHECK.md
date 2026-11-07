@@ -3883,3 +3883,37 @@ line removed) left an empty loop body, a syntax error and not a kill; it was run
 worktree removed.** The class and the account may be deployed. Nothing sends a read answer yet:
 the router CLI family (H24) and the loop's wiring into the heal analysis (H26) bring their own
 hand check over what they send.
+
+## 2026-11-07: Mercury's diagnosis in the can't-fix notice and the AI analysis's pack (board H's H17), by hand
+**What changed in the tier:** data off the host. An Alert incident's notice carries Mercury's
+diagnosis (`heal_notice.diagnosis_block`, `notify.message`'s closed `DIAGNOSIS_FIELDS` and
+`diagnosis_lines`), and the AI analysis's incident pack carries it as the `diagnosis` section
+(`evidence_pack.diagnosis_section`), both by kind (`auto_diagnose.said`, `where`, `summary`).
+The danger the hand check guards: a value the diagnosis compared (an MTU, an address, an access
+list's name, a router-id), a read's masked line or a configuration line leaving the host in a
+message or in the request (section 10; N23: the values wait for the device state class,
+C2419), or a message carrying a field outside its closed set. The gateway's egress mask and the
+message's mask cover every byte after them, as before.
+**The method:** H8's: each mutant one exact replacement of a changed line, required to match
+once, in a `scripts/nmas-control` throwaway worktree (snapshot fe4dfabb7d over e3cbc5cc with
+H17 and H13 uncommitted), then tests/test_heal_auto_diagnose.py, test_heal_notice.py,
+test_heal_analysis.py and test_notify.py with no `-x`, two workers, in CI's interpreter,
+confined (`scratchpad/h17_tier.py`, 2026-11-07 04:34:29 to 04:35:33 UTC), the file restored and
+compared byte for byte after each. Baseline: all passed. The first run (snapshot f572a0aa5d,
+04:33:14 to 04:34:19 UTC) ran seven of the eight: mutant 3's text matched twice (the analysis
+block's line is the same), so it was made to match the diagnosis block's two lines, once.
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `message._diagnosis` raises | killed (48 failed) | `test_a_diagnosis_block_carries_only_its_fields` and 47 others |
+| 1 `_diagnosis`: the block's field allowlist removed | killed | `test_a_diagnosis_block_carries_only_its_fields` |
+| 2 `_diagnosis`: a hypothesis's field allowlist removed | killed | the same |
+| 3 `_diagnosis`: a hypothesis's lines not made one line and bounded | killed | the same |
+| 4 `said`: the claim (with its values) in place of the rule's words | killed (5 failed) | `test_a_hypothesis_is_said_by_its_rule_its_ends_and_strength_never_its_values`, `test_the_pack_section_cites_each_hypothesis_as_diag_n_by_kind`, `test_an_alert_incident_s_analysis_is_asked_with_its_diagnosis`, `test_back_in_time_the_message_carries_it_after_what_was_detected` |
+| 5 `where`: a read's evidence line in place of the port it read | killed (5 failed) | the same four |
+| 6 `diagnosis_section`: the hypotheses whole in the pack | killed | `test_the_pack_section_cites_each_hypothesis_as_diag_n_by_kind`, `test_an_alert_incident_s_analysis_is_asked_with_its_diagnosis` |
+| 7 `diagnosis_block`: the diagnosis's hypotheses whole in the message | killed | `test_back_in_time_the_message_carries_it_after_what_was_detected` |
+**The result: 7 mutants and the canary, all killed; each file identical after each; both
+worktrees removed.** Not mutated: the `withhold` calls in `diagnosis_block` and
+`diagnosis_section`, which act on by-kind words that hold no configuration line by
+construction (a rule's words and the ends it read); `withhold` itself is H8's, hand-checked
+2026-11-04.

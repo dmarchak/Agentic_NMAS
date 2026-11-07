@@ -228,8 +228,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   [Notifications](#notifications)) and the events that tell it: can't fix, a fix waiting for a
   person, halted or held, every automatic heal, and cleared. **Save** is refused when the team
   no longer exists or another person changed it since the card was drawn, naming both; its steps
-  are `check`, `write` and `record`. The AI analysis of a can't-fix is not built yet, and the
-  card says so.
+  are `check`, `write` and `record`. The AI analysis of a can't-fix is its own background
+  feature, off until an admin turns it on for the network in Settings › Installation › AI; the
+  card draws its state from that switch (off, on with who turned it on and its caps, approval
+  ended, on with hosted AI off, stopped at its cap).
 - **Stop self-healing everywhere…** (the installation's kill switch) says what stopping does,
   asks why (never required) and stops every network at once with **Stop self-healing
   everywhere**: one press, no confirm, recorded with who, when and why. While stopped, every

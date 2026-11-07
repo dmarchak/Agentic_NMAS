@@ -35,7 +35,25 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `e6fb7548c903598671015aad67f1425cc912bca4de5d2f1f50a1eb075951df46`
+Templates sha256: `8b5c78abad06c3d87b1f3f0461ff83f9beb9b172fbab9dd0fa66baba569f88be`
+
+**Compared again 2026-11-07 for H17** (board H's amendment, item 1: 19.3's "the incident's step
+log shows it ... with the list expanded"; artboard J's result, artboard L's notice): a
+can't-fix row, opened, gains **Mercury's diagnosis** after Why this happened and before the AI
+analysis (the order artboard L's notice gives: Mercury's facts, Mercury's diagnosis, the
+analysis): its chip, the runbook, who ran it, its reads and devices, each hypothesis whole with
+its strength and layer, what was ruled out, where it stopped, and a link to the device's History
+with its (i); or that it is running, not made (its words), unreadable, not yet recorded on an
+Alert incident, or not run by itself on a Never one (Diagnose… on the row runs one). No artboard
+draws the row's own diagnosis block: one deviation, logged ("Board H built: a can't-fix row
+draws Mercury's diagnosis in its own section"). Compared by the template diff (no new shot;
+the walk's provider in tests/v2_context.py draws its done state). Every other region is
+unchanged. Templates sha256 before:
+`e6fb7548c903598671015aad67f1425cc912bca4de5d2f1f50a1eb075951df46`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A can't-fix row's diagnosis (H17) | not drawn on the row: artboard L draws Mercury's diagnosis in the notice, artboard J as Diagnose…'s result | its own section, "Mercury's diagnosis", between Why this happened and the AI analysis, each state said | **deviation** (log: Board H built: a can't-fix row draws Mercury's diagnosis in its own section) |
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboard I's
 callout: "A can't-fix row on Needs attention carries Diagnose… too, the Never tier's

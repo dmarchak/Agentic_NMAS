@@ -192,6 +192,10 @@ ANNOUNCERS = {
     # modules/heal/decide.py (board H, H3): a pass's decisions recorded; a dry-run record
     # rides on its device's drift row (`attention.heal_source`).
     "heal-decide": ("drift",),
+    # modules/heal/auto_diagnose.py (board H, H17): an automatic diagnosis's end, attached to
+    # its incident (C2584: a Diagnose… card waiting on its device reads again), and the heal's
+    # Needs attention rows, which draw it.
+    "heal-diagnose": ("diagnosis", "drift"),
     # modules/heal/act.py (board H, H4): a heal's job ended, sent through THE apply or refused:
     # what a deploy changes on its one device.
     "heal-act": ("drift", "goldens", "remote", "baselines", "device_state", "rolled_back"),

@@ -240,7 +240,8 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     Mercury's records, never the device. ``{"network", "decision", "incident", "device",
     "platform", "kind", "kind_words", "tier", "units", "program", "program_hash", "reset",
     "lines", "hash", "refusals", "confirmable", "person", "policy", "triggers", "words", "at",
-    "steps", "withdrawn"}``; *withdrawn* is the withdrawal's record (C2470) or None."""
+    "steps", "withdrawn", "diagnosis"}``; *withdrawn* is the withdrawal's record (C2470) or
+    None; *diagnosis* is Mercury's diagnosis of its incident (`auto_diagnose.drawn`, H17)."""
     from modules.heal.kinds import KIND_WORDS
 
     now = time.time() if now is None else float(now)
@@ -270,7 +271,12 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
                                        "rollback", "measured", "bound_s", "refused")}
              if plan else None)
     program = list(d.get("program") or [])
+    # H17 (19.3, N14; artboard E's insert): Mercury's diagnosis, run once the proposal was
+    # made, drawn beside Approve…; running while its device is held for it. Never withdraws.
+    from modules.heal import auto_diagnose
+    diagnosis = auto_diagnose.drawn(network, d.get("incident") or "", device)
     return {"network": network, "decision": d["id"], "incident": d.get("incident"),
+            "diagnosis": diagnosis,
             "device": device, "platform": platform, "kind": d.get("kind"),
             "kind_words": KIND_WORDS.get(d.get("kind"), d.get("kind")), "tier": d.get("tier"),
             "units": [u.get("words") for u in d.get("units") or []], "program": program,

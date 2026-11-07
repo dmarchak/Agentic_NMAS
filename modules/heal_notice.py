@@ -21,6 +21,15 @@ incident's id. A failure or refusal is stated in place (off, capped, couldn't an
 provider not answering), never a silent absence. With no team told about can't fix, nothing is
 sent, and the analysis is still made and kept for Needs attention's row.
 
+**Mercury's diagnosis first, on an Alert incident** (H17; 19.3, N14): an incident the decision
+stopped at can't fix at Tier 3 is diagnosed before anything is sent (`auto_diagnose.run`, a
+runbook chosen from what raised it, read-only), waited for up to `auto_diagnose.WAIT_S`, so
+its analysis reads it as the pack's ``diagnosis`` section and its message carries it by kind
+after what was detected. Not finished in time, the message says so, the analysis is asked
+without it, and the follow-up carries it (the event ``diagnosis`` when the analysis was already
+in the first message). A Never incident is not diagnosed automatically: Diagnose… on its row
+runs one.
+
 **What a message carries** (`facts`): only `notify.message.FIELDS`, every byte through the
 egress mask at its sender. Each step is said in Mercury's words with the incident's
 configuration lines withheld (`evidence_pack.withhold`), and so is the analysis's text, which
@@ -42,6 +51,8 @@ WAIT_S = 60.0
 #: The notice's steps, in order, for the manual's How it works page (H10).
 STEPS = (("due", "Find each new can't-fix: recorded in the last 10 minutes, not yet told"),
          ("claim", "Take it once, under the store's lock, so it is told and analysed once"),
+         ("diagnose", "An Alert incident: run Mercury's diagnosis first, read-only, waited for "
+                      "up to 150 s, so the analysis and the message carry it"),
          ("analyse", "Start its AI analysis, a background call, if the feature is on"),
          ("wait", "Wait for the analysis up to 60 s, never longer"),
          ("send", "Send Mercury's facts, then the analysis or its state (pending, not run, "
@@ -65,6 +76,8 @@ NEW_WITHIN_S = 600
 JOB_PREFIX = "heal-notice"
 #: The event a can't-fix's first message is, and its follow-up's.
 EVENT, FOLLOW_UP = "cant_fix", "analysis"
+#: The follow-up that carries only Mercury's diagnosis (H17: the analysis was in the first).
+DIAGNOSIS_FOLLOW_UP = "diagnosis"
 #: What to do, by the kind the decision found (section 9's can't-fix row: "the action the
 #: reason names").
 TODO = {
@@ -209,18 +222,75 @@ def _deliver(network: str, event: dict) -> dict:
     return delivery.deliver_event(event, teams)
 
 
+def diagnosis_block(d, lines, *, bound_s: float = None) -> dict:
+    """Mercury's diagnosis for a message (`auto_diagnose.summary`: by kind, never a value it
+    compared), its words with the incident's configuration lines withheld; *d* None is a
+    diagnosis not finished within *bound_s*, its result following on the same thread."""
+    from modules import evidence_pack as EP
+    from modules.heal import auto_diagnose as AD
+
+    if d is None:
+        return {"state": "not_finished", "hypotheses": [], "ruled_out": [], "reads": "",
+                "words": (f"not finished within {int(round(bound_s or 0))} s; its result "
+                          "follows on this thread")}
+    s = AD.summary(d)
+    return {"state": s["state"], "words": EP.withhold(s["words"], lines),
+            "reads": s["reads"],
+            "hypotheses": [{"claim": EP.withhold(h["claim"], lines), "strength": h["strength"]}
+                           for h in s["hypotheses"]],
+            "ruled_out": [EP.withhold(r, lines) for r in s["ruled_out"]]}
+
+
+def _diagnosis_thread(network: str, incident_id: str, diagnose) -> tuple:
+    """The Alert incident's automatic diagnosis started in its own thread: ``(held, done)``,
+    *held* ``["got"]`` its diagnosis once *done* is set."""
+    from modules.heal import auto_diagnose as AD
+
+    held, done = {}, threading.Event()
+
+    def work():
+        try:
+            held["got"] = AD.run(network, incident_id, AD.ALERT, diagnose=diagnose)
+        except Exception as exc:                      # said in the message, never raised
+            log.error("heal notice: the diagnosis of %s raised: %s", incident_id, exc)
+            held["got"] = {"state": "refused", "incident": incident_id,
+                           "words": f"not diagnosed: {type(exc).__name__}: {exc}"}
+        finally:
+            done.set()
+
+    threading.Thread(target=work, daemon=True, name=f"heal-diagnose-{incident_id}").start()
+    return held, done
+
+
 def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAIT_S,
-           follow_s: float = None, send=None, deliver=None, now: float = None) -> dict:
+           follow_s: float = None, send=None, deliver=None, now: float = None,
+           diagnose=None, diagnosis_wait_s: float = None) -> dict:
     """Tell the network's team about one can't-fix, its analysis waited for up to *wait_s*
-    (section 12), then the follow-up when it was not back in time. ``{"incident", "first",
-    "follow_up", "analysis"}``: each message's state and delivery. *send* replaces the
-    provider (tests), *deliver* the delivery (``(network, event) -> result``)."""
+    (section 12), then the follow-up when it was not back in time. An Alert incident (Tier 3,
+    `auto_diagnose.is_alert`) is diagnosed first (H17, 19.3), waited for up to
+    *diagnosis_wait_s* (`auto_diagnose.WAIT_S`), so its analysis reads the diagnosis and its
+    message carries it; not back in time, the message says so and the follow-up carries it.
+    ``{"incident", "first", "follow_up", "analysis", "diagnosis"}``: each message's state and
+    delivery. *send* replaces the provider (tests), *deliver* the delivery (``(network,
+    event) -> result``), *diagnose* the diagnosis run (`diagnose.run`'s shape)."""
     from modules.ai import heal_analysis as HA
+    from modules.heal import auto_diagnose as AD
     from modules.heal import incidents, steplog
 
     deliver = deliver or _deliver
     job = job or f"{JOB_PREFIX}-{incident_id}"
     follow_s = follow_up_wait_s() if follow_s is None else float(follow_s)
+    diag_wait = AD.WAIT_S if diagnosis_wait_s is None else float(diagnosis_wait_s)
+    try:
+        alert = AD.is_alert(steplog.incident(network, incident_id))
+    except Exception as exc:                          # read again below, and said there
+        log.error("heal notice: %s's incident %s cannot be read: %s", network, incident_id,
+                  exc)
+        alert = False
+    dheld, ddone, diagnosed = {}, None, True
+    if alert:
+        dheld, ddone = _diagnosis_thread(network, incident_id, diagnose)
+        diagnosed = ddone.wait(max(0.0, diag_wait))
     held, done = {}, threading.Event()
 
     def work():
@@ -243,24 +313,48 @@ def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAI
         log.error("heal notice: %s's incident %s cannot be read: %s", network, incident_id,
                   exc)
         return {"incident": incident_id, "first": {"error": str(exc)}, "follow_up": None,
-                "analysis": held.get("got")}
+                "analysis": held.get("got"), "diagnosis": dheld.get("got")}
     incident = next((i for i in found if i.get("id") == incident_id), {})
     lines = lines_of(network, entry)
     event = facts(network, entry, incident)
     got = held.get("got") if back else None
     event["analysis"] = analysis_block(got, lines)
+    if alert:
+        event["diagnosis"] = diagnosis_block(dheld.get("got") if diagnosed else None, lines,
+                                             bound_s=diag_wait)
     first = _sent(network, incident_id, EVENT, event, deliver)
-    out = {"incident": incident_id, "first": first, "follow_up": None, "analysis": got}
-    if back:
+    out = {"incident": incident_id, "first": first, "follow_up": None, "analysis": got,
+           "diagnosis": dheld.get("got") if diagnosed else None}
+    if back and diagnosed:
         return out
-    if not done.wait(max(0.0, follow_s)):
-        later = {"state": "no_answer", "words": HA.words_of(
-            "no_answer", f"{int(round(wait_s + follow_s))} s")}
-    else:
-        later = held.get("got")
-    follow = dict(event, event=FOLLOW_UP, analysis=analysis_block(later, lines))
-    out["follow_up"] = _sent(network, incident_id, FOLLOW_UP, follow, deliver)
-    out["analysis"] = later
+    follow = dict(event)
+    which = FOLLOW_UP
+    # One deadline for the follow-up: what is still out is waited for until then, together.
+    deadline = time.monotonic() + max(0.0, follow_s)
+    if not diagnosed:
+        # The diagnosis's own bound is its reads' (C2546), so it is waited for as long as the
+        # analysis's follow-up is: it ends, or the follow-up says it did not.
+        if not ddone.wait(max(0.0, deadline - time.monotonic())):
+            follow["diagnosis"] = {"state": "not_finished", "hypotheses": [], "ruled_out": [],
+                                   "reads": "", "words": (
+                                       f"not finished within {int(round(diag_wait + follow_s))}"
+                                       " s; its record is on the device's History when it "
+                                       "ends")}
+        else:
+            follow["diagnosis"] = diagnosis_block(dheld.get("got"), lines)
+        out["diagnosis"] = dheld.get("got")
+        if back:
+            which = DIAGNOSIS_FOLLOW_UP
+    if not back:
+        if not done.wait(max(0.0, deadline - time.monotonic())):
+            later = {"state": "no_answer", "words": HA.words_of(
+                "no_answer", f"{int(round(wait_s + follow_s))} s")}
+        else:
+            later = held.get("got")
+        follow["analysis"] = analysis_block(later, lines)
+        out["analysis"] = later
+    follow["event"] = which
+    out["follow_up"] = _sent(network, incident_id, which, follow, deliver)
     return out
 
 

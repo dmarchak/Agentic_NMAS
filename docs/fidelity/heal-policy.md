@@ -12,7 +12,14 @@ docs/boards. The states the shots do not draw (a network not marked lab, a refus
 answer, the kill switch stopped and its resume card, Who is told's refusals) are compared by
 the templates and tests/test_heal_tab_v2.py.
 Templates compared: templates/v2/_heal.html, templates/v2/_heal_change.html, templates/v2/_heal_preview.html
-Templates sha256: `e262f3db593745e410226930d83cc5e334fb3bbb51de8161a422ec0b71412edd`
+Templates sha256: `1393f21d1068c6aca020603ddb85b92be2fce2bc77df1846336113bc5e51fc57`
+
+**Compared again 2026-11-07 for C2647:** Who is told's "AI analysis of a can't-fix" row, fixed
+text written before H8 ("the advisory analysis is not built yet"), now draws the background
+feature's state on the network (`heal_page._analysis`). Compared by the template diff against
+artboard A's row (no new shot; tests/test_heal_auto_diagnose.py draws its off and on states).
+One deviation, logged (the table's row below). Every other region is unchanged. Templates sha256
+before: `e262f3db593745e410226930d83cc5e334fb3bbb51de8161a422ec0b71412edd`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -36,7 +43,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Hard stops and guards | each guard's value, default and Edit… | each value with where it comes from (set, lab default, default) and its default; Edit… opens the change card for that stop; "two reads" not drawn (no setting holds it) | **deviation** (log: Board H built: each hard stop's source beside its value) |
 | The always-on guards | planned work, held devices and windows; a rolled-back heal | the same | **same** |
 | Who is told | the team named, its counts, the five events, the AI analysis chip, Save | the team chosen from a list (nobody, or a team), its counts, the five events, Save | **deviation** (log: Board H built: Who is told chooses its team) |
-| The AI analysis of a can't-fix | "off for Default", Settings › Installation › AI | "off for Default", saying the analysis is not built yet, and the link | **later** (H8, the AI analysis of a can't-fix) |
+| The AI analysis of a can't-fix | "off for Default", Settings › Installation › AI | from the background feature's own switch on the network (C2647, 2026-11-07): "off for Default" and that an admin turns it on in Settings › Installation › AI after its estimate; "on for Default" with who turned it on and when, its caps, when its approval ends and its measured label; "approval ended", "on, hosted AI off" and "stopped at its cap" each said; then the link and its (i) | **deviation** (log: Board H built: the AI analysis line says its switch's state in words) |
 | Stop self-healing everywhere… | the danger button, alone | the button; pressed, a card says what stopping does and asks why (never required) with Stop self-healing everywhere and Cancel; while stopped, every network's tab says so with Resume self-healing…, its preview and confirm with a reason | **deviation** (log: Board H built: the kill switch's ask, stopped notice and resume card) |
 | Answers in place | not drawn | Confirmed…, Turned off, Not saved: … (what was typed kept), Saved for Who is told, each in its card | **deviation** (log: Board H built: each answer drawn in its card) |
 | Phone width | not drawn | the two columns stack: the mode, the kinds, then the change card, the hard stops, Who is told and the kill switch; tables scroll inside their cards | **deviation** (log: Board H built: the tab's phone width) |

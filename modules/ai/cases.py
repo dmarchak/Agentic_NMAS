@@ -632,6 +632,50 @@ def explain_graded(expect: dict, answer, pack: dict, error: str = "") -> dict:
     return out
 
 
+def heal_analysis_answer(result: dict):
+    """The AI analysis of a can't-fix as Explain's judge reads an answer (board H, H13): the
+    kept result of `heal_analysis.ask_prepared` (its checked answer, `shown`) in Explain's
+    shape, its outcome, rationale, hypotheses (claim, evidence_refs, confirm_with) and
+    needs_human; None when Mercury refused it or the provider did not answer (the result's
+    state then says why), or ``{"outcome": "refuse"}`` when the model said the evidence cannot
+    say."""
+    state = (result or {}).get("state")
+    if state == "unanswerable":
+        return {"outcome": "refuse", "why_not": result.get("detail") or "", "hypotheses": [],
+                "rationale": "", "needs_human": True}
+    if state != "answered" or not result.get("answer"):
+        return None
+    a = result["answer"]
+    return {"outcome": "answer", "why_not": "", "rationale": a.get("rationale") or "",
+            "needs_human": bool(a.get("needs_human")),
+            "hypotheses": [{"claim": h.get("claim") or "",
+                            "evidence_refs": list(h.get("cites") or []),
+                            "confirm_with": h.get("next") or ""}
+                           for h in a.get("hypotheses") or []]}
+
+
+def heal_analysis_misses(expect: dict, result: dict, pack: dict) -> list:
+    """What one AI analysis of a can't-fix does that its case's *expect* does not allow
+    (`explain_misses`, the same judge: the prompt and the check are Explain's, section 12):
+    ``[]`` is a pass."""
+    answer = heal_analysis_answer(result)
+    return explain_misses(expect, answer, pack, (result or {}).get("words") or "")
+
+
+def heal_analysis_unready(case: dict) -> list:
+    """Why a recorded case cannot be asked yet, in words, with no call: no pack captured (the
+    walk it waits on), or an expected citation the pack does not hold."""
+    pack = case.get("pack")
+    if not pack:
+        return [f"case {case['n']} ({case.get('key')}): no pack captured yet: "
+                f"{case.get('awaiting') or 'its walk'}"]
+    out = []
+    for group in (case.get("expect") or {}).get("lead_cites", ()):
+        if not _refs(pack, group):
+            out.append(f"case {case['n']} ({case.get('key')}): its pack holds none of {group}")
+    return out
+
+
 def _person(expect: dict, answer: dict) -> list:
     if "needs_human" in expect and bool(answer.get("needs_human")) != expect["needs_human"]:
         return [f"needs_human {answer.get('needs_human')}, expected {expect['needs_human']}"]

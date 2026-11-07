@@ -209,6 +209,54 @@ def six_parts(pv: dict) -> dict:
             "confirm": {"statement": (pv.get("confirm") or {}).get("statement", "")}}
 
 
+def _analysis(network: str, now: float = None) -> dict:
+    """The AI analysis of a can't-fix as the tab's Who is told says it (C2647), from the
+    background feature's own state on *network* (`background.switches`, never the record of AI
+    calls): ``{"state", "badge", "level", "words"}``, *state* ``off``, ``ended`` (its approval
+    ran out), ``capped`` (its newest analysis stopped at a cap whose period lasts), ``ai_off``
+    (on, but hosted AI is off) or ``on``, with who turned it on and when, its caps and when
+    its approval ends; ``unreadable`` when the switch cannot be read."""
+    from modules.ai import background, gateway
+    from modules.ai import heal_analysis as HA
+    from modules.nsot import listref
+
+    try:
+        slug = listref.network_id(network)
+        entry = background.switches().get(slug, {}).get(HA.FEATURE)
+    except Exception as exc:                          # said in place, never raised
+        return {"state": "unreadable", "badge": "unknown", "level": "warn",
+                "words": f"its switch cannot be read ({type(exc).__name__}: {exc})"}
+    if not (isinstance(entry, dict) and entry.get("on") is True):
+        return {"state": "off", "badge": f"off for {network}", "level": "muted",
+                "words": ("an admin turns it on in Settings › Installation › AI, after its "
+                          "estimate; until then a can't-fix is told without an analysis")}
+    who = (f"turned on by {entry.get('by') or 'an unrecorded admin'} "
+           f"{utc_words(entry.get('at') or '') or 'at an unrecorded time'}")
+    if not background.in_force(entry):
+        return {"state": "ended", "badge": "approval ended", "level": "warn",
+                "words": (f"{who}; its {background.APPROVAL_DAYS}-day approval has ended, so "
+                          "nothing is analysed until an admin turns it on again")}
+    caps = background.caps_of(entry)
+    cap_words = ", ".join(f"${v:.2f} a {k}" for k, v in (("day", caps["day"]),
+                                                        ("month", caps["month"])) if v)
+    ends = background.approval_ends(entry)
+    tail = (f"{who}; caps {cap_words or 'not readable (it refuses)'}; approval ends "
+            f"{utc_words(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(ends)))}; "
+            f"{HA.beta()['label']}, {HA.beta()['words']}")
+    if not gateway.hosted_allowed()["allowed"]:
+        return {"state": "ai_off", "badge": "on, hosted AI off", "level": "warn",
+                "words": f"{tail}. Hosted AI is off, so nothing is analysed until an admin "
+                         "allows it"}
+    try:
+        stopped = HA.capped(network, now=now)
+    except Exception as exc:                          # said in place
+        stopped = {"words": f"its record cannot be read ({type(exc).__name__})"}
+    if stopped:
+        return {"state": "capped", "badge": "stopped at its cap", "level": "warn",
+                "words": f"{stopped.get('words') or 'its cap is reached'}; {tail}"}
+    return {"state": "on", "badge": f"on for {network}", "level": "ok", "words": tail}
+
+
 def view(network: str, now: float = None) -> dict:
     """Everything the tab draws for *network* at rest."""
     from modules import heal_notify
@@ -244,6 +292,7 @@ def view(network: str, now: float = None) -> dict:
                  if team is not None else None),
         "team_missing": bool(told["team"]) and team is None,
         "history": _history(network),
+        "analysis": _analysis(network, now),
     }
 
 
