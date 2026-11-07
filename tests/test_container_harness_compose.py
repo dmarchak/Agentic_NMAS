@@ -159,6 +159,24 @@ def _script():
     return module
 
 
+def test_up_waits_for_every_bridge_before_reading_the_conditions_on_them(tmp_path):
+    """CI #1518 (2026-11-07, Python 3.5): `verify` read bridge br3 before OVS's start script had
+    made it (`no row "br3" in table Bridge`). `up` waits for every bridge's controller
+    connection first, then reads the conditions on the running containers."""
+    import types
+
+    harness = _script()
+    order = []
+    harness.check_python = lambda python: python
+    harness.compose_env = lambda python, apps: {}
+    harness.compose = lambda env, *a: order.append(("compose",) + a[:1]) or 0
+    harness.wait_ready = lambda: order.append(("wait_ready",)) or 1.0
+    harness.verify = lambda python: order.append(("verify",)) or []
+    harness.say = lambda words: None
+    harness.up(types.SimpleNamespace(python="3.5", apps=str(tmp_path), command="up"))
+    assert order.index(("wait_ready",)) < order.index(("verify",)), order
+
+
 def test_the_interpreter_has_no_default_anywhere():
     text = _read("compose.yml")
     assert re.findall(r"\$\{HARNESS_PYTHON[^}]*\}", text) and \

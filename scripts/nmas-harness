@@ -234,9 +234,12 @@ def up(args) -> None:
         raise Stop("the images did not build (above)")
     if compose(env, "up", "-d", "--force-recreate", *SERVICES) != 0:
         raise Stop("the containers did not start (above)")
+    # Every bridge connected first, then the conditions read on them: OVS's start script
+    # makes the bridges after the container starts, so a bridge read before then has no row
+    # (CI #1518 on Python 3.5, 2026-11-07: ovs-vsctl found no row for the third bridge).
+    took = wait_ready()
     for line in verify(python):
         say("verified " + line)
-    took = wait_ready()
     say(f"up: Ryu 4.34 on Python {python}, apps {apps}; every bridge connected after "
         f"{took:.1f} s")
 
