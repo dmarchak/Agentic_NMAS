@@ -263,10 +263,12 @@ def _test_tier(request):
                              "children": guard.spawned_ours - spawned}) + "\n")
 
 
-#: The job gate's fixture folders (tests/test_job_gate.py and its neighbours): each holds a
-#: job's own `test_*.py`, some failing or asserting nothing ON PURPOSE (the planted cases), run
-#: by Mercury's job runner and, in a copy, by pytest; never collected as Mercury's own tests.
-collect_ignore = ["fixtures/jobs"]
+#: The folders that hold data, never Mercury's own tests: tests/data_folders.py's one
+#: declaration (C2633), which scripts/nmas-red-green, scripts/nmas-test-weakening-check and
+#: scripts/nmas-fast-checks read too; relative to this folder, as `collect_ignore` takes them.
+from tests.data_folders import DATA_FOLDERS  # noqa: E402
+
+collect_ignore = [f.removeprefix("tests/").rstrip("/") for f in DATA_FOLDERS]
 
 
 def pytest_configure(config):

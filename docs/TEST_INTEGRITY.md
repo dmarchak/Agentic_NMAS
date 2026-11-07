@@ -30,8 +30,19 @@ operator.
   - **Which tests:** functions added, or whose body changed, found by parsing the file at both
     commits, never by a diff's text.
   - **The parent:** a throwaway worktree (as scripts/nmas-control makes one).
-  - **Fail and error both count as red.** A collection error of the whole file is reported
-    apart and needs a reason, since it shows nothing about the test.
+  - **Red is the test's own body failing** (changed 2026-11-06, C2633; it was "fail and error
+    both count as red"). The body ran on the parent and raised: an assertion, or a name the
+    parent lacks. A setup or teardown error is not red, since the body never ran.
+  - **A collection error of the whole file is reported apart,** since it shows nothing about
+    the test. `Red-By-Collection: <file> — <reason>` excuses it only when the error is an
+    ImportError or ModuleNotFoundError naming a module the commit adds, checked against the
+    commit's added paths. Any other collection error is refused whatever the trailer, naming
+    the error, and so is a conftest that does not load.
+  - **Data folders are not Mercury's tests** (C2633): tests/data_folders.py declares them once
+    (the job gate's fixture jobs, whose own tests fail on purpose). pytest's collection
+    (tests/conftest.py), this check, the test-weakening check and scripts/nmas-fast-checks all
+    read that declaration. An entry outside `tests/fixtures/` is refused, naming it, so a
+    declaration cannot hide Mercury's own tests.
   - **Where:** a CI job over every pushed commit's tests, and the gate's local run before a
     commit.
 - **Cost:** each changed test runs twice, a few seconds to a few minutes a push.
@@ -218,8 +229,20 @@ operator.
 
 ## Decisions (each at its recommendation, logged)
 
-- **D1. Red on the parent means fail or error.** A whole-file collection error is reported
-  apart.
+- **D1. Red on the parent means the test's own body failed** (the operator, 2026-11-06,
+  C2633, replacing "fail or error", which was taken at its recommendation under the Phase 7
+  mode on 2026-11-03). In the operator's words: "Change red-green and the test-weakening check
+  so that (a) fixture job folders are data, not Mercury's tests: their path is declared once
+  and pytest collection, red-green and the test-weakening check all read that one declaration;
+  and (b) a collection or setup error on the parent never counts as red: each new test must
+  fail on the parent by its own assertion." (b) is read as the body failing, any exception the
+  body raises included (the operator's choice, from a survey of 30 commits: about 56 of 155
+  reds failed by an assertion and about 98 by a name the parent lacks). A whole-file collection
+  error is reported apart. `Red-By-Collection` (in the guard since 8d698270, 2026-11-03) is
+  narrowed, in the operator's words: "the guard accepts it for a test file only when that
+  file's collection error on the parent is an ImportError/ModuleNotFoundError naming a module
+  this commit ADDS (checked against the commit's own added paths); any other collection error
+  on the parent (a fixture, a conftest, a syntax error elsewhere) is refused, naming the error."
 - **D2. A guard's approval is a quoted trailer** until the operator can sign. The limit is
   said in the item.
 - **D3. TESTING.md's per-file table is not a guard;** its rule sections are.

@@ -220,21 +220,25 @@ def test_the_changed_tests_run_then_the_scans_each_once(tmp_path):
     assert got == ["tests/test_a.py", "tests/test_doc_tests.py"]
 
 
-def test_a_changed_test_in_a_folder_conftest_ignores_is_not_named_to_pytest(tmp_path):
+def test_a_changed_test_in_a_declared_data_folder_is_not_named_to_pytest(tmp_path):
     """pytest collects a file named on its command line even inside a `collect_ignore`d
-    folder, so the selector leaves those out itself: the job gate's fixture jobs hold planted
-    failing tests (2026-11-06, the first fast-checks run over them errored)."""
+    folder, so the selector leaves out tests/data_folders.py's folders itself (C2633: the job
+    gate's fixture jobs hold planted failing tests; the first fast-checks run over them
+    errored). An entry outside tests/fixtures/ declares nothing."""
     mod = _load()
     (tmp_path / "tests" / "fixtures" / "jobs" / "a").mkdir(parents=True)
     (tmp_path / "tests" / "fixtures" / "jobsy").mkdir(parents=True)
-    (tmp_path / "tests" / "conftest.py").write_text('collect_ignore = ["fixtures/jobs"]\n')
+    decl = tmp_path / "tests" / "data_folders.py"
+    decl.write_text('DATA_FOLDERS = ("tests/fixtures/jobs/",)\n')
     for name in ("tests/test_a.py", "tests/fixtures/jobs/a/test_job.py",
                  "tests/fixtures/jobsy/test_b.py"):
         (tmp_path / name).write_text("")
     got = mod.tests_of(["tests/test_a.py", "tests/fixtures/jobs/a/test_job.py",
                         "tests/fixtures/jobsy/test_b.py"], str(tmp_path))
     assert got == ["tests/test_a.py", "tests/fixtures/jobsy/test_b.py"]
-    (tmp_path / "tests" / "conftest.py").write_text("")
+    decl.write_text('DATA_FOLDERS = ("tests/",)\n')
+    assert mod.tests_of(["tests/test_a.py"], str(tmp_path)) == ["tests/test_a.py"]
+    decl.unlink()
     got = mod.tests_of(["tests/fixtures/jobs/a/test_job.py"], str(tmp_path))
     assert got == ["tests/fixtures/jobs/a/test_job.py"]
 

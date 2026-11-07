@@ -228,6 +228,46 @@ class TestEachWeakening:
         assert p.returncode == 1 and says in p.stderr
 
 
+class TestDataFolders:
+    """C2633 (the operator, 2026-11-06): "fixture job folders are data, not Mercury's tests:
+    their path is declared once" (tests/data_folders.py), and this check reads that one
+    declaration, parsed at the commit."""
+
+    PLANTED = "def test_planted():\n    assert False, 'on purpose'\n"
+
+    def _with_a_job(self, repo):
+        _write(repo, "tests/data_folders.py", 'DATA_FOLDERS = ("tests/fixtures/jobs/",)\n')
+        _write(repo, "tests/fixtures/jobs/a/test_job.py", self.PLANTED)
+        _commit(repo, "a job folder")
+
+    def test_a_planted_test_removed_from_a_data_folder_is_no_weakening(self, repo):
+        self._with_a_job(repo)
+        (repo / "tests/fixtures/jobs/a/test_job.py").write_text("")
+        _commit(repo, "the planted case rewritten")
+        p = _range(repo)
+        assert p.returncode == 0, p.stderr
+
+    def test_a_test_moved_into_a_data_folder_is_still_a_deletion(self, repo):
+        self._with_a_job(repo)
+        _git(repo, "mv", "tests/test_a.py", "tests/fixtures/jobs/a/test_a.py")
+        sha = _commit(repo, "moved out of sight")
+        p = _range(repo)
+        assert p.returncode == 1, p.stderr
+        assert f"REFUSED: {sha[:12]} tests/test_a.py: test deleted: TestThing.test_one" \
+            in p.stderr, p.stderr
+
+    def test_a_declaration_outside_fixtures_is_refused_and_hides_nothing(self, repo):
+        _write(repo, "tests/data_folders.py", 'DATA_FOLDERS = ("tests/",)\n')
+        _edit(repo, "tests/test_a.py", "    def test_two(self):\n        assert \"a\" in \"abc\"\n",
+              "")
+        sha = _commit(repo, "a folder declared too wide")
+        p = _range(repo)
+        assert p.returncode == 1, p.stderr
+        assert (f"REFUSED: {sha[:12]} tests/data_folders.py declares 'tests/' a data folder: "
+                "an entry must be a folder under tests/fixtures/") in p.stderr, p.stderr
+        assert "test deleted: TestThing.test_two" in p.stderr
+
+
 class TestTheTrailer:
     def test_without_its_row_it_is_refused_even_naming_the_test(self, repo):
         _edit(repo, "tests/test_lists.py", "GAPS_CEILING = 2", "GAPS_CEILING = 3")

@@ -13,8 +13,13 @@ its fault.
         [--plan-only] [--allow-unconfined] [--python PY]
 
 **Which tests.** Each changed `tests/**/test_*.py` (the commit's pytest.ini's `python_files`,
-`python_classes`, `python_functions`, or pytest's defaults) is PARSED at the commit and at its
-parent (`ast`), never read from a diff's text. A test function is identified as its pytest node
+`python_classes`, `python_functions`, or pytest's defaults) outside the DATA folders the
+commit's tests/data_folders.py declares is PARSED at the commit and at its parent (`ast`),
+never read from a diff's text. **A data folder is never Mercury's tests** (C2633, the operator,
+2026-11-06): the job gate's fixture jobs hold their own `test_*.py`, failing on purpose; the
+declaration is PARSED at the commit (never imported), the same tuple tests/conftest.py's
+collection reads, and an entry outside `tests/fixtures/` is REFUSED, naming it, so a
+declaration cannot hide Mercury's own tests. A test function is identified as its pytest node
 id, `path::name` or `path::Class::name` (nested classes too). One is selected when it is new at
 the commit, or when its shape changed: its `ast.dump` (no positions), its decorators and
 arguments included, its leading docstring left out (words about a test assert nothing), so a
@@ -44,17 +49,26 @@ no `-n` does not distribute), and the outcomes read from pytest's JUnit XML (xun
 2. a run of exactly the selected functions' node ids that collected (pytest expands a
    parametrized function's cases).
 
-**The rules** (D1). A test is RED on the parent when it failed or errored there (setup and
-teardown errors included). **A parametrized function is red when at least one of its cases
-failed or errored**; otherwise it passed if any case passed. Then:
+**The rules** (D1, as the operator changed it on 2026-11-06, C2633: "a collection or setup
+error on the parent never counts as red: each new test must fail on the parent by its own
+assertion", read as the test's own BODY failing). A test is RED on the parent when its body ran
+there and raised (pytest's JUnit `failure`: an assertion, or a name the parent lacks); a setup
+or teardown error (JUnit's `error`) is NOT red, since the body never ran or already passed.
+**A parametrized function is red when at least one of its cases failed**; otherwise it is
+"error" if any case errored, then passed if any passed. Then:
 - red: passes the check;
-- passed, skipped, xfailed, or not collected (in a file that collected): REFUSED, unless the
-  message carries `Guards-Existing: <test id> — <reason>` (a test written to hold behaviour
+- error, passed, skipped, xfailed, or not collected (in a file that collected): REFUSED, unless
+  the message carries `Guards-Existing: <test id> — <reason>` (a test written to hold behaviour
   that already works, such as a regression net before a refactor);
-- in a file that does not collect on the parent at all (it imports a module the commit adds),
-  or behind a conftest that does not load: reported APART, since it shows nothing about any
-  one test, and REFUSED unless the message carries `Red-By-Collection: <tests/file.py> —
-  <reason>` naming that file (or that conftest).
+- in a file that does not collect on the parent at all: reported APART, since it shows nothing
+  about any one test. **`Red-By-Collection: <tests/file.py> — <reason>` excuses it only when
+  that file's collection error on the parent is an ImportError or ModuleNotFoundError naming a
+  module this commit ADDS** (the operator, 2026-11-06), checked against the commit's own added
+  paths (`No module named 'M'` with M added, or `cannot import name 'X' from 'M'` with M.X
+  added). Any other collection error (a fixture, a syntax error, a name added to a module that
+  already exists) is REFUSED whatever the trailer, naming the error;
+- behind a conftest that does not load on the parent: REFUSED, naming the conftest and its
+  error; no trailer excuses it.
 A trailer is an em dash, en dash or hyphen between the name and the reason, spaced; one without
 its reason excuses nothing and is refused. Each refusal names the test, its outcome on the
 parent against the red it needed, the parent's sha, and the trailer that would excuse it.
@@ -101,7 +115,17 @@ NMAS_TEST = os.path.join(REPO, "scripts", "nmas-test")
 #: pytest's defaults where the commit has no pytest.ini or the ini does not set one.
 DEFAULT_PATTERNS = {"python_files": "test_*.py *_test.py", "python_classes": "Test",
                     "python_functions": "test"}
-RED = ("failed", "error")
+#: Red is the test's own body failing (C2633): JUnit's `failure`, never its `error` (setup or
+#: teardown).
+RED = ("failed",)
+#: The one declaration of the folders under tests/ that hold data (C2633), and where each entry
+#: must lie.
+DATA_FOLDERS_FILE = "tests/data_folders.py"
+DATA_FOLDERS_NAME = "DATA_FOLDERS"
+DATA_ROOT = "tests/fixtures/"
+#: A collection error's words that name the module it could not import.
+NO_MODULE = re.compile(r"ModuleNotFoundError: No module named '(?P<module>[\w.]+)'")
+NO_NAME = re.compile(r"ImportError: cannot import name '(?P<name>\w+)' from '(?P<module>[\w.]+)'")
 #: The commit being made: the default index, its own side.
 INDEX = ":"
 #: One git read's bound (repo.run_git's own default). The reads here are a `git show` of one
@@ -183,9 +207,71 @@ def _matches(name, pats, glob_only=False):
     return False
 
 
+def data_folders(text):
+    """`(folders, problems)`: tests/data_folders.py's `DATA_FOLDERS` at one commit, PARSED
+    (never imported). No file: no folders. Each entry must be a literal string under
+    `tests/fixtures/` ending in "/", with no `..`; one that is not is a problem, named, and
+    declares nothing."""
+    if text is None:
+        return (), []
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError) as exc:
+        return (), [f"{DATA_FOLDERS_FILE} does not parse ({exc}): it declares nothing"]
+    found = [n for n in tree.body if isinstance(n, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == DATA_FOLDERS_NAME for t in n.targets)]
+    if len(found) != 1 or not isinstance(found[0].value, (ast.Tuple, ast.List)):
+        return (), [f"{DATA_FOLDERS_FILE} holds {len(found)} literal {DATA_FOLDERS_NAME} "
+                    "tuple(s), where one was required: it declares nothing"]
+    folders, problems = [], []
+    for e in found[0].value.elts:
+        v = e.value if isinstance(e, ast.Constant) and isinstance(e.value, str) else None
+        if v is None or not v.startswith(DATA_ROOT) or not v.endswith("/") or \
+                ".." in v.split("/") or v == DATA_ROOT:
+            problems.append(f"{DATA_FOLDERS_FILE} declares {ast.unparse(e)} a data folder: an "
+                            f"entry must be a folder under {DATA_ROOT} ending in '/', so "
+                            "Mercury's own tests stay judged")
+        else:
+            folders.append(v)
+    return tuple(folders), problems
+
+
 def is_test_file(path, pats):
     return bool(path) and path.startswith("tests/") and path.endswith(".py") and \
+        not path.startswith(tuple(pats.get("data", ()))) and \
         _matches(path.rsplit("/", 1)[-1], pats["python_files"], glob_only=True)
+
+
+def added_modules(changes):
+    """The dotted modules the commit ADDS on the code side (a `.py` path new at the commit, a
+    package by its `__init__.py`). Paths under tests/ are left out: the parent's worktree holds
+    the commit's whole tests/, so none of them can be what the parent lacks."""
+    out = set()
+    for old, new in changes:
+        if old is None and new and new.endswith(".py") and not new.startswith("tests/"):
+            dotted = new[:-3].replace("/", ".")
+            out.add(dotted[:-len(".__init__")] if dotted.endswith(".__init__") else dotted)
+    return out
+
+
+def import_of_an_added_module(error_text, added):
+    """The module an ImportError or ModuleNotFoundError in *error_text* names, when the commit
+    adds it, else ""."""
+    for m in NO_MODULE.finditer(error_text or ""):
+        if m.group("module") in added:
+            return m.group("module")
+    for m in NO_NAME.finditer(error_text or ""):
+        dotted = f"{m.group('module')}.{m.group('name')}"
+        if dotted in added:
+            return dotted
+    return ""
+
+
+def _error_line(text):
+    """The error's own line: pytest's `E   ...` line, else its last non-empty line."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    marked = [ln[1:].strip() for ln in lines if ln.startswith("E ")]
+    return (marked[-1] if marked else lines[-1] if lines else "collection failure")[:200]
 
 
 def _is_docstring(stmt):
@@ -330,24 +416,26 @@ def _dotted(path):
 
 
 def junit_cases(xml_path):
-    """`[(classname, name, outcome, message)]` from a JUnit XML file, outcome one of passed,
-    failed, error, skipped, xfailed; None when the file is absent or does not parse."""
+    """`[(classname, name, outcome, message, text)]` from a JUnit XML file, outcome one of
+    passed, failed, error, skipped, xfailed, *text* the element's own text (a collection
+    error's traceback); None when the file is absent or does not parse."""
     try:
         tree = ET.parse(xml_path)
     except (OSError, ET.ParseError):
         return None
     out = []
     for case in tree.iter("testcase"):
-        outcome, message = "passed", ""
+        outcome, message, text = "passed", "", ""
         for child in case:
             if child.tag in ("failure", "error"):
                 outcome = "failed" if child.tag == "failure" else "error"
-                message = child.get("message") or ""
+                message, text = child.get("message") or "", child.text or ""
                 break
             if child.tag == "skipped":
                 outcome = "xfailed" if child.get("type") == "pytest.xfail" else "skipped"
                 message = child.get("message") or ""
-        out.append((case.get("classname") or "", case.get("name") or "", outcome, message))
+        out.append((case.get("classname") or "", case.get("name") or "", outcome, message,
+                    text))
     return out
 
 
@@ -500,19 +588,22 @@ def run_on_parent(root, parent, commit, ids, allow_unconfined=False, python=None
                              f"--junitxml={collect_xml}", *files], allow_unconfined, python)
         cases = junit_cases(collect_xml)
         if cases is None:
-            m = CONFTEST_FAILED.search(c.stdout + c.stderr)
+            out = c.stdout + c.stderr
+            m = CONFTEST_FAILED.search(out)
             if m:
                 conftest = _relative(m.group("path"), tree)
-                why = f"{conftest} does not load on the parent"
+                error = clean(_error_line(out[m.end():]))
+                why = f"{conftest} does not load on the parent ({error})"
                 return {"collection": {f: why for f in files}, "conftest": conftest,
                         "outcomes": {}}
             raise CannotAsk(f"the parent's collection gave no report (scripts/nmas-test exit "
                             f"{c.returncode}): {_tail(c)}")
         by_dotted = {_dotted(f): f for f in files}
         collection = {}
-        for classname, name, outcome, message in cases:
-            if not classname and name in by_dotted and outcome in RED:
-                collection[by_dotted[name]] = clean(message) or "collection failure"
+        for classname, name, outcome, message, text in cases:
+            # A collection error is JUnit's `error` on a case named for the file.
+            if not classname and name in by_dotted and outcome in ("failed", "error"):
+                collection[by_dotted[name]] = clean(text or message) or "collection failure"
         prefixes = tuple(f + "::" for f in files)
         collected = [line.strip() for line in c.stdout.splitlines()
                      if line.strip().startswith(prefixes)]
@@ -532,7 +623,7 @@ def run_on_parent(root, parent, commit, ids, allow_unconfined=False, python=None
                 path, rest = i.split("::", 1)
                 parts = rest.split("::")
                 classname = ".".join([_dotted(path), *parts[:-1]])
-                mine = [(n, o, msg) for cn, n, o, msg in got if cn == classname and
+                mine = [(n, o, msg) for cn, n, o, msg, _text in got if cn == classname and
                         (n == parts[-1] or n.startswith(parts[-1] + "["))]
                 outcomes[i] = (verdict([o for _n, o, _m in mine]),
                                [f"{n}: {o}" + (f" ({clean(msg).splitlines()[0][:120]})"
@@ -543,8 +634,9 @@ def run_on_parent(root, parent, commit, ids, allow_unconfined=False, python=None
 
 
 def verdict(case_outcomes):
-    """One function's outcome from its cases': red (failed or error) if ANY case is red; else
-    passed if any passed; else xfailed, skipped, or "no outcome" when no case was reported."""
+    """One function's outcome from its cases': failed (red) if ANY case failed; else error if
+    any errored (not red, C2633); else passed if any passed; else xfailed, skipped, or "no
+    outcome" when no case was reported."""
     for o in ("failed", "error", "passed", "xfailed", "skipped"):
         if o in case_outcomes:
             return o
@@ -553,8 +645,8 @@ def verdict(case_outcomes):
 
 # --- the judgement --------------------------------------------------------------------------
 
-def judge(selected, run, message, parent):
-    """`(lines, counts, refused)` for one commit."""
+def judge(selected, run, message, parent, added=frozenset()):
+    """`(lines, counts, refused)` for one commit; *added* the dotted modules it adds."""
     ex, bad = excuses(message)
     guards, by_collection = ex["Guards-Existing"], ex["Red-By-Collection"]
     lines, refused = [], list(bad)
@@ -565,18 +657,36 @@ def judge(selected, run, message, parent):
         path = tid.split("::", 1)[0]
         if path in run["collection"]:
             counts["collection"] += 1
-            name = run.get("conftest") or path
-            msg = run["collection"][path].splitlines()[0][:160]
-            if name in by_collection:
+            conftest = run.get("conftest")
+            text = run["collection"][path]
+            error = text if conftest else _error_line(text)
+            module = "" if conftest else import_of_an_added_module(text, added)
+            if module and path in by_collection:
                 counts["excused"] += 1
-                lines.append(f"  excused  {tid} ({why}): {name} does not collect on the parent "
-                             f"{p}; Red-By-Collection: {by_collection[name]}")
+                lines.append(f"  excused  {tid} ({why}): {path} does not collect on the parent "
+                             f"{p} ({error}), a module this commit adds ({module}); "
+                             f"Red-By-Collection: {by_collection[path]}")
+                continue
+            counts["refused"] += 1
+            if conftest:
+                lines.append(f"  REFUSED  {tid} ({why}): {error}, which shows nothing about "
+                             "this test; no trailer excuses a conftest that does not load")
+                refused.append(f"{tid}: {error}; a conftest that does not load on the parent "
+                               "is refused whatever the trailer (C2633)")
+            elif module:
+                lines.append(f"  REFUSED  {tid} ({why}): {path} does not collect on the parent "
+                             f"{p} ({error}), which shows nothing about this test")
+                refused.append(f"{tid}: {path} does not collect on the parent {p} ({error}, a "
+                               f"module this commit adds: {module}); excuse with: "
+                               f"Red-By-Collection: {path} — <reason>")
             else:
-                counts["refused"] += 1
-                lines.append(f"  REFUSED  {tid} ({why}): {name} does not collect on the parent "
-                             f"{p} ({msg}), which shows nothing about this test")
-                refused.append(f"{tid}: {name} does not collect on the parent {p}; excuse "
-                               f"with: Red-By-Collection: {name} — <reason>")
+                lines.append(f"  REFUSED  {tid} ({why}): {path} does not collect on the parent "
+                             f"{p} ({error}), which is not an ImportError naming a module this "
+                             "commit adds, so no trailer excuses it")
+                refused.append(f"{tid}: {path} does not collect on the parent {p} ({error}); "
+                               "Red-By-Collection excuses only an ImportError or "
+                               "ModuleNotFoundError naming a module this commit adds "
+                               f"(added: {', '.join(sorted(added)) or 'none'}), C2633")
             continue
         outcome, cases = run["outcomes"].get(tid, ("no outcome", []))
         shown = "; ".join(cases[:4]) + (f"; and {len(cases) - 4} more" if len(cases) > 4 else "")
@@ -593,10 +703,13 @@ def judge(selected, run, message, parent):
                          f"Guards-Existing: {guards[tid]}")
         else:
             counts["refused"] += 1
-            lines.append(f"  REFUSED  {tid} ({why}): {outcome} on the parent {p}, where red "
-                         f"(failed or error) was required" + (f": {shown}" if shown else ""))
-            refused.append(f"{tid}: {outcome} on the parent {p}, red (failed or error) "
-                           f"required; excuse with: Guards-Existing: {tid} — <reason>")
+            said = (" (a setup or teardown error: the test's own body did not fail)"
+                    if outcome == "error" else "")
+            lines.append(f"  REFUSED  {tid} ({why}): {outcome} on the parent {p}{said}, where "
+                         f"red (its own body failing) was required"
+                         + (f": {shown}" if shown else ""))
+            refused.append(f"{tid}: {outcome} on the parent {p}{said}, red (its own body "
+                           f"failing) required; excuse with: Guards-Existing: {tid} — <reason>")
     return lines, counts, refused
 
 
@@ -613,23 +726,26 @@ def check(root, parent, commit, message, label, plan_only=False, allow_unconfine
     """`(lines, refused)` for one commit: *commit* a commit or tree, *parent* its parent."""
     t0 = time.monotonic()
     pats = patterns(show(root, commit, "pytest.ini"))
+    folders, declared_wrong = data_folders(show(root, commit, DATA_FOLDERS_FILE))
+    pats["data"] = folders
     changes = changes_between(root, parent, commit)
     selected, notes = select(changes, lambda p: show(root, parent, p),
                              lambda p: show(root, commit, p), pats)
     lines = [f"nmas-red-green: {label}"] + [f"  note: {n}" for n in notes]
+    lines += [f"  REFUSED  {d}" for d in declared_wrong]
     if not selected:
         lines.append("  no test function added or changed: nothing to run, passes")
-        return lines, []
+        return lines, list(declared_wrong)
     if plan_only:
         lines += [f"  selected {tid} ({why})" for tid, why in selected]
         lines.append(f"  {len(selected)} selected (--plan-only: nothing run)")
-        return lines, []
+        return lines, list(declared_wrong)
     run = run_on_parent(root, parent, commit, [t for t, _w in selected], allow_unconfined,
                         python)
-    more, counts, refused = judge(selected, run, message, parent)
+    more, counts, refused = judge(selected, run, message, parent, added_modules(changes))
     lines += more
     lines.append(f"  {summary(counts)}; {time.monotonic() - t0:.1f} s")
-    return lines, refused
+    return lines, list(declared_wrong) + refused
 
 
 def _staged_index_ok(root):
@@ -714,10 +830,11 @@ def main(argv=None):
     for where, why in refused:
         print(f"nmas-red-green: REFUSED: {where} {why}", file=sys.stderr)
     if refused:
-        print("nmas-red-green: each new or changed test must fail or error on the commit's "
-              "parent (docs/TEST_INTEGRITY.md, item 1); one written to hold behaviour that "
-              "already works says so: 'Guards-Existing: <test id> — <reason>'; a file that "
-              "cannot collect on the parent: 'Red-By-Collection: <file> — <reason>'",
+        print("nmas-red-green: each new or changed test's own body must fail on the commit's "
+              "parent (docs/TEST_INTEGRITY.md, item 1; a setup or collection error is not "
+              "red, C2633); one written to hold behaviour that already works says so: "
+              "'Guards-Existing: <test id> — <reason>'; a file that cannot import on the parent "
+              "a module this commit adds: 'Red-By-Collection: <file> — <reason>'",
               file=sys.stderr)
     return 1 if refused else 0
 

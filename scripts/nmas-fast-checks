@@ -94,31 +94,32 @@ def commit_files(cwd, given):
     return sorted({p for p in changed if p} | set(untracked(cwd)))
 
 
-def collect_ignored(cwd):
-    """The folders tests/conftest.py's `collect_ignore` names, as `tests/<folder>/` prefixes,
-    PARSED from the file (never imported). pytest honours `collect_ignore` only while it walks
+def data_folders(cwd):
+    """tests/data_folders.py's `DATA_FOLDERS` (C2633, the one declaration pytest's collection,
+    scripts/nmas-red-green and scripts/nmas-test-weakening-check read), PARSED (never
+    imported), each entry a literal string under `tests/fixtures/` ending in "/"; another entry,
+    or an unreadable file, declares nothing. pytest honours `collect_ignore` only while it walks
     a folder: a file named on its command line is collected regardless, so a selector that
-    names one must leave these out itself (the job gate's fixture jobs, whose planted tests
-    fail on purpose, 2026-11-06). An unreadable conftest ignores nothing."""
+    names one leaves these out itself."""
     try:
-        with open(os.path.join(cwd, "tests", "conftest.py"), encoding="utf-8") as fh:
+        with open(os.path.join(cwd, "tests", "data_folders.py"), encoding="utf-8") as fh:
             tree = ast.parse(fh.read())
     except (OSError, SyntaxError, ValueError):
         return ()
-    out = []
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "collect_ignore"
-                                                for t in node.targets) \
-                and isinstance(node.value, (ast.List, ast.Tuple)):
-            out += [f"tests/{e.value.strip('/')}/" for e in node.value.elts
-                    if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-    return tuple(out)
+    found = [n for n in tree.body if isinstance(n, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == "DATA_FOLDERS" for t in n.targets)]
+    if len(found) != 1 or not isinstance(found[0].value, (ast.Tuple, ast.List)):
+        return ()
+    return tuple(e.value for e in found[0].value.elts
+                 if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                 and e.value.startswith("tests/fixtures/") and e.value.endswith("/")
+                 and ".." not in e.value.split("/") and e.value != "tests/fixtures/")
 
 
 def tests_of(files, cwd):
-    """The changed test files that exist, outside what tests/conftest.py's `collect_ignore`
-    names, then SCANS, each once, in that order."""
-    ignored = collect_ignored(cwd)
+    """The changed test files that exist, outside tests/data_folders.py's folders, then SCANS,
+    each once, in that order."""
+    ignored = data_folders(cwd)
     own = [f for f in files if f.startswith("tests/") and os.path.basename(f).startswith("test_")
            and f.endswith(".py") and not f.startswith(ignored)
            and os.path.exists(os.path.join(cwd, f))]

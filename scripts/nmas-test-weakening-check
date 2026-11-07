@@ -72,6 +72,11 @@ from typing import NamedTuple
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTRY = "tests/ratchet_lists.py"
 REGISTER = "docs/OPEN_FINDINGS.md"
+#: The one declaration of the folders under tests/ that hold data, never Mercury's tests
+#: (C2633, the operator, 2026-11-06), PARSED at the commit; an entry must lie under DATA_ROOT.
+DATA_FOLDERS_FILE = "tests/data_folders.py"
+DATA_FOLDERS_NAME = "DATA_FOLDERS"
+DATA_ROOT = "tests/fixtures/"
 
 #: coverage.py's default exclusion pattern, so a pragma coverage honours is one this counts.
 PRAGMA = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
@@ -179,6 +184,48 @@ def _in_tests(path):
 
 def _names(path, *more):
     return tuple(n for n in (*more, path, _base(path)) if n)
+
+
+def data_folders(text):
+    """`(folders, problems)`: tests/data_folders.py's `DATA_FOLDERS` at one commit, PARSED
+    (never imported), as scripts/nmas-red-green reads it. No file: no folders. Each entry must
+    be a literal string under `tests/fixtures/` ending in "/", with no `..`; one that is not is
+    a problem, named, and declares nothing."""
+    if text is None:
+        return (), []
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError) as exc:
+        return (), [f"{DATA_FOLDERS_FILE} does not parse ({exc}): it declares nothing"]
+    found = [n for n in tree.body if isinstance(n, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == DATA_FOLDERS_NAME for t in n.targets)]
+    if len(found) != 1 or not isinstance(found[0].value, (ast.Tuple, ast.List)):
+        return (), [f"{DATA_FOLDERS_FILE} holds {len(found)} literal {DATA_FOLDERS_NAME} "
+                    "tuple(s), where one was required: it declares nothing"]
+    folders, problems = [], []
+    for e in found[0].value.elts:
+        v = e.value if isinstance(e, ast.Constant) and isinstance(e.value, str) else None
+        if v is None or not v.startswith(DATA_ROOT) or not v.endswith("/") or \
+                ".." in v.split("/") or v == DATA_ROOT:
+            problems.append(f"{DATA_FOLDERS_FILE} declares {ast.unparse(e)} a data folder: an "
+                            f"entry must be a folder under {DATA_ROOT} ending in '/', so "
+                            "Mercury's own tests stay judged")
+        else:
+            folders.append(v)
+    return tuple(folders), problems
+
+
+def without_data(changes, folders) -> list:
+    """*changes* with each path in a data folder read as absent on its side: a file moved INTO a
+    data folder is still a deletion of what it held, one moved out is new."""
+    folders = tuple(folders)
+    out = []
+    for old, new in changes:
+        old = None if old and old.startswith(folders) else old
+        new = None if new and new.startswith(folders) else new
+        if old or new:
+            out.append((old, new))
+    return out
 
 
 # --- tests deleted -------------------------------------------------------------------------
@@ -918,6 +965,9 @@ def judge(weakenings, message, register_text, named=None) -> list:
 
 
 def weakenings_of(changes, parent, commit) -> list:
+    """Every weakening in *changes*, the commit's data folders left out (C2633)."""
+    folders, _wrong = data_folders(commit.read(DATA_FOLDERS_FILE))
+    changes = without_data(changes, folders)
     ratchets, flagged = loosened_ratchets(changes, parent, commit)
     return (deleted_tests(changes, parent, commit)
             + counted_rises(changes, parent, commit, _in_tests,
@@ -937,6 +987,7 @@ def check_staged(message_file: str, named=None) -> list:
         message = fh.read()
     said = []
     why = judge(weakenings_of(changes, parent, commit), message, commit.read(REGISTER), said)
+    why += data_folders(commit.read(DATA_FOLDERS_FILE))[1]
     if named is not None:
         named += [("the commit being made", s) for s in said]
     return [("the commit being made", w) for w in why]
@@ -952,7 +1003,8 @@ def check_range(rng: str, named=None) -> list:
         message = git("log", "-1", "--format=%B", sha)
         said = []
         for why in judge(weakenings_of(changes, parent, commit), message,
-                         commit.read(REGISTER), said):
+                         commit.read(REGISTER), said) + \
+                data_folders(commit.read(DATA_FOLDERS_FILE))[1]:
             out.append((sha[:12], why))
         if named is not None:
             named += [(sha[:12], s) for s in said]

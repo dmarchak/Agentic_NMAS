@@ -151,7 +151,7 @@ def test_a_new_test_green_on_the_parent_is_refused_naming_the_trailer(repo, scra
     r = run(repo, scratch)
     assert r.returncode == 1, r.stdout + r.stderr
     assert (f"tests/test_calc.py::test_double_three: passed on the parent {parent[:12]}, red "
-            "(failed or error) required; excuse with: Guards-Existing: "
+            "(its own body failing) required; excuse with: Guards-Existing: "
             "tests/test_calc.py::test_double_three — <reason>") in r.stderr
     assert "1 selected, 0 red, 0 excused, 1 refused" in r.stdout
 
@@ -189,13 +189,27 @@ def test_a_test_skipped_on_the_parent_is_refused(repo, scratch):
     assert "Guards-Existing: tests/test_calc.py::test_newmod — <reason>" in r.stderr
 
 
-def test_an_error_in_setup_counts_as_red(repo, scratch):
+def test_an_error_in_setup_is_not_red_and_is_refused(repo, scratch):
+    """C2633 (the operator, 2026-11-06): "a collection or setup error on the parent never
+    counts as red": the fixture failed, so the test's own body never ran there."""
     _commit(repo, {"pkg/calc.py": CALC_FIXED, "tests/test_calc.py": with_test(
         "@pytest.fixture\ndef tripler():\n    return calc.triple\n\n\n"
         "def test_tripler(tripler):\n    assert tripler(1) == 3\n")})
     r = run(repo, scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert ("REFUSED  tests/test_calc.py::test_tripler (added): error on the parent") in r.stdout
+    assert "(a setup or teardown error: the test's own body did not fail)" in r.stdout
+    assert "1 selected, 0 red, 0 excused, 1 refused" in r.stdout
+
+
+def test_a_body_failing_on_a_name_the_parent_lacks_is_red(repo, scratch):
+    """Option 1 of C2633: the body ran and raised (an AttributeError, not an assertion)."""
+    _commit(repo, {"pkg/calc.py": CALC_FIXED, "tests/test_calc.py": with_test(
+        "def test_triple_one():\n    assert calc.triple(1) == 3\n")})
+    r = run(repo, scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "red      tests/test_calc.py::test_tripler (added): error on the parent" in r.stdout
+    assert "red      tests/test_calc.py::test_triple_one (added): failed on the parent" \
+        in r.stdout and "AttributeError" in r.stdout
 
 
 def test_a_parametrized_function_is_red_when_one_of_its_cases_is(repo, scratch):
@@ -234,6 +248,88 @@ def test_red_by_collection_naming_the_file_excuses_it(repo, scratch):
         "New module\n\nRed-By-Collection: tests/test_newmod.py — its module is new here\n"))
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1 selected, 0 red, 1 excused, 0 refused" in r.stdout
+    assert "a module this commit adds (pkg.newmod)" in r.stdout
+
+
+RBC = "Red-By-Collection: tests/test_newmod.py — its module is new here\n"
+
+
+def test_red_by_collection_takes_an_added_module_imported_by_name(repo, scratch):
+    """`from pkg import newmod`, newmod added: "cannot import name 'newmod' from 'pkg'" names
+    pkg.newmod, a module the commit adds."""
+    _commit(repo, {"pkg/newmod.py": "def f():\n    return 1\n",
+                   "tests/test_newmod.py": "from pkg import newmod\n\n\n"
+                                           "def test_f():\n    assert newmod.f() == 1\n"})
+    r = run(repo, scratch, "--commit", "HEAD", message="New module\n\n" + RBC)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "a module this commit adds (pkg.newmod)" in r.stdout
+
+
+def test_red_by_collection_is_refused_for_a_name_added_to_an_existing_module(repo, scratch):
+    """C2633 (the operator, 2026-11-06): the trailer holds only for an ImportError naming a
+    module this commit ADDS; `triple` is new in pkg.calc, which exists."""
+    _commit(repo, {"pkg/calc.py": CALC_FIXED,
+                   "tests/test_newmod.py": "from pkg.calc import triple\n\n\n"
+                                           "def test_f():\n    assert triple(1) == 3\n"})
+    r = run(repo, scratch, "--commit", "HEAD", message="A name\n\n" + RBC)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "cannot import name 'triple' from 'pkg.calc'" in r.stdout
+    assert "which is not an ImportError naming a module this commit adds" in r.stdout
+    assert "Red-By-Collection excuses only an ImportError or ModuleNotFoundError naming a " \
+        "module this commit adds (added: none)" in r.stderr
+
+
+def test_red_by_collection_is_refused_for_another_collection_error(repo, scratch):
+    """A collection error that is not an import (a module-level name the parent lacks) is
+    refused whatever the trailer, naming the error."""
+    _commit(repo, {"pkg/calc.py": CALC_FIXED, "pkg/newmod.py": "X = 1\n",
+                   "tests/test_newmod.py": "from pkg import calc\n\nTRIPLE = calc.triple\n\n\n"
+                                           "def test_f():\n    assert TRIPLE(1) == 3\n"})
+    r = run(repo, scratch, "--commit", "HEAD", message="A name\n\n" + RBC)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "AttributeError" in r.stdout
+    assert "(added: pkg.newmod)" in r.stderr
+
+
+def test_a_conftest_that_does_not_load_is_refused_whatever_the_trailer(repo, scratch):
+    """C2633: a conftest's collection error is refused, naming the conftest and its error; no
+    trailer (naming it or the file) excuses it."""
+    _commit(repo, {"pkg/newmod.py": "def f():\n    return 1\n",
+                   "tests/conftest.py": "from pkg.newmod import f  # noqa: F401\n",
+                   "tests/test_calc.py": with_test("def test_f():\n    assert 1 == 2\n")})
+    r = run(repo, scratch, "--commit", "HEAD", message=(
+        "Conftest\n\nRed-By-Collection: tests/conftest.py — its module is new here\n"
+        "Red-By-Collection: tests/test_calc.py — its module is new here\n"))
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "tests/conftest.py does not load on the parent" in r.stdout
+    assert "no trailer excuses a conftest that does not load" in r.stdout
+    assert "ModuleNotFoundError" in r.stdout
+
+
+# --- data folders (C2633) -------------------------------------------------------------------
+
+DECLARED = 'DATA_FOLDERS = ("tests/fixtures/jobs/",)\n'
+PLANTED = "def test_planted():\n    assert True\n"
+
+
+def test_a_test_in_a_declared_data_folder_is_not_selected(repo, scratch):
+    """The operator, 2026-11-06: "fixture job folders are data, not Mercury's tests": a planted
+    test in one (green on the parent, so it would be refused if judged) is never selected."""
+    _commit(repo, {"tests/data_folders.py": DECLARED,
+                   "tests/fixtures/jobs/a/test_job.py": PLANTED})
+    r = run(repo, scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "no test function added or changed" in r.stdout
+
+
+def test_a_data_folder_declared_outside_fixtures_is_refused_and_hides_nothing(repo, scratch):
+    _commit(repo, {"tests/data_folders.py": 'DATA_FOLDERS = ("tests/",)\n',
+                   "tests/test_calc.py": with_test(PLANTED)})
+    r = run(repo, scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "tests/data_folders.py declares 'tests/' a data folder: an entry must be a folder " \
+        "under tests/fixtures/" in r.stderr
+    assert "REFUSED  tests/test_calc.py::test_planted (added): passed on the parent" in r.stdout
 
 
 # --- which tests ----------------------------------------------------------------------------
