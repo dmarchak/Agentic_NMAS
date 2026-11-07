@@ -873,10 +873,13 @@ def network(list_name):
         return _strict(render_template("v2/settings.html", who=_who(), active_nav="settings",
                                        v=v), 410)
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")
-    src = sdn = None
+    src = sdn = aic = None
     if v.get("tab") == "network" and not v.get("error"):
         from modules import network_source as NS
+        from modules.ai import egress_classes
         src = NS.view(list_name)
+        # Board H, artboard N (H28): the network's AI data classes, its device state switch.
+        aic = egress_classes.classes_view(list_name)
     if v.get("tab") == "integrations" and not v.get("error"):
         from modules import sdn_page
         sdn = sdn_page.card(list_name)
@@ -885,7 +888,8 @@ def network(list_name):
         # Board H, artboard A (H9): the network's Self-healing tab, its own template.
         from modules import heal_page
         heal = heal_page.view(list_name)
-    return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal)
+    return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal,
+                 aic=aic)
 
 
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])

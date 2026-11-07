@@ -1252,6 +1252,11 @@ def credential_profiles(ctx):
         if r.get("action") == "rotation_policy":
             return (f"Credential profile {r.get('profile', '?')}'s rotation policy set: "
                     f"{r.get('policy') or 'not recorded'}")
+        if r.get("action") in ("read_account_added", "read_account_replaced"):
+            # H28: the read-only account, its name and password set, never a value.
+            return (f"Credential profile {r.get('profile', '?')}'s read-only account "
+                    + ("added" if r.get("action") == "read_account_added"
+                       else "password replaced"))
         return (f"Credential profile {r.get('profile', '?')} "
                 f"{'deleted' if r.get('action') == 'deleted' else 'saved'}"
                 + (f": {', '.join(r.get('fields') or [])} set" if r.get("fields") else ""))

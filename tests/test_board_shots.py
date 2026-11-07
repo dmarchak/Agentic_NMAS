@@ -4037,3 +4037,48 @@ def test_heal_proposal(tmp_path, monkeypatch):
             b.wait_for("return /Lifted by you/.test((document.querySelector('.heal-halt') || "
                        "{}).textContent || '')", 15)
     assert decisions.halted("Default") == {}
+
+
+def test_read_account_and_ai_classes(tmp_path, monkeypatch):
+    """Board H, artboard N (heal-to-intent.html, 1440; H28): Credentials › Profiles' Read-only
+    account card with Default's read-only account set by a person and a role profile without
+    one (`read-account`), its form open on Set the read-only account… (`read-account-form`),
+    and Settings · Default › Network's What AI may send with device state off, then Turn on…
+    pressed and a reason typed (`ai-classes`, `ai-classes-on`). The board is the artboard
+    read from its file; the shots are the page's."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import credentials
+    from tests.test_sdn_connections import make_networks
+
+    make_networks(tmp_path, monkeypatch)
+    credentials.save_profile("default", "admin", "Deploy-Pass-5531", "")
+    credentials.save_profile("role:router", "netops", "Deploy-Pass-7720", "")
+    credentials.set_read_account("default", "mercury-ro", "ReadOnly-Pass-8812",
+                                 actor="operator@example.com", verified="access")
+
+    def open_form(b):
+        b.js("document.querySelector('[data-read-account=\"role:router\"] a.btn').click(); "
+             "return 1")
+        b.wait_for("return !!document.querySelector('#cred-read input[name=password]')")
+
+    def turn_on(b):
+        b.js("document.querySelector('[data-ai-class=\"device_state\"] a.btn').click(); "
+             "return 1")
+        b.wait_for("return !!document.querySelector('#ai-classes input[name=reason]')")
+        b.js("document.querySelector('#ai-classes input[name=reason]').value = "
+             "'Lab 10: the AI analysis reads r2 and s1'; return 1")
+
+    import app as A
+    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+    with browser.Served(A.app) as served:
+        _shoot("read-account", "", lambda w: "/v2/credentials/profiles?list=Default", served,
+               widths=widths)
+        _shoot("read-account-form", "", lambda w: "/v2/credentials/profiles?list=Default",
+               served, widths=widths, act=open_form)
+        _shoot("ai-classes", "", lambda w: "/v2/settings/network/Default?tab=network", served,
+               widths=widths)
+        _shoot("ai-classes-on", "", lambda w: "/v2/settings/network/Default?tab=network",
+               served, widths=widths, act=turn_on)

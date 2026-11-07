@@ -1030,6 +1030,22 @@ def close_persistent_connection(
                 pass
 
 
+def with_plain_connection(dev: dict, func) -> any:
+    """Run func(conn) on a session signed in as *dev*'s login and never escalated: no
+    `enable()`, no config mode (`open_ssh`'s *plain*). The read-only account's session (H28):
+    an AI read runs at the account's own low privilege, so the device enforces the read set
+    too, and a password that is not an enable secret is never sent as one."""
+    conn = open_ssh(stored_connection_params(dev), plain=True,
+                    owner="reads:read-only account")
+    try:
+        return func(conn)
+    finally:
+        try:
+            conn.disconnect()
+        except Exception as e:                 # noqa: BLE001 (the session is gone either way)
+            logger.debug("Disconnect error for %s: %s", dev.get("ip"), e)
+
+
 def with_temp_connection(dev: dict, func) -> any:
     #Creates a temporary Netmiko connection to run func(conn), then disconnects.
     try:

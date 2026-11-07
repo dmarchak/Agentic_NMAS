@@ -61,6 +61,7 @@
 {%- endif %}
 {%- if v.tab == 'network' %}
 {% include "v2/_network_source.html" %}
+{%- if aic %}{% with list_name=v.network, refused=None, turned=None, open_on=False, reason='' %}{% include "v2/_ai_classes.html" %}{% endwith %}{% endif %}
 {%- if not v.is_default %}{% with name=v.network %}{% include "v2/_network_delete.html" %}{% endwith %}{% endif %}
 {%- endif %}
 {%- endif %}

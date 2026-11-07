@@ -107,7 +107,32 @@ def matches(command: str, words: tuple) -> bool:
 #: a file; a line in a device's log and the session's settings are a person's to send. A
 #: diagnosis runbook (`modules/heal/diagnose.py`, HEAL_TO_INTENT 19.3): none, reads only.
 EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",),
-          "diagnosis": ()}
+          "diagnosis": (), "ai_analysis": ()}
+
+#: The caller kinds whose reads sign in with the device's read-only account, never the deploy
+#: account, and never escalate (no `enable`): the AI analysis's reads (H28; HEAL_TO_INTENT
+#: 19.5, prerequisite 1). A device whose read-only account does not resolve is refused by name
+#: before any session opens.
+READ_ACCOUNT_KINDS = ("ai_analysis",)
+
+
+def read_account_for(dev: dict) -> dict:
+    """The read-only account *dev* signs in with for a `READ_ACCOUNT_KINDS` read:
+    `credentials.resolve_read` on its platform, kind and site."""
+    from modules import credentials
+
+    return credentials.resolve_read(role=dev.get("role", ""), site=dev.get("_site", ""),
+                                    platform=dev.get("_platform", ""))
+
+
+def as_read_account(dev: dict, account: dict) -> dict:
+    """*dev* signing in as *account* (`read_account_for`'s, ok): its login replaced, sealed in
+    the inventory's own shape, its enable secret empty."""
+    from modules.inventory.netbox_source import _encrypt_for_shape
+
+    return dict(dev, username=account["username"],
+                password=_encrypt_for_shape(account["password"]),
+                secret=_encrypt_for_shape(""), _cred_source=account["source"])
 
 #: A reason long enough to allow `send log` at levels 0 to 3 for a person (the operator,
 #: 2026-10-08: "three words minimum, like dangerous lines"); recorded with the run.
@@ -269,6 +294,9 @@ def actor_words(record: dict) -> str:
         return f"the agent, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "diagnosis":
         return f"a diagnosis, for {record.get('actor') or 'nobody named'}"
+    if record.get("by") == "ai_analysis":
+        return (f"the AI analysis, turned on by {record.get('actor') or 'nobody named'}, "
+                "as the read-only account")
     return record.get("actor") or "unknown"
 
 
@@ -388,7 +416,11 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     inventory = {d.get("hostname"): d for d in load_saved_devices(listref.resolve(list_name).csv_path)}
     values = known_secret_values()
     cap = cap_bytes(list_name)
-    if session is None:
+    read_account = by in READ_ACCOUNT_KINDS
+    if session is None and read_account:
+        # The read-only account signs in and never escalates: no `enable` (H28).
+        from modules.connection import with_plain_connection as session
+    elif session is None:
         from modules.connection import with_temp_connection as session
     holder = actor_words(record)
     import threading
@@ -412,8 +444,13 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
             dev = dict(dev, device_type=drivers[host])
         from modules import discovery
         driver = (dev or {}).get("device_type", "")
+        account = read_account_for(dev) if (dev is not None and read_account) else None
         if dev is None:
             out = {"state": UNKNOWN, "why": f"{host} is not a device of {list_name}"}
+        elif account is not None and not account["ok"]:
+            # H28: never read with the deploy account. Refused by name before any session.
+            out = {"state": FAILED, "why": (f"no read-only account for {host}: "
+                                            f"{account['error']}. Nothing was sent")}
         elif device_refusal(driver, commands, by, reason):
             # Each device is asked only what its own driver's rule allows: a device Mercury
             # has no driver for its capture list, every other the allowlist, so a Comware
@@ -423,13 +460,20 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
         else:
             t0 = time.time()
             try:
+                signed = as_read_account(dev, account) if account is not None else dev
                 with device_ops.hold(list_name, host, "read", holder,
                                      detail=f"{len(commands)} command(s)", ip=dev.get("ip", "")):
-                    answers = session(dev, lambda conn: [_answer(conn, c, values, cap, driver)
-                                                         for c in commands])
+                    answers = session(signed, lambda conn: [_answer(conn, c, values, cap,
+                                                                    driver)
+                                                            for c in commands])
                 failed = [a for a in answers if a["state"] != ANSWERED]
                 out = {"state": FAILED if len(failed) == len(answers) else ANSWERED,
                        "answers": answers, "took_s": round(time.time() - t0, 2)}
+                if account is not None:
+                    # Who it signed in as: the account's name and the profile it came from,
+                    # never its password (History › Reads says "as the read-only account").
+                    out["signed_in_as"] = {"username": account["username"],
+                                           "source": account["source"]}
                 if discovery.is_driver(driver):
                     # Its answers are captures (`discovery.captures`): which driver read them.
                     out["driver"] = driver

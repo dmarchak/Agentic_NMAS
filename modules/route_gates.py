@@ -208,7 +208,11 @@ GATES = {
     # network's Self-healing tab. The confirm and resume refuse anyone but a verified person
     # too, whatever configure's settings allow a service.
     "heal_v2.policy_confirm": _g(K, "sets one network's heal policy as previewed, bound to the preview's fingerprint, as a verified person with a reason (C2009: AUTO only on a network marked lab, at most 7 days, then dry run); recorded in the network's settings record with the values before and after; sends nothing to a device"),
-    "heal_v2.turn_off": _g(K, "turns self-healing off for one network at once, one press, no confirm; recorded with who and when; a heal already applying finishes its own verify and rollback"),
+    # The device state class (board H artboard N, H28; routes/ai_classes_v2.py): what AI may
+    # send off the host for one network.
+    "ai_classes_v2.device_state_on": _g(K, "turns the device state class on for one network (the AI read set's answers may then leave the host, masked), as a verified person with a reason of at least three words; recorded in the network's settings record; sends nothing to a device"),
+    "ai_classes_v2.device_state_off": _g(K, "turns the device state class off for one network at once, one press, no confirm; recorded with who and when; sends nothing"),
+    "heal_v2.turn_off": _g(K,"turns self-healing off for one network at once, one press, no confirm; recorded with who and when; a heal already applying finishes its own verify and rollback"),
     "heal_v2.notify_save": _g(K, "names the team told about one network's self-healing and the events that tell it (the Self-healing tab's Who is told), refused when the team does not exist or another person changed it since the card drew it; recorded in the network's settings record; sends nothing"),
     "heal_v2.stop_everywhere": _g(K, "stops self-healing on every network at once (the installation's kill switch), one press, no confirm; recorded with who, when and why"),
     "heal_v2.resume": _g(K, "resumes self-healing everywhere as previewed, bound to the preview's fingerprint, as a verified person with a reason; recorded in the installation's settings record"),
@@ -315,6 +319,10 @@ GATES = {
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
                                            "Profiles, recorded"),
+    "credential_profiles_v2.read_account_save": _g(K, "sets a credential profile's read-only "
+                                                    "account (H28: its name once, its password "
+                                                    "typed by a verified person, sealed), "
+                                                    "recorded (who, which, the fields set)"),
     "credential_profiles_v2.policy_save": _g(K, "sets a credential profile's scheduled "
                                               "rotation policy (C724), a verified person's, "
                                               "recorded (who, when, what)"),

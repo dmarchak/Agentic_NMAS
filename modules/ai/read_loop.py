@@ -60,7 +60,10 @@ command shapes, the device scope and the held-device skip, run by the reads engi
 ``ai_analysis``, read-only account H28) is one more `ReadFamily` over ``cli``; the SDN family
 (B4-1 to B4-3: `ReadOnlyDriver` behind an ``http`` family, its arguments compared with the live
 switch list) is another; the device state class's switch is H28's
-(`egress_classes.device_state_allowed`), and until it exists every device state read is off;
+(`egress_classes.device_state_allowed`, built: off by default on every network, on per network
+by an admin with a reason; a class whose function is absent is still off everywhere), and so
+is the read-only account the CLI family signs in with (`reads.run(..., by="ai_analysis")`,
+which refuses a device without one by name);
 the History rows for each pass and read (15.14) are H26's, from the result's ``reads`` and
 ``second``; wiring heal_analysis (H26/H28) and the SDN Responder (B4-4) to `run` is theirs.
 """

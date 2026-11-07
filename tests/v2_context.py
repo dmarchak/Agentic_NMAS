@@ -1841,6 +1841,42 @@ def _profile_versions(client, _lab, _mp):
         mp.undo()
 
 
+def _read_only_account(client, lab, _mp):
+    """Credentials › Profiles' Read-only account card (board H, artboard N; H28) with two
+    profiles, one carrying a read-only account set by a person and one without: its rows, the
+    form open on each (Set and Replace), and What AI may send on the Network tab with device
+    state on. The store is this provider's own; its patches are undone before the next."""
+    import pytest
+
+    from modules import credentials
+    from modules.ai import egress_classes
+
+    mp = pytest.MonkeyPatch()
+    folder = os.path.dirname(lab["repo"])
+    try:
+        mp.setattr(credentials, "_FILE", os.path.join(folder, "v2-context-read-creds.json"))
+        credentials.save_profile("default", "admin", "pw-ctx-1", "en")
+        credentials.save_profile("role:router", "netops", "pw-ctx-2", "")
+        credentials.set_read_account("default", "mercury-ro", "ReadOnly-ctx-1",
+                                     actor="v2-context@example.invalid", verified="access")
+        mp.setattr(egress_classes, "device_state", lambda network: {
+            "state": "on", "switch": True, "why": "",
+            "on_record": {"by": "v2-context@example.invalid", "at": "2026-11-06T00:00:00Z",
+                          "reason": "the walk's analysis reads"}})
+        # The card's own region and forms, not the whole tab: the walk's Credential profiles
+        # table stays as the walk's store draws it.
+        for url in ("/v2/credentials/profiles/read-account",
+                    "/v2/credentials/profiles/read-account/form?name=default",
+                    "/v2/credentials/profiles/read-account/form?name=role:router",
+                    "/v2/settings/network/Lab?tab=network"):
+            r = client.get(url, headers={"Accept": "text/html"})
+            assert r.status_code == 200, (url, r.status_code)
+        html = client.get("/v2/credentials/profiles/read-account").get_data(as_text=True)
+        assert "mercury-ro" in html and "ReadOnly-ctx-1" not in html
+    finally:
+        mp.undo()
+
+
 def _no_change_window(client, _lab, _mp):
     """Credentials › Profiles with a no-change window set (C1317; none by default, so the
     walk's lab has none): `change_windows.windows` answers one, as the installation's setting
@@ -3050,7 +3086,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
+                   _no_change_window, _read_only_account,
+                   _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _heal_and_notify,
                    _heal_proposal,

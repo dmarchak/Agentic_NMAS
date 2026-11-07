@@ -41,8 +41,10 @@ def page():
     """The Profiles tab. A read: nothing is written and no value is read out."""
     from routes.v2 import _credentials_list, _page
 
+    from modules import credential_profiles_page as P
+
     return _page("v2/credentials.html", active_nav="credentials", tab="profiles",
-                 list_name=_credentials_list(request), known=True, **_ctx())
+                 list_name=_credentials_list(request), known=True, ro=P.read_view(), **_ctx())
 
 
 @bp.route("/region", methods=["GET"])
@@ -106,6 +108,56 @@ def delete():
         return _region(409, op={"state": "delete", "name": name, "covers": P.covers(name),
                                 "refused": got["error"]})
     return _region(op=dict(got, state="deleted", actor=actor))
+
+
+# ---------------------------------------------------------------- the read-only account (H28)
+
+def _read_region(code: int = 200, **op):
+    from modules import credential_profiles_page as P
+    from modules.preview_confirm import confirm_part
+
+    return _strict(render_template("v2/_credential_read_account.html", ro=P.read_view(),
+                                   may=confirm_part(request, "configure"), op=op or None),
+                   code)
+
+
+@bp.route("/read-account", methods=["GET"])
+def read_account_region():
+    """The Read-only account card alone: re-read when `credentials` is announced, and what
+    Cancel puts back. A read: no value is read out."""
+    return _read_region()
+
+
+@bp.route("/read-account/form", methods=["GET"])
+def read_account_form():
+    """Set the read-only account… (no account yet) or Replace its password… for one profile:
+    the form in place, nothing written."""
+    from modules import credentials
+
+    name = (request.args.get("name") or "").strip()
+    held = credentials.read_accounts().get(name) or {}
+    return _read_region(state="form", name=name, username=held.get("username", ""),
+                        replace=bool(held))
+
+
+@bp.route("/read-account", methods=["POST"])
+def read_account_save():
+    """Set the profile's read-only account as the verified person, and record it; the result
+    in place. The password typed is sealed in the store and never drawn again."""
+    from modules import credential_profiles_page as P
+    from modules import credentials, identity
+
+    actor = identity.request_actor()
+    name = (request.form.get("name") or "").strip()
+    got = P.save_read(name, request.form.get("username", ""),
+                      request.form.get("password", ""), actor=actor,
+                      verified=identity.actor_verification(actor))
+    if not got["ok"]:
+        held = credentials.read_accounts().get(name) or {}
+        return _read_region(400, state="form", name=name, refused=got["error"],
+                            username=held.get("username") or request.form.get("username", ""),
+                            replace=bool(held))
+    return _read_region(**dict(got, state="saved", actor=actor))
 
 
 # ---------------------------------------------------------------- scheduled rotation (C724)

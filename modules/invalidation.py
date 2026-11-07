@@ -226,6 +226,7 @@ DECLARED = {
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
     "credential_profiles_v2.policy_save": ("credentials",),
+    "credential_profiles_v2.read_account_save": ("credentials",),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # routes.golden.apply_captures
@@ -309,6 +310,9 @@ DECLARED = {
     # kill switch are settings.
     "heal_v2.policy_confirm": ("settings",),
     "heal_v2.turn_off": ("settings",),
+    # The device state class's switch (board H artboard N, H28): a network setting.
+    "ai_classes_v2.device_state_on": ("settings",),
+    "ai_classes_v2.device_state_off": ("settings",),
     "heal_v2.notify_save": ("settings",),
     "heal_v2.stop_everywhere": ("settings",),
     "heal_v2.resume": ("settings",),

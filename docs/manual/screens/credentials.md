@@ -109,3 +109,38 @@ change first, nothing is sent) and runs them one at a time through the device pa
 rotation, each row on the run's stepper in place; it needs a verified person, and is not
 offered inside a no-change window. See
 [Rotate a credential: on a schedule](rotate#scheduled).
+
+## The read-only account {#read-account}
+
+The **Read-only account** card, below the profiles, holds a second account per device, for
+reads only. **Every AI read signs in with it**, never with the deploy account, and never
+escalates (no `enable`): the AI analysis's reads run at the account's own low privilege, so the
+device limits what it may run as well as Mercury. A device's read-only account is looked for
+in the profiles' order (platform, kind, site, then default): the first profile that carries
+one gives it. A device's own login and its network's credential list carry no read-only
+account. **A device none covers is refused by name**, "no read-only account for <device>",
+and nothing is read from it; the deploy account is never used instead.
+
+Each profile's row names its **deploy account** (used by device-changing operations) and its
+**read-only account**: the account's name, when its password was set and by whom, never the
+password. **Resolves for** counts the devices NetBox inventories have loaded that take their
+read-only account from that profile; the line above the table says how many resolve one and
+how many do not, and the group **no read-only account**, closed until opened, names those
+that do not.
+
+**Set the read-only account…** asks for the account's name and its password, which you type;
+the name may not be the profile's deploy account's, and the password may not be the deploy
+account's password. **Set the read-only account** saves them: the password is sealed in the
+credential store like every credential, and masked by value wherever a device could echo it.
+**Replace its password…** sets a new password under the same name: **an account is added,
+never changed**, so a different name is refused, naming both. **Cancel** closes the form with
+nothing changed. Each needs a verified person, and is recorded on History (Credential profiles):
+who, which profile and which of the account's fields were set, never a value. Credential health
+lists each read-only account by its age, as it lists the deploy accounts.
+
+**What it may run** is the AI read set's show commands and bounded ping and traceroute, at a
+low privilege level. **On the devices** says what is not read yet: the account reaches each
+device as an intent change (an account added, never changed), deployed by a person, once its
+device-side shape (a privilege level or a CLI view) is measured on an IOS and an IOS-XE device.
+Deleting a profile deletes its read-only account with it; retiring a device removes its intent,
+and the account with it.

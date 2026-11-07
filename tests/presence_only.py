@@ -1055,6 +1055,9 @@ UNDECIDED = frozenset({
     "tests/test_board_shots.py::test_pending_page",
     "tests/test_board_shots.py::test_planned_state",
     "tests/test_board_shots.py::test_planned_state_topology",
+    # C2665 (2026-11-07, H28): a board shot compares a page with its board for fidelity, as
+    # every board shot above; the scan cannot read the board file's URL it opens.
+    "tests/test_board_shots.py::test_read_account_and_ai_classes",
     "tests/test_board_shots.py::test_save_page",
     "tests/test_board_shots.py::test_show_commands_pick",
     "tests/test_board_shots.py::test_show_commands_run",

@@ -1,0 +1,48 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board H, artboard N (right; H28, the operator's N20): a network's "What AI may send": its AI
+    data classes, each with its state. Device state is off by default; Turn on… opens the
+    reason in place, an admin's with at least three words; Turn off is one press, no confirm.
+    Each write recorded in the network's settings record. routes/ai_classes_v2.py over
+    modules/ai/egress_classes.py (`classes_view`). -#}
+{%- set net = list_name -%}
+<section class="card set-card set-card-wide" id="ai-classes" aria-labelledby="h-ai-classes" hx-get="{{ url_for('ai_classes_v2.card', list_name=net) }}" hx-trigger="nmas:settings from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2 id="h-ai-classes">What AI may send</h2>{{ how('settings', 'ai-classes') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ refused }}</div></div>
+  {%- endif %}
+  {%- if turned %}
+  <div class="notice notice-{{ 'muted' if turned.recorded or turned.nothing else 'warn' }} set-result" role="status">{{ icon('tick' if turned.recorded or turned.nothing else 'warn', 16) }}<div><strong>{{ turned.words }}.</strong>{% if not turned.nothing %} {% if turned.recorded %}Recorded in {{ net }}'s settings record.{% else %}NOT recorded: {{ turned.record_error }}.{% endif %}{% endif %}</div></div>
+  {%- endif %}
+  {%- if aic.marked %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div>{{ net }} carries the classification marking {{ aic.marked }}: every class is off, whatever it says below.</div></div>
+  {%- endif %}
+  {%- if aic.rows %}
+  <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Class</th><th scope="col">What</th><th scope="col">State</th><th scope="col"><span class="sr">Actions</span></th></tr></thead><tbody>
+    {%- for r in aic.rows %}<tr data-ai-class="{{ r.key }}">
+      <th scope="row">{{ r.name }}</th>
+      <td>{{ r.what }}</td>
+      <td><span title="{{ r.detail }}">{{ badge(r.words, r.state) }}</span>{% if r.key == 'device_state' and r.detail %}<div class="small muted">{{ r.detail }}</div>{% endif %}</td>
+      <td>
+        {%- if r.key == 'device_state' and not aic.marked %}
+        {%- if aic.device_state_on %}
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('ai_classes_v2.device_state_off', list_name=net) }}" hx-target="#ai-classes" hx-swap="outerHTML" hx-disabled-elt="this" title="One press, no confirm: no read answer leaves the host for {{ net }} from now on"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('settings', 'ai-classes', compact=True, op='Turn off') }}</span>
+        {%- elif not open_on %}
+        <a class="btn btn-small" data-op="settings" href="{{ url_for('ai_classes_v2.device_state_form', list_name=net) }}" hx-get="{{ url_for('ai_classes_v2.device_state_form', list_name=net) }}" hx-target="#ai-classes" hx-swap="outerHTML">Turn on…</a>{{ how('settings', 'ai-classes', compact=True, op='turning device state on') }}
+        {%- endif %}
+        {%- endif %}
+      </td>
+    </tr>{% endfor %}
+  </tbody></table></div>
+  {%- if open_on and not aic.device_state_on and not aic.marked %}
+  <form class="set-form" method="post" action="{{ url_for('ai_classes_v2.device_state_on', list_name=net) }}" hx-post="{{ url_for('ai_classes_v2.device_state_on', list_name=net) }}" hx-target="#ai-classes" hx-swap="outerHTML">
+    <label for="f-ds-reason">Reason, to turn device state on for {{ net }}</label>
+    <div><input id="f-ds-reason" name="reason" type="text" autocomplete="off" required placeholder="at least three words" value="{{ reason or '' }}"></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn device state on for {{ net }}</span><span class="op-busy">Turning on…</span></button>{{ how('settings', 'ai-classes', compact=True, op='turning device state on') }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name=net, tab='network') }}" hx-get="{{ url_for('ai_classes_v2.card', list_name=net) }}" hx-target="#ai-classes" hx-swap="outerHTML">Cancel</a>
+    </div>
+  </form>
+  {%- endif %}
+  {%- endif %}
+  <p class="small muted">Device state is off by default and turned on per network by an admin with a reason, recorded with who and when. Turning it off is one click and stops new sends at once. With it off, the AI analysis asks for no reads, and its first pass is the whole analysis.</p>
+</section>

@@ -22,8 +22,10 @@ log = logging.getLogger(__name__)
 LOG = "credential_changes.jsonl"
 _lock = threading.Lock()
 
-#: The fields a change may name, in the order a row lists them.
-FIELDS = ("username", "password", "secret")
+#: The fields a change may name, in the order a row lists them; the read-only account's (H28)
+#: are its name and its password, action ``read_account_added`` or ``read_account_replaced``.
+FIELDS = ("username", "password", "secret", "read-only account name",
+          "read-only account password")
 
 
 def _path() -> str:

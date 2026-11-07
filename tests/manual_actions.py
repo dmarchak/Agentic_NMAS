@@ -80,6 +80,10 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Open on GitHub"): "opens the CI run a row names, on GitHub, a read (C418)",
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
+    ("_ai_classes.html", "Cancel"): "draws What AI may send again without the reason: device "
+                                    "state stays off, nothing was written (H28)",
+    ("_credential_read_account.html", "Cancel"): "draws the Read-only account card again "
+                                                 "without the form: nothing was saved (H28)",
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
     ("_sdn_settings.html", "Cancel"): "draws the SDN controllers card again (leaving Edit or "
                                       "Remove…), writing nothing",

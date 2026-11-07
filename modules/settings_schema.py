@@ -609,6 +609,13 @@ DEFAULTS: dict = {
     # it off per network (modules/ai/egress_classes.py). No measurement can decide it: it is
     # a person's decision about what leaves the host.
     "ai_topology_class": True,
+    # The device state class (the operator, N20; board H, H28): the answers to the AI read
+    # set's show commands may go with a hosted AI call about the network. OFF by default on
+    # every network, each network's own; an admin turns it on with a reason, and who, how
+    # verified, when and why is kept beside it (empty: nobody, so it is not in force). No
+    # measurement can decide it: it is a person's decision about what leaves the host.
+    "ai_device_state_class": False,
+    "ai_device_state_on": {},
     # The endpoint layer (C1772; the operator's rulings of 2026-10-26), per network:
     # - how often each device's MAC table, ARP and IPv6 neighbours are read: 15 minutes, the
     #   reader's first schedule (three show commands a device, every device); the network's
@@ -1128,6 +1135,11 @@ SCHEMA: dict = {
         "reads_retention_days": {"type": "integer", "minimum": 1},
         "alert_history_retention_days": {"type": "integer", "minimum": 1},
         "ai_topology_class": _BOOL,
+        "ai_device_state_class": _BOOL,
+        "ai_device_state_on": {
+            "type": "object", "additionalProperties": False,
+            "properties": {"by": _STR, "actor_verified": _STR, "at": _STR, "reason": _STR},
+        },
         "endpoint_read_interval_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
         "endpoint_stale_after_hours": {"type": "integer", "minimum": 1},
         "sdn_controllers": {

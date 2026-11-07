@@ -3824,3 +3824,62 @@ worktrees removed.**
 - No new test was written for `_masked_program`. Its two mutants fail a test that already
   exists, which was in run #68's selection, so their "survived" is a question about the
   measurement, not the tests. That is the register's row.
+
+## 2026-11-07: the device state class's switch and the read-only account's password (board H's H28), by hand
+
+**What changed in the tier:** data off the host, and code that stores and masks a secret value.
+- `modules/ai/egress_classes.py`: the device state class (`device_state_allowed`), the gate every
+  read answer the read loop sends passes (`read_loop.CLASSES`), with its switch
+  (`turn_on_device_state`, `turn_off_device_state`) and its default and scope
+  (`settings_schema`, `settings_scope`). Until now the class was absent, so every device state
+  read was refused; from now a network an admin turned on with a reason sends them.
+- `modules/credentials.py`: the read-only account's password, typed by the operator, sealed in
+  the store's `read_accounts` section, masked by value (`device_credential_values`), resolved
+  only for the session that signs in with it (`resolve_read`); `modules/nsot/reads.py` signs an
+  `ai_analysis` read in with it, never the deploy account; `modules/connection.py`'s
+  `with_plain_connection` never escalates.
+
+The danger the hand check guards: device state leaving a network nobody turned on, one a
+marking forbids, one whose switch was set without a person's reason, one whose setting cannot be
+read, or one that inherits Default's; the switch turned on by a non-person or with no reason, or
+Turn off not turning it off; the password stored or returned in the clear or left unmasked, the
+deploy account's name or password reused, the account's name changed, an AI read signed in with
+the deploy account or sent to a device with no read-only account, the read session escalated,
+and a deleted profile leaving its account behind.
+
+**The method:** each mutant is one exact replacement of a changed line, required to match once,
+in a `scripts/nmas-control` throwaway of the worktree's state (2026-11-07 03:40:22 to 03:42:11
+UTC, P2 again 03:42:28 to 03:42:44), then tests/test_device_state_class.py,
+tests/test_read_only_account.py, tests/test_ai_read_loop.py, tests/test_credential_store_integrity.py
+and tests/test_reads_engine.py with two workers in CI's interpreter, confined. The file is
+restored after each (`scratchpad/h28_controls.py`). Baseline: 160 passed. P2's first form (the
+line removed) left an empty loop body, a syntax error and not a kill; it was run again as
+`pass` and killed by its test.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `device_state_allowed` always allows | killed | 12 |
+| E1 the classification marking not asked | killed | `test_a_marked_network_is_refused_on_and_off_whatever_its_switch` |
+| E2 the switch alone in force (no record asked) | killed | `test_the_switch_alone_is_not_in_force` |
+| E3 a record's reason of any length in force | killed | `test_the_switch_alone_is_not_in_force` |
+| E4 an unreadable setting read as on | killed | `test_an_unreadable_setting_is_off` |
+| E5 on by default | killed | 5 |
+| E6 inherited from Default (`OWN_ONLY` entry removed) | killed | 2 |
+| E7 turn on without a verified person | killed | 3 |
+| E8 turn on without a reason | killed | 3 |
+| E9 Turn off writes the switch on | killed | `test_turn_off_is_at_once_recorded_and_off_again_writes_nothing` |
+| P1 the read password stored in the clear | killed | `test_added_sealed_and_never_returned` |
+| P2 the read password not masked by value | killed | `test_added_sealed_and_never_returned` |
+| P3 the deploy password allowed as the read password | killed | 1 |
+| P4 the account's name changed | killed | `test_an_account_is_added_never_changed` |
+| P5 `read_accounts` returns the password | killed | `test_added_sealed_and_never_returned` |
+| P6 `resolve_read` falls back to the deploy account | killed | `test_none_resolves_to_nothing_never_the_deploy_account` |
+| P7 an AI read signs in with the deploy account | killed | 2 |
+| P8 a device without one read anyway | killed | `test_a_device_without_one_is_refused_by_name_and_no_session_opens` |
+| P9 the read-only session escalates | killed | `test_the_read_only_session_never_escalates` |
+| P10 a deleted profile keeps its read account | killed | `test_it_goes_with_its_profile` |
+
+**The result: 20 mutants with the canary, all killed; the file restored after each; the
+worktree removed.** The class and the account may be deployed. Nothing sends a read answer yet:
+the router CLI family (H24) and the loop's wiring into the heal analysis (H26) bring their own
+hand check over what they send.

@@ -474,6 +474,7 @@ HISTORY = {
     "credential_profiles_v2.save": ("credential_profiles",),
     "credential_profiles_v2.delete": ("credential_profiles",),
     "credential_profiles_v2.policy_save": ("credential_profiles",),
+    "credential_profiles_v2.read_account_save": ("credential_profiles",),
     "v2.credentials_intact": ("breakglass",),
     "v2.credentials_check": ("breakglass",),
     "v2.credentials_drill": ("breakglass",),
@@ -507,6 +508,8 @@ HISTORY = {
     # device's record.
     "heal_v2.policy_confirm": NOT_A_DEVICE,
     "heal_v2.turn_off": NOT_A_DEVICE,
+    "ai_classes_v2.device_state_on": NOT_A_DEVICE,
+    "ai_classes_v2.device_state_off": NOT_A_DEVICE,
     "heal_v2.notify_save": NOT_A_DEVICE,
     "heal_v2.stop_everywhere": NOT_A_DEVICE,
     "heal_v2.resume": NOT_A_DEVICE,

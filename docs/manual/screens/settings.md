@@ -26,6 +26,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   one network is never scraped as another's. With no directory named, Mercury writes nothing
   for that Prometheus, and its row says to name one.
 - **Inventory source** (Network tab): where the network's devices come from, its own list on this host or NetBox through filters, and how fresh they are. For a NetBox network it counts the devices loaded, skipped, loaded with a warning and no longer in NetBox, and names each one in groups closed until opened: the skipped by cause with where to put it right, the warned by cause, and those NetBox no longer returns with since when (see [Where a network's devices come from](settings-switch#source)).
+- **What AI may send** (Network tab): the network's AI data classes, each with its state (see [What AI may send](#ai-classes)).
 - **SDN controllers** (Integrations tab): the network's own controller connections, on their
   own card, never inherited from Default (see [SDN controllers](#sdn-controllers)).
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure <group>…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
@@ -150,6 +151,34 @@ each controller is doing is on [SDN](sdn).
   refused when another person changed the same connection since the form was drawn, naming each
   field and both values. A save or a removal is recorded in the network's settings record with
   who, when and the names of what changed, never a credential.
+
+## What AI may send {#ai-classes}
+
+The **What AI may send** card, on a network's Network tab, lists what a hosted AI call about
+the network may carry, by class, each with its state:
+
+- **Allowed**: alert labels, metric series, masked log lines and intent diffs, on wherever
+  hosted AI is on.
+- **Topology**: the network model's slice (devices, links, adjacencies), on unless an admin
+  turned it off.
+- **Device state**: the answers to the AI read set's show commands (operational state, never
+  configuration), masked, a line with a secret's shape dropped whole. **Off by default on
+  every network**, and each network's own: turning it on for Default turns it on for Default
+  alone. With it off, the AI analysis asks for no reads, and its first pass is the whole
+  analysis.
+- **Configuration**: configuration lines, through the configuration masking; off on every
+  network until the classification marking is built.
+
+**Turn on…** on the device state row opens a reason in place. Type why, in at least three
+words, and **Turn device state on for <network>** turns it on for that network: an admin's
+decision, so only a verified person may, and it is recorded in the network's settings record
+with who, how they were verified, when and the reason; the row then says who turned it on, when
+and why. A reason of fewer than three words, or a request that is not a verified person's, is
+refused, naming why, and nothing changes. **Cancel** closes the reason with nothing changed.
+**Turn off** is one press, no confirm, and stops new sends at once; it is recorded with who and
+when. Device state is on only while both its switch and the record of who turned it on with a
+reason are in place, so a switch set any other way reads as off; a setting that cannot be read
+is off, and a network carrying a classification marking has every class off.
 
 ## Self-healing {#self-healing}
 

@@ -271,6 +271,24 @@ def community_ages(now: float) -> list:
     return out
 
 
+def read_account_ages(now: float) -> list:
+    """Each profile's read-only account (H28), by when its password was last set (the store's
+    `set_at`), as the deploy account's age is kept: names and times, never a value."""
+    from modules import credentials
+
+    out = []
+    for profile, a in credentials.read_accounts().items():
+        at = a.get("set_at") if isinstance(a.get("set_at"), (int, float)) else None
+        out.append(_entry(f"read-account:{profile}",
+                          f"{profile}'s read-only account {a.get('username', '?')}",
+                          kind="age", state=judge_age(at, now), set_at=at,
+                          why="" if at else "the store records no time it was set",
+                          renew_at=("Credentials › Profiles › Read-only account › Replace its "
+                                    "password…, then deploy the account's intent"),
+                          put_at="the credential store (read-only accounts)", now=now))
+    return out
+
+
 def grafana_other_networks(now: float) -> list:
     """Each OTHER network's own Grafana token (P.8 step 5): one entry per configuration,
     named for the networks that use it, by the expiry declared in that network's settings."""
@@ -289,7 +307,8 @@ def grafana_other_networks(now: float) -> list:
     return out
 
 
-SOURCES = (netbox, proxmox, tls, grafana, grafana_other_networks, device_ages, community_ages)
+SOURCES = (netbox, proxmox, tls, grafana, grafana_other_networks, device_ages, community_ages,
+           read_account_ages)
 
 
 def read(now: float = None) -> dict:

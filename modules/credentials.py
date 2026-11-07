@@ -101,7 +101,7 @@ def _key_changes(before: dict, after: dict) -> str:
     """``+added -removed ~changed`` per section, NAMES only, never a value."""
     parts = []
     for section in ("profiles", "device_overrides", "template_secrets", "ssh_keys",
-                    "controller_credentials"):
+                    "controller_credentials", "read_accounts"):
         b, a = before.get(section) or {}, after.get(section) or {}
         add = sorted(set(a) - set(b))
         rem = sorted(set(b) - set(a))
@@ -176,11 +176,14 @@ def save_profile(name: str, username: str, password: str, secret: str = "",
 
 
 def delete_profile(name: str) -> dict:
+    """Delete a profile, and its read-only account with it (H28): an account kept for a
+    profile that no longer exists would be read by nothing and still held."""
     with _lock:
         data = _load()
         data["profiles"].pop(name, None)
+        had_read = (data.get(READ_ACCOUNTS) or {}).pop(name, None) is not None
         _save(data)
-    return {"ok": True}
+    return {"ok": True, "read_account_removed": had_read}
 
 
 def list_profiles() -> list:
@@ -394,6 +397,10 @@ def device_credential_values() -> dict:
         for ref, entry in (data.get("notify_secrets") or {}).items():
             _add(decrypt_value(entry.get("value", "")), NOTIFY_LABELS.get(
                 ref.split("/", 1)[0], "notify-secret"))
+        # The read-only accounts (H28): a device's failed login or a read's answer can echo
+        # one back, as the deploy account's.
+        for entry in (data.get("read_accounts") or {}).values():
+            _add(decrypt_value(entry.get("password", "")), "device-password")
     except Exception as exc:                  # noqa: BLE001
         log.error("credentials: could not read profiles for redaction: %s", exc)
 
@@ -876,3 +883,129 @@ def resolve(mgmt_ip: str, role: str = "", site: str = "",
             "source": "",
             "error": ("no credentials — set a device override, a default profile, "
                       "or a credential list for this NetBox list")}
+
+
+# ---------------------------------------------------------------------------
+# The read-only account: the credential chain's read role (H28; HEAL_TO_INTENT 19.5)
+# ---------------------------------------------------------------------------
+#
+# A second account per device, for reads only: every AI read signs in with it, never with the
+# deploy account (19.5, prerequisite 1). It is held per profile, beside the profile's deploy
+# login and never inside it (a profile save rewrites the profile's entry whole), in its own
+# section of the one store, sealed as every credential is (`encrypt_value`), and masked by
+# value wherever it could be echoed (`device_credential_values`). Its password is typed by the
+# operator; nothing here returns, logs or prints it, but `resolve_read`, which hands it to the
+# one session that signs in with it.
+#
+# **Resolution** walks the profiles in the deploy chain's order after a device's own login and
+# its network's list (`PROFILE_SCOPES`, then default) and takes the FIRST profile that carries
+# a read-only account. A device override and a credential list carry no read account (a
+# list's file has one login per device), so neither is a step of it. **It never falls back to
+# the deploy account**: a device no profile's read account covers resolves to nothing, and the
+# reads engine refuses that device by name.
+#
+# **Added, never changed** (CLAUDE.md, "A deploy or restore may add an account, never change
+# one"): a profile's read account keeps its name for good; Replace its password… sets a new
+# password under the same name, and a different name is refused, naming both.
+
+READ_ACCOUNTS = "read_accounts"
+#: What a read account's password may hold: printable ASCII, no space (CLAUDE.md's rule
+#: "Send, read, decide": what reaches a device's command line is printable ASCII; a space
+#: would end the IOS `secret` argument).
+READ_PASSWORD = re.compile(r"[!-~]{8,128}")
+
+
+class ReadAccountRefused(ValueError):
+    """A read-only account that was not set; the words name the comparison and its operands,
+    never a value."""
+
+
+def set_read_account(profile: str, username: str, password: str, *, actor: str,
+                     verified: str = "", now: float = None) -> dict:
+    """Set *profile*'s read-only account: its name (once) and its password, sealed, with who
+    set it and when. ``{"ok", "profile", "username", "replaced"}``; raises
+    `ReadAccountRefused` with nothing written, naming why."""
+    profile = (profile or "").strip()
+    username = (username or "").strip()
+    if not actor:
+        raise ReadAccountRefused("a read-only account is set by a named person, and no actor "
+                                 "was given")
+    if not password:
+        raise ReadAccountRefused("a read-only account needs its password, typed here: none "
+                                 "was given")
+    if not READ_PASSWORD.fullmatch(password):
+        raise ReadAccountRefused(
+            f"the password is {len(password)} characters; it must be 8 to 128 printable ASCII "
+            "characters with no space (it reaches the device's command line)")
+    now = time.time() if now is None else now
+    with _lock:
+        data = _load()
+        owner = data["profiles"].get(profile)
+        if not owner:
+            raise ReadAccountRefused(
+                f"no profile is named {profile!r}: a read-only account belongs to a profile, "
+                f"and the profiles are {', '.join(sorted(data['profiles'])) or 'none'}")
+        store = data.setdefault(READ_ACCOUNTS, {})
+        held = store.get(profile) or {}
+        name = held.get("username") or username
+        if held and username and username != held.get("username"):
+            raise ReadAccountRefused(
+                f"{profile}'s read-only account is {held.get('username')}, and the form named "
+                f"{username}: an account is added, never changed, so its name stays; Replace "
+                "its password… keeps the name")
+        if not SSH_USERNAME.fullmatch(name or ""):
+            raise ReadAccountRefused(
+                f"the account name {name!r} is not one word of letters, digits, dot, dash and "
+                "underscore, starting with a letter or underscore, at most 32 characters")
+        if name == owner.get("username"):
+            raise ReadAccountRefused(
+                f"the read-only account's name {name} is {profile}'s deploy account's: the AI's "
+                "reads must never sign in as the account that changes devices")
+        if password == decrypt_value(owner.get("password", "")):
+            raise ReadAccountRefused(
+                f"the password typed is {profile}'s deploy account's password: two accounts "
+                "with one password are one account; type another")
+        store[profile] = {"username": name, "password": encrypt_value(password),
+                          "set_at": now, "set_by": actor, "set_verified": verified or ""}
+        _save(data)
+    log.info("credentials: %s set %s's read-only account %s (%s)", actor, profile, name,
+             "password replaced" if held else "added")
+    return {"ok": True, "profile": profile, "username": name, "replaced": bool(held)}
+
+
+def read_accounts() -> dict:
+    """``{profile: {"username", "password_set", "set_at", "set_by", "set_verified"}}``, never
+    a value."""
+    out = {}
+    for profile, e in sorted((_load().get(READ_ACCOUNTS) or {}).items()):
+        out[profile] = {"username": e.get("username", ""),
+                        "password_set": bool(e.get("password")),
+                        "set_at": e.get("set_at"), "set_by": e.get("set_by", ""),
+                        "set_verified": e.get("set_verified", "")}
+    return out
+
+
+def read_chain(role: str = "", site: str = "", platform: str = "") -> list:
+    """The profile names a device's read-only account is looked for under, in order."""
+    out = [f"{scope}:{value}" for scope, value in
+           (("platform", platform), ("role", role), ("site", site)) if value]
+    return out + [DEFAULT_PROFILE]
+
+
+def resolve_read(role: str = "", site: str = "", platform: str = "") -> dict:
+    """The read-only account for a device of *platform*, *role* (Mercury's kind) and *site*:
+    ``{"ok", "username", "password", "source", "error"}`` with the password in plaintext, for
+    the one session that signs in with it. Not ok, naming every profile it looked under, when
+    none carries one; never the deploy account."""
+    data = _load()
+    store = data.get(READ_ACCOUNTS) or {}
+    chain = read_chain(role, site, platform)
+    for name in chain:
+        e = store.get(name) or {}
+        if e.get("username") and e.get("password") and name in data["profiles"]:
+            return {"ok": True, "username": e["username"],
+                    "password": decrypt_value(e["password"]),
+                    "source": f"read-account:profile:{name}", "error": ""}
+    return {"ok": False, "username": "", "password": "", "source": "",
+            "error": (f"no read-only account: none of the profiles it is looked for under "
+                      f"({', '.join(chain)}) carries one")}

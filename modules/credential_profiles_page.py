@@ -200,6 +200,104 @@ def save(kind: str, value: str, username: str, password: str, secret: str, *, ac
             "recorded": rec["ok"], "record_error": rec["error"]}
 
 
+# ---------------------------------------------------------------- the read-only account (H28)
+
+#: What the read-only account may run, as the card says it (board H, artboard N). Its
+#: device-side shape is not measured yet (an IOS and an IOS-XE device), so the card says that.
+READ_RUNS = ("the AI read set's show commands and bounded ping and traceroute, at a low "
+             "privilege level; its device-side shape (a privilege level or a CLI view) is "
+             "measured on an IOS and an IOS-XE device before any device holds it")
+READ_USED_BY = ("the AI analysis's reads (required: a device without one is refused by name); "
+                "diagnosis, collection and drift reads may move to it later")
+
+
+def read_coverage(accounts: dict = None) -> dict:
+    """Which loaded devices each profile's read-only account resolves for: ``{"total",
+    "by_profile": {profile: count}, "none": count, "none_names": [up to 10]}``. From the
+    loaded inventories (one pass over each NetBox list's rows, as `exists` reads them) and the
+    store's names, never a value and never a device; a local list's devices carry no platform
+    or site, so its devices are not counted here (`credentials.resolve_read` serves them by
+    their kind and the default profile)."""
+    from modules import credentials, inventory
+    from modules.nsot import listref
+
+    accounts = credentials.read_accounts() if accounts is None else accounts
+    by, none, names, total = {}, 0, [], 0
+    for name in sorted(listref._registry()):
+        try:
+            rows = inventory.loaded_rows(name)
+        except Exception as exc:                      # noqa: BLE001 - that list adds nothing
+            log.warning("credential_profiles_page: %s's inventory was not read: %s", name, exc)
+            continue
+        for d in rows:
+            total += 1
+            chain = credentials.read_chain(d.get("role", ""), d.get("_site", ""),
+                                           d.get("_platform", ""))
+            hit = next((p for p in chain if (accounts.get(p) or {}).get("password_set")), "")
+            if hit:
+                by[hit] = by.get(hit, 0) + 1
+            else:
+                none += 1
+                if len(names) < 10:
+                    names.append(d.get("hostname") or "?")
+    return {"total": total, "by_profile": by, "none": none, "none_names": names}
+
+
+def read_view() -> dict:
+    """The Read-only account card: ``{"state", "rows", "coverage", "error"}``, one row per
+    profile in the resolver's order, each with its deploy account's name and its read-only
+    account (name, set when and by whom, never a value)."""
+    import time
+
+    from modules import credentials
+
+    v = view()
+    said = {"runs": READ_RUNS, "used_by": READ_USED_BY}
+    if v["state"] != "ok":
+        return dict(said, state=v["state"], rows=[], coverage={}, error=v["error"])
+    accounts = credentials.read_accounts()
+    cov = read_coverage(accounts)
+    rows = []
+    for p in v["rows"]:
+        a = accounts.get(p["name"]) or {}
+        read = {}
+        if a:
+            at = a.get("set_at")
+            read = {"username": a["username"], "set_by": a.get("set_by", ""),
+                    "set_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+                    if isinstance(at, (int, float)) else ""}
+        rows.append({"name": p["name"], "deploy_username": p["username"], "read": read,
+                     "resolves": cov["by_profile"].get(p["name"], 0)})
+    # The card draws the counts and the names; which profile each device took is per row.
+    shown = {"total": cov["total"], "none": cov["none"], "none_names": cov["none_names"]}
+    return dict(said, state="ok", rows=rows, coverage=shown, error="")
+
+
+def save_read(profile: str, username: str, password: str, *, actor: str,
+              verified: str) -> dict:
+    """Set *profile*'s read-only account (its name once, its password each time) as the
+    verified person, then record it: ``{"ok", "error", "profile", "username", "replaced",
+    "recorded", "record_error"}``. The password is never returned."""
+    from modules import credential_changes, credentials
+
+    try:
+        got = credentials.set_read_account(profile, username, password, actor=actor,
+                                           verified=verified)
+    except credentials.ReadAccountRefused as exc:
+        return {"ok": False, "error": str(exc)}
+    except Exception as exc:                          # noqa: BLE001 (the store's refusal)
+        log.exception("credential_profiles_page: %s's read-only account was not saved", profile)
+        return {"ok": False, "error": f"the store refused it, nothing was saved: {exc}"}
+    rec = credential_changes.record(
+        action="read_account_replaced" if got["replaced"] else "read_account_added",
+        profile=got["profile"],
+        fields=(["read-only account password"] if got["replaced"] else
+                ["read-only account name", "read-only account password"]),
+        actor=actor, verified=verified)
+    return {"ok": True, "error": "", "profile": got["profile"], "username": got["username"],
+            "replaced": got["replaced"], "recorded": rec["ok"], "record_error": rec["error"]}
+
+
 def delete(name: str, *, actor: str, verified: str) -> dict:
     """Delete one profile, then record it."""
     from modules import credential_changes, credentials
@@ -207,11 +305,12 @@ def delete(name: str, *, actor: str, verified: str) -> dict:
     if name not in {p["name"] for p in credentials.list_profiles()}:
         return {"ok": False, "error": f"no profile is named {name!r}: nothing was deleted"}
     try:
-        credentials.delete_profile(name)
+        got = credentials.delete_profile(name)
     except Exception as exc:                          # noqa: BLE001 (the store's refusal)
         log.exception("credential_profiles_page: %s was not deleted", name)
         return {"ok": False, "error": f"the store refused it, nothing was deleted: {exc}"}
     rec = credential_changes.record(action="deleted", profile=name, fields=[], actor=actor,
                                     verified=verified)
     return {"ok": True, "error": "", "profile": name, "recorded": rec["ok"],
-            "record_error": rec["error"]}
+            "record_error": rec["error"],
+            "read_account_removed": bool((got or {}).get("read_account_removed"))}

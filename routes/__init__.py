@@ -138,6 +138,7 @@ def register_blueprints(app) -> list:
     from routes.heal_v2 import bp as heal_v2_bp
     from routes.notify_v2 import bp as notify_v2_bp
     from routes.heal_proposal_v2 import bp as heal_proposal_v2_bp
+    from routes.ai_classes_v2 import bp as ai_classes_v2_bp
 
     for bp in (integrations_bp, identity_bp,
                remote_bp,
@@ -149,7 +150,7 @@ def register_blueprints(app) -> list:
                credential_profiles_v2_bp, topology_v2_bp, logs_v2_bp,
                dhcp_v2_bp, console_ztp_v2_bp, console_servers_v2_bp, oob_onboard_v2_bp,
                sdn_v2_bp, ai_feedback_v2_bp, intent_layers_v2_bp, assistant_v2_bp,
-               heal_v2_bp, notify_v2_bp, heal_proposal_v2_bp):
+               heal_v2_bp, notify_v2_bp, heal_proposal_v2_bp, ai_classes_v2_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

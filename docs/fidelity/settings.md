@@ -59,8 +59,17 @@ place of the group cards on that tab, and on that tab only its subtitle adds "Se
 each network's own: no network inherits it." (board H's own words). The Integrations and
 Network tabs render as before; every other verdict stands.
 Templates sha256 before: `522b41d09272a03d10ad7508be0fc483670041accb734ea6932379a46fa1f8de`.
-Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html
-Templates sha256: `e34da497422812f0ca947625e27ca014c8854d50b6f5d91d3194f61b2376feb3`
+
+**Compared again 2026-11-07 (board H, artboard N; H28):** the Network tab draws What AI may
+send (`_ai_classes.html`) under the Inventory source card, spanning the tab; nothing else on the
+page moved, so every other verdict stands. The card is compared with artboard N's right half
+(docs/boards/heal-to-intent.html, approved by the operator 2026-11-03) from
+tests/test_board_shots.py's `test_read_account_and_ai_classes` (`ai-classes` at rest, device
+state off, and `ai-classes-on`, Turn on… pressed and a reason typed, at 1440, 1280 and 390), in
+the regions whose names begin "N:" below.
+Templates sha256 before: `e34da497422812f0ca947625e27ca014c8854d50b6f5d91d3194f61b2376feb3`.
+Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html
+Templates sha256: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad111545a5908549`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -91,3 +100,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The shell on the deleted page | the top bar as on every page | Needs attention's count reads "?" and the Integrations and Update chips are missing (W3 capture 01; C1113) | **deviation** (log: Settings: the deleted page's shell reads "?" and drops its chips (C1113)) |
 | A tab drawn before the delete | each write answered in place, refused by name | "Couldn't load this card." with Try again; the reason ("'W3 walk' was deleted at …; its data is at …. Nothing was changed…") only on hover (W3 capture 44; C1119) | **deviation** (log: Settings: a stale tab's refusal hides its reason on hover (C1119)) |
 | The top bar's network after a delete | names the network the page's requests go to, never the deleted one as if shown | a fresh load reads "Network Default" (W3 capture 01); the tab where the delete was pressed reads "Network deleted", amber (W3 capture 41) | **same** |
+| N: Where it is | Settings · Default › Network | the Network tab of every network's page, under Inventory source | **same** |
+| N: The card's head | "Settings · Default › Network: what AI may send" and How does this work? | "What AI may send" (the page's header names the network) and How does this work? | **deviation** (log: Board H built: What AI may send draws the reason only after Turn on…) |
+| N: The table | Class, What, State, an action; four rows, Allowed, Topology, Device state, Configuration | the same four rows and words | **same** |
+| N: Topology | on, Turn off | on or off from `topology_allowed`, no action in the card (its switch is the tab's AI: the topology class card) | **deviation** (log: Board H built: What AI may send draws the reason only after Turn on…) |
+| N: Device state | off, Turn on… | off by default, Turn on…; on, who turned it on, when and why under the chip, and Turn off | **same** |
+| N: Configuration | off: the classification marking is not built | the same | **same** |
+| N: The reason | "Reason, to turn device state on for Default", at least three words, under the table | the same label and placeholder, drawn when Turn on… is pressed, with Turn device state on for Default and Cancel | **deviation** (log: Board H built: What AI may send draws the reason only after Turn on…) |
+| N: The callout | off by default, on per network by an admin with a reason; off one click; every send logged in History › AI calls | the same without the AI calls sentence, which H26's record brings | **later** (H26: each send's row in History › AI calls) |
+| N: A refusal and an answer | not drawn | refused in place naming why, the reason kept; Turn on's and Turn off's answers say who and that it was recorded | **same** |
+| N: Phone | no phone board | at 390 the table scrolls inside its card and the reason's label sits above its field | **same** |

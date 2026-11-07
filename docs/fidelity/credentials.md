@@ -26,8 +26,9 @@ Credentials › Profiles"), so it has no comparison here; only its tab beside th
 region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
-Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html
-Templates sha256: `d28e1d85aba799219ad2cfa2c89f614f6d993d15204315ab124cd38abbe6c524`
+Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
+Templates sha256: `4cf8d5aded5ffe96b1d64a610b0e492727e8fbce3e4ce3288570513e942cbbfa`
+Templates sha256 before: `d28e1d85aba799219ad2cfa2c89f614f6d993d15204315ab124cd38abbe6c524`.
 
 Compared again 2026-10-17 (C1023) after Check it (`_breakglass_check.html`) and Record the drill
 (`_breakglass_drill.html`) declared themselves busy (`hx-disabled-elt="this"`): their busy words
@@ -35,6 +36,15 @@ were already in the templates and never shown, because each is a form's submit b
 the page draws the same words; the busy words show only while the request is out. Compared by
 the template and the page the tests draw (tests/test_v2_busy_on_itself.py), not a new shot; no
 region's verdict changed.
+
+**Compared again 2026-11-07 (board H, artboard N; H28):** `credentials.html` draws the
+Read-only account card (`_credential_read_account.html`) under Credential profiles, on the
+Profiles tab only; the break-glass record's tab renders as before, so every verdict above
+stands. The card is compared with artboard N's left half (docs/boards/heal-to-intent.html,
+approved by the operator 2026-11-03) from tests/test_board_shots.py's
+`test_read_account_and_ai_classes` (`read-account` and `read-account-form`, at 1440, 1280 and
+390: Default's read-only account set by a person, a role profile without one, the form open on
+Set), in the regions whose names begin "N:" below.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -66,3 +76,14 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Restore (board 20, A to D) | Restore from a break-glass record… on the card when the store cannot be read; the file and passphrase; the preview against the goldens; the result | not built: no control, no route | **later** NSOT_STAGE7_PLAN section 20 (recover from a break-glass record in the app) |
 | A device refusing its credential (board 20, E) | the device's refusal row offering the record's credential, tried read-only, then adopted and rotated | not built, and drawn on the device page, not this one | **later** NSOT_STAGE7_PLAN section 20, situation 2 |
 | Phone | no phone board; the board's parts stack below 700 px | at 390 the header's actions wrap under the title, each part's label above its text, the drill's command wraps | **same** |
+| N: Where it is | Credentials, a profile's card | the Profiles tab, under Credential profiles and Scheduled rotation | **same** |
+| N: The card | one profile's card, "Credentials · profile default", its accounts as a list | one Read-only account card, a row per profile in the resolver's order | **deviation** (log: Board H built: the read-only account is one card over every profile) |
+| N: Deploy account | admin · password set 2 Nov, never shown · used by device-changing operations | the deploy account's name, "used by device-changing operations" on hover; its password's date in Credential profiles' table above | **deviation** (log: Board H built: the read-only account is one card over every profile) |
+| N: Read-only account | mercury-ro · password set 3 Nov by operator@example.com, never shown | the same words from the store: the name, when set and by whom, never shown | **same** |
+| N: The coverage chip | on 11 of 11 devices | Resolves for N devices per row, a line counting the devices that resolve one and those that do not, and a closed group naming the latter | **deviation** (log: Board H built: the read-only account's coverage says what resolves, not what devices hold) |
+| N: What it may run | the AI read set's show commands and bounded ping and traceroute, at a low privilege level | the same, saying its device-side shape is measured on an IOS and an IOS-XE device first | **same** |
+| N: Used by | the AI analysis's reads (required); diagnosis, collection and drift reads may move to it later | the same | **same** |
+| N: The actions | Set the read-only account…, Replace its password…, Which devices hold it | Set or Replace on each row by state, the form in place; "On the devices: not read yet" in place of the link | **deviation** (log: Board H built: Set and Replace are one control per row, by state) |
+| N: The callout | added as an intent change, deployed by a person; the operator types the password; a device without one refused, naming it; retirement removes it | the same facts under the card and in "On the devices"; Needs attention names no such device yet | **later** (the device-side intent and its Needs attention row, once the account's shape is measured on the devices) |
+| N: How does this work? | beside the card's head | the same, and compact beside each action, opening Credentials › The read-only account | **same** |
+| N: Phone | no phone board | at 390 the table scrolls sideways inside its card, as Credential profiles' does; the form stacks its labels above its fields | **same** |

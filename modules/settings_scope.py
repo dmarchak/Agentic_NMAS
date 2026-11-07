@@ -87,6 +87,11 @@ SCOPES: dict = {
              "heal_person_working_minutes", "heal_grace_seconds", "heal_max_per_device_hour",
              "heal_max_per_network_hour", "heal_repeat_halts_hours", "heal_max_removed_units",
              "heal_max_units"),
+    # The device state class (N20, H28): the switch and who turned it on, one group. Each
+    # network's own (`OWN_ONLY`): Default's on must not send every inheriting network's read
+    # answers. Written only by `modules/ai/egress_classes.py` (`CARDLESS`), drawn on the
+    # network's Network tab, "What AI may send" (board H, artboard N).
+    **_group(NETWORK, "ai_device_state", "ai_device_state_class", "ai_device_state_on"),
     # Who is told about a network's self-healing (board H, artboard A; section 10): its team
     # and the events that notify it. Each network's own (`OWN_ONLY`): Default's team must not
     # be told about every network that inherits. Written only by `modules/heal_notify.py`
@@ -222,6 +227,7 @@ GROUP_LABELS: dict = {
     "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
     "sdn_response_policy": "SDN response policy", "network_stage": "Network stage",
     "heal_policy": "Self-healing", "heal_notify": "Self-healing: who is told",
+    "ai_device_state": "AI: the device state class",
 }
 
 #: Network groups no generic Settings card draws or saves, each with the one module that
@@ -240,8 +246,11 @@ GROUP_LABELS: dict = {
 #: `turn_off`), read by its `current`; a generic card would save a mode past C2009's guard and
 #: the confirmation (board H, H1). `heal_notify`: written by `modules/heal_notify.py` (`save`,
 #: which checks the team exists) from the Self-healing tab's Who is told card (H9).
+#: `ai_device_state`: written by `modules/ai/egress_classes.py` (`turn_on_device_state`, a
+#: verified person and a reason; `turn_off_device_state`) from the Network tab's What AI may
+#: send card; a generic card would turn it on with no reason and no record (H28).
 CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_policy",
-            "network_stage", "heal_policy", "heal_notify")
+            "network_stage", "heal_policy", "heal_notify", "ai_device_state")
 
 #: Network groups that are each network's own and never inherited from Default, whatever the
 #: network's mode or choice: a network that sets none has none (the operator's decision of
@@ -254,7 +263,8 @@ CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_p
 #: heal policy is its own; inherited, Default's would heal every network that inherits.
 #: `heal_notify` (H9): who is told about a network's healing is its own; inherited, Default's
 #: team would be told about every network that inherits.
-OWN_ONLY = ("sdn_controllers", "network_stage", "heal_policy", "heal_notify")
+OWN_ONLY = ("sdn_controllers", "network_stage", "heal_policy", "heal_notify",
+            "ai_device_state")
 
 #: The key whose value says a group's outside service is configured at all: with it empty
 #: nothing can be asked, so a reader skips the configuration and says "not configured"
