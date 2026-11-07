@@ -1,0 +1,24 @@
+# The spec card: the decision a person confirms, before any code is written (AUTHORING.md,
+# "The spec card"). Each `ask:` is an open question: answer it, replacing the whole
+# {ask: ...} with the value. `mercury @@KIND@@ check` refuses the card, naming each question,
+# until none is left.
+kind: @@KIND@@
+name: @@NAME@@
+summary: {ask: "What does it do, in one sentence (at most 200 characters)?"}
+permission: {ask: "read or write: does it plan changes (write) or only read (read)?"}
+scope:
+  object_types: {ask: "Which NetBox object types does it reach, as a list ([dcim.device])?"}
+  roles: {ask: "Which device roles does it reach, as a list of slugs ([] for none)?"}
+inputs: {ask: "Its inputs, each a name and a type (str, int, float, bool, HostRef, DeviceRef, dpid or list[<one of them>]); {} for none"}
+outputs: {ask: "What a run gives, each a name and a type (table, log, file, plan, str, int, float or bool)"}
+examples:
+  - name: the first example
+    given: {ask: "Given what state (the data it starts from)?"}
+    when: {ask: "When what happens (the run, with which inputs)?"}
+    then: {ask: "Then what is the right result, exactly?"}
+    fixture: {ask: "ryu_recorded (the recorded controller) or netbox_export (the masked NetBox export)?"}
+  - name: the second example
+    given: {ask: "Given what state?"}
+    when: {ask: "When what happens?"}
+    then: {ask: "Then what is the right result?"}
+    fixture: {ask: "ryu_recorded or netbox_export?"}

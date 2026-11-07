@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Mercury's command line for jobs and controller apps (the SDN platform design rev. 6, section
+11a, item 3): the gate an author's assistant iterates against, and a new folder to start from.
+
+    mercury job check <folder> [--json]      the job gate's verdict, check by check
+    mercury app check <folder> [--json]      the app gate's: the manifest, the same checks,
+                                             and the reconcile test (not run until P2a)
+    mercury job new <folder> --from <spec.yml> | --blank
+    mercury app new <folder> --from <spec.yml> | --blank
+
+**One home.** `check` prints what `modules.jobs.gate.check` (an app's,
+`modules.apps.gate.check`) answers, and nothing else decides: Publish calls the same function,
+so the two give the same verdict, check by check (T24). `--json` prints the verdict's
+`as_dict()` whole. `new` writes what `modules.jobs.scaffold` answers, a folder only: a job or
+app never lives in a network's configuration repository (the SDN design revision 7, code apart from
+state); Mercury registers it as a Draft from the network's code repository.
+
+Exit: 0 the verdict passes (or the folder was written); 1 it does not pass; 2 refused before
+anything was checked or written, naming why (a folder that exists and is not empty, a card
+with an open question).
+
+Nothing here parses an address: the CLI takes paths and a card's file.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+OK, NOT_PASSED, REFUSED = 0, 1, 2
+
+
+def verdict_of(kind: str, folder: str):
+    """The one verdict: the job gate's, or the app gate's around it."""
+    if kind == "app":
+        from modules.apps import gate as app_gate
+        return app_gate.check(folder)
+    from modules.jobs import gate
+    return gate.check(folder)
+
+
+def render(kind: str, verdict) -> str:
+    """The verdict as a person reads it: the state to act on first, then each check with its
+    result, its details and the action that clears it."""
+    failed = [c for c in verdict.checks if not c.passed]
+    head = (f"mercury {kind} check {verdict.folder}: "
+            + ("passed, every check" if not failed else
+               f"NOT PASSED: {len(failed)} of {len(verdict.checks)} checks did not pass "
+               f"({', '.join(c.name for c in failed)})"))
+    lines = [head, ""]
+    width = max(len(c.name) for c in verdict.checks)
+    for c in verdict.checks:
+        lines.append(f"  {'passed' if c.passed else 'FAILED'}  {c.name:<{width}}  {c.summary}")
+        for d in c.details:
+            lines.append(f"            {'':<{width}}  - {d}")
+        if not c.passed and c.action:
+            lines.append(f"            {'':<{width}}  To clear it: {c.action}")
+    return "\n".join(lines)
+
+
+def check(kind: str, args) -> int:
+    folder = args.folder
+    if not os.path.isdir(folder):
+        print(f"mercury {kind} check: {folder} is not a folder", file=sys.stderr)
+        return REFUSED
+    verdict = verdict_of(kind, folder)
+    if args.json:
+        print(json.dumps(verdict.as_dict(), indent=2, sort_keys=False))
+    else:
+        print(render(kind, verdict))
+    return OK if verdict.passed else NOT_PASSED
+
+
+def _card_text(path: str) -> str:
+    from modules.jobs import spec as spec_card
+    from modules.jobs.scaffold import ScaffoldError
+
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise ScaffoldError(path, ["is not a file: --from names a spec card's file"])
+    if os.path.getsize(path) > spec_card.MAX_BYTES:
+        raise ScaffoldError(path, [f"is more than the {spec_card.MAX_BYTES} bytes a card may "
+                                   "be"])
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def new(kind: str, args) -> int:
+    from modules.jobs import scaffold
+    from modules.jobs.base import ContractError
+
+    try:
+        card = _card_text(args.from_card) if args.from_card else None
+        written = scaffold.new(args.folder, kind, card_text=card, blank=args.blank)
+        print(f"mercury {kind} new: wrote {args.folder}")
+    except ContractError as exc:
+        print(f"mercury {kind} new: {exc.what} refused:", file=sys.stderr)
+        for p in exc.problems:
+            print(f"  - {p}", file=sys.stderr)
+        return REFUSED
+    for path in written:
+        print(f"  {os.path.basename(path)}")
+    print(f"Next: write the code and the tests, then run `mercury {kind} check` on the folder "
+          "until it passes (AUTHORING.md says what each check needs).")
+    return OK
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="mercury", description=__doc__.split("\n\n")[0])
+    kinds = p.add_subparsers(dest="kind", required=True)
+    for kind in ("job", "app"):
+        k = kinds.add_parser(kind, help=f"a {kind}'s folder")
+        actions = k.add_subparsers(dest="action", required=True)
+        c = actions.add_parser("check", help=f"the {kind} gate's verdict on a folder")
+        c.add_argument("folder")
+        c.add_argument("--json", action="store_true", help="print the verdict as JSON, whole")
+        n = actions.add_parser("new", help=f"write a new {kind}'s folder")
+        n.add_argument("folder", help="the folder to write")
+        how = n.add_mutually_exclusive_group(required=True)
+        how.add_argument("--from", dest="from_card", metavar="SPEC_YML",
+                         help="the confirmed spec card to write the folder from")
+        how.add_argument("--blank", action="store_true",
+                         help="an empty card, each open field an ask: question")
+    return p
+
+
+def main(argv=None) -> int:
+    args = parser().parse_args(argv)
+    if args.action == "check":
+        return check(args.kind, args)
+    return new(args.kind, args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

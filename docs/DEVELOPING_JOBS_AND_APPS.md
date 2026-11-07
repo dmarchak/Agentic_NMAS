@@ -1,13 +1,30 @@
 # Developing jobs and controller apps for Mercury
 
-For the team building on Mercury for the final SDN lab. It covers writing a **job** (a saved,
-rerunnable script that reaches the network only through Mercury) and a **controller app** (a
-Ryu app that Mercury packages, checks and deploys). What is here is the published contract:
-the shapes are fixed now, so the pure logic can be written and unit-tested before the framework
-that runs it lands.
+How a **job** (a saved, rerunnable script that reaches the network only through Mercury) and a
+**controller app** (a Ryu app that Mercury packages, checks and deploys) are written for
+Mercury. What is here is the published contract: the shapes are fixed now, so the pure logic
+can be written and unit-tested before the framework that runs it lands.
 
 The design behind it is the SDN platform design, revision 4: section 11 (jobs, I-1),
-section 12 (controller apps, I-2) and section 14 (the lab as the acceptance test).
+section 12 (controller apps, I-2) and section 14 (the lab as the acceptance test). Revision 6,
+section 11a, adds the spec card, the job gate and `mercury job new|check`.
+
+## Building a job or app: two ways
+
+**Describe it.** Run `mercury job new`, say in plain words what it should do, and give two or
+three examples of the right result. Confirm the spec card. Mercury, or your own AI assistant,
+writes the code and tests, and repairs them until `mercury job check` passes.
+
+**Write it yourself.** Run `mercury job new --blank` and write the logic and tests.
+`mercury job check` tells you exactly what's missing.
+
+Either way, the result is a Draft. In Mercury, a reviewer other than its author reads the spec
+card, the code and the check's results, and publishes it; Mercury runs only what was published.
+
+Until Mercury's own assistant drafts the card (part (b) of section 11a, with J), "describe it"
+means your own assistant: give it the folder's `AUTHORING.md` (below), and it drafts the card
+with you, asking rather than guessing, then writes the code and tests against
+`mercury job check`. Everything below holds for apps too, with `mercury app new|check`.
 
 ## What you write
 
@@ -145,8 +162,8 @@ def test_trace_path_lists_every_switch():
 What each fixture keyword gives:
 - **`controller=`:** a controller driver. Only its reads are offered, so `ctx.controller` has
   no write. `RecordedRyu().driver()` (`tests/fixtures/sdn/ryu_recorded.py`) is Mercury's real
-  Ryu driver reading Ryu's recorded answers, so a job sees exactly the shapes it will see on
-  the lab.
+  Ryu driver reading Ryu's recorded answers, so a job sees exactly the shapes it will see on a
+  real network.
   - The recording answers `/stats/switches`, `/v1.0/topology/links`, and `desc` and `portdesc`
     per switch.
   - A path it did not record raises `UnrecordedPath`, naming the path. Through the driver,
@@ -157,6 +174,55 @@ What each fixture keyword gives:
 - **`devices={(device_id, command): text}`:** a command off Show commands' allowlist is
   refused, in the allowlist's own words.
 - **`ctx.output`:** always recorded: `tables`, `lines` and `files`.
+
+A test can also ask for a fixture by naming a parameter: `ryu` (the recorded Ryu), `ctx` (a
+plan-mode `FakeContext` for the folder's job, its controller the recorded Ryu's) or `netbox`.
+Mercury's runner gives them, and so does the folder's `conftest.py` under pytest, through the
+same resolver (`modules.jobs.testing.fixture_for`).
+
+## The spec card, the folder and `mercury job check`
+
+**`mercury job new <folder> --from spec.yml`** writes a new folder from a confirmed spec card,
+and **`mercury job new <folder> --blank`** from an empty one (the folder's name is the job's).
+It refuses a folder that exists and is not empty, naming it, and a card that still holds an
+`ask:` question or a refused field, naming each. The folder holds:
+- `spec.yml`, the spec card (`modules/jobs/spec.py`): the contract (name, summary, read or
+  write, scope, typed inputs and outputs) and two or more acceptance examples in plain
+  Given/When/Then, each naming its fixture data. A blank card's every open field is an `ask:`
+  question;
+- `job.py`, a stub declaring the card's contract, whose `run` raises until written;
+- `test_job.py`, one test per example, each marked `@covers("<example>")` and failing until it
+  is written;
+- `conftest.py`, fixed, so the folder runs unchanged under pytest;
+- `AUTHORING.md`, the guide to paste into an AI assistant: the contract, the SDK's handles,
+  the fixtures, every check with the action it prints, two worked examples and one worked
+  failure.
+
+A job or app is never written into a network's configuration repository, which holds its
+goldens and intent: Mercury registers it as a Draft from the network's own code repository,
+pinned by commit (the SDN design revision 7, code apart from state).
+
+**`mercury job check <folder>`** runs the job gate (`modules/jobs/gate.py`), the same function
+Publish runs, so the two give the same verdict, check by check. It prints each check, passed or
+FAILED, with what failed and the action that clears it; `--json` prints the verdict whole. It
+exits 0 only when every check passes:
+1. `spec`: the card is valid and holds no open question;
+2. `static`: the code and tests import only their own modules, `modules.jobs`,
+   `modules.jobs.testing` and the standard library's safe set, and use no file, socket,
+   process, `eval` or `exec`;
+3. `tests`: the tests pass under Mercury's own runner, with no network; a failed assertion shows
+   both sides;
+4. `examples`: every example is covered by a test, and every `@covers` names an example;
+5. `asserts`: every test asserts something;
+6. `mutation`: the job's own code is changed one place at a time, and every mutant runs;
+7. `survivors`: every change the tests didn't notice is killed by a test, or marked equivalent
+   by the reviewer, a person, with a reason (never by an AI). A survivor reads "your tests
+   didn't notice when line 14's `>` became `>=`", with the line quoted.
+
+**`mercury app new|check`** are the same for a controller app, with `manifest.yml` beside the
+card: the app's verdict adds `manifest` (the manifest is valid and names the card's app) and
+`reconcile` (the reconcile test in the container harness, not run until that lands, so an app's
+verdict cannot pass before then).
 
 ## A controller app
 
@@ -257,25 +323,3 @@ The recorded fixtures in the repository:
 There are no lab addresses, DPIDs or names in code or tests beyond the fixtures, and no secrets
 anywhere. Example values are documentation values: 192.0.2.0/24, 2001:db8::/32 and
 `example.invalid`.
-
-## What you get, and when
-
-| What | Ready by |
-|---|---|
-| The contracts (this guide, and the modules it names) | Sat Nov 7 |
-| The container harness (real OVS and Ryu, one command to run an app against it) | Mon Nov 9 |
-| H's harness (deploy your app the way the lab will) | Thu Nov 12 |
-| The first two sessions' recordings, masked | Fri Nov 13 |
-
-**`dns-blacklist` is due Wed Nov 18:** the logic, its `manifest.yml` and its unit tests, as
-one PR. It deploys on hardware at the Nov 19 session.
-
-## The workflow
-
-1. Branch from `main`.
-2. Write the logic and its unit tests (pytest, no network).
-3. Run the harness locally (real Ryu and OVS in containers), once it lands.
-4. Open a PR saying what it does, which contract it implements and what you tested.
-5. The operator reviews and merges. Every contribution is flagged by author before anything is
-   published, so say in the PR what is yours.
-6. Deploy at the lab through Mercury (a job run or an app deploy), never by scp or by hand.

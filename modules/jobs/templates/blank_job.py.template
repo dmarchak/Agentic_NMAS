@@ -1,0 +1,21 @@
+"""Not written yet: spec.yml's summary, once its questions are answered.
+
+Written by `mercury job new --blank`. A job's class must declare a valid JobMeta to be defined
+at all, so the declaration below holds placeholders: replace each from spec.yml once its
+questions are answered (the name, summary, permission, scope and inputs are the card's), then
+write `run`. AUTHORING.md says what `mercury job check` checks."""
+
+from modules.jobs import Job, JobInputs, JobMeta, Scope
+
+
+class @@CLASS@@(Job):
+    meta = JobMeta(name="@@NAME@@", version="0.1.0",
+                   summary="Not written yet: spec.yml's summary.",
+                   permission="read", max_changes=0,
+                   scope=Scope(object_types=["dcim.device"], roles=[]))
+
+    class Inputs(JobInputs):
+        """Not written yet: spec.yml's inputs."""
+
+    def run(self, ctx, inputs):
+        raise NotImplementedError("run is not written yet: spec.yml's examples say what it does")

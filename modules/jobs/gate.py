@@ -23,6 +23,11 @@ mark whose `trigger` is `ai` (an AI-gateway call or an assistant session), namin
 names a mutant by its key, which hashes its module's source, so any edit to the module retires
 the marks made on it.
 
+Each check's rule in words is `RULES[name]`, and the action it prints when it fails
+`ACTIONS[name]`: one table, which the gate uses and the authoring guide quotes
+(`modules/jobs/scaffold.py`). A controller app's verdict is this one with two checks around it
+(`modules/apps/gate.py`).
+
 The verdict's `details` and `summary` hold no timings, so the same folder at the same revision
 gives the same verdict, check by check, however loaded the host; the times are in `timings`.
 """
@@ -52,6 +57,49 @@ INTROSPECTION = frozenset({
 _FORMAT_DUNDER = re.compile(r"\{[^{}]*[.\[]__")
 #: The calls that make a test assert: pytest's raises and the SDK's refused.
 _EXPECTING = ("raises", "refused")
+
+#: What each check holds, in words: one home for the authoring guide's list
+#: (`modules/jobs/scaffold.gate_checks_markdown`, held to `CHECKS` by tests/test_mercury_cli.py).
+RULES = {
+    "spec": f"{spec_card.SPEC} is a valid spec card: the contract, two or more acceptance "
+            "examples, and no `ask:` question left open.",
+    "static": "Every module and test of the folder passes the AST allowlist: imports only of "
+              "the folder's own modules, modules.jobs, modules.jobs.testing, pytest's raises "
+              "(in tests) and the standard library's safe set; no open, exec, eval, getattr "
+              "or other forbidden builtin; no dunder or frame attribute; no bare except.",
+    "tests": "The tests pass under Mercury's runner, in one process, with no network; a "
+             "failed assertion shows both sides.",
+    "examples": "Every acceptance example is covered by at least one test marked "
+                "`@covers(\"<example name>\")`, and every `@covers` names an example.",
+    "asserts": "Every test asserts something: an assert, a pytest.raises or a refused() "
+               "block, directly or through a helper.",
+    "mutation": "The job's own code is mutated (comparisons, boundaries, booleans, "
+                "conditions, constants, arithmetic, returns, call statements, break and "
+                "continue) and every mutant runs within its budget.",
+    "survivors": "Every mutant the tests did not notice is killed by a new test, or marked "
+                 "equivalent by the reviewer, a person, with a reason.",
+}
+#: The action a failed check prints (the guide quotes each); `mutation`'s takes the ceiling.
+ACTIONS = {
+    "spec": f"Correct each field named in {spec_card.SPEC}, and answer each `ask:` question: "
+            "the spec card is the decision a person confirms.",
+    "static": "Remove each use named: a job reaches the world only through ctx, and imports "
+              "only its own modules, modules.jobs and the standard library's safe set.",
+    "tests": "Fix the code or the test named: each failed assertion shows both sides.",
+    "examples": "Mark a test @covers(\"<example>\") for each example named, or correct the "
+                "name that matches no example.",
+    "asserts": "Give each test named an assert, a pytest.raises or a refused() block: a test "
+               "that asserts nothing passes whatever the code does.",
+    "mutation": "Make the tests faster (the step's bound), or split the job or name its "
+                "changed lines (the ceiling of {ceiling} mutants): every mutant must run.",
+    "survivors": "Add a test that fails for each change named, or have the reviewer (a "
+                 "person, never an AI) mark it equivalent with a reason.",
+}
+#: The static check's action when a file itself is refused (a link, too large, not UTF-8, a
+#: shadowing name, Python in a subfolder), before any use is read.
+FOLDER_ACTION = "Correct each file named."
+#: A check whose input was refused: "not run", naming the check to clear first.
+NOT_RUN_ACTION = "Clear the {first} check first."
 
 
 @dataclass(frozen=True)
@@ -316,16 +364,14 @@ def assertion_free(trees: dict) -> list:
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────
 
 def _not_run(name: str, why: str, first: str) -> Check:
-    return Check(name, False, f"not run: {why}", f"Clear the {first} check first.")
+    return Check(name, False, f"not run: {why}", NOT_RUN_ACTION.format(first=first))
 
 
 def _spec_check(folder):
     try:
         card = spec_card.load_spec(folder)
     except ContractError as exc:
-        return None, Check("spec", False, f"{spec_card.SPEC} is refused",
-                           f"Correct each field named in {spec_card.SPEC}, and answer each "
-                           "`ask:` question: the spec card is the decision a person confirms.",
+        return None, Check("spec", False, f"{spec_card.SPEC} is refused", ACTIONS["spec"],
                            tuple(exc.problems))
     return card, Check("spec", True, f"{spec_card.SPEC}: {card.kind} {card.name}, "
                                      f"{len(card.examples)} examples", "")
@@ -350,8 +396,7 @@ def _examples_check(card, prepared) -> Check:
     if details:
         return Check("examples", False, f"{len(missing)} of {len(names)} examples uncovered, "
                                         f"{len(unknown)} @covers naming no example",
-                     "Mark a test @covers(\"<example>\") for each example named, or correct "
-                     "the name that matches no example.", details)
+                     ACTIONS["examples"], details)
     return Check("examples", True, f"each of {len(names)} examples is covered", "",
                  tuple(f"{n!r}: {', '.join(covering[n])}" for n in names))
 
@@ -375,9 +420,7 @@ def _mutation_checks(prepared, run, marks, changed_lines, timings):
     else:
         why = report.step_fired or report.of("not run")[0].message
         mutation = Check("mutation", False, summary,
-                         "Make the tests faster (the step's bound), or split the job or name "
-                         "its changed lines (the ceiling of "
-                         f"{report.ceiling} mutants): every mutant must run.",
+                         ACTIONS["mutation"].format(ceiling=report.ceiling),
                          details + (f"not run: {why}",))
     marked = {}
     for mark in marks:
@@ -397,9 +440,7 @@ def _mutation_checks(prepared, run, marks, changed_lines, timings):
     if open_:
         survivors = Check("survivors", False, f"{len(open_)} survivors unmarked of "
                                               f"{len(report.survivors)}",
-                          "Add a test that fails for each change named, or have the reviewer "
-                          "(a person, never an AI) mark it equivalent with a reason.",
-                          tuple(lines))
+                          ACTIONS["survivors"], tuple(lines))
     else:
         survivors = Check("survivors", True, f"{len(report.survivors)} survivors, each marked "
                                              "equivalent by a person" if report.survivors
@@ -417,17 +458,15 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
     try:
         sources = runner.load_sources(folder)
     except ContractError as exc:
-        checks.append(Check("static", False, "the folder is refused",
-                            "Correct each file named.", tuple(exc.problems)))
+        checks.append(Check("static", False, "the folder is refused", FOLDER_ACTION,
+                            tuple(exc.problems)))
         why = "the folder's files are refused"
         checks.extend(_not_run(n, why, "static") for n in CHECKS[2:])
         return Verdict(folder, checks, timings)
     problems = static_problems(sources)
     if problems:
         checks.append(Check("static", False, f"{len(problems)} uses refused",
-                            "Remove each use named: a job reaches the world only through ctx, "
-                            "and imports only its own modules, modules.jobs and the standard "
-                            "library's safe set.", tuple(problems)))
+                            ACTIONS["static"], tuple(problems)))
         why = "the static check refused the code, and no code runs until it passes"
         checks.extend(_not_run(n, why, "static") for n in CHECKS[2:])
         return Verdict(folder, checks, timings)
@@ -449,9 +488,7 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
                         "test functions",)
         summary = (f"stopped: {run.stopped}" if run.stopped else
                    f"{len(run.failures())} of {len(run.tests)} tests did not pass")
-        checks.append(Check("tests", False, summary,
-                            "Fix the code or the test named: each failed assertion shows both "
-                            "sides.", details))
+        checks.append(Check("tests", False, summary, ACTIONS["tests"], details))
     checks.append(_examples_check(card, prepared))
     trees = {}
     for name, text in sources.tests.items():
@@ -462,9 +499,7 @@ def check(folder, *, marks=(), changed_lines: dict = None) -> Verdict:
     empty = assertion_free(trees)
     if empty:
         checks.append(Check("asserts", False, f"{len(empty)} tests assert nothing",
-                            "Give each test named an assert, a pytest.raises or a refused() "
-                            "block: a test that asserts nothing passes whatever the code does.",
-                            tuple(f"{t} asserts nothing" for t in empty)))
+                            ACTIONS["asserts"], tuple(f"{t} asserts nothing" for t in empty)))
     else:
         checks.append(Check("asserts", True, f"every one of {len(run.tests)} tests asserts",
                             ""))

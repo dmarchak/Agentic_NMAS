@@ -20,4 +20,7 @@ scripts refuse it, naming why.
 
 DATA_FOLDERS = (
     "tests/fixtures/jobs/",
+    # The app fixtures: each holds an app's own tests the same way (tests/test_mercury_cli.py,
+    # the authoring guide's worked app).
+    "tests/fixtures/apps/",
 )

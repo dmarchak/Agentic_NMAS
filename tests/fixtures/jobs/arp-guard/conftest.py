@@ -1,5 +1,5 @@
-"""The fixed conftest.py `mercury job new` will write (the SDN platform design rev. 6, section 11a,
-item 2), in each job fixture's folder: under pytest, a test's parameter named for one of the
+"""The fixed conftest.py `mercury job new` and `mercury app new` write in every folder (the SDN
+platform design rev. 6, section 11a, item 2; modules/jobs/templates/): under pytest, a test's parameter named for one of the
 SDK's fixtures (`ctx`, `ryu`, `netbox`) gets what Mercury's runner gives it, through the same
 resolver, `modules.jobs.testing.fixture_for`. Mercury's runner ignores this file."""
 

@@ -1,0 +1,24 @@
+# The app's manifest, validated by modules/apps/manifest.py (docs/DEVELOPING_JOBS_AND_APPS.md,
+# "A controller app"). Written by `mercury app new` in the dns_blacklist manifest's shape:
+# correct each value for this app. The network's own values are its config, compiled by
+# Mercury, never written here.
+name: @@NAME@@
+version: 0.1.0
+summary: @@SUMMARY@@
+controllers:
+  ryu: ">=4.34"
+openflow_versions: ["1.3"]
+requires: []
+config_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+  properties: {}
+rest:
+  prefix: /@@NAME@@
+  endpoints:
+    - path: /health
+      methods: [GET]
+      summary: The app is loaded and answers.
+tests:
+  - test_app.py

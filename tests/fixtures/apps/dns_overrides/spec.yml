@@ -1,0 +1,22 @@
+kind: app
+name: dns_overrides
+summary: Decides a DNS query by the app's overrides, before any verdict is asked.
+permission: read
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  name: str
+outputs:
+  decision: str
+examples:
+  - name: a blocked name is blocked even when it is also allowed
+    given: overrides blocking blocked.example.invalid and allowing it too
+    when: a host asks for blocked.example.invalid
+    then: the decision is block
+    fixture: ryu_recorded
+  - name: a zone covers every name under it but not itself
+    given: overrides blocking *.blocked-zone.example.invalid
+    when: a host asks for a.blocked-zone.example.invalid, then for blocked-zone.example.invalid
+    then: the first is blocked, and the second is left to the verdict service (ask)
+    fixture: ryu_recorded
