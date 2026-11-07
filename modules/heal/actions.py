@@ -17,9 +17,10 @@ adjacency reset through it (`modules/heal/bounce.py`: its program, its revert ti
 13c's CEF and only-path reads, 13f). H21 built the BGP session clear
 (`modules/heal/session_clear.py`: the hard clear of one named neighbour not Established in two
 reads, the soft clear of an Established one, each a measured privileged operation,
-`privileged.SESSION_CLEARS`, refused by name on a platform where it is not measured). H22 (the
-dampening field and its proposal) is not built: until its part lands a kind is refused by
-name, "not built yet: H22", never allowed by a policy (`policy.actions_not_built`) and never
+`privileged.SESSION_CLEARS`, refused by name on a platform where it is not measured). H22's
+proposal is not built (H22 built intent's `dampening` field and its removal shape, which is not
+measured yet, and intent's `archive.path`): until its part lands a kind is refused by name,
+"not built yet: H22", never allowed by a policy (`policy.actions_not_built`) and never
 offered. `judge` refuses it before any guard runs, so nothing is read for it.
 
 **The guards** (`GUARDS`, after section 6's guard 13, in this order; each answers None or a hit
@@ -71,7 +72,11 @@ KIND_WORDS = {
 LAB_ONLY_AUTO = ("session_clear",)
 #: Each kind's operation not built yet, with the part that builds it and what it lacks.
 NOT_BUILT = {
-    "dampening_proposal": ("H22", "intent's dampening field and its measured shape"),
+    # H22's first part built intent's `dampening` field (its template line and parser round
+    # trip) and its removal shape, `interface.dampening`, which the probe has not measured on
+    # either dialect, so the proposal's rollback (`removal.restore_program`) has nothing to run.
+    "dampening_proposal": ("H22", "the proposal's one-hash intent commit and deploy, and the "
+                           "`interface.dampening` removal its rollback needs, not measured"),
 }
 #: The kinds whose operation is built: the port bounce and the OSPF reset through it (H20), the
 #: BGP session clear (H21).

@@ -149,7 +149,12 @@ from the logs.
 The **port bounce** and the **OSPF adjacency reset** through it are built ([The port
 bounce](#bounce)), and so is the **clear of one BGP neighbour** ([The BGP session
 clear](#clear)); the dampening proposal is not yet: a policy cannot allow it, and it is refused
-by name ("not built yet: H22"). Under all of them runs
+by name ("not built yet: H22"). A device's intent can already hold dampening on an interface
+(`dampening: true` under the interface in its host_vars, the bare `dampening` line, the
+platform's defaults), committed and deployed through the intent editor like any other change;
+Mercury cannot yet remove it again (Mode B refuses the line until `interface.dampening` is
+measured on the device's platform), which is why the proposal, whose rollback is that removal,
+waits. Under all of them runs
 the **flap record**: each time the network's syslog is read, every `%LINK-3-UPDOWN` and
 `%LINEPROTO-5-UPDOWN` line is recorded as a transition of its interface at the time Mercury
 received it, never by the device's clock, for networks whose self-healing is on. A link and its
@@ -184,7 +189,10 @@ down with its far end up, or the interface's one OSPF neighbour stuck, is a boun
    one the device's own `show ip cef` (or `show ipv6 cef` for an IPv6 manager) names as its way
    back to Mercury, and never the device's only path; once an hour per port, a second need
    within the repeat window being a dampening change for a person; the flap record readable;
-   the configuration archive in the device's intent, which its revert timer needs; and the
+   the configuration archive in the device's intent, which its revert timer needs (its path,
+   `archive.path` in the device's host_vars, or an `archive` block intent keeps as an
+   unmodelled line, as intent committed before the field holds it; the editor refuses a
+   document holding both, since both would be sent); and the
    revert timer measured on the device's platform (IOS and IOS-XE, by the operator's trial).
 6. `decide`: in Auto, with the kind allowed, it bounces; otherwise it records what it would have
    done.

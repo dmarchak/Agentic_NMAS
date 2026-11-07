@@ -245,6 +245,13 @@ EXEMPLARS = {
         "setup": [LOOP, " hold-queue 199 out"],
         "unit": {"chain": [LOOP], "line": " hold-queue 199 out"},
         "teardown": ["no " + LOOP]}],
+    # H22: the dampening proposal's rollback shape. The scratch on Loopback199 like every
+    # interface shape; a device that rejects `dampening` on a loopback reads `unsupported`,
+    # a fact about the scratch interface and not the flapping port: read the run first.
+    "interface.dampening": [{
+        "setup": [LOOP, " dampening"],
+        "unit": {"chain": [LOOP], "line": " dampening"},
+        "teardown": ["no " + LOOP]}],
     # Routes to Null0 for documentation prefixes: nothing is sent anywhere. Refused on a
     # device that redistributes static routes, where the scratch would be advertised.
     "global.ip-route": [

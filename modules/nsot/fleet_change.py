@@ -195,7 +195,8 @@ def plan_layer(list_name: str, layer_key: str, steps: list) -> dict:
     # Bulk intent's authoring gates, on the layer as a device's document would meet them.
     text = yaml.safe_dump(after, sort_keys=False)
     gate = hostvars.syslog_block_problems(after) + hostvars.description_problems(after) \
-        + [msg for _n, msg in hostvars.contradiction_problems(after)]
+        + [msg for _n, msg in hostvars.contradiction_problems(after)] \
+        + hostvars.archive_problems(after)
     try:
         hostvars.assert_printable(text, label)
     except Exception as exc:                          # noqa: BLE001 (its words name the line)

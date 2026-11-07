@@ -179,6 +179,12 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
                       + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
                       line, column)
 
+    # 2c'''. The configuration archive is held once (H22): `archive.path` and an unmodelled
+    #        `archive` block would both render.
+    problems = hostvars.archive_problems(parsed)
+    if problems:
+        return refuse("schema", "; ".join(problems), _line_of(text, "archive"), 1)
+
     # 2c''. An interface intent shut is not "brought up" by shutdown: false alone (R5): neither
     #       line renders and the port stays shut. Against what is committed at HEAD.
     committed = None

@@ -1418,7 +1418,14 @@ command-policy Tier 3, and `clear ip bgp *` is Never.
 - **Intent can express dampening.** It cannot today: no hostvars field, template line, parser or
   measured removal shape holds `dampening`. H22 adds the field (`interfaces.<if>.dampening`,
   true for the platform's defaults, N19), its template line, its parser's round trip, and its
-  removal shape, measured on both dialects with `scripts/nmas-removal-probe`.
+  removal shape, measured on both dialects with `scripts/nmas-removal-probe`. **Built
+  (H22's first part, 2026-11-07):** the field, its template line, its parser's round trip and
+  the shape `interface.dampening` with its probe exemplar; the shape is not measured yet, so
+  Mode B refuses the line by name on both dialects, and the proposal below, whose rollback is
+  that removal, is still `actions.NOT_BUILT`. So is intent's `archive.path` (13f), parsed only
+  from `archive` with exactly `path <url>`; an intent committed before it keeps its archive as
+  an unmodelled block, which renders as before, and a document holding both is refused
+  (`hostvars.archive_problems`).
 - **The proposal** is an intent patch (`modules/nsot/intent_patch.py`) and the deploy program it
   renders, **bound by one hash**. Approve… (a verified person, a reason) commits the intent edit
   as that person (`Actor-Verified: access`) and deploys it through the pipeline, as the person's

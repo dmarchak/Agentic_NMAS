@@ -57,9 +57,13 @@ def _stored(device: str, flat: bool = False) -> dict:
 
 
 def _intent(device: str, block: dict) -> dict:
-    """The real capture's extraction with the archive block as *block*."""
+    """The real capture's extraction with the archive block as *block*: the document r4 and s1
+    hold, committed before H22 modelled the archive (`archive.path`), so its archive is the
+    unmodelled block and it holds no `archive` key. Today's parser models the block; that is
+    taken out, and the stored block put where the committed document holds it."""
     hv = get_parser(ARCHIVE[device]["platform"]).parse(_capture(device))
-    assert [e["line"] for e in hv["unmodeled"]] == ["archive"], hv["unmodeled"]
+    assert hv.pop("archive") == {"path": ARCHIVE[device]["path"]}, "H22 models the archive"
+    assert hv["unmodeled"] == [], hv["unmodeled"]
     hv["unmodeled"] = [block]
     return hv
 
@@ -158,7 +162,9 @@ class TestTheRoundTrip:
     def test_parse_store_render_compare(self, device):
         capture = _capture(device)
         hv = get_parser(ARCHIVE[device]["platform"]).parse(capture)
-        assert hv["unmodeled"][0]["children"] == [f" path {ARCHIVE[device]['path']}"]
+        # H22: the parser models the block (`archive.path`), so nothing of it is unmodelled.
+        assert hv["archive"] == {"path": ARCHIVE[device]["path"]}
+        assert not [e for e in hv["unmodeled"] if e["line"] == "archive"], hv["unmodeled"]
         stored = hostvars.from_yaml(hostvars.to_yaml(hv))
         stored["secrets"] = hv["secrets"]
         rendered = _render(stored)

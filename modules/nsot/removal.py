@@ -187,6 +187,10 @@ SHAPES = (
     # `hold-queue 256 out` to a switch's port, the management uplink among them, and only a
     # measured removal makes taking it back a Mercury operation rather than a console one.
     Shape("interface.hold-queue", "interface", "leaf", r"^hold-queue \d+ (in|out)$"),
+    # IP event dampening (H22, docs/HEAL_TO_INTENT.md 19.4): the dampening proposal's rollback
+    # is `restore_program` of this shape, so it is refused by name until the probe measures it
+    # on each dialect. The bare line only, as intent models it (N19).
+    Shape("interface.dampening", "interface", "leaf", r"^dampening$"),
     # Measured like every shape; a static route that may be the manager's path stays REFUSED
     # by the repair-path class (`_management_routes`, C1422, C531 part 2).
     Shape("global.ip-route", "global", "leaf", r"^ip route .+$"),

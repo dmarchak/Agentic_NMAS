@@ -61,6 +61,7 @@ KNOWN_CHILDREN = {
     "snmp": {"communities", "settings", "hosts"},
     "routing": {"ospf", "ospfv3", "ripng", "rip", "bgp"},
     "dhcp_server": {"excluded", "pools"},
+    "archive": {"path"},
 }
 
 
@@ -77,7 +78,10 @@ def known_top_level() -> set:
             "unmodeled", "secret_refs", "unmodeled_ack", "bootstrap",
             # The DHCP server pack's (Lab 9 A4): emitted only when a config holds a pool or
             # an excluded range, so it is not a schema default every parse fills.
-            "dhcp_server"}
+            "dhcp_server",
+            # The configuration archive (H22): emitted only when a config holds `archive`
+            # with exactly its `path`, so not a schema default either.
+            "archive"}
     return base | set(BaseParser.SCHEMA_DEFAULTS)
 
 
@@ -267,6 +271,7 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
                  for i, k in hostvars.unknown_interface_keys(after)]
         gate += hostvars.description_problems(after)                  # C428
         gate += [m for _n, m in hostvars.contradiction_problems(after)]  # C1429
+        gate += hostvars.archive_problems(after)                      # H22
         try:
             hostvars.assert_printable(new_text, host)
             hostvars.assert_no_secret_values(new_text, host)

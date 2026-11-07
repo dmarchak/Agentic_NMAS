@@ -471,7 +471,7 @@ INTERFACE_DEFAULTS = {
     "ipv6": [], "ipv6_nd": [], "ospf": [], "ospfv3": [], "ripng": [],
     "vrrp": [], "vrrp_groups": [], "mop": [], "ip_nat": [], "switchport": [],
     "switchport_trunk_vlans": [], "helper_addresses": [], "dhcpv6_relay": [],
-    "hold_queue": [], "unmodeled": [],
+    "hold_queue": [], "dampening": False, "unmodeled": [],
     # The routing packs' interface fields (K7, `modules/nsot/features`).
     "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
 }
@@ -589,6 +589,8 @@ INTENT_SECTIONS = {
     "dhcp_server.excluded[]": frozenset(_dhcp.EXCLUDED),
     "dhcp_server.pools[]": frozenset(_dhcp.POOL) | frozenset(_dhcp.RAW_POOL),
     "dhcp_server.pools[].lease": frozenset(_dhcp.LEASE),
+    # The configuration archive (H22, docs/HEAL_TO_INTENT.md 13f): its path alone.
+    "archive": frozenset({"path"}),
     "logging":frozenset({"console", "settings", "hosts", "syslog"}),
     "logging.syslog": frozenset({"trap", "origin_id", "source_interface", "hosts",
                                  "heartbeat"}),
@@ -947,6 +949,27 @@ def contradiction_problems(host_vars: dict) -> list:
                                f"{set_others[0]!r} and {key!r}: {renders}. Keep the one that "
                                "says what you mean and remove the other"))
     return out
+
+
+def archive_problems(host_vars: dict) -> list:
+    """``[message]``: a document holding the configuration archive twice, as the modelled
+    ``archive.path`` (H22) AND as an unmodelled ``archive`` block (how intent committed
+    before H22 holds it, C2700). Both would render, so the program would carry two ``archive``
+    stanzas. Refused, naming both, rather than one silently preferred: which one a stored
+    document keeps is the operator's (H22's report). ``[]`` if not both."""
+    doc = host_vars if isinstance(host_vars, dict) else {}
+    arch = doc.get("archive")
+    path = str(arch.get("path") or "").strip() if isinstance(arch, dict) else ""
+    blocks = [e for e in doc.get("unmodeled") or []
+              if isinstance(e, dict) and (e.get("line") or "").strip() == "archive"]
+    if not path or not blocks:
+        return []
+    held = "; ".join(" / ".join(c.strip() for c in e.get("children") or []) or "(no children)"
+                     for e in blocks)
+    return [f"the configuration archive is held twice: `archive.path` is {path!r}, and an "
+            f"unmodelled `archive` block holds {held}. Both would render, so the device would "
+            "be sent two archive stanzas. Keep one: remove `archive.path`, or remove the "
+            "unmodelled `archive` block"]
 
 
 def unshut_problems(committed: dict, host_vars: dict) -> list:

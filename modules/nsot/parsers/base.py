@@ -155,6 +155,9 @@ class BaseParser:
             # pools. A shape the pack does not reproduce stays in `unmodeled`, whole.
             (re.compile(r"^ip dhcp excluded-address\s+(.*)$"), self._h_dhcp_excluded),
             (re.compile(r"^ip dhcp pool\s+(\S+)\s*$"),       self._h_dhcp_pool),
+            # The configuration archive (H22; docs/HEAL_TO_INTENT.md, 13f): its `path`, which a
+            # revert timer needs. Any other archive shape stays in `unmodeled`, whole.
+            (re.compile(r"^archive\s*$"),                    self._h_archive),
         ]
 
     # ── entry point ─────────────────────────────────────────────────────────
@@ -240,6 +243,8 @@ class BaseParser:
         "ipv6": [], "switchport": [], "switchport_trunk_vlans": [],
         "helper_addresses": [], "dhcpv6_relay": [], "ipv6_nd": [],
         "ospf": [], "ospfv3": [], "ripng": [], "vrrp": [], "mop": [], "hold_queue": [],
+        # IP event dampening (H22): true is the bare `dampening`, the platform's defaults (N19).
+        "dampening": False,
         # The routing packs' interface fields (K7, `modules/nsot/features`).
         "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
     }
@@ -522,6 +527,26 @@ class BaseParser:
         """
         out["call_home"] = {"body": [c.rstrip() for c in block.children]}
 
+    def _h_archive(self, block, out, m):
+        """The configuration archive's one modelled shape (H22): ``archive`` with exactly one
+        child, ``path <url>``, into ``archive: {path: <url>}``. Emitted only when a
+        configuration holds that shape, so it is no schema default every parse fills (as
+        ``dhcp_server``). Anything else is left to ``unmodeled``, whole: a second child
+        (``maximum``, ``write-memory``, ``log config``), and a path whose URL carries a
+        credential (``ftp://user:pass@host/…``), which C477's unmodelled reference takes out
+        of intent; a modelled path is kept verbatim, so it holds no secret position."""
+        children = [c.strip() for c in block.children if c.strip()]
+        if len(children) != 1:
+            return False
+        path = re.match(r"^path (\S+)$", children[0])
+        if not path or "@" in path.group(1):
+            return False
+        from modules.redact import redact_positional
+        if redact_positional(children[0]) != children[0]:
+            return False
+        out["archive"] = {"path": path.group(1)}
+        return True
+
     def _h_snmp(self, block, out, m):
         rest = m.group(1).strip()
         community = re.match(r"community\s+(\S+)\s*(\S*)$", rest)
@@ -720,6 +745,9 @@ class BaseParser:
             # (C1485: a management switch's uplink printed "Output queue: 0/0" and dropped
             # 5.6% of its output).
             (r"^hold-queue\s+(\d+\s+(?:in|out))\s*$",    "hold_queue"),
+            # IP event dampening (H22, docs/HEAL_TO_INTENT.md 19.4): the bare line only, the
+            # platform's defaults (N19); `dampening <half-life> …` stays in `unmodeled`.
+            (r"^dampening\s*$",                          "dampening"),
             # Interface-level NAT, distinct from the top-level
             # `ip nat inside source list ...` rule that _h_ip_nat handles.
             (r"^ip nat\s+(inside|outside)\s*$",           "ip_nat"),

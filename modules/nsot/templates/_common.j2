@@ -273,6 +273,9 @@ interface {{ i.name }}
 {% endfor %}
 {%- for x in i.hold_queue or [] %} hold-queue {{ x }}
 {% endfor %}
+{#- IP event dampening (H22): the bare line, the platform's defaults (N19). -#}
+{%- if i.dampening %} dampening
+{% endif %}
 {%- if i.shutdown %} shutdown
 {% endif %}
 {%- if i.no_shutdown %} no shutdown
@@ -384,6 +387,13 @@ ip dhcp excluded-address {{ e.low }}{{ (' ' ~ e.high) if e.high else '' }}
 {% endfor %}
 {%- endif %}
 {{- dhcp_server_block(v) }}
+{#- The configuration archive (H22, 13f): its path, which a revert timer needs. Emitted only
+    when intent holds it, so an intent whose archive is still an unmodelled block renders that
+    block alone, as before (`hostvars.archive_problems` refuses a document holding both). -#}
+{%- set ar = v.get('archive') or {} %}
+{%- if ar.get('path') %}archive
+ path {{ ar.get('path') }}
+{% endif %}
 {%- endmacro -%}
 
 {%- macro management(v) -%}
