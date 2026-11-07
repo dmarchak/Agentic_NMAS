@@ -5,6 +5,12 @@ What ofctl_rest offers, and what this driver reads of it:
 - `GET /stats/desc/<dpid>`, `/stats/flow/<dpid>`, `/stats/port/<dpid>`,
   `/stats/meterconfig/<dpid>`, `/stats/meter/<dpid>`, `/stats/meterfeatures/<dpid>`: each
   answers `{"<dpid in decimal>": ...}`, built by `ryu.lib.ofctl_v1_3`;
+- `GET /stats/portdesc/<dpid>`: each port's raw `config` and `state` bits. **Health is the
+  state's LINK_DOWN bit, never LIVE** (C2602): an Arista (EOS 4.17) reports a working port with
+  state 0, where Open vSwitch and the ProCurve set LIVE (4) (the lab's recorded answers,
+  tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt);
+- `GET /stats/tablefeatures/<dpid>`: the switch's pipeline, table by table (OpenFlow 1.3 only:
+  a 1.0 switch's answer is Ryu's 501, said as the version not supporting it);
 - `POST /stats/flowentry/add`, `/stats/flowentry/delete_strict`, `/stats/meterentry/add`,
   `/stats/meterentry/delete`: the body names the switch (`dpid`), and the answer is an empty
   200 once Ryu has SENT the message. The switch's own answer (an OpenFlow error) is never
@@ -54,8 +60,9 @@ import ast
 import json
 
 from modules.sdn.drivers.base import (
-    ACTION_FIELDS, UINT64_MAX, UNPARSED, ControllerDriver, Flow, Meter, MeterBand,
-    MeterFeatures, PortStats, SpecError, dpid_hex, flow_from_spec, meter_from_spec, topo_host,
+    ACTION_FIELDS, ACTION_NAMES, HEALTH_FROM, INSTRUCTION_NAMES, TABLE_PROPERTIES, UINT64_MAX,
+    UNPARSED, ControllerDriver, Flow, Meter, MeterBand, MeterFeatures, PortStats, SpecError,
+    TableFeatures, dpid_hex, flow_from_spec, meter_from_spec, port_desc_from_bits, topo_host,
     topo_port)
 
 #: Ryu's OpenFlow 1.0 match keys, and the OXM name each stands for.
@@ -179,6 +186,60 @@ def flow_from_ryu(dpid: int, entry: dict) -> Flow:
                 duration_sec=entry.get("duration_sec"))
 
 
+def port_desc_from_ryu(dpid: int, entry: dict):
+    """One of `/stats/portdesc`'s ports (`ryu.lib.ofctl_v1_3.get_port_desc`: `port_no` a number
+    or `LOCAL`, `config` and `state` the raw bits) as a `PortDesc`."""
+    if not isinstance(entry, dict):
+        raise SpecError(f"a port description is a mapping, not {entry!r}")
+    return port_desc_from_bits(dpid, entry.get("port_no"), entry.get("name"),
+                               entry.get("hw_addr"), entry.get("config", 0),
+                               entry.get("state", 0), entry.get("curr_speed", 0),
+                               entry.get("max_speed", 0))
+
+
+def _ids(prop: dict, key: str, names: dict) -> list:
+    """The names of a property's instruction or action ids (`{"len", "type": <number>}`)."""
+    out = []
+    for item in prop.get(key) or []:
+        kind = item.get("type") if isinstance(item, dict) else item
+        out.append(names.get(kind, f"UNKNOWN({kind})"))
+    return out
+
+
+def table_from_ryu(dpid: int, entry: dict) -> TableFeatures:
+    """One of `/stats/tablefeatures`' tables (`ryu.lib.ofctl_v1_3.get_table_features`: each
+    property `{"type": "<name>", ...}` with `instruction_ids`, `action_ids`, `table_ids` or
+    `oxm_ids`; an OXM id's `type` is its field name) as a `TableFeatures`."""
+    if not isinstance(entry, dict):
+        raise SpecError(f"a table's features are a mapping, not {entry!r}")
+    table = TableFeatures(dpid=dpid, table_id=entry.get("table_id"),
+                          name=str(entry.get("name") or ""),
+                          max_entries=entry.get("max_entries", 0),
+                          config=entry.get("config", 0),
+                          metadata_match=entry.get("metadata_match", 0),
+                          metadata_write=entry.get("metadata_write", 0))
+    if not isinstance(table.table_id, int) or isinstance(table.table_id, bool):
+        raise SpecError(f"{table.table_id!r} is not a table id")
+    for prop in entry.get("properties") or []:
+        kind = prop.get("type") if isinstance(prop, dict) else None
+        field = TABLE_PROPERTIES.get(kind)
+        if field is None:
+            if kind not in ("EXPERIMENTER", "EXPERIMENTER_MISS"):
+                table.unknown_properties.append(str(kind))
+            continue
+        if "instruction_ids" in prop:
+            values = _ids(prop, "instruction_ids", INSTRUCTION_NAMES)
+        elif "action_ids" in prop:
+            values = _ids(prop, "action_ids", ACTION_NAMES)
+        elif "table_ids" in prop:
+            values = [t for t in prop.get("table_ids") or []]
+        else:
+            values = [str(o.get("type")) if isinstance(o, dict) else str(o)
+                      for o in prop.get("oxm_ids") or []]
+        setattr(table, field, values)
+    return table
+
+
 def _body(value: dict) -> str:
     """The exact text a write sends: JSON, keys sorted, that Ryu's `ast.literal_eval` reads as
     the same value (no true, false or null can be in it; checked, never assumed)."""
@@ -197,7 +258,8 @@ class RyuDriver(ControllerDriver):
     label = "Ryu"
     status = "built"
     capabilities = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
-                              "write_flows", "write_meters", "delete_flows"})
+                              "write_flows", "write_meters", "delete_flows", "read_port_desc",
+                              "read_table_features"})
     #: ryu/topology/switches.py `LLDPPacket.CHASSIS_ID_FMT` (rendered by Ryu's own code:
     #: tests/fixtures/sdn/ryu/lldp_from_ryu.json).
     lldp_chassis_prefix = "dpid:"
@@ -363,6 +425,26 @@ class RyuDriver(ControllerDriver):
                 "ports": [PortStats(dpid=dpid, port_no=e.get("port_no"),
                                     **{k: e.get(k, 0) for k in keys}).as_dict()
                           for e in entries]}
+
+    def _port_desc(self, dpid) -> dict:
+        entries, failed = self._per_switch(f"/stats/portdesc/{dpid}", dpid)
+        if failed:
+            return failed
+        if not isinstance(entries, list):
+            return {"ok": False, "error": f"/stats/portdesc/{dpid} answered a "
+                                          f"{type(entries).__name__}, not a list of ports"}
+        return {"ok": True, "dpid": dpid, "health_from": HEALTH_FROM,
+                "ports": [port_desc_from_ryu(dpid, e).as_dict() for e in entries]}
+
+    def _table_features(self, dpid) -> dict:
+        entries, failed = self._per_switch(f"/stats/tablefeatures/{dpid}", dpid)
+        if failed:
+            return failed
+        if not isinstance(entries, list):
+            return {"ok": False, "error": f"/stats/tablefeatures/{dpid} answered a "
+                                          f"{type(entries).__name__}, not a list of tables"}
+        tables = sorted((table_from_ryu(dpid, e) for e in entries), key=lambda t: t.table_id)
+        return {"ok": True, "dpid": dpid, "tables": [t.as_dict() for t in tables]}
 
     def _meters(self, dpid) -> dict:
         configs, failed = self._per_switch(f"/stats/meterconfig/{dpid}", dpid)

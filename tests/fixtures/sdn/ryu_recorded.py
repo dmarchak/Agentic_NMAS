@@ -9,6 +9,9 @@ The recorded paths (Ryu's `ofctl_rest` and `rest_topology`):
 - `GET /stats/desc/<dpid>` and `GET /stats/portdesc/<dpid>`: per switch, the dpid in decimal as
   Ryu takes it and answers it (`{"<dpid>": ...}`).
 
+`RecordedRyu(HARNESS)` answers the container harness's recording instead (real Ryu 4.34 and real
+Open vSwitch, `scripts/nmas-harness record`), which adds `/stats/tablefeatures/<dpid>`.
+
 **A path not recorded raises `UnrecordedPath`, naming the method and the path** (and a
 non-GET raises the same way: the recording holds only reads). `get(path)` answers the parsed
 JSON (a fresh copy each time); `session()` is an HTTP session for Mercury's real Ryu driver
@@ -86,12 +89,33 @@ class _Session:
         return _Response(json.dumps(answer).encode("utf-8"))
 
 
+#: The container harness's recording (scripts/nmas-harness record): real Ryu 4.34 on Python 3.5
+#: reading real Open vSwitch 3.3 on its userspace datapath (tests/fixtures/sdn/harness/README.md).
+HARNESS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "harness",
+                       "ovs-userspace-ryu-4.34-py3.5.json")
+
+
+def parse_harness(text: str) -> dict:
+    """`{path: answer}` from a harness recording (`{path: {"status", "body"}}`, plus `_edit`);
+    an answer that was not a 200 raises ValueError naming its path, since this fake answers
+    only what the controller answered with a body."""
+    out = {}
+    for path, answer in json.loads(text).items():
+        if path.startswith("_"):
+            continue
+        if answer.get("status") != 200:
+            raise ValueError(f"{path} was answered {answer.get('status')}, not 200")
+        out[path] = json.loads(answer["body"])
+    return out
+
+
 class RecordedRyu:
     """Ryu's recorded answers; `sent` keeps every `(method, path)` asked, in order."""
 
     def __init__(self, capture: str = CAPTURE):
         with open(capture, encoding="utf-8") as fh:
-            self._answers = parse_capture(fh.read())
+            text = fh.read()
+        self._answers = parse_harness(text) if capture.endswith(".json") else parse_capture(text)
         self.sent = []
 
     @property

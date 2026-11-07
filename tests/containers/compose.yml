@@ -1,0 +1,74 @@
+# The container harness (the SDN platform design revision 6, section 15; P2a): real Open vSwitch
+# on its userspace datapath and real Ryu 4.34 on the network's controller Python, read by
+# Mercury's own driver from a runner on the same network. Test-only: nothing here is shipped.
+# Brought up, checked and taken down by scripts/nmas-harness, which passes the two variables
+# below; neither has a default.
+#
+# The operator's conditions (2026-11-06), each held here, checked in this file by
+# tests/test_container_harness_compose.py and on the running containers by
+# `scripts/nmas-harness check`:
+#   1. one network, internal (no route off the machine), and every service on it alone;
+#   2. no host networking (no network_mode at all);
+#   3. no privileged container (privileged: false, every capability dropped, no-new-privileges,
+#      a read-only root filesystem, a non-root user where the program allows);
+#   4. Open vSwitch's userspace datapath (datapath_type=netdev, set and checked by ovs-start);
+#      no kernel module, no device;
+#   5. a published port only on loopback (127.0.0.1). None is published: an internal network
+#      publishes nothing (measured), so the checks run from the runner, inside the network.
+name: mercury-harness
+
+x-hardened: &hardened
+  privileged: false
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  networks: [harness]
+  restart: "no"
+  pids_limit: 64
+
+services:
+  ovs:
+    <<: *hardened
+    image: mercury-harness-ovs:3.3
+    build:
+      context: ovs
+    environment:
+      HARNESS_CONTROLLER: "ryu:6653"
+    tmpfs:
+      - /run/openvswitch:size=16m,mode=0755
+      - /tmp:size=8m
+    depends_on: [ryu]
+
+  ryu:
+    <<: *hardened
+    image: "mercury-harness-ryu:4.34-py${HARNESS_PYTHON:?HARNESS_PYTHON (the network's controller Python, major.minor) is unset}"
+    build:
+      context: ryu
+      args:
+        PYTHON: "${HARNESS_PYTHON:?HARNESS_PYTHON is unset}"
+    user: "10001:10001"
+    volumes:
+      - "${HARNESS_APPS:?HARNESS_APPS (the Ryu app folder) is unset}:/opt/ryu-apps:ro"
+    tmpfs:
+      - /tmp:size=8m
+
+  runner:
+    <<: *hardened
+    profiles: [check]
+    image: mercury-harness-runner:py3.12
+    build:
+      context: runner
+    user: "10002:10002"
+    environment:
+      NMAS_HARNESS_REST: "http://ryu:8080"
+      NMAS_HARNESS_PYTHON: "${HARNESS_PYTHON:?HARNESS_PYTHON is unset}"
+    volumes:
+      - "../../modules:/src/modules:ro"
+      - "./:/src/tests/containers:ro"
+    tmpfs:
+      - /tmp:size=16m
+    depends_on: [ryu, ovs]
+
+networks:
+  harness:
+    internal: true

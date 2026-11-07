@@ -1,0 +1,81 @@
+#!/bin/sh
+# The harness switch's entry point: OVSDB, then ovs-vswitchd on the userspace datapath, then the
+# bridges of /etc/harness/bridges.conf, each connected to the controller named by
+# HARNESS_CONTROLLER (host:port; the compose file sets it). Everything it writes is under
+# /run/openvswitch, a tmpfs: the image's root filesystem is read-only.
+set -eu
+
+RUN=/run/openvswitch
+CONF=/etc/harness/bridges.conf
+: "${HARNESS_CONTROLLER:?HARNESS_CONTROLLER (host:port) is unset}"
+: "${HARNESS_PROTOCOLS:=OpenFlow10,OpenFlow13}"
+
+mkdir -p "$RUN"
+export OVS_RUNDIR="$RUN" OVS_DBDIR="$RUN" OVS_LOGDIR="$RUN" OVS_SYSCONFDIR="$RUN"
+ovsdb-tool create "$RUN/conf.db" /usr/share/openvswitch/vswitch.ovsschema
+ovsdb-server "$RUN/conf.db" --remote="punix:$RUN/db.sock" --pidfile="$RUN/ovsdb-server.pid" \
+    --log-file="$RUN/ovsdb-server.log" --detach
+VSCTL="ovs-vsctl --db=unix:$RUN/db.sock"
+$VSCTL --no-wait init
+# --enable-dummy=override: every port is OVS's own dummy netdev, which needs no device and no
+# capability. Without it the userspace datapath opens /dev/net/tun for its internal port, which
+# needs CAP_NET_ADMIN and the device (measured 2026-11-07: "opening /dev/net/tun failed", the
+# bridge not created). The datapath stays OVS's userspace one (dpif-netdev, datapath_type=netdev)
+# under the override; nothing reaches the kernel's datapath.
+ovs-vswitchd "unix:$RUN/db.sock" --enable-dummy=override --pidfile="$RUN/ovs-vswitchd.pid" \
+    --log-file="$RUN/ovs-vswitchd.log" --detach
+
+host=${HARNESS_CONTROLLER%:*}
+port=${HARNESS_CONTROLLER##*:}
+addr=""
+tries=0
+while [ -z "$addr" ]; do
+    addr=$(getent hosts "$host" | awk 'NR==1 {print $1}')
+    tries=$((tries + 1))
+    if [ -z "$addr" ] && [ "$tries" -ge 30 ]; then
+        echo "ovs-start: the controller $host does not resolve after 30 tries" >&2
+        exit 1
+    fi
+    [ -n "$addr" ] || sleep 1
+done
+case "$addr" in *:*) target="tcp:[$addr]:$port" ;; *) target="tcp:$addr:$port" ;; esac
+
+grep -v '^[[:space:]]*\(#\|$\)' "$CONF" | while read -r kind a b c d e f; do
+    case "$kind" in
+        bridge)
+            $VSCTL add-br "$a" -- set bridge "$a" datapath_type=netdev \
+                protocols="$HARNESS_PROTOCOLS" other-config:datapath-id="$b" \
+                fail_mode=secure -- set-controller "$a" "$target"
+            ;;
+        port)
+            $VSCTL add-port "$a" "$b" -- set interface "$b" type=dummy ofport_request="$c"
+            if [ "$d" = down ]; then
+                ovs-appctl -t ovs-vswitchd netdev-dummy/set-admin-state "$b" down
+            fi
+            ;;
+        patch)
+            $VSCTL add-port "$a" "$b" -- set interface "$b" type=patch ofport_request="$c" \
+                options:peer="$e" \
+                -- add-port "$d" "$e" -- set interface "$e" type=patch ofport_request="$f" \
+                options:peer="$b"
+            ;;
+        *)
+            echo "ovs-start: $CONF has a line of kind $kind, not bridge, port or patch" >&2
+            exit 1
+            ;;
+    esac
+done
+
+for br in $($VSCTL list-br); do
+    kind=$($VSCTL get bridge "$br" datapath_type)
+    if [ "$kind" != netdev ]; then
+        echo "ovs-start: bridge $br has datapath_type $kind, not netdev" >&2
+        exit 1
+    fi
+done
+echo "ovs-start: ready, bridges $($VSCTL list-br | tr '\n' ' ')controller $target"
+pid=$(cat "$RUN/ovs-vswitchd.pid")
+while kill -0 "$pid" 2>/dev/null; do sleep 2; done
+echo "ovs-start: ovs-vswitchd exited" >&2
+tail -n 40 "$RUN/ovs-vswitchd.log" >&2
+exit 1

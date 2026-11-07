@@ -1,0 +1,553 @@
+#!/usr/bin/env python3
+"""THE CONTROLLER'S APPLY SCRIPT: the root half of Mercury's controller app deploy channel (the SDN
+platform design revision 6, section 10 H, change C and C2; P6).
+
+Installed ROOT-OWNED as /usr/local/sbin/mercury-ryu-apply on the controller host by
+scripts/host-steps/p6-controller-apply-install.sh, which fixes the constants below when it
+renders the copy it installs. It is never run from the repository, and the one sudoers line
+(`mercury ALL=(root) NOPASSWD: /usr/local/sbin/mercury-ryu-apply ""`) lets the deploy account
+run it with NO arguments and nothing else.
+
+It treats what the deploy account wrote as a REQUEST, never an instruction:
+- C2, before the request is read: while the controller's unit runs as root (its User empty or
+  root) and the app folder is writable by the deploy account, the deploy account could plant
+  code root runs at the next restart, so nothing is done; the refusal names the unit's User and
+  the folder's owner and mode;
+- 1. the one staging file, APPS_ROOT/.apply/request.json, is opened without following a link and
+  must be a regular file owned by the deploy account, with one link, at most MAX_BYTES, and
+  exactly the shape {"apps": [{"name", "version", "sha256"}, ...], "listen": {"host", "port"}},
+  the apps in load order; anything else is refused by name, never quoting its content;
+- 2. every name matches NAME and every version VERSION;
+- 3. every APPS_ROOT/<name>/<version>/ is a real directory under APPS_ROOT (its realpath is
+  itself), owned by the deploy account, holding <name>.py, nothing in it a link, writable by
+  group or others, or owned by anyone else, and its recomputed content hash (`folder_hash`, the
+  same framing as Mercury's `modules/jobs/lifecycle.content_hash`, from the files' bytes) equal
+  to the request's, so a folder edited after staging is refused;
+- 4. listen.host parses as an IPv4 or IPv6 address and listen.port is in 1024 to 65535;
+- 5. it renders the ONE drop-in, DROPIN_ROOT/<unit>.d/mercury.conf: `User=` RYU_USER, an empty
+  `ExecStart=`, then RYU_MANAGER with the fixed flags, the listen address, the apps' files in
+  order, then BUILTIN_APPS (`render_dropin`; Mercury previews the same text);
+- 6. writes it atomically, keeping the previous one as mercury.conf.prev;
+- 7. runs `systemctl daemon-reload`, then restarts the unit;
+- 8. judges success by IDENTITY: the unit's MainPID changed, it is active, and its User is
+  RYU_USER, within UP_BOUND_S;
+- 9. writes the outcome to OUTCOME_DIR/outcome.json (0644) and appends it to history.jsonl.
+
+It never runs anything from APPS_ROOT as root, never takes a path or a command from the request,
+and never rolls back by itself: a rollback is Mercury's second request (the previous set), and
+mercury.conf.prev is the break-glass. Written for the controller's Python 3.5 (Ubuntu 16.04.5):
+no f-strings, no variable annotations, nothing newer than 3.5 (tests/test_controller_apply.py
+checks it with Mercury's Python 3.5 check).
+"""
+
+import errno
+import fcntl
+import grp
+import hashlib
+import ipaddress
+import json
+import os
+import pwd
+import re
+import stat
+import subprocess
+import sys
+import time
+
+# -- Fixed when installed (scripts/host-steps/p6-controller-apply-install.sh renders the
+# -- placeholders; a copy with one left unrendered refuses to run). Never read from the request.
+RYU_UNIT = "@RYU_UNIT@"
+RYU_MANAGER = "@RYU_MANAGER@"
+RYU_USER = "ryu"
+DEPLOY_USER = "mercury"
+APPS_ROOT = "/opt/ryu-apps"
+DROPIN_ROOT = "/etc/systemd/system"
+OUTCOME_DIR = "/var/lib/mercury-ryu-apply"
+SYSTEMCTL = "/bin/systemctl"
+REQUIRE_ROOT = True
+# -- End of the installed constants.
+
+#: The flags every rendered command line carries: links are what Mercury's post-check reads
+#: (`/v1.0/topology/links` needs --observe-links; modules/sdn/drivers/ryu.py NO_TOPOLOGY_APP).
+FIXED_FLAGS = ("--observe-links",)
+#: Ryu's own apps, loaded after the managed ones: Mercury's reads (`/stats/...`,
+#: `/v1.0/topology/...`) are theirs.
+BUILTIN_APPS = ("ryu.app.ofctl_rest", "ryu.app.rest_topology")
+#: How long the restarted unit has to be active with a new MainPID. NOT MEASURED: S1 (Nov 10)
+#: measures the controller's restart; until then 60 s, about 2.5 times the 25 s the operator
+#: expects of a Ryu start (a placeholder, named in every outcome it fires in).
+UP_BOUND_S = 60
+UP_BOUND_SOURCE = ("a placeholder, not measured: S1 (2026-11-10) measures the controller's "
+                   "restart")
+POLL_S = 1.0
+MAX_BYTES = 64 * 1024
+MAX_APPS = 32
+NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
+VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+#: The framing Mercury's content hash starts with (modules/jobs/lifecycle.HASH_FRAMING).
+HASH_FRAMING = b"mercury-git-folder-sha256-v2\0"
+REQUEST_REL = os.path.join(".apply", "request.json")
+DROPIN_NAME = "mercury.conf"
+ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
+
+
+class Refused(Exception):
+    """Refused before anything changed; the message is the whole reason."""
+
+
+def iso(epoch=None):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if epoch is None
+                                                           else epoch))
+
+
+# ---------------------------------------------------------------------------
+# What the host runs
+# ---------------------------------------------------------------------------
+
+def systemctl(*args):
+    proc = subprocess.run((SYSTEMCTL,) + tuple(args), stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, universal_newlines=True, env=ENV,
+                          timeout=120)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def unit_properties(*names):
+    """The unit's properties as systemd answers `show -p` (systemd 229 has no --value)."""
+    args = ["show"]
+    for n in names:
+        args += ["-p", n]
+    rc, out, err = systemctl(*(args + [RYU_UNIT]))
+    if rc != 0:
+        raise Refused("systemctl show {} answered {} ({}): its User cannot be read, so "
+                      "nothing was done".format(RYU_UNIT, rc, (err or "").strip()[:120]))
+    props = {}
+    for line in out.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            props[key.strip()] = value.strip()
+    return props
+
+
+# ---------------------------------------------------------------------------
+# C2: the unsafe state, checked before the request is read
+# ---------------------------------------------------------------------------
+
+def mode_words(st):
+    return stat.filemode(st.st_mode)
+
+
+def owner_words(st):
+    try:
+        user = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError:
+        user = str(st.st_uid)
+    try:
+        group = grp.getgrgid(st.st_gid).gr_name
+    except KeyError:
+        group = str(st.st_gid)
+    return "{}:{}".format(user, group)
+
+
+def writable_by(st, account):
+    """Whether *account* can write a directory of stat *st*: its owner with the owner's write
+    bit, a member of its group with the group's, or anyone with the others' bit."""
+    if st.st_mode & stat.S_IWOTH:
+        return True
+    if st.st_uid == account.pw_uid and st.st_mode & stat.S_IWUSR:
+        return True
+    if st.st_mode & stat.S_IWGRP:
+        try:
+            members = grp.getgrgid(st.st_gid).gr_mem
+        except KeyError:
+            members = []
+        if st.st_gid == account.pw_gid or account.pw_name in members:
+            return True
+    return False
+
+
+def unsafe_refusal(user, st, account):
+    """"" or why: the unit's *user* is root (or empty) and APPS_ROOT, of stat *st*, is
+    writable by the deploy *account*."""
+    if user not in ("", "root"):
+        return ""
+    if not writable_by(st, account):
+        return ""
+    return ("refused before the request was read: {}'s User is {} (root) and {} is {} {}, "
+            "writable by {}; code {} can write would run as root at the next restart. "
+            "Move the unit to User={} first (S3 step 1), then change the folder's owner".format(
+                RYU_UNIT, repr(user or ""), APPS_ROOT, owner_words(st), mode_words(st),
+                DEPLOY_USER, DEPLOY_USER, RYU_USER))
+
+
+# ---------------------------------------------------------------------------
+# 1 to 4: the request
+# ---------------------------------------------------------------------------
+
+def _no_duplicates(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise Refused("the request names the key {} twice".format(json.dumps(key)[:60]))
+        out[key] = value
+    return out
+
+
+def read_request(account):
+    """The request's bytes, opened without following a link (step 1's file checks), and
+    removed once read, so a request is applied once."""
+    folder = os.path.join(APPS_ROOT, ".apply")
+    try:
+        dfd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            raise Refused("no request: {} does not exist".format(folder))
+        raise Refused("{} could not be opened as a directory without following a link ({})"
+                      .format(folder, exc.strerror))
+    try:
+        dst = os.fstat(dfd)
+        if dst.st_uid != account.pw_uid:
+            raise Refused("{} is owned by {}, not {}".format(folder, owner_words(dst),
+                                                             DEPLOY_USER))
+        try:
+            fd = os.open("request.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=dfd)
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                raise Refused("no request: {} does not exist".format(
+                    os.path.join(APPS_ROOT, REQUEST_REL)))
+            if exc.errno == errno.ELOOP:
+                raise Refused("the request {} is a symbolic link, not a regular file".format(
+                    os.path.join(APPS_ROOT, REQUEST_REL)))
+            raise Refused("the request could not be opened ({})".format(exc.strerror))
+        try:
+            st = os.fstat(fd)
+            where = os.path.join(APPS_ROOT, REQUEST_REL)
+            if not stat.S_ISREG(st.st_mode):
+                raise Refused("the request {} is not a regular file".format(where))
+            if st.st_uid != account.pw_uid:
+                raise Refused("the request {} is owned by {}, not {}".format(
+                    where, owner_words(st), DEPLOY_USER))
+            if st.st_nlink != 1:
+                raise Refused("the request {} has {} links, not 1".format(where, st.st_nlink))
+            if st.st_size > MAX_BYTES:
+                raise Refused("the request {} is {} bytes, more than {}".format(
+                    where, st.st_size, MAX_BYTES))
+            raw = os.read(fd, MAX_BYTES + 1)
+        finally:
+            os.close(fd)
+        try:
+            os.unlink("request.json", dir_fd=dfd)
+        except OSError:
+            pass
+    finally:
+        os.close(dfd)
+    if len(raw) > MAX_BYTES:
+        raise Refused("the request is more than {} bytes".format(MAX_BYTES))
+    return raw
+
+
+def parse_request(raw):
+    """Steps 1, 2 and 4: the request's exact shape, each field named, never its value."""
+    try:
+        doc = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_duplicates)
+    except (UnicodeDecodeError, ValueError):
+        raise Refused("the request is not JSON in UTF-8")
+    if not isinstance(doc, dict) or sorted(doc) != ["apps", "listen"]:
+        raise Refused("the request is not an object of exactly the keys apps and listen")
+    apps = doc["apps"]
+    if not isinstance(apps, list) or len(apps) > MAX_APPS:
+        raise Refused("apps is not a list of at most {} apps".format(MAX_APPS))
+    seen = set()
+    for i, app in enumerate(apps):
+        where = "apps[{}]".format(i)
+        if not isinstance(app, dict) or sorted(app) != ["name", "sha256", "version"]:
+            raise Refused("{} is not an object of exactly name, version and sha256".format(where))
+        for key, rule in (("name", NAME), ("version", VERSION), ("sha256", SHA256)):
+            value = app[key]
+            if not isinstance(value, str) or not rule.match(value):
+                raise Refused("{}.{} does not match {}".format(where, key, rule.pattern))
+        if app["name"] in seen:
+            raise Refused("{}.name names an app listed before it".format(where))
+        seen.add(app["name"])
+    listen = doc["listen"]
+    if not isinstance(listen, dict) or sorted(listen) != ["host", "port"]:
+        raise Refused("listen is not an object of exactly host and port")
+    host, port = listen["host"], listen["port"]
+    if not isinstance(host, str):
+        raise Refused("listen.host is not a string")
+    try:
+        host = str(ipaddress.ip_address(host))
+    except ValueError:
+        raise Refused("listen.host does not parse as an IPv4 or IPv6 address")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
+        raise Refused("listen.port is not a whole number from 1024 to 65535")
+    return {"apps": [dict(a) for a in apps], "listen": {"host": host, "port": port}}
+
+
+# ---------------------------------------------------------------------------
+# 3: the folders, and their content hash
+# ---------------------------------------------------------------------------
+
+def blob_id(data):
+    """Git's id for a blob of *data* (SHA-1 over its header and bytes), as hex."""
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
+def folder_entries(folder, account=None):
+    """[(relative path bytes, git mode bytes, blob id bytes)] for every file under *folder*,
+    refusing a link, anything not a file or directory, and (with *account*) an entry another
+    owns or that group or others may write."""
+    entries = []
+
+    def unreadable(exc):
+        raise Refused("{} in {} cannot be read ({})".format(
+            os.path.relpath(exc.filename or folder, folder), folder, exc.strerror))
+
+    for root, dirs, files in os.walk(folder, onerror=unreadable, followlinks=False):
+        for name in sorted(dirs) + sorted(files):
+            full = os.path.join(root, name)
+            rel = os.path.relpath(full, folder).replace(os.sep, "/")
+            st = os.lstat(full)
+            if stat.S_ISLNK(st.st_mode):
+                raise Refused("{} in {} is a symbolic link: a staged folder holds only files"
+                              .format(rel, folder))
+            if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+                raise Refused("{} in {} is not a file or a directory".format(rel, folder))
+            if account is not None:
+                if st.st_uid != account.pw_uid:
+                    raise Refused("{} in {} is owned by {}, not {}".format(
+                        rel, folder, owner_words(st), DEPLOY_USER))
+                if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    raise Refused("{} in {} is {}: writable by group or others".format(
+                        rel, folder, mode_words(st)))
+            if stat.S_ISREG(st.st_mode):
+                with open(full, "rb") as fh:
+                    data = fh.read()
+                mode = b"100755" if st.st_mode & stat.S_IXUSR else b"100644"
+                entries.append((rel.encode("utf-8", "surrogateescape"), mode,
+                                blob_id(data).encode("ascii")))
+    return entries
+
+
+def folder_hash(folder, account=None):
+    """The content hash of *folder* as it is on disk: Mercury's content hash
+    (modules/jobs/lifecycle.content_hash) recomputed from the files' bytes."""
+    entries = folder_entries(folder, account)
+    if not entries:
+        raise Refused("{} holds no file".format(folder))
+    digest = hashlib.sha256(HASH_FRAMING)
+    for rel, mode, obj in sorted(entries):
+        digest.update(len(rel).to_bytes(8, "big") + rel + mode + b" "
+                      + len(obj).to_bytes(1, "big") + obj)
+    return digest.hexdigest()
+
+
+def check_folders(request, account):
+    root = os.path.realpath(APPS_ROOT)
+    out = []
+    for i, app in enumerate(request["apps"]):
+        folder = os.path.join(root, app["name"], app["version"])
+        where = "apps[{}]'s folder {}".format(i, folder)
+        if os.path.realpath(folder) != folder:
+            raise Refused("{} is not a real directory under {}: its realpath is elsewhere"
+                          .format(where, root))
+        try:
+            st = os.lstat(folder)
+        except OSError as exc:
+            raise Refused("{} cannot be read ({})".format(where, exc.strerror))
+        if not stat.S_ISDIR(st.st_mode):
+            raise Refused("{} is not a directory".format(where))
+        if st.st_uid != account.pw_uid:
+            raise Refused("{} is owned by {}, not {}".format(where, owner_words(st),
+                                                             DEPLOY_USER))
+        entry = os.path.join(folder, app["name"] + ".py")
+        if not os.path.isfile(entry) or os.path.islink(entry):
+            raise Refused("{} holds no file {}.py".format(where, app["name"]))
+        got = folder_hash(folder, account)
+        if got != app["sha256"]:
+            raise Refused("{}'s recomputed hash {} is not the request's {}: the folder changed "
+                          "after it was staged".format(where, got, app["sha256"]))
+        out.append(entry)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 5 to 9: the drop-in, the restart, the outcome
+# ---------------------------------------------------------------------------
+
+def request_sha256(request):
+    return hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":"))
+                          .encode("utf-8")).hexdigest()
+
+
+def render_dropin(request, ryu_manager, ryu_user, apps_root):
+    """The one drop-in's text for *request* (Mercury's preview renders it the same way:
+    modules/apps/channel.render_dropin, held equal by a test)."""
+    files = [os.path.join(apps_root, a["name"], a["version"], a["name"] + ".py")
+             for a in request["apps"]]
+    command = ([ryu_manager] + list(FIXED_FLAGS)
+               + ["--ofp-listen-host", request["listen"]["host"],
+                  "--ofp-tcp-listen-port", str(request["listen"]["port"])]
+               + files + list(BUILTIN_APPS))
+    return ("# Rendered by mercury-ryu-apply for request {}. Mercury's next deploy replaces "
+            "it; mercury.conf.prev is the one before.\n"
+            "[Service]\nUser={}\nExecStart=\nExecStart={}\n").format(
+                request_sha256(request), ryu_user, " ".join(command))
+
+
+def write_dropin(text):
+    folder = os.path.join(DROPIN_ROOT, RYU_UNIT + ".d")
+    if not os.path.isdir(folder):
+        os.mkdir(folder, 0o755)
+    path = os.path.join(folder, DROPIN_NAME)
+    kept = False
+    if os.path.lexists(path):
+        if os.path.islink(path):
+            raise Refused("{} is a symbolic link: nothing was written".format(path))
+        with open(path, "rb") as fh:
+            before = fh.read()
+        _write_file(path + ".prev", before)
+        kept = True
+    _write_file(path, text.encode("utf-8"))
+    return path, kept
+
+
+def _write_file(path, data, mode=0o644):
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def restart():
+    """Steps 7 and 8: daemon-reload, restart, and success by identity within UP_BOUND_S."""
+    before = unit_properties("MainPID").get("MainPID", "")
+    rc, _, err = systemctl("daemon-reload")
+    if rc != 0:
+        return {"ok": False, "step": "daemon-reload", "error": "systemctl daemon-reload "
+                "answered {} ({})".format(rc, (err or "").strip()[:200]), "main_pid_before":
+                before}
+    rc, _, err = systemctl("restart", RYU_UNIT)
+    started = time.time()
+    if rc != 0:
+        return {"ok": False, "step": "restart", "error": "systemctl restart {} answered {} ({})"
+                .format(RYU_UNIT, rc, (err or "").strip()[:200]), "main_pid_before": before}
+    props, polls = {}, 0
+    while True:
+        polls += 1
+        props = unit_properties("MainPID", "ActiveState", "User")
+        pid = props.get("MainPID", "")
+        if props.get("ActiveState") == "active" and pid not in ("", "0", before) \
+                and props.get("User") == RYU_USER:
+            return {"ok": True, "step": "running", "main_pid_before": before,
+                    "main_pid_after": pid, "active_state": "active", "user": RYU_USER,
+                    "up_after_s": round(time.time() - started, 1)}
+        if time.time() - started >= UP_BOUND_S:
+            return {"ok": False, "step": "wait", "main_pid_before": before,
+                    "main_pid_after": pid, "active_state": props.get("ActiveState", ""),
+                    "user": props.get("User", ""),
+                    "error": "{} was not active with a new MainPID and User={} within {} s ({}); "
+                             "read {} times: MainPID {} (before {}), ActiveState {}, User {}"
+                             .format(RYU_UNIT, RYU_USER, UP_BOUND_S, UP_BOUND_SOURCE, polls,
+                                     pid or "none", before or "none",
+                                     props.get("ActiveState") or "none",
+                                     repr(props.get("User", "")))}
+        time.sleep(POLL_S)
+
+
+def write_outcome(outcome):
+    if not os.path.isdir(OUTCOME_DIR):
+        os.makedirs(OUTCOME_DIR, 0o755)
+    line = json.dumps(outcome, sort_keys=True)
+    _write_file(os.path.join(OUTCOME_DIR, "outcome.json"), (line + "\n").encode("utf-8"))
+    fd = os.open(os.path.join(OUTCOME_DIR, "history.jsonl"),
+                 os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o644)
+    try:
+        os.write(fd, (line + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
+
+
+def unrendered():
+    return [n for n, v in (("RYU_UNIT", RYU_UNIT), ("RYU_MANAGER", RYU_MANAGER)) if "@" in v]
+
+
+def apply(argv):
+    if argv:
+        raise Refused("{} takes no arguments, and was given {}".format(
+            os.path.basename(sys.argv[0]), len(argv)))
+    missing = unrendered()
+    if missing:
+        raise Refused("this copy was never rendered for its host ({} still a placeholder): "
+                      "install it with the host step".format(", ".join(missing)))
+    if REQUIRE_ROOT and os.geteuid() != 0:
+        raise Refused("it runs as root (through its one sudoers line), not as uid {}".format(
+            os.geteuid()))
+    try:
+        account = pwd.getpwnam(DEPLOY_USER)
+    except KeyError:
+        raise Refused("the deploy account {} does not exist".format(DEPLOY_USER))
+    user = unit_properties("User").get("User", "")
+    try:
+        root_st = os.stat(APPS_ROOT)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            raise Refused("no request: {} does not exist".format(APPS_ROOT))
+        raise Refused("{} cannot be read ({})".format(APPS_ROOT, exc.strerror))
+    why = unsafe_refusal(user, root_st, account)
+    if why:
+        raise Refused(why)
+    request = parse_request(read_request(account))
+    files = check_folders(request, account)
+    text = render_dropin(request, RYU_MANAGER, RYU_USER, os.path.realpath(APPS_ROOT))
+    path, kept = write_dropin(text)
+    result = restart()
+    result.update({"request_sha256": request_sha256(request), "apps": request["apps"],
+                   "listen": request["listen"], "files": files, "dropin": path,
+                   "dropin_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                   "prev_kept": kept, "user_before": user})
+    return result
+
+
+def main(argv):
+    lock_fd, held = None, False
+    started = iso()
+    try:
+        if not os.path.isdir(OUTCOME_DIR):
+            os.makedirs(OUTCOME_DIR, 0o755)
+        lock_fd = os.open(os.path.join(OUTCOME_DIR, "lock"),
+                          os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise Refused("another apply holds {}".format(os.path.join(OUTCOME_DIR, "lock")))
+        held = True
+        outcome = apply(argv)
+    except Refused as exc:
+        outcome = {"ok": False, "refused": str(exc)}
+    except Exception as exc:                            # noqa: BLE001 (written, then exit 1)
+        outcome = {"ok": False, "error": "{}: {}".format(type(exc).__name__, exc)}
+    outcome.update({"started": started, "finished": iso(), "unit": RYU_UNIT})
+    try:
+        if held:
+            # Only the apply holding the lock writes the outcome: another's stays as written.
+            write_outcome(outcome)
+        else:
+            outcome["outcome_not_written"] = "this run did not hold the lock"
+    except OSError as exc:
+        outcome["outcome_not_written"] = exc.strerror
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+    print(json.dumps(outcome, sort_keys=True))
+    return 0 if outcome.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

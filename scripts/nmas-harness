@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""THE CONTAINER HARNESS (the SDN platform design revision 6, section 15; P2a): real Open vSwitch
+on its userspace datapath and real Ryu 4.34 on the network's controller Python, in containers on
+one internal network (tests/containers/compose.yml, which holds the operator's conditions of
+2026-11-06 and is read by tests/test_container_harness_compose.py). Test-only; never shipped.
+
+    scripts/nmas-harness up --python 3.5 [--apps DIR]      build, start, verify, wait for the
+                                                           switches
+    scripts/nmas-harness check --python 3.5 [--apps DIR] [-- PYTEST ARGS]
+                                                           up, then tests/containers/
+                                                           harness_checks.py in the runner,
+                                                           then down (always)
+    scripts/nmas-harness record --python 3.5 --out FILE    up, the controller's raw REST
+                                                           answers per bridge to FILE, then down
+    scripts/nmas-harness down                              stop and remove the containers
+
+**The Python is the network's recorded controller interpreter, never a constant** (C2643,
+C2651): `--python` is required and has no default. Each version the harness builds has a
+measured constraints file, tests/containers/ryu/constraints-<version>.txt; any other version is
+refused, naming the versions there are. After `up`, the controller container's own
+`python --version` must be that version, or the run stops naming both.
+
+Integration (not yet on this base): once `modules/sdn/controller_runtime.py` records each
+network's controller Python, a `--network <slug>` option reads that version (major.minor, with
+its provenance) and passes it as `--python`, in `parse` below; `--python` stays for a version
+given by hand.
+
+`--apps` is the folder of Ryu apps loaded beside ofctl_rest and rest_topology, mounted read-only
+(default: the harness's own version pin, tests/containers/ryu/apps).
+
+**No port is published** (an internal network publishes none: measured 2026-11-07, Docker
+29.1.3), so Mercury's code reads the controller from the runner container, inside the network.
+**After `up`, every condition is checked on the running containers, not only in the file**
+(`verify`): each container unprivileged, with every capability dropped and none added, a
+read-only root, no-new-privileges, no host networking and no port bound off loopback; every
+network it is on internal; every bridge on datapath_type netdev. A condition that does not
+hold stops the run, naming it, and the containers are taken down. The host kernel's
+openvswitch module is said as a fact, never a stop: the harness never loads it, and with every
+capability dropped no container can use it (C2671).
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+HERE = os.path.join(ROOT, "tests", "containers")
+COMPOSE = os.path.join(HERE, "compose.yml")
+BRIDGES = os.path.join(HERE, "ovs", "bridges.conf")
+DEFAULT_APPS = os.path.join(HERE, "ryu", "apps")
+PROJECT = "mercury-harness"
+SERVICES = ("ryu", "ovs")
+OVS_DB = "unix:/run/openvswitch/db.sock"
+VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
+#: The bound on every bridge's controller connection after `up -d` returns. Measured 2026-11-07
+#: on the laptop, images built: 4.9 s (Ryu's start, then OVS's first connect); 2.5x that is
+#: 12.25 s, rounded up to 20 s for a loaded machine.
+READY_BOUND_S = 20.0
+POLL_S = 0.5
+
+
+class Stop(Exception):
+    """The run stops here, for the reason given."""
+
+
+def say(message: str):
+    print(f"nmas-harness: {message}", file=sys.stderr)
+
+
+def supported_versions() -> list:
+    folder = os.path.join(HERE, "ryu")
+    return sorted(name[len("constraints-"):-len(".txt")] for name in os.listdir(folder)
+                  if name.startswith("constraints-") and name.endswith(".txt"))
+
+
+def check_python(version: str) -> str:
+    """*version* when the harness can build Ryu on it; otherwise Stop, naming both sides."""
+    if not VERSION.match(version or ""):
+        raise Stop(f"--python is the controller's Python as major.minor (such as 3.5), not "
+                   f"{version!r}")
+    known = supported_versions()
+    if version not in known:
+        raise Stop(f"no measured constraints for Python {version}: the harness builds Ryu 4.34 "
+                   f"on {', '.join(known)} (tests/containers/ryu/constraints-<version>.txt); "
+                   f"measure {version} and add its file first")
+    return version
+
+
+def bridge_names() -> list:
+    with open(BRIDGES, encoding="utf-8") as fh:
+        return sorted(w[1] for w in (line.split() for line in fh) if w and w[0] == "bridge")
+
+
+def run(command: list, env=None, check=True) -> subprocess.CompletedProcess:
+    got = subprocess.run(command, env=env, cwd=HERE, capture_output=True, text=True)
+    if check and got.returncode != 0:
+        raise Stop(f"{' '.join(command)} exited {got.returncode}: "
+                   f"{(got.stderr or got.stdout).strip()[-800:]}")
+    return got
+
+
+def compose_env(python: str, apps: str) -> dict:
+    env = dict(os.environ)
+    env.update(HARNESS_PYTHON=python, HARNESS_APPS=apps)
+    return env
+
+
+def compose(env: dict, *args: str) -> int:
+    command = ["docker", "compose", "-f", COMPOSE, "-p", PROJECT, *args]
+    say(" ".join(command))
+    return subprocess.call(command, env=env, cwd=HERE)
+
+
+def container(service: str) -> str:
+    got = run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROJECT}",
+               "--filter", f"label=com.docker.compose.service={service}"])
+    ids = got.stdout.split()
+    if len(ids) != 1:
+        raise Stop(f"expected one running {service} container in {PROJECT}, found {len(ids)}")
+    return ids[0]
+
+
+# ───────────────────────────────────────────────────────────── the conditions, on what runs
+
+def verify(python: str) -> list:
+    """Every operator condition checked on the running containers: the lines it measured.
+    Raises Stop naming the first that does not hold, with both operands."""
+    lines = []
+    for service in SERVICES:
+        cid = container(service)
+        info = json.loads(run(["docker", "inspect", cid]).stdout)[0]
+        host = info["HostConfig"]
+        if host.get("Privileged") is not False:
+            raise Stop(f"{service} runs privileged ({host.get('Privileged')!r}), not false")
+        if "ALL" not in (host.get("CapDrop") or []) or host.get("CapAdd"):
+            raise Stop(f"{service}'s capabilities: dropped {host.get('CapDrop')}, added "
+                       f"{host.get('CapAdd')}; the condition is ALL dropped and none added")
+        if host.get("ReadonlyRootfs") is not True:
+            raise Stop(f"{service}'s root filesystem is writable")
+        if not any(o.startswith("no-new-privileges") for o in host.get("SecurityOpt") or []):
+            raise Stop(f"{service} lacks no-new-privileges: {host.get('SecurityOpt')}")
+        if host.get("NetworkMode") in ("host",) or host.get("Devices"):
+            raise Stop(f"{service}: network mode {host.get('NetworkMode')!r}, devices "
+                       f"{host.get('Devices')}; neither host networking nor a device is allowed")
+        for port, binds in (info["NetworkSettings"].get("Ports") or {}).items():
+            off = [b for b in binds or [] if b.get("HostIp") != "127.0.0.1"]
+            if off:
+                raise Stop(f"{service} publishes {port} on {off}, not on 127.0.0.1 only")
+        networks = sorted(info["NetworkSettings"]["Networks"])
+        for name in networks:
+            net = json.loads(run(["docker", "network", "inspect", name]).stdout)[0]
+            if net.get("Internal") is not True:
+                raise Stop(f"{service} is on network {name}, whose Internal is "
+                           f"{net.get('Internal')!r}, not true")
+        lines.append(f"{service}: unprivileged, caps dropped ALL added none, read-only root, "
+                     f"no-new-privileges, internal network(s) {', '.join(networks)}, "
+                     f"no published port")
+    ryu = container("ryu")
+    said = run(["docker", "exec", ryu, "python", "--version"])
+    got = (said.stdout + said.stderr).strip()        # 3.5 prints it on stderr, 3.9 on stdout
+    found = re.search(r"Python ([0-9]+\.[0-9]+)", got)
+    measured = found.group(1) if found else None
+    if measured != python:
+        raise Stop(f"the controller runs Python {measured} ({got!r}), the network's is "
+                   f"{python}")
+    lines.append(f"ryu: {got} (the network's {python})")
+    ovs = container("ovs")
+    kinds = {}
+    for bridge in bridge_names():
+        kinds[bridge] = run(["docker", "exec", ovs, "ovs-vsctl", f"--db={OVS_DB}", "get",
+                             "bridge", bridge, "datapath_type"]).stdout.strip()
+    if set(kinds.values()) != {"netdev"}:
+        raise Stop(f"bridge datapath types {kinds}; the condition is netdev on every bridge")
+    dps = run(["docker", "exec", "-e", "OVS_RUNDIR=/run/openvswitch", ovs, "ovs-appctl", "-t",
+               "ovs-vswitchd", "dpctl/dump-dps"])
+    datapaths = dps.stdout.split()
+    if not datapaths or [d for d in datapaths if not d.startswith("netdev@")]:
+        raise Stop(f"ovs-vswitchd's datapaths are {datapaths}; the condition is the userspace "
+                   f"datapath (netdev@) only, never the kernel's (system@)")
+    lines.append(f"ovs: datapath_type netdev on {', '.join(sorted(kinds))}; datapaths "
+                 f"{', '.join(datapaths)} (userspace only); {kernel_module()}")
+    return lines
+
+
+def kernel_module() -> str:
+    """The host kernel's openvswitch module, said as a fact: the harness never loads it (its
+    container holds no capability, CAP_SYS_MODULE included) and never creates a kernel
+    datapath (checked above), but something else on the machine may have loaded it."""
+    with open("/proc/modules", encoding="ascii") as fh:
+        for line in fh:
+            words = line.split()
+            if words and words[0] == "openvswitch":
+                return (f"the host's openvswitch kernel module is loaded by something else "
+                        f"(use count {words[2]}), and the harness uses none of it")
+    return "the host's openvswitch kernel module is not loaded"
+
+
+def wait_ready() -> float:
+    """Seconds until every bridge's controller connection is up, read from OVS's own database;
+    Stop naming what it saw past the bound."""
+    ovs, start, seen = container("ovs"), time.monotonic(), ""
+    want = len(bridge_names())
+    while time.monotonic() - start < READY_BOUND_S:
+        got = run(["docker", "exec", ovs, "ovs-vsctl", f"--db={OVS_DB}", "--columns=is_connected",
+                   "list", "controller"], check=False)
+        seen = " ".join(got.stdout.split())
+        if got.returncode == 0 and seen.count("is_connected : true") == want:
+            return time.monotonic() - start
+        time.sleep(POLL_S)
+    raise Stop(f"the bridges did not all connect within {READY_BOUND_S:g} s: OVS's controller "
+               f"table read {seen or 'nothing'!r}, expected {want} connected "
+               f"(`docker compose -p {PROJECT} logs` shows why)")
+
+
+# ───────────────────────────────────────────────────────────── the commands
+
+def up(args) -> None:
+    python = check_python(args.python)
+    apps = os.path.abspath(args.apps or DEFAULT_APPS)
+    if not os.path.isdir(apps):
+        raise Stop(f"--apps {apps} is not a folder")
+    env = compose_env(python, apps)
+    profile = ["--profile", "check"] if args.command == "check" else []
+    if compose(env, *profile, "build") != 0:
+        raise Stop("the images did not build (above)")
+    if compose(env, "up", "-d", "--force-recreate", *SERVICES) != 0:
+        raise Stop("the containers did not start (above)")
+    for line in verify(python):
+        say("verified " + line)
+    took = wait_ready()
+    say(f"up: Ryu 4.34 on Python {python}, apps {apps}; every bridge connected after "
+        f"{took:.1f} s")
+
+
+def down(_args=None) -> int:
+    # The project's name finds its containers; the variables only satisfy the file's `:?`.
+    return compose(compose_env("0.0", DEFAULT_APPS), "--profile", "check", "down",
+                   "--remove-orphans", "--timeout", "5")
+
+
+def check(args) -> int:
+    try:
+        up(args)
+        env = compose_env(args.python, os.path.abspath(args.apps or DEFAULT_APPS))
+        return compose(env, "--profile", "check", "run", "--rm", "runner",
+                       "tests/containers/harness_checks.py", *args.pytest)
+    finally:
+        down()
+
+
+def record(args) -> int:
+    """The controller's raw answers for every bridge, to *args.out* (a fixture), through
+    tests/containers/record_answers.py in the runner: its folder is the one writable mount."""
+    out = os.path.abspath(args.out)
+    folder = os.path.dirname(out)
+    if not os.path.isdir(folder):
+        raise Stop(f"--out's folder {folder} does not exist")
+    dpids = []
+    with open(BRIDGES, encoding="utf-8") as fh:
+        for words in (line.split() for line in fh):
+            if words and words[0] == "bridge":
+                dpids.append(str(int(words[2], 16)))
+    try:
+        up(args)
+        env = compose_env(args.python, os.path.abspath(args.apps or DEFAULT_APPS))
+        # As the caller's own uid, so the fixture is the caller's file.
+        return compose(env, "--profile", "check", "run", "--rm", "-v", f"{folder}:/out",
+                       "--user", f"{os.getuid()}:{os.getgid()}",
+                       "--entrypoint", "python", "runner",
+                       "tests/containers/record_answers.py",
+                       f"/out/{os.path.basename(out)}", *dpids)
+    finally:
+        down()
+
+
+def parse(argv=None):
+    parser = argparse.ArgumentParser(prog="nmas-harness",
+                                     description=__doc__.split("\n\n", maxsplit=1)[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("up", "check", "record"):
+        p = sub.add_parser(name)
+        p.add_argument("--python", required=True,
+                       help="the network's controller Python, major.minor (no default)")
+        p.add_argument("--apps", help="the Ryu app folder (default: the harness's version pin)")
+        if name == "check":
+            p.add_argument("pytest", nargs=argparse.REMAINDER,
+                           help="arguments after -- go to pytest in the runner")
+        if name == "record":
+            p.add_argument("--out", required=True, help="the fixture file to write")
+    sub.add_parser("down")
+    args = parser.parse_args(argv)
+    if args.command == "check":
+        args.pytest = [a for a in args.pytest if a != "--"]
+    return args
+
+
+def main(argv=None) -> int:
+    args = parse(argv)
+    try:
+        if args.command == "up":
+            try:
+                up(args)
+            except Stop:
+                down()
+                raise
+            return 0
+        if args.command == "check":
+            return check(args)
+        if args.command == "record":
+            return record(args)
+        return down(args)
+    except Stop as stop:
+        say(str(stop))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

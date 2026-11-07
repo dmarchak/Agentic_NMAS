@@ -1,0 +1,65 @@
+# HP ProCurve / ArubaOS-Switch: what a release's OpenFlow does, as measured or as the vendor's
+# guide says (the SDN platform design revision 6, section 6 D; the minimum P2a needs). One entry
+# per OS version range (the release train's letter, then its numbers); every value names its
+# source, and a value no source settles is listed under `unconfirmed`.
+drivers: [hp_procurve, aruba_osswitch, aruba_procurve]
+family: HP ProCurve / ArubaOS-Switch
+entries:
+  - os: {train: "K", from: "16.02", below: "16.03"}
+    openflow:
+      versions: ["1.0", "1.3"]
+      hello:
+        rejects_above: "1.3"
+      port_state:
+        live_reliable: true
+      pipeline: discover
+      # The Standard Match pipeline (C2601): table 0 holds the one goto to table 100; table 100
+      # is hardware and takes only IPv4 or IPv6 matches carrying eth_type and no MAC field;
+      # table 200 is software, takes any match, at 100 packets a second.
+      tables:
+        - table_id: 0
+          reserved: "the pipeline's single goto-table-100 entry (C2601)"
+          instructions: [GOTO_TABLE]
+          next_tables: [100]
+        - table_id: 100
+          hardware: true
+          max_entries: 1000
+          eth_types: [0x0800, 0x86dd]
+          match: any
+          match_excludes: [eth_src, eth_dst]
+          instructions: [APPLY_ACTIONS, METER, GOTO_TABLE]
+          apply_actions: [OUTPUT, SET_FIELD]
+          apply_setfield: [vlan_pcp, ip_dscp]
+          next_tables: [200]
+        - table_id: 200
+          hardware: false
+          max_entries: 65536
+          software_pps: 100
+          match: any
+          instructions: any
+          apply_actions: any
+          apply_setfield: any
+    sources:
+      openflow.versions: [aos-s-version]
+      openflow.hello.rejects_above: [aos-s-version]
+      openflow.port_state.live_reliable: [c2602]
+      openflow.tables: [c2601]
+    unconfirmed: [openflow.hello.rejects_above, "openflow.tables[200].instructions",
+                  "openflow.tables[200].apply_actions", "openflow.tables[200].apply_setfield"]
+    unconfirmed_why: "the guide offers 1.0 and 1.3 but no higher hello was ever sent to the switch (the lab's controller was pinned before it connected), and C2601 records table 200 as taking any match but not its actions; a recorded tablefeatures answer, to make at the lab, settles both"
+measurements:
+  aos-s-version:
+    record: "the vendor's guide"
+    what: "openflow instance <name> version {1.0|1.3[only]}: the versions a K/KA/KB 16.x instance speaks"
+    evidence: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a), cited by modules/sdn/openflow_templates/aruba_os_switch.yml (aos-s-version)"
+    read: "2026-11-05"
+  c2601:
+    record: C2601
+    what: "the Standard Match pipeline of K.16.02, read by /stats/tablefeatures at the bring-up with the team's table_features.py"
+    evidence: "the operator's finding (e), 2026-11-06 (docs/OPEN_FINDINGS.md C2601); the raw answer is not yet a fixture"
+    read: "2026-11-06"
+  c2602:
+    record: C2602
+    what: "working ports report state 4 (LIVE)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt, portdesc of the ProCurve"
+    read: "2026-11-06"

@@ -1,0 +1,31 @@
+# Arista EOS: what an EOS release's OpenFlow agent does, as measured (the SDN platform design
+# revision 6, section 6 D; the minimum P2a needs). One entry per OS version range; every value
+# names its source, and a value no source settles is listed under `unconfirmed`.
+drivers: [arista_eos]
+family: Arista EOS
+entries:
+  - os: {from: "4.17", below: "4.18"}
+    openflow:
+      versions: ["1.0", "1.3"]
+      hello:
+        rejects_above: "1.3"
+      port_state:
+        live_reliable: false
+      pipeline: discover
+    sources:
+      openflow.versions: [c2598]
+      openflow.hello.rejects_above: [c2598]
+      openflow.port_state.live_reliable: [c2602]
+    unconfirmed: []
+    note: "the pipeline is discovered: the Aristas' tables have not been read yet (no tablefeatures recording)"
+measurements:
+  c2598:
+    record: C2598
+    what: "EOS 4.17.0F's hello offers 1.0 and 1.3 (version bitmap 0x12) and a 1.4 hello is refused with HELLO_FAILED/INCOMPATIBLE"
+    evidence: "the lab bring-up's handshakes, 2026-11-06 (docs/OPEN_FINDINGS.md C2598)"
+    read: "2026-11-06"
+  c2602:
+    record: C2602
+    what: "every working OpenFlow port reports state 0, no LIVE bit"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt, portdesc of both Aristas"
+    read: "2026-11-06"

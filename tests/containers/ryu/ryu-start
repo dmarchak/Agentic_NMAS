@@ -1,0 +1,16 @@
+#!/bin/sh
+# The harness controller's entry point: Ryu 4.34 with its REST (ofctl_rest), its topology REST
+# and link discovery (rest_topology, --observe-links), and every app in /opt/ryu-apps (mounted
+# read-only: the harness's own version pin, or the network's apps, scripts/nmas-harness --apps).
+# Ryu offers the INTERSECTION of its apps' OFP_VERSIONS (C2593), so an app folder without a pin
+# offers 1.0 to 1.5 and a 1.3-only switch refuses the hello (C2598).
+set -eu
+apps=""
+for f in /opt/ryu-apps/*.py; do
+    [ -e "$f" ] || continue
+    apps="$apps $f"
+done
+echo "ryu-start: $(python --version 2>&1), ryu-manager $(ryu-manager --version 2>&1 | awk '{print $2}'), apps:${apps:- none}"
+# shellcheck disable=SC2086
+exec ryu-manager --ofp-tcp-listen-port 6653 --wsapi-host 0.0.0.0 --wsapi-port 8080 \
+    --observe-links ryu.app.ofctl_rest ryu.app.rest_topology $apps

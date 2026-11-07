@@ -52,10 +52,13 @@ import requests
 
 log = logging.getLogger(__name__)
 
-#: What a driver may declare (17.2).
+#: What a driver may declare (17.2; `read_port_desc` and `read_table_features`, the SDN platform
+#: design revision 6, section 8 F, P2a).
 CAPABILITIES = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
-                          "write_flows", "write_meters", "delete_flows"})
-READS = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters"})
+                          "write_flows", "write_meters", "delete_flows", "read_port_desc",
+                          "read_table_features"})
+READS = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
+                   "read_port_desc", "read_table_features"})
 STATUSES = ("built", "later", "unmaintained")
 
 DEFAULT_TIMEOUT = 5.0
@@ -387,6 +390,116 @@ class MeterFeatures:
         return dataclasses.asdict(self)
 
 
+# ───────────────────────────────────────────────────────────── port health and table features
+
+#: OpenFlow's port state and config bits (the same values in 1.0 and 1.3: ofp_port_state,
+#: ofp_port_config).
+OFPPS_LINK_DOWN = 1
+OFPPS_BLOCKED = 2
+OFPPS_LIVE = 4
+OFPPC_PORT_DOWN = 1
+#: How a port's health is read, said beside every answer: LINK_DOWN, never LIVE (C2602).
+HEALTH_FROM = ("link_up is the state's LINK_DOWN bit clear; LIVE is kept raw for display and "
+               "never read for health, since a working Arista port reports state 0 (C2602)")
+
+
+@dataclasses.dataclass
+class PortDesc:
+    """One switch port as the switch describes it (OFPMP_PORT_DESC; OpenFlow 1.0's features
+    reply): its raw `config` and `state` bits, and two values derived from them, the only ones
+    a health check reads: `link_up` (state's LINK_DOWN clear) and `admin_up` (config's
+    PORT_DOWN clear). `live` is the LIVE bit, kept for display only (C2602)."""
+
+    dpid: int
+    port_no: Any
+    name: str = ""
+    hw_addr: str = ""
+    config: int = 0
+    state: int = 0
+    curr_speed: int = 0
+    max_speed: int = 0
+    link_up: bool = True
+    admin_up: bool = True
+    live: bool = False
+
+    def as_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+
+def port_desc_from_bits(dpid: int, port_no, name="", hw_addr="", config=0, state=0,
+                        curr_speed=0, max_speed=0) -> PortDesc:
+    """A `PortDesc` with its derived values; raises SpecError for bits that are not numbers."""
+    for label, value in (("config", config), ("state", state)):
+        if not _is_int(value) or value < 0:
+            raise SpecError(f"a port's {label} is a whole number of OpenFlow bits, not "
+                             f"{value!r}")
+    number = _port_number(port_no)
+    if number is None:
+        raise SpecError(f"{port_no!r} is not a port number")
+    return PortDesc(dpid=dpid, port_no=number, name=str(name or ""),
+                    hw_addr=str(hw_addr or "").lower(), config=config, state=state,
+                    curr_speed=curr_speed if _is_int(curr_speed) else 0,
+                    max_speed=max_speed if _is_int(max_speed) else 0,
+                    link_up=not state & OFPPS_LINK_DOWN, admin_up=not config & OFPPC_PORT_DOWN,
+                    live=bool(state & OFPPS_LIVE))
+
+
+#: OpenFlow 1.3's instruction types (ofp_instruction_type) and action types (ofp_action_type),
+#: by the names `ACTION_FIELDS` uses, for a table's features read back as numbers.
+INSTRUCTION_NAMES = {1: "GOTO_TABLE", 2: "WRITE_METADATA", 3: "WRITE_ACTIONS",
+                     4: "APPLY_ACTIONS", 5: "CLEAR_ACTIONS", 6: "METER", 0xFFFF: "EXPERIMENTER"}
+ACTION_NAMES = {0: "OUTPUT", 11: "COPY_TTL_OUT", 12: "COPY_TTL_IN", 15: "SET_MPLS_TTL",
+                16: "DEC_MPLS_TTL", 17: "PUSH_VLAN", 18: "POP_VLAN", 19: "PUSH_MPLS",
+                20: "POP_MPLS", 21: "SET_QUEUE", 22: "GROUP", 23: "SET_NW_TTL",
+                24: "DEC_NW_TTL", 25: "SET_FIELD", 26: "PUSH_PBB", 27: "POP_PBB",
+                0xFFFF: "EXPERIMENTER"}
+#: A table feature property's keys in `TableFeatures`, by OpenFlow's property name.
+TABLE_PROPERTIES = {
+    "INSTRUCTIONS": "instructions", "INSTRUCTIONS_MISS": "instructions_miss",
+    "NEXT_TABLES": "next_tables", "NEXT_TABLES_MISS": "next_tables_miss",
+    "WRITE_ACTIONS": "write_actions", "WRITE_ACTIONS_MISS": "write_actions_miss",
+    "APPLY_ACTIONS": "apply_actions", "APPLY_ACTIONS_MISS": "apply_actions_miss",
+    "MATCH": "match", "WILDCARDS": "wildcards",
+    "WRITE_SETFIELD": "write_setfield", "WRITE_SETFIELD_MISS": "write_setfield_miss",
+    "APPLY_SETFIELD": "apply_setfield", "APPLY_SETFIELD_MISS": "apply_setfield_miss"}
+
+
+@dataclasses.dataclass
+class TableFeatures:
+    """One flow table as the switch describes it (OFPMP_TABLE_FEATURES, OpenFlow 1.3): what it
+    matches (`match`, OXM field names; `wildcards`, those it may leave out), which instructions
+    and actions a flow in it may carry, and the tables a GOTO_TABLE may name. Each list is in
+    the switch's own order; a name the driver could not translate is kept as
+    `UNKNOWN(<number>)`, never dropped, and a property type it does not know is listed in
+    `unknown_properties`."""
+
+    dpid: int
+    table_id: int
+    name: str = ""
+    max_entries: int = 0
+    config: int = 0
+    metadata_match: int = 0
+    metadata_write: int = 0
+    instructions: list = dataclasses.field(default_factory=list)
+    instructions_miss: list = dataclasses.field(default_factory=list)
+    next_tables: list = dataclasses.field(default_factory=list)
+    next_tables_miss: list = dataclasses.field(default_factory=list)
+    write_actions: list = dataclasses.field(default_factory=list)
+    write_actions_miss: list = dataclasses.field(default_factory=list)
+    apply_actions: list = dataclasses.field(default_factory=list)
+    apply_actions_miss: list = dataclasses.field(default_factory=list)
+    match: list = dataclasses.field(default_factory=list)
+    wildcards: list = dataclasses.field(default_factory=list)
+    write_setfield: list = dataclasses.field(default_factory=list)
+    write_setfield_miss: list = dataclasses.field(default_factory=list)
+    apply_setfield: list = dataclasses.field(default_factory=list)
+    apply_setfield_miss: list = dataclasses.field(default_factory=list)
+    unknown_properties: list = dataclasses.field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+
 def _match_problems(match) -> list:
     if not isinstance(match, Mapping):
         return [f"a match is a mapping of OXM field names, not a {type(match).__name__}"]
@@ -558,6 +671,8 @@ CALL_CAPABILITY = {
     "links": "read_topology", "hosts": "read_topology", "topology": "read_topology",
     "flows": "read_flows",
     "port_stats": "read_port_stats",
+    "port_desc": "read_port_desc",
+    "table_features": "read_table_features",
     "meters": "read_meters", "meter_features": "read_meters",
     "add_flow": "write_flows", "render_add_flow": "write_flows",
     "modify_flow_strict": "write_flows", "render_modify_flow_strict": "write_flows",
@@ -673,6 +788,16 @@ class ControllerDriver:
         """`{"dpid", "ports": [PortStats.as_dict()]}`."""
         return self._call("port_stats", self._port_stats, dpid, dpid_arg=True)
 
+    def port_desc(self, dpid) -> dict:
+        """`{"dpid", "ports": [PortDesc.as_dict()], "health_from"}`: each port's config and
+        state bits, and its health from LINK_DOWN, never LIVE (C2602)."""
+        return self._call("port_desc", self._port_desc, dpid, dpid_arg=True)
+
+    def table_features(self, dpid) -> dict:
+        """`{"dpid", "tables": [TableFeatures.as_dict()]}`: the switch's own account of its
+        pipeline, table by table (the SDN platform design revision 6, section 7 E)."""
+        return self._call("table_features", self._table_features, dpid, dpid_arg=True)
+
     def meters(self, dpid) -> dict:
         """`{"dpid", "meters": [Meter.as_dict()]}`: each meter's configuration and counters."""
         return self._call("meters", self._meters, dpid, dpid_arg=True)
@@ -740,7 +865,7 @@ class ControllerDriver:
         raise NotImplementedError(f"{self.kind} declares this call but does not implement it")
 
     _test = _switches = _switch_desc = _links = _flows = _port_stats = _not_implemented
-    _hosts = _topology = _not_implemented
+    _hosts = _topology = _port_desc = _table_features = _not_implemented
     _meters = _meter_features = _not_implemented
     _render_add_flow = _render_modify_flow_strict = _render_delete_flow_strict = _not_implemented
     _render_add_meter = _render_delete_meter = _not_implemented

@@ -1,0 +1,36 @@
+# Open vSwitch: what a release's OpenFlow does, as measured (the SDN platform design revision 6,
+# section 6 D; the minimum P2a needs). One entry per OS version range; every value names its
+# source, and a value no source settles is listed under `unconfirmed`.
+drivers: [ovs_linux]
+family: Open vSwitch
+entries:
+  - os: {from: "3.3", below: "3.4"}
+    openflow:
+      versions: ["1.0", "1.3"]
+      hello:
+        rejects_above: null
+      port_state:
+        live_reliable: true
+      pipeline: discover
+    sources:
+      openflow.versions: [ovs-template, harness-2026-11-07]
+      openflow.hello.rejects_above: [harness-2026-11-07]
+      openflow.port_state.live_reliable: [c2602, harness-2026-11-07]
+    unconfirmed: []
+    note: "versions are what Mercury's OVS template sets (the bridge's protocols); OVS offers whatever a bridge's protocols name"
+measurements:
+  ovs-template:
+    record: "modules/sdn/openflow_templates/ovs.yml"
+    what: "the bridge's protocols Mercury renders: OpenFlow 1.0 and 1.3"
+    evidence: "the template's versions and its db-protocols citation"
+    read: "2026-11-05"
+  harness-2026-11-07:
+    record: "the container harness"
+    what: "Open vSwitch 3.3 (Ubuntu 24.04's package) with protocols OpenFlow10,OpenFlow13 joined Ryu 4.34 offering 1.0 to 1.5 (no app pinning versions): it answers the hello by its version bitmap and refuses nothing; its working ports report LIVE (4) and a port held down LINK_DOWN (1)"
+    evidence: "scripts/nmas-harness check --python 3.9 --apps <an empty folder>, 7 passed; tests/fixtures/sdn/harness/ovs-userspace-ryu-4.34-py3.5.json"
+    read: "2026-11-07"
+  c2602:
+    record: C2602
+    what: "the lab's two OVS hosts (3.3.4) report working ports with state 4 (LIVE)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt, portdesc of datapaths 3 and 4"
+    read: "2026-11-06"
