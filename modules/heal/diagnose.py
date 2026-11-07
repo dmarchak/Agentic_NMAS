@@ -6,7 +6,7 @@ evidence, and the checks that passed ("ruled out").
 
 **The runbooks** (`RUNBOOKS`): "adjacency down with both ends at intent" (H14: OSPF, OSPFv3
 and BGP, here) and "A can't reach B" (H15, `modules/heal/diagnose_reach.py`, on `path_trace`:
-IPv4 now; its IPv6 form refused by name until `show ipv6 cef` is captured, C2415).
+IPv4, and IPv6 by `show ipv6 cef` since H18's captures, its limits said there).
 
 **Every read goes through the one reads engine** (`modules/nsot/reads.py`), as its caller kind
 ``diagnosis``, whose `reads.EXTRAS` entry is empty: every command passes
@@ -96,6 +96,8 @@ LOCK_DIR = os.path.join("heal", "diagnosis")
 _IFNAME = re.compile(r"[A-Za-z][A-Za-z-]{0,30}[0-9][0-9/.:]{0,15}")
 #: An access list's name or number as IOS takes it in `ip access-group`, one word.
 _ACLNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+#: A MAC address as IOS prints it in ARP and the MAC table (captures: tests/fixtures/diagnose/).
+_MAC = re.compile(r"[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}")
 _STUCK = ("EXSTART", "EXCHANGE")
 _UP = ("FULL", "2WAY")
 
@@ -261,16 +263,33 @@ TEMPLATES = {
     "reach_ping": {"*": "ping {dest} repeat 5 timeout 2"},
     "reach_ping_src": {"*": "ping {dest} source {src} repeat 5 timeout 2"},
     "cef": {"*": "show ip cef {dest}"},
+    # vIOS-L2 refuses every option after a traceroute's address, IPv4 and IPv6 (H18, measured
+    # on an IOS switch: the invalid-input marker at `numeric`, and at `timeout` without it), so
+    # there the read answers "no such read" (C2681); the AI's read set takes this form only.
     "traceroute": {"*": "traceroute {dest} numeric timeout 2 probe 1 ttl 1 16"},
     "route": {"*": "show ip route {dest}"},
     "arp": {"*": "show ip arp {nh}"},
     "acl_counters": {"*": "show ip access-lists {acl}"},
+    # The IPv6 form (H15's rest, H18's captures): B's forwarding, route and ping, and the next
+    # hop's neighbour entry by its address (the AI's shape; vIOS-L2 refuses it, measured on an
+    # IOS switch, so there it is "no such read", C2681).
+    "cef6": {"*": "show ipv6 cef {dest}"},
+    "route6": {"*": "show ipv6 route {dest}"},
+    "reach_ping6": {"*": "ping ipv6 {dest} repeat 5 timeout 2"},
+    "reach_ping6_src": {"*": "ping ipv6 {dest} source {src} repeat 5 timeout 2"},
+    "traceroute6": {"*": "traceroute ipv6 {dest} numeric timeout 2 probe 1 ttl 1 16"},
+    "nd": {"*": "show ipv6 neighbors {nh}"},
+    # A switch on the path (an SVI's egress): where the next hop's MAC is learned, and that
+    # port's spanning-tree state (both captured on an IOS switch).
+    "mac": {"*": "show mac address-table address {mac}"},
+    "stp": {"*": "show spanning-tree interface {if}"},
 }
 #: The kind a template's answer is parsed as (an IPv6 form is its IPv4 kind's twin).
 PARSE_KIND = {"link_ping6": "link_ping", "bgp_summary6": "bgp_summary",
               "bgp_neighbor6": "bgp_neighbor", "bgp_ping_src": "bgp_ping",
               "bgp_ping6": "bgp_ping", "bgp_ping6_src": "bgp_ping",
-              "reach_ping_src": "reach_ping"}
+              "reach_ping_src": "reach_ping", "reach_ping6": "reach_ping",
+              "reach_ping6_src": "reach_ping", "route6": "route", "traceroute6": "traceroute"}
 #: What each read is for, in the step's words.
 READ_WORDS = {
     "interfaces": "interface state, MTU and error counters",
@@ -291,7 +310,12 @@ READ_WORDS = {
     "reach_ping": "does A reach B", "reach_ping_src": "does A reach B, from its loopback",
     "cef": "the forwarding path toward B", "traceroute": "the path past the managed devices",
     "route": "the route toward B and its source", "arp": "the next hop resolved (ARP)",
-    "acl_counters": "an access list's match counters"}
+    "acl_counters": "an access list's match counters",
+    "cef6": "the IPv6 forwarding path toward B", "route6": "the IPv6 route toward B and its "
+    "source", "reach_ping6": "does A reach B (IPv6)", "reach_ping6_src": "does A reach B "
+    "(IPv6), from its loopback", "traceroute6": "the IPv6 path past the managed devices",
+    "nd": "the next hop resolved (IPv6 neighbours)",
+    "mac": "where the next hop's MAC is learned", "stp": "that port's spanning-tree state"}
 _DIALECT = {"cisco_iosxe": "cisco_iosxe", "cisco_xe": "cisco_iosxe", "cisco_ios": "cisco_ios"}
 
 
@@ -311,7 +335,7 @@ def render(kind: str, dialect: str, **args) -> str:
     """*kind*'s command on *dialect*, each argument checked as one token of its shape: an
     interface name (`_IFNAME`), an address of the template's family (`ipaddress`, no zone), a
     probe size the allowlist takes (`readonly_commands.PING_OPTIONS`), an access list's name
-    (`_ACLNAME`). Raises Refused naming the argument and its shape."""
+    (`_ACLNAME`), a MAC address (`_MAC`). Raises Refused naming the argument and its shape."""
     from modules.readonly_commands import PING_OPTIONS
 
     forms = TEMPLATES[kind]
@@ -341,6 +365,9 @@ def render(kind: str, dialect: str, **args) -> str:
             if not (text.isdigit() and low <= int(text) <= high):
                 raise Refused(f"{text!r} is not a probe size from {low} to {high}, so "
                               f"`{template}` is not sent")
+        elif key == "mac":
+            if not _MAC.fullmatch(text):
+                raise Refused(f"{text!r} is not a MAC address, so `{template}` is not sent")
         values[key] = text
     return template.format(**values)
 

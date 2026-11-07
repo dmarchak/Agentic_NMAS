@@ -1,0 +1,1 @@
+%OSPF: OSPF not enabled on GigabitEthernet0/2

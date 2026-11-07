@@ -1,0 +1,7 @@
+Routing entry for 0.0.0.0/0, supernet
+  Known via "rip", distance 120, metric 1, candidate default path
+  Redistributing via rip
+  Last update from 10.255.2.10 on GigabitEthernet0/2, 00:00:06 ago
+  Routing Descriptor Blocks:
+  * 10.255.2.10, from 10.255.2.10, 00:00:06 ago, via GigabitEthernet0/2
+      Route metric is 1, traffic share count is 1

@@ -7,8 +7,8 @@ diagnosis in place.
 device's intended neighbours (a link intent holds, or a BGP neighbour intent names), each
 offered only when its plan can be made, the rest named with why; for "can't reach", a device
 of the network by its intended loopback address, or an address checked as one IPv4 or IPv6
-address (an IPv6 address is refused by name: "A can't reach B" reads IPv4 forwarding only until
-`show ipv6 cef` is captured, C2415).
+address (an IPv6 address is followed with `show ipv6 cef`; the card names what its IPv6 form
+does not do, `IPV4_ONLY`).
 
 **The plan drawn is the plan run.** The card shows `diagnose.plan`'s reads, never its private
 intent (`_intent`, the lines the reach runbook walks with, dropped by `shown`); the run is bound
@@ -32,8 +32,11 @@ ANNOUNCER = "diagnosis"
 #: The two runbooks as the dialog offers them: (key, label, its rest).
 CHOICES = (("adjacency_down", "An adjacency is down", "with both ends at intent"),
            ("cant_reach", "Can't reach", "a device or an address from"))
-IPV4_ONLY = ("Can't reach reads IPv4 forwarding only: an IPv6 address is refused by name, with "
-             "nothing read, until show ipv6 cef is captured and parsed (C2415)")
+#: What Can't reach's IPv6 form does not do (the IPv6 rule: said on its screen by name). The
+#: key keeps its name, `ipv4_only`, which the signed-off card draws.
+IPV4_ONLY = ("An IPv6 address is followed with show ipv6 cef, but on a segment intent shares "
+             "among several devices a link-local next hop names none of them, so the path "
+             "stops there, said; and IPv6 access lists bound on the path are not read (C2414)")
 
 
 def _protocols(end: dict) -> str:

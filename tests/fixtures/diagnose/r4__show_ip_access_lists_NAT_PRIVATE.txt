@@ -1,0 +1,4 @@
+Standard IP access list NAT-PRIVATE
+    10 permit 192.0.2.0, wildcard bits 0.0.0.255
+    20 permit 172.16.0.0, wildcard bits 0.15.255.255
+    30 permit 192.168.0.0, wildcard bits 0.0.255.255

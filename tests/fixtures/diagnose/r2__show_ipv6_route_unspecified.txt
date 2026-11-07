@@ -1,0 +1,7 @@
+Routing entry for ::/127
+  Known via "connected", distance 0, metric 0, type receive
+  Route count is 1/1, share count 0
+  Routing paths:
+    receive via Null0
+      Route metric is 0, traffic share count is 1
+      Last updated 2w2d ago

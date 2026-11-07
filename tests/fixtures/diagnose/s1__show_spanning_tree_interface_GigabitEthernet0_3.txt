@@ -1,0 +1,6 @@
+
+Vlan                Role Sts Cost      Prio.Nbr Type
+------------------- ---- --- --------- -------- --------------------------------
+VLAN0010            Desg FWD 4         128.4    P2p 
+VLAN0020            Desg FWD 4         128.4    P2p 
+VLAN0030            Desg FWD 4         128.4    P2p 

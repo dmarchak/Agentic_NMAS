@@ -3,7 +3,9 @@
 
 **Only a read with a real capture is parsed** (CLAUDE.md, "Fixtures are real captures"; 19.3:
 "One not captured is captured in H18 before its parser is written"). Each parser here was
-written against `tests/fixtures/operational/`'s captures and is tested on them. A read with no
+written against `tests/fixtures/operational/`'s captures, or H18's (`tests/fixtures/diagnose/`,
+2026-11-07: pings, routes, traceroutes, access lists, IPv6 interfaces and neighbours, the MAC
+table and spanning tree), and is tested on them. A read with no
 capture yet (`NOT_CAPTURED`) is still SENT, so History › Reads holds its masked answer for a
 person to read, and its step says it was read and not interpreted, naming C2414; a rule that
 needed it says its evidence is incomplete, never a guess.
@@ -23,12 +25,14 @@ invalid-input marker: it has no such read), ``not_parsed`` (no capture yet) or `
 import ipaddress
 import re
 
-#: The reads whose parser waits for a real capture (C2414; captured on an IOS-XE router and an IOS switch in H18).
-NOT_CAPTURED = frozenset({"ospf_interface", "ospfv3_interface", "ipv6_interface", "link_ping",
-                          "df_ping", "bgp_neighbor", "bgp_ping",
-                          # "A can't reach B" (H15): the ping to B, the traceroute past the
-                          # managed devices, a hop's route and an access list's counters.
-                          "reach_ping", "traceroute", "route", "acl_counters"})
+#: The reads whose answers are not yet interpreted (C2414). H18 captured the reach runbook's
+#: (tests/fixtures/diagnose/, 2026-11-07), and they left this set: the ping to B, the
+#: traceroute, a hop's route and an access list's entries, and `show ipv6 interface`. The
+#: adjacency runbook's own reads stay: `show ip ospf interface`, `show ipv6 ospf interface` and
+#: the link and df-bit pings are captured too (IOS-XE, IOS) but its rules do not compare them yet;
+#: `show ip bgp neighbors` and the BGP ping have no capture in the suite.
+NOT_CAPTURED = frozenset({"ospf_interface", "ospfv3_interface", "link_ping", "df_ping",
+                          "bgp_neighbor", "bgp_ping"})
 NOT_CAPTURED_WORDS = ("read, and not yet interpreted: its parser waits for a real capture of "
                       "this read (C2414)")
 PARSED, UNSUPPORTED, NOT_PARSED, UNREADABLE = "parsed", "unsupported", "not_parsed", "unreadable"
@@ -218,10 +222,212 @@ def _canon(address: str) -> str:
         return address.lower()
 
 
+# ── H18's reads (tests/fixtures/diagnose/: two IOS-XE routers, an IOS switch, 2026-11-07) ──
+
+#: `show ipv6 interface <if>`: the link-local and each global address with its subnet (both
+#: platforms). Neither capture binds an IPv6 access list, so the bindings are not read.
+_LINK_LOCAL = re.compile(r"^\s*IPv6 is enabled, link-local address is (?P<ll>\S+)", re.MULTILINE)
+_GLOBAL6 = re.compile(r"^\s+(?P<address>[0-9A-Fa-f:]+), subnet is (?P<subnet>\S+)", re.MULTILINE)
+
+
+def ipv6_interface(text: str, interface: str = "") -> dict:
+    """`show ipv6 interface <if>`: its state, link-local address, each global address with its
+    prefix, and the IPv6 MTU. Its access-list bindings are not read (no capture binds one)."""
+    block = _block_for(text, interface)
+    head = _HEAD.search(block or "")
+    if not head:
+        return _out(UNREADABLE, why=f"no `{interface or 'interface'} is ...` line in the answer")
+    ll, m = _LINK_LOCAL.search(block), _IP_MTU.search(block)
+    addresses = []
+    for g in _GLOBAL6.finditer(block):
+        try:
+            net = ipaddress.IPv6Network(g.group("subnet"), strict=False)
+            addresses.append(str(ipaddress.IPv6Interface(f"{g.group('address')}/"
+                                                         f"{net.prefixlen}")))
+        except ValueError:
+            continue
+    return _out(PARSED, dict(_state(head), link_local=_canon(ll.group("ll")) if ll else "",
+                             addresses=addresses, ip_mtu=_int(m, "mtu")))
+
+
+#: A ping's summary, both platforms and both families (captures: replies, timeouts and error
+#: marks; `Success rate is 0 percent (0/5)` prints no round-trip times).
+_SUCCESS = re.compile(r"^Success rate is (?P<pct>\d+) percent \((?P<got>\d+)/(?P<sent>\d+)\)",
+                      re.MULTILINE)
+_MARKS = re.compile(r"^(?P<marks>[!.A-Z?&@]+)\s*$", re.MULTILINE)
+_SOURCE = re.compile(r"^Packet sent with a source address of (?P<src>\S+)", re.MULTILINE)
+
+
+def ping(text: str, interface: str = "") -> dict:
+    """A ping's answer: ``{sent, received, percent, marks, source, reached, all}``. Each mark
+    is the device's own (`!` a reply and `.` a timeout, both captured; `X`, `H` and others are
+    error answers, kept as printed and never named here). No summary line is unreadable, never
+    read as "no reply"."""
+    m = _SUCCESS.search(text or "")
+    if not m:
+        return _out(UNREADABLE, why="no `Success rate is` line in the answer")
+    marks = _MARKS.search((text or "")[:m.start()])
+    src = _SOURCE.search(text or "")
+    got, sent = int(m.group("got")), int(m.group("sent"))
+    return _out(PARSED, {"sent": sent, "received": got, "percent": int(m.group("pct")),
+                         "marks": marks.group("marks") if marks else "",
+                         "source": _canon(src.group("src")) if src else "",
+                         "reached": got > 0, "all": sent > 0 and got == sent})
+
+
+#: `show ip route <a>` and `show ipv6 route <a>` (both platforms: OSPF, OSPFv3, RIP, RIPng,
+#: static to Null0, connected, the default): its prefix, what it is known via, and its paths.
+_ENTRY = re.compile(r"^Routing entry for (?P<prefix>\S+?)(?:,\s*supernet)?\s*$", re.MULTILINE)
+_KNOWN = re.compile(r'^\s*Known via "(?P<source>[^"]+)", distance (?P<distance>\d+), '
+                    r'metric (?P<metric>\d+)(?:, type (?P<type>[^,(]+?))?(?:,|\s*$|\s*\()',
+                    re.MULTILINE)
+_NOT_IN_TABLE = re.compile(r"^% (?:Network|Subnet) not in table", re.MULTILINE)
+_PATH4 = re.compile(r"^\s*\*?\s*(?P<nh>\d+\.\d+\.\d+\.\d+), from \S+, .*via (?P<if>\S+)\s*$",
+                    re.MULTILINE)
+_DIRECT4 = re.compile(r"^\s*\*?\s*directly connected, via (?P<if>\S+)", re.MULTILINE)
+_PATH6 = re.compile(r"^\s{4}(?P<nh>[0-9A-Fa-f:]+), (?P<if>\S+)\s*$", re.MULTILINE)
+_DIRECT6 = re.compile(r"^\s{4}(?:directly connected|receive) via (?P<if>\S+)", re.MULTILINE)
+
+
+def route(text: str, interface: str = "") -> dict:
+    """A route's entry: ``{in_table, prefix, source, protocol, process, distance, metric, type,
+    paths: [{next_hop, interface}]}``. `% Network not in table` (IOS-XE) and `% Subnet not in
+    table` (IOS) are ``in_table`` False: IPv4's lookup by address never matches the default
+    route (measured on both: the read asks `show ip route 0.0.0.0` for it)."""
+    text = text or ""
+    if _NOT_IN_TABLE.search(text):
+        return _out(PARSED, {"in_table": False, "prefix": "", "source": "", "protocol": "",
+                             "process": "", "distance": None, "metric": None, "type": "",
+                             "paths": []})
+    e, k = _ENTRY.search(text), _KNOWN.search(text)
+    if not e or not k:
+        return _out(UNREADABLE, why="no `Routing entry for` and `Known via` lines in the answer")
+    try:
+        prefix = str(ipaddress.ip_network(e.group("prefix"), strict=False))
+    except ValueError:
+        return _out(UNREADABLE, why=f"not a prefix: {e.group('prefix')!r}")
+    six = ":" in prefix
+    paths = []
+    for rx, direct in (((_PATH6, False), (_DIRECT6, True)) if six else
+                       ((_PATH4, False), (_DIRECT4, True))):
+        for p in rx.finditer(text):
+            paths.append({"next_hop": "" if direct else _canon(p.group("nh")),
+                          "interface": p.group("if")})
+    source = k.group("source")
+    words = source.split()
+    return _out(PARSED, {"in_table": True, "prefix": prefix, "source": source,
+                         "protocol": words[0], "process": " ".join(words[1:]),
+                         "distance": int(k.group("distance")), "metric": int(k.group("metric")),
+                         "type": (k.group("type") or "").strip(), "paths": paths})
+
+
+#: A traceroute's answer (IOS-XE both families, IOS's plain form): each hop's number,
+#: the address that answered, its error marks (`!X`) and its unanswered probes (`*`).
+_TRACING = re.compile(r"^Tracing the route to (?P<dest>\S+)", re.MULTILINE)
+_TRACE_HOP = re.compile(r"^\s*(?P<n>\d+)\s+(?P<rest>.+?)\s*$", re.MULTILINE)
+
+
+def traceroute(text: str, interface: str = "") -> dict:
+    """``{dest, hops: [{n, address, marks, timeouts}], last}``: *last* the last address that
+    answered. Whether B was reached is not read from it: a device answers from the interface
+    the probe arrived on, not B's address (captured: a switch's link address for its
+    loopback)."""
+    t = _TRACING.search(text or "")
+    if not t:
+        return _out(UNREADABLE, why="no `Tracing the route to` line in the answer")
+    dest = _canon(t.group("dest"))
+    hops = []
+    for h in _TRACE_HOP.finditer((text or "")[t.end():]):
+        tokens = h.group("rest").split()
+        address = ""
+        for tok in tokens:
+            try:
+                address = str(ipaddress.ip_address(tok))
+                break
+            except ValueError:
+                continue
+        hops.append({"n": int(h.group("n")), "address": address,
+                     "marks": [x for x in tokens if x.startswith("!")],
+                     "timeouts": tokens.count("*")})
+    answered = [x["address"] for x in hops if x["address"]]
+    return _out(PARSED, {"dest": dest, "hops": hops, "last": answered[-1] if answered else ""})
+
+
+#: An access list's header and entries (an empty extended list and a standard one on IOS-XE,
+#: extended and IPv6 ones on IOS). No capture printed a match count, so counts are not read.
+_ACL_HEAD = re.compile(r"^(?:(?:Standard|Extended|Reflexive) )?IP(?P<six>v6)? access list "
+                       r"(?P<name>\S+)", re.MULTILINE)
+_ACL_ENTRY4 = re.compile(r"^\s+(?P<seq>\d+) (?P<text>.+?)\s*$", re.MULTILINE)
+_ACL_ENTRY6 = re.compile(r"^\s+(?P<text>.+?) sequence (?P<seq>\d+)\s*$", re.MULTILINE)
+
+
+def access_list(text: str, interface: str = "") -> dict:
+    """`show ip access-lists <name>` (`show ipv6 access-list <name>`): ``{name, family,
+    entries: [{seq, text}]}``. An answer with no list's header is unreadable (the device names
+    a list it holds even when it has no entries)."""
+    h = _ACL_HEAD.search(text or "")
+    if not h:
+        return _out(UNREADABLE, why="no access list's header in the answer")
+    rx = _ACL_ENTRY6 if h.group("six") else _ACL_ENTRY4
+    return _out(PARSED, {"name": h.group("name"), "family": 6 if h.group("six") else 4,
+                         "entries": [{"seq": int(m.group("seq")), "text": m.group("text")}
+                                     for m in rx.finditer(text[h.end():])]})
+
+
+#: `show ipv6 neighbors <a>` (IOS-XE; vIOS-L2 refuses the address form) and `<if>` (both).
+_ND_HEAD = re.compile(r"^IPv6 Address\s+Age\s+Link-layer Addr\s+State\s+Interface",
+                      re.MULTILINE)
+_ND_ROW = re.compile(r"^(?P<address>[0-9A-Fa-f:]+)\s+(?P<age>\S+)\s+(?P<mac>[0-9a-f]{4}\."
+                     r"[0-9a-f]{4}\.[0-9a-f]{4}|-)\s+(?P<state>\S+)\s+(?P<if>\S+)\s*$",
+                     re.MULTILINE)
+
+
+def nd(text: str, interface: str = "") -> dict:
+    """``{entries: [{address, mac, state, interface}]}``, each address in Python's form."""
+    if not _ND_HEAD.search(text or ""):
+        return _out(UNREADABLE, why="no IPv6 neighbour table in the answer")
+    return _out(PARSED, {"entries": [
+        {"address": _canon(m.group("address")), "mac": "" if m.group("mac") == "-" else
+         m.group("mac"), "state": m.group("state"), "interface": m.group("if")}
+        for m in _ND_ROW.finditer(text)]})
+
+
+#: `show mac address-table address <mac>` (vIOS-L2).
+_MAC_HEAD = re.compile(r"Mac Address Table")
+_MAC_ROW = re.compile(r"^\s*(?P<vlan>\d+)\s+(?P<mac>[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})\s+"
+                      r"(?P<type>\S+)\s+(?P<port>\S+)\s*$", re.MULTILINE)
+
+
+def mac_table(text: str, interface: str = "") -> dict:
+    """``{entries: [{vlan, mac, type, port}]}``."""
+    if not _MAC_HEAD.search(text or ""):
+        return _out(UNREADABLE, why="no MAC address table in the answer")
+    return _out(PARSED, {"entries": [{"vlan": int(m.group("vlan")), "mac": m.group("mac"),
+                                      "type": m.group("type"), "port": m.group("port")}
+                                     for m in _MAC_ROW.finditer(text)]})
+
+
+#: `show spanning-tree interface <if>` (vIOS-L2): one row per VLAN.
+_STP_HEAD = re.compile(r"^Vlan\s+Role\s+Sts\s+Cost", re.MULTILINE)
+_STP_ROW = re.compile(r"^VLAN(?P<vlan>\d+)\s+(?P<role>\S+)\s+(?P<state>\S+)\s+(?P<cost>\d+)\s",
+                      re.MULTILINE)
+
+
+def stp(text: str, interface: str = "") -> dict:
+    """``{vlans: [{vlan, role, state, cost}]}`` (`FWD` the forwarding state, captured)."""
+    if not _STP_HEAD.search(text or ""):
+        return _out(UNREADABLE, why="no spanning-tree table in the answer")
+    return _out(PARSED, {"vlans": [{"vlan": int(m.group("vlan")), "role": m.group("role"),
+                                    "state": m.group("state"), "cost": int(m.group("cost"))}
+                                   for m in _STP_ROW.finditer(text)]})
+
+
 #: Each read kind's parser (`diagnose.READS` names the kinds).
 PARSERS = {"interfaces": interfaces, "ip_interface": ip_interface, "cdp": cdp, "lldp": lldp,
            "ospf_neighbor": ospf_neighbor, "ospfv3_neighbor": ospfv3_neighbor,
-           "bgp_summary": peers_from_summary, "arp": arp}
+           "bgp_summary": peers_from_summary, "arp": arp, "ipv6_interface": ipv6_interface,
+           "reach_ping": ping, "route": route, "traceroute": traceroute, "acl_counters": access_list,
+           "nd": nd, "mac": mac_table, "stp": stp}
 #: The parsers that read by the device's dialect (the platform pack's entries are per dialect).
 BY_DIALECT = frozenset({"arp"})
 

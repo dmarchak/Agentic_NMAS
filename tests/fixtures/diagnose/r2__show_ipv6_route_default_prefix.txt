@@ -1,0 +1,13 @@
+Routing entry for ::/0
+  Known via "ospf 1", distance 110, metric 1
+  Tag 1, type extern 2
+  Route count is 2/2, share count 0
+  Routing paths:
+    FE80::A8C1:ABFF:FEB2:A130, GigabitEthernet2
+      Route metric is 1, traffic share count is 1
+      From FE80::A8C1:ABFF:FEB2:A130
+      Last updated 02:27:40 ago
+    FE80::A8C1:ABFF:FE7B:A0DB, GigabitEthernet2
+      Route metric is 1, traffic share count is 1
+      From FE80::A8C1:ABFF:FE7B:A0DB
+      Last updated 02:27:40 ago

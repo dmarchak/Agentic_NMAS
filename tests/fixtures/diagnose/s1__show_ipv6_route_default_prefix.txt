@@ -1,0 +1,7 @@
+Routing entry for ::/0
+  Known via "rip RCN", distance 120, metric 2
+  Route count is 1/1, share count 0
+  Routing paths:
+    FE80::A8C1:ABFF:FE93:3623, GigabitEthernet0/2
+      From FE80::A8C1:ABFF:FE93:3623
+      Last updated 1w1d ago

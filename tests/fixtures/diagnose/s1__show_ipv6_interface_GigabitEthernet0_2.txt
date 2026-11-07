@@ -1,0 +1,24 @@
+GigabitEthernet0/2 is up, line protocol is up
+  IPv6 is enabled, link-local address is FE80::A8C1:ABFF:FE68:F679 
+  No Virtual link-local address(es):
+  Description: P2P to r1 Gi3 - RIPng
+  Global unicast address(es):
+    2001:DB8:2:A::2, subnet is 2001:DB8:2:A::/64 
+  Joined group address(es):
+    FF02::1
+    FF02::2
+    FF02::9
+    FF02::1:FF00:2
+    FF02::1:FF68:F679
+  MTU is 1500 bytes
+  ICMP error messages limited to one every 100 milliseconds
+  ICMP redirects are enabled
+  ICMP unreachables are sent
+  ND DAD is enabled, number of DAD attempts: 1
+  ND reachable time is 30000 milliseconds (using 30000)
+  ND advertised reachable time is 0 (unspecified)
+  ND advertised retransmit interval is 0 (unspecified)
+  ND router advertisements are sent every 200 seconds
+  ND router advertisements live for 1800 seconds
+  ND advertised default router preference is Medium
+  Hosts use stateless autoconfig for addresses.

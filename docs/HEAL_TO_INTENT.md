@@ -1162,19 +1162,19 @@ captured is captured in H18 before its parser is written, because fixtures are r
 | both | interface state, MTU, errors (twice) | `show interfaces <if>` | the same | read timeout | Loopback0 only (r2, s1); a physical port not yet |
 | both | address, subnet, ACL bindings | `show ip interface <if>` | `show ipv6 interface <if>` | read timeout | the whole table (r1, r3, s1, s3) |
 | both | who is cabled there | `show cdp neighbors <if> detail`; `show lldp neighbors <if> detail` | the same | read timeout | yes (detail, whole table) |
-| adjacency | OSPF on the interface: area, network type, hello and dead, authentication, passive | `show ip ospf interface <if>` | `show ipv6 ospf interface <if>` | read timeout | **no** |
+| adjacency | OSPF on the interface: area, network type, hello and dead, authentication, passive | `show ip ospf interface <if>` | `show ipv6 ospf interface <if>` | read timeout | H18 (2026-11-07, `tests/fixtures/diagnose/`): r2 both; s1 "OSPF not enabled", its IPv6 form refused; not yet parsed |
 | adjacency | the neighbour's view, each end | `show ip ospf neighbor <if> detail` | `show ospfv3 neighbor detail` | read timeout | yes (r1, r3, s1, s3; OSPFv3 without detail) |
-| adjacency | MTU across the link, don't fragment | `ping <far address> size <intent's MTU> df-bit repeat 2 timeout 2` | none (IPv6 never fragments in transit: the interface MTUs are compared instead) | 34 s | **no** |
-| adjacency | the far end reachable on the link | `ping <far address> source <if> repeat 5 timeout 2` | `ping ipv6 <far address> source <if> repeat 5 timeout 2` | 40 s | **no** |
+| adjacency | MTU across the link, don't fragment | `ping <far address> size <intent's MTU> df-bit repeat 2 timeout 2` | none (IPv6 never fragments in transit: the interface MTUs are compared instead) | 34 s | H18: r2; not yet compared by the adjacency rules |
+| adjacency | the far end reachable on the link | `ping <far address> source <if> repeat 5 timeout 2` | `ping ipv6 <far address> source <if> repeat 5 timeout 2` | 40 s | H18: r2 (IPv4); not yet compared by the adjacency rules |
 | adjacency | BGP: the session's state | `show ip bgp summary`; `show bgp all summary` | `show bgp ipv6 unicast summary` | read timeout | yes (r3, r4, s1, s3) |
 | adjacency | BGP: last reset reason, hold time, update source | `show ip bgp neighbors <peer>` | `show bgp ipv6 unicast neighbors <peer>` | read timeout | **no** |
-| can't reach | does A reach B | `ping <B> [source <if>] repeat 5 timeout 2` | `ping ipv6 <B> ...` | 40 s | **no** |
-| can't reach | the forwarding path, hop by hop (the path trace's own read) | `show ip cef <B>` | `show ipv6 cef <B>` | read timeout | IPv4 yes (`path/cef_fleet.json`); IPv6 **no** |
-| can't reach | past the managed devices | `traceroute <B> numeric timeout 2 probe 1 ttl 1 16` | `traceroute ipv6 <B> numeric timeout 2 probe 1 ttl 1 16` | 62 s | **no** |
-| can't reach | each hop's route and its source | `show ip route <B>` | `show ipv6 route <B>` | read timeout | connected and summary only |
-| can't reach | the next hop resolved | `show ip arp <next hop>` | `show ipv6 neighbors <if>` | read timeout | yes (r1, s1) |
-| can't reach | a switch between two routed hops: where the next hop's MAC is learned, and its port's spanning-tree state | `show mac address-table address <mac>`; `show spanning-tree interface <port>` | the same | read timeout | the dynamic table only; spanning tree by VLAN (vIOS-L2) only |
-| can't reach | an ACL's match counters, when one is bound | `show ip access-lists <name>` | `show ipv6 access-list <name>` | read timeout | **no** |
+| can't reach | does A reach B | `ping <B> [source <if>] repeat 5 timeout 2` | `ping ipv6 <B> ...` | 40 s | H18: r2, s1, both families (answered, timed out, `X`, `H`) |
+| can't reach | the forwarding path, hop by hop (the path trace's own read) | `show ip cef <B>` | `show ipv6 cef <B>` | read timeout | IPv4 yes (`path/cef_fleet.json`); IPv6 H18: r2, r4, s1 (link-local next hops, Null0) |
+| can't reach | past the managed devices | `traceroute <B> numeric timeout 2 probe 1 ttl 1 16` | `traceroute ipv6 <B> numeric timeout 2 probe 1 ttl 1 16` | 62 s | H18: r2 both; s1 (vIOS-L2) refuses every option after the address, both families (C2681) |
+| can't reach | each hop's route and its source | `show ip route <B>` (`show ip route 0.0.0.0` where CEF forwards by the default: IPv4's lookup by address never matches it, measured on both) | `show ipv6 route <B>` (matches the default) | read timeout | H18: r2, r4, s1, both families |
+| can't reach | the next hop resolved | `show ip arp <next hop>` | `show ipv6 neighbors <address>` (the AI's shape; `<if>` measured too) | read timeout | yes (r1, s1); H18: by address on r2 and r4, refused by s1 (vIOS-L2, C2681); by interface on r2, s1 |
+| can't reach | a switch between two routed hops: where the next hop's MAC is learned, and its port's spanning-tree state | `show mac address-table address <mac>`; `show spanning-tree interface <port>` | the same | read timeout | H18: s1, read where a hop's own egress is an SVI; a separate switch between two hops is not yet read |
+| can't reach | an ACL's match counters, when one is bound | `show ip access-lists <name>` | `show ipv6 access-list <name>` | read timeout | H18: entries (r2, r4, s1, IPv6 on s1); no capture printed a match count |
 | both | the device's logs: ADJCHG and its reason, ERRRCV, BGP notifications, UPDOWN, CONFIG_I | Loki, through `device_logs`, not a device read | the same | the Loki reader's bound | yes (`tests/fixtures/loki/`) |
 
 **What the allowlist lacks, and what is missing besides** (each a row in 19.11):

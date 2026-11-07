@@ -1,0 +1,5 @@
+Type escape sequence to abort.
+Tracing the route to 2001:DB8:1::21
+
+  1 2001:DB8:3::14 65 msec
+  2 2001:DB8:3::14 !X 

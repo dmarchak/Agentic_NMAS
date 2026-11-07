@@ -1,0 +1,2 @@
+::/0
+  nexthop FE80::A8C1:ABFF:FE93:3623 GigabitEthernet0/2

@@ -4,18 +4,22 @@
 On the fleet's real intent (tests/test_heal_diagnose.py's `fleet`) and real captures: the path
 trace's own `show ip cef` answers (`tests/fixtures/path/cef_fleet.json`, captured through
 Mercury's reads engine), `show ip interface` blocks (`tests/fixtures/operational/`), ARP lines
-(`tests/fixtures/endpoints/`) and the interface capture H14 uses, each edited minimally where a
-scenario needs a fault, the edit said beside it.
+(`tests/fixtures/endpoints/`) and the interface capture H14 uses, and H18's captures
+(`tests/fixtures/diagnose/`, 2026-11-07: pings, routes, IPv6 CEF, IPv6 interfaces and
+neighbours, the MAC table and spanning tree, the return hop's reads), each edited minimally
+where a scenario needs a fault, the edit said beside it.
 
-- **The plan:** A and B from intent; B one IPv4 address (an IPv6 B refused by name, C2415);
-  B's device, or outside management; the ping from A's loopback; refusals naming what they
-  compared; the per-hop count and the hops the cap covers.
-- **A run, through the one reads engine:** the ping (read, not interpreted), the trace hop by
-  hop, each hop's egress twice, its address and access lists, the next hop's ARP entry, the
-  route (read, not interpreted) and the next hop's ingress, then the return path. Every read a
-  ``diagnosis`` run on History, each hypothesis citing a run that exists.
+- **The plan:** A and B from intent; B one IPv4 or IPv6 address (a link-local B refused by
+  name); B's device, or outside management; the ping from A's loopback; refusals naming what
+  they compared; the per-hop count and the hops the cap covers.
+- **A run, through the one reads engine:** the ping (A reaching B stops the run), the trace hop
+  by hop, each hop's egress twice, its address and access lists, the next hop's ARP entry, the
+  route and its source, and the next hop's ingress, then the return path and its own hops.
+  Every read a ``diagnosis`` run on History, each hypothesis citing a run that exists.
 - **It stops at the first hop that diverges** and names the hops it did not check; the cap
   stops it and says where; a device in another diagnosis is not read, by name.
+- **The IPv6 form** (H15's rest, C2415) on the lab's real IPv6 answers, and **a switch on the
+  path** (an SVI's egress) on s1's real MAC table and spanning tree.
 - **Each rule** (`PATH_RULES`) with a planted case.
 """
 import json
@@ -60,27 +64,39 @@ def show_if(name: str) -> str:
     return LOOP.replace("Loopback0 is up, line protocol is up", f"{name} is up, line protocol is up")
 
 
+def diag(name: str) -> str:
+    """One of H18's captures (tests/fixtures/diagnose/README.md names each one's device,
+    command and UTC time)."""
+    with open(os.path.join(ROOT, "tests", "fixtures", "diagnose", name), encoding="utf-8") as fh:
+        return fh.read()
+
+
 R1_IP = capture("r1__show_ip_interface.txt")
 R3_IP = capture("r3__show_ip_interface.txt")
 S1_IP = capture("s1__show_ip_interface.txt")
-# r4 has no `show ip interface` capture: its Gi3 is r3's Gi3 block with r4's address (r3 and
-# r4 are the same platform on the same segment).
-R4_GI3 = block(R3_IP, "GigabitEthernet3").replace("10.255.3.13/24", "10.255.3.14/24")
+R4_GI3 = diag("r4__show_ip_interface_GigabitEthernet3.txt")
 R1_GI2_BLOCK = block(R1_IP, "GigabitEthernet2")
 
 
 def r1_to_r4() -> dict:
     """r1 to r4's loopback (10.255.1.14), healthy, every answer real: r1's CEF names
     10.255.3.14 out Gi2, r1's ARP holds it on Gi2, and r4's CEF back to r1's loopback names
-    10.255.3.11 out Gi3."""
+    10.255.3.11 out Gi3; the return hop's reads are r4's own (H18). The ping's answer is
+    empty, so the path is followed (a ping every probe answers stops the run). r1's route
+    is r2's real `show ip route 10.255.1.14` (r2 and r1 reach r4's loopback the same way, over
+    the same segment; r1's is not captured)."""
     return {("r1", "ping 10.255.1.14 source Loopback0 repeat 5 timeout 2"): "",
             ("r1", "show ip cef 10.255.1.14"): CEF["r1"]["show ip cef 10.255.1.14"],
             ("r1", "show interfaces GigabitEthernet2"): show_if("GigabitEthernet2"),
             ("r1", "show ip interface GigabitEthernet2"): R1_GI2_BLOCK,
             ("r1", "show ip arp 10.255.3.14"): arp_answer("r1__show_ip_arp.txt", "10.255.3.14"),
-            ("r1", "show ip route 10.255.1.14"): "",
+            ("r1", "show ip route 10.255.1.14"): diag("r2__show_ip_route_10.255.1.14.txt"),
             ("r4", "show ip interface GigabitEthernet3"): R4_GI3,
-            ("r4", "show ip cef 10.255.1.11"): CEF["r4"]["show ip cef 10.255.1.11"]}
+            ("r4", "show ip cef 10.255.1.11"): CEF["r4"]["show ip cef 10.255.1.11"],
+            ("r4", "show interfaces GigabitEthernet3"): diag(
+                "r4__show_interfaces_GigabitEthernet3.txt"),
+            ("r4", "show ip arp 10.255.3.11"): diag("r4__show_ip_arp_10.255.3.11.txt"),
+            ("r4", "show ip route 10.255.1.11"): diag("r4__show_ip_route_10.255.1.11.txt")}
 
 
 def s1_to_r4() -> dict:
@@ -172,10 +188,11 @@ class TestThePlan:
         ({"device": "r1", "address": "fe80::1%Gi2"}, "is not one IPv4 or IPv6 address"),
         ({"device": "r1", "address": "10.255.1.11"},
          "10.255.1.11 is r1's own address (Lo0), so there is no path to follow"),
-        ({"device": "r1", "address": "2001:db8:1::14"},
-         "2001:db8:1::14 is an IPv6 address; \"A can't reach B\" follows IPv4 forwarding only "
-         "(`show ip cef`): its IPv6 form waits for `show ipv6 cef` to be captured and parsed "
-         "(C2415), so nothing was read")])
+        ({"device": "r1", "address": "fe80::1"},
+         "fe80::1 is a link-local address: it names a neighbour on one segment, not one "
+         "device, so there is no path to follow"),
+        ({"device": "r1", "address": "2001:db8:1::11"},
+         "2001:db8:1::11 is r1's own address (Lo0), so there is no path to follow")])
     def test_refusals_name_what_they_compared(self, target, words):
         from modules.heal import diagnose as D
         with pytest.raises(D.Refused) as e:
@@ -213,9 +230,18 @@ class TestThePlan:
         assert str(e.value) == (f"{address} is held by {' and '.join(hosts)} in intent, so which "
                                 "device B is cannot be told")
 
-    def test_an_ipv6_b_reads_nothing(self, world):
-        got, f = reach({}, address="2001:db8:1::14")
-        assert got["state"] == "refused" and "C2415" in got["words"] and f.sent == []
+    def test_a_link_local_b_reads_nothing(self, world):
+        got, f = reach({}, address="fe80::1")
+        assert got["state"] == "refused" and "link-local" in got["words"] and f.sent == []
+
+    def test_an_ipv6_b_is_planned_with_its_family_s_reads(self):
+        p = self.plan({"device": "r1", "address": "2001:DB8:1::14"})
+        assert (p["family"], p["dest"], p["owner"]) == (6, "2001:db8:1::14", "r4")
+        assert p["reads"]["r1"] == [{"kind": "reach_ping6_src", "command":
+                                     "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 "
+                                     "timeout 2"}]
+        assert p["per_hop"][:2] == ["the IPv6 forwarding path toward B",
+                                    "the IPv6 route toward B and its source"]
 
 
 # ── A run ───────────────────────────────────────────────────────────────────────────────────
@@ -233,26 +259,38 @@ class TestARun:
                       "the path stays inside the network to B's device",
                       "the return path from B's device reaches A",
                       "no hop binds an access list intent does not hold",
+                      "each hop's route toward B is known via what intent configures there",
                       "no configuration change was logged on a device read in the last hour"):
             assert words in ruled, ruled
         assert f.sent[:2] == [("r1", "ping 10.255.1.14 source Loopback0 repeat 5 timeout 2"),
                               ("r1", "show ip cef 10.255.1.14")]
-        assert f.sent[7:] == [("r1", "show interfaces GigabitEthernet2"),
-                              ("r4", "show ip cef 10.255.1.11")]
+        assert f.sent[7:9] == [("r1", "show interfaces GigabitEthernet2"),
+                               ("r4", "show ip cef 10.255.1.11")]
         assert sorted(f.sent[2:7]) == sorted([          # round 1: both devices concurrently
             ("r1", "show interfaces GigabitEthernet2"), ("r1", "show ip interface GigabitEthernet2"),
             ("r1", "show ip arp 10.255.3.14"), ("r1", "show ip route 10.255.1.14"),
             ("r4", "show ip interface GigabitEthernet3")])
-        assert got["commands"] == 9 and got["devices"] == ["r1", "r4"]
+        # The return path's own hop: r4's egress back toward r1, and r1's ingress.
+        assert sorted(f.sent[9:14]) == sorted([
+            ("r4", "show interfaces GigabitEthernet3"), ("r4", "show ip interface GigabitEthernet3"),
+            ("r4", "show ip arp 10.255.3.11"), ("r4", "show ip route 10.255.1.11"),
+            ("r1", "show ip interface GigabitEthernet2")])
+        assert f.sent[14:] == [("r4", "show interfaces GigabitEthernet3")]
+        assert got["commands"] == 15 and got["devices"] == ["r1", "r4"]
 
     def test_the_uninterpreted_reads_are_said_never_guessed(self, world):
-        got, _ = reach(r1_to_r4())
-        reach_step = next(s for s in got["steps"] if s["step"] == "reach")
-        assert "does A reach B, from its loopback (read, and not yet interpreted: C2414)" in \
-            reach_step["words"]
+        # The ping's answer is empty and r1's route a line that is not a route: each is said,
+        # by its command and why, and neither is read as a pass or a fail.
+        got, _ = reach(changed(r1_to_r4(), "r1", "show ip route 10.255.1.14",
+                               "% Invalid input detected at '^' marker."))
+        assert got["hops"][0]["verdict"] == "not_interpreted"
+        assert got["hops"][0]["against"] == ("not interpreted: no `Success rate is` line in the "
+                                             "answer; the path is followed whatever it answered")
         hop = next(s for s in got["steps"] if s["step"] == "hop" and s.get("device") == "r1")
-        assert "the route toward B and its source (read, and not yet interpreted: C2414)" in \
-            hop["words"]
+        assert ("`show ip route 10.255.1.14` not interpreted: the device has no such read (it "
+                "printed IOS's invalid input marker)") in hop["words"]
+        assert "; route " not in got["hops"][1]["read"], got["hops"][1]["read"]
+        assert "route_source" in [n.get("rule") for n in got["not_checked"]]
 
     def test_every_read_is_a_diagnosis_run_and_cited_by_reference(self, world):
         from modules.nsot import reads
@@ -281,7 +319,7 @@ class TestARun:
         from modules.heal import diagnose as D
         waits = []
         reach(r1_to_r4(), sleep=waits.append)
-        assert waits == [D.DELTA_SECONDS]
+        assert waits == [D.DELTA_SECONDS] * 2           # the forward hop, then the return hop
 
     def test_outside_management_sends_the_traceroute_and_reads_no_return(self, world):
         # r5's answer is r4's real 8.8.8.8 answer with its next hop the outside peer
@@ -433,7 +471,11 @@ class TestEachRule:
             "no_route", "network", "decisive")
         assert first["claim"] == "r3 has no route to 198.51.100.3"
         assert first["evidence"][0]["intent"] == "198.51.100.3 is r5 Gi3's"
-        assert len(f.sent) == 2
+        # The ping, the CEF, and the dropped hop's route, asked at the prefix CEF named
+        # (0.0.0.0/0: IPv4's lookup by address never matches the default), its answer empty
+        # here: no second piece of evidence, and the CEF's answer never marked incomplete.
+        assert f.sent[2:] == [("r3", "show ip route 0.0.0.0")] and len(f.sent) == 3
+        assert len(first["evidence"]) == 1 and first["incomplete"] == []
 
     def test_a_forwarding_loop(self, world):
         # r1's and r4's real answers for each other's loopbacks, the prefix edited to r2's.
@@ -490,7 +532,9 @@ class TestEachRule:
         from modules.heal import diagnose_reach as R
         planted = {"hop_down", "hop_errors_rising", "hop_protocol_down", "next_hop_unresolved",
                    "no_route", "loop", "leaves_network", "return_path", "hop_acl",
-                   "path_config_changed"}
+                   "path_config_changed",
+                   # H15's rest (TestH18): the route's source, and a switch on the path.
+                   "route_source", "switch_port"}
         assert {r.name for r in R.PATH_RULES} == planted
 
 
@@ -503,15 +547,18 @@ class TestTheHopTable:
         got, _ = reach(r1_to_r4())
         hops = got["hops"]
         assert [(h["n"], h["device"], h["verdict"]) for h in hops] == [
-            (0, "r1", "not_interpreted"), (1, "r1", "ok")], hops
+            (0, "r1", "not_interpreted"), (1, "r1", "ok"), (2, "r4", "ok")], hops
         assert hops[0]["read"] == ("ping 10.255.1.14 source Loopback0 repeat 5 timeout 2: "
                                    "sent, its answer on History › Reads")
-        assert "C2414" in hops[0]["against"]
+        assert hops[0]["against"].startswith("not interpreted: no `Success rate is` line")
         assert hops[1]["read"].startswith("out Gi2 toward r4 (10.255.3.14); Gi2 up, line "
                                           "protocol up")
         assert "next hop 10.255.3.14 resolved (ARP)" in hops[1]["read"]
+        assert "route 10.255.1.14/32 via ospf 1" in hops[1]["read"]
         assert "r4 Gi3: no access list bound" in hops[1]["read"]
         assert hops[1]["against"] == "as intent"
+        assert hops[2]["read"].startswith("back: out Gi3 toward r1 (10.255.3.11); Gi3 up")
+        assert "route 10.255.1.11/32 via ospf 1" in hops[2]["read"]
 
     def test_the_first_hop_that_diverges_is_named_and_the_rest_not_read(self, world):
         answers = changed(s1_to_r4(), "s1", "show interfaces GigabitEthernet0/2",
@@ -620,3 +667,213 @@ class TestTheRecord:
         assert got["recorded"] is True and got["steps"][-1]["step"] == "record"
         (d,) = steplog.diagnoses("Default")["diagnoses"]
         assert (d["id"], d["runbook"], d["devices"]) == (got["id"], "cant_reach", ["r1", "r4"])
+
+
+# ── H15's rest, on H18's captures ───────────────────────────────────────────────────────────
+
+R2_PING = "ping 10.255.1.14 source Loopback0 repeat 5 timeout 2"
+R2_PING6 = "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 timeout 2"
+S1_ND = "show ipv6 neighbors fe80::a8c1:abff:fe93:3623"
+
+
+def s1_to_r4_v6() -> dict:
+    """s1 to r4's loopback over IPv6, every answer s1's own (2026-11-07): the ping unanswered
+    (`.....`), CEF's default route via r1's link-local out Gi0/2, Gi0/2's state and IPv6
+    interface, its neighbour asked by address (vIOS-L2 refuses that form), and its route
+    (RIPng's default). r1's answers are not captured, so the trace stops at r1, said."""
+    return {("s1", "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 timeout 2"): diag(
+                "s1__ping_ipv6_2001_DB8_1_14_source_Loopback0_repeat_5_timeout_2.txt"),
+            ("s1", "show ipv6 cef 2001:db8:1::14"): diag("s1__show_ipv6_cef_2001_DB8_1_14.txt"),
+            ("s1", "show interfaces GigabitEthernet0/2"): diag(
+                "s1__show_interfaces_GigabitEthernet0_2.txt"),
+            ("s1", "show ipv6 interface GigabitEthernet0/2"): diag(
+                "s1__show_ipv6_interface_GigabitEthernet0_2.txt"),
+            ("s1", S1_ND): diag("s1__show_ipv6_neighbors_FE80_A8C1_ABFF_FE93_3623.txt"),
+            ("s1", "show ipv6 route 2001:db8:1::14"): diag(
+                "s1__show_ipv6_route_2001_DB8_1_14.txt")}
+
+
+def s1_to_s2_vlan10() -> dict:
+    """s1 to s2's Vlan10 address (10.10.10.3), every s1 answer real: CEF attached to Vlan10, the
+    SVI's state and IP interface, the ARP entry (0c00.6f31.800a), the connected route, the MAC
+    learned on Gi0/3 in VLAN 10 and Gi0/3 forwarding there. The ping's answer is empty (its
+    real one answered every probe, which stops the run), and s2's are not captured."""
+    return {("s1", "ping 10.10.10.3 source Loopback0 repeat 5 timeout 2"): "",
+            ("s1", "show ip cef 10.10.10.3"): diag("s1__show_ip_cef_10.10.10.3.txt"),
+            ("s1", "show interfaces Vlan10"): diag("s1__show_interfaces_Vlan10.txt"),
+            ("s1", "show ip interface Vlan10"): diag("s1__show_ip_interface_Vlan10.txt"),
+            ("s1", "show ip arp 10.10.10.3"): diag("s1__show_ip_arp_10.10.10.3.txt"),
+            ("s1", "show ip route 10.10.10.3"): diag("s1__show_ip_route_10.10.10.3.txt"),
+            ("s1", "show mac address-table address 0c00.6f31.800a"): diag(
+                "s1__show_mac_address_table_address_0c00.6f31.800a.txt"),
+            ("s1", "show spanning-tree interface GigabitEthernet0/3"): diag(
+                "s1__show_spanning_tree_interface_GigabitEthernet0_3.txt")}
+
+
+class TestH18:
+    """H15's rest (HEAL_TO_INTENT 19.3; C2413, C2414, C2415) on the lab's real answers: the ping
+    that stops the run, the route's source against intent, the return path's own hops, the
+    IPv6 form, and a switch on the path."""
+
+    @pytest.mark.parametrize("address,command,name", [
+        ("10.255.1.14", R2_PING, "r2__ping_10.255.1.14_source_Loopback0_repeat_5_timeout_2.txt"),
+        ("2001:db8:1::14", R2_PING6,
+         "r2__ping_ipv6_2001_DB8_1_14_source_Loopback0_repeat_5_timeout_2.txt")])
+    def test_a_ping_every_probe_answers_stops_the_run(self, world, address, command, name):
+        got, f = reach({("r2", command): diag(name)}, device="r2", address=address)
+        assert f.sent == [("r2", command)], "nothing on the path is read"
+        assert got["state"] == "done" and got["hypotheses"] == []
+        words = f"r2 reaches {address}: 5 of 5 probes answered; the path was not followed"
+        assert got["words"] == words and got["ruled_out"] == [{"check": words, "rule": "reach"}]
+        assert got["hops"] == [{"n": 0, "device": "r2", "read": f"{command}: 5 of 5 answered "
+                                "(!!!!!)", "against": "A reaches B", "verdict": "ok"}]
+        ret = next(s for s in got["steps"] if s["step"] == "return")
+        assert ret["words"] == "the return path is not read: A reaches B"
+
+    def test_a_ping_partly_answered_follows_the_path(self, world):
+        # r2's real ping, edited to three replies of five and r1's source address.
+        partly = (diag("r2__ping_10.255.1.14_source_Loopback0_repeat_5_timeout_2.txt")
+                  .replace("!!!!!", "!.!.!").replace("100 percent (5/5)", "60 percent (3/5)")
+                  .replace("10.255.1.12", "10.255.1.11"))
+        got, f = reach(changed(r1_to_r4(), "r1", R2_PING, partly))
+        assert got["hops"][0]["verdict"] == "diverges"
+        assert got["hops"][0]["against"] == ("A reaches B only some of the time: the path is "
+                                             "followed")
+        assert ("r1", "show ip cef 10.255.1.14") in f.sent
+
+    def test_a_default_route_is_read_at_its_own_prefix(self, world):
+        # IPv4's `show ip route <B>` never matches the default (s1's real `% Subnet not in
+        # table`), so s1, forwarding by 0.0.0.0/0, is asked `show ip route 0.0.0.0`.
+        answers = dict(s1_to_r4())
+        answers[("s1", "show ip route 0.0.0.0")] = diag("s1__show_ip_route_0.0.0.0.txt")
+        got, f = reach(answers, device="s1")
+        assert ("s1", "show ip route 0.0.0.0") in f.sent
+        assert ("s1", "show ip route 10.255.1.14") not in f.sent
+        assert "route 0.0.0.0/0 via rip" in got["hops"][1]["read"]
+
+    def test_the_route_s_source_against_intent(self, world):
+        def no_ospf(intents):
+            intents["r1"]["routing"]["ospf"] = []
+        got, _ = reach(r1_to_r4(), edit=no_ospf)
+        first = got["hypotheses"][0]
+        assert (first["rule"], first["layer"], first["strength"]) == (
+            "route_source", "network", "strong")
+        assert first["claim"] == ("r1's route toward 10.255.1.14 (10.255.1.14/32) is known via "
+                                  "ospf 1, which intent does not configure on r1")
+        assert first["evidence"][0]["intent"] == "intent configures no OSPF process 1"
+
+    def test_the_return_path_s_own_hop_diverges(self, world):
+        got, _ = reach(changed(r1_to_r4(), "r4", "show interfaces GigabitEthernet3",
+                               diag("r4__show_interfaces_GigabitEthernet3.txt").replace(
+                                   "GigabitEthernet3 is up, line protocol is up",
+                                   "GigabitEthernet3 is administratively down, line protocol "
+                                   "is down")))
+        first = got["hypotheses"][0]
+        assert first["rule"] == "hop_down" and first["claim"] == (
+            "r4 Gi3, the path's egress toward r1, is administratively down, though intent "
+            "holds it up: it was shut outside intent")
+        assert [(h["n"], h["device"], h["verdict"]) for h in got["hops"]][1:] == [
+            (1, "r1", "ok"), (2, "r4", "diverges")]
+        assert any(s["words"] == "stopped at r4: return hop 2 diverges from intent"
+                   for s in got["steps"])
+
+    def test_ipv6_followed_hop_by_hop_on_s1_s_real_answers(self, world):
+        got, f = reach(s1_to_r4_v6(), device="s1", address="2001:db8:1::14")
+        assert got["hops"][0] == {"n": 0, "device": "s1", "verdict": "diverges",
+                                  "read": "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 "
+                                          "timeout 2: 0 of 5 answered (.....)",
+                                  "against": "A does not reach B: the path is followed"}
+        trace = next(s for s in got["steps"] if s["step"] == "trace")
+        assert trace["words"] == ("1 branch(es): s1 Gi0/2 > r1: the trace stops at r1: the "
+                                  "device answered nothing")
+        assert got["hops"][1]["verdict"] == "ok"
+        assert got["hops"][1]["read"].startswith(
+            "out Gi0/2 toward r1 (fe80::a8c1:abff:fe93:3623); Gi0/2 up, line protocol up")
+        assert "route ::/0 via rip RCN" in got["hops"][1]["read"]
+        # r1's ingress is the one interface intent puts on s1 Gi0/2's prefix.
+        assert ("r1", "show ipv6 interface GigabitEthernet3") in f.sent
+        hop = next(s for s in got["steps"] if s["step"] == "hop" and s.get("device") == "s1")
+        assert (f"`{S1_ND}` not interpreted: the device has no such read") in hop["words"]
+        ruled = [r["check"] for r in got["ruled_out"]]
+        assert "each hop's route toward B is known via what intent configures there" in ruled
+        checks = [n["check"] for n in got["not_checked"]]
+        assert "the path past r1" in checks and "the IPv6 access lists bound on the path" in checks
+        assert "next_hop_unresolved" in [n.get("rule") for n in got["not_checked"]]
+        assert got["hypotheses"] == [] and got["words"] == "no cause found in what Mercury reads"
+
+    def test_ipv6_route_source_against_intent(self, world):
+        def no_ripng(intents):
+            intents["s1"]["routing"]["ripng"] = []
+        got, _ = reach(s1_to_r4_v6(), device="s1", address="2001:db8:1::14", edit=no_ripng)
+        first = got["hypotheses"][0]
+        assert first["rule"] == "route_source" and first["claim"] == (
+            "s1's route toward 2001:db8:1::14 (::/0) is known via rip RCN, which intent does not "
+            "configure on s1")
+
+    def test_ipv6_dropped_at_r4_s_discard_route(self, world):
+        # The lab's own IPv6 fault (2026-11-07): r4 discards 2001:db8:1::21 at Null0 by
+        # intent's 2001:DB8::/32 summary.
+        answers = {("r4", "ping ipv6 2001:db8:1::21 source Loopback0 repeat 5 timeout 2"): "",
+                   ("r4", "show ipv6 cef 2001:db8:1::21"): diag(
+                       "r4__show_ipv6_cef_2001_DB8_1_21.txt"),
+                   ("r4", "show ipv6 route 2001:db8:1::21"): diag(
+                       "r4__show_ipv6_route_2001_DB8_1_21.txt")}
+        got, f = reach(answers, device="r4", address="2001:db8:1::21")
+        first = got["hypotheses"][0]
+        assert (first["rule"], first["strength"]) == ("no_route", "decisive")
+        assert first["claim"] == "r4's route to 2001:db8:1::21 discards it (2001:db8::/32)"
+        assert first["evidence"][1]["line"] == ('2001:db8::/32 known via "static", via Null0')
+        assert first["evidence"][1]["intent"] == "ipv6 route 2001:DB8::/32 Null0"
+        assert first["todo"].startswith("r4's 2001:db8::/32 is intent's own")
+        assert [c for _, c in f.sent] == [
+            "ping ipv6 2001:db8:1::21 source Loopback0 repeat 5 timeout 2",
+            "show ipv6 cef 2001:db8:1::21", "show ipv6 route 2001:db8:1::21"]
+        assert got["hops"][-1]["against"] == ("diverges here: dropped at r4: its route discards "
+                                              "it")
+
+    def test_ipv6_a_link_local_on_a_shared_segment_names_no_device(self, world):
+        answers = {("r2", "ping ipv6 2001:db8:1::21 source Loopback0 repeat 5 timeout 2"): diag(
+                       "r2__ping_ipv6_2001_DB8_1_21_source_Loopback0_repeat_5_timeout_2.txt"),
+                   ("r2", "show ipv6 cef 2001:db8:1::21"): diag(
+                       "r2__show_ipv6_cef_2001_DB8_1_21.txt")}
+        got, f = reach(answers, device="r2", address="2001:db8:1::21")
+        trace = next(s for s in got["steps"] if s["step"] == "trace")
+        assert trace["words"].startswith("2 branch(es): ")
+        assert trace["words"].count("which intent shares among r1, r3, r4, s3, s4: it names "
+                                    "none of them (C2415)") == 2, trace["words"]
+        assert {h for h, _ in f.sent} == {"r2"}, "no device is guessed and read"
+        assert got["hops"][0]["read"].endswith("0 of 5 answered (XXXXX)")
+        assert "the path past r2" in [n["check"] for n in got["not_checked"]]
+
+    def test_a_switch_on_the_path_its_port_forwarding(self, world):
+        got, f = reach(s1_to_s2_vlan10(), device="s1", address="10.10.10.3")
+        assert ("s1", "show mac address-table address 0c00.6f31.800a") in f.sent
+        assert ("s1", "show spanning-tree interface GigabitEthernet0/3") in f.sent
+        assert "MAC learned on Gi0/3, FWD in VLAN 10" in got["hops"][1]["read"]
+        assert "each switch port a hop's next hop is learned on forwards" in [
+            r["check"] for r in got["ruled_out"]]
+        assert "switch_port" not in rules(got)
+
+    def test_a_switch_port_not_forwarding_is_the_divergence(self, world):
+        stp = diag("s1__show_spanning_tree_interface_GigabitEthernet0_3.txt").replace(
+            "VLAN0010            Desg FWD", "VLAN0010            Altn BLK")
+        got, _ = reach(changed(s1_to_s2_vlan10(), "s1",
+                               "show spanning-tree interface GigabitEthernet0/3", stp),
+                       device="s1", address="10.10.10.3")
+        first = got["hypotheses"][0]
+        assert (first["rule"], first["layer"], first["strength"]) == ("switch_port", "link",
+                                                                      "strong")
+        assert first["claim"] == ("s1 Gi0/3, where 10.10.10.3's MAC is learned, is BLK in "
+                                  "VLAN 10's spanning tree")
+        assert got["hops"][1]["verdict"] == "diverges"
+
+    def test_a_next_hop_mac_not_learned_in_its_vlan(self, world):
+        table = "\n".join(l for l in diag(
+            "s1__show_mac_address_table_address_0c00.6f31.800a.txt").splitlines()
+            if "0c00.6f31.800a" not in l)
+        got, f = reach(changed(s1_to_s2_vlan10(), "s1",
+                               "show mac address-table address 0c00.6f31.800a", table),
+                       device="s1", address="10.10.10.3")
+        assert got["hypotheses"][0]["claim"] == ("s1 has not learned 10.10.10.3's MAC "
+                                                 "0c00.6f31.800a on any port in VLAN 10")
+        assert ("s1", "show spanning-tree interface GigabitEthernet0/3") not in f.sent

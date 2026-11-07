@@ -1,0 +1,6 @@
+Routing entry for 10.255.1.12/32
+  Known via "ospf 1", distance 110, metric 2, type intra area
+  Last update from 10.255.3.12 on GigabitEthernet3, 2w2d ago
+  Routing Descriptor Blocks:
+  * 10.255.3.12, from 10.255.1.12, 2w2d ago, via GigabitEthernet3
+      Route metric is 2, traffic share count is 1

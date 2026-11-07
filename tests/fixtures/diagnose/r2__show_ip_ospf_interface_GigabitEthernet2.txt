@@ -1,0 +1,26 @@
+GigabitEthernet2 is up, line protocol is up 
+  Internet Address 10.255.3.12/24, Interface ID 8, Area 0
+  Attached via Network Statement
+  Process ID 1, Router ID 10.255.1.12, Network Type BROADCAST, Cost: 1
+  Topology-MTID    Cost    Disabled    Shutdown      Topology Name
+        0           1         no          no            Base
+  Transmit Delay is 1 sec, State DROTHER, Priority 100
+  Designated Router (ID) 10.255.1.13, Interface address 10.255.3.13
+  Backup Designated router (ID) 10.255.1.14, Interface address 10.255.3.14
+  Timer intervals configured, Hello 10, Dead 40, Wait 40, Retransmit 5
+    oob-resync timeout 40
+    Hello due in 00:00:01
+  Supports Link-local Signaling (LLS)
+  Cisco NSF helper support enabled
+  IETF NSF helper support enabled
+  Can be protected by per-prefix Loop-Free FastReroute
+  Can be used for per-prefix Loop-Free FastReroute repair paths
+  Not Protected by per-prefix TI-LFA
+  Index 1/2/2, flood queue length 0
+  Next 0x0(0)/0x0(0)/0x0(0)
+  Last flood scan length is 0, maximum is 10
+  Last flood scan time is 0 msec, maximum is 19 msec
+  Neighbor Count is 5, Adjacent neighbor count is 2 
+    Adjacent with neighbor 10.255.1.13  (Designated Router)
+    Adjacent with neighbor 10.255.1.14  (Backup Designated Router)
+  Suppress hello for 0 neighbor(s)

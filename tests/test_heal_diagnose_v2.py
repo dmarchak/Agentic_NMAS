@@ -6,8 +6,8 @@ On the fleet's real intent (tests/test_heal_diagnose.py's `fleet`, the nine real
 compiled by the real model):
 - **The choices come from intent:** each intended adjacency offered with its protocols, the
   rest named with why; a device of the network by its intended loopback, or an address checked
-  as one address, IPv4 beside IPv6 (refused by name: "can't reach" reads IPv4 forwarding only,
-  C2415); a target is never a command.
+  as one address, IPv4 beside IPv6 (both planned since H18; the card names what the IPv6 form
+  does not do, and a link-local address is refused by name); a target is never a command.
 - **The plan drawn is the plan run:** every read on each device, the private intent the reach
   runbook carries (`_intent`) not handed to the template, and the run bound to the plan's
   fingerprint: a plan that moved is refused naming both, nothing read.
@@ -61,13 +61,16 @@ class TestTheChoices:
         assert c["plan"]["rows"] == [{"device": "r3", "reads": [
             "ping 10.255.1.11 source Loopback0 repeat 5 timeout 2"], "count": 1}]
 
-    def test_an_address_ipv4_is_planned_and_ipv6_is_refused_by_name(self, sources):
+    def test_an_address_ipv4_and_ipv6_are_planned_and_ipv6_s_limits_said(self, sources):
         v4 = card("r3", runbook="cant_reach", address="10.255.1.14")
         assert v4["error"] == "" and v4["plan"]["words"] == "r3 to 10.255.1.14 (r4 Lo0)"
         v6 = card("r3", runbook="cant_reach", address="2001:db8:51::2")
-        assert v6["plan"] is None and "IPv6 address" in v6["error"] and \
-            "follows IPv4 forwarding only" in v6["error"], v6["error"]
-        assert "IPv4 forwarding only" in v6["ipv4_only"], "the card says so before it is asked"
+        assert v6["error"] == "" and v6["plan"]["words"] == "r3 to 2001:db8:51::2 (r5 Gi2)"
+        assert "show ipv6 cef" in v6["ipv4_only"] and "link-local" in v6["ipv4_only"] and \
+            "IPv6 access lists bound on the path are not read" in v6["ipv4_only"], \
+            "the card says what the IPv6 form does not do before it is asked"
+        ll = card("r3", runbook="cant_reach", address="fe80::1")
+        assert ll["plan"] is None and "is a link-local address" in ll["error"], ll["error"]
 
     @pytest.mark.parametrize("address", ["10.255.1.14; show run", "show running-config",
                                          "10.255.1.14 source Gi1", "fe80::1%Gi1", "192.0.2.0/24"])

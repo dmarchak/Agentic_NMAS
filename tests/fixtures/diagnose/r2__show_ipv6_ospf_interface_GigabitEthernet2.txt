@@ -1,0 +1,18 @@
+GigabitEthernet2 is up, line protocol is up 
+  Link Local Address FE80::A8C1:ABFF:FEEA:39AE, Interface ID 8 (ios-if-index)
+  Area 0, Process ID 1, Instance ID 0, Router ID 10.255.1.12
+  Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DROTHER, Priority 1
+  Designated Router (ID) 10.255.1.14, local address FE80::A8C1:ABFF:FE7B:A0DB
+  Backup Designated router (ID) 10.255.1.13, local address FE80::A8C1:ABFF:FEB2:A130
+  Timer intervals configured, Hello 10, Dead 40, Wait 40, Retransmit 5
+    Hello due in 00:00:00
+  Graceful restart helper support enabled
+  Index 1/2/2, flood queue length 0
+  Next 0x0(0)/0x0(0)/0x0(0)
+  Last flood scan length is 0, maximum is 10
+  Last flood scan time is 0 msec, maximum is 27 msec
+  Neighbor Count is 3, Adjacent neighbor count is 2 
+    Adjacent with neighbor 10.255.1.13  (Backup Designated Router)
+    Adjacent with neighbor 10.255.1.14  (Designated Router)
+  Suppress hello for 0 neighbor(s)

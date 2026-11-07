@@ -1,0 +1,2 @@
+2001:DB8:1::14/128
+  nexthop FE80::A8C1:ABFF:FE7B:A0DB GigabitEthernet2

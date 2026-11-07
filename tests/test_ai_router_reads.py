@@ -478,4 +478,4 @@ def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(
         assert got["command"] == command
         matched += 1
     assert excepted == set(RUNBOOK_ONLY)
-    assert matched == 2 * 27 - 2 * len(RUNBOOK_ONLY)   # the floor: every other template
+    assert matched == 2 * 35 - 2 * len(RUNBOOK_ONLY)   # the floor: every other template

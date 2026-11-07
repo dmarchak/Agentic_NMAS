@@ -1,0 +1,52 @@
+{
+ "captured": "2026-11-07T20:38Z, Loki query_range through Mercury's LokiIntegration and device_logs.selector, r4, 2026-11-07T18:00:00Z to 2026-11-07T18:15:00Z, each line masked by redact_text",
+ "query": "{job=\"network_syslog\", device=\"r4\"} |~ `UPDOWN`",
+ "answer": {
+  "data": {
+   "result": [
+    {
+     "stream": {
+      "device": "r4",
+      "job": "network_syslog",
+      "severity": "3"
+     },
+     "values": [
+      [
+       "1794074788841806086",
+       "Nov  7 18:06:28 r4 7424: r4: Nov  7 18:06:27.744 UTC: %LINK-3-UPDOWN: Interface GigabitEthernet4, changed state to up"
+      ],
+      [
+       "1794074878822562318",
+       "Nov  7 18:07:58 r4 7445: r4: Nov  7 18:07:57.748 UTC: %LINK-3-UPDOWN: Interface GigabitEthernet4, changed state to up"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "device": "r4",
+      "job": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1794074778813283506",
+       "Nov  7 18:06:18 r4 7422: r4: Nov  7 18:06:18.248 UTC: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet4, changed state to down"
+      ],
+      [
+       "1794074788841856876",
+       "Nov  7 18:06:28 r4 7425: r4: Nov  7 18:06:28.745 UTC: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet4, changed state to up"
+      ],
+      [
+       "1794074869549651213",
+       "Nov  7 18:07:49 r4 7443: r4: Nov  7 18:07:49.154 UTC: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet4, changed state to down"
+      ],
+      [
+       "1794074880075209597",
+       "Nov  7 18:07:59 r4 7446: r4: Nov  7 18:07:58.745 UTC: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet4, changed state to up"
+      ]
+     ]
+    }
+   ]
+  }
+ }
+}

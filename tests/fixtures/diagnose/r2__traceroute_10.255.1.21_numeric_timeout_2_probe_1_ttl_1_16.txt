@@ -1,0 +1,5 @@
+Type escape sequence to abort.
+Tracing the route to 10.255.1.21
+VRF info: (vrf in name/id, vrf out name/id)
+  1 10.255.3.11 96 msec
+  2 10.255.2.11 71 msec

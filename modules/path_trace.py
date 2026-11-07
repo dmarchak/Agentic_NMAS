@@ -54,16 +54,24 @@ _NEXT_HOP = re.compile(r"^\s*next hop\s+([^,\s]+),\s*(\S+)")
 _VIA = re.compile(r"^\s*via\s+([0-9.]+),\s*([A-Za-z][^,\s]*)")
 _ATTACHED = re.compile(r"^\s*(?:attached|connected) to\s+(\S+)")
 _PREFIX = re.compile(r"^(\d+\.\d+\.\d+\.\d+/\d+)")
+#: `show ipv6 cef <destination>`'s first line (captured on an IOS-XE router and an IOS switch,
+#: tests/fixtures/diagnose/: `2001:DB8:1::14/128`, `2001:DB8::/32`, `::/0`).
+_PREFIX6 = re.compile(r"^([0-9A-Fa-f:]*:[0-9A-Fa-f:]*/\d+)$")
 
 
 # ---------------------------------------------------------------------------- one answer
 
-def parse_cef(text: str) -> dict:
-    """One device's `show ip cef <destination>` answer: ``{state, prefix, hops, iface, why}``.
+def parse_cef(text: str, family: int = 4) -> dict:
+    """One device's `show ip cef <destination>` answer (*family* 6: `show ipv6 cef`'s):
+    ``{state, prefix, hops, iface, why}``.
 
     *state* is ``next`` (``hops`` each ``{address, iface}``), ``attached`` (the destination is
     on ``iface``'s segment), ``receive`` (the device holds the address), ``no_route``, ``drop``
-    (a discard or null route) or ``unknown`` (``why`` says what was not understood)."""
+    (a discard or null route: `attached to Null0`, captured from IPv6 CEF on an IOS-XE router)
+    or ``unknown`` (``why`` says what was not understood). An IPv6 next hop is most often a
+    link-local address (captured), which no intent holds: the caller names its device."""
+    if family == 6:
+        return _parse_cef6(text or "")
     text = text or ""
     out = {"state": "unknown", "prefix": "", "hops": [], "iface": "", "why": ""}
     lines = [l.rstrip() for l in text.splitlines() if l.strip()]
@@ -90,7 +98,10 @@ def parse_cef(text: str) -> dict:
                 break
         else:
             am = _ATTACHED.match(line)
-            if am and out["state"] == "unknown":
+            if am and out["state"] == "unknown" and am.group(1).lower().startswith("null"):
+                # A discard route, never "delivered onto Null0's segment" (C2415's capture).
+                out["state"] = "drop"
+            elif am and out["state"] == "unknown":
                 out.update(state="attached", iface=am.group(1))
             elif low.startswith("receive"):
                 out["state"] = "receive"
@@ -99,6 +110,56 @@ def parse_cef(text: str) -> dict:
                 out["state"] = "no_route"
             elif low in ("drop", "discard", "null") or low.startswith("attached to null"):
                 out["state"] = "drop"
+    if out["hops"] and out["state"] == "unknown":
+        out["state"] = "next"
+    if out["state"] == "unknown":
+        out["why"] = f"not an answer the trace reads: {lines[0].strip()[:80]!r}"
+    return out
+
+
+def _parse_cef6(text: str) -> dict:
+    """`show ipv6 cef <destination>`: the same answer as `parse_cef`'s, each next hop's address
+    in Python's form (lower case), a link-local one kept as printed by the device's form."""
+    out = {"state": "unknown", "prefix": "", "hops": [], "iface": "", "why": ""}
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        out["why"] = "the device answered nothing"
+        return out
+    if lines[0].lstrip().startswith("%"):
+        out["why"] = lines[0].strip()
+        return out
+    m = _PREFIX6.match(lines[0].strip())
+    if not m:
+        out["why"] = f"not an answer the trace reads: {lines[0].strip()[:80]!r}"
+        return out
+    try:
+        out["prefix"] = str(ipaddress.IPv6Network(m.group(1), strict=False))
+    except ValueError:
+        out["why"] = f"not an IPv6 prefix: {m.group(1)!r}"
+        return out
+    for line in lines[1:]:
+        low = line.strip().lower()
+        hm = _NEXTHOP.match(line)
+        if hm:
+            try:
+                addr = str(ipaddress.IPv6Address(hm.group(1)))
+            except ValueError:
+                continue
+            hop = {"address": addr, "iface": hm.group(2)}
+            if hop not in out["hops"]:
+                out["hops"].append(hop)
+            continue
+        am = _ATTACHED.match(line)
+        if am and out["state"] == "unknown":
+            if am.group(1).lower().startswith("null"):
+                out["state"] = "drop"
+            else:
+                out.update(state="attached", iface=am.group(1))
+        elif low.startswith("receive"):
+            out["state"] = "receive"
+            out["iface"] = line.strip().split(" for ", 1)[1] if " for " in low else ""
+        elif low == "no route":
+            out["state"] = "no_route"
     if out["hops"] and out["state"] == "unknown":
         out["state"] = "next"
     if out["state"] == "unknown":
@@ -218,9 +279,14 @@ def l2_path(phys: list, a: str, a_iface: str, b: str, through: set) -> list:
 
 # ---------------------------------------------------------------------------- the trace
 
-def trace(source: str, dest: str, owner_of: dict, read, managed: set) -> dict:
+def trace(source: str, dest: str, owner_of: dict, read, managed: set, *, family: int = 4,
+          resolve=None) -> dict:
     """Follow *dest* from *source*. *read(devices)* answers ``{device: {"ok", "answer",
-    "why"}}`` for one level's devices at once; each device is read once per trace.
+    "why"}}`` for one level's devices at once; each device is read once per trace. *family* 6
+    reads each answer as `show ipv6 cef`'s. *resolve(device, next_hop)* (optional) names a next
+    hop's device where *owner_of* cannot (an IPv6 link-local next hop): ``(owner, why)``, and an
+    owner it cannot name with a *why* stops the branch there, not read past, never "leaves the
+    network".
 
     Returns ``{branches, ends, read_order}``: each branch ``{hops, end, words}``, each hop
     ``{device, answer, words, to, to_address, iface}``."""
@@ -235,7 +301,7 @@ def trace(source: str, dest: str, owner_of: dict, read, managed: set) -> dict:
             order.append(need)
             for d in need:
                 r = got.get(d) or {"ok": False, "why": "no answer came back"}
-                answers[d] = (parse_cef(r.get("answer", "")) if r.get("ok")
+                answers[d] = (parse_cef(r.get("answer", ""), family) if r.get("ok")
                               else {"state": "unread", "why": r.get("why") or "not read"})
         nxt = []
         for b in active:
@@ -263,15 +329,20 @@ def trace(source: str, dest: str, owner_of: dict, read, managed: set) -> dict:
                 done.append(_end(hops, "unread", f"the trace stops at {dev}: {cef['why']}"))
             else:
                 for nh in cef["hops"]:
-                    h = dict(hop, to=owner_of.get(nh["address"], ""),
-                             to_address=nh["address"], iface=nh["iface"])
+                    owner, unnamed = owner_of.get(nh["address"], ""), ""
+                    if not owner and resolve is not None:
+                        owner, unnamed = resolve(dev, nh)
+                    h = dict(hop, to=owner, to_address=nh["address"], iface=nh["iface"])
                     # This branch's own next hop, never its siblings'.
                     h["words"] = (f"{cef['prefix'] or '?'}, next hop {nh['address']}"
                                   + (f" ({h['to']})" if h["to"] else "")
                                   + f" out {_short(nh['iface'])}")
                     branch = b["hops"] + [h]
-                    owner = h["to"]
-                    if not owner:
+                    if not owner and unnamed:
+                        done.append(_end(branch, "unread", f"the trace stops at {dev}: its next "
+                                                           f"hop {nh['address']} is not named "
+                                                           f"({unnamed})"))
+                    elif not owner:
                         done.append(_end(branch, "edge", f"leaves the network at {dev} toward "
                                                          f"{nh['address']}, which no device of "
                                                          "the network holds"))

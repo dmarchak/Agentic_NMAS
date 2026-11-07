@@ -229,9 +229,10 @@ class TestTheParsers:
 
     def test_a_read_with_no_capture_is_said_not_interpreted(self):
         from modules.heal.diagnose_parse import NOT_CAPTURED, parse
-        assert NOT_CAPTURED == {"ospf_interface", "ospfv3_interface", "ipv6_interface",
-                                "link_ping", "df_ping", "bgp_neighbor", "bgp_ping",
-                                "reach_ping", "traceroute", "route", "acl_counters"}
+        # H18's captures took the reach runbook's four reads and `show ipv6 interface` out
+        # (tests/test_heal_diagnose_captures.py parses each on its capture).
+        assert NOT_CAPTURED == {"ospf_interface", "ospfv3_interface", "link_ping", "df_ping",
+                                "bgp_neighbor", "bgp_ping"}
         for kind in NOT_CAPTURED:
             got = parse(kind, "anything at all")
             assert got["state"] == "not_parsed" and "C2414" in got["why"]
@@ -259,7 +260,7 @@ def every_command():
             address = "2001:db8::1" if "ipv6" in template else "192.0.2.1"
             args = {"if": "GigabitEthernet0/1", "src": "Loopback0", "far": address,
                     "peer": address, "mtu": "1500", "dest": address, "nh": address,
-                    "acl": "EDGE-IN"}
+                    "acl": "EDGE-IN", "mac": "0c00.6f31.800a"}
             names = [f for _, f, _, _ in string.Formatter().parse(template) if f]
             yield kind, dialect, D.render(kind, dialect, **{n: args[n] for n in names})
 
@@ -276,7 +277,7 @@ class TestThePipeRule:
             assert _cli_rule(kind, command) == "", command
             assert "|" not in command and not command.startswith("clear"), command
             seen += 1
-        assert seen == 2 * 27                          # the floor: every template, both dialects
+        assert seen == 2 * 35                          # the floor: every template, both dialects
 
     def test_a_diagnosis_has_no_extras_and_never_clears_counters(self):
         from modules.nsot import reads

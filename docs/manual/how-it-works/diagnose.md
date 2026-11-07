@@ -21,9 +21,10 @@ The card opens in place of the tab. Choose what is wrong, then its target:
   intent names, with its AS. An adjacency whose plan cannot be made is listed under "not
   offered", with why (intent runs no OSPF, OSPFv3 or BGP over the link, for one).
 - **Can't reach:** a device of the network, by its loopback address in intent, or an address
-  you give. An address is checked as one IPv4 or IPv6 address. "Can't reach" follows IPv4
-  forwarding only (`show ip cef`): an IPv6 address is refused by name, with nothing read, until
-  `show ipv6 cef` is captured and parsed.
+  you give. An address is checked as one IPv4 or IPv6 address. An IPv6 address is followed
+  with `show ipv6 cef`, with two limits said on the result: IPv6 forwarding names a link-local
+  next hop, and on a segment intent shares among several devices the path stops there, naming
+  them, never guessing one; and the IPv6 access lists bound on the path are not read.
 
 Before anything is asked, the card lists every read the run will make on each device, the
 reads it makes at each hop for "can't reach", the logs it reads, its count against the cap of
@@ -79,20 +80,30 @@ first. Nothing is read until you press **Run the diagnosis**.
    address no device holds is outside management: the path is followed as far as the network's
    devices, then a traceroute.
 2. `hold`: A is held, then each device as the path reaches it.
-3. `reach`: A pings B, from its loopback when intent gives it one.
-4. `trace`: the path is followed device by device with `show ip cef` for B.
-5. `hop`: at each routed hop, in order: the egress interface, its `show ip interface`, the next
-   hop's ARP entry, the route, the next hop's ingress interface, and a bound access list's
-   counters. The run stops at the first hop that diverges from intent, and names the hops it
-   did not check.
+3. `reach`: A pings B, from its loopback when intent gives it one. When every probe is
+   answered, A reaches B: the run stops there, reads nothing more, and says so.
+4. `trace`: the path is followed device by device with `show ip cef` for B (`show ipv6 cef`
+   for an IPv6 B).
+5. `hop`: at each routed hop, in order: the egress interface, its `show ip interface` (`show
+   ipv6 interface`), the next hop's ARP entry (its IPv6 neighbour entry), the route and what it
+   is known via, the next hop's ingress interface, and a bound access list's entries. A hop
+   leaving on a VLAN interface is a switch on the path: where the next hop's MAC is learned in
+   that VLAN, and that port's spanning-tree state. The run stops at the first hop that diverges
+   from intent, and names the hops it did not check.
 6. `read again`: each hop's egress interface a second time, 10 s later.
 7. `traceroute`: when the path leaves the network toward an address no managed device holds.
-8. `return`: from B's device back to A, when the forward path holds and B is managed.
+8. `return`: from B's device back to A, when the forward path holds and B is managed, each of
+   its hops checked as a forward hop is.
 9. `logs`: each device read: its configuration lines in the last hour, from Loki.
 10. `compare`, `rank` and `record`: as for an adjacency, with this runbook's rules (a hop down,
-    protocol down, errors rising, the next hop unresolved, no route, a loop, the path leaving the
-    network, no return path, an access list intent does not hold, a configuration change). At
-    70 commands it stops and says where: about nine hops.
+    protocol down, errors rising, the next hop unresolved, the next hop's MAC not learned or its
+    port not forwarding, a route known via what intent does not configure on that device, no
+    route, a loop, the path leaving the network, no return path, an access list intent does not
+    hold, a configuration change). At 70 commands it stops and says where: about nine hops.
+
+Some devices do not have a read the runbook sends: an IOS switch refuses the bounded
+traceroute and `show ipv6 neighbors <address>`. The step then says the device has no such read,
+and a rule that needed it says its evidence is incomplete.
 
 ## The result
 
@@ -103,9 +114,9 @@ what would rule it out, each piece of evidence a link to its read's run on Histo
 rule firing it reads "no cause found in what Mercury reads", then the ruled-out list. It never
 guesses. **Run again…** opens the card again.
 
-For "can't reach", **The path, hop by hop** comes first: the ping (sent, its answer on History ›
-Reads, not interpreted until it has a capture), each hop checked with what was read and "as
-intent" or "diverges here", and the devices after the hop that diverges "not read". The
+For "can't reach", **The path, hop by hop** comes first: the ping (how many probes were
+answered; "A reaches B" when all were), each hop checked with what was read and "as intent" or
+"diverges here", and the devices after the hop that diverges "not read". The
 headline then names the hop ("diverges at edge2").
 
 **Open in History** opens the device's History tab on the kind Diagnoses and the day it ran:
