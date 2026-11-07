@@ -170,6 +170,15 @@ SHAPES = (
     # One shape per address family, so each is recorded on its own: vIOS-L2 rejects the IPv6
     # form and takes the IPv4 one (s1, 2026-10-07).
     Shape("interface.ospf-cost", "interface", "leaf", r"^ip ospf cost \d+$"),
+    # Lab 10's R3 heal and V1 (C2373, H11; board H section 15): an OSPF authentication change
+    # undone is these two interface lines and, for V1's rollback, `router ospf`'s `network`.
+    # Each is measured before Mode B may remove it; the key's value is a secret, masked on the
+    # way out like every key.
+    Shape("interface.ospf-authentication", "interface", "leaf",
+          r"^ip ospf authentication( message-digest| null)?$"),
+    Shape("interface.ospf-message-digest-key", "interface", "leaf",
+          r"^ip ospf message-digest-key \d+ md5( \d)? \S+$"),
+    Shape("ospf.network", "router ospf", "leaf", r"^network \S+ \S+ area \S+$"),
     Shape("interface.ipv6-ospf-cost", "interface", "leaf", r"^ipv6 ospf cost \d+$"),
     Shape("interface.ipv6-rip-default-originate", "interface", "leaf",
           r"^ipv6 rip \S+ default-information (originate|only)( metric \d+)?$"),

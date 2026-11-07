@@ -200,6 +200,25 @@ EXEMPLARS = {
         {"setup": [LOOP, " ip ospf cost 199"],
          "unit": {"chain": [LOOP], "line": " ip ospf cost 199"},
          "teardown": ["no " + LOOP]}],
+    # C2373 (Lab 10's R3 and V1, H11): the OSPF authentication lines on the scratch loopback,
+    # each form the heal's undo may send; the key is a scratch value, never a real one.
+    "interface.ospf-authentication": [
+        {"setup": [LOOP, " " + form],
+         "unit": {"chain": [LOOP], "line": " " + form},
+         "teardown": ["no " + LOOP]}
+        for form in ("ip ospf authentication message-digest", "ip ospf authentication")],
+    "interface.ospf-message-digest-key": [
+        {"setup": [LOOP, " ip ospf message-digest-key 199 md5 NMASPROBE"],
+         "unit": {"chain": [LOOP], "line": " ip ospf message-digest-key 199 md5 NMASPROBE",
+                  "any_order": True},
+         "teardown": ["no " + LOOP]}],
+    # `router ospf`'s `network` on the scratch process 9199, as `ospf.max-metric` uses: a
+    # documentation address no interface carries, so nothing joins the area.
+    "ospf.network": [
+        {"setup": ["router ospf 9199", " router-id 192.0.2.199",
+                   " network 192.0.2.199 0.0.0.0 area 0"],
+         "unit": {"chain": ["router ospf 9199"], "line": " network 192.0.2.199 0.0.0.0 area 0"},
+         "teardown": ["no router ospf 9199"]}],
     "interface.ipv6-ospf-cost": [
         {"needs": "ipv6 unicast-routing",
          "setup": [LOOP, " ipv6 enable", " ipv6 ospf cost 199"],

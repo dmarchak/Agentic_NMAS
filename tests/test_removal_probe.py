@@ -52,6 +52,23 @@ class TestEveryShapeIsProbed:
                 assert "username" not in text and "line vty" not in text, key
                 assert "10.255." not in text, "documentation addresses only (RFC 5737)"
 
+    def test_lab_10s_ospf_authentication_and_network_shapes_are_probed(self):
+        """C2373 (H11): R3's heal and V1 undo OSPF authentication and `network` lines, so each
+        is a shape with a scratch exemplar, and the device's encrypted key form (`md5 7 …`) is
+        the same shape as the typed one."""
+        for key in ("interface.ospf-authentication", "interface.ospf-message-digest-key",
+                    "ospf.network"):
+            assert key in P.EXEMPLARS and P.plan_for(key), key
+        loop = ["interface Loopback199"]
+        assert RM.shape_for(loop, " ip ospf authentication message-digest",
+                            "leaf").key == "interface.ospf-authentication"
+        assert RM.shape_for(loop, " ip ospf message-digest-key 1 md5 7 0822455D0A16",
+                            "leaf").key == "interface.ospf-message-digest-key"
+        assert RM.shape_for(["router ospf 1"], " network 192.0.2.0 0.0.0.255 area 0",
+                            "leaf").key == "ospf.network"
+        for ex in P.plan_for("ospf.network"):
+            assert ex["teardown"] == ["no router ospf 9199"], "the scratch process, never the live"
+
     def test_the_numbered_acl_program_is_the_one_suspected_of_deleting_the_list(self):
         (ex,) = P.plan_for("global.numbered-acl-entry")
         assert ex["program"] == ["no access-list 97 permit 192.0.2.1"]
