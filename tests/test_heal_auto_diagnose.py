@@ -323,6 +323,28 @@ class TestTheNotice:
         assert "9000" not in text
         assert message.payload(message.check_event(ev))["diagnosis"]["reads"]
 
+    def test_the_action_is_considered_after_the_diagnosis_and_before_the_notice(
+            self, ai, heard, monkeypatch):
+        """19.3 (H20): "then item 2's actions are considered (19.4), and then the notice is
+        sent"; an action that raises never stops the notice."""
+        from modules import heal_notice as N
+        import modules.heal.auto_diagnose as real
+        monkeypatch.setattr(real, "target_for", lambda network, incident, **kw: {
+            "runbook": "adjacency_down",
+            "target": {"device": "r3", "neighbour": "r4", "interface": "Gi4"}})
+        inc = alert_incident()
+        order, events = [], []
+
+        def consider(network, incident_id, diagnosis):
+            order.append(("considered", incident_id, diagnosis["hypotheses"][0]["rule"],
+                          len(events)))
+            raise RuntimeError("the bounce's store is unreadable")
+
+        got = N.notice("Default", inc, deliver=told(events), wait_s=5, now=T0 + 1,
+                       diagnose=Runbook([DOWN]), diagnosis_wait_s=5, consider=consider)
+        assert order == [("considered", inc, "down_admin_up", 0)], "before the notice"
+        assert len(events) == 1 and got["first"], "the notice still went"
+
     def test_not_back_it_says_so_and_the_follow_up_carries_it(self, ai, heard, monkeypatch):
         from modules import heal_notice as N
         import modules.heal.auto_diagnose as real

@@ -40,9 +40,11 @@ DECLARED_DYNAMIC = {
     ("modules/heal/propose.py", "reset"): ("ospf process reset",),
     # The Tier 2 probe sends each measured command once (scripts/nmas-tier2-probe, STEPS).
     ("scripts/nmas-tier2-probe", "measure"): ("tier 2 probe",),
-    # C2458: the revert-timer probe sends its fixed, previewed program (the revert timer and the
-    # port bounce) and its repair, one batch each, holding the device (scripts/nmas-revert-probe).
-    ("scripts/nmas-revert-probe", "send"): ("revert probe",),
+    # C2458, H20: the port bounce's one send (modules/heal/bounce.py, `Session.send`): its fixed,
+    # previewed program (the revert timer and the bounce), its confirm and its repair, one batch
+    # each, holding the device; self-healing's bounce and the revert-timer probe
+    # (scripts/nmas-revert-probe) both send through it.
+    ("modules/heal/bounce.py", "send"): ("port bounce",),
     # An Open vSwitch server's OpenFlow configuration (docs/LAB9_OPENFLOW.md): the confirmed
     # `sudo -n ovs-vsctl` transaction, its undo on a failure, and the OVS reads around them,
     # each sent once holding the server; the session sends nothing else (modules/sdn/ovs.py).

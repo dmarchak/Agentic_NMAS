@@ -294,6 +294,8 @@ def actor_words(record: dict) -> str:
         return f"the agent, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "diagnosis":
         return f"a diagnosis, for {record.get('actor') or 'nobody named'}"
+    if record.get("by") == "heal":
+        return f"self-healing's action reads, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "ai_analysis":
         return (f"the AI analysis, turned on by {record.get('actor') or 'nobody named'}, "
                 "as the read-only account")

@@ -636,6 +636,16 @@ class TestEachRule:
         assert got["hypotheses"][0]["claim"].startswith("OSPF is one-way: r3 hears r4 (INIT) and "
                                                         "r4 lists no neighbour r3")
 
+    def test_ospf_not_full_one_neighbour(self, world):
+        # H20 (19.4): the interface's one OSPF neighbour stuck in EXSTART with the link up.
+        full = "via interface GigabitEthernet4\n    Neighbor priority is 1, State is FULL"
+        stuck = with_answer("r3", "show ip ospf neighbor GigabitEthernet4 detail",
+                            R3_OSPF.replace(full, full.replace("FULL", "EXSTART")))
+        got, _ = diagnose(stuck)
+        assert rules_fired(got) == ["ospf_not_full_one_neighbour"]
+        assert got["hypotheses"][0]["claim"].startswith("r3 Gi4 holds exactly one OSPF "
+                                                        "neighbour, r4, stuck in EXSTART")
+
     BGP = capture("r3__show_ip_bgp_summary.txt")
     ROW = "198.51.100.1    4        65002    7255    7244        4    0    0 4d13h           3"
 
@@ -689,6 +699,7 @@ class TestEachRule:
         from modules.heal import diagnose as D
         planted = {"admin_down", "down_admin_up", "protocol_down", "cabled_elsewhere",
                    "errors_rising", "mtu", "subnet", "ospf_intent", "passive", "one_way",
+                   "ospf_not_full_one_neighbour",
                    "bgp_admin", "bgp_remote_as", "bgp_not_established", "acl", "config_changed"}
         assert {r.name for r in D.RULES} == planted
 

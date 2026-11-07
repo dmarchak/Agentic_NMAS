@@ -219,7 +219,7 @@ def read_reason(dev: dict) -> dict:
 
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
                    list_name: str = "", correction: str = "",
-                   new_host_keys: bool = False, unreachable=()) -> dict:
+                   new_host_keys: bool = False, unreachable=(), interfaces=()) -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
     or an end before its start, because a planned window is what keeps an alert quiet.
@@ -241,7 +241,12 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     attribution rule (PHASE8_PLAN 20.2, `explained_by`) reads a signal from one of them inside
     the window as the operation's expected effect. Such a device restarts nothing, so it is
     never a device the window names: no restart of it is planned and no new host key of it is
-    kept. A window recorded before the field reads as before (expand, then contract)."""
+    kept. A window recorded before the field reads as before (expand, then contract).
+
+    *interfaces* names the interfaces an operation takes down on purpose without restarting
+    the device (a port bounce, board H's H20: C2704), kept on the window as ``interfaces``: the
+    flap record leaves their UPDOWN lines inside it out of guard 13e's count
+    (`heal.flaps.flapping`, C2694). A window without it covers the whole device, as before."""
 
     devices = [d for d in (devices or []) if d]
     if not devices or not by or not (why or "").strip() or end < start:
@@ -254,6 +259,9 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     others = sorted({d for d in (unreachable or ()) if d and d not in devices})
     if others:
         row["expected"] = {"unreachable": others}
+    ports = [i for i in (interfaces or ()) if i]
+    if ports:
+        row["interfaces"] = ports
     seen = events()
     if seen["state"] == "unreadable":
         return {"ok": False, "error": "the restart record could not be read, so whether this "

@@ -8,6 +8,12 @@ accepted, whether a revert happens and restores the port, the timer's unit as th
 it, and the bounce's settle time (the port up, a new session in, the post-check), which sets
 ``<n>`` (about 2.5 times the settle, in the timer's own unit, rounded up).
 
+**One home** (C2458, H20): the program, its hash, the reads and their refusals, the held send,
+the end's read, the repair and the planned window are `modules/heal/bounce.py`'s, which
+self-healing's port bounce runs too. This script keeps what is its own: the measurement (its
+watch, its verdict, its record and the operator's sheet line) and its refusals before a session
+(the lab's never-probe declaration, the backup window).
+
 The fixed program, sent as ONE batch (one write: a cut session cannot leave ``shutdown`` alone,
 because the device receives the batch whole, and the timer reverts it if it does)::
 
@@ -19,7 +25,7 @@ because the device receives the batch whole, and the timer reverts it if it does
 
 Its hash is ``modules.nsot.deploy.command_fingerprint``, the one Mercury's device previews
 confirm by (the program AND its authorised ``shutdown`` with its reason, as the bounce's preview
-will carry it: ``shutdown`` is one of ``pipeline._DANGEROUS_PATTERNS``).
+carries it: ``shutdown`` is one of ``pipeline._DANGEROUS_PATTERNS``).
 
 **The two paths** (``--path``):
 - ``revert``: the batch with no confirm; the session is closed; a new session is opened every
@@ -47,7 +53,10 @@ will carry it: ``shutdown`` is one of ``pipeline._DANGEROUS_PATTERNS``).
   an interface carrying the device's management address, and an interface the device's own
   ``show ip cef <Mercury's address>`` (``show ipv6 cef`` for an IPv6 manager) names as its
   egress toward Mercury, or an answer that names no egress the probe can read (guard 13c (1)
-  to (3); the bounce's own 13c is H20's and not built: this is the probe's own reading of it).
+  to (3), `bounce.path_refusal`, the bounce's own reading of it);
+- a planned window for the bounce that cannot be recorded (C2702): the probe declares one on
+  the device, naming the interface, BEFORE the batch, so the adjacency drops it causes are
+  explained, never a row.
 
 **Send, read, decide:** any IOS or IOS-XE error in an answer (``% Invalid input``, ``%
 Incomplete command``, ``% Ambiguous``, or any other ``%`` line that is not a syslog message)
@@ -74,13 +83,10 @@ was sent, 2 NOT RESTORED, 3 stopped on a device error and restored.
 """
 
 import argparse
-import datetime
 import glob
-import ipaddress
 import json
 import math
 import os
-import re
 import sys
 import time
 
@@ -91,11 +97,14 @@ sys.path.insert(0, ROOT)
 from modules.app_interpreter import adopt  # noqa: E402
 adopt(__name__)
 
+from modules.heal import bounce as _B  # noqa: E402
+# The bounce's one home (C2458, H20): each name the probe and its tests use, from there.
+from modules.heal.bounce import (  # noqa: E402,F401
+    ARCHIVE_LOG as _ARCHIVE_LOG, POLL_S, ROLLBACK_READ, WATCH_PAST_S, SaveRefused,
+    archive_path, assert_no_save, device_errors, egress_interfaces, interface_with_address,
+    manager_address, port_state, program, rollback_pending, stated_unit, utc)
+
 PATHS = ("revert", "confirm")
-#: A new session is tried this often while the run watches (the operator's spec, 19.4).
-POLL_S = 10
-#: The watch runs this long past the timer's end (the operator's spec: timer + 3 min).
-WATCH_PAST_S = 180
 #: Once a session is in, the port is read this often, up to PORT_WAIT_S, for t1 to the second.
 #: Unmeasured: a port slower than this is read again on the next session.
 PORT_POLL_S = 1
@@ -109,26 +118,10 @@ AUTH_REASON = ("the revert-timer trial's port bounce (C2424, C2425): shut and un
 CLOCK = time.time
 SLEEP = time.sleep
 
-ROLLBACK_READ = "show archive config rollback timer"
-#: A syslog message's form (`%FACILITY-SEVERITY-MNEMONIC:`), which is a report, not an error.
-_SYSLOG = re.compile(r"^%[A-Z0-9_]+-\d-[A-Z0-9_]+:")
-#: A save, in any form IOS takes: refused by every send.
-_SAVE = re.compile(r"^\s*(?:do\s+)?(?:wr(?:i(?:t(?:e)?)?)?(?:\s|$)|copy\s+\S*run)", re.I)
-_UNIT = re.compile(r"\b(\d+)\s*(minutes?|mins?|seconds?|secs?)\b", re.I)
-_PORT = re.compile(r"^(\S+) is (administratively down|up|down)[^,]*, line protocol is (\w+)",
-                   re.M)
-#: An egress line of a CEF answer, any address family: `nexthop <addr> <if>`, `next hop <addr>,
-#: <if>`, `via <addr>, <if>`, `attached to <if>`.
-_EGRESS = (re.compile(r"^\s*nexthop\s+\S+\s+([A-Za-z][^\s,]*)"),
-           re.compile(r"^\s*next hop\s+[^,\s]+,\s*([A-Za-z][^\s,]*)"),
-           re.compile(r"^\s*via\s+[^,\s]+,\s*([A-Za-z][^\s,]*)"),
-           re.compile(r"^\s*(?:attached|connected) to\s+([A-Za-z][^\s,]*)"))
-_ARCHIVE_LOG = re.compile(r"archive|rollb|revert", re.I)
-
 
 def _sibling(name: str):
-    """Another probe's helpers, loaded from its file (one home for each: the backup window and
-    the management interface are `nmas-tier2-probe`'s)."""
+    """Another probe's helpers, loaded from its file (one home for each: the backup window is
+    `nmas-tier2-probe`'s)."""
     import importlib.util
     from importlib.machinery import SourceFileLoader
     path = os.path.join(ROOT, "scripts", name)
@@ -143,152 +136,14 @@ _T2 = _sibling("nmas-tier2-probe")
 _TOKEN = _T2._TOKEN
 
 
-class SaveRefused(RuntimeError):
-    """A send held a save; nothing of it was sent."""
-
-
 # ---------------------------------------------------------------------------- the program
 
-def program(interface: str, timer: int) -> list:
-    return [f"configure terminal revert timer {timer}", f"interface {interface}", "shutdown",
-            "no shutdown", "end"]
-
-
 def authorised() -> list:
-    return [{"line": "shutdown", "reason": AUTH_REASON}]
+    return _B.authorised(AUTH_REASON)
 
 
 def program_hash(lines: list) -> str:
-    from modules.nsot.deploy import command_fingerprint
-    return command_fingerprint(lines, authorised())
-
-
-def assert_no_save(lines) -> None:
-    saves = [ln for ln in lines if _SAVE.match(ln or "")]
-    if saves:
-        raise SaveRefused(f"a save in the send ({', '.join(saves)}): the probe never saves")
-
-
-# ---------------------------------------------------------------------------- reading
-
-def utc(ts) -> str:
-    if ts is None:
-        return ""
-    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%S.%f")[:-5] + "Z"
-
-
-def device_errors(text: str) -> list:
-    """Every line of *text* that is a device's error: `pipeline.IOS_ERROR_PATTERN`'s, and any
-    other `%` line not in a syslog message's form (refusing by resemblance is safe)."""
-    from modules.pipeline import IOS_ERROR_PATTERN
-    out = []
-    for line in (text or "").splitlines():
-        s = line.strip()
-        if re.search(IOS_ERROR_PATTERN, line) or (s.startswith("%") and not _SYSLOG.match(s)):
-            out.append(s)
-    return out
-
-
-def port_state(text: str) -> dict:
-    """`show interfaces <if>`'s first line: ``{line, admin, status, protocol, up_up}``, or
-    ``{line, unknown: True}`` when it is not an interface's state."""
-    m = _PORT.search(text or "")
-    first = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
-    if not m:
-        return {"line": first, "unknown": True, "admin": "", "up_up": False}
-    status = m.group(2)
-    return {"line": m.group(0).strip(), "admin": "down" if status.startswith("admin") else "up",
-            "status": status, "protocol": m.group(3), "unknown": False,
-            "up_up": status == "up" and m.group(3) == "up"}
-
-
-def stated_unit(text: str):
-    """The timer's unit as the device states it: ``{n, word, seconds}``, or None when it states
-    none (never assumed)."""
-    m = _UNIT.search(text or "")
-    if not m:
-        return None
-    word = m.group(2).lower()
-    return {"n": int(m.group(1)), "word": word,
-            "seconds": 60 if word.startswith("min") else 1}
-
-
-def rollback_pending(text: str) -> bool:
-    """Whether `show archive config rollback timer` names a pending timer (a ``Timer value``
-    line); anything else, an error included, is no timer pending."""
-    return bool(re.search(r"^\s*Timer value\s*:", text or "", re.M | re.I))
-
-
-def archive_path(intent: dict) -> str:
-    """The configuration archive's path in committed intent: H22's ``archive.path``, or until
-    H22 an unmodelled ``archive`` block holding a ``path`` line. ``""`` when neither."""
-    arch = (intent or {}).get("archive")
-    if isinstance(arch, dict) and str(arch.get("path") or "").strip():
-        return str(arch["path"]).strip()
-    for entry in (intent or {}).get("unmodeled") or []:
-        if (entry.get("line") or "").strip() == "archive":
-            for child in entry.get("children") or []:
-                m = re.match(r"^\s*path\s+(\S.*)$", child or "")
-                if m:
-                    return m.group(1).strip()
-    return ""
-
-
-def interface_with_address(brief: str, address: str) -> str:
-    """The interface a brief names with *address*: `show ip interface brief` (IPv4, read by
-    `nmas-tier2-probe`'s reader) or `show ipv6 interface brief` (an interface line, then its
-    addresses indented)."""
-    try:
-        want = ipaddress.ip_address(address)
-    except ValueError:
-        return ""
-    if want.version == 4:
-        return _T2.management_interface(brief, str(want))
-    current = ""
-    for line in (brief or "").splitlines():
-        if not line.strip():
-            continue
-        if not line[0].isspace():
-            current = line.split()[0]
-            continue
-        try:
-            if ipaddress.ip_address(line.strip().split()[0].split("/")[0]) == want:
-                return current
-        except ValueError:
-            continue
-    return ""
-
-
-def egress_interfaces(text: str) -> tuple:
-    """``(interfaces, why)`` from a `show ip cef` or `show ipv6 cef` answer: every interface a
-    next hop or an attached route leaves on. `path_trace.parse_cef` reads the IPv4 answer; the
-    lines are read here for both families (its hops are IPv4 only). *why* says what was not
-    understood when no egress is named (a receive or a no-route answer names none)."""
-    from modules.path_trace import parse_cef
-    from modules.nsot.ifnames import canonical
-    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
-    if not lines:
-        return set(), "the device answered nothing"
-    if lines[0].lstrip().startswith("%"):
-        return set(), lines[0].strip()
-    found = set()
-    for line in lines[1:]:
-        for rx in _EGRESS:
-            m = rx.match(line)
-            if m:
-                found.add(canonical(m.group(1)))
-                break
-    cef = parse_cef(text)
-    found |= {canonical(h["iface"]) for h in cef.get("hops") or []}
-    if cef.get("state") == "attached" and cef.get("iface"):
-        found.add(canonical(cef["iface"]))
-    if found:
-        return found, ""
-    if cef.get("state") == "receive":
-        return set(), "the device holds that address itself (a receive entry)"
-    return set(), (f"no egress interface in the answer ({cef.get('state')}: "
-                   f"{lines[0].strip()[:80]!r})")
+    return _B.program_hash(lines, AUTH_REASON)
 
 
 # ---------------------------------------------------------------------------- refusals
@@ -352,71 +207,21 @@ def refusal(args, now: float = None) -> str:
     return window_refusal(now, watch_seconds(args.timer))
 
 
+def _refused(why: str) -> str:
+    return f"REFUSED: {why}" if why else ""
+
+
 def intent_refusal(device: str, list_name: str, intents: dict, error: str = "") -> str:
-    if device not in (intents or {}):
-        return (f"REFUSED: {device} has no committed intent in list {list_name}"
-                + (f" ({error})" if error else "") + "; the archive and the blast radius are "
-                "read from it")
-    if not archive_path(intents[device]):
-        return (f"REFUSED: {device} has no configuration archive in its intent, so it cannot "
-                "revert a bounce by itself if Mercury's session is lost. Add the archive's path "
-                f"to {device}'s intent (host_vars, `archive.path`) and deploy it. (Read: "
-                f"committed host_vars/{device}.yml in list {list_name}: no `archive.path`, and "
-                "no `archive` block with a `path` line among its unmodelled lines.)")
-    return ""
+    return _refused(_B.archive_refusal(device, list_name, intents, error))
 
 
 def radius_refusal(intents: dict, nets: list, device: str, interface: str) -> str:
-    from modules.nsot import blast_radius
-    got = blast_radius.radius_of_shutdowns(intents, nets, device, [interface])
-    if got.get("state") != "known":
-        return (f"REFUSED: whether shutting {interface} cuts Mercury's reach is not known "
-                f"({got.get('why')}); the probe compares the blast radius's cut with none and "
-                "refuses one it cannot read (it reads IPv4 intent and this host's IPv4 "
-                "networks only)")
-    if got.get("cut"):
-        return (f"REFUSED: {interface} is {device}'s only path: shutting it leaves "
-                f"{', '.join(got['cut'])} unreachable from Mercury (blast radius over committed "
-                f"intent and this host's networks {', '.join(nets)})")
-    return ""
+    return _refused(_B.radius_refusal(intents, nets, device, interface, who="the probe"))
 
 
 def path_refusal(device: str, address: str, manager: str, interface: str, pre: dict) -> str:
-    """Guard 13c's three reads, and the state before: each refusal names its read and both
-    operands. *pre*: the masked reads taken before the batch."""
-    from modules.nsot.ifnames import canonical
-    want = canonical(interface)
-    port = pre["port"]
-    if port.get("unknown"):
-        return (f"REFUSED: {device} answered `show interfaces {interface}` with "
-                f"{port['line']!r}, not an interface's state; the probe compared --interface "
-                f"{interface} with the device's interfaces")
-    if port["admin"] == "down":
-        return (f"REFUSED: {interface} on {device} is administratively down before the run "
-                f"(`show interfaces {interface}`: {port['line']}); the bounce's `no shutdown` "
-                "would change its configuration, and the post-check compares it with BEFORE")
-    if pre["pending"]:
-        return (f"REFUSED: {device} already has a revert pending (`{ROLLBACK_READ}` names a "
-                "timer value); the probe compared it with no revert pending and sends nothing "
-                "into another change's timer")
-    held = interface_with_address(pre["brief"], address)
-    if held and canonical(held) == want:
-        return (f"REFUSED: {interface} carries {device}'s management address {address}, the "
-                f"address Mercury reaches it on (`{pre['brief_cmd']}` on {device}: {held} holds "
-                f"{address}), so a bounce would cut Mercury's own session to {device}")
-    if not manager:
-        return (f"REFUSED: Mercury's own address on this session could not be read "
-                f"({pre.get('manager_why')}), so `show ip cef` toward it cannot be asked")
-    egress, why = egress_interfaces(pre["cef"])
-    if want in egress:
-        return (f"REFUSED: {device} reaches Mercury ({manager}) out of {interface} "
-                f"(`{pre['cef_cmd']}` on {device}: egress {', '.join(sorted(egress))}), so a "
-                f"bounce would cut Mercury's own session to {device}")
-    if not egress:
-        return (f"REFUSED: {device}'s `{pre['cef_cmd']}` names no egress the probe can read "
-                f"({why}); the probe compares --interface {interface} with that egress and "
-                "refuses what it cannot compare")
-    return ""
+    """Guard 13c's three reads, and the state before (`bounce.path_refusal`)."""
+    return _refused(_B.path_refusal(device, address, manager, interface, pre, who="the probe"))
 
 
 # ---------------------------------------------------------------------------- the device
@@ -446,90 +251,19 @@ def _host_networks() -> list:
     return blast_radius.host_networks()
 
 
-def manager_address(conn) -> tuple:
-    """``(address, why)``: Mercury's own address on *conn*'s session, the one the device's
-    route back to Mercury is asked for."""
-    try:
-        addr = conn.remote_conn.get_transport().sock.getsockname()[0]
-        return str(ipaddress.ip_address(str(addr).split("%")[0])), ""
-    except Exception as exc:                          # noqa: BLE001 (said, never raised)
-        return "", f"{type(exc).__name__}: {exc}"
-
-
-class Run:
-    """One run: its reads (raw kept for comparing, masked into the record), its sends."""
+class Run(_B.Session):
+    """One run: the bounce's session (`bounce.Session`: its reads, its held send, its end and
+    its repair), and the probe's own watch."""
 
     def __init__(self, args, device: dict, values: dict):
-        self.args, self.device, self.values = args, device, values
-        self.iface = args.interface
-        self.rec = {"device": args.device, "list": args.list_name, "actor": args.actor,
-                    "path": args.path, "interface": args.interface, "timer": args.timer,
-                    "attempts": [], "sent": [], "steps": []}
-
-    def mask(self, text: str) -> str:
-        from modules.redact import redact_text
-        return redact_text(text or "", self.values)
-
-    def read(self, conn, command: str) -> str:
-        from modules.commands import run_device_command
-        return run_device_command(conn, command, read_timeout=120) or ""
-
-    def send(self, conn, lines: list) -> tuple:
-        """``(answer, lost)``: *lines* written as ONE batch and read; *lost* names a session
-        that failed during it (the device may have received the batch whole)."""
-        from modules.nsot import device_ops
-        assert_no_save(lines)
-        a = self.args
-        # The run holds the device already; the send takes the same hold again (re-entrant in
-        # this thread), so no send is ever unheld, whoever calls it (C101's rule).
-        with device_ops.hold(a.list_name, a.device, "probe", a.actor,
-                             detail=f"revert timer ({a.path} path)",
-                             ip=self.device.get("ip", "")):
-            self.rec["sent"].append({"at": utc(CLOCK()), "lines": list(lines)})
-            try:
-                got = conn.send_command_timing("\n".join(lines), strip_prompt=False,
-                                               strip_command=False, read_timeout=60,
-                                               last_read=2.0, cmd_verify=False) or ""
-                return got, ""
-            except Exception as exc:                  # noqa: BLE001 (recorded, then watched)
-                return "", f"{type(exc).__name__}: {exc}"
-
-    def step(self, name: str) -> None:
-        from modules.nsot import device_ops
-        device_ops.note(f"revert probe: {name}", self.args.device)
-        self.rec["steps"].append({"at": utc(CLOCK()), "step": name})
-
-    def equal_to_before(self, running: str) -> dict:
-        from modules.nsot import roundtrip
-        got = roundtrip.configs_equivalent(self.before, running)
-        return {"equal": got["equal"], "only_before": [self.mask(x) for x in got["only_left"]],
-                "only_now": [self.mask(x) for x in got["only_right"]]}
-
-    # ------------------------------------------------------------------ before
-    def pre_reads(self, conn) -> dict:
-        self.step("read BEFORE")
-        self.before = self.read(conn, "show running-config")
-        port = port_state(self.read(conn, f"show interfaces {self.iface}"))
-        self.log_before = self.read(conn, "show logging")
-        pending = rollback_pending(self.read(conn, ROLLBACK_READ))
-        address = self.device.get("ip", "")
-        try:
-            v6 = ipaddress.ip_address(address).version == 6
-        except ValueError:
-            v6 = False
-        brief_cmd = "show ipv6 interface brief" if v6 else "show ip interface brief"
-        manager, why = manager_address(conn)
-        cef_cmd = ""
-        if manager:
-            cef_cmd = (f"show ipv6 cef {manager}" if ipaddress.ip_address(manager).version == 6
-                       else f"show ip cef {manager}")
-        pre = {"port": port, "pending": pending, "brief_cmd": brief_cmd,
-               "brief": self.read(conn, brief_cmd), "manager": manager, "manager_why": why,
-               "cef_cmd": cef_cmd, "cef": self.read(conn, cef_cmd) if cef_cmd else ""}
-        self.rec["before"] = {"port": port, "pending": pending, "manager": manager,
-                              "cef_cmd": cef_cmd, "cef": self.mask(pre["cef"]),
-                              "running_lines": len(self.before.splitlines())}
-        return pre
+        super().__init__(args.list_name, device, args.interface, args.actor, values,
+                         operation="probe", detail=f"revert timer ({args.path} path)",
+                         label="revert probe", opener=lambda d: _session(d),
+                         clock=lambda: CLOCK())
+        self.args = args
+        self.rec.update({"device": args.device, "list": args.list_name, "actor": args.actor,
+                         "path": args.path, "interface": args.interface, "timer": args.timer,
+                         "attempts": []})
 
     # ------------------------------------------------------------------ the watch
     def watch(self, t0: float, unit) -> dict:
@@ -549,7 +283,7 @@ class Run:
             attempt = {"at": utc(at), "t": round(at - t0, 1)}
             rec["attempts"].append(attempt)
             try:
-                conn = _session(self.device)
+                conn = self.open()
             except Exception as exc:                  # noqa: BLE001 (the measurement)
                 attempt.update(ok=False, why=f"{type(exc).__name__}: {exc}")
                 continue
@@ -627,68 +361,6 @@ class Run:
                     and rec["revert"]["pending_after_timer"] is False:
                 break
         return {"unit": unit}
-
-    # ------------------------------------------------------------------ the end
-    def final(self) -> dict:
-        self.step("read the end")
-        try:
-            conn = _session(self.device)
-        except Exception as exc:                      # noqa: BLE001
-            return {"read": False, "why": f"{type(exc).__name__}: {exc}"}
-        try:
-            port = port_state(self.read(conn, f"show interfaces {self.iface}"))
-            eq = self.equal_to_before(self.read(conn, "show running-config"))
-            pending = rollback_pending(self.read(conn, ROLLBACK_READ))
-            return {"read": True, "port": port, "pending": pending, **eq}
-        except Exception as exc:                      # noqa: BLE001
-            return {"read": False, "why": f"{type(exc).__name__}: {exc}"}
-        finally:
-            conn.disconnect()
-
-    def repair(self) -> dict:
-        """Back to BEFORE: `no shutdown` when the port is shut, `configure confirm` only when a
-        revert is pending, then the read-back; each step says what it achieved."""
-        self.step("repair")
-        steps = []
-        try:
-            conn = _session(self.device)
-        except Exception as exc:                      # noqa: BLE001
-            return {"restored": False, "steps": [{
-                "step": "open a session", "achieved": f"not opened ({type(exc).__name__}: "
-                f"{exc}); nothing was sent; a pending revert timer still reverts by itself"}]}
-        try:
-            port = port_state(self.read(conn, f"show interfaces {self.iface}"))
-            if port["admin"] == "down" or port.get("unknown"):
-                lines = ["configure terminal", f"interface {self.iface}", "no shutdown", "end"]
-                answer, lost = self.send(conn, lines)
-                after = port_state(self.read(conn, f"show interfaces {self.iface}"))
-                steps.append({"step": "no shutdown", "sent": lines, "answer": self.mask(answer),
-                              "errors": device_errors(answer), "lost": lost,
-                              "achieved": f"{self.iface} is now: {after['line']}"})
-            if rollback_pending(self.read(conn, ROLLBACK_READ)):
-                answer, lost = self.send(conn, ["configure confirm"])
-                still = rollback_pending(self.read(conn, ROLLBACK_READ))
-                steps.append({"step": "configure confirm", "sent": ["configure confirm"],
-                              "answer": self.mask(answer), "errors": device_errors(answer),
-                              "lost": lost, "achieved": "a revert is STILL pending" if still
-                              else "no revert pending now"})
-            port = port_state(self.read(conn, f"show interfaces {self.iface}"))
-            eq = self.equal_to_before(self.read(conn, "show running-config"))
-            steps.append({"step": "read back", "achieved": (
-                f"{self.iface}: {port['line']}; the running configuration "
-                + ("equals BEFORE" if eq["equal"] else
-                   f"differs from BEFORE ({len(eq['only_before'])} line(s) missing, "
-                   f"{len(eq['only_now'])} added)")), **eq})
-            return {"restored": bool(eq["equal"] and port["admin"] == "up"), "steps": steps,
-                    "port": port}
-        except Exception as exc:                      # noqa: BLE001
-            steps.append({"step": "lost", "achieved": f"{type(exc).__name__}: {exc}"})
-            return {"restored": False, "steps": steps}
-        finally:
-            try:
-                conn.disconnect()
-            except Exception:                         # noqa: BLE001
-                pass
 
 
 def verdict(rec: dict) -> dict:
@@ -784,6 +456,29 @@ def markdown(rec: dict) -> str:
     return "\n".join(rows) + "\n"
 
 
+#: The planned window's margin past the watch's own end, so the last read's log lines fall inside
+#: it (a minute, against the watch's 10 s polls).
+WINDOW_MARGIN_S = 60
+
+
+def window_seconds(timer: int) -> int:
+    """How long the probe's planned window lasts: the revert timer (minutes, the unit both
+    dialects state, C2424), the watch past it, and the margin."""
+    return int(timer) * 60 + WATCH_PAST_S + WINDOW_MARGIN_S
+
+
+def declare_window(args, now: float) -> dict:
+    """Record the probe's bounce's planned window on the device, naming its interface, as
+    every operation that takes a device or its links down does before it acts (CLAUDE.md,
+    "declares its planned-restart window BEFORE it acts"; C2702), through the bounce's one
+    `bounce.declare_window`."""
+    return _B.declare_window(
+        args.list_name, args.device, args.interface, now, window_seconds(args.timer),
+        by=args.actor, via="nmas-revert-probe",
+        why=(f"the revert-timer probe ({args.path} path): {args.interface} shut and no shut "
+             f"inside a {args.timer}-minute revert timer"))
+
+
 def run(args, device: dict, values: dict) -> dict:
     """The run, holding the device for all of it. The record; ``refused`` when a read refused
     it (nothing was sent)."""
@@ -804,6 +499,15 @@ def run(args, device: dict, values: dict) -> dict:
                                args.interface, pre)
             if why:
                 rec["refused"] = why
+                return rec
+            # C2702: the bounce is planned, so it says so BEFORE it acts, or its own
+            # shutdown reads as an unexplained adjacency flap (trial 1a, 2026-11-07).
+            window = declare_window(args, CLOCK())
+            rec["planned_window"] = window
+            if not window.get("ok"):
+                rec["refused"] = ("the planned window for the bounce could not be recorded "
+                                  f"({window.get('error')}), so nothing was sent: an "
+                                  "unannounced bounce reads as a fault")
                 return rec
             r.step("send the batch")
             t0 = CLOCK()

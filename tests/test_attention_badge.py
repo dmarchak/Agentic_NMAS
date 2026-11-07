@@ -144,7 +144,9 @@ class TestARowThatClearsByTime:
                          # A dry-run heal record's marking window ends (board H, H3).
                          ("heal", "would_heal"),
                          # The day or month the can't-fix analysis's cap counts ends (H8).
-                         ("heal", "analysis_capped")}
+                         ("heal", "analysis_capped"),
+                         # A held or failed bounce, 7 days after it (CANT_FIX_DAYS; H20).
+                         ("heal", "bounce")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

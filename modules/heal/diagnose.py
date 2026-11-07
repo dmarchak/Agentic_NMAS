@@ -1234,6 +1234,48 @@ def _r_one_way(rule, ctx):
     return hits, ("the adjacency is up now at both ends" if up and not hits else "")
 
 
+def _r_ospf_one_neighbour(rule, ctx):
+    """19.4's OSPF reset (H20): an end whose interface is up/up and holds exactly one OSPF
+    neighbour, that neighbour the far end by intent, stuck short of FULL and past DOWN (its
+    hellos arrive: the neighbour is reachable on the link). The bounce on that interface resets
+    that one adjacency and no other. Two or more neighbours on the interface is Alert, never
+    this rule. A decisive configuration cause ranks above it, so no action follows."""
+    if len(ctx.ends) < 2:
+        return [], ""
+    hits, full = [], 0
+    for i, e in enumerate(ctx.ends):
+        far = ctx.end(1 - i)
+        if not e.get("ospf"):
+            continue
+        rows, port = ctx.facts(e, "ospf_neighbor"), ctx.facts(e, "interfaces")
+        if rows is None or port is None:
+            continue
+        if any(r["state"] in _UP for r in rows):
+            full += 1
+            continue
+        mine = _neighbour_rows(ctx, e, far, "ospf_neighbor")
+        if len(rows) != 1 or len(mine) != 1 or port["state"] != "up" \
+                or port.get("protocol") != "up":
+            continue
+        st = rows[0]["state"] or "?"
+        # DOWN hears nothing (not reachable on the link); INIT is one-way, `_r_one_way`'s.
+        if st.upper() in ("DOWN", "INIT", "?"):
+            continue
+        hits.append(finding(rule, (f"{ctx.name(e)} holds exactly one OSPF neighbour, "
+                                   f"{far['host']}, stuck in {st} with the link up: its hellos "
+                                   "arrive, and no configuration cause was found"),
+                            [ev(ctx.ref_of(e, "ospf_neighbor"),
+                                f"one neighbour on {e['short']}: {rows[0]['router_id']} {st}"),
+                             ev(ctx.ref_of(e, "interfaces"),
+                                f"{port['name']} is up, line protocol is up")],
+                            rule_out="the neighbour reading FULL", agree=2,
+                            at={"host": e["host"], "interface": e["interface"],
+                                "far_host": far["host"], "far_interface": far["interface"]},
+                            todo=f"Reset the one adjacency on {ctx.name(e)} (a bounce of its "
+                                 "interface), or read the far end's OSPF state"))
+    return hits, ("the adjacency is FULL" if full and not hits else "")
+
+
 def _summary_row(ctx, e):
     peer = e.get("bgp")
     s = ctx.facts(e, "bgp_summary", 2)
@@ -1371,6 +1413,9 @@ RULES = (
     Rule("passive", "protocol", "decisive", "passive on an end", _r_passive),
     Rule("one_way", "protocol", "strong", "one end hears the other, the other nothing",
          _r_one_way),
+    Rule("ospf_not_full_one_neighbour", "protocol", "strong",
+         "the interface's one OSPF neighbour stuck short of FULL, the link up",
+         _r_ospf_one_neighbour),
     Rule("bgp_admin", "protocol", "decisive", "a BGP peer in Idle (Admin)", _r_bgp_admin),
     Rule("bgp_remote_as", "protocol", "decisive",
          "a BGP peer missing, or its remote AS not intent's", _r_bgp_remote_as),
@@ -1406,10 +1451,9 @@ ACTIONS = (
     {"rule": "ospf_not_full_one_neighbour", "case": "", "kind": "ospf_reset", "variant": ""},
 )
 #: The rules `ACTIONS` names that no runbook has yet, each with the part that builds it: the
-#: soft clear's "Established, fewer routes than intent expects" (H21) and the OSPF reset's
-#: "not FULL in two reads, exactly one neighbour on the interface" (`show ip ospf neighbor
-#: <if>`, H20).
-ACTION_RULES_NOT_BUILT = {"bgp_fewer_routes": "H21", "ospf_not_full_one_neighbour": "H20"}
+#: soft clear's "Established, fewer routes than intent expects" (H21). The OSPF reset's
+#: "exactly one neighbour on the interface, not FULL" is H20's (`_r_ospf_one_neighbour`).
+ACTION_RULES_NOT_BUILT = {"bgp_fewer_routes": "H21"}
 
 
 def action_for(diagnosis: dict) -> dict:

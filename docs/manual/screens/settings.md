@@ -256,7 +256,10 @@ Self-healing tab chooses which team it tells.
   as set, by whom and when; **Replace…** takes a new one, and **Store it** stores it encrypted,
   never shown. **Test send to…** asks which of the teams' addresses, and **Send the test** sends
   a test message there through the relay as saved, saying in the card whether it was sent; its
-  head says when mail was last sent.
+  head says when mail was last sent. **The first time, add the team first:** Test send to… offers
+  only a team's addresses, so save the relay, then add a team and its address (**Add a team…**,
+  then **Add and send a code**). The code arriving is the relay's first test, and typing it back
+  verifies the address; **Test send to…** then checks the relay again whenever it changes.
 - **Webhooks**: each with its team, its URL drawn as its scheme and host only (the rest may be the
   receiver's token), its format and its last delivery. **Add a webhook…** takes the team, a
   name, the URL (https, or http only to this host's loopback; IPv4 or IPv6), the format

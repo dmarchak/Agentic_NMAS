@@ -146,13 +146,89 @@ not held or being worked on, never the interface Mercury reaches the device on, 
 bounce of a port within the repeat window becomes the dampening proposal), and a flap measured
 from the logs.
 
-**None of these actions is built yet**: a policy cannot allow one, and each is refused by name
-("not built yet: H20"). What runs now is the **flap record**: each time the network's syslog is
-read, every `%LINK-3-UPDOWN` and `%LINEPROTO-5-UPDOWN` line is recorded as a transition of its
-interface at the time Mercury received it, never by the device's clock, for networks whose
-self-healing is on. A link and its line protocol going down together count once. A flap is
-**A flap: transitions of one interface within** on the Self-healing tab (3 in 10 minutes by
-default); the record keeps an hour.
+The **port bounce** and the **OSPF adjacency reset** through it are built ([The port
+bounce](#bounce)); the clear of a BGP neighbour and the dampening proposal are not yet: a policy
+cannot allow either, and each is refused by name ("not built yet: H21"). Under all of them runs
+the **flap record**: each time the network's syslog is read, every `%LINK-3-UPDOWN` and
+`%LINEPROTO-5-UPDOWN` line is recorded as a transition of its interface at the time Mercury
+received it, never by the device's clock, for networks whose self-healing is on. A link and its
+line protocol going down together count once. A flap is **A flap: transitions of one interface
+within** on the Self-healing tab (3 in 10 minutes by default); the record keeps an hour. A
+transition received inside a planned window that takes the interface down on purpose (a
+bounce's own window, or a planned restart of the device) is the operation's, not a flap, and the
+count says how many it left out.
+
+## The port bounce {#bounce}
+
+A **port bounce** shuts a port and brings it straight back up, in one write, inside the device's
+own revert timer. It changes no configuration line, it is never saved, and it is named as an
+action wherever it is drawn. The **OSPF adjacency reset** is the same bounce on an interface
+that holds exactly one OSPF neighbour stuck short of FULL, so it resets that one adjacency and
+nothing else on the router. Neither is on by default: a network's Self-healing tab lists each as
+a Tier 1 kind, **Dry run only** until a person allows it in Auto. In **Dry run** the bounce is
+recorded as "would have bounced <device> <port> (program <hash>)" for a person to mark right or
+wrong, and nothing is sent.
+
+**How it is decided.** When self-healing cannot fix a port down while it is administratively up
+(an Alert), Mercury diagnoses it first. Only when the diagnosis's first hypothesis is the port
+down with its far end up, or the interface's one OSPF neighbour stuck, is a bounce considered:
+
+1. `choose`: the action is chosen from the diagnosis's first, complete hypothesis, never from AI
+   text; a decisive finding above it, such as an MTU mismatch, means no action.
+2. `stops`: the kill switch, the mode, a halt and planned work, as for any heal.
+3. `rates`: the heals per device and per network an hour.
+4. `fresh`: both ends are read again, with the device's own route back to Mercury.
+5. `guards`: the port still down (one that came back by itself is left alone); the far end up,
+   not held and not being worked on; never the interface Mercury reaches the device on, never
+   one the device's own `show ip cef` (or `show ipv6 cef` for an IPv6 manager) names as its way
+   back to Mercury, and never the device's only path; once an hour per port, a second need
+   within the repeat window being a dampening change for a person; the flap record readable;
+   the configuration archive in the device's intent, which its revert timer needs; and the
+   revert timer measured on the device's platform (IOS and IOS-XE, by the operator's trial).
+6. `decide`: in Auto, with the kind allowed, it bounces; otherwise it records what it would have
+   done.
+7. `record`: the decision is recorded in the network's heal decisions and its step log.
+
+**How it runs.** The bounce is its own job, as the policy, holding the device for every session:
+
+1. `take`: the decision, once.
+2. `stops`: the kill switch, Auto, the network marked lab, the policy and planned work, again.
+3. `hash`: the program is computed again and refused unless its hash is the decision's. The
+   program is `configure terminal revert timer 2`, `interface <port>`, `shutdown`, `no
+   shutdown`, `end`; its `shutdown` carries the policy's reason, in the hash and the record.
+4. `hold`: the device is held, so no other operation runs on it.
+5. `pre-read`: the running configuration (before), the port, a pending revert, the interface
+   holding the management address and the route to Mercury, all read again on the bounce's own
+   session; any one that refuses sends nothing.
+6. `window`: a planned window is recorded on the device, naming the port, before anything is
+   sent: 6 minutes 38 seconds (the 2-minute timer, the 3-minute watch past it and the 98-second
+   settle bound). Adjacency drops inside it are explained, never an item, and its own UPDOWN
+   lines are no flap. A window that cannot be recorded sends nothing.
+7. `send`: the one batch. A cut session cannot leave the port shut: the device receives the
+   batch whole, and its timer reverts it if Mercury never comes back.
+8. `watch`: a new session every 10 seconds.
+9. `confirm`: `configure confirm` is sent only once Mercury is back in and the port is up/up
+   with the running configuration equal to before, line for line, within 98 seconds (2.5 times
+   the slowest settle the trial measured, 39 s). Otherwise nothing more is sent, and the device
+   reverts itself when its timer ends.
+10. `verify`: an OSPF reset's adjacency must reach FULL; the configuration is read again and
+    must not have moved.
+11. `stable`: once the device is released, the stability window (the flap window's minutes)
+    must hold no transition to down after the bounce's own up.
+12. `repair`: when the end is not as before, `no shutdown` (and `configure confirm` only when a
+    revert is still pending), read back, each step saying what it achieved.
+13. `record`: the outcome on the device's **History**, kind Self-healing.
+
+**What it ends with.** "Bounced; configuration unchanged" is on History, never a Needs
+attention item; the team's notice of a bounce is not sent yet. Every other end is one item, "Self-healing's bounce of <device> <port>",
+until a later bounce of that port ends bounced, 7 days pass, or you acknowledge it with what you
+found: bounced once and **still flapping** (a dampening change is the next need, for a person);
+the OSPF adjacency **not formed**; **not verified** (the stability window could not be read);
+**reverted by its timer** (no confirm, the device back as before); **repaired**; **NOT
+RESTORED** (a reload returns it, since nothing was saved); or **nothing was sent** (a guard
+refused it at its apply). Reverted, repaired and not restored also **halt** the network's
+healing until a person lifts it. A bounce **held** by a guard (the far end held or being worked
+on) is an item too: it is not tried again by itself.
 
 ## What it never does {#never}
 

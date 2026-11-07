@@ -130,6 +130,8 @@ class TestEveryKindSaysHowItClears:
                                      ("heal", "cant_fix"),
                                      # One hold a person resolves, by its decision (H9).
                                      ("heal", "held"),
+                                     # One held or failed port bounce, by its decision (H20).
+                                     ("heal", "bounce"),
                                      # One change of a network's controller Python, by its
                                      # id (the operator, 2026-11-07).
                                      ("controller_python", "changed")}

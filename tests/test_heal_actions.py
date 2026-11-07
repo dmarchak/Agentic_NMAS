@@ -91,19 +91,22 @@ class TestTheKinds:
         assert A().tier_of("port_bounce", False) == 1
 
     def test_every_kind_is_refused_by_name_before_any_guard(self):
-        assert A().BUILT == ()
-        for kind, part in (("port_bounce", "H20"), ("ospf_reset", "H20"),
-                           ("session_clear", "H21"), ("dampening_proposal", "H22")):
+        # H20 built the bounce and the OSPF reset through it; the clears and dampening wait.
+        assert A().BUILT == ("port_bounce", "ospf_reset")
+        for kind, part in (("session_clear", "H21"), ("dampening_proposal", "H22")):
             got = A().judge(kind, {})
             assert got["outcome"] == "cant_fix" and f"not built yet: {part}" in got["words"]
             assert [s["step"] for s in got["steps"]] == ["built"], got
+        got = A().judge("port_bounce", {})
+        assert [s["step"] for s in got["steps"]] == ["built", "13a"], got
 
     def test_no_policy_may_allow_an_unbuilt_action(self, networks):
         from modules.heal import policy as H
-        for key in (H.KINDS_AUTO_KEY, H.KINDS_PROPOSE_KEY):
+        for key, kind, part in ((H.KINDS_AUTO_KEY, "session_clear", "H21"),
+                                (H.KINDS_PROPOSE_KEY, "dampening_proposal", "H22")):
             with pytest.raises(H.PolicyRefused) as e:
-                H.plan("Default", {"heal_mode": "dry_run", key: ["port_bounce"]}, T0)
-            assert "port_bounce (a port bounce): not built yet: H20" in str(e.value)
+                H.plan("Default", {"heal_mode": "dry_run", key: [kind]}, T0)
+            assert f"{kind} ({A().KIND_WORDS[kind]}): not built yet: {part}" in str(e.value)
 
     def test_the_action_guards_settings_are_guard_13s(self):
         from modules.heal import policy as H
@@ -250,9 +253,14 @@ class TestG13cPath:
 
     @pytest.mark.parametrize("mgmt", ["192.0.2.6", "2001:db8:0:7::1"])
     def test_its_cef_and_only_path_parts_are_h20s_so_it_still_applies(self, mgmt):
+        # H20 builds both parts (tests/test_heal_bounce.py); a part not read still applies.
         got = A().g13c_path("core-b", "GigabitEthernet2", mgmt_ip=mgmt, intent=self.INTENT)
-        assert got["tier"] == 4 and "not built yet: H20" in got["words"]
-        assert "show ip cef" in got["words"] and "blast radius" in got["words"]
+        assert got["tier"] == 4 and "route to Mercury was not read" in got["words"]
+        cef = {"manager": "192.0.2.250", "command": "show ip cef 192.0.2.250",
+               "answer": "0.0.0.0/0\n  nexthop 192.0.2.5 GigabitEthernet1"}
+        got = A().g13c_path("core-b", "GigabitEthernet2", mgmt_ip=mgmt, intent=self.INTENT,
+                            cef=cef)
+        assert got["tier"] == 4 and "blast radius" in got["words"]
 
     def test_an_interface_intent_lacks_or_no_address_applies(self):
         assert "holds no GigabitEthernet9" in A().g13c_path(

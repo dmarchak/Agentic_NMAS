@@ -67,9 +67,14 @@ MARKS = {"heal": "healing", "would_heal": "would heal", "propose": "proposed",
          "healed": "healed", "symptom_remains": "symptom remains", "partial": "partial",
          "refused": "nothing sent", "rolled_back": "rolled back",
          "failed": "failed after sending", "interrupted": "interrupted",
-         "declined": "declined", "withdrawn": "withdrawn"}
+         "declined": "declined", "withdrawn": "withdrawn",
+         # 19.4's marks for an action (H20, `bounce.OUTCOMES`): bounced, and each way it was not.
+         "bounced": "bounced", "still_flapping": "bounced, still flapping",
+         "not_formed": "bounced, adjacency not formed", "unverified": "bounced, not verified",
+         "reverted": "reverted by its timer", "repaired": "repaired"}
 #: The outcomes that are not a success: drawn amber or red, never as healed.
-NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupted")
+NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupted",
+              "still_flapping", "not_formed", "unverified", "reverted", "repaired")
 MODE_WORDS = {"auto": "AUTO", "dry_run": "dry run", "off": "off"}
 
 

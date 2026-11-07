@@ -12,12 +12,12 @@ elsewhere: N16, `tier_of`), the OSPF adjacency reset, which is the port bounce o
 with exactly one OSPF neighbour (Tier 1), and the dampening proposal on a port still flapping
 after its one bounce (Tier 2, a change to intent, a person's).
 
-**None is built yet** (`NOT_BUILT`): each kind's operation is its own part, H20 (the bounce, its
-revert timer, guard 13c's CEF and only-path checks, and the OSPF reset through it), H21 (the
-BGP clears, measured on devices) and H22 (the dampening field and its proposal). Until its part
-lands a kind is refused by name, "not built yet: H20", never allowed by a policy
-(`policy.actions_not_built`) and never offered. `judge` refuses it before any guard runs, so
-nothing is read for it.
+**Built, each by its own part** (`NOT_BUILT`, `BUILT`): H20 built the port bounce and the OSPF
+adjacency reset through it (`modules/heal/bounce.py`: its program, its revert timer, guard
+13c's CEF and only-path reads, 13f). H21 (the BGP clears, measured on devices) and H22 (the
+dampening field and its proposal) are not built: until its part lands a kind is refused by
+name, "not built yet: H21", never allowed by a policy (`policy.actions_not_built`) and never
+offered. `judge` refuses it before any guard runs, so nothing is read for it.
 
 **The guards** (`GUARDS`, after section 6's guard 13, in this order; each answers None or a hit
 naming the guard, both operands it compared and its outcome; one that cannot be read applies,
@@ -27,11 +27,14 @@ failing closed):
 - **13b, the far end up and not held** (`g13b_far_end`): read on the far device; an operation
   holding it, or a person working on it (guard 7 on the far end), holds the action; an
   unmanaged far end cannot be read, so there is no action;
-- **13c, never Mercury's path, never the only path** (`g13c_path`): H19 builds its first part,
-  the interface carrying the address Mercury reaches the device on, from committed intent,
-  IPv4 and IPv6 (Never, Tier 4). Its second and third, Mercury's route leaving out of the
-  interface (`show ip cef`, `show ipv6 cef`) and the device's only path (the blast radius of
-  its shutdown), are H20's, read with the bounce: until then the guard applies, naming them;
+- **13c, never Mercury's path, never the only path** (`g13c_path`), each part Never (Tier 4):
+  (1) the interface carrying the address Mercury reaches the device on, from committed intent,
+  IPv4 and IPv6; (2) Mercury's route leaving out of the interface, by the device's own `show ip
+  cef` toward Mercury's source address (`show ipv6 cef` for an IPv6 manager), an answer naming
+  no egress refused too; (3) the device's only path, by the blast radius of its shutdown
+  (`blast_radius.radius_of_shutdowns`, IPv4 intent only, so an unknown radius is refused,
+  saying so). The reads and their words are the bounce's (`bounce.cef_refusal`,
+  `radius_refusal`), which the act judges again on its own held session;
 - **13d, once** (`g13d_once`): a port is bounced at most once an hour
   (``heal_bounce_per_port_hour``), and a second need within ``heal_repeat_halts_hours`` is the
   dampening proposal instead; a session is cleared once per incident, a second need being
@@ -60,13 +63,10 @@ KIND_WORDS = {
 LAB_ONLY_AUTO = ("session_clear",)
 #: Each kind's operation not built yet, with the part that builds it and what it lacks.
 NOT_BUILT = {
-    "port_bounce": ("H20", "the bounce's program, its revert timer and guard 13c's CEF and "
-                           "only-path reads"),
-    "ospf_reset": ("H20", "the port bounce it runs through, and its one-neighbour read"),
     "session_clear": ("H21", "the clears, measured on devices"),
     "dampening_proposal": ("H22", "intent's dampening field and its measured shape"),
 }
-#: The kinds whose operation is built: none, until H20 to H22.
+#: The kinds whose operation is built: the port bounce and the OSPF reset through it (H20).
 BUILT = tuple(k for k in KINDS if k not in NOT_BUILT)
 
 #: The action guards after guard 13, in order: (id, name, the settings it reads, the kinds it
@@ -83,10 +83,6 @@ GUARDS = (
 )
 #: The kinds that bounce a port (13c and 13d count them together: an OSPF reset is a bounce).
 BOUNCES = ("port_bounce", "ospf_reset")
-#: 13c's parts H20 builds with the bounce.
-PATH_NOT_BUILT = ("Mercury's route to its address leaving out of the interface (`show ip cef`, "
-                  "and `show ipv6 cef` for an IPv6 manager)",
-                  "the device's only path (the blast radius of the interface's shutdown)")
 
 
 def _iso(epoch: float) -> str:
@@ -177,7 +173,8 @@ def g13a_fresh(kind: str, decided: dict, again: dict):
                                        f"send ({ops['again'] or 'not read'}), so nothing is "
                                        "sent"), ops)
     if again["holds"] is False:
-        came_back = ("the port came back by itself" if kind in BOUNCES else
+        # An OSPF reset's precondition is its adjacency, not its port (H20).
+        came_back = ("the port came back by itself" if kind == "port_bounce" else
                      "it resolved by itself")
         return hit("13a", "nothing", (f"{came_back}: decided on {ops['decided']}, read again "
                                       f"{ops['again']}; nothing is sent"), ops)
@@ -274,11 +271,17 @@ def _carries(iface: dict, address: str) -> bool:
     return False
 
 
-def g13c_path(device: str, interface: str, *, mgmt_ip: str, intent: dict):
-    """13c's first part: *interface* carries *mgmt_ip*, the address Mercury reaches *device*
-    on, by committed intent (*intent*, the device's host_vars), IPv4 or IPv6: Never. Its other
-    two parts are H20's (`PATH_NOT_BUILT`): until they are read the guard applies, naming
-    them, so no bounce passes it."""
+def g13c_path(device: str, interface: str, *, mgmt_ip: str, intent: dict, cef: dict = None,
+              intents: dict = None, nets: list = None):
+    """13c, each part Never (Tier 4): (1) *interface* carries *mgmt_ip*, the address Mercury
+    reaches *device* on, by committed intent (*intent*, the device's host_vars), IPv4 or IPv6;
+    (2) *cef* (``{"manager", "command", "answer"}``, the device's own route toward Mercury's
+    source address, *answer* None when it was not read) names *interface* as its egress, or
+    names none that can be read; (3) *interface* is the device's only path, by the blast radius
+    of its shutdown over *intents* (every device's committed host_vars) and *nets* (this host's
+    networks). A part not read applies."""
+    from modules.heal import bounce
+
     ops = {"device": device, "interface": interface, "management_address": mgmt_ip}
     if not mgmt_ip:
         return hit("13c", "cant_fix", (f"the address Mercury reaches {device} on is not known, "
@@ -295,9 +298,25 @@ def g13c_path(device: str, interface: str, *, mgmt_ip: str, intent: dict):
                                        f"Mercury reaches {device} on (committed intent), so a "
                                        f"bounce would cut Mercury's own session to {device}"),
                    ops, tier=4)
-    return hit("13c", "cant_fix", ("Not bounced: " + " and ".join(PATH_NOT_BUILT)
-                                   + f" are not read yet: {not_built('port_bounce')}"),
-               dict(ops, not_read=list(PATH_NOT_BUILT)), tier=4)
+    cef = cef or {}
+    ops = dict(ops, manager=cef.get("manager") or "", cef_command=cef.get("command") or "")
+    if cef.get("answer") is None:
+        return hit("13c", "cant_fix", (f"Not bounced: {device}'s route to Mercury was not read "
+                                       f"({cef.get('why') or 'not asked'}), so whether "
+                                       f"{interface} carries it cannot be told"), ops, tier=4)
+    why = bounce.cef_refusal(device, cef.get("manager") or "", interface,
+                             cef.get("command") or "", cef["answer"])
+    if why:
+        return hit("13c", "cant_fix", f"Not bounced: {why}", ops, tier=4)
+    if intents is None or nets is None:
+        return hit("13c", "cant_fix", (f"Not bounced: the blast radius of shutting {interface} "
+                                       "was not read, so whether it is the device's only path "
+                                       "cannot be told"), ops, tier=4)
+    why = bounce.radius_refusal(intents, nets, device, interface)
+    if why:
+        return hit("13c", "cant_fix", f"Not bounced: {why}", dict(ops, networks=list(nets)),
+                   tier=4)
+    return None
 
 
 # ── 13d: once ───────────────────────────────────────────────────────────────────────────────
@@ -309,8 +328,13 @@ def history(network: str, outcome: str) -> list:
     ``action`` (``{"kind", "device", "interface", "peer"}``; H20 to H22 write them)."""
     from modules.heal import decisions
 
+    return history_of(decisions.decisions(network), outcome)
+
+
+def history_of(rows: list, outcome: str) -> list:
+    """`history` on decision rows already read (`decisions.decisions`'), a read of none."""
     out = []
-    for d in decisions.decisions(network):
+    for d in rows:
         a = d.get("action")
         if not isinstance(a, dict) or d.get("outcome") != outcome:
             continue

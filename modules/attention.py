@@ -246,6 +246,13 @@ ROW_KINDS = {
     ("heal", "cant_fix"): ("self-healing could not fix a device's problem",
                            "read what Mercury tried, then the action the reason names (adopt "
                            "into intent, capture, check the link, or decide on the change)"),
+    # Board H's amendment, H20 (19.4): self-healing's port bounce held by a guard, or one that
+    # did not end bounced and stable (reverted by its timer, repaired, NOT RESTORED, still
+    # flapping, its adjacency not formed, its stability unread, or refused at its apply).
+    ("heal", "bounce"): ("self-healing's port bounce was held, or did not end bounced and "
+                         "stable",
+                         "read the bounce's steps on the device's History, check the port and "
+                         "its far end, then acknowledge with what you found"),
     # Section 12: the AI analysis of a can't-fix stopped at its cap.
     ("heal", "analysis_capped"): ("the AI analysis of what self-healing could not fix stopped "
                                   "at its cap",
@@ -570,6 +577,10 @@ CLEARS = {
     ("heal", "cant_fix"): (("resolves", "acknowledge"),
                            "a later decision finds the device with nothing to heal, or a later "
                            "heal of it is healed and verified; or acknowledged with a reason"),
+    ("heal", "bounce"): (("resolves", "acknowledge", "time"),
+                         "a later bounce of the same port ends bounced and stable, or 7 days "
+                         "pass (CANT_FIX_DAYS); or acknowledged with what was found on the "
+                         "port"),
     ("heal", "analysis_capped"): (("resolves", "time"),
                                   "a later analysis on the network runs, an admin raises the "
                                   "cap, or the cap's period (its day or its month) ends"),
@@ -655,6 +666,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "cant_fix"),
                                # One hold a person resolves (board H, H9), by its decision.
                                ("heal", "held"),
+                               # One held or failed port bounce (board H, H20), by its
+                               # decision: a later bounce of the port raises its own row.
+                               ("heal", "bounce"),
                                # One change of a network's controller Python, by its id
                                # (the operator, 2026-11-07): a later change raises it again.
                                ("controller_python", "changed")})
@@ -5334,8 +5348,10 @@ def heal_source(got=None, now=None, found=None) -> dict:
             continue
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [])
+        # An action is named as an action wherever it is drawn (19.4, H20): never "healed".
+        did = "bounced" if (d.get("action") or {}).get("kind") else "healed"
         r = row(source="heal", kind="would_heal", key=d.get("id") or "?", level="warning",
-                what=(f"Self-healing: dry run on {lst}: it would have healed {host}"
+                what=(f"Self-healing: dry run on {lst}: it would have {did} {host}"
                       + (f": {units}" if units else "")),
                 cause=(f"{d.get('words') or ''}; program {d.get('program_hash') or '?'}. Nothing "
                        "was sent: the network is in dry run, so what it would have done is "
@@ -5356,9 +5372,11 @@ def heal_source(got=None, now=None, found=None) -> dict:
     proposals_n = len(out) - marked - interrupted_n
     held = _heal_held_rows(lst, rows)
     out += held
+    bounces = _heal_bounce_rows(lst, rows, now)
+    out += bounces
     said = []
     out += _heal_cant_fix_rows(lst, rows, now, said)
-    cant_fix_n = len(out) - marked - interrupted_n - proposals_n - len(held)
+    cant_fix_n = len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
     out += _heal_capped_rows(lst, now, said)
     try:
         halted = _heal_halted_rows(lst)
@@ -5372,7 +5390,8 @@ def heal_source(got=None, now=None, found=None) -> dict:
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
                                   f"{interrupted_n} interrupted heal(s), "
                                   f"{proposals_n} proposal(s) waiting, {len(held)} hold(s) a "
-                                  f"person resolves, {cant_fix_n} can't-fix "
+                                  f"person resolves, {len(bounces)} port bounce(s) held or "
+                                  f"not ended bounced, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
 
@@ -5617,6 +5636,64 @@ def _heal_held_rows(lst: str, rows: list) -> list:
             action={"label": label, "href": href},
             operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
                       "devices": len(hosts), **(g.get("operands") or {})}))
+    return out
+
+
+def _heal_bounce_rows(lst: str, rows: list, now: float) -> list:
+    """Board H's amendment, H20 (19.4): ONE row per port whose NEWEST bounce decision was held
+    by a guard (``held``: it is not tried again by itself), or was taken and ended other than
+    bounced and stable (`bounce.OUTCOMES`: reverted, repaired, NOT RESTORED, still flapping,
+    its adjacency not formed, its stability unread, refused at its apply), under
+    `CANT_FIX_DAYS` old. A later bounce of the port replaces it (one that ends bounced clears
+    it), or a person acknowledges it with what they found. Read from the rows already read."""
+    from modules.heal import bounce
+
+    newest = {}
+    for d in rows:
+        a = d.get("action") or {}
+        if a.get("kind") not in bounce.KINDS or not a.get("device"):
+            continue
+        port = (a["device"], (a.get("interface") or "").lower())
+        if float(d.get("epoch") or 0) >= float(newest.get(port, {}).get("epoch") or 0):
+            newest[port] = d
+    out = []
+    for (host, _p), d in sorted(newest.items()):
+        a, at = d.get("action") or {}, float(d.get("epoch") or 0)
+        if now - at > CANT_FIX_DAYS * 86400:
+            continue
+        g, done = d.get("guard") or {}, (d.get("applied") or {})
+        iface = a.get("interface") or ""
+        if d.get("outcome") == "held":
+            what = (f"Self-healing held the bounce of {host} {iface} on {lst}: "
+                    f"{g.get('name') or 'a guard applied'}")
+            cause = (f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. Nothing was "
+                     "sent, and it is not tried again by itself: the port stays as it is until "
+                     "a person acts or a later incident is diagnosed")
+            level = "warning"
+        elif done.get("outcome") in bounce.OUTCOMES and done["outcome"] != "bounced":
+            what = (f"Self-healing's bounce of {host} {iface} on {lst}: "
+                    f"{bounce.OUTCOME_WORDS[done['outcome']]}")
+            cause = (f"{done.get('words') or ''}. "
+                     + ("Nothing was sent. " if done["outcome"] == "refused" else
+                        "The configuration was never saved. ")
+                     + ("Self-healing on the network is halted (guard 14) until a person "
+                        "lifts it. " if done["outcome"] in bounce.HALTS else ""))
+            level = "danger" if done["outcome"] in ("failed", "reverted", "repaired") \
+                else "warning"
+        else:
+            continue
+        out.append(row(
+            source="heal", kind="bounce", key=d.get("id") or "?", level=level,
+            event=d.get("id"), devices=[host], since=at or None,
+            clears_at=at + CANT_FIX_DAYS * 86400, what=what, cause=cause.strip(),
+            action={"label": (f"Read the bounce's steps on {host}'s History, check {iface} and "
+                              f"its far end ({a.get('far_device') or 'not named'} "
+                              f"{a.get('far_interface') or ''}), then acknowledge with what you "
+                              "found").replace(" )", ")"),
+                    "href": f"/v2/device/{host}?tab=history"},
+            operands={"list": lst, "decision": d.get("id"), "kind": a.get("kind"),
+                      "interface": iface, "outcome": done.get("outcome") or d.get("outcome"),
+                      "guard": g.get("guard")}))
     return out
 
 

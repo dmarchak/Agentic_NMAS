@@ -106,6 +106,11 @@ ENTRY_POINTS = {
     "modules/nsot/receipts.py:_masked": lambda: "\n".join(
         __import__("modules.nsot.receipts", fromlist=["_masked"])._masked(
             {"words": [PLANTED]})["words"]),
+    # A port bounce's answers, masked into its record (board H, H20; the revert probe's too).
+    "modules/heal/bounce.py:mask": lambda: __import__(
+        "modules.heal.bounce", fromlist=["Session"]).Session(
+            "Default", {"hostname": "edge1"}, "Gi4", "op", {}, operation="probe", detail="",
+            label="test").mask(PLANTED),
     # Every string a heal's step log row keeps, masked before it is stored (board H, H6).
     "modules/heal/steplog.py:masked": lambda: "\n".join(
         __import__("modules.heal.steplog", fromlist=["masked"]).masked(

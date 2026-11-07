@@ -47,4 +47,10 @@ its part, H20 to H22, builds its operation), `flaps` (the `logs-tail` reader's a
 recording each interface's UPDOWN transitions at their receive time, for 13e), and
 `diagnose.ACTIONS` with `diagnose.action_for` (an action chosen only from the diagnosis's first,
 complete hypothesis).
+
+H20 is the port bounce and the OSPF adjacency reset through it (19.4): `bounce` (the one home of
+the fixed program, its hash and authorisation, guard 13c's CEF and only-path reads, 13f's
+archive and measured platform, the planned window declared before the send, the held send, the
+confirm only once Mercury is back in, verify, the stability window and the repair), the
+decision made before an Alert's notice (`consider`) and the act `act.run` takes to it.
 """

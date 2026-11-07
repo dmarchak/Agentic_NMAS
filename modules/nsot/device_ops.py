@@ -68,6 +68,9 @@ OPERATION_WORDS = {
     "reload": "reloaded",
     "file": "changed by a file action",
     "probe": "probed for removal shapes (scratch config added and removed, never saved)",
+    # Self-healing's port bounce (board H, H20: modules/heal/bounce.py).
+    "port bounce": "having a port bounced by self-healing (shut and no shut inside its revert "
+                   "timer, never saved)",
     "read": "read (show commands)",
     # Out-of-band ZTP (modules/nsot/console_ztp.py): over its console, not its address.
     "console survey": "surveyed over its console (read-only)",

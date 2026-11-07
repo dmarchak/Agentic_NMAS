@@ -260,6 +260,9 @@ OPERATIONS = {
     "heal": ("modules.heal.decide", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),
     "heal-act": ("modules.heal.act", "STEPS"),
+    # Board H's amendment, H20 (19.4): the port bounce's decision and its act.
+    "heal-bounce-decide": ("modules.heal.bounce", "DECIDE_STEPS"),
+    "heal-bounce": ("modules.heal.bounce", "STEPS"),
     "notifications": ("modules.heal_notice", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
@@ -289,7 +292,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "console-server-key": "installation-settings",
                   "console-server-rekey": "rekey",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
-                  "heal-detect": "heal", "heal-act": "heal"}
+                  "heal-detect": "heal", "heal-act": "heal",
+                  "heal-bounce-decide": "heal", "heal-bounce": "heal"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

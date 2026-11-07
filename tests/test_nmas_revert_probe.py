@@ -236,8 +236,10 @@ def no_hold_survives_a_test():
 
 
 @pytest.fixture
-def lab(monkeypatch):
+def lab(monkeypatch, tmp_path):
     clock = Clock()
+    # The bounce's planned window (C2702) is recorded in this test's own folder (C1864).
+    monkeypatch.setattr("modules.restarts._data", lambda name: str(tmp_path / name))
     monkeypatch.setattr(P, "CLOCK", clock.time)
     monkeypatch.setattr(P, "SLEEP", clock.sleep)
     monkeypatch.setattr("modules.commands.run_device_command",
@@ -490,6 +492,44 @@ class TestRefusedBeforeSending:
 
 
 # ---------------------------------------------------------------------------- the two paths
+
+class TestThePlannedWindow:
+    """C2702 (trial 1a, r4, 2026-11-07): the probe's own bounce raised two unexplained adjacency
+    flap rows, because it declared no planned window. It declares one BEFORE the batch."""
+
+    def test_the_window_is_recorded_before_the_batch_and_covers_the_run(self, lab):
+        from modules import restarts
+
+        lab.make()
+        rec = _run(lab)
+        w = rec["planned_window"]
+        assert w["ok"], w
+        row = w["record"]
+        assert (row["devices"], row["list"], row["via"]) == (["r3"], "Lab", "nmas-revert-probe")
+        assert row["from"] <= rec["times"]["t0_utc"].replace(".0Z", "Z")
+        assert P.window_seconds(1) == 60 + P.WATCH_PAST_S + P.WINDOW_MARGIN_S
+        assert "GigabitEthernet4 shut and no shut" in row["why"]
+        assert [r["devices"] for r in restarts.planned_rows()] == [["r3"]]
+
+    def test_a_window_that_cannot_be_recorded_sends_nothing(self, lab, monkeypatch):
+        dev = lab.make()
+        monkeypatch.setattr("modules.restarts.record_planned",
+                            lambda *a, **k: {"ok": False, "error": "the store is unreadable"})
+        rec = _run(lab)
+        assert dev.batches == [], "nothing was sent"
+        assert rec["refused"].startswith("the planned window for the bounce could not be "
+                                         "recorded (the store is unreadable)")
+
+    def test_a_window_whose_record_raises_sends_nothing(self, lab, monkeypatch):
+        dev = lab.make()
+
+        def boom(*a, **k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("modules.restarts.record_planned", boom)
+        rec = _run(lab)
+        assert dev.batches == [] and "OSError: disk full" in rec["refused"]
+
 
 class TestTheRevertPath:
     def test_the_record(self, lab):

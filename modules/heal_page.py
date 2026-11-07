@@ -25,6 +25,9 @@ KIND_LABELS = {
     "process_reset": "Takes effect through a process reset (router-id)",
     "qos_policy": "QoS policy",
     "secret_added_back": "A secret added back",
+    # The actions H20 built (19.4): configuration unchanged, inside the device's revert timer.
+    "port_bounce": "Port bounce: a port down while admin up, its far end up (an action)",
+    "ospf_reset": "OSPF adjacency reset: the bounce on its one-neighbour interface (an action)",
 }
 #: Tiers 3 and 4: never settings, drawn fixed with why (section 5).
 FIXED_KINDS = (

@@ -62,13 +62,18 @@ KILL_KEY = "heal_stopped"
 
 #: The fix kinds a policy may name, by tier (section 5). Tier 1 may be allowed AUTO, Tier 2 is
 #: proposed for a person; Tiers 3 and 4 are never settings.
-TIER1_KINDS = ("missing_line", "changed_line", "added_line", "admin_down")
+#: The action kinds built (19.4, H20: `heal.actions.BUILT`) are Tier 1 kinds a policy may name;
+#: no policy names one by default (the schema's ``heal_kinds_auto`` is empty).
+TIER1_KINDS = ("missing_line", "changed_line", "added_line", "admin_down", "port_bounce",
+               "ospf_reset")
 TIER2_KINDS = ("process_reset", "qos_policy", "secret_added_back")
 KIND_WORDS = {
     "missing_line": "a missing line", "changed_line": "a changed line, single-valued",
     "added_line": "an added line, a measured shape", "admin_down": "admin down where intent "
     "says up", "process_reset": "a fix that takes effect only through a process reset",
     "qos_policy": "a QoS policy", "secret_added_back": "a line in a secret position, added back",
+    "port_bounce": "a port bounce (an action)",
+    "ospf_reset": "an OSPF adjacency reset (the bounce on its one-neighbour interface)",
 }
 
 #: The hard stops a network sets, in section 6's order, each with its unit.

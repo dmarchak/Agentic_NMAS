@@ -516,10 +516,22 @@ def act_one(network: str, decision_id: str, *, now: float = None, sources=None,
             taken = decisions.take(network, decision_id, by=f"{by}: the apply", now=now)
         except decisions.Refused as exc:
             return refused(str(exc))
-        return _guarded(network, taken, lambda: apply_decision(network, taken, now=now,
-                                                               sources=sources))
+        return _guarded(network, taken, lambda: _apply_for(network, taken, now=now,
+                                                           sources=sources))
     finally:
         mark.release()
+
+
+def _apply_for(network: str, decision: dict, *, now: float = None, sources=None) -> dict:
+    """A taken decision's act: an action's (19.4, H20: the port bounce and the OSPF reset
+    through it, `bounce.apply`), or a heal's (`apply_decision`). One taker (`run`), one mark,
+    one record, whichever it is."""
+    from modules.heal import bounce
+
+    if (decision.get("action") or {}).get("kind") in bounce.KINDS:
+        return bounce.apply(network, decision, now=now)
+    return apply_decision(network, decision, **({"now": now} if now is not None else {}),
+                          sources=sources)
 
 
 def _guarded(network: str, decision: dict, work):
@@ -810,7 +822,7 @@ def start(network: str, decision: dict, sources=None) -> str:
 
     def work(_job):
         try:
-            return {"ok": True, "result": _guarded(network, decision, lambda: apply_decision(
+            return {"ok": True, "result": _guarded(network, decision, lambda: _apply_for(
                 network, decision, sources=sources))}
         finally:
             interrupted.release(network, decision["id"])

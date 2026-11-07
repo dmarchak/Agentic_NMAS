@@ -262,9 +262,24 @@ def _diagnosis_thread(network: str, incident_id: str, diagnose) -> tuple:
     return held, done
 
 
+def _consider(network: str, incident_id: str, diagnosis: dict, consider=None) -> dict:
+    """The action the diagnosis chooses, judged and recorded before the notice is sent
+    (`bounce.consider`: in dry run "would bounce", nothing sent; in AUTO a ``heal`` decision
+    the act's runner takes). Never raises: a notice is sent whatever it found."""
+    try:
+        if consider is None:
+            from modules.heal import bounce
+            consider = bounce.consider
+        return consider(network, incident_id, diagnosis)
+    except Exception as exc:                          # said in the log; the notice still goes
+        log.error("heal notice: %s's action for %s was not considered: %s", network,
+                  incident_id, exc)
+        return {"state": "failed", "words": f"{type(exc).__name__}: {exc}"}
+
+
 def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAIT_S,
            follow_s: float = None, send=None, deliver=None, now: float = None,
-           diagnose=None, diagnosis_wait_s: float = None) -> dict:
+           diagnose=None, diagnosis_wait_s: float = None, consider=None) -> dict:
     """Tell the network's team about one can't-fix, its analysis waited for up to *wait_s*
     (section 12), then the follow-up when it was not back in time. An Alert incident (Tier 3,
     `auto_diagnose.is_alert`) is diagnosed first (H17, 19.3), waited for up to
@@ -291,6 +306,9 @@ def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAI
     if alert:
         dheld, ddone = _diagnosis_thread(network, incident_id, diagnose)
         diagnosed = ddone.wait(max(0.0, diag_wait))
+        if diagnosed and dheld.get("got"):
+            # 19.3: "then item 2's actions are considered (19.4), and then the notice is sent".
+            _consider(network, incident_id, dheld["got"], consider)
     held, done = {}, threading.Event()
 
     def work():

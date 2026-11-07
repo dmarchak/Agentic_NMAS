@@ -11,6 +11,15 @@ line protocol following it are one transition, not two. An interface shut by a p
 ``%LINK-5-CHANGED`` (administratively down), which is no flap. The stability window (H20's
 verify) is the same minutes: the transitions since the bounce (`transitions`).
 
+**A planned window's transitions are the operation's, never a flap** (C2694, H20): guard 13e's
+count (`flapping`) leaves out each transition received inside a planned window that takes the
+interface down on purpose (`planned_spans`): one naming the device and that interface (the port
+bounce declares one before it sends, `bounce.declare_window`), or one naming the whole device (a
+planned restart takes every port down). The record keeps every transition; only the count
+leaves them out, and says how many. Planned windows that cannot be read leave the count
+unreadable, never read as none. The bounce's own stability window reads the transitions whole
+(`transitions`), after its own up.
+
 **Times are the collector's receive times** (each line's ``ts``, from Loki), never the device's
 clock or its uptime (CLAUDE.md: slow vIOS clocks).
 
@@ -227,17 +236,55 @@ def transitions(network: str, device: str, interface: str, since: float,
             "words": f"{len(got)} transition(s) of {device} {interface} logged"}
 
 
+def planned_spans(network: str, device: str, interface: str, planned: list = None) -> list:
+    """``[(from, until)]``, epoch seconds: the planned windows that take *device*'s *interface*
+    down on purpose (C2694, H20): a window naming the device and that interface (a port bounce
+    declares one, `bounce.declare_window`), or the whole device (a window naming no interface,
+    a planned restart, takes every port down too). Raises when the planned windows cannot be
+    read (never read as none)."""
+    from modules import restarts
+    from modules.nsot.ifnames import canonical
+
+    rows = restarts.planned_rows() if planned is None else planned
+    want = canonical(interface or "")
+    out = []
+    for p in rows:
+        if not restarts._names(p, device, network):
+            continue
+        ports = p.get("interfaces")
+        if ports and want not in {canonical(i) for i in ports}:
+            continue
+        start = restarts._epoch(p.get("from", ""))
+        end = restarts._epoch(p.get("ended_at") or p.get("until", ""))
+        out.append((start, min(end, restarts._epoch(p.get("until", "")))))
+    return out
+
+
 def flapping(network: str, device: str, interface: str, now: float, *, at_least: int,
-             minutes: int) -> dict:
-    """Guard 13e's measurement: ``{"state", "flapping", "transitions", "at_least", "minutes",
-    "device", "interface", "words"}``."""
+             minutes: int, planned: list = None) -> dict:
+    """Guard 13e's measurement: ``{"state", "flapping", "transitions", "planned",
+    "at_least", "minutes", "device", "interface", "words"}``. A transition received inside a
+    planned window that takes the interface down on purpose (`planned_spans`: Mercury's own
+    bounce, or a planned restart) is the operation's, not a flap, and is left out of the count,
+    which says how many it left out (C2694). Planned windows that cannot be read leave the
+    record unreadable."""
     got = transitions(network, device, interface, now - float(minutes) * 60, now)
-    n = len(got["transitions"])
-    out = {"state": got["state"], "flapping": got["state"] == "read" and n >= int(at_least),
-           "transitions": n, "at_least": int(at_least), "minutes": int(minutes),
-           "device": device, "interface": interface}
+    out = {"state": got["state"], "flapping": False, "transitions": 0, "planned": 0,
+           "at_least": int(at_least), "minutes": int(minutes), "device": device,
+           "interface": interface}
     if got["state"] != "read":
         return dict(out, words=got["words"])
+    try:
+        spans = planned_spans(network, device, interface, planned)
+    except Exception as exc:                          # noqa: BLE001 (said, never read as none)
+        return dict(out, state="unreadable",
+                    words=(f"the planned windows cannot be read ({type(exc).__name__}), so "
+                           "which transitions were Mercury's own cannot be told"))
+    mine = [t for t in got["transitions"] if any(a <= t["epoch"] <= b for a, b in spans)]
+    n = len(got["transitions"]) - len(mine)
+    out.update(transitions=n, planned=len(mine), flapping=n >= int(at_least))
     return dict(out, words=(f"{n} UPDOWN transition(s) of {device} {interface} in "
-                            f"{int(minutes)} min (a flap is {int(at_least)}): "
-                            + ("a flap" if out["flapping"] else "not a flap")))
+                            f"{int(minutes)} min (a flap is {int(at_least)})"
+                            + (f", {len(mine)} more inside a planned window left out"
+                               if mine else "")
+                            + ": " + ("a flap" if out["flapping"] else "not a flap")))

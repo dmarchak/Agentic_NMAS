@@ -39,6 +39,7 @@ STATE_WORDS = {
     "retire": "Retiring", "save": "Saving (write memory)", "command": "Running a command",
     "bulk": "Changing by a bulk operation", "file": "Changing by a file action",
     "probe": "Probing removal shapes",
+    "port bounce": "Bouncing a port (self-healing)",
     "monitoring profile apply": "Applying its monitoring profile",
     "IP SLA send": "Sending its IP SLA probes",
     "monitoring templates deploy": "Sending its monitoring templates",

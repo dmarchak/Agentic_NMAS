@@ -1196,7 +1196,8 @@ SCHEMA: dict = {
                            "fingerprint": _STR, "until": _STR},
         },
         "heal_kinds_auto": {"type": "array", "uniqueItems": True, "items": {
-            "enum": ["missing_line", "changed_line", "added_line", "admin_down"]}},
+            "enum": ["missing_line", "changed_line", "added_line", "admin_down",
+                     "port_bounce", "ospf_reset"]}},
         "heal_kinds_propose": {"type": "array", "uniqueItems": True, "items": {
             "enum": ["process_reset", "qos_policy", "secret_added_back"]}},
         "heal_topology_hold_minutes": {"type": "integer", "minimum": 0, "maximum": 10080},
