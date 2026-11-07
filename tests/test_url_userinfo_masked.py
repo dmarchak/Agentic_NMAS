@@ -96,6 +96,12 @@ ENTRY_POINTS = {
         __import__("modules.heal.kinds", fromlist=["masked_unit"]).masked_unit(
             {"op": "add", "chain": [], "lines": [], "add": [(None, PLANTED)],
              "remove": [(None, PLANTED)]})["add"]),
+    # The read loop's send log, masked at rest (board H, H26): a row's strings through
+    # `redact.redact_payload`, its digests kept only when they are hex.
+    "modules/ai/read_log.py:_masked": lambda: __import__("json").dumps(
+        __import__("modules.ai.read_log", fromlist=["_masked"])._masked(
+            {"incident": "i-1", "note": PLANTED,
+             "reads": [{"command": "show version", "error": PLANTED}]})),
     # A heal's facts on its receipt row, every string masked (board H, H4).
     "modules/nsot/receipts.py:_masked": lambda: "\n".join(
         __import__("modules.nsot.receipts", fromlist=["_masked"])._masked(

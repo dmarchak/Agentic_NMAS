@@ -158,7 +158,11 @@ class TestTheTrigger:
     def test_the_outcomes_that_ask_are_the_three_named(self):
         assert HA.CANT_FIX == ("cant_fix", "symptom_remains", "rolled_back")
         assert B.FEATURES["heal_analysis"]["findings"] == ("heal_incident",)
-        assert B.FEATURES["heal_analysis"]["calls_per_finding"] == 1
+        # The read loop's two passes (19.5: "`calls_per_finding` becomes 2", H26), so the
+        # estimate shown at Turn on counts both.
+        from modules.ai import read_loop
+        assert B.FEATURES["heal_analysis"]["calls_per_finding"] == 2 \
+            == read_loop.CALLS_PER_FINDING
 
     def test_a_step_log_that_cannot_be_read_asks_nothing_and_says_so(self, ai):
         turn_on()

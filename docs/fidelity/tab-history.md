@@ -20,7 +20,14 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `6cb8af5ab5e76f1b41b1f69fce3055f9b3d47a13357839959bf944c3341790dd`
+Templates sha256: `66def9f4db13679f53fb9bf739786561e01a36db0306eb17ca29fd83ccdc37b4`
+
+Compared again 2026-11-07 (board H's amendment, H26), by the template diff: the regions and
+verdicts are history.md's of the same date (one template draws both): `_timeline.html` draws
+the kind `ai_read` and its three links; a device's History tab shows the reads of that device
+only. **deviation** (log: Board H built: each AI read is its own History row beside its two
+calls). No other region of this tab moved. Templates sha256 before:
+`6cb8af5ab5e76f1b41b1f69fce3055f9b3d47a13357839959bf944c3341790dd`.
 
 Compared again 2026-11-07 (board H, H9's rest, C2399), against board H's artboard C (its
 dry-run record, heal-to-intent.html, 1440) and the shots `tests/test_board_shots.py::

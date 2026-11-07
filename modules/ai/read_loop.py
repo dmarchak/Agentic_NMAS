@@ -65,8 +65,17 @@ switch list) is another; the device state class's switch is H28's
 by an admin with a reason; a class whose function is absent is still off everywhere), and so
 is the read-only account the CLI family signs in with (`reads.run(..., by="ai_analysis")`,
 which refuses a device without one by name);
-the History rows for each pass and read (15.14) are H26's, from the result's ``reads`` and
-``second``; wiring heal_analysis (H26/H28) and the SDN Responder (B4-4) to `run` is theirs.
+wiring the SDN Responder (B4-4) to `run` is B4's.
+
+**Every send is logged (H26, `read_log`).** Once the check has judged pass 1's requests and
+the allowed ones have run, the send log's ``reads`` row is written: each request, its verdict
+and reason, the command as matched, the class it goes out under, the reads engine's run and
+whom it signed in as (an executor answering `Answered`), and each answer's bytes and sha256 as
+sent and whole, never its text. It is written **before** pass 2 is asked, and a loop whose row
+cannot be written asks no pass 2: nothing of a read leaves the host unlogged. Pass 2's ask is
+then the ``sent`` row: its call id and whether the request left the host (`left_host`). History
+draws each request as its own row beside the two calls (`history_sources.ai_reads`), and the
+heal analysis (`heal_analysis.analyse`, H26) writes the incident's one step from *words*.
 """
 
 import hashlib
@@ -771,19 +780,38 @@ def capped(text: str, cap: int = AI_READ_CAP):
     return head + note(len(head.encode("utf-8"))), True
 
 
+@dataclass(frozen=True)
+class Answered:
+    """What a family's executor may answer in place of the bare answer: the *answer* and where
+    it is recorded, *run* (the reads engine's run on History › Reads) and *signed_in_as*
+    (``{"username", "source"}``, never a password), kept with the read's record and the send
+    log (`read_log`), never sent to the model (`as_sent`)."""
+
+    answer: object
+    run: str = ""
+    signed_in_as: dict = field(default_factory=dict)
+
+
 def _answered(verdict: dict, answer, values: dict) -> dict:
     from modules import redact
 
+    where = {}
+    if isinstance(answer, Answered):
+        where = {"run": str(answer.run or ""),
+                 "signed_in_as": {k: str(v) for k, v in (answer.signed_in_as or {}).items()
+                                  if k in ("username", "source")}}
+        answer = answer.answer
     text, withheld = masked(answer, values)
     if redact.contains_known_secret(text):
-        return dict(verdict, verdict="failed",
+        return dict(verdict, verdict="failed", **where,
                     reason="a stored secret is still in the answer after masking, so nothing "
                            "of it is sent")
     whole = text.encode("utf-8")
     sent, cut = capped(text)
-    return dict(verdict, verdict="run", answer=sent, bytes=len(whole),
-                sent_bytes=len(sent.encode("utf-8")), cut=cut,
-                sha256=hashlib.sha256(whole).hexdigest(), withheld=withheld)
+    data = sent.encode("utf-8")
+    return dict(verdict, verdict="run", answer=sent, bytes=len(whole), sent_bytes=len(data),
+                cut=cut, sha256=hashlib.sha256(whole).hexdigest(),
+                sent_sha256=hashlib.sha256(data).hexdigest(), withheld=withheld, **where)
 
 
 def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
@@ -887,12 +915,14 @@ def _summary(records: list) -> str:
 
 def _all_off(family: ReadFamily, network: str) -> str:
     """"" when any operation's class is on for *network* (and no marking forces AI off), else
-    why none is (the first class's words)."""
+    why none is: the family's own class's words first (the router set's device state, never
+    the configuration class its two configuration forms go under), then the others'."""
     marked = _marking(network)
     if marked:
         return marked
     first = ""
-    for cls in sorted({family.class_of(op) for op in family.operations}):
+    others = sorted({family.class_of(op) for op in family.operations} - {family.egress_class})
+    for cls in [family.egress_class] + others:
         why = class_state(family, cls, network)
         if not why:
             return ""
@@ -909,20 +939,81 @@ def _second_failed(got: dict) -> str:
     return f"second pass failed: {kind}: {detail}; the first pass's answer is shown"
 
 
+def reads_off(family: ReadFamily, network: str) -> str:
+    """"" when a read of *family* may be asked for on *network* (some operation's class is on,
+    and no marking forces AI off), else why not: what decides whether pass 1 is the reads pass
+    or the plain one."""
+    return _all_off(family, network)
+
+
+def _log_sending(out: dict, family: ReadFamily, feature: LoopFeature, records: list, *,
+                 network: str, subject: dict, trigger: dict) -> str:
+    """The send log's ``reads`` row for *records* (`read_log.sending`): "" when it is kept,
+    else why not (the loop then sends nothing of the reads)."""
+    from modules.ai import read_log
+
+    loop = read_log.new_id()
+    out.update(loop=loop, logged=False)
+    entries = []
+    for r in records:
+        op = family.operation(r.get("op") or "")
+        entries.append(read_log.entry(r, family.class_of(op) if op is not None else ""))
+    try:
+        read_log.sending(loop, network=network, subject=subject, task=feature.task,
+                         trigger=trigger, first_call=out["first"].get("call_id") or "",
+                         entries=entries)
+    except Exception as exc:                            # noqa: BLE001 (said: nothing is sent)
+        log.error("read loop: the send log of %s could not be written: %s", loop, exc)
+        return f"{type(exc).__name__}: {exc}"[:200]
+    out["logged"] = True
+    return ""
+
+
+def left_host(got: dict) -> bool:
+    """Whether an ask's request left the host: yes for an answer and for every failure but the
+    gateway's refusals made before any provider request (`NOT_SENT_KINDS`, `CAP_KINDS`); an
+    outcome not known to be unsent is read as sent."""
+    if got.get("ok"):
+        return True
+    kind = got.get("error") or ""
+    return not (kind in NOT_SENT_KINDS or kind in CAP_KINDS)
+
+
+def _log_answered(out: dict, got: dict) -> None:
+    """The send log's ``sent`` row for pass 2's ask (`read_log.answered`); a row not kept is
+    said on the result and logged, the ``reads`` row standing as possibly sent."""
+    from modules.ai import read_log
+
+    gone = left_host(got)
+    why = "" if gone else f"{got.get('error') or ''}: {got.get('detail') or ''}"[:200]
+    try:
+        read_log.answered(out["loop"], second_call=got.get("call_id") or "", left_host=gone,
+                          why=why)
+    except Exception as exc:                            # noqa: BLE001 (said on the result)
+        log.error("read loop: the send log's sent row of %s could not be written: %s",
+                  out.get("loop"), exc)
+        out["logged"] = False
+
+
 def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str, data: dict,
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
-        scope: dict = None, actable=(), send=None, today: str = None) -> dict:
+        scope: dict = None, actable=(), send=None, today: str = None,
+        reads_context: dict = None) -> dict:
     """The loop for one finding (the module's docstring has the steps): at most two calls of
     *feature*'s task through *ask* (the gateway's `ask`, given by the feature), each with
     *trigger*, *actor*, *subject* and *network*; *data* the call's own parts, *context* its
     cached prefix; *scope* what the family's comparisons read (the finding's devices, the live
-    switch list); *actable* the values the finding names, the only ones an answer may act on.
+    switch list); *actable* the values the finding names, the only ones an answer may act on;
+    *reads_context* the context blocks only the reads pass carries (what the reads are), never
+    the plain pass.
 
     ``{"ok", "state", "pass", "answer", "words", "reads", "first", "second", "call_ids",
-    "cost_usd", ...}``: *state* ``answered`` (the final answer, pass 1's or 2's), ``first_pass``
-    (pass 2 refused or not run: pass 1's answer, said), ``refused_by_check`` (pass 1's answer
-    refused: nothing drawn, no read run) or ``failed`` (pass 1 not answered); *reads* every
-    read record; *words* what the step log says. Never raises for a model's answer."""
+    "cost_usd", "loop", "logged", ...}``: *state* ``answered`` (the final answer, pass 1's or
+    2's), ``first_pass`` (pass 2 refused or not run: pass 1's answer, said), ``refused_by_check``
+    (pass 1's answer refused: nothing drawn, no read run) or ``failed`` (pass 1 not answered);
+    *reads* every read record; *words* what the step log says; *loop* the send log's id for
+    the requests (`read_log`), and *logged* whether its rows were kept. Never raises for a
+    model's answer."""
     if not isinstance(family, ReadFamily) or not isinstance(feature, LoopFeature):
         raise TypeError("read_loop.run takes a declared ReadFamily and LoopFeature")
     common = {"actor": actor, "trigger": trigger, "subject": subject, "network": network,
@@ -934,11 +1025,14 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     def asked(got):
         out["call_ids"].append(got.get("call_id") or "")
         out["cost_usd"] += float(got.get("cost_usd") or 0.0)
-        return {k: got.get(k) for k in ("ok", "call_id", "error", "detail") if k in got}
+        return {k: got.get(k) for k in ("ok", "call_id", "error", "detail", "cap_kind")
+                if k in got}
 
     off = _all_off(family, network)
     plain = bool(off) and feature.plain is not None
     prompt, schema = feature.plain if plain else feature.first
+    if not plain and reads_context:
+        ctx = dict(ctx, **reads_context)
     got = ask(feature.task, prompt, schema, dict(data), context=ctx or None, **common)
     out["first"] = asked(got)
     if not got.get("ok"):
@@ -962,8 +1056,17 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     records = run_reads(family, check(family, wanted, network=network, scope=scope), scope)
     out["reads"] = records
     summary = _summary(records)
+    # Every request is logged, and every answer to be sent is logged BEFORE pass 2 is asked
+    # (`read_log`, H26): its sizes and digests, never its text. Nothing is sent unlogged.
+    unlogged = _log_sending(out, family, feature, records, network=network, subject=subject,
+                            trigger=trigger)
     if not any(r["verdict"] == "run" for r in records):
         out["words"] = f"AI analysis: {summary}; second pass not run: no read was run"
+        return out
+    if unlogged:
+        out["state"] = "first_pass"
+        out["words"] = (f"AI analysis: {summary}; second pass not run: the send log could not "
+                        f"be written ({unlogged}), so nothing of the reads is sent")
         return out
     parts = dict(data)
     parts[READS_PART] = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
@@ -972,6 +1075,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     got = ask(feature.task, prompt, schema, parts, context=dict(ctx, reads_format=READS_FORMAT),
               **common)
     out["second"] = asked(got)
+    _log_answered(out, got)
     if not got.get("ok"):
         out["state"] = "first_pass"
         out["words"] = f"AI analysis: {summary}; {_second_failed(got)}"

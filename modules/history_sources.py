@@ -1222,6 +1222,93 @@ def ai_calls(ctx):
                 cut=[f"the AI calls' newest {ctx['limit']}"] if len(rows) > ctx["limit"] else [])
 
 
+def ai_reads(ctx):
+    """Each read an AI call asked Mercury for (docs/HEAL_TO_INTENT.md 19.5, "Between the two
+    passes, each read request is a row, linked to both"; board H artboard M; the send log,
+    `modules/ai/read_log.py`), kind ``ai_read``, beside the AI calls: what was asked (the
+    device, the operation and the command as matched, why and the hypothesis it tests), the
+    verdict with its reason, the egress class it goes out under, the reads engine's run on
+    History › Reads and whom it signed in as, the bytes and sha256 sent (masked, cut) and of
+    the whole answer, the lines withheld, and whether it left the host in pass 2's call. Never
+    the answer's text: the masked bytes that left the host are pass 2's prompt, opened from its
+    call's row. The network's own rows; a device's tab shows the reads of it."""
+    from modules.ai import read_log
+    from modules.nsot import listref
+    from modules.redact import redact_text
+
+    def m(value):
+        return redact_text(str(value)) if value not in (None, "") else ""
+
+    got = read_log.loops()
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the read loop's send log could not be read: {got['error']}"])
+    try:
+        mine = listref.network_id(ctx["ref"].name)
+    except Exception:                                   # noqa: BLE001 (an unknown network)
+        mine = ""
+    events = []
+    for loop in reversed(got["loops"]):
+        if not mine or loop.get("network") != mine or not _recent(ctx, loop.get("at")):
+            continue
+        subject = loop.get("subject") or {}
+        about = subject_words(subject) if subject.get("kind") != "heal_incident" else \
+            f"incident {subject.get('id') or '?'}"
+        sent = loop.get("sent") or {}
+        for e in reversed(loop.get("reads") or []):
+            dev = e.get("device") or ""
+            if (ctx["device"] and dev != ctx["device"]) or (dev and not _mine(ctx, dev)):
+                continue
+            n = (e.get("id") or "read:?").split(":", 1)[-1]
+            command = "; ".join(e.get("commands") or []) or e.get("op") or "?"
+            verdict = e.get("verdict") or ""
+            gone = read_log.left_host_words(loop, e.get("id") or "")
+            if verdict == "run":
+                what = (f"AI read {n} of {about}: {dev or '?'} {command}: run, "
+                        f"{int(e.get('sent_bytes') or 0)} bytes as "
+                        f"{(e.get('egress_class') or '?').replace('_', ' ')}, "
+                        f"{int(e.get('withheld') or 0)} lines withheld")
+            else:
+                what = f"AI read {n} of {about}: {dev or '?'} {command}: {verdict}"
+            who = (e.get("signed_in_as") or {})
+            ev = _event(
+                loop.get("at"), "ai_read", what, [dev] if dev else [],
+                who=(f"the AI, for {loop.get('trigger', {}).get('feature') or loop.get('task')}"
+                     f" (job {loop.get('trigger', {}).get('job') or '?'})"),
+                detail=m(e.get("reason")) if verdict != "run" else f"Why: {m(e.get('why'))}",
+                outcome=verdict,
+                record=[("Read", e.get("id")), ("Loop", loop.get("loop")),
+                        ("About", about), ("Device", dev), ("Operation", e.get("op")),
+                        ("Command as matched", m(command)), ("Why", m(e.get("why"))),
+                        ("Hypothesis", m(e.get("hypothesis"))), ("Verdict", verdict),
+                        ("Reason", m(e.get("reason"))),
+                        ("Egress class", (e.get("egress_class") or "").replace("_", " ")),
+                        ("Signed in as", (f"{who.get('username')} ({who.get('source')})"
+                                          if who.get("username") else "")),
+                        ("On History › Reads", e.get("run")),
+                        ("Bytes sent (masked)", e.get("sent_bytes") if verdict == "run" else ""),
+                        ("sha256 sent", e.get("sent_sha256")),
+                        ("Whole answer (masked)", (f"{e.get('bytes')} bytes, sha256 "
+                                                   f"{e.get('sha256')}"
+                                                   + (", cut for the model" if e.get("cut")
+                                                      else "")) if verdict == "run" else ""),
+                        ("Lines withheld", str(e.get("withheld")) if verdict == "run" else ""),
+                        ("Left the host", gone),
+                        ("Pass 1's call", loop.get("first_call")),
+                        ("Pass 2's call", sent.get("second_call"))])
+            # Both calls linked (19.5: "a row, linked to both"), and its read on History ›
+            # Reads (`reads_v2.show_commands_result`).
+            ev["read_of"] = {"first": loop.get("first_call") or "",
+                             "second": sent.get("second_call") or "",
+                             "run": e.get("run") or "", "list": ctx["ref"].name}
+            events.append(ev)
+            if len(events) >= ctx["limit"]:
+                break
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events, cut=[f"the AI reads' newest {ctx['limit']}"]
+                if len(events) >= ctx["limit"] else [])
+
+
 #: A use row's page is one of Mercury's own (`/v2/...`, a path and its query): any other value
 #: (another host, a scheme, a path outside v2) is not drawn as a link.
 _PRODUCED = re.compile(r"^/v2/[A-Za-z0-9/_.~%-]*(\?[A-Za-z0-9_.~%=&+-]*)?$")
@@ -1802,13 +1889,20 @@ def show_commands(ctx):
                                     if lp.get("counts", {}).get(k))
             elif r.get("state") != "refused":
                 outcome = "watching"
+        # Whom each device's read signed in as (H28's read-only account, C2661): its account's
+        # name and the profile it came from, never a password.
+        signed = "; ".join(
+            f"{h}: {s['username']} ({s.get('source') or 'no profile recorded'})"
+            for h in hosts
+            for s in [((r.get("results") or {}).get(h) or {}).get("signed_in_as") or {}]
+            if s.get("username"))
         events.append(_event(r.get("started_at"), "show_commands", what,
                              hosts, who=reads.actor_words(r),
                              detail=(r.get("refused") or r.get("purpose")
                                      or (f"Why: {r['reason']}" if r.get("reason") else "")),
                              outcome=outcome,
                              record=[("Run", r.get("id")), ("Devices", len(r.get("devices") or [])),
-                                     ("Outcome", outcome)]))
+                                     ("Outcome", outcome), ("Signed in as", signed)]))
     return _out(events, errors)
 
 
@@ -1996,6 +2090,9 @@ def heal(ctx):
     if got["state"] == "unreadable":
         return _out(errors=[f"the self-healing step log could not be read: {got['error']}"])
     marks = _heal_marks(ctx["ref"].name, got["entries"])
+    # The AI analysis's one step per incident (19.5, H26), drawn on its incident's row after
+    # Mercury's own steps: advice, which nothing in self-healing reads.
+    advice = steplog.advisories(ctx["ref"].name).get("by_incident") or {}
     events = []
     for e in reversed(got["entries"]):
         host = e["device"]
@@ -2029,7 +2126,8 @@ def heal(ctx):
                     ("Change record", m(cr.get("words"))),
                     ("NetBox journal", m(journal.get("words")))]
             # A Tier 2 proposal a person approved or declined (board H, H5): who, and why.
-            + ([("Approval", m(rec["approval"]))] if rec.get("approval") else []) + steps))
+            + ([("Approval", m(rec["approval"]))] if rec.get("approval") else []) + steps
+            + _advisory_lines(advice.get(e["incident"]) or [], m)))
         if outcome == "would_heal" and e.get("decisions"):
             # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong…
             # (H9, C2399), marking the incident's dry-run decision, its mark read from the
@@ -2046,6 +2144,18 @@ def heal(ctx):
             break
     return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]
                 if len(events) >= ctx["limit"] else [])
+
+
+def _advisory_lines(rows: list, m) -> list:
+    """An incident's AI analysis step (its newest advisory row, `steplog.record_advisory`) as
+    its row's record lines: the step's words, then each of its parts (pass 1, each refusal with
+    its reason, the reads run, pass 2), all masked again on the way out."""
+    if not rows:
+        return []
+    last = rows[-1]
+    return ([("AI analysis (advice; self-healing never reads it)", m(last.get("words")))]
+            + [(f"AI · {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
+               for s in last.get("steps") or []])
 
 
 def _heal_marks(network: str, entries: list) -> dict:
@@ -2360,7 +2470,7 @@ SOURCES = {
     "sdn_operations": sdn_operations,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
-    "diagnoses": diagnoses,
+    "diagnoses": diagnoses, "ai_reads": ai_reads,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -2395,7 +2505,7 @@ KIND_GROUPS = (
                                ("secret_values", "Secret values set", ("secret_value",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
-                               ("ai_calls", "AI calls", ("ai_call",)),
+                               ("ai_calls", "AI calls", ("ai_call", "ai_read")),
                                ("sdn", "SDN flow operations", ("sdn",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
@@ -2512,7 +2622,7 @@ SOURCE_KINDS = {
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
-    "diagnoses": ("diagnosis",),
+    "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

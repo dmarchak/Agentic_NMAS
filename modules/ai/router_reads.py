@@ -320,20 +320,23 @@ def _answer_of(record: dict, host: str) -> str:
     return "\n".join(out)
 
 
-def run(op: str, args: dict, requests: list, scope: dict) -> str:
+def run(op: str, args: dict, requests: list, scope: dict) -> RL.Answered:
     """The family's executor: *requests* (exactly what the check allowed) through THE reads
     engine as kind ``ai_analysis``, the device held while it is read (a held device skipped by
     name, never queued), masked and recorded on History › Reads. The engine signs in as the
     device's read-only account (H28: `reads.READ_ACCOUNT_KINDS`) and refuses a device without
     one by name before any session opens; that refusal is raised here in its words. No session
-    is opened here: one way in, the engine's."""
+    is opened here: one way in, the engine's. Answered with the run's id and whom it signed in
+    as (`read_loop.Answered`), so the send log names the read on History › Reads (H26)."""
     from modules.nsot import reads
 
     host = args["device"]
     record = reads.run(scope["network"], [host], list(requests),
                        scope.get("actor") or "the AI analysis", by=KIND,
                        purpose=scope.get("purpose") or f"the AI's read: {op}")
-    return _answer_of(record, host)
+    signed = ((record.get("results") or {}).get(host) or {}).get("signed_in_as") or {}
+    return RL.Answered(_answer_of(record, host), run=record.get("id") or "",
+                       signed_in_as=dict(signed))
 
 
 #: The router read family: answers go out under the device state class (N20), the

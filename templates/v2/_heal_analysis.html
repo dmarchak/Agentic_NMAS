@@ -19,7 +19,9 @@
 <p><strong>Hypothesis{% if b.hypotheses|length > 1 %} {{ loop.index }}{% endif %}:</strong> {{ h.claim }}{% if h.cites %} <span class="small muted">Cites: {{ h.cites|join(', ') }}</span>{% endif %}</p>
 {%- if h.next %}<p><strong>Recommended next step:</strong> confirm with <span class="mono">{{ h.next }}</span>. <span class="small muted">A read on Show commands' allowlist.</span></p>{% endif %}
 {%- endfor %}
-<p class="small muted">Background call (trigger: {{ p.incident }}'s can't-fix){% if p.at %}, {{ p.at[:19]|replace('T', ' ') }} UTC{% endif %}, ${{ '%.4f'|format(p.cost_usd or 0) }}, call {{ p.call_id or 'not recorded' }}. Sent: the evidence pack and what Mercury tried, configuration lines by kind only. Nothing in self-healing reads this answer.</p>
+{#- The read loop (19.5, H26; board M): what it asked Mercury to read, its first call opened on History. -#}
+{%- if b.reads %}<p class="small muted">{{ b.reads }}{% if b.reads_call %} (<a href="{{ url_for('v2.history_page', call=b.reads_call) }}">History</a>){% endif %}.</p>{% endif %}
+<p class="small muted">{% if (p.calls or 1) > 1 %}{{ p.calls }} background calls{% else %}Background call{% endif %} (trigger: {{ p.incident }}'s can't-fix){% if p.at %}, {{ p.at[:19]|replace('T', ' ') }} UTC{% endif %}, ${{ '%.4f'|format(p.cost_usd or 0) }}, call {{ p.call_id or 'not recorded' }}. Sent: the evidence pack and what Mercury tried, configuration lines by kind only{% if b.reads %}; a second pass, when one was sent, carried the answers of the reads that ran, masked, as device state{% endif %}. Nothing in self-healing reads this answer.</p>
 {%- else %}
 <p class="small{% if b.state in ('couldnt_analyse', 'no_answer', 'capped') %} warn-text{% else %} muted{% endif %}"><abbr class="ai-mark" title="{{ p.task_words }}">AI</abbr> {{ b.words }}</p>
 {%- endif %}

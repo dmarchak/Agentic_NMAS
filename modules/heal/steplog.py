@@ -25,13 +25,18 @@ store. Append-only, one line per event, never rewritten.
   Reads holds the masked answer; this row never holds a device's text). Attached to its
   incident when the heal ran it (`incidents` draws it on that entry), its own record when a
   person did (`diagnoses`). "Diagnosed" is not a fix: the row changes no entry's outcome.
+- ``advisory``: the AI analysis's one step for an incident (19.5, H26): its words, each pass,
+  each read request the check refused with its reason, the reads run, and the calls' and the
+  send log's ids; written by `modules/ai/heal_analysis.py` (`record_advisory`), never by the
+  heal loop, and read only by History (`advisories`). It makes no entry and is never an
+  entry's step, so what Mercury tried (H8's ``tried``) stays Mercury's.
 
 **Masked:** every string a row carries passes through `redact.redact_text` before it is kept
 (a secret's position and value never reach the store), and again on the way out (History).
 
 **The seams it leaves.** H8's AI analysis of a can't-fix reads an incident's steps through
-`incident` (what Mercury tried, in Mercury's words) and never writes here; the heal loop never
-reads the analysis. H5's approved proposal writes its rows through `record_started` and
+`incident` (what Mercury tried, in Mercury's words) and writes only its ``advisory`` step
+(H26); the heal loop never reads the analysis or that step. H5's approved proposal writes its rows through `record_started` and
 `record_act` as H4's apply does, its ``by`` the person who approved it. H9's History step log
 draws `incidents`.
 """
@@ -45,7 +50,10 @@ log = logging.getLogger(__name__)
 
 STORE = "heal_steps"
 FILE_NAME = "heal_steps.jsonl"
-ROWS = ("decision", "started", "act", "raised", "interrupted", "diagnosis")
+ROWS = ("decision", "started", "act", "raised", "interrupted", "diagnosis", "advisory")
+#: An advisory row's fields kept (`record_advisory`): its words, its steps and its references
+#: (the calls' ids, the send log's loop), never a model's answer.
+ADVISORY_FIELDS = ("words", "steps", "state", "calls", "loop", "pass")
 #: A diagnosis row's fields kept (`record_diagnosis`): Mercury's words and read references only.
 DIAGNOSIS_FIELDS = ("id", "runbook", "runbook_words", "target", "incident", "actor", "state",
                     "words", "steps", "hypotheses", "more", "ruled_out", "not_checked",
@@ -199,6 +207,39 @@ def record_diagnosis(network: str, diagnosis: dict, now: float = None) -> dict:
                                 diagnosis=kept), now)
 
 
+def record_advisory(network: str, incident: str, *, device: str, words: str, steps: list,
+                    state: str = "", calls=(), loop: str = "", passes: int = 0,
+                    now: float = None) -> dict:
+    """The ``advisory`` row: the AI's advisory step for *incident* (docs/HEAL_TO_INTENT.md
+    19.5: "The incident's step log gets one step"), written by its caller outside the heal
+    loop (`modules/ai/heal_analysis.py`, H26): *words* the step ("AI analysis: asked for 3
+    reads; 2 run, 1 refused; second pass answered", or why nothing was sent), *steps* each
+    pass, each refusal with its reason and the reads run, *calls* the calls' ids and *loop* the
+    send log's. It makes no entry, changes no outcome and is not one of an entry's steps
+    (`_fold` passes over it): nothing in the heal loop reads it; History draws it
+    (`advisories`)."""
+    kept = {"words": words, "steps": [dict(s) for s in steps or []], "state": state,
+            "calls": [c for c in calls or () if c], "loop": loop, "pass": int(passes or 0)}
+    return append(network, dict(row="advisory", decision="", incident=incident or "",
+                                device=device or "",
+                                advisory={k: kept[k] for k in ADVISORY_FIELDS}), now)
+
+
+def advisories(network: str) -> dict:
+    """``{"state", "by_incident": {incident: [its advisory rows' ``advisory``, oldest first,
+    each with its ``at``]}, "error"}``: History's reader of the advisory step. No reader of the
+    heal loop calls it (tests/test_read_loop_never_read.py)."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "by_incident": {}, "error": got["error"]}
+    out = {}
+    for r in got["rows"]:
+        if r.get("row") == "advisory" and r.get("incident"):
+            out.setdefault(r["incident"], []).append(dict(r.get("advisory") or {},
+                                                          at=r.get("at")))
+    return {"state": got["state"], "by_incident": out, "error": ""}
+
+
 def record_interrupted(network: str, decision: dict, words: str, *, halted: bool, by: str,
                        now: float = None) -> dict:
     """The ``interrupted`` row (`modules/heal/interrupted.py`)."""
@@ -217,7 +258,9 @@ def _fold(rows: list) -> list:
     diagnosis is `diagnoses`'."""
     by = {}
     for r in rows:
-        if r.get("row") == "diagnosis":
+        if r.get("row") in ("diagnosis", "advisory"):
+            # An advisory row (the AI's step, H26) is never an entry's step: what Mercury
+            # tried stays Mercury's, and no reader of the loop meets the AI's.
             continue
         key = r.get("incident") or r.get("decision") or r.get("id")
         e = by.get(key)

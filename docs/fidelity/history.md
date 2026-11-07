@@ -32,7 +32,26 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `67e2b64f6a1f5452586836766b08ff4e92c81fcc390b0e8343bf61969eabb779`
+Templates sha256: `199585e8b10a94923a907b1adaa99aff6283ad51e1e7bb0909d84fe052928a26`
+
+Compared again 2026-11-07 (board H's amendment, H26: the read loop's History rows), against
+board H's artboard M, by the template diff (no new shot): `_timeline.html`'s kind table gains
+`ai_read` ("AI read", muted; danger when the read was refused or failed), under the Kind menu's
+**AI calls** (`history_sources.KIND_GROUPS`: the group's kinds are now `ai_call` and
+`ai_read`). Each read an AI call asked for is one row ("AI read 1 of incident hi-…: r4 show
+interfaces GigabitEthernet4: run, 1900 bytes as device state, 0 lines withheld"), opening to its
+record (why, the hypothesis, the verdict and reason, the egress class, whom it signed in as, its
+run on History › Reads, the bytes and sha256 sent and whole, whether it left the host) and three
+links: **Open pass 1's call, which asked for it**, **Open pass 2's call, which carried it**,
+**Open the read on History › Reads**. The board draws one card per analysis with its passes and
+reads indented under it: **deviation** (log: Board H built: each AI read is its own History row
+beside its two calls). The board's "History › Reads rd-91f2" is the link's words: **deviation**
+(log: Board H built: a read's run opened by "Open the read on History › Reads"). The board's
+"1.9 KiB sent as device state, masked, 0 lines dropped" is drawn in bytes and "lines withheld":
+**deviation** (log: Board H built: an AI read's size in bytes, its dropped lines "withheld"). A
+Show commands row (History › Reads) gains **Signed in as** in its record (C2661). No other
+region moved. Templates sha256 before:
+`67e2b64f6a1f5452586836766b08ff4e92c81fcc390b0e8343bf61969eabb779`.
 
 Compared again 2026-11-07 (board H, H9's rest, C2399: a dry-run record's Right / Wrong), against
 board H's artboard C and the shots `heal-mark` (1440, 1280 and 390; tests/test_board_shots.py::

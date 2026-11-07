@@ -144,6 +144,7 @@ RATCHETS = (
     ("tests/test_concepts_are_taught.py", "MIN_WORDS", "floor"),
     ("tests/test_confirm_buttons_drawn.py", "FLOOR", "floor"),
     ("tests/test_heal_analysis_never_read.py", "FLOOR", "floor"),
+    ("tests/test_read_loop_never_read.py", "FLOOR", "floor"),
     ("tests/test_backup_window.py", "FLOOR", "floor"),
     ("tests/test_console_records_at_rest.py", "FLOOR", "floor"),
     ("tests/test_oxidized_settings_inert.py", "FLOOR", "floor"),
@@ -235,4 +236,11 @@ NOT_RATCHETS = {
     ("tests/test_update_when_ci_passes.py", "PENDING"): "a pending CI answer (fixture)",
     ("tests/test_verify_verdict_follows_receipt.py", "R7_MISSING"): "a real receipt's read-back misses (fixture, C1541)",
     ("tests/test_verify_verdict_follows_receipt.py", "R7_SKIPPED"): "a real receipt's skipped read-back lines (fixture, C1541)",
+    # H26 (board H, 2026-11-07): the read loop's never-read scan's exact reader lists, each
+    # compared with ==, never a list that may only fall: a reader the loop gains adds to one.
+    ("tests/test_read_loop_never_read.py", "KNOWN_LOOP"): "the read loop's exact importers (H26), compared with ==; a new importer adds to it, and a missing one fails the scan",
+    ("tests/test_read_loop_never_read.py", "KNOWN_ANALYSIS"): "the heal analysis's exact readers (H26), compared with ==; a new reader adds to it, and a missing one fails the scan",
+    ("tests/test_read_loop_never_read.py", "KNOWN_LOG"): "the send log's exact readers (H26), compared with ==; a new reader adds to it, and a missing one fails the scan",
+    ("tests/test_read_loop_never_read.py", "KNOWN_STEP"): "the advisory step's exact readers (H26), compared with ==; a new reader adds to it, and a missing one fails the scan",
+    ("tests/test_heal_analysis_loop.py", "INVENTORY"): "a one-device inventory the loop's tests read through (fixture, H26), not a ratchet",
 }

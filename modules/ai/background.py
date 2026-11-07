@@ -87,13 +87,15 @@ FEATURES: dict = {
     },
     # Board H, H8 (docs/HEAL_TO_INTENT.md section 12): the AI analysis of what self-healing
     # could not fix, one call per can't-fix incident, its frequency the network's can't-fix
-    # incidents a day in the heal's own step log (`heal_analysis.cant_fix_frequency`).
+    # incidents a day in the heal's own step log (`heal_analysis.cant_fix_frequency`). Asked
+    # through the read loop (19.5, H26): at most two calls a finding
+    # (`read_loop.CALLS_PER_FINDING`), so the estimate shown at Turn on counts both passes.
     "heal_analysis": {
         "task": "heal_analysis",
         "words": "Self-healing analyses what it could not fix",
         "trigger_words": "a heal stops at can't fix",
         "findings": ("heal_incident",),
-        "calls_per_finding": 1,
+        "calls_per_finding": 2,
         "frequency": "modules.ai.heal_analysis:cant_fix_frequency",
     },
 }

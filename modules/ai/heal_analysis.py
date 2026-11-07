@@ -37,10 +37,28 @@ reference must resolve to what was sent, every ``confirm_with`` must be a read o
 allowlist, and a device the answer names must be cited (C1897), all by `explain.check`. It runs
 as its own task and prompt version (``heal_analysis`` v1), so its measurement is its own.
 
-**Section 19's seam (H24 to H31, not built here).** Pass 1 of the read loop is this call with
-one optional field more, ``reads`` (N21): `SCHEMA_OF` maps a prompt version to its schema, so
-pass 1 registers ``("heal_analysis", 2)`` as `Analysis` plus ``reads`` and pass 2 keeps
-`Analysis`, which has none; `check` is where ``read:<n>`` references are resolved then.
+**The read loop (19.5, H26), as far as the feature's switch and the device state class
+allow.** `analyse` asks through `read_loop.run` over the router read set
+(`router_reads.AI_READS`): its gateway calls are the same background calls, each pass's
+switch and caps asked by the gateway before it is sent.
+- **The device state class off** for the network (its default, H28's switch), pass 1 is
+  today's call exactly (``heal_analysis`` v1, `Analysis`): no read is asked for, and the step
+  says why ("reads not asked: the device state class is off for ...").
+- **On**, pass 1 is v2 (`AnalysisReads`: `Analysis` plus ``reads``, at most 3, each checked
+  by Mercury, the read set described in the reads pass's ``read_set`` context block); the
+  allowed reads run through the reads engine as kind ``ai_analysis``, as the read-only
+  account; pass 2 is v3 with the reads attached and `Analysis`'s schema (no ``reads``, so it
+  cannot ask again). Its answer passes Explain's check with the reads that ran and were sent
+  as a section of their own (``read:<n>`` pieces, each its device), so a reference to a read
+  refused, failed or never asked is refused (`read_loop.second_check`, then `check`).
+- **The feature off** (its default), the gateway refuses pass 1 with no provider request:
+  nothing is sent, no read runs, and the step log says so.
+- **Every send is logged** by the loop (`read_log`), and the incident's one step
+  (`steplog.record_advisory`: "AI analysis: asked for 3 reads; 2 run, 1 refused; second pass
+  answered") is written here, beside the analysis. Nothing in the heal loop reads either
+  (tests/test_read_loop_never_read.py).
+- `ask_prepared` without a network stays the one-call seam H13's recorded cases are asked
+  through (a recorded pack reads no device); H27 measures them at two passes.
 
 **What is kept** (`record`, the network's ``heal/analyses.jsonl``, owner-only, append-only):
 one ``asked`` row per incident (the claim, so an incident is analysed once, `claim`), then its
@@ -56,6 +74,8 @@ import time
 from enum import Enum
 
 from modules.ai import calls, gateway
+from modules.ai import read_loop as RL
+from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
 from modules.ai.schemas import StrictModel, register
 
@@ -64,6 +84,11 @@ log = logging.getLogger(__name__)
 #: The task (`profiles.TASKS`'s pin) and the background feature (`background.FEATURES`).
 FEATURE = "heal_analysis"
 PROMPT = ("heal_analysis", 1)
+#: The read loop's two passes (19.5, H26): pass 1 with ``reads``, pass 2 with the reads.
+PROMPT_READS = ("heal_analysis", 2)
+PROMPT_SECOND = ("heal_analysis", 3)
+#: The section the reads that ran are checked as in pass 2 (each a piece ``read:<n>``).
+READS_SECTION = "mercury_reads"
 #: The finding kind its trigger names (`triggers.background`'s *finding_kind*).
 FINDING = "heal_incident"
 #: The outcomes that stop at can't fix (section 12's trigger): the decision's, and an act's
@@ -98,9 +123,16 @@ NO_ANSWER_KINDS = ("provider_down", "rate_limited", "overloaded")
 STEPS = (("finding", "Self-healing stopped at can't fix: the only finding that asks"),
          ("pack", "Build the incident's pack and what Mercury tried, its configuration by kind"),
          ("ask", "One background call through the AI gateway, if the feature is on for the "
-                 "network and within its caps"),
-         ("check", "Check every citation and every next step, as Explain's answers are"),
-         ("keep", "Keep it with the incident; the notice and Needs attention draw it"))
+                 "network and within its caps; with the device state class on, it may ask "
+                 "Mercury for up to 3 read-only reads"),
+         ("check", "Check every citation and every next step, as Explain's answers are, and "
+                   "each read asked for against the AI read set"),
+         ("reads", "Run the reads Mercury allowed as the read-only account, masked, each "
+                   "logged before anything of it is sent"),
+         ("second", "A second background call with the reads, which cannot ask again; its "
+                    "answer checked, citing only reads that ran"),
+         ("keep", "Keep it with the incident and write its one step in the step log; the "
+                  "notice and Needs attention draw it"))
 
 #: The analysis's measured reliability (15.12), the one record its label's figure is drawn from:
 #: None until H13 measures its three recorded cases (C4, I5, V1), ten runs each. It never
@@ -124,8 +156,21 @@ class Analysis(StrictModel):
     why_not: str
 
 
-#: Each prompt version's answer schema (section 19's pass 1 adds ("heal_analysis", 2) here).
-SCHEMA_OF = {1: Analysis}
+#: One entry of pass 1's ``reads`` field: the router read set's ``{op, args, why,
+#: hypothesis}`` (`read_loop.request_model`).
+ReadAsk = RL.request_model(RR.AI_READS)
+
+
+@register("heal_analysis", 2)
+class AnalysisReads(Analysis):
+    """Pass 1 of the read loop (19.5): `Analysis`, plus at most 3 reads asked of Mercury
+    (a fourth is the check's refusal), each checked before anything runs."""
+    reads: list[ReadAsk] = []
+
+
+#: Each prompt version's answer schema: v1 the one call (the device state class off, and
+#: H13's recorded cases), v2 the loop's first pass, v3 its second (no ``reads``).
+SCHEMA_OF = {1: Analysis, 2: AnalysisReads, 3: Analysis}
 
 
 class Refused(ValueError):
@@ -246,7 +291,8 @@ def record(network: str, result: dict, now: float = None) -> dict:
     """Keep one analysis (`analyse`'s result) as its incident's ``analysis`` row."""
     keep = {k: result.get(k) for k in ("incident", "device", "state", "words", "label",
                                        "answer", "call_id", "cost_usd", "pack_id", "pack",
-                                       "error", "detail", "cap", "topology", "job")
+                                       "error", "detail", "cap", "topology", "job", "calls",
+                                       "loop", "passes", "reads_said")
             if k in result}
     return _append(network, dict(keep, row="analysis"), now)
 
@@ -533,18 +579,20 @@ def analyse(network: str, incident_id: str, *, job: str, send=None, today: str =
         out = dict(base, state="couldnt_analyse", detail=str(exc), words=words_of(
             "couldnt_analyse", f"what it reads could not be read ({type(exc).__name__}: "
                                f"{exc}); nothing was sent"))
-        return _kept(network, out, keep)
+        return _stepped(network, _kept(network, out, keep), keep)
     out = ask_prepared(prep, trigger=trigger_for(network, incident_id, job), send=send,
-                       today=today, base=base)
-    return _kept(network, out, keep)
+                       today=today, base=base, network=network)
+    return _stepped(network, _kept(network, out, keep), keep)
 
 
 def ask_prepared(prep: dict, *, trigger: dict, send=None, today: str = None,
-                 base: dict = None) -> dict:
-    """One call for a prepared request (`prepare`, or `request_of` of a recorded pack), its
-    answer checked: the result `analyse` keeps. **H13's seam:** a recorded incident pack is
-    asked as the feature asks it, ``ask_prepared(request_of(pack), trigger=<an evaluation
-    run's, triggers.evaluation>)``, the same request and the same check, kept nowhere; its three
+                 base: dict = None, network: str = "") -> dict:
+    """One analysis of a prepared request (`prepare`, or `request_of` of a recorded pack), its
+    answer checked: the result `analyse` keeps. With *network* (the list's name: the incident's
+    own network, whose devices may be read), it is asked through the read loop
+    (`_ask_looped`, 19.5). **H13's seam:** without one, a recorded incident pack is asked as
+    the feature asks it with no read, ``ask_prepared(request_of(pack), trigger=<an evaluation
+    run's, triggers.evaluation>)``, one call and the same check, kept nowhere; its three
     recorded cases (C4, I5, V1) ten runs each are that, or `gateway.ask_batch` over
     `request_of`'s parts."""
     from modules.ai import triggers
@@ -556,6 +604,9 @@ def ask_prepared(prep: dict, *, trigger: dict, send=None, today: str = None,
                 pack_id=pack["id"], device=pack.get("device") or "", pack=pack,
                 topology=prep["said"])
     actor = triggers.actor_of(trigger)
+    if network:
+        return _ask_looped(prep, trigger=trigger, network=network, send=send, today=today,
+                           base=base, actor=actor)
     got = gateway.ask(FEATURE, PROMPT, SCHEMA_OF[PROMPT[1]], prep["data"], actor=actor,
                       trigger=trigger, context=prep["ctx"], send=send, today=today,
                       subject=prep["subject"], network=trigger.get("network") or
@@ -598,6 +649,219 @@ def _kept(network: str, out: dict, keep: bool) -> dict:
     return out
 
 
+# ── The read loop (19.5, H26) ─────────────────────────────────────────────────────────────────
+
+def read_set() -> str:
+    """The reads pass's context block ``read_set``: what the model may ask Mercury to read,
+    the router read set's operations and their arguments (`router_reads.AI_READS`), the same
+    bytes on every call. Mercury's own words: no device's data."""
+    lines = [
+        "read_set is the read-only reads Mercury may run for this analysis, each on a device "
+        "the pack names, as that device's read-only account. To ask for one, add it to reads: "
+        "op is one of the operations below, args its arguments by name (device always, and "
+        "null for an argument the operation does not take), why one line on what it would "
+        "show, and hypothesis the hypothesis it tests. Ask for at most 3, and only when a read "
+        "would confirm or rule out a hypothesis; ask for none when the pack says enough. "
+        "Mercury checks each request against what it holds (an interface the device's golden "
+        "holds, an address of the network, a peer intent names) and runs only those it "
+        "allows; the next message carries the answers, or why a request was refused.",
+        "The operations:"]
+    for op in RR.AI_READS.operations:
+        args = ", ".join(f"{a} ({spec.shape.words})" for a, spec in op.args.items())
+        lines.append(f"- {op.name}: {op.words}; args: {args}")
+    return "\n".join(lines)
+
+
+def reads_section(first, read_ids) -> dict:
+    """The reads that ran and were sent, as the section pass 2's answer is checked against:
+    one piece ``read:<n>`` each, its device the one pass 1 asked it of (so a device the
+    answer names is cited by the read of it). The section has no reference of its own."""
+    asked = list(getattr(first, "reads", None) or [])
+    pieces = []
+    for rid in read_ids:
+        n = int(rid.split(":", 1)[1]) if RL.READ_ID.fullmatch(str(rid)) else 0
+        args = getattr(asked[n - 1], "args", None) if 0 < n <= len(asked) else None
+        pieces.append({"ref": rid, "device": str(getattr(args, "device", "") or "")})
+    return {"name": READS_SECTION, "state": "ok", "pieces": pieces}
+
+
+def cites(answer) -> list:
+    """Every reference an answer makes: each hypothesis's evidence."""
+    return [r for h in getattr(answer, "hypotheses", None) or [] for r in h.evidence_refs]
+
+
+def _scope(network: str, net_id: str, prep: dict) -> dict:
+    """What the router read set's comparisons read for the incident (`router_reads.scope_for`):
+    the incident's device and the devices the pack as sent names, the admin who turned the
+    feature on; one that cannot be built names no device, so every request is refused."""
+    from modules.ai import background
+
+    pack = prep["pack"]
+    hosts = [pack.get("device") or ""] + list((prep.get("said") or {}).get("devices") or [])
+    entry = background.entry_of(net_id, FEATURE) or {}
+    incident = pack.get("incident") or ""
+    try:
+        return RR.scope_for(network, hosts, incident=incident,
+                            turned_on_by=entry.get("by") or "")
+    except Exception as exc:                          # noqa: BLE001 (closed: no device named)
+        log.error("heal analysis: the read scope of %s could not be built: %s", incident, exc)
+        return {"network": network, "devices": {}, "addresses": [], "prefixes": [],
+                "actor": f"the AI analysis of incident {incident}"}
+
+
+def _reads_said(got: dict) -> dict:
+    """What the loop did, in Mercury's words (the step's, and the row's): its words, how many
+    reads were asked for, run, refused and failed, the send log's loop and the two calls."""
+    recs = got.get("reads") or []
+    words = got.get("words") or ""
+    if not words and got.get("state") == "answered":
+        words = "AI analysis: asked for no read; answered in one pass"
+    return {"words": words, "asked": len(recs),
+            **{v: sum(1 for r in recs if r.get("verdict") == v)
+               for v in ("run", "refused", "failed")},
+            "loop": got.get("loop") or "", "first_call": (got.get("first") or {}).get("call_id")
+            or "", "second_call": (got.get("second") or {}).get("call_id") or ""}
+
+
+def _steps(got: dict) -> list:
+    """The incident's one step, its parts (19.5): pass 1, each request the check refused or
+    that failed with its reason, the reads run, pass 2. Mercury's words only, never an
+    answer's text."""
+    first, second = got.get("first") or {}, got.get("second") or {}
+    recs = got.get("reads") or []
+    if first.get("ok"):
+        res = "refused" if got.get("state") == "refused_by_check" else "ok"
+        said = (f"call {first.get('call_id') or '?'}: asked for "
+                f"{len(recs)} read{'' if len(recs) == 1 else 's'}" if recs else
+                f"call {first.get('call_id') or '?'}: asked for no read")
+        if res == "refused":
+            said += f"; refused by Mercury's check: {first.get('why') or got.get('why') or ''}"
+    else:
+        res = "failed"
+        said = f"not run: {first.get('error') or ''}: {first.get('detail') or ''}"
+    out = [{"step": "pass 1", "result": res, "words": said}]
+    for r in recs:
+        if r.get("verdict") in ("refused", "failed"):
+            dev = (r.get("args") or {}).get("device") or ""
+            out.append({"step": "check" if r["verdict"] == "refused" else "read",
+                        "result": r["verdict"],
+                        "words": f"{r.get('id')} {r.get('op') or '?'}"
+                                 + (f" on {dev}" if dev else "") + f": {r.get('reason') or ''}"})
+    ran = [r for r in recs if r.get("verdict") == "run"]
+    if ran:
+        out.append({"step": "reads", "result": "ok", "words": "; ".join(
+            f"{r['id']} {r.get('op')} on {(r.get('args') or {}).get('device') or '?'}: run"
+            + (f" (History › Reads {r['run']})" if r.get("run") else "")
+            + f", {r.get('sent_bytes') or 0} bytes sent masked, {r.get('withheld') or 0} "
+              "lines withheld" for r in ran)})
+    if second:
+        res = ("ok" if second.get("ok") and not second.get("why") else
+               "refused" if second.get("ok") else "failed")
+        said = (f"call {second.get('call_id') or '?'}: answered" if res == "ok" else
+                f"call {second.get('call_id') or '?'}: refused by Mercury's check: "
+                f"{second.get('why')}" if res == "refused" else
+                f"not run: {second.get('error') or ''}: {second.get('detail') or ''}")
+        out.append({"step": "pass 2", "result": res, "words": said})
+    elif ran:
+        out.append({"step": "pass 2", "result": "not run", "words": got.get("words") or ""})
+    return out
+
+
+def _ask_looped(prep: dict, *, trigger: dict, network: str, send, today, base: dict,
+                actor: str) -> dict:
+    """The analysis through the read loop (`read_loop.run` over `router_reads.AI_READS`): the
+    module's docstring has its states. The result `analyse` keeps, with *calls*, *loop*,
+    *passes*, *reads_said* and the step's *steps*."""
+    pack = prep["pack"]
+    incident_id = pack.get("incident") or ""
+    net_id = trigger.get("network") or pack.get("network") or ""
+    memo = {}
+
+    def check_(answer, *, read_ids):
+        sections = list(prep["sections"])
+        if read_ids:
+            sections.append(reads_section(memo.get("first"), read_ids))
+        else:
+            memo["first"] = answer
+        got = check(answer, pack, sections, prep["topo"])
+        memo[id(answer)] = got
+        return got["why"]
+
+    feature = RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, AnalysisReads),
+                             second=(PROMPT_SECOND, Analysis), plain=(PROMPT, Analysis),
+                             check=check_, cites=cites)
+    scope = None if RL.reads_off(RR.AI_READS, net_id) else _scope(network, net_id, prep)
+    got = RL.run(RR.AI_READS, feature, ask=gateway.ask, network=net_id, data=prep["data"],
+                 actor=actor, trigger=trigger, context=prep["ctx"], subject=prep["subject"],
+                 scope=scope, send=send, today=today, reads_context={"read_set": read_set()})
+    said = _reads_said(got)
+    shown_call = said["second_call"] if got["pass"] == 2 else said["first_call"]
+    base.update(call_id=shown_call, cost_usd=float(got.get("cost_usd") or 0.0),
+                calls=[c for c in got.get("call_ids") or [] if c], loop=said["loop"],
+                passes=got["pass"], reads_said=said, steps=_steps(got))
+    links = {"page": f"/v2/device/{base['device']}?tab=history", "anchor": f"heal-{incident_id}"}
+    if got["state"] == "failed":
+        first = got.get("first") or {}
+        return dict(base, error=first.get("error") or "", detail=first.get("detail") or "",
+                    **_failed(first))
+    if got["state"] == "refused_by_check":
+        why = got.get("why") or ""
+        calls.record_use(said["first_call"], "refused by validation", actor=actor,
+                         detail=why, links=links)
+        return dict(base, state="couldnt_analyse", detail=why,
+                    words=words_of("couldnt_analyse", f"{why}; nothing is shown"))
+    second = got.get("second") or {}
+    if got["pass"] == 2:
+        calls.record_use(said["first_call"], "used: it asked for reads, and the second pass "
+                         "answered", actor=actor, detail=said["words"][:800], links=links)
+    elif second.get("ok") and second.get("why"):
+        calls.record_use(said["second_call"], "refused by validation", actor=actor,
+                         detail=second["why"], links=links)
+    final = got["answer"]
+    checked = memo.get(id(final)) or check(final, pack, prep["sections"], prep["topo"])
+    answer = checked["answer"]
+    if answer.outcome.value == "refuse":
+        calls.record_use(shown_call, "shown: the evidence cannot say", actor=actor,
+                         detail=answer.why_not[:200], links=links)
+        return dict(base, state="unanswerable", detail=answer.why_not[:200],
+                    words=words_of("unanswerable", answer.why_not[:200]))
+    note = "; ".join(f"cited by Mercury: {a['device']} by the pack's {a['ref']}"
+                     for a in checked["added"])
+    calls.record_use(shown_call, "shown: advisory analysis", actor=actor, links=links,
+                     **({"detail": note[:800]} if note else {}))
+    return dict(base, ok=True, state="answered", words=words_of("answered"),
+                answer=shown(answer, checked["added"]))
+
+
+def _stepped(network: str, out: dict, keep: bool) -> dict:
+    """The incident's one step in the step log (`steplog.record_advisory`, 19.5), whatever the
+    analysis's state but not asked (the incident did not stop at can't fix): its words, and
+    for a state in which nothing was sent, that nothing was. Never raises: a step not written
+    is said on the result (``stepped``)."""
+    from modules.heal import steplog
+
+    if not keep or out.get("state") == "not_cant_fix":
+        return out
+    said = out.get("reads_said") or {}
+    words = said.get("words") or out.get("words") or ""
+    if out.get("state") in ("off", "capped") and "nothing was sent" not in words:
+        words += "; nothing was sent"
+    steps = out.get("steps") or [{"step": "pass 1", "result": out.get("state") or "",
+                                  "words": out.get("words") or ""}]
+    try:
+        steplog.record_advisory(network, out.get("incident") or "",
+                                device=out.get("device") or "", words=words, steps=steps,
+                                state=out.get("state") or "",
+                                calls=out.get("calls") or [out.get("call_id")],
+                                loop=out.get("loop") or "", passes=out.get("passes") or 0)
+        out["stepped"] = True
+    except Exception as exc:                          # said on the result, never raised
+        log.error("heal analysis: %s's step for %s was not written: %s", network,
+                  out.get("incident"), exc)
+        out["stepped"] = False
+    return out
+
+
 # ── What is drawn: the Needs attention row's block and the message's ─────────────────────────
 
 def block(result: dict) -> dict:
@@ -607,11 +871,17 @@ def block(result: dict) -> dict:
     provider not answering): never a silent absence."""
     if not result:
         return {"state": "pending", "words": PENDING_WORDS, "label": "", "score": "",
-                "rationale": "", "hypotheses": []}
+                "rationale": "", "hypotheses": [], "reads": "", "reads_call": ""}
     label = result.get("label") or beta()
+    said = result.get("reads_said") or {}
     out = {"state": result.get("state") or "couldnt_analyse",
            "words": result.get("words") or words_of("couldnt_analyse", "no words recorded"),
-           "label": "", "score": "", "rationale": "", "hypotheses": []}
+           "label": "", "score": "", "rationale": "", "hypotheses": [],
+           # The read loop's own words (19.5, board M: "Asked Mercury for 3 reads: 2 run, 1
+           # refused"), with its first call, which History opens; "" for an analysis that
+           # asked for none.
+           "reads": said.get("words") if said.get("asked") else "",
+           "reads_call": (said.get("first_call") or "") if said.get("asked") else ""}
     if out["state"] == "answered" and result.get("answer"):
         a = result["answer"]
         out.update(label=label.get("label") or LABEL, score=label.get("words") or "",
@@ -637,6 +907,8 @@ def drawn(network: str, incident_id: str) -> dict:
     kept = latest(network, incident_id, got["rows"])
     return {"state": "ok", "error": "", "block": block(kept),
             "provenance": {"incident": incident_id, "call_id": kept.get("call_id") or "",
+                           "calls": len(kept.get("calls") or []) or (1 if kept.get("call_id")
+                                                                     else 0),
                            "cost_usd": float(kept.get("cost_usd") or 0.0),
                            "at": kept.get("at") or "", "task_words": words}}
 

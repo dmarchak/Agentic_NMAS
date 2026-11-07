@@ -20,7 +20,13 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
    waits for it up to 150 seconds, so the analysis and the message both carry it. A Never
    incident is told with none.
 4. `analyse`: when the network's AI analysis of a can't-fix is on (a background AI feature,
-   off by default, turned on in Settings › AI), it starts it.
+   off by default, turned on in Settings › AI), it starts it. Where the network's device state
+   class is also on, the analysis may ask Mercury for up to 3 read-only reads: Mercury checks
+   each against the AI read set, runs the ones it allows as the device's read-only account,
+   logs each answer's size and hash before anything is sent, and asks a second call with the
+   answers, masked. Each read is a row on History beside the two calls, and the incident's step
+   log says what was asked, refused and run. With the class off, the analysis is one call and
+   asks for no read.
 5. `wait`: it waits for the analysis for up to 60 seconds, never longer, so a slow model never
    holds the notice.
 6. `send`: it sends Mercury's facts first (what was detected, Mercury's diagnosis by each

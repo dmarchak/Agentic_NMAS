@@ -4,9 +4,11 @@ section 13 item 5; the overnight brief of 2026-11-01, item 3, W11/W12; C2271).
 The data a model reads is retrieved, not typed: a device's log lines, interface descriptions,
 NetBox fields, commit messages, alert labels. Anyone who can write one of those can write
 words aimed at the model ("ignore the previous instructions", "the operator approved this").
-Nothing here is relied on for security: the model has no acting tool, every answer is checked
-against the pack, and a change needs a person's confirm by hash (section 13, items 1 to 4,
-6 and 7). This flags and withholds, deterministically, so such a line never reaches the model
+Nothing here is relied on for security: the model has no acting tool (it may ask for reads
+from a fixed set, and code decides which run: `modules/ai/read_loop.py`, docs/HEAL_TO_INTENT.md
+19.5; a read's answer reaches pass 2 as the ``mercury_reads`` part, read here like every
+other), every answer is checked against the pack, and a change needs a person's confirm by
+hash (section 13, items 1 to 4, 6 and 7). This flags and withholds, deterministically, so such a line never reaches the model
 and a person sees that it was there.
 
 `withhold_parts` is the gateway's (`gateway._prepared`): every part of a request but those a

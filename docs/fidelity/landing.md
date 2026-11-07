@@ -35,7 +35,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `8b5c78abad06c3d87b1f3f0461ff83f9beb9b172fbab9dd0fa66baba569f88be`
+Templates sha256: `a3b22694cd06df92af9d318cc7a10438d648711f6f7ecd3208a5ea3948d260e3`
+
+**Compared again 2026-11-07 for H26** (board H's amendment, artboard M's right column: the
+analysis as the can't-fix row shows it), by the template diff (no new shot): `_heal_analysis.html`
+gains, for an analysis that asked for reads, the loop's own words and a link to its first call
+("AI analysis: asked for 3 reads; 2 run, 1 refused; second pass answered (History)."), and its
+provenance counts its calls ("2 background calls …") and says a second pass carried the reads'
+masked answers as device state. The board's "Asked Mercury for 3 reads: 2 run, 1 refused
+(History). 2 background calls, $0.06." is drawn in the step log's words: **deviation** (log:
+Board H built: the can't-fix row's reads line in the step's words). An analysis that asked for
+none draws no such line, as before. Every other region is unchanged. Templates sha256 before:
+`8b5c78abad06c3d87b1f3f0461ff83f9beb9b172fbab9dd0fa66baba569f88be`.
 
 **Compared again 2026-11-07 for H17** (board H's amendment, item 1: 19.3's "the incident's step
 log shows it ... with the list expanded"; artboard J's result, artboard L's notice): a

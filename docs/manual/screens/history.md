@@ -78,6 +78,16 @@ Open a line for the full record underneath. It shows:
   expired** costs nothing, because the provider does not bill it. **batch unfinished** or
   **batch missing** counts the request's worst case, because whether it was billed is not
   known;
+- for an **AI read** (shown with the AI calls), one read a self-healing analysis asked Mercury
+  for between its two calls: the device, the command as Mercury matched it, why the model
+  asked and the hypothesis it tests, and the verdict: **run** (whom it signed in as, the
+  read-only account; the bytes sent, masked and cut, with their sha256 and the whole answer's;
+  how many lines were withheld for a secret's shape; whether it left the host in the second
+  call), or **refused** or **failed** with the reason, drawn in danger. The answer's text is not
+  here: the bytes that left the host are the second call's prompt, under **Show the prompt and
+  the answer** on that call. **Open pass 1's call**, **Open pass 2's call** and **Open the read
+  on History › Reads** open the two calls and the read itself. A **Show commands** row of such a
+  read says whom each device signed in as;
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 

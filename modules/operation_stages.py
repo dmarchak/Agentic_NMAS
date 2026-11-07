@@ -606,6 +606,9 @@ WRITTEN_ELSEWHERE = {
                           "alerts reader's after-store step from the ruler (modules/"
                           "alert_rule_changes.py, C1886): no Mercury operation writes it",
     "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
+    "ai_reads": "each read the heal analysis's loop sent, written by the send log "
+                "(modules/ai/read_log.py) before pass 2 is asked, whoever's analysis it was; no "
+                "route writes it (board H, H26)",
     "diagnoses": "each diagnosis Diagnose… ran, written to the self-healing step log "
                  "(modules/heal/steplog.py) by its job, which a reveal route starts "
                  "(device_v2.diagnose_run; board H, H16), never a confirm",

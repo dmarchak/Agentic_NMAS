@@ -3917,3 +3917,40 @@ worktrees removed.** Not mutated: the `withhold` calls in `diagnosis_block` and
 `diagnosis_section`, which act on by-kind words that hold no configuration line by
 construction (a rule's words and the ends it read); `withhold` itself is H8's, hand-checked
 2026-11-04.
+
+## 2026-11-07: the read loop wired into the heal analysis, and every send logged (board H's H26), by hand
+**What changed in the tier:** data off the host. With the heal analysis on and the network's
+device state class on (both off tonight, and turned on only by an admin), the analysis asks up to
+3 read-only reads; Mercury checks each against `AI_READS`, runs the ones it allows as the
+read-only account, logs each answer's size and sha256 before pass 2 is asked (`modules/ai/
+read_log.py`, `ai_reads.jsonl`, never the answer's text), and sends the answers, masked, in pass
+2. The danger the hand check guards: a read answer, or a secret in it, leaving the host unlogged,
+unmasked, under the wrong class, or logged as sent when it was not.
+**The method:** each mutant one exact replacement matched once, in `scripts/nmas-control`
+throwaways (snapshots 4c66e40f3d, then 91d950b723, 2026-11-07 07:32 UTC), then
+tests/test_ai_read_log.py, test_heal_analysis_loop.py, test_ai_read_loop.py,
+test_ai_router_reads.py, test_read_loop_never_read.py and test_heal_analysis.py; baseline 204
+passed. The canary (a read's answer not masked) was killed by the two planted-secret tests.
+**The mutants, M1 to M17, as the agent reported them:**
+- no log written yet, the request still sent;
+- a log failure read as kept;
+- a refusal or a cap read as sent;
+- the read set sent in the plain pass;
+- pass 2's outcome not logged;
+- every key of the account kept;
+- the executor's wrapper sent whole;
+- the digest of the whole answer, not of what was sent;
+- the off-words naming another class;
+- no plain pass;
+- pass 2 checked without the reads;
+- no read set;
+- the log unmasked at rest;
+- every request logged as to be sent;
+- another network's rows drawn;
+- a digest dropped.
+
+**The result: every mutant and the canary killed.** One mutant survived the first run: M14,
+the log unmasked at rest. A test of the log's own at-rest masking was added, and it killed M14
+in run 2, whose canary was killed too. Each file was restored after each mutant, and the
+worktrees were removed. The run was the H26 agent's. The main thread records it here as the
+agent reported it, without a per-mutant breakdown of the kill counts.

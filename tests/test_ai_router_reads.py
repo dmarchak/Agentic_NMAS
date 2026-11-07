@@ -379,10 +379,15 @@ def test_the_executor_signs_in_as_the_read_only_account_through_the_engine(lab):
     from modules.nsot import reads
     _account()
     got = R.run("interfaces", {"device": "r3"}, ["show interfaces GigabitEthernet4"], scope())
-    assert got == "show interfaces GigabitEthernet4: answered"
+    assert isinstance(got, RL.Answered)
+    assert got.answer == "show interfaces GigabitEthernet4: answered"
     assert lab.signed == [{"host": "r3", "username": "mercury-ro", "password": RO_PW}]
     assert lab.deploy == [], "never the deploy account's session"
     (record,) = reads.runs(NETWORK)["runs"]
+    # H26: the answer names its run on History › Reads and whom it signed in as, for the send
+    # log, never the password.
+    assert got.run == record["id"] and got.signed_in_as == {
+        "username": "mercury-ro", "source": "read-account:profile:default"}
     assert record["by"] == "ai_analysis" == R.KIND
     assert record["actor"] == ("the AI analysis of incident inc-1, turned on by "
                                "admin@example.invalid")

@@ -1,0 +1,257 @@
+{
+  "$defs": {
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "RouterCliReadArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device"
+        },
+        "interface": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface"
+        },
+        "mac": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mac"
+        },
+        "peer": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peer"
+        }
+      },
+      "title": "RouterCliReadArgs",
+      "type": "object"
+    },
+    "RouterCliReadAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/RouterCliReadArgs"
+        },
+        "hypothesis": {
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/RouterCliReadOp"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "args",
+        "why",
+        "hypothesis"
+      ],
+      "title": "RouterCliReadAsk",
+      "type": "object"
+    },
+    "RouterCliReadOp": {
+      "enum": [
+        "interfaces",
+        "ip_interface",
+        "ipv6_interface",
+        "cdp",
+        "lldp",
+        "ospf_interface",
+        "ospf_neighbor",
+        "ospfv3_interface",
+        "ospfv3_neighbor",
+        "ipv6_ospf_neighbor",
+        "bgp_summary",
+        "bgp_summary6",
+        "bgp_neighbor",
+        "bgp_neighbor6",
+        "route",
+        "route6",
+        "cef",
+        "cef6",
+        "arp",
+        "nd",
+        "mac",
+        "stp",
+        "ping",
+        "ping_from",
+        "ping6",
+        "ping6_from",
+        "traceroute",
+        "traceroute6",
+        "running_config",
+        "running_config_interface"
+      ],
+      "title": "RouterCliReadOp",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Pass 1 of the read loop (19.5): `Analysis`, plus at most 3 reads asked of Mercury\n(a fourth is the check's refusal), each checked before anything runs.",
+  "properties": {
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RouterCliReadAsk"
+      },
+      "title": "Reads",
+      "type": "array"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "needs_human",
+    "why_not"
+  ],
+  "title": "AnalysisReads",
+  "type": "object"
+}
