@@ -209,6 +209,14 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     # shipped packs render, which it emits verbatim (`features.for_library`).
     prepared = features.for_library(features.prepare(complete_schema(host_vars)),
                                     template_root, platform, template_name)
+    # Each unmodelled block's children indented by their depth (C2700, the operator,
+    # 2026-11-07): a child is a child by structure, so one typed with no leading space renders
+    # nested, and one stored indented renders once (`hostvars.unmodelled_children`). Done here,
+    # before the template, so every library renders it, a network's copy of `_common.j2` from
+    # before this change included: its `unmodeled_block` emits each child as it is handed.
+    from modules.nsot.hostvars import normalise_unmodelled
+    if isinstance(prepared, dict) and prepared.get("unmodeled"):
+        prepared = dict(prepared, unmodeled=normalise_unmodelled(prepared["unmodeled"]))
     try:
         return template.render(vars=prepared, secret=_secret)
     except UndefinedError as exc:

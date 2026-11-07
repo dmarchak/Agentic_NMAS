@@ -1483,6 +1483,13 @@ select { max-width: 100%; }
 .op-diff .op-ctx { color: var(--ink-2); }
 .op-diff .op-add { color: var(--ok); font-weight: 500; }
 .op-diff .op-del { color: var(--danger); font-weight: 500; }
+/* C2700: a program line's depth inside its section, drawn as a guide per level before its own
+   leading spaces. Generated content only: nothing here is the line's text, copied or sent. */
+.op-diff .op-nest { color: var(--ink-3); font-weight: 400; user-select: none; }
+.op-diff .op-nest[data-depth="1"]::before { content: "\2502\00a0"; }
+.op-diff .op-nest[data-depth="2"]::before { content: "\2502\00a0\2502\00a0"; }
+.op-diff .op-nest[data-depth="3"]::before { content: "\2502\00a0\2502\00a0\2502\00a0"; }
+.op-diff .op-nest[data-depth="4"]::before { content: "\2502\00a0\2502\00a0\2502\00a0\2502\00a0"; }
 .op-ops { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px;
   font-size: 13px; }
 .op-ops dt { color: var(--ink-2); }

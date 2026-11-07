@@ -125,6 +125,16 @@ resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day
 {{ u.lead }}, {% if u.until %}until {{ moment(u.until) }}{% else %}and it named no time access returns (Mercury asks it again from {{ moment(u.recheck) }}){% endif %}; {{ u.tail }}
 {%- endmacro %}
 
+{#- A program, the lines a device is sent, in order (C2700, the operator, 2026-11-07): a line
+    inside a section is drawn with a guide per level (`.op-nest`, CSS generated content on an
+    empty span), so a flat program, a child sent at column 0 that the device takes into the
+    section and verify then cannot find, is seen before the confirm. Each line's text is the
+    program's own bytes, leading spaces and all: what is drawn, copied, hashed and sent is one. -#}
+{% macro program_lines(lines) -%}
+<pre class="op-diff" data-program>{% for l in lines %}{% set depth = (l | length) - (l.lstrip() | length) %}{% if depth %}<span class="op-nest" data-depth="{{ [depth, 4] | min }}" aria-hidden="true" title="inside its section, {{ depth }} level{{ 's' if depth != 1 }} down"></span>{% endif %}<span class="op-add">{{ l }}</span>
+{% endfor %}</pre>
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

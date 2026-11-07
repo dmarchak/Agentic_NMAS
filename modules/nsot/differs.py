@@ -129,6 +129,8 @@ def unmodelled_of(*host_vars) -> set:
         for entry in hv.get("unmodeled") or []:
             head = _norm(entry.get("line", ""))
             out.add((head, head))
+            # `_norm` strips a child's leading whitespace, so a child typed flat and one stored
+            # indented are one key here already (C2700).
             out.update((head, _norm(c)) for c in entry.get("children") or [])
         for iface in hv.get("interfaces") or []:
             head = _norm(f"interface {iface.get('name', '')}")

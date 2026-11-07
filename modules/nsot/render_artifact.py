@@ -136,11 +136,15 @@ class CredentialWouldChange(RuntimeError):
 
 
 def unmodeled_lines(host_vars: dict) -> list:
-    """Every line the parser did not model, device-wide, in a stable order."""
+    """Every line the parser did not model, device-wide, in a stable order. A block's children
+    in their one shape (`hostvars.unmodelled_children`, C2700), the lines the render sends, so
+    an acknowledgement names the line as it is deployed whether it was typed flat or not."""
+    from modules.nsot.hostvars import unmodelled_children
+
     lines = []
     for entry in (host_vars or {}).get("unmodeled", []):
         lines.append(entry["line"].rstrip())
-        lines.extend(c.rstrip() for c in entry.get("children", []))
+        lines.extend(c.rstrip() for c in unmodelled_children(entry.get("children", [])))
     for iface in (host_vars or {}).get("interfaces", []):
         lines.extend(l.rstrip() for l in iface.get("unmodeled", []))
     return sorted(lines)

@@ -65,6 +65,51 @@ def staging_path(repo: str, hostname: str) -> str:
     return os.path.join(staging_dir(repo), f"{safe}.yml")
 
 
+def unmodelled_children(children) -> list:
+    """An unmodelled block's children in the one shape intent holds them, the shape the device
+    prints them in (C2700, the operator, 2026-11-07): each child's text with whatever leading
+    whitespace it carries replaced by one space per depth.
+
+    A child is a child by structure, never by what was typed in front of it. Its depth is the
+    whitespace it carries, at least 1 (a child is inside its block) and at most one deeper than
+    the child before it (IOS enters one mode at a time, so its own output never skips a level):
+    ``path x`` typed with no space is ``" path x"``, ``"    path x"`` typed first is
+    ``" path x"``, and a parser's capture (``" key 1"``, ``"  key-string …"``) is unchanged, so a
+    document already holding indented children reads as it did and nothing indents twice. A
+    child of a child keeps its depth as the device printed it, one space more than its parent.
+
+    The trap this closes: two devices' intent held ``path …`` with no leading space, the shipped
+    template emitted children verbatim, the program sent was flat (``archive`` then a global
+    ``path …``), IOS took it in archive mode and printed it nested, and verify's read-back, keyed
+    on (section, line), missed both. A blank child is kept as it stands (nothing renders it)."""
+    out, previous = [], 0
+    for raw in children or []:
+        if not isinstance(raw, str):
+            out.append(raw)
+            continue
+        body = raw.lstrip()
+        if not body:
+            out.append(raw)
+            continue
+        depth = min(max(len(raw) - len(body), 1), previous + 1)
+        out.append(" " * depth + body)
+        previous = depth
+    return out
+
+
+def normalise_unmodelled(entries) -> list:
+    """*entries* (an intent's top-level ``unmodeled``) with each block's children in their one
+    shape (`unmodelled_children`). Read and written alike: the serialiser writes it, the
+    renderer renders it, and the comparisons read it, so a child typed flat and one stored
+    indented are the same line everywhere. A new list; *entries* is not changed."""
+    out = []
+    for entry in entries or []:
+        if isinstance(entry, dict) and "children" in entry:
+            entry = dict(entry, children=unmodelled_children(entry.get("children")))
+        out.append(entry)
+    return out
+
+
 def to_yaml(host_vars: dict) -> str:
     """Serialise host_vars deterministically, with secrets removed.
 
@@ -77,10 +122,12 @@ def to_yaml(host_vars: dict) -> str:
     payload = {k: v for k, v in host_vars.items() if k != "secrets"}
     # `lineno` points into the source document, not the model. Rendering moves
     # lines around, so keeping it would break the fixed-point property for a
-    # reason that has nothing to do with what was extracted.
+    # reason that has nothing to do with what was extracted. Each block's children are
+    # written in their one shape (C2700): a child typed with no leading space is written
+    # with its depth's.
     payload["unmodeled"] = [
-        {k: v for k, v in entry.items() if k != "lineno"}
-        for entry in host_vars.get("unmodeled", [])
+        {k: v for k, v in entry.items() if k != "lineno"} if isinstance(entry, dict) else entry
+        for entry in normalise_unmodelled(host_vars.get("unmodeled", []))
     ]
     # Idempotent over its own output. ``secrets`` is stripped on the way out,
     # so recomputing the refs from it on a second pass yielded an empty list
@@ -133,11 +180,12 @@ def _as_serialised(doc: dict) -> dict:
     they say the same: an absent ``unmodeled`` is ``[]`` (`to_yaml` writes it so, and readers
     read it with that default), an unmodelled entry's ``lineno`` is a pointer into a source
     text, not intent (`to_yaml` drops it), and ``secret_refs`` is a set of names (`to_yaml`
-    sorts it; `hydrate_secrets` reads each). Anything else, ``secrets`` included, is compared
-    as it stands."""
+    sorts it; `hydrate_secrets` reads each). An unmodelled block's children are read in their
+    one shape (`unmodelled_children`, C2700): a child typed flat and the same child indented say
+    the same. Anything else, ``secrets`` included, is compared as it stands."""
     out = dict(doc)
     out["unmodeled"] = [{k: v for k, v in e.items() if k != "lineno"} if isinstance(e, dict)
-                        else e for e in (doc.get("unmodeled") or [])]
+                        else e for e in normalise_unmodelled(doc.get("unmodeled") or [])]
     out["secret_refs"] = sorted(doc.get("secret_refs") or [], key=str)
     return out
 

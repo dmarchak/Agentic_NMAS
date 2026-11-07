@@ -15,7 +15,11 @@ again with another program). The states the shots do not reach (hosted AI off, e
 are compared by the template and tests/test_ai_change_record.py, and the AI control's states by
 `ai_controls_check.check_screen`; the draft is reached by tests/v2_context.py's `_change_record`.
 Templates compared: templates/v2/_change_record.html, templates/v2/_deploy.html
-Templates sha256: `052c3c83b90fcb6632fae9efdb21d43e6af59ccc23bf9e023bbffcf791cec650`
+Compared again 2026-11-07 (C2700), by the template: `_deploy.html` draws The program through
+`_macros.html`'s `program_lines` (a guide per level before a nested line, docs/fidelity/device.md
+says it); the Change record part, its place and its foot are unchanged, so no region below moved.
+Templates sha256 before: `052c3c83b90fcb6632fae9efdb21d43e6af59ccc23bf9e023bbffcf791cec650`.
+Templates sha256: `4d5b7add7bec237bc7649ce2985da09b0d4ab2a2b3a9b6944330d372c0fd70bc`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

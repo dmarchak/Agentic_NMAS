@@ -86,7 +86,18 @@ and the menu tests/test_inventory_entry.py renders. The greyed rows are board 11
 for Revert and Retry; no board draws an observe-only device, so the state is a deviation, a
 line in STANDING_APPROVAL_LOG.md. Templates sha256 before:
 `3b2f0b7c4c55bc7cb018c02d6312ef9591e101e6b453f5c0a1564dc89bd299a6`.
-Templates sha256: `0336b633b878443964c6e90d21c8ad87d09aa90bcef690660692fc9374bb0d01`
+Compared again 2026-11-07 (C2700, the operator's direction "make the deploy preview show
+nesting visibly (indentation preserved in THE PROGRAM)"), by the template:
+`_deploy.html` draws The program through `_macros.html`'s `program_lines`, the same lines in
+the same `op-diff` block, each line inside a section led by a guide per level (│, CSS
+generated content on an empty span, `.op-nest`), so a flat program is seen before the
+confirm; each line's text is the program's bytes, leading spaces and all
+(tests/test_unmodelled_children_depth.py). Restore's program is drawn as before. No board
+draws a guide: a deviation, the line "Device: the deploy program draws a guide per level" in
+STANDING_APPROVAL_LOG.md; the region "Deploy: The program" below says so. No other region
+moved. Templates sha256 before:
+`0336b633b878443964c6e90d21c8ad87d09aa90bcef690660692fc9374bb0d01`.
+Templates sha256: `b5ba864e07ec64d0e41b26d8650f1e7914d58ffc3cfd69d0191e5ad31ae2bf38`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it
@@ -308,7 +319,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Prose naming code | code in its own type ("load-interval 30", "Source: seed") | raw backticks around it in the capture card's intent sentence, the capture result, persist, the seed result, the revert footer and result, the retire result ("(`load-interval 30`)") | **deviation** (log: Device: card prose shows raw backticks around code (a defect, register C650 follow-up)) |
 | Capture: r2 moved | Not recorded, the read at confirm and the read confirmed, Preview it again | the same, Preview it again a button with its (i) | **same** |
 | Capture at phone width | board 4: the card stacked, head controls under the title | the same | **same** |
-| Deploy: The program | the lines in order with "needs your reason" and "Mode B" badges on their lines, the reason field under it, "Authorised on r3 before: never" | the lines in order ("Exactly these 3 line(s), in order", capture 27), no per-line badges; "Where the added lines come from" (C867: this edit's, the profile's and those already pending, `_attribution.html`), then the dangerous line's reason field inline, and the authorisations it needs | **deviation** (log: Device: the deploy and restore programs draw no per-line badges) |
+| Deploy: The program | the lines in order with "needs your reason" and "Mode B" badges on their lines, the reason field under it, "Authorised on r3 before: never" | the lines in order ("Exactly these 3 line(s), in order", capture 27), no per-line badges, each line inside a section led by a guide per level (C2700, its own log line "Device: the deploy program draws a guide per level"); "Where the added lines come from" (C867: this edit's, the profile's and those already pending, `_attribution.html`), then the dangerous line's reason field inline, and the authorisations it needs | **deviation** (log: Device: the deploy and restore programs draw no per-line badges) |
 | Deploy: Expected effects (C506) | derived effects, the declare buttons, what is unexpected, What verify checks (check, expects, read) | the same parts (capture 27: "None derived …", the three declare buttons, the two checks); the lab's program derives one (GigabitEthernet3 goes down) | **same** |
 | Deploy: Left on the device | each line with its box, "will be removed", its reason in a field wide enough to read, a measured shape said; an IP SLA entry that cannot be removed | the ticked line, "will be removed" and its reason, a list bullet beside the box; the reason's field is narrow, so the walk's reason showed as "W1 walk: remove the spare p" (captures 27 and 28; C901) | **deviation** (log: Device: the Mode B reason box is too narrow to read (C901)) |
 | Deploy and restore: What will not happen, Operands | three plain lines; operands captured from, intent, template, program hash, Verify scope | one paragraph on Mode B; the plan's own fields (capture hash, command hash, intent commit, authorised lines, template, platform, intent vs capture, lines already on the device, removals, secrets masked; capture 28); no Verify scope line | **deviation** (log: Device: the deploy and restore cards draw the plan's own fields) |

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, program_lines -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {%- from "v2/_attribution.html" import attribution -%}
 {#- The device page's Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6):
@@ -37,8 +37,7 @@
     {%- if c.refused %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ c.refused }}</p></div>{% endif %}
     {%- if c.sent %}
     <p>Exactly these {{ c.sent | length }} line(s), in order.</p>
-    <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
-{% endfor %}</pre>
+    {{ program_lines(c.sent) }}
     {%- for n in c.notes %}
     {%- if n.attribution %}{{ attribution(n) }}
     {%- else %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}
