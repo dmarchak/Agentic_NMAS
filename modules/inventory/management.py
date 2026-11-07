@@ -15,7 +15,9 @@ Two facts, both NetBox's, decide it:
   a Linux host Mercury manages services on (a controller), not a network device: excluded from
   goldens, deploys, config drift, heal, features, the fabric view's switch rows and interface
   monitoring. Its one declared write is controller management's deploy channel (the design's
-  H), which P6 builds; until then it is refused, naming P6.
+  H, P6): its own hold (`HOST_DEPLOY`), the files staged over the session's guarded SFTP and
+  the one command `sudo -n /usr/local/sbin/mercury-ryu-apply` (`modules/apps/transport.py`);
+  any other write on a host's session is refused, naming P6.
 
 The inventory stamps the first on each device it loads (`netbox_source.adapt_devices`:
 ``_management`` and ``_management_from``); the kind is the device's ``role``. Every check
@@ -61,8 +63,11 @@ MAY_HOLD = frozenset({
 #: A host has no golden and no intent (it is not a network device), so of those only the
 #: reads and Mercury's own lifecycle records remain. A host's session refuses `reload` as a
 #: discovery driver's write (modules/discovery.py).
+#: The deploy channel's own hold (`HOST_DEPLOY`, P6) is a host's too: its one held write.
+#: The operation the deploy channel holds a host for (`modules/apps/channel.held_write`).
+HOST_DEPLOY = "controller app deploy"
 HOST_MAY_HOLD = frozenset({"read", "rekey", "retire", "onboard", "onboard (create)", "abandon",
-                           "reload"})
+                           "reload", HOST_DEPLOY})
 #: The refusal's last words for a reload of an observe device (C2626).
 RELOAD_WORDS = (" A reload restarts it, which observe forbids as it forbids a change: to reload "
                 "it through Mercury, set it to manage first in NetBox, on its record.")
@@ -70,12 +75,14 @@ RELOAD_WORDS = (" A reload restarts it, which observe forbids as it forbids a ch
 #: What a host is excluded from, in the order the design names them (section 9a).
 HOST_EXCLUDED = ("goldens", "deploys", "config drift", "heal", "features",
                  "the fabric view's switch rows", "interface monitoring")
-#: Controller management's deploy channel: the host's one declared held write, built by P6.
+#: Controller management's deploy channel: the host's one held write, P6's (C2673).
 HOST_HELD_WRITE = ("controller management's deploy channel (an app's files and the "
                    "controller's restart, the SDN design's H)")
-HOST_WRITE_REFUSAL = ("REFUSED: controller management's deploy channel is declared as a "
-                      "host's one held write and is not built yet: P6 (the SDN design's H) "
-                      "builds it. Nothing was sent.")
+#: A host session's write other than the deploy channel's one command ({shown}, {command}).
+HOST_WRITE_REFUSAL = ("REFUSED: {shown} is not a host's one held write, controller "
+                      "management's deploy channel (P6, the SDN design's H), whose one command "
+                      "is exactly {command}, no argument and nothing else on the line. Nothing "
+                      "was sent.")
 
 
 def _get(ctx, path):
@@ -141,8 +148,8 @@ def refusal(dev: dict, what: str = "a device-changing operation") -> str:
     if is_host(dev):
         return (f"REFUSED: {what} on {name}: its role's mercury_kind is host, a Linux host "
                 f"Mercury manages services on, not a network device, so it is kept out of "
-                f"{', '.join(HOST_EXCLUDED)}. Its one write is {HOST_HELD_WRITE}, which P6 "
-                "builds. Nothing was sent.")
+                f"{', '.join(HOST_EXCLUDED)}. Its one write is {HOST_HELD_WRITE}, P6's, held "
+                f"as {HOST_DEPLOY!r}. Nothing was sent.")
     if is_observe(dev):
         where = dev.get("_management_from") or FROM_ASSIGNED
         problem = dev.get("_management_problem") or ""

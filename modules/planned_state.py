@@ -45,6 +45,7 @@ STATE_WORDS = {
     "console kick-start": "Kick-starting over its console",
     "console onboard": "Onboarding over its console",
     "sdn flows": "Changing its flows",
+    "controller app deploy": "Deploying its controller apps",
 }
 #: Holds that only read the device: it is not under an operation a person should wait for,
 #: and a read lasts seconds, so its row draws as it always did.

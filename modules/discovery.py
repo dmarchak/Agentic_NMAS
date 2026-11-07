@@ -129,15 +129,15 @@ DRIVERS = {
                        "version": "ovs-vsctl --version",
                        "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
                        "held_write": "the OpenFlow configuration's ovs-vsctl transaction"},
-    # C2608: the host kind's driver. Its one declared held write is controller management's
-    # deploy channel, which P6 builds: until then every write is refused, naming P6
-    # (`held_write_refusal`).
+    # C2608: the host kind's driver. Its one held write is controller management's deploy
+    # channel's command, P6's (`held_write_refusal`, C2673); its files are staged over the
+    # session's guarded SFTP (`connection.open_sftp`).
     "linux":          {"family": "Linux host", "commands": _LINUX_HOST,
                        "shapes": _LINUX_SHAPES,
                        "version": "cat /etc/os-release",
                        "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
-                       "held_write": ("controller management's deploy channel (not built: "
-                                      "P6)")},
+                       "held_write": ("controller management's deploy channel (P6): "
+                                      "`sudo -n /usr/local/sbin/mercury-ryu-apply`")},
 }
 
 
@@ -256,9 +256,14 @@ def held_write_refusal(device_type, command) -> str:
     if not DRIVERS.get(driver, {}).get("held_write"):
         return write_refusal(device_type, "a write") or "REFUSED: not a discovery driver."
     if driver == "linux":
-        # Declared, not built (C2608): P6 builds controller management's deploy channel.
+        # P6 (C2673): controller management's deploy channel, its one command exactly, no
+        # argument and nothing else on the line (`modules/apps/transport.py`).
+        from modules.apps.channel import APPLY_COMMAND
+        if command == APPLY_COMMAND:
+            return ""
         from modules.inventory.management import HOST_WRITE_REFUSAL
-        return HOST_WRITE_REFUSAL
+        return HOST_WRITE_REFUSAL.format(shown=repr(str(command or "")[:80]),
+                                         command=APPLY_COMMAND)
     from modules.sdn import ovs
     return ovs.write_refusal(command)
 

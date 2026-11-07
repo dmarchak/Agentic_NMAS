@@ -595,6 +595,7 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
 
     conn.disconnect = _disconnect
     conn._nmas_session = (ip, sid)
+    conn._nmas_driver = driver
     _guard_writes(conn, ip, params.get("device_type", ""))
     logger.info("ssh: opened %s for %s (%d of %d this tool may hold; %d vty line(s), "
                 "%d kept for a person)", ip, owner, count, budget["budget"],
@@ -811,6 +812,124 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
         original = getattr(conn, name, None)
         if callable(original):
             setattr(conn, name, multiline(original))
+
+
+class FileWriteRefused(DiscoveryOnly):
+    """A file write over a session to a path outside the controller's staging shapes
+    (`modules/apps/transport.staging_refusal`), a link on its way, or on a session that is not
+    the host kind's: refused held or not."""
+
+
+#: The drivers whose sessions may carry a file write (the host kind's: the controller app
+#: deploy channel's staging, P6). Every other session's SFTP is refused before it opens.
+SFTP_DRIVERS = frozenset({"linux"})
+#: The most of the outcome file read back (the script's outcome is one JSON line).
+SFTP_READ_MAX = 1024 * 1024
+
+
+class GuardedSftp:
+    """The one SFTP client a session hands out (`open_sftp`): a write only to a staging path
+    of `transport.staging_refusal`'s exact shapes, only while this thread holds the device
+    (`device_ops.may_write`), with no link on its way; a read only of the outcome file. No
+    remove, rename, symlink or any other call: nothing else exists on it."""
+
+    def __init__(self, sftp, ip: str, driver: str):
+        self._sftp, self._ip, self._driver = sftp, ip, driver
+
+    def _held(self, what: str, path: str) -> None:
+        from modules.nsot import device_ops
+        if not device_ops.may_write(self._ip):
+            raise UnheldDeviceWrite(
+                f"refusing to {what} {path} on {self._ip}: this operation does not hold the "
+                "device (register C98, C101). A file write over a session is sent only while "
+                "the device is held. Nothing was sent.")
+
+    def _shape(self, path: str, kind: str) -> None:
+        from modules.apps import transport
+        why = transport.staging_refusal(path, kind)
+        if why:
+            raise FileWriteRefused(f"{self._ip}: {why}")
+
+    def _no_link(self, path: str, kind: str) -> bool:
+        """Whether *path* exists, after `lstat`-ing every part of it from the apps root down
+        and refusing a link, a non-folder on the way, or *path* itself not of *kind*."""
+        import errno
+        import stat as st
+        from modules.apps import transport
+        chain = [transport.apps_root()]
+        for part in path[len(chain[0]) + 1:].split("/"):
+            chain.append(f"{chain[-1]}/{part}")
+        for i, here in enumerate(chain):
+            try:
+                attrs = self._sftp.lstat(here)
+            except OSError as exc:
+                if exc.errno == errno.ENOENT or isinstance(exc, FileNotFoundError):
+                    return False
+                raise
+            if st.S_ISLNK(attrs.st_mode or 0):
+                raise FileWriteRefused(f"{self._ip}: REFUSED: {here} is a symbolic link on "
+                                       f"the way to {path}: a staging path holds no link. "
+                                       "Nothing was sent.")
+            last = i == len(chain) - 1
+            want_dir = not last or kind == "dir"
+            is_dir = st.S_ISDIR(attrs.st_mode or 0)
+            if want_dir and not is_dir:
+                raise FileWriteRefused(f"{self._ip}: REFUSED: {here} is not a folder"
+                                       f"{'' if last else f' on the way to {path}'}. Nothing "
+                                       "was sent.")
+            if not want_dir and not st.S_ISREG(attrs.st_mode or 0):
+                raise FileWriteRefused(f"{self._ip}: REFUSED: {here} is there and is not a "
+                                       "regular file. Nothing was sent.")
+        return True
+
+    def mkdir(self, path: str) -> bool:
+        """Make the folder *path* (0755) unless it is one already; True when it was made."""
+        self._shape(path, "dir")
+        self._held("make the folder", path)
+        if self._no_link(path, "dir"):
+            return False
+        self._sftp.mkdir(path, 0o755)
+        return True
+
+    def write(self, path: str, data: bytes, perm: int = 0o644) -> None:
+        """Write *data* to the file *path*, then set *perm* (0644 or 0755 only)."""
+        self._shape(path, "file")
+        if perm not in (0o644, 0o755):
+            raise FileWriteRefused(f"{self._ip}: REFUSED: mode {perm:o} for {path} is neither "
+                                   "644 nor 755. Nothing was sent.")
+        self._held("write", path)
+        self._no_link(path, "file")
+        with self._sftp.open(path, "wb") as fh:
+            fh.write(data)
+        self._sftp.chmod(path, perm)
+
+    def read(self, path: str) -> bytes:
+        from modules.apps import transport
+        why = transport.read_refusal(path)
+        if why:
+            raise FileWriteRefused(f"{self._ip}: {why}")
+        with self._sftp.open(path, "rb") as fh:
+            return fh.read(SFTP_READ_MAX)
+
+    def close(self) -> None:
+        self._sftp.close()
+
+
+def open_sftp(conn) -> GuardedSftp:
+    """An SFTP client over *conn*'s own SSH transport (one session, the same signed-in
+    account), guarded (`GuardedSftp`); refused for a session that is not the host kind's, or
+    that `open_ssh` did not open."""
+    ip_sid = getattr(conn, "_nmas_session", None)
+    driver = getattr(conn, "_nmas_driver", "")
+    if not ip_sid:
+        raise FileWriteRefused("REFUSED: a file write over a session that open_ssh did not "
+                               "open. Nothing was sent.")
+    if driver not in SFTP_DRIVERS:
+        raise FileWriteRefused(
+            f"{ip_sid[0]}: REFUSED: a file write over a {driver or '(no driver)'} session: "
+            f"only a {', '.join(sorted(SFTP_DRIVERS))} session (the host kind's) carries one, "
+            "the controller app deploy channel's staging. Nothing was sent.")
+    return GuardedSftp(conn.remote_conn_pre.open_sftp(), ip_sid[0], driver)
 
 
 def _drop(ip: str, sid: int, why: str) -> None:

@@ -30,10 +30,15 @@ and the ryu-manager path and argv systemd holds), `ls -la /opt/ryu-apps` (the fo
 mode) and `systemctl cat <unit>` (the drop-in before). Nothing here dials a host: the caller
 reads and passes the texts.
 
-**Not built here (P6's rest):** the transport (SFTP as the deploy account, then the one held
-write `sudo -n /usr/local/sbin/mercury-ryu-apply`: the host kind's held write still refuses,
-`modules/inventory/management.HOST_WRITE_REFUSAL`), the registry the enabled set comes from (P4),
-the preview and confirm route, and the screen.
+**The held write (`held_write`, C2673)** holds the controller (`device_ops.hold`, operation
+`management.HOST_DEPLOY`), opens its plain session as the deploy account and runs the transport
+(`modules/apps/transport.send`): the plan's files staged over the session's guarded SFTP, the
+request written last, the one command `sudo -n /usr/local/sbin/mercury-ryu-apply`, and the
+script's outcome read back whole.
+
+**Not built here (P6's rest):** the registry the enabled set comes from (P4), the preview and
+confirm route that calls `held_write` (C2677), the receipt and Needs attention rows (C2677,
+C2678), and the screen (a board the operator signs).
 """
 
 import functools
@@ -326,6 +331,7 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
             "switches": sorted(str(sw.get("dpid")) for sw in switches)}
     return dict(out, ok=True, request=req, request_sha256=s.request_sha256(req),
                 files={m.name: staged[m.name]["files"] for m in ordered},
+                folders={m.name: staged[m.name]["folder"] for m in ordered},
                 dropin_before=before, dropin_after=after,
                 restart=(f"{unit} on {controller} restarts (systemctl restart, by the apply "
                          f"script), so every switch reconnects: {', '.join(names) or 'none'}"),
@@ -334,6 +340,47 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
                         "seconds": window_seconds()},
                 plan_sha256=hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8"))
                 .hexdigest())
+
+
+def held_write(plan: dict, *, list_name: str, dev: dict, actor: str) -> dict:
+    """Apply *plan* (an ok `plan()`'s answer) to the controller *dev*, holding it as
+    `management.HOST_DEPLOY` for *actor*: `transport.send`'s answer, or ``{"ok": False,
+    "refused"}`` before anything is sent, naming the comparison and both operands."""
+    from modules import connection
+    from modules.apps import transport
+    from modules.inventory.management import HOST_DEPLOY
+    from modules.nsot import device_ops
+
+    dev = dev or {}
+    name, ip = dev.get("hostname") or "", dev.get("ip") or ""
+    account = script().DEPLOY_USER
+
+    def refused(words):
+        return {"ok": False, "refused": f"REFUSED: {words}. Nothing was sent."}
+
+    if not isinstance(plan, dict) or plan.get("ok") is not True:
+        return refused(f"the plan is not an approved plan (its ok is "
+                       f"{(plan or {}).get('ok')!r})")
+    if plan.get("controller") != name:
+        return refused(f"the plan is for {plan.get('controller')!r}, and the device is "
+                       f"{name!r}")
+    if (dev.get("device_type") or "") != "linux":
+        return refused(f"{name}'s driver is {dev.get('device_type')!r}, not 'linux', the host "
+                       "kind's")
+    if (dev.get("username") or "") != account:
+        return refused(f"{name}'s login is {dev.get('username')!r}, not the deploy account "
+                       f"{account!r}, whose staged files the apply script accepts")
+    try:
+        with device_ops.hold(list_name, name, HOST_DEPLOY, actor,
+                             detail=plan.get("plan_sha256", ""), ip=ip):
+            conn = connection.open_ssh(connection.stored_connection_params(dev),
+                                       owner=f"{HOST_DEPLOY} {name}", plain=True)
+            try:
+                return transport.send(conn, plan, ip=ip)
+            finally:
+                conn.disconnect()
+    except (device_ops.DeviceBusy, connection.NoLogin) as exc:
+        return refused(str(exc).removesuffix(" No session was opened."))
 
 
 def window_seconds() -> int:

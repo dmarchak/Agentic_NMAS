@@ -47,6 +47,10 @@ DECLARED_DYNAMIC = {
     # `sudo -n ovs-vsctl` transaction, its undo on a failure, and the OVS reads around them,
     # each sent once holding the server; the session sends nothing else (modules/sdn/ovs.py).
     ("modules/sdn/ovs_config.py", "apply"): ("openflow config",),
+    # P6's transport (C2673): the controller's one held command, `channel.APPLY_COMMAND`
+    # (`sudo -n /usr/local/sbin/mercury-ryu-apply`, the linux driver's only held write), sent
+    # once after the guarded staging (modules/apps/transport.py).
+    ("modules/apps/transport.py", "send"): ("controller app deploy",),
 }
 
 #: Config-mode sends, by the task each serves: config mode is a CHANNEL, not an

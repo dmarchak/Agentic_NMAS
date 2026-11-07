@@ -221,6 +221,11 @@ HELD_BY_CALLER = {
     "modules/heal/propose.py:reset": "propose.apply_approved's after_verify, inside apply_batch, "
                                      "which holds the device for the approved apply",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
+    # P6's transport (C2673): `transport.send` runs only inside `channel.held_write`, which holds
+    # the controller (`device_ops.hold`, HOST_DEPLOY) for the whole staging and command; a
+    # second hold there would be refused by name (one operation per device).
+    "modules/apps/transport.py:send": "channel.held_write, which holds the controller "
+                                      "(device_ops.hold, HOST_DEPLOY) for the staging and command",
     "modules/commands.py:_run": "run_device_command's body (C272); its callers send reads (its "
                                 "one caller that held a non-read, /run_command, left at 7.8), "
                                 "and the opener refuses an unheld non-read",

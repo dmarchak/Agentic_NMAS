@@ -76,6 +76,9 @@ OPERATION_WORDS = {
     "console onboard": "onboarded over its console",
     # An SDN switch's flows changed through its controller (modules/sdn/flow_ops.py).
     "sdn flows": "having its flows changed through its controller",
+    # A controller host's apps staged and applied (modules/apps/channel.held_write, P6).
+    "controller app deploy": "given its controller apps (staged, then the controller "
+                             "restarted)",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words

@@ -78,6 +78,8 @@ SCANS = (
     # module's platform literal with no keying declared.
     "tests/test_live_details_keep.py",
     "tests/test_platform_keying.py",
+    # And at P6's transport's first gate: a new test walking the checkout on disk.
+    "tests/test_source_index.py",
 )
 
 #: The operator's local files the publication scan reads (gitignored by design): copied from
