@@ -355,9 +355,10 @@ def records_store_apply(direction):
     return _stores(done=dict(out, direction=direction, store=store, words=words))
 
 
-def _install(name: str, status: int = 200, **ctx):
+def _install(name: str, status: int = 200, typed: dict = None, **ctx):
     """One F3 card drawn, with an action's answer in place; an unknown card is a 404 saying
-    which cards there are."""
+    which cards there are. *typed*: a refused Save's form, its fields drawn as typed so the
+    refusal can be corrected (never a secret: a card's fields are settings)."""
     from modules import installation_settings as I
 
     if name not in I.CARDS:
@@ -367,8 +368,9 @@ def _install(name: str, status: int = 200, **ctx):
         # The email relay's card (board H, artboard B) is drawn by its own template, from
         # notify_page's view of it.
         from modules import notify_page
-        return _fragment(I.CARDS[name]["template"], status, rl=notify_page.relay_view(), **ctx)
-    return _fragment("v2/_install_card.html", status, k=I.card(name), **ctx)
+        return _fragment(I.CARDS[name]["template"], status,
+                         rl=notify_page.relay_view(typed=typed), **ctx)
+    return _fragment("v2/_install_card.html", status, k=I.card(name, typed=typed), **ctx)
 
 
 @bp.route("/installation/card/<name>", methods=["GET"])
@@ -395,7 +397,8 @@ def install_save(name):
         saved = I.save_card(name, form, identity.request_actor(), _verified(),
                             loaded=loaded_from(request.form.get("loaded")))
     except I.Refused as exc:
-        return _install(name, 409, refused=str(exc))
+        # Drawn again as typed, every field (none is a secret), so it can be corrected.
+        return _install(name, 409, typed=form, refused=str(exc))
     if saved.get("confirm"):
         return _install(name, 409 if saved["confirm"]["refused"] else 200,
                         confirm=saved["confirm"])

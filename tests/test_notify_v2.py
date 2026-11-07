@@ -169,6 +169,43 @@ def test_the_relay_saves_what_changed_and_refuses_a_host_that_is_not_one(n):
     assert r.status_code == 200 and get_setting("notify_smtp_host") == "2001:db8::25"
 
 
+def _drawn_field(html, key):
+    """What the relay card's form draws for field *key*: an input's value, a select's choice."""
+    import html as h
+    m = re.search(rf'<input id="f-relay-{key}" name="{key}"[^>]*\svalue="([^"]*)"', html)
+    if m:
+        return h.unescape(m.group(1))
+    m = re.search(rf'<select id="f-relay-{key}" name="{key}">(.*?)</select>', html, re.S)
+    return re.search(r'<option value="([^"]*)" selected>', m.group(1)).group(1)
+
+
+def test_a_refused_save_redraws_every_field_as_typed_and_never_the_password(n):
+    """The operator's walk, 2026-11-07: "Relay host '<an email address>' is not a DNS
+    name...", and the form came back with Relay host empty. A refusal draws each field as it was typed,
+    so it can be corrected; the store holds what it held; what the card drew from the store
+    (`loaded`, R17) stays the store's; the password, its own form, is never drawn."""
+    from modules.settings_schema import get_setting
+    _relay_on(n)
+    _r, card = _get(n, "/v2/settings/installation/card/relay")
+    loaded = _loaded(card)
+    typed = {"notify_smtp_host": "operator@example.com", "notify_smtp_port": "2525",
+             "notify_smtp_tls": "implicit", "notify_smtp_username": "relay-user",
+             "notify_smtp_from": "alerts@example.net",
+             "notify_link_base": "https://mercury.example"}
+    r, html = _post(n, "/v2/settings/installation/card/relay/save", dict(typed, loaded=loaded))
+    assert r.status_code == 409 and "Not done:" in html and "operator@example.com" in html
+    for key, value in typed.items():
+        assert _drawn_field(html, key) == value, key
+    assert _loaded(html) == loaded, "what the card drew from the store, unchanged"
+    assert get_setting("notify_smtp_host") == "smtp.example.com", "nothing written"
+    assert RELAY_PW not in html and 'name="password"' not in html
+    # Corrected in place and sent again, it saves.
+    r, html = _post(n, "/v2/settings/installation/card/relay/save",
+                    dict(typed, notify_smtp_host="2001:db8::25", loaded=loaded))
+    assert r.status_code == 200 and get_setting("notify_smtp_host") == "2001:db8::25"
+    assert get_setting("notify_smtp_username") == "relay-user"
+
+
 def test_the_relays_password_is_stored_never_drawn_and_says_who_set_it(n):
     _r, card = _get(n, BASE + "/relay/password/form")
     assert 'type="password" name="password"' in card

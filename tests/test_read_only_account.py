@@ -276,6 +276,85 @@ def test_the_read_only_session_never_escalates(monkeypatch):
                                       "username": "mercury-ro", "closed": True}
 
 
+# ── A local inventory (the operator's walk, 2026-11-07: "resolves for 0 devices") ────────────
+
+#: Default as the lab holds it: a local inventory, each device's deploy login in its own file,
+#: no NetBox platform slug and no site; r2 by IPv4, s1 by IPv6.
+LOCAL = (("r2", "192.0.2.12", "cisco_xe", "router"), ("s1", "2001:db8::21", "cisco_ios", "switch"))
+
+
+@pytest.fixture
+def local(store, monkeypatch, tmp_path):
+    """A local network, Default, whose devices file is written in the loader's own shape (its
+    columns, each login sealed) and read through the real `load_saved_devices`, never faked."""
+    import csv
+
+    from modules import device
+    from modules.nsot import listref
+
+    folder = tmp_path / "Default"
+    folder.mkdir()
+    with open(folder / "devices.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=device.DEVICE_CSV_FIELDS)
+        w.writeheader()
+        for host, ip, driver, role in LOCAL:
+            w.writerow({"hostname": host, "device_type": driver, "ip": ip,
+                        "username": "netops",
+                        "password": device.fernet.encrypt(DEPLOY_PW.encode()).decode(),
+                        "secret": device.fernet.encrypt(b"").decode(), "role": role,
+                        "device_uid": "", "platform": ""})
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / name))
+    monkeypatch.setattr("modules.config.list_data_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(listref, "_registry", lambda: {"Default": "default"})
+    monkeypatch.setattr(device, "_list_name_for_path", lambda path: "Default")
+    monkeypatch.setattr("modules.commands.run_device_command", lambda conn, c: conn.answer(c))
+    monkeypatch.setattr("modules.list_settings.value", lambda ln, key, default=None: default)
+    _profiles("default")
+    return tmp_path
+
+
+def test_a_local_inventorys_device_reads_as_the_default_profiles_read_only_account(local):
+    """Its deploy login is its file's; its read-only account is the profiles', by its kind and
+    then default, IPv4 and IPv6, and never the file's login."""
+    from modules.ai import router_reads
+    from modules.nsot import reads
+    _set()
+    assert router_reads.read_accounts("Default", ["r2", "s1"]) == {"r2": (True, ""),
+                                                                    "s1": (True, "")}
+    s = Session()
+    rec = reads.run("Default", ["r2", "s1"], ["show version"], "admin@x", by="ai_analysis",
+                    session=s)
+    assert sorted((x["host"], x["username"], x["password"]) for x in s.signed) == [
+        ("r2", "mercury-ro", RO_PW), ("s1", "mercury-ro", RO_PW)]
+    for host in ("r2", "s1"):
+        assert rec["results"][host]["signed_in_as"] == {
+            "username": "mercury-ro", "source": "read-account:profile:default"}
+    assert RO_PW not in json.dumps(rec)
+
+
+def test_a_local_inventorys_device_without_one_is_refused_never_read_as_its_file_login(local):
+    from modules.nsot import reads
+    s = Session()
+    rec = reads.run("Default", ["r2"], ["show version"], "admin@x", by="ai_analysis", session=s)
+    assert s.signed == [], "no session opens with the file's deploy login"
+    assert rec["results"]["r2"]["why"] == (
+        "no read-only account for r2: no read-only account: none of the profiles it is looked "
+        "for under (role:router, default) carries one. Nothing was sent")
+
+
+def test_the_count_is_the_devices_it_resolves_for_a_local_inventorys_included(local):
+    """The card's "Resolves for" is what the reads engine resolves: Default's two devices, by
+    the default profile; before the account is set, both are named as having none."""
+    from modules import credential_profiles_page as P
+    before = P.read_coverage()
+    assert before == {"total": 2, "by_profile": {}, "none": 2, "none_names": ["r2", "s1"]}
+    _set()
+    assert P.read_coverage() == {"total": 2, "by_profile": {"default": 2}, "none": 0,
+                                 "none_names": []}
+    (row,) = P.read_view()["rows"]
+    assert row["name"] == "default" and row["resolves"] == 2
+
+
 def test_credential_health_lists_each_read_only_account_by_age(store):
     from modules.readers import credential_health as CH
     _profiles("default")

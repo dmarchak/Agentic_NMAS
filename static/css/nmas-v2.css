@@ -1624,7 +1624,18 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); width: 100%;
   box-sizing: border-box; }
 .set-form-note { grid-column: 1 / -1; margin: 4px 0 0; }
+/* A heading, a paragraph or a notice in a form spans both columns. In one cell it took the
+   label column and moved every label beside the next pair's field: the read-only account's
+   form drew "Account name" beside its heading and "Password" beside the name field (the
+   operator's walk, 2026-11-07). A notice keeps its icon beside its words. */
+.set-form > :is(h2, h3, h4, p, .notice) { grid-column: 1 / -1; }
+.set-form > div.notice { flex-direction: row; }
 .set-table td { vertical-align: top; }
+/* Credential profiles' "Gives its login to" is a sentence: its neighbours (a long rotation
+   policy, the row's three actions) squeezed it to a word or two a line at 1280 (the operator's
+   walk, 2026-11-07; C2610's class). It keeps a few words a line; the table scrolls inside its
+   card before it is squeezed further. */
+#cred-profiles td.cp-covers { min-width: 15em; }
 /* F2, the records database card: a label beside a value that is not an input, the Test's
    checks in order, and Replace's order of steps. */
 .set-label { font-size: 13px; color: var(--ink-2); }

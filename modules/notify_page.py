@@ -101,24 +101,25 @@ def _dest(team_id: str, dest_id: str, dest: dict, team_name: str) -> dict:
     return out
 
 
-def relay_card() -> dict:
+def relay_card(typed: dict = None) -> dict:
     """The relay card's fields as `installation_settings.card("relay")` holds them, what its
-    form drew (``loaded``, R17), its title and note."""
+    form drew (``loaded``, R17), its title and note; after a refused Save, each field as
+    *typed* (its password is never a field: it is never drawn)."""
     from modules import installation_settings as I
 
-    c = I.card(RELAY_CARD)
+    c = I.card(RELAY_CARD, typed=typed)
     return {"name": c["name"], "fields": c["fields"], "loaded": c["loaded"],
             "title": c["spec"]["title"], "note": c["spec"]["note"]}
 
 
-def relay_view(emails: list = None) -> dict:
-    """What the relay card draws: its card, its head and password, the addresses a test may
-    go to, and the Security choices' words."""
+def relay_view(emails: list = None, typed: dict = None) -> dict:
+    """What the relay card draws: its card (after a refused Save, its fields as *typed*), its
+    head and password, the addresses a test may go to, and the Security choices' words."""
     from modules.notify import delivery
 
     if emails is None:
         emails = [d for d in view_teams()[0] if d["channel"] == "email"]
-    return {"card": relay_card(), "relay": _relay(delivery.read_log()["rows"]),
+    return {"card": relay_card(typed), "relay": _relay(delivery.read_log()["rows"]),
             "emails": [{"to": f"{d['team']}:{d['id']}", "label": d["label"],
                         "team_name": d["team_name"]} for d in emails],
             "tls_words": TLS_WORDS}

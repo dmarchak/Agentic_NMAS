@@ -27,8 +27,8 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
-Templates sha256: `4cf8d5aded5ffe96b1d64a610b0e492727e8fbce3e4ce3288570513e942cbbfa`
-Templates sha256 before: `d28e1d85aba799219ad2cfa2c89f614f6d993d15204315ab124cd38abbe6c524`.
+Templates sha256: `d8259e2f232a9483de6f01c10edbc0f8a4f84b6afa4028ab6e8aecbb445a1fe5`
+Templates sha256 before: `4cf8d5aded5ffe96b1d64a610b0e492727e8fbce3e4ce3288570513e942cbbfa`.
 
 Compared again 2026-10-17 (C1023) after Check it (`_breakglass_check.html`) and Record the drill
 (`_breakglass_drill.html`) declared themselves busy (`hx-disabled-elt="this"`): their busy words
@@ -45,6 +45,21 @@ approved by the operator 2026-11-03) from tests/test_board_shots.py's
 `test_read_account_and_ai_classes` (`read-account` and `read-account-form`, at 1440, 1280 and
 390: Default's read-only account set by a person, a role profile without one, the form open on
 Set), in the regions whose names begin "N:" below.
+
+**Compared again 2026-11-07 (the operator's walk of the card):** the coverage line counts every
+network's devices, a local inventory's too ("Of the N devices the networks hold (a NetBox
+inventory's as last loaded, a local inventory's as its devices file lists them)", and that a
+local inventory's devices take their read-only account from the profiles); it had counted
+NetBox inventories only, so Default's local devices drew "0 devices". The form's labels sit by
+their own fields: its heading took the label column and moved "Account name" beside it and
+"Password" beside the name field; the stylesheet now spans a form's heading, paragraph and
+notice across both columns. Read from `test_read_account_and_ai_classes`' `read-account` and
+`read-account-form` shots at 1440, 1280 and 390 beside artboard N: at 1280 the heading spans
+the form, "Account name" beside its field and "Password" beside the password field, the
+coverage line in place above the table; at 390 each label above its own field. N: The coverage
+chip keeps its deviation (the count now covers local inventories, the same log line); every
+other verdict stands. Held by tests/test_credentials_profiles_in_a_browser.py (each label by
+its own field, at 1280 and 390) and tests/test_read_only_account.py (the count).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

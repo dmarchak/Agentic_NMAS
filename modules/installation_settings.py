@@ -490,10 +490,17 @@ def _writes_state() -> dict:
     return {"on": on, "last_off": None if on else last}
 
 
-def card(name: str, ai_state: bool = True) -> dict:
+def card(name: str, ai_state: bool = True, typed: dict = None) -> dict:
     """One card as drawn: its fields with today's values (a secret only as set or not set),
     its integration's stored health, and NetBox's master switch; the AI card's allowance and
-    today's spend unless *ai_state* is off (the Replace form draws neither)."""
+    today's spend unless *ai_state* is off (the Replace form draws neither).
+
+    *typed*, a refused Save's form (`form_keys`): each field is drawn as the person typed it,
+    so the refusal can be corrected in place (the operator's walk, 2026-11-07: the relay card
+    redrew Relay host empty after refusing it). Only a card's fields, which are settings: a
+    card's secret is never one of them (Replace… is its own form, and its value is never drawn).
+    What the card drew from the store (``loaded``, R17) stays the store's, so a field another
+    person moved meanwhile is still refused, naming both."""
     from modules.secrets_store import is_set
     from modules.settings_schema import DEFAULTS, get_setting
 
@@ -506,6 +513,16 @@ def card(name: str, ai_state: bool = True) -> dict:
            "secret_set": bool(spec["secret"]) and is_set(spec["secret"][0]),
            "id_value": get_setting(spec["with_id"][0], "") if spec["with_id"] else ""}
     out["loaded"] = {f["key"]: _drawn(f, f["value"]) for f in fields}
+    if typed is not None:
+        secrets = {k for k in (spec["secret"] or ())[:1] + (spec["with_id"] or ())[:1] if k}
+        for f in fields:
+            if f["key"] in secrets:
+                continue
+            raw = typed.get(f["key"])
+            if f["kind"] == "switch":
+                f["value"] = raw not in (None, "", "off", "0", "false")
+            elif raw is not None:
+                f["value"] = raw
     if spec["integration"]:
         out["health"] = _health(spec["integration"])
     if name == "netbox":

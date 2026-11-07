@@ -770,6 +770,32 @@ class TestTheCards:
             assert r.status_code == 409 and words in _kcard(html, "proxmox"), words
         assert get_setting("proxmox_backup_vmids") == before
 
+    def test_a_refusal_draws_each_field_as_typed_and_never_the_token(self, networks):
+        """The operator's walk, 2026-11-07 (the relay card's Relay host redrawn empty): a
+        refused Save draws each field as it was typed, the switch as sent too, so it can be
+        corrected; what the card drew from the store (`loaded`, R17) and the store stay as
+        they were; the token, Replace…'s, is never drawn."""
+        from modules.secrets_store import set_secret
+        from modules.settings_schema import get_setting
+        from tests.test_settings_v2 import loaded_of
+        set_secret("proxmox_token_secret", "px-secret-SECRET-654321")
+        _r, card = _get(networks, "/v2/settings/installation/card/proxmox")
+        typed = {"proxmox_url": "https://[2001:db8::40]:8006", "proxmox_node": "pve-b",
+                 "proxmox_token_expires": "2027-02-30", "proxmox_verify_tls": "on",
+                 "proxmox_backup_vmids": "101,102", "proxmox_backup_storage": "pbs-b"}
+        r, html = _post(networks, "/v2/settings/installation/card/proxmox/save",
+                        dict(typed, loaded=loaded_of(card)))
+        k = _kcard(html, "proxmox")
+        assert r.status_code == 409 and "Token expires '2027-02-30' is not a date" in k
+        for key, value in typed.items():
+            if key == "proxmox_verify_tls":
+                assert re.search(rf'name="{key}" type="checkbox" value="on" checked', k), key
+            else:
+                assert re.search(rf'name="{key}"[^>]* value="{re.escape(value)}"', k), key
+        assert loaded_of(html) == loaded_of(card), "what the card drew from the store"
+        assert get_setting("proxmox_node") != "pve-b", "nothing written"
+        assert "SECRET" not in html
+
     def test_the_server_s_bind_and_port_wait_for_a_restart_and_say_so(self, networks):
         from modules.settings_schema import get_setting
         _r, html = _card_save(networks, "server",

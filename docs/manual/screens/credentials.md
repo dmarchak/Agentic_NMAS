@@ -64,7 +64,8 @@ none is ever shown back.
 The **Profiles** tab lists the credential profiles, which apply to every network on this
 installation. A device a NetBox inventory brings in carries no login of its own, so it is
 given one in the order above; a local inventory's devices carry theirs in it and never read
-a profile. Each row says which devices it gives its login to: `platform:<slug>` every device on
+a profile for it (their read-only account comes from the profiles all the same: see
+[the read-only account](#read-account)). Each row says which devices it gives its login to: `platform:<slug>` every device on
 that NetBox platform, `role:<kind>` every device whose NetBox role has that `mercury_kind`
 (router, switch, firewall or host; never the NetBox role's own name), `site:<site>` every device
 at that site, `default` every device nothing before it covers. A profile under any other name,
@@ -118,13 +119,16 @@ escalates (no `enable`): the AI analysis's reads run at the account's own low pr
 device limits what it may run as well as Mercury. A device's read-only account is looked for
 in the profiles' order (platform, kind, site, then default): the first profile that carries
 one gives it. A device's own login and its network's credential list carry no read-only
-account. **A device none covers is refused by name**, "no read-only account for <device>",
+account, and neither does a local inventory's devices file: a local inventory's device takes
+its read-only account from the profiles by its kind, then default, as a NetBox one does (a
+local inventory names no NetBox platform or site). **A device none covers is refused by name**, "no read-only account for <device>",
 and nothing is read from it; the deploy account is never used instead.
 
 Each profile's row names its **deploy account** (used by device-changing operations) and its
 **read-only account**: the account's name, when its password was set and by whom, never the
-password. **Resolves for** counts the devices NetBox inventories have loaded that take their
-read-only account from that profile; the line above the table says how many resolve one and
+password. **Resolves for** counts the devices every network holds (a NetBox inventory's as last
+loaded, a local inventory's as its devices file lists them) that take their read-only
+account from that profile; the line above the table says how many resolve one and
 how many do not, and the group **no read-only account**, closed until opened, names those
 that do not.
 

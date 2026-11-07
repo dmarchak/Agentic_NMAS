@@ -211,21 +211,38 @@ READ_USED_BY = ("the AI analysis's reads (required: a device without one is refu
                 "diagnosis, collection and drift reads may move to it later")
 
 
+def _read_rows(name: str) -> list:
+    """*name*'s devices as the AI's reads load them, identity fields only (no credential): a
+    NetBox list's loaded rows (`inventory.loaded_rows`), a local list's devices file through
+    the reads engine's own path (`listref.resolve(...).csv_path`, `load_saved_devices`). A
+    local inventory's devices carry their deploy login in the file, but their read-only
+    account comes from the profiles all the same (`credentials.resolve_read` on their kind,
+    then default), so they are counted (the operator's walk, 2026-11-07: "resolves for 0")."""
+    from modules import inventory
+    from modules.inventory.source_config import is_netbox_sourced
+    from modules.nsot import listref
+
+    if is_netbox_sourced(name):
+        return inventory.loaded_rows(name)
+    from modules.device import load_saved_devices
+    return [{k: v for k, v in d.items() if k not in ("username", "password", "secret")}
+            for d in load_saved_devices(listref.resolve(name).csv_path) if isinstance(d, dict)]
+
+
 def read_coverage(accounts: dict = None) -> dict:
-    """Which loaded devices each profile's read-only account resolves for: ``{"total",
-    "by_profile": {profile: count}, "none": count, "none_names": [up to 10]}``. From the
-    loaded inventories (one pass over each NetBox list's rows, as `exists` reads them) and the
-    store's names, never a value and never a device; a local list's devices carry no platform
-    or site, so its devices are not counted here (`credentials.resolve_read` serves them by
-    their kind and the default profile)."""
-    from modules import credentials, inventory
+    """Which devices each profile's read-only account resolves for: ``{"total",
+    "by_profile": {profile: count}, "none": count, "none_names": [up to 10]}``. From every
+    network's devices (`_read_rows`: one pass over each list's rows, NetBox or local) and the
+    store's names, never a value and never a device; each device's chain is the one
+    `reads.read_account_for` resolves on (its platform, kind and site, then default)."""
+    from modules import credentials
     from modules.nsot import listref
 
     accounts = credentials.read_accounts() if accounts is None else accounts
     by, none, names, total = {}, 0, [], 0
     for name in sorted(listref._registry()):
         try:
-            rows = inventory.loaded_rows(name)
+            rows = _read_rows(name)
         except Exception as exc:                      # noqa: BLE001 - that list adds nothing
             log.warning("credential_profiles_page: %s's inventory was not read: %s", name, exc)
             continue
