@@ -706,6 +706,26 @@ def ci_verdict(repo, target, get=github_get, store=None, override=None):
                                 f"({lv['words']}), and GitHub's CI failed it ({words}). Refused: "
                                 "rerun GitHub's run once (a green rerun clears it), or deploy "
                                 "with --override-ci-red \"<reason>\".")
+        # C2753: the local runner skips the container harness, so its green alone never
+        # deploys a tree whose harness paths moved; GitHub's harness jobs must be green.
+        try:
+            moved = harness_paths_changed(repo, target)
+        except RuntimeError as exc:
+            return CI_REFUSED, (f"{LOCAL_PASSED} for {short}, but whether its tree changes the "
+                                f"harness's paths could not be told ({exc}), so the local "
+                                "verdict alone does not deploy it.")
+        if moved:
+            hstate, hwords = github_harness(repo, target, get)
+            if hstate != "PASSED":
+                named = ", ".join(moved[:5]) + (f" and {len(moved) - 5} more"
+                                                if len(moved) > 5 else "")
+                code = CI_PENDING if hstate in ("PENDING", "COULD NOT ASK") else CI_REFUSED
+                return code, (f"{'PENDING' if code == CI_PENDING else 'REFUSED'}: the local "
+                              f"runner passed {short} ({lv['words']}), but its tree changes "
+                              f"{len(moved)} path(s) the container harness tests ({named}), "
+                              "which the local runner skips; GitHub's harness jobs must be "
+                              f"green, and they are {hstate.lower()} ({hwords}).")
+            words += f"; the harness paths changed, and GitHub's harness: {hwords}"
         return OK, f"{LOCAL_PASSED} for {short}: {lv['words']}. GitHub's own run: {words}"
     code, sentence = github_verdict(repo, target, get, store)
     said = "" if lv["state"] == "absent" else f" The local runner: {lv['words']}."
@@ -717,6 +737,59 @@ def ci_verdict(repo, target, get=github_get, store=None, override=None):
     if code == OK or not said:
         return code, sentence + said
     return code, sentence.rstrip(".") + "." + said
+
+
+#: The code the container harness tests (ci.yml's `harness` job): the SDN, app and controller
+#: code, in the operator's words (2026-11-08), and the harness itself. The local runner skips
+#: that job (its job containers have no Docker: `if: ${{ !env.ACT }}`), so "A local-runner
+#: verdict alone never makes deployable a commit that touches the harness's paths ... such a
+#: commit needs GitHub's harness job green" (C2753).
+HARNESS_PATHS = ("modules/sdn/", "modules/apps/", "deploy/controller/", "lab/lab9/",
+                 "tests/containers/", "scripts/nmas-harness")
+#: How the harness job's runs are named in ci.yml (`name: container harness (...)`).
+HARNESS_JOB = "container harness"
+
+
+def harness_paths_changed(repo, target, base=None):
+    """The paths under `HARNESS_PATHS` that differ between *base* (the checkout's deployed
+    HEAD) and *target*, sorted. Raises RuntimeError when git cannot tell (never read as
+    none)."""
+    base = base or git(repo, "rev-parse", "HEAD").strip()
+    names = git(repo, "diff", "--name-only", base, target).split()
+    return sorted(n for n in names
+                  if any(n == p or (p.endswith("/") and n.startswith(p)) for p in HARNESS_PATHS))
+
+
+def github_harness(repo, target, get=github_get):
+    """``(state, words)`` of GitHub's container harness jobs for *target*: PASSED (every one
+    succeeded), FAILED, PENDING, NO JOB (its run has none) or COULD NOT ASK."""
+    try:
+        slug = slug_of(git(repo, "remote", "get-url", "origin"))
+    except (RuntimeError, ValueError) as exc:
+        return "COULD NOT ASK", f"could not ask GitHub ({exc})"
+    _status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={target}&event=push"
+                                f"&per_page=20")
+    if body is None:
+        return "COULD NOT ASK", f"could not ask GitHub ({reason})"
+    runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+    if not runs:
+        return "PENDING", "GitHub has no run yet"
+    state, run, _all = verdict_of_runs(runs)
+    _status, jobs_body, reason = get(f"/repos/{slug}/actions/runs/{run.get('id')}/jobs"
+                                     f"?per_page=100")
+    if jobs_body is None:
+        return "COULD NOT ASK", f"could not ask GitHub for run #{run.get('run_number')}'s jobs " \
+                                f"({reason})"
+    jobs = [j for j in jobs_body.get("jobs", []) if str(j.get("name", "")).startswith(HARNESS_JOB)]
+    where = f"run #{run.get('run_number', '?')}"
+    if not jobs:
+        return ("PENDING" if state == "PENDING" else "NO JOB"), f"{where} has no harness job"
+    if any(j.get("status") != "completed" for j in jobs):
+        return "PENDING", f"{where}'s harness jobs are still running"
+    bad = [j.get("name", "") for j in jobs if j.get("conclusion") != "success"]
+    if bad:
+        return "FAILED", f"{where}: {', '.join(bad)} did not succeed"
+    return "PASSED", f"{where}: {len(jobs)} harness job(s) succeeded"
 
 
 def github_own(repo, target, get=github_get):

@@ -90,7 +90,7 @@ def _fetch_from_real_origin(world):
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
          wait=False, host_check=None, operations=None, to=None, setup=None, units=None,
-         store=None, override=None, readiness=None, seen=None):
+         store=None, override=None, readiness=None, seen=None, jobs=None):
     """*units*: ``(restart_unit, unit_of)`` for the checkout's other units (C1404); by default
     none is installed here, as on a host without the ZTP responder.
 
@@ -107,6 +107,9 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
         calls.append(path)
         if not reachable:
             return 0, None, "URLError: timed out"
+        if "/jobs" in path:
+            # A run's jobs (C2753: the container harness jobs a local green needs).
+            return 200, {"jobs": list(jobs or [])}, ""
         if "head_sha=" in path:
             sha = path.split("head_sha=")[1].split("&")[0]
             # A SHA listed as `passed` answers its own query with a passing
@@ -1422,6 +1425,91 @@ class TestTheLocalRunnersVerdict:
         assert code == 1 and _head(world) == world.base and not restarted, err
         assert "the two CI runners DISAGREE" in err and "the local runner passed it" in err
         assert "GitHub's CI failed it (run #" in err
+
+    def test_the_harness_job_and_paths_are_ci_ymls_and_the_harnesss_own(self):
+        """HARNESS_JOB names ci.yml's harness job, and every Mercury module the harness's
+        checks import lies under HARNESS_PATHS (a floor: at least one import found)."""
+        import ast
+
+        import yaml
+        mod = _script()
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "workflows", "ci.yml"), encoding="utf-8") as fh:
+            job = yaml.safe_load(fh)["jobs"]["harness"]
+        assert job["name"].startswith(mod.HARNESS_JOB), job["name"]
+        steps = [s for s in job["steps"] if "nmas-harness" in str(s.get("run", ""))]
+        assert steps and all("!env.ACT" in s.get("if", "") and
+                             s.get("env", {}).get("NMAS_ACT_NOT_GATING") for s in steps), steps
+        imported = set()
+        folder = os.path.join(root, "tests", "containers")
+        for name in sorted(os.listdir(folder)):
+            if name.endswith(".py"):
+                with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                    tree = ast.parse(fh.read())
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+                            "modules."):
+                        imported.add(node.module.replace(".", "/"))
+        assert imported, "no Mercury import found in tests/containers/"
+        outside = sorted(m for m in imported
+                         if not any(m.startswith(p.rstrip("/")) for p in mod.HARNESS_PATHS))
+        assert not outside, outside
+
+    @staticmethod
+    def _harness(conclusion="success", status="completed"):
+        return [{"name": f"container harness (Ryu on the controller's Python {v})",
+                 "status": status, "conclusion": conclusion} for v in ("3.5", "3.9")]
+
+    @pytest.mark.parametrize("path", ["modules/sdn/loop.py", "modules/apps/channel.py",
+                                      "deploy/controller/mercury-ryu-apply",
+                                      "lab/lab9/apps/x.py", "scripts/nmas-harness"])
+    def test_a_local_green_alone_never_deploys_a_harness_path_change(
+            self, world, tmp_path, capsys, path):
+        # C2753, the operator's condition (2026-11-08): "A local-runner verdict alone never
+        # makes deployable a commit that touches the harness's paths ... such a commit needs
+        # GitHub's harness job green." GitHub still running: PENDING, nothing deployed.
+        store = _local_store(tmp_path)
+        sha = world.advance({path: "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store,
+                                  jobs=self._harness(conclusion=None, status="in_progress"))
+        both = capsys.readouterr()
+        assert code != 0 and _head(world) == world.base and not restarted, both
+        words = both.out + both.err
+        assert "the local runner passed" in words and path in words, words
+        assert "GitHub's harness jobs must be green, and they are pending" in words, words
+
+    def test_a_local_green_with_github_harness_green_deploys_and_says_so(self, world, tmp_path,
+                                                                        capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"modules/sdn/loop.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, _, _ = _run(world, {sha: self._pending(sha)}, store=store, jobs=self._harness())
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "GitHub's harness: run #" in out and "2 harness job(s) succeeded" in out, out
+
+    def test_a_local_green_with_a_failed_harness_job_is_refused_naming_it(self, world, tmp_path,
+                                                                         capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"modules/apps/gate.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        jobs = self._harness()
+        jobs[0]["conclusion"] = "failure"
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=store, jobs=jobs)
+        err = capsys.readouterr().err
+        assert code == 1 and _head(world) == world.base and not restarted, err
+        assert "they are failed" in err and "Python 3.5) did not succeed" in err, err
+
+    def test_a_local_green_outside_the_harness_paths_needs_no_harness(self, world, tmp_path,
+                                                                     capsys):
+        store = _local_store(tmp_path)
+        sha = world.advance({"modules/sdn_page.py": "v = 2\n"})
+        _local_record(store, world, sha, "passed")
+        code, _, _ = _run(world, {sha: self._pending(sha)}, store=store, jobs=[])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "harness" not in out, out
 
     @pytest.mark.parametrize("local, github", [("passed", "failure"), ("failed", "success")])
     def test_the_operators_override_deploys_on_the_green_and_is_recorded(

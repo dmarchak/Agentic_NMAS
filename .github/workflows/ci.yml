@@ -529,9 +529,18 @@ jobs:
         with:
           python-version: "3.12.3"
 
+      # Under act (the local CI runner, docs/LOCAL_CI.md) the job's container has no Docker, so
+      # the harness cannot start: its steps are skipped there and said not gating (C2699). A
+      # local verdict alone then never deploys a tree changing the harness's paths:
+      # scripts/nmas-deploy needs GitHub's harness jobs green for it (C2753).
       - name: The harness's checks on Python ${{ matrix.python }}
+        if: ${{ !env.ACT }}
+        env:
+          NMAS_ACT_NOT_GATING: "the local runner's job containers have no Docker; a commit changing the harness's paths deploys only on GitHub's harness jobs green (scripts/nmas-deploy, C2753)"
         run: scripts/nmas-harness check --python ${{ matrix.python }}
 
       - name: Down, whatever happened
-        if: ${{ always() }}
+        if: ${{ always() && !env.ACT }}
+        env:
+          NMAS_ACT_NOT_GATING: "the local runner's job containers have no Docker, so nothing was brought up to take down"
         run: scripts/nmas-harness down
