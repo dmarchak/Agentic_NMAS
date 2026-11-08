@@ -108,6 +108,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   only findings are fixed (register rule 4 and decision 9, the operator, 2026-10-28). Cost:
   new work paused while it is crossed. Prevents: the register growing faster than it closes
   during a sprint.** [not mechanised]
+- **Exception to the cap, until 2026-11-30 (the operator, 2026-11-07): past 60, work whose
+  rows are tagged `Lab 9: blocks` or `Lab 10: blocks` continues; all other new feature work
+  waits as the rule says. It ends on 2026-11-30 unless the operator renews it. Cost: Phase 8's
+  rows may stay over the cap while the labs' work goes on. Prevents: two course labs, ahead
+  of Phase 8 on the roadmap, stalling on a cap their rows are counted apart from.**
+  [not mechanised]
 - **Sweep stopping rule:** a sweep registers all it finds and fixes only the A items it found;
   the rest waits however cheap. Bound a sweep by a property-defined survey. [not mechanised] [why](docs/LESSONS.md#the-sweep-stopping-rule)
 - **Survey before fixing, and let the survey move the fix; constrain the shape of a class rather
@@ -170,7 +176,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **A diff must not remove a definition something still calls.**
   [scripts/check_removed_definitions.py in hooks/pre-commit and CI; tests/test_check_removed_definitions.py] [why](docs/LESSONS.md#removed-definitions-still-called)
 - **A commit touching a host-installed file** (`deploy/update/`, `scripts/nmas-deploy`, `scripts/nmas-oxidized-cred`,
-  `deploy/systemd/`, `deploy/postgres/`) carries `Host-Step:`/`Host-Step-After:` or
+  `deploy/systemd/`, `deploy/postgres/`, `deploy/controller/`) carries `Host-Step:`/`Host-Step-After:` or
   `Host-Step-None: <why>`; a step fills every value (no `<…>`), renders into a fresh `mktemp -d`
   folder, and installs files by name, never a glob.
   [scripts/nmas-host-step-check in hooks/commit-msg and CI; tests/test_host_step_check.py] [why](docs/LESSONS.md#host-steps-in-commits)
