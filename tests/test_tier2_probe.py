@@ -354,3 +354,85 @@ class TestTheBgpClears:
         row = results["bgp-soft"]
         assert conn.sent == ["clear bgp ipv6 unicast 2001:DB8:51:1::2 soft"], row
         assert row["bgp"]["verdict"] == "not reset" and row["session"]["reset"] is False
+
+
+#: r3's OSPF neighbour table, captured (tests/fixtures/operational/): six adjacencies FULL.
+OSPF_FULL = _cap("r3__show_ip_ospf_neighbor.txt") if os.path.exists(os.path.join(
+    ROOT, "tests", "fixtures", "operational", "r3__show_ip_ospf_neighbor.txt")) else ""
+
+
+def _ospf_down(n=2):
+    """The same table with its first *n* neighbour rows gone (the adjacencies a reset dropped),
+    everything up to and including its header kept as captured."""
+    lines = OSPF_FULL.splitlines()
+    i = next(k for k, ln in enumerate(lines) if ln.lstrip().startswith("Neighbor ID"))
+    return "\n".join(lines[:i + 1] + lines[i + 1 + n:]) + "\n"
+
+
+class TestTheOspfReset:
+    """C2374 (board H, H5): the probe measures the OSPF process reset the heal's R8 proposal
+    sends: its window first, naming every neighbour, the reset's own question alone answered,
+    and the seconds until every adjacency formed before is formed again."""
+
+    PROMPT = "Reset OSPF process 1? [no]: "
+
+    def _run(self, device, reads, *, answer=None, declare=None):
+        cmd = "clear ip ospf 1 process"
+        conn = Conn({**_reads(), "show ip ospf neighbor": reads},
+                    {cmd: answer if answer is not None else self.PROMPT})
+        steps = P.plan(_args(step=["ospf-reset"], allow_live_ospf=True, ospf_process="1"))
+        clock, seen = Clock(), []
+
+        def ok(dev, interface, seconds, why, reset=""):
+            seen.append((dev["hostname"], interface, seconds, reset, list(conn.sent)))
+            return {"ok": True, "record": {"from": "a", "until": "b", "via": "nmas-tier2-probe",
+                                           "expected": {"far_ends": [{"device": "r1",
+                                                                      "interface": ""}]}}}
+        results, stopped = P.measure(conn, steps, device, {}, sleep=clock.sleep,
+                                     clock=clock.time, declare=declare or ok)
+        return conn, results["ospf-reset"], seen, stopped
+
+    def test_it_runs_only_when_named_with_its_flag_and_process(self):
+        assert "ospf-reset" not in [s["key"] for s in P.plan(_args())], "never in a run of all"
+        row = P.plan(_args(step=["ospf-reset"]))[0]
+        assert "--allow-live-ospf not given" in row["unmeasured"]
+        row = P.plan(_args(step=["ospf-reset"], allow_live_ospf=True))[0]
+        assert "no --ospf-process named" in row["unmeasured"]
+        row = P.plan(_args(step=["ospfv3-reset"], allow_live_ospf=True, ospf_process="1"))[0]
+        assert row["command"] == "clear ipv6 ospf 1 process" and "unmeasured" not in row
+        assert row["before"] == "show ipv6 ospf neighbor"
+        assert P.refusal(_args(ospf_process="1; reload")).startswith(
+            "REFUSED: --ospf-process '1; reload' is not one token of digits")
+
+    def test_a_window_first_its_question_answered_then_the_seconds_back(self, device):
+        conn, row, seen, stopped = self._run(
+            device, [OSPF_FULL, _ospf_down(), _ospf_down(1), OSPF_FULL])
+        assert not stopped and seen == [("r2", "", P.OSPF_WAIT + P.BGP_WINDOW_MARGIN_S,
+                                         "clear-ospf-process", [])], seen
+        assert conn.sent == ["clear ip ospf 1 process", "yes"], conn.sent
+        assert (row["prompt"], row["answer"]) == ("Reset OSPF process 1? [no]:", "yes"), row
+        assert row["formed_before"] == 6 and row["ospf"]["dropped"] is True
+        # The read after the send shows two gone, the first watch read one gone (the drop
+        # seen), and one poll of 2 s later all six formed again.
+        assert row["settle_s"] == 2.0 and row["result"] == "measured", row
+        assert row["planned_window"]["far_ends"] == [{"device": "r1", "interface": ""}]
+
+    def test_another_question_is_never_answered(self, device):
+        conn, row, _seen, stopped = self._run(
+            device, [OSPF_FULL], answer="Reset ALL routing processes, and reload? [yes/no]: ")
+        assert conn.sent == ["clear ip ospf 1 process"], "nothing answered"
+        assert row["result"] == "stopped" and stopped, row
+
+    def test_a_table_that_never_dropped_is_said_not_taken_as_a_return(self, device):
+        _conn, row, _seen, _s = self._run(device, [OSPF_FULL])
+        assert row["settle_s"] is None and row["ospf"]["words"] == "no drop was seen in the reads"
+
+    def test_no_window_or_no_adjacency_sends_nothing(self, device):
+        conn, row, _seen, _s = self._run(
+            device, [OSPF_FULL],
+            declare=lambda *a, **k: {"ok": False, "error": "the store is unreadable"})
+        assert conn.sent == [] and row["result"] == "not measured"
+        assert "could not be recorded (the store is unreadable)" in row["why"]
+        conn, row, _seen, _s = self._run(device, [_ospf_down(6)])
+        assert _ospf_down(6).count("FULL") == 0, "the header kept, every row gone"
+        assert conn.sent == [] and "no adjacency formed before the reset (none)" in row["why"]

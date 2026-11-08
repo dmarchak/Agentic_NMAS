@@ -45,6 +45,15 @@ configured or saved.
   row), or nothing is sent; then the neighbour is read every second, up to `BGP_WAIT`, until it
   is Established again, and the seconds are recorded: the settle time the session clear's
   verify bound is 2.5 times of;
+- ``clear ip ospf <process> process`` (``--step ospf-reset``) and ``clear ipv6 ospf <process>
+  process`` (``--step ospfv3-reset``), the process resets self-healing's R8 proposal sends
+  (board H, H5; C2374), only when the step names it, with ``--allow-live-ospf`` and
+  ``--ospf-process``: every adjacency of the process drops. A planned window is declared
+  first, naming each neighbour committed intent expects as a far end (C2749), or nothing is
+  sent; the reset's own question ("Reset OSPF process N? [no]:") alone is answered ``yes``;
+  then the neighbour table is read every 2 s, up to `OSPF_WAIT`, until every adjacency formed
+  before is formed again, counted only once a drop is seen; the commands are
+  `privileged.PROCESS_RESETS`', the one home of their text;
 - ``--bgp-family ipv6`` runs either clear on an IPv6 neighbour (``clear bgp ipv6 unicast
   <peer>``, its summary ``show bgp ipv6 unicast summary``); the commands are
   `privileged.SESSION_CLEARS`', the one home of their text;
@@ -101,7 +110,22 @@ STEPS = (
     {"key": "bgp-hard", "command": "clear ip bgp {peer}",
      "before": "show ip bgp summary", "after": "show ip bgp summary", "needs": "peer",
      "clear": "clear-bgp-peer", "drops": True, "named_only": True},
+    # C2374 (board H, H5; H11's lab measurements): an OSPF process reset drops every adjacency
+    # of its process, so it runs only when --step names it, with --allow-live-ospf and
+    # --ospf-process; its text is `privileged.PROCESS_RESETS`', the one home of it.
+    {"key": "ospf-reset", "reset": "clear-ospf-process", "needs": "ospf", "drops": True,
+     "named_only": True},
+    {"key": "ospfv3-reset", "reset": "clear-ipv6-ospf-process", "needs": "ospf", "drops": True,
+     "named_only": True},
 )
+#: The one question a process reset is answered (send, read, decide): IOS's "Reset OSPF
+#: process N? [no]:" and its ALL and IPv6 forms. Any other question is never answered.
+RESET_PROMPT = re.compile(r"^Reset (ALL )?(IPv6 )?OSPF(v3)? process(es)?( \d+)?\? *\[no\]: *$")
+RESET_ANSWER = "yes"
+#: A reset's adjacencies are watched up to this long, every 2 s, until every one formed before
+#: is formed again. Unmeasured: the probe measures it; 300 s is past OSPF's 40 s dead time and a
+#: DR election's wait several times over.
+OSPF_WAIT = 300
 #: The summary each address family's clear reads before and after.
 SUMMARY_READ = {"ipv4": "show ip bgp summary", "ipv6": "show bgp ipv6 unicast summary"}
 #: A hard clear's return to Established is watched up to this long, every second. Unmeasured:
@@ -261,6 +285,17 @@ def plan(args) -> list:
                        command=spec["command"][family].format(peer=fill["peer"]),
                        before=SUMMARY_READ[family], after=SUMMARY_READ[family], family=family,
                        neighbour=spec["read"][family].format(peer=fill["peer"]))
+        if s.get("reset"):
+            from modules.nsot.privileged import PROCESS_RESETS
+            spec = PROCESS_RESETS[s["reset"]]
+            process = getattr(args, "ospf_process", "") or ""
+            row.update(command=spec["command"].format(process=process or "<process>"),
+                       before=spec["read"], after=spec["read"], process=process)
+            if not getattr(args, "allow_live_ospf", False):
+                row["unmeasured"] = ("a process reset drops every adjacency of the process: "
+                                     "--allow-live-ospf not given")
+            elif not process:
+                row["unmeasured"] = "no --ospf-process named (the process the reset names)"
         if s.get("needs") == "interface" and not args.interface:
             row["unmeasured"] = "no --interface named (a data interface)"
         if s.get("needs") == "arp_interface" and not args.arp_interface:
@@ -268,7 +303,7 @@ def plan(args) -> list:
         if s.get("needs") == "peer" and not args.allow_live_bgp:
             row["unmeasured"] = (f"a {'hard clear' if s.get('drops') else 'soft refresh'} acts "
                                  "on a live session: --allow-live-bgp not given")
-        elif s.get("drops") and not args.bgp_peer:
+        elif s.get("drops") and s.get("clear") and not args.bgp_peer:
             row["unmeasured"] = ("a hard clear resets the session it names: --bgp-peer not "
                                  "given (it is never the first peer found)")
         out.append(row)
@@ -285,6 +320,9 @@ def refusal(args, now: float = None) -> str:
             return f"REFUSED: {name} {value!r} is not one interface name"
     if args.bgp_peer and not _ADDRESS.match(args.bgp_peer):
         return f"REFUSED: --bgp-peer {args.bgp_peer!r} is not an address"
+    process = getattr(args, "ospf_process", "") or ""
+    if process and not process.isdigit():
+        return f"REFUSED: --ospf-process {process!r} is not one token of digits"
     family = getattr(args, "bgp_family", "") or "ipv4"
     if family not in SUMMARY_READ:
         return f"REFUSED: --bgp-family {family!r} is ipv4 or ipv6"
@@ -383,6 +421,34 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
                         "the planned window for the clear could not be recorded "
                         f"({row['planned_window']['error']}); nothing was sent")}
                     continue
+        was_formed = None
+        if s.get("reset"):
+            from modules.nsot.privileged import formed
+            was_formed = formed(before)
+            row["formed_before"] = was_formed
+            if not was_formed:
+                results[s["key"]] = {**row, "result": "not measured", "why": (
+                    f"{s['before']} shows no adjacency formed before the reset "
+                    f"({'unreadable' if was_formed is None else 'none'}), so its return cannot "
+                    "be measured; nothing was sent")}
+                continue
+            # The reset drops every adjacency of the process: its planned window first, naming
+            # each neighbour's device as a far end (C2749), or nothing is sent.
+            w = (declare or _declare)(device, "", OSPF_WAIT + BGP_WINDOW_MARGIN_S,
+                                      f"{s['command']} measured by scripts/nmas-tier2-probe "
+                                      "(board H, H5): every adjacency of the process drops "
+                                      "and forms again", reset=s["reset"])
+            rec = (w or {}).get("record") or {}
+            row["planned_window"] = ({k: rec.get(k) for k in ("from", "until", "via")}
+                                     | {"far_ends": (rec.get("expected") or {}).get(
+                                         "far_ends") or []}
+                                     if (w or {}).get("ok") else
+                                     {"error": (w or {}).get("error") or "not recorded"})
+            if not (w or {}).get("ok"):
+                results[s["key"]] = {**row, "result": "not measured", "why": (
+                    "the planned window for the reset could not be recorded "
+                    f"({row['planned_window']['error']}); nothing was sent")}
+                continue
         row["before"] = before[:KEEP_BYTES]
         row["before_cut"] = len(before.encode()) > KEEP_BYTES
         started = clock()
@@ -392,6 +458,10 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
         if prompt:
             row["prompt"] = prompt
             row["after_enter"] = redact_text(raw_send("\n"), values)
+        elif asked and s.get("reset") and RESET_PROMPT.match(asked):
+            # The reset's own question, and only it, is answered (send, read, decide).
+            row["prompt"], row["answer"] = asked, RESET_ANSWER
+            row["after_answer"] = redact_text(raw_send(RESET_ANSWER), values)
         elif asked:
             row["unanswered"] = asked
             results[s["key"]] = {**row, "result": "stopped",
@@ -414,6 +484,29 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
                           "words": (f"{got} of {want} entries back after {waited:g} s"
                                     if got >= want else
                                     f"{got} of {want} entries, not back within {ARP_WAIT} s")}
+        if s.get("reset") and row.get("result") != "refused":
+            # The reset's settle time: the table read every 2 s until every adjacency formed
+            # before is formed again, counted only once a drop has been seen (a read taken
+            # before the teardown is no return).
+            from modules.nsot.privileged import formed
+            waited, back, last, dropped = 0.0, None, None, False
+            while waited <= OSPF_WAIT:
+                last = formed(read(s["after"]))
+                if last is not None and last < was_formed:
+                    dropped = True
+                if dropped and last is not None and last >= was_formed:
+                    back = round(clock() - started, 1)
+                    break
+                sleep(2.0)
+                waited += 2.0
+            row["ospf"] = {"formed_before": was_formed, "formed_after": last, "dropped": dropped,
+                           "back_after_s": back,
+                           "words": (f"{last} of {was_formed} adjacencies formed again {back} s "
+                                     "after the send" if back is not None else
+                                     ("no drop was seen in the reads" if not dropped else
+                                      f"{last} of {was_formed} formed, not back within "
+                                      f"{OSPF_WAIT} s"))}
+            row["settle_s"] = back
         if s.get("clear") and s.get("drops") and row.get("result") != "refused":
             # The hard clear's settle time: the session read every second until Established.
             seen, waited, back = [], 0.0, None
@@ -446,7 +539,7 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
     return results, stopped
 
 
-def _declare(device: dict, interface: str, seconds: float, why: str) -> dict:
+def _declare(device: dict, interface: str, seconds: float, why: str, reset: str = "") -> dict:
     """No window without a list and an actor to record it under (`main` gives `_window_for`'s):
     a hard clear measured with this sends nothing."""
     return {"ok": False, "error": "no list or actor to record a window under"}
@@ -455,24 +548,35 @@ def _declare(device: dict, interface: str, seconds: float, why: str) -> dict:
 def _window_for(args):
     """The hard clear's planned window on *args*' device, recorded BEFORE it is sent
     (`restarts.record_planned`, naming the neighbour's interface, as the probe's actor)."""
-    def declare(device: dict, interface: str, seconds: float, why: str) -> dict:
+    def declare(device: dict, interface: str, seconds: float, why: str,
+                reset: str = "") -> dict:
         from modules import restarts
 
         from modules.heal.bounce import committed_intents_of
-        from modules.neighbours import peer_device
+        from modules.neighbours import expected, peer_device
 
         # C2749: the window covers the neighbour's device too, when committed intent holds
-        # the peer's address (an outside peer has none to name).
+        # the peer's address (an outside peer has none to name); a process reset's covers
+        # every neighbour of that protocol committed intent expects.
         host = device.get("hostname", "")
-        intents, _err = committed_intents_of(args.list_name)
-        far = peer_device(intents or {}, args.bgp_peer) if args.bgp_peer else ""
+        intents, err = committed_intents_of(args.list_name)
+        if reset:
+            if intents is None:
+                return {"ok": False, "error": f"committed intent could not be read ({err}), so "
+                                              "the reset's neighbours cannot be named"}
+            proto = "ospfv3" if "ipv6" in reset else "ospf"
+            fars = sorted({(e["peer"], "") for e in expected(intents, host)
+                           if e["proto"] == proto and e["peer"] and e["peer"] != host})
+        else:
+            far = peer_device(intents or {}, args.bgp_peer) if args.bgp_peer else ""
+            fars = [(far, "")] if far and far != host else []
         now = time.time()
         try:
             return restarts.record_planned([host], now, now + seconds,
                                            args.actor, why, "nmas-tier2-probe",
                                            list_name=args.list_name,
                                            interfaces=[interface] if interface else [],
-                                           far_ends=[(far, "")] if far and far != host else [])
+                                           far_ends=fars)
         except Exception as exc:                      # noqa: BLE001 (nothing sent, said)
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return declare
@@ -490,6 +594,8 @@ def main() -> int:
     ap.add_argument("--allow-live-bgp", action="store_true")
     ap.add_argument("--bgp-peer", default="")
     ap.add_argument("--bgp-family", default="ipv4", choices=sorted(SUMMARY_READ))
+    ap.add_argument("--allow-live-ospf", action="store_true")
+    ap.add_argument("--ospf-process", default="")
     ap.add_argument("--step", action="append", default=[],
                     help="measure only this step (repeatable): " + ", ".join(s["key"] for s in STEPS))
     ap.add_argument("--out", default="")
@@ -509,7 +615,13 @@ def main() -> int:
             print(f"  before: {s['before']}\n  after:  {s['after']}")
             if s.get("neighbour"):
                 print(f"  the neighbour, before and after (kept): {s['neighbour']}")
-            if s.get("drops"):
+            if s.get("reset"):
+                print(f"  first: a planned window of {OSPF_WAIT + BGP_WINDOW_MARGIN_S} s on the "
+                      "device, naming each neighbour committed intent expects as a far end "
+                      "(nothing is sent without it); the reset's own question alone answered "
+                      f"{RESET_ANSWER!r}; then the table read every 2 s, up to {OSPF_WAIT} s, "
+                      "until every adjacency formed before is formed again")
+            elif s.get("drops"):
                 print(f"  first: a planned window of {BGP_WAIT + BGP_WINDOW_MARGIN_S} s on the "
                       "device, naming the neighbour's interface (nothing is sent without it); "
                       f"then the neighbour read every second, up to {BGP_WAIT} s, until "
@@ -541,7 +653,8 @@ def main() -> int:
               "session was closed, abandoning the command. The steps before it are recorded.")
     for key, row in record["results"].items():
         extra = row.get("prompt") or row.get("why") or (row.get("arp") or {}).get("words") \
-            or (row.get("bgp") or {}).get("why") or (row.get("bgp") or {}).get("words") or ""
+            or (row.get("bgp") or {}).get("why") or (row.get("bgp") or {}).get("words") \
+            or (row.get("ospf") or {}).get("words") or ""
         print(f"{key}: {row['result']}" + (f"  ({extra})" if extra else ""))
     text = json.dumps(record, indent=2, sort_keys=True)
     if args.out:
