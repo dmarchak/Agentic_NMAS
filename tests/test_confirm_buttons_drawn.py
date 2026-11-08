@@ -1822,11 +1822,13 @@ class TestHealCards(_Cards):
 class TestHealProposalCards(_Cards):
     """On tests/test_heal_propose.py's lab: a real proposal on edge-b made by the real decision
     (R8's changed router-id), its card read by the real route; its reset measured by the test
-    record, Approve and run on edge-b is pressable. Blocked: the shipped record measures no
-    reset, so the proposal itself refuses and Approve is drawn disabled saying why."""
+    record, Approve and run on edge-b is pressable. Blocked: on the shipped record with its
+    IOS-XE reset taken back out no reset is measured, so the proposal itself refuses and Approve
+    is drawn disabled saying why."""
     from tests import test_heal_decide as _hd, test_heal_propose as _hp
     from tests import test_sdn_connections as _sc
     networks, lab, measured = hosted(_sc.networks), hosted(_hd.lab), hosted(_hp.measured)
+    unmeasured = hosted(_hp.unmeasured)
 
     CASES = {"approve": ("_heal_proposal.html", "Approve and run on {{ host }}",
                          r"Approve and run on edge-b",
@@ -1848,6 +1850,7 @@ class TestHealProposalCards(_Cards):
         return self._card(request, request.getfixturevalue("monkeypatch"))
 
     def blocked_approve(self, request, monkeypatch):
+        request.getfixturevalue("unmeasured")
         html = self._card(request, monkeypatch)
         assert "is not measured" in html, "floor: the unmeasured reset's refusal"
         return html

@@ -187,7 +187,9 @@ class TestThePlan:
         got = {k: (xe[k]["prompt"], xe[k]["settle_s"], xe[k]["reset"]) for k in xe}
         assert got == {"clear-bgp-soft": (None, 2.4, False), "clear-bgp-peer": (None, 3.5, True),
                        "clear-bgp-soft-ipv6": (None, 4.7, False),
-                       "clear-bgp-peer-ipv6": (None, 5.0, True)}, got
+                       "clear-bgp-peer-ipv6": (None, 5.0, True),
+                       # C2374, 2026-11-08: the OSPF process reset, its prompt answered.
+                       "clear-ospf-process": ("Reset OSPF process 1? [no]:", 6.0, True)}, got
         assert xe["clear-bgp-soft"]["at"] == "2026-11-07T19:44:58Z"
         assert self.plan("clear-bgp-soft", sessions=[session(ESTABLISHED)])["bound_s"] == 6
         assert self.plan()["bound_s"] == 9                  # 2.5 x 3.5 s, rounded up

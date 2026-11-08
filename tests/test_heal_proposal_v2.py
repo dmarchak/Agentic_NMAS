@@ -23,7 +23,7 @@ import pytest
 
 from tests.test_heal_decide import lab  # noqa: F401  (the fixture, named by each test below)
 from tests.test_heal_propose import (DS, R8, REASON, SL, FakeApproved, measured,  # noqa: F401
-                                     proposed)
+                                     proposed, unmeasured)
 from tests.test_sdn_connections import networks  # noqa: F401  (the fixture `lab` builds on)
 
 HX = {"HX-Request": "true"}
@@ -147,7 +147,7 @@ def test_the_card_says_what_approving_sends_and_to_which_device(app_client, meas
         _release(d)
 
 
-def test_an_unmeasured_reset_draws_approve_disabled_saying_why(app_client):
+def test_an_unmeasured_reset_draws_approve_disabled_saying_why(app_client, unmeasured):
     d = proposed()
     _r, html = _card(app_client, d)
     assert "Not confirmable:</strong>" in html and "is not measured on cisco_iosxe" in html

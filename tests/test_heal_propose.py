@@ -89,6 +89,20 @@ def measured(tmp_path, monkeypatch):
     return rows
 
 
+@pytest.fixture
+def unmeasured(tmp_path, monkeypatch):
+    """The shipped record with its one measured reset (IOS-XE's `clear ip ospf N process`,
+    2026-11-08, C2374) taken back out, so every reset is unmeasured again."""
+    rec = json.loads(open(priv().RESET_MEASURED_FILE, encoding="utf-8").read())
+    for rows in rec["by_dialect"].values():
+        rows.pop("clear-ospf-process", None)
+    rec["unmeasured"].setdefault(PLATFORM, {})["clear-ospf-process"] = "not run yet: a test's"
+    path = tmp_path / "unmeasured.json"
+    path.write_text(json.dumps(rec))
+    monkeypatch.setattr(priv(), "RESET_MEASURED_FILE", str(path))
+    return rec
+
+
 class FakeApproved(FakeAct):
     """The act's fake sources (H4's), and the reset sent on the apply's session: recorded with
     whether it ran inside the apply (the check after verify, the device held, its save held)."""
@@ -186,15 +200,20 @@ class TestTheResetsShape:
 class TestNotMeasured:
     @pytest.mark.parametrize("key", ["clear-ospf-process", "clear-ipv6-ospf-process"])
     def test_the_shipped_record_measures_no_reset_and_refuses_saying_so(self, key):
+        # C2374: IOS-XE's `clear ip ospf N process` was measured 2026-11-08; every other
+        # reset, on each dialect it is unmeasured on, is refused saying why.
         rec = priv().reset_measured()
         assert rec["state"] == "ok"
-        for dialect in ("cisco_ios", "cisco_iosxe"):
+        dialects = ("cisco_ios",) if key == "clear-ospf-process" else ("cisco_ios",
+                                                                        "cisco_iosxe")
+        for dialect in dialects:
             assert key not in rec["by_dialect"].get(dialect, {}), (dialect, key)
             assert rec["unmeasured"][dialect][key], "each unmeasured reset says why"
-        plan = priv().reset_plan(key, "1", dialect="cisco_iosxe")
-        assert not plan["ok"] and "is not measured on cisco_iosxe" in plan["refused"]
-        assert "H11" in plan["refused"] and plan["refused"].endswith("Nothing was sent")
-        assert plan["command"], "the preview still names what would be sent"
+            plan = priv().reset_plan(key, "1", dialect=dialect)
+            assert not plan["ok"] and f"is not measured on {dialect}" in plan["refused"]
+            assert "nmas-tier2-probe" in plan["refused"], plan["refused"]
+            assert plan["refused"].endswith("Nothing was sent")
+            assert plan["command"], "the preview still names what would be sent"
 
     def test_absent_and_unreadable_are_different_refusals(self, tmp_path, monkeypatch):
         monkeypatch.setattr(priv(), "RESET_MEASURED_FILE", str(tmp_path / "none.json"))
@@ -343,7 +362,8 @@ class TestTheSend:
 # ── The proposal ────────────────────────────────────────────────────────────────────────────
 
 class TestTheProposal:
-    def test_a_router_id_proposal_reads_with_its_reset_refused_until_measured(self, lab):
+    def test_a_router_id_proposal_reads_with_its_reset_refused_until_measured(self, lab,
+                                                                              unmeasured):
         d = proposed()
         v = P.view("Default", d["id"], now=T0 + 1, sources=FakeApproved(R8))
         assert v["kind"] == "process_reset" and v["tier"] == 2
@@ -417,7 +437,7 @@ class TestApproveRefuses:
         assert "confirmed 0000000000000000, now" in str(exc.value)
         assert DS.proposals("Default"), "the proposal still waits"
 
-    def test_an_unmeasured_reset_is_refused_with_nothing_taken(self, lab):
+    def test_an_unmeasured_reset_is_refused_with_nothing_taken(self, lab, unmeasured):
         d = proposed()
         src = FakeApproved(R8)
         with pytest.raises(P.Refused, match="is not measured on cisco_iosxe"):

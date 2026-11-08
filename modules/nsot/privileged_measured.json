@@ -3,6 +3,15 @@
   "by_dialect": {
     "cisco_ios": {},
     "cisco_iosxe": {
+      "clear-ospf-process": {
+        "prompt": "Reset OSPF process 1? [no]:",
+        "answer": "yes",
+        "settle_s": 6.0,
+        "device": "the Default network's IOS-XE router on the core VLAN with five OSPF neighbours",
+        "at": "2026-11-08T06:48:09Z",
+        "reset": true,
+        "evidence": "scripts/nmas-tier2-probe --step ospf-reset --allow-live-ospf --ospf-process 1, its planned window declared first (06:48:12 to 06:54:12 UTC, naming its five OSPF neighbours as far ends): the device asked 'Reset OSPF process 1? [no]:', answered 'yes' once; the send and the answer's read took 5.1 s, and the first table read after it showed all 5 adjacencies FULL again, so no drop was seen in the 2 s reads. settle_s is an upper bound: one neighbour logged its adjacency to the router 'from LOADING to FULL' at 06:48:17.478 on its clock, received by Mercury at 06:48:18.558, about 6 s after the send"
+      },
       "clear-bgp-soft": {
         "prompt": null,
         "answer": "",
@@ -43,18 +52,17 @@
   },
   "unmeasured": {
     "cisco_ios": {
-      "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
-      "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
-      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS device first",
+      "clear-ospf-process": "not run yet: scripts/nmas-tier2-probe --step ospf-reset on an IOS device running OSPF; the Default network's one (its core switch) has the switch carrying the fleet's management path as a neighbour, which no probe touches, so it waits for an IOS device whose neighbours exclude that switch",
+      "clear-ipv6-ospf-process": "not run yet: scripts/nmas-tier2-probe --step ospfv3-reset on an IOS device running OSPFv3, inside a planned window naming every neighbour first",
+      "clear-ospfv3-process": "not run yet: no probe step sends `clear ospfv3 <process> process` yet",
       "clear-bgp-peer": "not run yet: H21's probe step bgp-hard (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour, inside a planned window declared first",
       "clear-bgp-peer-ipv6": "not run yet: H21's probe step bgp-hard with --bgp-family ipv6 on an IOS device's IPv6 BGP neighbour, inside a planned window declared first",
       "clear-bgp-soft": "not run yet: H21's probe step bgp-soft (scripts/nmas-tier2-probe) on an IOS device's BGP neighbour",
       "clear-bgp-soft-ipv6": "not run yet: H21's probe step bgp-soft with --bgp-family ipv6 on an IOS device's IPv6 BGP neighbour"
     },
     "cisco_iosxe": {
-      "clear-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
-      "clear-ipv6-ospf-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first",
-      "clear-ospfv3-process": "not run yet: board H's lab measurements (H11) run it on the network's IOS-XE device first"
+      "clear-ipv6-ospf-process": "not run yet: scripts/nmas-tier2-probe --step ospfv3-reset on an IOS-XE router, inside a planned window naming every neighbour first; the router measured for IPv4 has the switch carrying the fleet's management path among its neighbours, so it was not run again there",
+      "clear-ospfv3-process": "not run yet: no probe step sends `clear ospfv3 <process> process` yet"
     }
   }
 }
