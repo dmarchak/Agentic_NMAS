@@ -452,3 +452,253 @@ def test_the_request_hash_is_over_the_normalised_request(tmp_path):
     two = m.parse_request(b'{"listen": {"port": 6653, "host": "2001:db8::1"}, "apps": []}')
     assert m.request_sha256(one) == m.request_sha256(two) == hashlib.sha256(
         b'{"apps":[],"listen":{"host":"2001:db8::1","port":6653}}').hexdigest()
+
+
+# ── what landed, in a failed apply's outcome (C2705) ─────────────────────────────────────────
+
+def test_a_failure_after_the_drop_in_is_written_says_its_step(tmp_path):
+    """An exception past the write is an outcome with a step (after-write), never one that
+    reads as nothing having changed: Mercury rolls back what landed."""
+    m, _, _ = ready(tmp_path)
+
+    def broken(before):
+        raise OSError(5, "planted")
+    m.restart = broken
+    out = run(m)
+    assert out["ok"] is False and out.get("step") == "after-write", out
+    assert "the drop-in was written, then OSError" in out["error"]
+    assert dropin(m) != BEFORE and out["dropin_sha256"] == hashlib.sha256(
+        dropin(m).encode()).hexdigest()
+
+
+def test_a_failure_before_the_drop_in_is_replaced_has_no_step_and_changes_no_drop_in(tmp_path):
+    m, _, _ = ready(tmp_path)
+
+    def broken(text):
+        raise OSError(28, "planted: no space")
+    m.write_dropin = broken
+    out = run(m)
+    assert out["ok"] is False and "step" not in out and "refused" not in out, out
+    assert dropin(m) == BEFORE
+    assert not [c for c in m.systemctl.calls if c[0] in ("daemon-reload", "restart")]
+
+
+def test_an_unanswered_read_of_the_unit_during_the_wait_is_a_poll_not_a_refusal(tmp_path):
+    m, _, _ = ready(tmp_path)
+    real = m.systemctl
+    restarted = []
+
+    def silent_after_restart(*args):
+        if args[0] == "restart":
+            restarted.append(1)
+        if args[0] == "show" and restarted:
+            return 1, "", "Failed to connect to bus"
+        return real(*args)
+    m.systemctl = silent_after_restart
+    out = run(m)
+    assert out["ok"] is False and out.get("step") == "wait" and "refused" not in out, out
+
+
+# ── the second request kind: put the drop-in before back (decision K3) ───────────────────────
+
+def put_back_request(m, before_sha256=None, raw=None):
+    body = raw if raw is not None else json.dumps(
+        {"kind": "put-before-back",
+         "before_sha256": before_sha256 or m.before_sha256(BEFORE)}).encode()
+    return put_request(m, [], raw=body)
+
+
+def prev(m) -> str:
+    return os.path.join(m.DROPIN_ROOT, UNIT + ".d", "mercury.conf.prev")
+
+
+def applied(tmp_path, **kw):
+    """The script after one apply: mercury.conf is the render, mercury.conf.prev is BEFORE."""
+    m, _, _ = ready(tmp_path, **kw)
+    assert run(m)["ok"] is True
+    m.systemctl.calls.clear()
+    return m
+
+
+def test_the_put_back_puts_the_drop_in_before_back_and_restarts_by_identity(tmp_path):
+    m = applied(tmp_path)
+    rendered = dropin(m)
+    req = put_back_request(m)
+    out = run(m)
+    assert out["ok"] is True, out
+    assert out.get("kind") == "put-before-back" and out.get("step") == "running"
+    assert dropin(m) == BEFORE, "the drop-in before is back"
+    assert open(prev(m)).read() == BEFORE, "kept as it is, so a second put-back is the same"
+    assert out["replaced_sha256"] == hashlib.sha256(rendered.encode()).hexdigest()
+    assert out["main_pid_before"] == "101" and out["main_pid_after"] == "102"
+    assert out["user"] == "ryu" and out["active_state"] == "active"
+    assert [c[0] for c in m.systemctl.calls if c[0] != "show"] == ["daemon-reload", "restart"]
+    assert not os.path.exists(req), "a request is applied once"
+
+
+def test_the_put_back_is_judged_by_identity_as_an_apply_is(tmp_path):
+    m = applied(tmp_path)
+    m.systemctl.comes_up = False
+    put_back_request(m)
+    out = run(m)
+    assert out["ok"] is False and out.get("step") == "wait", out
+    assert "ActiveState failed" in out["error"]
+
+
+def put_back_refused(m) -> str:
+    """A refused put-back changed nothing: the drop-in is still the render, nothing restarted."""
+    before = dropin(m)
+    out = run(m)
+    assert out["ok"] is False and out.get("refused"), out
+    assert dropin(m) == before
+    assert not [c for c in m.systemctl.calls if c[0] in ("daemon-reload", "restart")]
+    return out["refused"]
+
+
+def test_a_put_back_bound_to_another_drop_in_is_refused_naming_both(tmp_path):
+    m = applied(tmp_path)
+    other = "0" * 64
+    put_back_request(m, before_sha256=other)
+    why = put_back_refused(m)
+    assert f"hashes {m.before_sha256(BEFORE)}, not the request's before_sha256 {other}" in why
+
+
+def test_a_put_back_with_no_drop_in_kept_is_refused_by_name(tmp_path):
+    m = applied(tmp_path)
+    os.remove(prev(m))
+    put_back_request(m)
+    assert "there is no drop-in before to put back" in put_back_refused(m)
+
+
+@pytest.mark.parametrize("text, words", [
+    ("[Service]\nUser=root\n", "last User= line is 'root', not User=ryu"),
+    ("[Service]\nExecStart=\n", "last User= line is absent, not User=ryu"),
+    ("[Service]\nUser=ryu\nUser=root\n", "last User= line is 'root'")],
+    ids=["root", "none", "root-after-ryu"])
+def test_a_put_back_that_would_not_run_ryu_as_its_user_is_refused(tmp_path, text, words):
+    """Removing mercury.conf, or putting back a drop-in with no User=ryu, would leave the unit
+    on its own User, root on S3's layout (C2's unsafe state)."""
+    m = applied(tmp_path)
+    with open(prev(m), "w") as fh:
+        fh.write(text)
+    put_back_request(m, before_sha256=m.before_sha256(text))
+    assert words in put_back_refused(m)
+
+
+def test_a_put_back_through_a_link_is_refused(tmp_path):
+    m = applied(tmp_path)
+    target = tmp_path / "planted.conf"
+    target.write_text(BEFORE)
+    os.remove(prev(m))
+    os.symlink(target, prev(m))
+    put_back_request(m)
+    assert "mercury.conf.prev is a symbolic link" in put_back_refused(m)
+
+
+def test_a_put_back_kept_writable_by_others_is_refused(tmp_path):
+    m = applied(tmp_path)
+    os.chmod(prev(m), 0o666)
+    put_back_request(m)
+    assert "writable by group or others" in put_back_refused(m)
+
+
+@pytest.mark.parametrize("raw, words", [
+    (b'{"kind": "plantedvalue"}', "the request's kind is not put-before-back"),
+    (b'{"kind": "apply", "apps": [], "listen": {"host": "192.0.2.1", "port": 6653}}',
+     "the request's kind is not put-before-back"),
+    (b'{"kind": "put-before-back", "before_sha256": "' + b"0" * 64 + b'", "path": "x"}',
+     "exactly the keys kind and before_sha256"),
+    (b'{"kind": "put-before-back"}', "exactly the keys kind and before_sha256"),
+    (b'{"kind": "put-before-back", "before_sha256": "plantedvalue"}',
+     "before_sha256 does not match")],
+    ids=["another-kind", "apply-named", "another-key", "no-hash", "hash-out-of-shape"])
+def test_a_request_naming_any_other_kind_or_shape_is_refused_by_name(tmp_path, raw, words):
+    m = applied(tmp_path)
+    put_back_request(m, raw=raw)
+    why = put_back_refused(m)
+    assert words in why and "plantedvalue" not in why
+
+
+def test_the_put_back_hash_is_the_one_systemctl_cat_shows_and_mercury_reads():
+    """Mercury binds the put-back to the plan's `dropin_before` (systemctl cat's text, blank
+    lines at either end dropped); the script hashes its kept file the same way."""
+    from modules.apps import channel
+
+    s = channel.script()
+    cat = f"# /lib/systemd/system/{UNIT}\n[Service]\n\n# /etc/systemd/system/{UNIT}.d/" \
+          f"mercury.conf\n{BEFORE}\n"
+    assert s.before_sha256(BEFORE + "\n\n") == s.before_sha256(
+        channel.dropin_before(cat, UNIT)) == hashlib.sha256(BEFORE.encode()).hexdigest()
+
+
+# ── an app's start-time config, beside its version (decision K9; C2707) ──────────────────────
+
+CONFIG = b'{"punt_table":100}\n'
+
+
+def configured(tmp_path, data=CONFIG, mode=0o644, sha=None):
+    m = load(tmp_path)
+    put_dropin(m)
+    folder_sha = stage_app(m)
+    path = m.config_path(m.APPS_ROOT, "of_versions", "1.0.0")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    os.chmod(path, mode)
+    put_request(m, [{"name": "of_versions", "version": "1.0.0", "sha256": folder_sha,
+                     "config_sha256": sha or hashlib.sha256(data).hexdigest()}])
+    return m, folder_sha, path
+
+
+def test_a_config_beside_the_version_is_checked_by_its_hash_and_leaves_the_folder_s_alone(
+        tmp_path):
+    m, folder_sha, path = configured(tmp_path)
+    assert path == os.path.join(m.APPS_ROOT, "of_versions", "1.0.0.config.json")
+    assert m.folder_hash(os.path.join(m.APPS_ROOT, "of_versions", "1.0.0")) == folder_sha
+    out = run(m)
+    assert out["ok"] is True, out
+    assert out["apps"][0]["config_sha256"] == hashlib.sha256(CONFIG).hexdigest()
+
+
+def test_a_request_with_no_config_is_the_shape_and_hash_it_always_was(tmp_path):
+    m = load(tmp_path)
+    raw = b'{"apps": [{"name": "a", "version": "1.0.0", "sha256": "' + b"1" * 64 + \
+        b'"}], "listen": {"host": "192.0.2.1", "port": 6653}}'
+    got = m.parse_request(raw)
+    assert got["apps"] == [{"name": "a", "version": "1.0.0", "sha256": "1" * 64}]
+    assert m.request_sha256(got) == hashlib.sha256(
+        b'{"apps":[{"name":"a","sha256":"' + b"1" * 64 + b'","version":"1.0.0"}],'
+        b'"listen":{"host":"192.0.2.1","port":6653}}').hexdigest()
+
+
+@pytest.mark.parametrize("plant, words", [
+    ("edited", "changed after it was staged"),
+    ("absent", "cannot be read"),
+    ("link", "is a symbolic link, not a regular file"),
+    ("group-writable", "writable by group or others"),
+    ("not-an-object", "is not a JSON object"),
+    ("not-json", "is not JSON in UTF-8"),
+    ("unnamed", "the request names no config for it")])
+def test_a_config_other_than_the_request_names_is_refused(tmp_path, plant, words):
+    data = {"not-an-object": b"[1]\n", "not-json": b"plantedvalue\n"}.get(plant, CONFIG)
+    m, folder_sha, path = configured(tmp_path, data=data,
+                                     mode=0o664 if plant == "group-writable" else 0o644)
+    if plant == "edited":
+        with open(path, "ab") as fh:
+            fh.write(b" ")
+    elif plant == "absent":
+        os.remove(path)
+    elif plant == "link":
+        os.remove(path)
+        target = tmp_path / "planted.json"
+        target.write_bytes(CONFIG)
+        os.symlink(target, path)
+    elif plant == "unnamed":
+        put_request(m, [{"name": "of_versions", "version": "1.0.0", "sha256": folder_sha}])
+    why = refused(m)
+    assert words in why and "1.0.0.config.json" in why and "plantedvalue" not in why
+
+
+def test_a_config_hash_out_of_shape_is_refused(tmp_path):
+    m, _, _ = configured(tmp_path, sha="plantedvalue")
+    why = refused(m)
+    assert "apps[0].config_sha256 does not match" in why and "plantedvalue" not in why

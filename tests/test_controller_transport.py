@@ -19,6 +19,7 @@ Cases, each planted:
 - an IPv4 and an IPv6 controller address both reach the fake.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -185,7 +186,8 @@ def _open(driver="linux", ip=ADDRESSES[0]):
 def _plan(tmp_path, listen=LISTEN):
     got = channel.plan(network=LIST, controller="ctl", unit=UNIT, enabled=enabled(tmp_path),
                        host={"show": show("ryu"), "ls": ls("mercury"), "cat": ""},
-                       listen=listen, switches=[eos()])
+                       listen=listen, switches=[eos()],
+                       links=[], previous=None)
     assert got["ok"] is True, got["refusals"]
     return got
 
@@ -209,7 +211,8 @@ def _held(ip=ADDRESSES[0]):
     ("/opt/ryu-apps/of_versions", "dir"),
     ("/opt/ryu-apps/of_versions/1.0.0", "dir"),
     ("/opt/ryu-apps/of_versions/1.0.0/lib", "dir"),
-    ("/opt/ryu-apps/.apply", "dir")])
+    ("/opt/ryu-apps/.apply", "dir"),
+    ("/opt/ryu-apps/of_versions/1.0.0.config.json", "file")])
 def test_the_staging_shapes_are_allowed(path, kind):
     assert transport.staging_refusal(path, kind) == ""
 
@@ -232,7 +235,12 @@ def test_the_staging_shapes_are_allowed(path, kind):
     ("/opt/ryu-apps/.apply/other.json", "file", "app name '.apply' does not match"),
     ("/opt/ryu-apps/.apply/request.json", "dir", "app name '.apply' does not match"),
     ("/opt/ryu-apps/of_versions/1.0.0/café.py", "file", "is not printable ASCII"),
-    ("/opt/ryu-apps/of_versions/1.0.0/a.py", "link", "is neither a file nor a folder write")])
+    ("/opt/ryu-apps/of_versions/1.0.0/a.py", "link", "is neither a file nor a folder write"),
+    ("/opt/ryu-apps/of_versions/1.0.config.json", "file", "version '1.0.config.json' does not "
+                                                            "match"),
+    ("/opt/ryu-apps/of_versions/1.0.0.config.json", "dir", "version '1.0.0.config.json'"),
+    ("/opt/ryu-apps/of_versions/1.0.0.config.yml", "file", "version '1.0.0.config.yml'"),
+    ("/opt/ryu-apps/.apply/1.0.0.config.json", "file", "app name '.apply'")])
 def test_every_other_path_is_refused_naming_it_and_the_rule(path, kind, words):
     why = transport.staging_refusal(path, kind)
     assert why.startswith("REFUSED") and words in why and why.endswith("Nothing was sent.")
@@ -551,6 +559,76 @@ def test_a_plan_that_is_not_ok_stages_nothing(tmp_path):
     with _held():
         got = transport.send(_open(), {"ok": False}, ip=ADDRESSES[0])
     assert "is not an approved plan" in got["error"] and EVENTS == []
+
+
+# ── 2b. an app's start-time config (decision K9), and the put-back (decision K3) ─────────────
+
+CONFIG = {"punt_table": 100, "meter_table": 100}
+CONFIG_PATH = "/opt/ryu-apps/of_versions/1.0.0.config.json"
+
+
+def _configured_plan(tmp_path, config=CONFIG):
+    items = enabled(tmp_path)
+    items[0]["config"] = config
+    got = channel.plan(network=LIST, controller="ctl", unit=UNIT, enabled=items,
+                       host={"show": show("ryu"), "ls": ls("mercury"), "cat": ""},
+                       listen=LISTEN, switches=[eos()], links=[], previous=None)
+    assert got["ok"] is True, got["refusals"]
+    return got
+
+
+def test_a_config_is_staged_beside_its_version_before_the_request(tmp_path):
+    plan = _configured_plan(tmp_path)
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is True, got["error"]
+    writes = [e[1] for e in EVENTS if e[0] == "write"]
+    assert writes[-2:] == [CONFIG_PATH, REQUEST]
+    data = FakeConn.fs.files[CONFIG_PATH]
+    assert data == plan["configs"]["of_versions"].encode() and FakeConn.fs.modes[CONFIG_PATH] \
+        == 0o644
+    req = channel.script().parse_request(FakeConn.fs.files[REQUEST])
+    assert req["apps"][0]["config_sha256"] == hashlib.sha256(data).hexdigest()
+    assert CONFIG_PATH in got["staged"]
+
+
+def test_a_config_changed_after_the_plan_is_refused_naming_both(tmp_path):
+    plan = _configured_plan(tmp_path)
+    plan["configs"]["of_versions"] = '{"punt_table":0}\n'
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    want = plan["request"]["apps"][0]["config_sha256"]
+    assert got["ok"] is False and EVENTS == [] and FakeConn.sent == []
+    assert "config hashes " in got["error"] and f"not the request's {want}" in got["error"]
+
+
+def test_a_config_the_request_does_not_name_is_refused(tmp_path):
+    plan = _plan(tmp_path)
+    plan["configs"] = {"of_versions": '{"punt_table":0}\n'}
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is False and EVENTS == []
+    assert "which the request names no config_sha256 for" in got["error"]
+
+
+def test_the_put_back_stages_only_its_request_and_sends_the_one_command(tmp_path):
+    s = channel.script()
+    req = channel.put_back_request("[Service]\nUser=ryu\n")
+
+    def put_back_ran(fs):
+        got = s.parse_request(fs.files[REQUEST])
+        line = json.dumps(dict(got, ok=True, step="running", started="now"), sort_keys=True)
+        fs.files[OUTCOME] = (line + "\n").encode()
+        return line
+
+    FakeConn.answer = put_back_ran
+    with _held():
+        got = transport.send(_open(), {"ok": True, "request": req}, ip=ADDRESSES[0])
+    assert got["ok"] is True, got["error"]
+    assert [e[1] for e in EVENTS if e[0] == "write"] == [REQUEST]
+    assert json.loads(FakeConn.fs.files[REQUEST]) == {
+        "kind": "put-before-back", "before_sha256": s.before_sha256("[Service]\nUser=ryu\n")}
+    assert FakeConn.sent == [channel.APPLY_COMMAND] and got["staged"] == []
 
 
 # ── 3. the held write, by address ────────────────────────────────────────────────────────────

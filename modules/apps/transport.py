@@ -5,6 +5,9 @@ H, change C; P6; C2673): what crosses to the controller host, in this order and 
    ``/opt/ryu-apps/<name>/<version>/<relative path>``, every byte read back from the local
    staged folder (`channel.stage`, git's blobs at the pinned revision) and checked against the
    plan's blob id and the request's content hash first: what is confirmed is what is sent.
+   Then each app's start-time config (decision K9), ``/opt/ryu-apps/<name>/<version>.config.json``,
+   the plan's bytes, checked against the request's ``config_sha256`` first (`_configs`).
+   The second request kind, the put-back (decision K3), stages no file: only its request.
 2. **The request**, ``/opt/ryu-apps/.apply/request.json``, written LAST, in the apply script's
    exact shape (`channel.request`, the script's own parser), so the script never reads a
    request whose folders are not all there.
@@ -17,8 +20,9 @@ H, change C; P6; C2673): what crosses to the controller host, in this order and 
 kind's session an SFTP client that writes only a path of `staging_refusal`'s exact shapes, only
 while this thread holds the device (`device_ops.may_write`), and refuses a link on the way
 (every existing part of the path is `lstat`-ed before a write). Allowing is by exact shape:
-- a file: ``/opt/ryu-apps/<name>/<version>/<part>[/<part>...]`` or exactly
-  ``/opt/ryu-apps/.apply/request.json``;
+- a file: ``/opt/ryu-apps/<name>/<version>/<part>[/<part>...]``, an app's start-time config
+  ``/opt/ryu-apps/<name>/<version>.config.json`` (decision K9; the script's `config_path`), or
+  exactly ``/opt/ryu-apps/.apply/request.json``;
 - a folder: ``/opt/ryu-apps/<name>``, ``/opt/ryu-apps/<name>/<version>[/<part>...]`` or
   exactly ``/opt/ryu-apps/.apply``;
 where <name> and <version> match the script's NAME and VERSION, and each <part> is
@@ -31,6 +35,7 @@ second run writes the same bytes over the same paths, and the apply script judge
 by its recomputed hash.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -80,7 +85,8 @@ def staging_refusal(path, kind: str = "file") -> str:
     s = _script()
     root = s.APPS_ROOT
     shown = repr(str(path)[:160])
-    rules = (f"a file is written only to {root}/<name>/<version>/<relative path> or "
+    rules = (f"a file is written only to {root}/<name>/<version>/<relative path>, "
+             f"{root}/<name>/<version>{s.CONFIG_SUFFIX} or "
              f"{request_path()}, a folder only to {root}/<name>, {root}/<name>/<version>[/...] "
              f"or {posixpath.dirname(request_path())}; <name> matches {s.NAME.pattern}, "
              f"<version> {s.VERSION.pattern}, each further part {PART.pattern}, never . or ..")
@@ -109,6 +115,9 @@ def staging_refusal(path, kind: str = "file") -> str:
         return "" if kind == "dir" else (
             f"REFUSED: the path {shown} is an app's folder, not a file in a version's folder "
             f"({rules}). Nothing was sent.")
+    if len(parts) == 2 and kind == "file" and parts[1].endswith(s.CONFIG_SUFFIX) \
+            and s.VERSION.match(parts[1][:-len(s.CONFIG_SUFFIX)]):
+        return ""
     if not s.VERSION.match(parts[1]):
         return (f"REFUSED: the path {shown}'s version {parts[1][:60]!r} does not match "
                 f"{s.VERSION.pattern} ({rules}). Nothing was sent.")
@@ -143,6 +152,9 @@ def _items(plan: dict) -> list:
                                "was sent.")
     folders, files = plan.get("folders") or {}, plan.get("files") or {}
     out = []
+    if plan["request"].get("kind") == s.PUT_BACK:
+        # The second request kind stages nothing but itself (decision K3).
+        return out
     for app in plan["request"]["apps"]:
         name, version = app["name"], app["version"]
         local = folders.get(name)
@@ -175,6 +187,45 @@ def _items(plan: dict) -> list:
             raise TransportRefused(f"REFUSED: the plan lists no file for {name} {version}. "
                                    "Nothing was sent.")
         out.append((app, local, remote, listed))
+    return out
+
+
+def _configs(plan: dict) -> list:
+    """``[(remote path, bytes)]``: each app's start-time config (decision K9), its bytes the
+    plan's and their sha256 the request's ``config_sha256``, refused naming both otherwise; a
+    config the request does not name is refused too (it would be staged unconfirmed)."""
+
+    s = _script()
+    req = plan["request"]
+    if req.get("kind") == s.PUT_BACK:
+        return []
+    configs = plan.get("configs") or {}
+    named = {a["name"] for a in req["apps"] if a.get("config_sha256")}
+    extra = sorted(set(configs) - named)
+    if extra:
+        raise TransportRefused(f"REFUSED: the plan carries a config for {', '.join(extra)}, "
+                               "which the request names no config_sha256 for. Nothing was "
+                               "sent.")
+    out = []
+    for app in req["apps"]:
+        want = app.get("config_sha256")
+        if not want:
+            continue
+        text = configs.get(app["name"])
+        if not isinstance(text, str):
+            raise TransportRefused(f"REFUSED: the request names a config for {app['name']} "
+                                   f"{app['version']} (sha256 {want}) and the plan carries "
+                                   "none. Nothing was sent.")
+        data = text.encode("utf-8")
+        got = hashlib.sha256(data).hexdigest()
+        if got != want:
+            raise TransportRefused(f"REFUSED: {app['name']} {app['version']}'s config hashes "
+                                   f"{got} here, not the request's {want}. Nothing was sent.")
+        target = s.config_path(s.APPS_ROOT, app["name"], app["version"])
+        why = staging_refusal(target, "file")
+        if why:
+            raise TransportRefused(why)
+        out.append((target, data))
     return out
 
 
@@ -241,6 +292,7 @@ def send(conn, plan: dict, *, ip: str) -> dict:
         return result
     try:
         items = _items(plan)
+        configs = _configs(plan)
         body = request_bytes(plan)
     except (TransportRefused, OSError) as exc:
         result["error"] = str(exc)
@@ -250,6 +302,7 @@ def send(conn, plan: dict, *, ip: str) -> dict:
         result["error"] = why
         return result
     pending = [target for _app, _l, _r, listed in items for _rel, _p, target, _m in listed]
+    pending += [target for target, _data in configs]
     result["not_staged"] = list(pending)
     result["step"] = "stage"
     sftp = None
@@ -263,6 +316,11 @@ def send(conn, plan: dict, *, ip: str) -> dict:
                     sftp.write(target, fh.read(), perm)
                 result["staged"].append(target)
                 result["not_staged"].remove(target)
+        for target, data in configs:
+            # Beside its version's folder, in the app's folder made above (decision K9).
+            sftp.write(target, data, 0o644)
+            result["staged"].append(target)
+            result["not_staged"].remove(target)
         result["step"] = "request"
         sftp.mkdir(posixpath.dirname(request_path()))
         sftp.write(request_path(), body, 0o644)

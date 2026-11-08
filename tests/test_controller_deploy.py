@@ -146,11 +146,15 @@ def enabled(tmp_path, names=("of_versions",), versions=("1.0", "1.3")):
     return out
 
 
-def plan(tmp_path, user="ryu", owner="mercury", mode="drwxr-xr-x", items=None, switches=None):
+def plan(tmp_path, user="ryu", owner="mercury", mode="drwxr-xr-x", items=None, switches=None,
+         links=None, previous=None, observed=None, listen=None, cat=""):
     return channel.plan(network="lab9", controller="ctl", unit=UNIT,
                         enabled=enabled(tmp_path) if items is None else items,
-                        host={"show": show(user), "ls": ls(owner, mode), "cat": ""},
-                        listen=LISTEN, switches=[eos()] if switches is None else switches)
+                        host={"show": show(user), "ls": ls(owner, mode), "cat": cat},
+                        listen=LISTEN if listen is None else listen,
+                        switches=[eos()] if switches is None else switches,
+                        links=[] if links is None else links, previous=previous,
+                        observed=observed)
 
 
 def test_user_ryu_and_a_folder_the_deploy_account_owns_plans_the_deploy(tmp_path):
@@ -175,7 +179,8 @@ def test_root_over_a_folder_the_deploy_account_writes_is_refused_naming_both(tmp
 def test_a_group_writable_folder_counts_as_writable_for_c2(tmp_path):
     got = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=enabled(tmp_path),
                        host={"show": show("root"), "ls": ls("root", "drwxrwxr-x"), "cat": ""},
-                       listen=LISTEN, switches=[eos()])
+                       listen=LISTEN, switches=[eos()],
+                       links=[], previous=None)
     assert any(r.startswith("refused before staging (C2)") for r in got["refusals"])
 
 
@@ -193,11 +198,12 @@ def test_an_absent_folder_or_an_unreadable_user_is_never_a_pass(tmp_path):
     absent = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=items,
                           host={"show": show("ryu"), "cat": "",
                                 "ls": "ls: cannot access '/opt/ryu-apps': No such file or "
-                                      "directory"}, listen=LISTEN, switches=[eos()])
+                                      "directory"}, listen=LISTEN, switches=[eos()],
+                          links=[], previous=None)
     assert "/opt/ryu-apps cannot be staged into: it is absent" in absent["refusals"]
     blind = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=items,
                          host={"show": "", "ls": ls("mercury"), "cat": ""}, listen=LISTEN,
-                         switches=[eos()])
+                         switches=[eos()], links=[], previous=None)
     assert any(r.startswith(f"can't tell {UNIT}'s User") for r in blind["refusals"])
 
 
@@ -215,7 +221,8 @@ def test_the_plan_s_drop_in_is_the_script_s_render_and_shows_the_one_before(tmp_
            f"# /etc/systemd/system/{UNIT}.d/mercury.conf\n{before}")
     got = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=enabled(tmp_path),
                        host={"show": show("ryu"), "ls": ls("mercury"), "cat": cat},
-                       listen=LISTEN, switches=[eos()])
+                       listen=LISTEN, switches=[eos()],
+                       links=[], previous=None)
     s = channel.script()
     assert got["dropin_before"] == before
     assert got["dropin_after"] == s.render_dropin(got["request"], MANAGER, "ryu",
@@ -226,7 +233,8 @@ def test_the_plan_s_drop_in_is_the_script_s_render_and_shows_the_one_before(tmp_
 def test_an_ipv6_listen_address_reaches_the_drop_in(tmp_path):
     got = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=enabled(tmp_path),
                        host={"show": show("ryu"), "ls": ls("mercury"), "cat": ""},
-                       listen={"host": "2001:db8::10", "port": 6653}, switches=[eos()])
+                       listen={"host": "2001:db8::10", "port": 6653}, switches=[eos()],
+                       links=[], previous=None)
     assert got["ok"] is True and "--ofp-listen-host 2001:db8::10 " in got["dropin_after"]
 
 
@@ -256,7 +264,7 @@ def test_a_set_pinning_no_version_offers_1_5_and_is_refused(tmp_path):
     assert got["offered"][-1] == "1.5" and not got["ok"]
     refused = channel.plan(network="lab9", controller="ctl", unit=UNIT, enabled=[],
                            host={"show": show("ryu"), "ls": ls("mercury"), "cat": ""},
-                           listen=LISTEN, switches=[eos()])
+                           listen=LISTEN, switches=[eos()], links=[], previous=None)
     assert any(r.startswith("conformance: sw-a") for r in refused["refusals"])
 
 
@@ -336,9 +344,18 @@ class FakeChannel:
         return self.outcomes.pop(0)
 
 
+def expected_switches():
+    """The switches EXPECTED names, as the plan takes them (DPIDs 1 and 2)."""
+    return [eos("sw-a"), dict(eos("sw-b"), dpid=2)]
+
+
 def run_deploy(tmp_path, reads, outcomes, previous=None, window_ok=True):
-    accepted = plan(tmp_path)
+    """A deploy of a plan whose expected is EXPECTED and whose rollback target is *previous*
+    (the plan's, which the deploy takes; C2706)."""
+    accepted = plan(tmp_path, switches=expected_switches(), links=EXPECTED["links"],
+                    previous=previous)
     assert accepted["ok"], accepted["refusals"]
+    assert accepted["expected"] == EXPECTED
     clock, chan, windows = Clock(), FakeChannel(outcomes), []
 
     def declare(devices, start, end, by, why, unreachable):
@@ -347,8 +364,7 @@ def run_deploy(tmp_path, reads, outcomes, previous=None, window_ok=True):
         return {"ok": window_ok, "error": "" if window_ok else "the restart record is "
                                                                "unreadable"}
     reads = iter(reads)
-    receipt = post_check.deploy(accepted, previous=previous, channel=chan,
-                                read=lambda: next(reads, SWITCH_2_DOWN), expected=EXPECTED,
+    receipt = post_check.deploy(accepted, channel=chan, read=lambda: next(reads, SWITCH_2_DOWN),
                                 declare_window=declare, by="op@example.invalid", clock=clock,
                                 sleep=clock.sleep, now=clock)
     return receipt, chan, windows, accepted
@@ -361,7 +377,8 @@ def test_a_deploy_declares_its_window_before_staging_and_is_deployed_when_all_co
         tmp_path):
     receipt, chan, windows, accepted = run_deploy(tmp_path, [ALL_BACK], [OK_APPLY])
     assert receipt["outcome"] == "deployed"
-    assert windows == [{"devices": ["ctl"], "unreachable": ["sw-a"], "staged_before": 0}]
+    assert windows == [{"devices": ["ctl"], "unreachable": ["sw-a", "sw-b"],
+                        "staged_before": 0}]
     assert chan.staged == [accepted["request"]]
 
 
@@ -380,9 +397,13 @@ def test_a_missed_post_check_rolls_back_to_the_previous_request(tmp_path):
                                                      "rollback apply", "rollback post-check"]
 
 
-def test_a_miss_with_no_previous_request_says_the_break_glass(tmp_path):
-    receipt, _, _, _ = run_deploy(tmp_path, [], [OK_APPLY])
-    assert receipt["outcome"] == "rollback failed" and "mercury.conf.prev" in receipt["error"]
+def test_a_miss_with_no_previous_request_and_no_drop_in_before_is_not_rolled_back(tmp_path):
+    """No previous request and no drop-in before (the plan read none): nothing can be put
+    back, so no rollback is tried, and the receipt says so in its own word, never "rollback
+    failed" (C2709). With a drop-in before, the put-back runs: tests/test_controller_rollback.py."""
+    receipt, chan, _, _ = run_deploy(tmp_path, [], [OK_APPLY])
+    assert receipt["outcome"] == "not rolled back" and "no rollback was tried" in receipt["error"]
+    assert chan.calls == ["stage", "apply"]
 
 
 def test_an_unrecorded_window_stages_nothing(tmp_path):

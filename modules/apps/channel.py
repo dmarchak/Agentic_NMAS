@@ -13,8 +13,16 @@ the same framing as `modules/jobs/lifecycle.content_hash`) and a hash other than
 naming both (`lifecycle.deploy_refusal`).
 
 **The plan (`plan`)** shows the file list with hashes, the drop-in before and after, the
-restart, and the switches that reconnect with the post-check's bound, or refuses, each refusal
-naming the comparison and both operands:
+restart, what the post-check waits for (`expected`: every switch and link NetBox names and every
+enabled app's /health, the board's K6) with its bound, what of that is already missing or
+failing at plan time (`already`, from the caller's read of the controller; not read is said),
+and what a miss rolls back to (`rollback`, K2: the request the controller ran before by
+Mercury's record, or with none recorded the drop-in before, `mercury.conf.prev`, K3). The plan's
+hash covers the request, the drop-in after, the unit, the controller, the expected switches,
+links and apps, and the rollback target, so a confirm by that hash binds what the post-check
+and a rollback will use (C2706). What is already missing is drawn and named at the confirm but
+is not in the hash: it is a live read, and the post-check's verdict depends only on what it
+expects. It refuses, each refusal naming the comparison and both operands:
 - a version that is not Published, or whose staged hash is not its pin;
 - C2: the unit's User is root (or empty) and `/opt/ryu-apps` may be written by the deploy
   account (nothing is staged);
@@ -22,7 +30,26 @@ naming the comparison and both operands:
   absent or unreadable;
 - the unit's User or command line unreadable (can't tell is never a pass);
 - a required app missing from the set, or a requirement cycle;
-- conformance (`modules/apps/conformance`, T17).
+- conformance (`modules/apps/conformance`, T17);
+- an app's start-time config holding anything Mercury's redaction masks
+  (`config_secret_refusal`, decision K9: no secret ever goes in a config file);
+- an expected switch with no DPID, an expected link that is not a pair of switch ports, or a
+  recorded previous request the script would refuse (a rollback target that could not run).
+
+**An app's start-time config (decision K9; C2707)** is compiled by Mercury (not built here: the
+plan takes it per app) and staged as its own file beside the version's folder,
+``/opt/ryu-apps/<app>/<version>.config.json`` (the script's `config_path`), so the Published
+folder's hash stays the reviewed code's; its sha256 rides in the request as ``config_sha256``,
+and the script checks it before it writes the drop-in. Runtime policy (dns_blacklist's verdict
+service, say) is the other half of K9: pushed over the app's REST policy endpoint after the
+restart, not built here.
+
+**The rollback (decision K3; C2705).** The plan's ``rollback`` (`rollback_target`) is the one
+answer to what a miss rolls back to, and it is in the hash: the previous request (kind
+``request``), or, on a first deploy, the second request kind (kind ``dropin_before``,
+`put_back_request`): the script puts the drop-in before back (its kept `mercury.conf.prev`,
+bound to the plan's ``dropin_sha256`` by hash) and restarts. `post_check.deploy` takes it from
+the plan and nowhere else. The window (`window`) is sized for the deploy and that rollback.
 
 **What the host's reads are.** Every fact comes from the Linux host capture list's shaped reads
 (`modules/discovery._LINUX_SHAPES`): `systemctl show -p User -p ExecStart <unit>` (the User,
@@ -240,17 +267,106 @@ def load_order(manifests) -> list:
     return out
 
 
+def _app_entry(a: dict) -> dict:
+    entry = {"name": a["name"], "version": a["version"], "sha256": a["sha256"]}
+    if a.get("config_sha256") is not None:
+        entry["config_sha256"] = a["config_sha256"]
+    return entry
+
+
 def request(apps, listen: dict) -> dict:
     """The request the script reads, normalised by the script's own parser (so its hash is the
-    script's): *apps* in load order, each ``{"name", "version", "sha256"}``."""
-    body = json.dumps({"apps": [{"name": a["name"], "version": a["version"],
-                                 "sha256": a["sha256"]} for a in apps],
+    script's): *apps* in load order, each ``{"name", "version", "sha256"}`` and, for an app
+    with a start-time config (decision K9), its ``config_sha256`` (`config_bytes`'s sha256).
+    An app with no config carries no key, so a request with no config is the shape it always
+    was, and hashes the same."""
+    body = json.dumps({"apps": [_app_entry(a) for a in apps],
                        "listen": {"host": listen.get("host"), "port": listen.get("port")}},
                       sort_keys=True).encode("utf-8")
     try:
         return script().parse_request(body)
     except script().Refused as exc:
         raise ChannelRefused(f"the request would be refused by the script: {exc}") from exc
+
+
+def put_back_request(before_text: str) -> dict:
+    """The second request kind (decision K3): put the drop-in before back, bound to *before_text*
+    (the plan's `dropin_before`, as `systemctl cat` showed it) by the script's own hash, and
+    normalised by the script's own parser. Refused when there was no drop-in before, naming
+    it: the put-back has nothing to put back then."""
+    s = script()
+    if not before_text:
+        raise ChannelRefused(f"there was no drop-in before the deploy ({s.DROPIN_NAME} was not "
+                             "in the unit's configuration when the plan read it), so there is "
+                             "nothing to put back")
+    body = json.dumps({"kind": s.PUT_BACK, "before_sha256": s.before_sha256(before_text)},
+                      sort_keys=True).encode("utf-8")
+    try:
+        return s.parse_request(body)
+    except s.Refused as exc:
+        raise ChannelRefused(f"the put-back would be refused by the script: {exc}") from exc
+
+
+# ── an app's start-time config (decision K9; C2707) ──────────────────────────────────────────
+
+def config_bytes(config) -> bytes:
+    """The bytes of an app's compiled start-time config as staged: canonical JSON (sorted keys,
+    no spaces, ASCII), one line. Refuses anything but a JSON object of at most the script's
+    MAX_BYTES."""
+    s = script()
+    if not isinstance(config, dict):
+        raise ChannelRefused(f"a start-time config is a JSON object, not a "
+                             f"{type(config).__name__}")
+    try:
+        data = (json.dumps(config, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                           allow_nan=False) + "\n").encode("ascii")
+    except (TypeError, ValueError) as exc:
+        raise ChannelRefused(f"a start-time config is not JSON: {exc}") from exc
+    if len(data) > s.MAX_BYTES:
+        raise ChannelRefused(f"the start-time config is {len(data)} bytes, more than the "
+                             f"script's {s.MAX_BYTES}")
+    return data
+
+
+def _leaves(node, path=()):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from _leaves(value, path + (str(key),))
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            yield from _leaves(value, path + (f"[{i}]",))
+    else:
+        yield path, node
+
+
+def config_secret_refusal(name: str, version: str, config, values: dict = None) -> str:
+    """"" or why *config* may not be staged: it holds something Mercury's redaction would mask
+    (`modules/redact`: a known secret value anywhere in its text, or a key and value that read as
+    a secret by position or by shape, such as ``password``, ``api_key`` or ``community``). The
+    refusal names the key, never the value: no secret ever goes in a config file (decision K9;
+    runtime policy that needs one is the app's REST policy endpoint's, after the restart, not
+    built here). Refusing by resemblance is safe: a key that only looks like one is refused."""
+    from modules import redact
+
+    values = redact.known_secret_values() if values is None else values
+    try:
+        text = config_bytes(config).decode("ascii")
+    except ChannelRefused as exc:
+        return f"{name} {version}'s start-time config: {exc}"
+    for path, value in _leaves(config):
+        key = ".".join(path) or "(the top)"
+        last = next((p for p in reversed(path) if not p.startswith("[")), "")
+        line = f"{last} {value}" if last else str(value)
+        if redact.redact_typed(line, values) != line or redact.redact_text(line, values) != line:
+            return (f"{name} {version}'s start-time config key {key} reads as a secret to "
+                    "Mercury's redaction (its value is not shown); a config file never carries "
+                    "a secret, so nothing is staged")
+    # Then the whole text as staged, so a key itself, or a secret split across the keys, is
+    # caught too.
+    if redact.redact_text(text, values) != text:
+        return (f"{name} {version}'s start-time config holds a value Mercury masks as a secret; "
+                "a config file never carries a secret, so nothing is staged")
+    return ""
 
 
 def render_dropin(req: dict, ryu_manager: str) -> str:
@@ -261,25 +377,143 @@ def render_dropin(req: dict, ryu_manager: str) -> str:
 
 # ── the plan ──────────────────────────────────────────────────────────────────────────────────
 
+def _link_refusal(link) -> str:
+    """Why *link* is not a link the post-check can wait for, or ""."""
+    try:
+        for end in ("src", "dst"):
+            if link[end]["dpid"] is None or link[end]["port_no"] is None:
+                raise KeyError(end)
+    except (KeyError, TypeError):
+        return (f"the expected link {link!r} is not a pair of switch ports ({{\"src\": "
+                "{\"dpid\", \"port_no\"}, \"dst\": {...}}), so the post-check could not wait "
+                "for it")
+    return ""
+
+
+def _typed(value) -> str:
+    """*value* as JSON, so a sort key tells 1 from "1" (the post-check compares by equality,
+    and the driver's DPIDs are integers)."""
+    return json.dumps(value, sort_keys=True)
+
+
+def _link_key(link) -> list:
+    """*link* as its two ends, sorted, so a link and its reverse are one link (as the post-check
+    compares them), each value kept as given."""
+    return sorted([[link[e]["dpid"], link[e]["port_no"]] for e in ("src", "dst")], key=_typed)
+
+
+def rollback_target(previous, *, controller: str, dropin_before_text: str) -> dict:
+    """What a miss puts back (the board's K2 and K3): *previous*, the request the controller ran
+    before by Mercury's record (the last deploy whose outcome left the controller running its
+    request), normalised by the script's parser; or, with none recorded (the first deploy
+    through Mercury), the drop-in before, which the apply script keeps as `mercury.conf.prev`.
+    ``{"kind": "request"|"dropin_before", "request", "request_sha256", "dropin_sha256",
+    "words"}``. *request* is the request a rollback sends, the one owner of it
+    (`post_check.deploy` sends this and nothing else): the recorded request, or the second
+    request kind (`put_back_request`) bound to the drop-in before by the script's own hash,
+    which is *dropin_sha256*; with no drop-in before there is nothing to put back, *request* is
+    None and the words say a miss is not rolled back. A recorded request the script would
+    refuse raises `ChannelRefused`."""
+    s = script()
+    if previous is None:
+        before = dropin_before_text or ""
+        first = (f"no previous request is recorded for {controller} (its first deploy through "
+                 "Mercury)")
+        if not before:
+            return {"kind": "dropin_before", "request": None, "request_sha256": "",
+                    "dropin_sha256": "",
+                    "words": (f"{first} and the unit has no mercury.conf now, so there is no "
+                              f"drop-in before for the apply script to put back (it keeps one "
+                              f"as {s.DROPIN_NAME}.prev): a miss is not rolled back, and the "
+                              "receipt says so")}
+        req = put_back_request(before)
+        return {"kind": "dropin_before", "request": req, "request_sha256": s.request_sha256(req),
+                "dropin_sha256": s.before_sha256(before),
+                "words": (f"{first}, so a miss puts back the drop-in before, shown above (the "
+                          f"apply script keeps it as {s.DROPIN_NAME}.prev; the put-back request "
+                          f"is bound to it by its hash, {s.before_sha256(before)[:12]}), "
+                          "restarts again and post-checks again")}
+    try:
+        req = s.parse_request(json.dumps(previous, sort_keys=True).encode("utf-8"))
+    except (s.Refused, TypeError, ValueError) as exc:
+        raise ChannelRefused(f"the rollback target, the request {controller} ran before by "
+                             f"Mercury's record, would be refused by the script: {exc}") from exc
+    apps = ", ".join(f"{a['name']} {a['version']}" for a in req["apps"]) or "no managed app"
+    return {"kind": "request", "request": req, "request_sha256": s.request_sha256(req),
+            "dropin_sha256": "",
+            "words": (f"a miss applies the request {controller} runs by Mercury's record "
+                      f"({apps}; request {s.request_sha256(req)[:12]}) as a second request, "
+                      "restarts again and post-checks again")}
+
+
+def already_wrong(expected: dict, observed, switches) -> dict:
+    """What of *expected* (the post-check's) is already missing or failing in *observed*, the
+    controller read at plan time (the board's K6), so the plan draws it beside what the
+    post-check waits for and the confirm names it. ``{"read", "missing_switches",
+    "missing_links", "unhealthy", "unreadable", "expecting", "words"}``; *observed* None is
+    "not read", said, never "nothing missing"."""
+    from modules.apps import post_check
+
+    empty = {"missing_switches": [], "missing_links": [], "unhealthy": [], "unreadable": [],
+             "expecting": []}
+    if not isinstance(observed, dict):
+        return dict(empty, read=False, words=(
+            "the controller was not read at plan time, so what is already missing or failing "
+            "is not known"))
+    got = post_check.evaluate(expected, observed)
+    named = {sw.get("dpid"): sw.get("name") for sw in switches}
+    gone = [f"{named.get(d) or '?'} ({d})" for d in got["missing_switches"]]
+    links = [post_check._link_words(link) for link in got["missing_links"]]  # noqa: SLF001
+    sick = list(got["unhealthy"])
+    expecting = ([f"expecting {w} to reconnect" for w in gone]
+                 + [f"expecting the link {w} to come back" for w in links]
+                 + [f"expecting {w.split(' ', 1)[0]}'s /health to recover" for w in sick])
+    parts = ([f"switches not connected now: {', '.join(gone)}"] if gone else []) \
+        + ([f"links not listed now: {', '.join(links)}"] if links else []) \
+        + ([f"apps failing /health now: {', '.join(sick)}"] if sick else []) \
+        + ([f"unreadable now: {', '.join(got['unreadable'])}"] if got["unreadable"] else [])
+    words = "; ".join(parts) or "every expected switch, link and app's /health answers now"
+    if expecting:
+        words += (". The post-check expects each of them back, so unless it recovers this "
+                  "deploy will miss and roll back")
+    return {"read": True, "missing_switches": gone, "missing_links": links, "unhealthy": sick,
+            "unreadable": list(got["unreadable"]), "expecting": expecting, "words": words}
+
+
 def plan(*, network: str, controller: str, unit: str, enabled, host: dict, listen: dict,
-         switches, account: str = "") -> dict:
+         switches, links, previous, observed=None, account: str = "") -> dict:
     """The deploy's plan, or its refusals (see the module's docstring).
 
     *enabled*: ``[{"version": lifecycle.Version, "manifest": Manifest, "staged": stage()'s
-    answer or None}]``; *host*: ``{"show", "ls", "cat"}``, the three reads' texts; *listen*:
-    NetBox's ``{"host", "port"}`` for the controller's OpenFlow service; *switches*: the
-    expected switches, ``[{"name", "dpid", "selected"}]`` (`profile.select`'s answer)."""
+    answer or None, "config": the app's compiled start-time config (a JSON object) or absent}]``
+    (an app's config is staged as ``configs[name]``, `config_bytes`'s text, and its sha256 is
+    the request's ``config_sha256``, so it is in the plan's hash with the request); *host*:
+    ``{"show", "ls", "cat"}``, the three reads' texts; *listen*: NetBox's ``{"host", "port"}``
+    for the controller's OpenFlow service; *switches*: the expected switches, ``[{"name",
+    "dpid", "selected"}]`` (`profile.select`'s answer); *links*: every link NetBox names
+    between them, ``[{"src": {"dpid", "port_no"}, "dst": {...}}]``; *previous*: the request the
+    controller ran before by Mercury's record, or None when none is recorded
+    (`rollback_target`; the caller passes it because the receipt store that will hold it is
+    C2677, not built); *observed*: the controller read at plan time in the post-check's shape
+    (`post_check.evaluate`), or None when it was not read."""
     from modules.apps import conformance, post_check
     from modules.jobs.lifecycle import deploy_refusal
 
     s = script()
     account = account or s.DEPLOY_USER
-    refusals = []
+    refusals = [f"the expected switch {sw.get('name') or '?'} has no DPID, so the post-check "
+                "could not wait for it" for sw in switches if sw.get("dpid") in (None, "")]
+    refusals += [why for why in (_link_refusal(link) for link in links) if why]
     for item in enabled:
         v, staged = item["version"], item.get("staged")
         why = deploy_refusal(v, staged["sha256"] if staged else "")
         if why:
             refusals.append(why)
+        if item.get("config") is not None:
+            why = config_secret_refusal(item["manifest"].name, item["manifest"].version,
+                                        item["config"])
+            if why:
+                refusals.append(why)
     shown = parse_show(host.get("show"))
     folder = parse_ls_dot(host.get("ls"))
     if not shown["readable"]:
@@ -316,7 +550,11 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
     if refusals:
         return out
     staged = {item["manifest"].name: item["staged"] for item in enabled}
-    apps = [{"name": m.name, "version": m.version, "sha256": staged[m.name]["sha256"]}
+    configs = {item["manifest"].name: config_bytes(item["config"]).decode("ascii")
+               for item in enabled if item.get("config") is not None}
+    apps = [dict({"name": m.name, "version": m.version, "sha256": staged[m.name]["sha256"]},
+                 **({"config_sha256": hashlib.sha256(configs[m.name].encode("ascii"))
+                     .hexdigest()} if m.name in configs else {}))
             for m in ordered]
     try:
         req = request(apps, listen)
@@ -325,21 +563,48 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
     ryu_manager = shown["exec_path"] or shown["argv"][0]
     after = render_dropin(req, ryu_manager)
     before = dropin_before(host.get("cat"), unit)
+    try:
+        rollback = rollback_target(previous, controller=controller, dropin_before_text=before)
+    except ChannelRefused as exc:
+        return dict(out, refusals=[str(exc)])
     names = [sw.get("name") for sw in switches]
     bound = post_check.bound()
-    body = {"request": req, "dropin_after": after, "unit": unit, "controller": controller,
-            "switches": sorted(str(sw.get("dpid")) for sw in switches)}
+    expected = {"switches": [sw.get("dpid") for sw in switches], "links": list(links),
+                "apps": [m.name for m in ordered]}
+    bound_fields = {"request": req, "dropin_after": after, "unit": unit,
+                    "controller": controller, "expected": expected, "rollback": rollback}
     return dict(out, ok=True, request=req, request_sha256=s.request_sha256(req),
+                expected=expected, already=already_wrong(expected, observed, switches),
+                rollback=rollback,
                 files={m.name: staged[m.name]["files"] for m in ordered},
                 folders={m.name: staged[m.name]["folder"] for m in ordered},
+                configs=configs,
                 dropin_before=before, dropin_after=after,
                 restart=(f"{unit} on {controller} restarts (systemctl restart, by the apply "
                          f"script), so every switch reconnects: {', '.join(names) or 'none'}"),
                 reconnect=dict(bound, switches=names),
                 window={"devices": [controller], "unreachable": names,
                         "seconds": window_seconds()},
-                plan_sha256=hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8"))
-                .hexdigest())
+                plan_sha256=plan_hash(bound_fields))
+
+
+def plan_hash(plan: dict) -> str:
+    """The plan's hash, from the fields of *plan* (a `plan` answer, or the same fields) that a
+    confirm binds: the request, the drop-in after, the unit, the controller, the expected
+    switches, links (each link's ends sorted, so a link and its reverse are one) and apps, and
+    the rollback target's kind and hashes (C2706). What is already missing (``already``) is a
+    live read and is not in it. `post_check.deploy` recomputes it from the plan it is handed and
+    refuses a plan whose hash moved. Raises KeyError or TypeError on a plan without them."""
+    expected, rollback = plan["expected"], plan["rollback"]
+    body = {"request": plan["request"], "dropin_after": plan["dropin_after"],
+            "unit": plan["unit"], "controller": plan["controller"],
+            "expected": {"switches": sorted(expected["switches"], key=_typed),
+                         "links": sorted((_link_key(link) for link in expected["links"]),
+                                         key=_typed),
+                         "apps": expected["apps"]},
+            "rollback": {"kind": rollback["kind"], "request_sha256": rollback["request_sha256"],
+                         "dropin_sha256": rollback["dropin_sha256"]}}
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def held_write(plan: dict, *, list_name: str, dev: dict, actor: str) -> dict:
@@ -383,10 +648,39 @@ def held_write(plan: dict, *, list_name: str, dev: dict, actor: str) -> dict:
         return refused(str(exc).removesuffix(" No session was opened."))
 
 
-def window_seconds() -> int:
-    """The planned-restart window a deploy declares: the script's restart bound and the
-    post-check's, twice (a rollback is a second apply and post-check)."""
-    from modules.apps import post_check
+def window() -> dict:
+    """``{"seconds", "words", "parts"}``: the planned-restart window a deploy declares (F7;
+    C2711), the whole worst case it sits inside, twice over (a rollback is a second request
+    and a second post-check, inside the same window). Each pass is:
+    - the session the staging runs over opening (`connection.CONNECT_TIMEOUT_S`, which bounds
+      its connect, banner, key exchange and authentication);
+    - the one command's wait (`transport.command_bound_s`, 2.5 times the script's restart
+      bound, `UP_BOUND_S`), which holds the script's whole run: its checks, the drop-in's
+      write, the restart and its wait for the unit, so the unit's up bound is counted inside
+      it and not again;
+    - the post-check's bound (`post_check.bound`).
+    The staging transfer itself has no bound of its own (an SFTP write waits as long as the
+    session stays open), so it is named in the words and not counted; nothing here is a new
+    figure, each part is its constant's."""
+    from modules import connection
+    from modules.apps import post_check, transport
 
-    one = script().UP_BOUND_S + post_check.bound()["seconds"]
-    return 2 * one
+    up = script().UP_BOUND_S
+    parts = {"session": int(connection.CONNECT_TIMEOUT_S),
+             "command": int(round(transport.command_bound_s())),
+             "post_check": int(post_check.bound()["seconds"])}
+    one = sum(parts.values())
+    seconds = 2 * one
+    words = (f"{seconds} s: twice (the deploy, then room for its rollback) the session's "
+             f"opening bound of {parts['session']} s, the apply command's wait of "
+             f"{parts['command']} s ({transport.COMMAND_BOUND_FACTOR} times the script's "
+             f"restart bound of {up} s, which it holds: the unit's wait is inside it) and the "
+             f"post-check's bound of {parts['post_check']} s. The script's restart bound and "
+             "the post-check's are placeholders until S1 measures them; the staging transfer "
+             "has no bound of its own and is not counted")
+    return {"seconds": seconds, "words": words, "parts": parts}
+
+
+def window_seconds() -> int:
+    """`window`'s seconds."""
+    return window()["seconds"]

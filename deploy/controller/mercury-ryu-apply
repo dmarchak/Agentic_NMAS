@@ -8,21 +8,38 @@ renders the copy it installs. It is never run from the repository, and the one s
 (`mercury ALL=(root) NOPASSWD: /usr/local/sbin/mercury-ryu-apply ""`) lets the deploy account
 run it with NO arguments and nothing else.
 
-It treats what the deploy account wrote as a REQUEST, never an instruction:
+It treats what the deploy account wrote as a REQUEST, never an instruction. A request is one of
+TWO KINDS, told apart by its shape and nothing else:
+- the APPLY (a set of apps): exactly {"apps": [...], "listen": {"host", "port"}}, with no
+  "kind" key, the shape every request had before the second kind, so a recorded request keeps
+  its hash (`request_sha256`) and its drop-in render byte for byte;
+- the PUT-BACK (decision K3, the operator's of 2026-11-07: a first deploy's rollback): exactly
+  {"kind": "put-before-back", "before_sha256": <64 hex>}, steps P1 to P3 below.
+A request naming any other kind, or a kind with any other key, is refused by name.
+
+The apply, step by step:
 - C2, before the request is read: while the controller's unit runs as root (its User empty or
   root) and the app folder is writable by the deploy account, the deploy account could plant
   code root runs at the next restart, so nothing is done; the refusal names the unit's User and
   the folder's owner and mode;
 - 1. the one staging file, APPS_ROOT/.apply/request.json, is opened without following a link and
   must be a regular file owned by the deploy account, with one link, at most MAX_BYTES, and
-  exactly the shape {"apps": [{"name", "version", "sha256"}, ...], "listen": {"host", "port"}},
-  the apps in load order; anything else is refused by name, never quoting its content;
+  exactly the shape {"apps": [{"name", "version", "sha256"[, "config_sha256"]}, ...], "listen":
+  {"host", "port"}}, the apps in load order; anything else is refused by name, never quoting its
+  content;
 - 2. every name matches NAME and every version VERSION;
 - 3. every APPS_ROOT/<name>/<version>/ is a real directory under APPS_ROOT (its realpath is
   itself), owned by the deploy account, holding <name>.py, nothing in it a link, writable by
   group or others, or owned by anyone else, and its recomputed content hash (`folder_hash`, the
   same framing as Mercury's `modules/jobs/lifecycle.content_hash`, from the files' bytes) equal
   to the request's, so a folder edited after staging is refused;
+- 3b. an app's start-time config (decision K9; C2707) is the file beside its version,
+  APPS_ROOT/<name>/<version>.config.json (`config_path`), outside the version's folder so the
+  Published folder's hash stays the reviewed code's. With config_sha256 in the request it must
+  be a regular file of the deploy account's, one link, not writable by group or others, at most
+  MAX_BYTES, a JSON object in UTF-8, and its sha256 the request's; without it, no such file may
+  be there (the app would read a config nobody confirmed). The script never reads a value from
+  it and never needs a secret: Mercury refuses a config holding one before it is staged;
 - 4. listen.host parses as an IPv4 or IPv6 address and listen.port is in 1024 to 65535;
 - 5. it renders the ONE drop-in, DROPIN_ROOT/<unit>.d/mercury.conf: `User=` RYU_USER, an empty
   `ExecStart=`, then RYU_MANAGER with the fixed flags, the listen address, the apps' files in
@@ -33,11 +50,29 @@ It treats what the deploy account wrote as a REQUEST, never an instruction:
   RYU_USER, within UP_BOUND_S;
 - 9. writes the outcome to OUTCOME_DIR/outcome.json (0644) and appends it to history.jsonl.
 
+The put-back puts the drop-in before Mercury's last apply back, which that apply kept as
+mercury.conf.prev (step 6). It does NOT remove mercury.conf: on S3's layout the drop-in before
+the first deploy is mercury.conf itself (deploy/controller/mercury.conf, `User=ryu` only), so
+removing it would leave the unit on its own User, root, which is C2's unsafe state and which the
+identity check would refuse every time.
+- P1. mercury.conf.prev must be a regular file (no link) owned by the account this script runs
+  as, not writable by group or others, at most MAX_BYTES, and its hash (`before_sha256`: of its
+  text with leading and trailing blank lines dropped, as `systemctl cat` shows it and Mercury's
+  plan read it) the request's before_sha256, so what is put back is what the plan showed;
+- P2. its last `User=` line must be `User=` RYU_USER, so the put-back never runs Ryu as root;
+- P3. it is written as mercury.conf atomically (mercury.conf.prev is kept as it is, so a second
+  put-back puts the same drop-in back), then steps 7 to 9 as for an apply.
+
+**What landed, in the outcome.** A refusal (`refused`) and an outcome with neither `refused`
+nor `step` (an exception before mercury.conf was replaced) changed no drop-in; an outcome with a
+`step` (daemon-reload, restart, wait, after-write or running) wrote the new drop-in, and every
+failure past that write carries its step, so Mercury's rollback undoes what landed.
+
 It never runs anything from APPS_ROOT as root, never takes a path or a command from the request,
-and never rolls back by itself: a rollback is Mercury's second request (the previous set), and
-mercury.conf.prev is the break-glass. Written for the controller's Python 3.5 (Ubuntu 16.04.5):
-no f-strings, no variable annotations, nothing newer than 3.5 (tests/test_controller_apply.py
-checks it with Mercury's Python 3.5 check).
+and never rolls back by itself: a rollback is Mercury's second request (the previous set, or the
+put-back), and mercury.conf.prev is also the break-glass. Written for the controller's Python
+3.5 (Ubuntu 16.04.5): no f-strings, no variable annotations, nothing newer than 3.5
+(tests/test_controller_apply.py checks it with Mercury's Python 3.5 check).
 """
 
 import errno
@@ -89,6 +124,11 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 HASH_FRAMING = b"mercury-git-folder-sha256-v2\0"
 REQUEST_REL = os.path.join(".apply", "request.json")
 DROPIN_NAME = "mercury.conf"
+PREV_SUFFIX = ".prev"
+#: The second request kind (decision K3): put the drop-in before Mercury's last apply back.
+PUT_BACK = "put-before-back"
+#: An app's start-time config sits beside its version's folder (decision K9; `config_path`).
+CONFIG_SUFFIX = ".config.json"
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 
 
@@ -247,12 +287,30 @@ def read_request(account):
     return raw
 
 
+def parse_put_back(doc):
+    """The put-back's exact shape (decision K3): {"kind": PUT_BACK, "before_sha256": hex}."""
+    kind = doc["kind"]
+    if kind != PUT_BACK:
+        raise Refused("the request's kind is not {} (the one kind a request names; an apply "
+                      "names none)".format(PUT_BACK))
+    if sorted(doc) != ["before_sha256", "kind"]:
+        raise Refused("a {} request is not an object of exactly the keys kind and "
+                      "before_sha256".format(PUT_BACK))
+    value = doc["before_sha256"]
+    if not isinstance(value, str) or not SHA256.match(value):
+        raise Refused("before_sha256 does not match {}".format(SHA256.pattern))
+    return {"kind": PUT_BACK, "before_sha256": value}
+
+
 def parse_request(raw):
-    """Steps 1, 2 and 4: the request's exact shape, each field named, never its value."""
+    """Steps 1, 2 and 4: the request's exact shape, each field named, never its value. A
+    request with a "kind" key is the put-back (`parse_put_back`); one without is an apply."""
     try:
         doc = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_duplicates)
     except (UnicodeDecodeError, ValueError):
         raise Refused("the request is not JSON in UTF-8")
+    if isinstance(doc, dict) and "kind" in doc:
+        return parse_put_back(doc)
     if not isinstance(doc, dict) or sorted(doc) != ["apps", "listen"]:
         raise Refused("the request is not an object of exactly the keys apps and listen")
     apps = doc["apps"]
@@ -261,9 +319,14 @@ def parse_request(raw):
     seen = set()
     for i, app in enumerate(apps):
         where = "apps[{}]".format(i)
-        if not isinstance(app, dict) or sorted(app) != ["name", "sha256", "version"]:
-            raise Refused("{} is not an object of exactly name, version and sha256".format(where))
-        for key, rule in (("name", NAME), ("version", VERSION), ("sha256", SHA256)):
+        if not isinstance(app, dict) or sorted(app) not in (
+                ["name", "sha256", "version"], ["config_sha256", "name", "sha256", "version"]):
+            raise Refused("{} is not an object of exactly name, version and sha256 (and "
+                          "config_sha256, for an app with a config)".format(where))
+        for key, rule in (("name", NAME), ("version", VERSION), ("sha256", SHA256),
+                          ("config_sha256", SHA256)):
+            if key not in app:
+                continue
             value = app[key]
             if not isinstance(value, str) or not rule.match(value):
                 raise Refused("{}.{} does not match {}".format(where, key, rule.pattern))
@@ -368,8 +431,63 @@ def check_folders(request, account):
         if got != app["sha256"]:
             raise Refused("{}'s recomputed hash {} is not the request's {}: the folder changed "
                           "after it was staged".format(where, got, app["sha256"]))
+        check_config(i, app, root, account)
         out.append(entry)
     return out
+
+
+def config_path(apps_root, name, version):
+    """Where an app's start-time config is staged (decision K9): beside its version's folder,
+    APPS_ROOT/<name>/<version>.config.json, so the folder's hash stays the reviewed code's."""
+    return os.path.join(apps_root, name, version + CONFIG_SUFFIX)
+
+
+def check_config(i, app, root, account):
+    """Step 3b: the config file the request names (its sha256), or no config file at all."""
+    path = config_path(root, app["name"], app["version"])
+    where = "apps[{}]'s config {}".format(i, path)
+    want = app.get("config_sha256")
+    if want is None:
+        if os.path.lexists(path):
+            raise Refused("{} is there and the request names no config for it: the app would "
+                          "read a config nobody confirmed".format(where))
+        return
+    if os.path.realpath(os.path.dirname(path)) != os.path.dirname(path):
+        raise Refused("{} is not under a real directory: its folder's realpath is elsewhere"
+                      .format(where))
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise Refused("{} is a symbolic link, not a regular file".format(where))
+        raise Refused("{} cannot be read ({})".format(where, exc.strerror))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise Refused("{} is not a regular file".format(where))
+        if st.st_uid != account.pw_uid:
+            raise Refused("{} is owned by {}, not {}".format(where, owner_words(st),
+                                                             DEPLOY_USER))
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise Refused("{} is {}: writable by group or others".format(where,
+                                                                          mode_words(st)))
+        if st.st_nlink != 1:
+            raise Refused("{} has {} links, not 1".format(where, st.st_nlink))
+        if st.st_size > MAX_BYTES:
+            raise Refused("{} is {} bytes, more than {}".format(where, st.st_size, MAX_BYTES))
+        data = os.read(fd, MAX_BYTES + 1)
+    finally:
+        os.close(fd)
+    got = hashlib.sha256(data).hexdigest()
+    if got != want:
+        raise Refused("{}'s sha256 {} is not the request's {}: the config changed after it "
+                      "was staged".format(where, got, want))
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise Refused("{} is not JSON in UTF-8".format(where))
+    if not isinstance(doc, dict):
+        raise Refused("{} is not a JSON object".format(where))
 
 
 # ---------------------------------------------------------------------------
@@ -425,9 +543,11 @@ def _write_file(path, data, mode=0o644):
     os.replace(tmp, path)
 
 
-def restart():
-    """Steps 7 and 8: daemon-reload, restart, and success by identity within UP_BOUND_S."""
-    before = unit_properties("MainPID").get("MainPID", "")
+def restart(before):
+    """Steps 7 and 8: daemon-reload, restart, and success by identity within UP_BOUND_S.
+    *before* is the MainPID read before the drop-in was written. A read of the unit that
+    systemctl does not answer during the wait is a poll that read nothing, never a refusal:
+    the drop-in is written and the unit restarted by then."""
     rc, _, err = systemctl("daemon-reload")
     if rc != 0:
         return {"ok": False, "step": "daemon-reload", "error": "systemctl daemon-reload "
@@ -441,7 +561,10 @@ def restart():
     props, polls = {}, 0
     while True:
         polls += 1
-        props = unit_properties("MainPID", "ActiveState", "User")
+        try:
+            props = unit_properties("MainPID", "ActiveState", "User")
+        except Refused:
+            props = {}
         pid = props.get("MainPID", "")
         if props.get("ActiveState") == "active" and pid not in ("", "0", before) \
                 and props.get("User") == RYU_USER:
@@ -504,14 +627,105 @@ def apply(argv):
     if why:
         raise Refused(why)
     request = parse_request(read_request(account))
+    if request.get("kind") == PUT_BACK:
+        return put_back(request, user)
     files = check_folders(request, account)
     text = render_dropin(request, RYU_MANAGER, RYU_USER, os.path.realpath(APPS_ROOT))
+    before = unit_properties("MainPID").get("MainPID", "")
     path, kept = write_dropin(text)
-    result = restart()
+    result = restart_after_write(before)
     result.update({"request_sha256": request_sha256(request), "apps": request["apps"],
                    "listen": request["listen"], "files": files, "dropin": path,
                    "dropin_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                    "prev_kept": kept, "user_before": user})
+    return result
+
+
+def restart_after_write(before):
+    """`restart`, with any exception past the drop-in's write an outcome of step after-write,
+    never one that reads as nothing having changed (Mercury rolls back what landed)."""
+    try:
+        return restart(before)
+    except Exception as exc:                            # noqa: BLE001 (the step says it)
+        return {"ok": False, "step": "after-write", "main_pid_before": before,
+                "error": "the drop-in was written, then {}: {}".format(type(exc).__name__,
+                                                                       exc)}
+
+
+def before_sha256(text):
+    """The hash a put-back is bound to: of a drop-in's text with its leading and trailing blank
+    lines dropped, which is how `systemctl cat` shows it and Mercury's plan reads it
+    (modules/apps/channel.dropin_before)."""
+    return hashlib.sha256((text.strip("\n") + "\n").encode("utf-8")).hexdigest()
+
+
+def last_user(text):
+    """The value of the last `User=` line of a drop-in's text (systemd takes the last), or
+    None when it sets none."""
+    found = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("User="):
+            found = line[len("User="):].strip()
+    return found
+
+
+def put_back(request, user):
+    """Steps P1 to P3 (decision K3): mercury.conf.prev back as mercury.conf, then the restart
+    judged by identity, as an apply's is."""
+    folder = os.path.join(DROPIN_ROOT, RYU_UNIT + ".d")
+    path = os.path.join(folder, DROPIN_NAME)
+    prev = path + PREV_SUFFIX
+    try:
+        fd = os.open(prev, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            raise Refused("there is no drop-in before to put back: {} does not exist".format(
+                prev))
+        if exc.errno == errno.ELOOP:
+            raise Refused("{} is a symbolic link: nothing was written".format(prev))
+        raise Refused("{} cannot be read ({})".format(prev, exc.strerror))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise Refused("{} is not a regular file".format(prev))
+        if st.st_uid != os.geteuid():
+            raise Refused("{} is owned by {}, not the account this script runs as (uid {}), "
+                          "which wrote it".format(prev, owner_words(st), os.geteuid()))
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise Refused("{} is {}: writable by group or others".format(prev, mode_words(st)))
+        if st.st_size > MAX_BYTES:
+            raise Refused("{} is {} bytes, more than {}".format(prev, st.st_size, MAX_BYTES))
+        data = os.read(fd, MAX_BYTES + 1)
+    finally:
+        os.close(fd)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Refused("{} is not UTF-8".format(prev))
+    got = before_sha256(text)
+    if got != request["before_sha256"]:
+        raise Refused("{} hashes {}, not the request's before_sha256 {}: it is not the drop-in "
+                      "the plan read before the deploy, so nothing was written".format(
+                          prev, got, request["before_sha256"]))
+    set_user = last_user(text)
+    if set_user != RYU_USER:
+        raise Refused("{}'s last User= line is {}, not User={}: putting it back would not run "
+                      "the unit as {}, so nothing was written".format(
+                          prev, "absent" if set_user is None else repr(set_user), RYU_USER,
+                          RYU_USER))
+    if os.path.islink(path):
+        raise Refused("{} is a symbolic link: nothing was written".format(path))
+    replaced = None
+    if os.path.lexists(path):
+        with open(path, "rb") as fh:
+            replaced = hashlib.sha256(fh.read()).hexdigest()
+    before = unit_properties("MainPID").get("MainPID", "")
+    _write_file(path, data)
+    result = restart_after_write(before)
+    result.update({"kind": PUT_BACK, "before_sha256": got, "dropin": path,
+                   "dropin_sha256": hashlib.sha256(data).hexdigest(),
+                   "replaced_sha256": replaced, "user_before": user})
     return result
 
 
