@@ -316,6 +316,58 @@ class TestTheRun:
         assert "the session dropped" in step["detail"]
 
 
+class TestTheWindowCoversItsLinksFarEnds:
+    """C2751 (the operator's rule of 2026-11-08): a reload takes every link of the device down,
+    so its window names the far end of each one committed intent gives it, IPv4 or IPv6, and
+    a far end's guard 3 sees it (`restarts.explained_by`, how ``far_end``)."""
+
+    INTENTS = {"r2": {"interfaces": [{"name": "GigabitEthernet2",
+                                      "ipv4": "192.0.2.9 255.255.255.252"},
+                                     {"name": "GigabitEthernet3",
+                                      "ipv6": ["2001:DB8:23::2/64"]}]},
+               "r5": {"interfaces": [{"name": "GigabitEthernet1",
+                                      "ipv4": "192.0.2.10 255.255.255.252"}]},
+               "r6": {"interfaces": [{"name": "Gi4", "ipv6": ["2001:DB8:23::6/64"]}]}}
+
+    def _run(self, run_lab):
+        return reload_op.run("Lab", "r2", actor="ana@example.invalid",
+                             fingerprint=_fp(run_lab), reason="a line card swap needs a start",
+                             reader=lambda d: _reads(run_lab), reloader=run_lab["reloader"],
+                             wait=run_lab["back"])
+
+    def test_every_links_far_end_is_in_the_window(self, run_lab, monkeypatch):
+        import time
+
+        from modules import neighbours, restarts
+        monkeypatch.setattr(neighbours, "restart_far_ends", lambda network, devices: (
+            neighbours.window_far_ends(self.INTENTS, devices), ""))
+        windows = []
+        real = restarts.record_planned
+        monkeypatch.setattr(restarts, "record_planned",
+                            lambda *a, **k: windows.append(k) or real(*a, **k))
+        out = self._run(run_lab)
+        assert out["outcome"] == "reloaded", out
+        (k,) = windows
+        assert k["far_ends"] == [("r5", "GigabitEthernet1"), ("r6", "Gi4")]
+        window = [s for s in out["steps"] if s["step"] == "window"][0]["detail"]
+        assert "its links' far ends: r5 GigabitEthernet1, r6 Gi4" in window, window
+        assert out["window"]["far_ends"] == ["r5 GigabitEthernet1", "r6 Gi4"]
+        why = restarts.explained_by("r6", "Lab", time.time())
+        assert why and why["how"] == "far_end", why
+
+    def test_intent_that_cannot_be_read_sends_nothing(self, run_lab, monkeypatch):
+        from modules import neighbours, restarts
+        monkeypatch.setattr(neighbours, "restart_far_ends",
+                            lambda network, devices: (None, "host_vars/r5.yml did not parse"))
+        monkeypatch.setattr(restarts, "record_planned",
+                            lambda *a, **k: pytest.fail("a window with its far ends untold"))
+        out = self._run(run_lab)
+        assert out["outcome"] == "no_window" and run_lab["sent"] == []
+        assert out["steps"][-1]["detail"] == (
+            "committed intent could not be read (host_vars/r5.yml did not parse), so the far "
+            "ends of r2's links cannot be told: nothing was sent")
+
+
 def _keys(host: str) -> str:
     """`show crypto key mypubkey rsa` as Mercury's Show commands recorded it on 2026-11-01
     (tests/fixtures/operational/crypto_keys/README.md)."""

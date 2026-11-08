@@ -173,10 +173,12 @@ class Sources:
         return dev or {}
 
     def intents(self):
-        from modules.neighbours import committed_intents
-        from modules.nsot import listref
+        """``(intents, error)``, intents None when committed intent cannot be read whole
+        (`bounce.committed_intents_of`, the one reader a window's far ends come from), so a
+        hard clear's window refuses rather than naming no far end (C2795)."""
+        from modules.heal.bounce import committed_intents_of
 
-        return committed_intents(listref.resolve(self.network).repo_dir)
+        return committed_intents_of(self.network)
 
     def manager_toward(self, address):
         from modules.heal import bounce

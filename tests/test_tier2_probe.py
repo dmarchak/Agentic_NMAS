@@ -436,3 +436,25 @@ class TestTheOspfReset:
         conn, row, _seen, _s = self._run(device, [_ospf_down(6)])
         assert _ospf_down(6).count("FULL") == 0, "the header kept, every row gone"
         assert conn.sent == [] and "no adjacency formed before the reset (none)" in row["why"]
+
+
+class TestTheWindowsIntent:
+    """C2795: the probe's own window (`_window_for`) reads committed intent to name its far
+    ends; one that cannot be read records no window, for a hard clear as for a reset, rather
+    than a window naming none."""
+
+    @pytest.mark.parametrize("reset,words", [
+        ("clear ip ospf 1 process", "the reset's neighbours"),
+        ("", "the cleared peer's device")], ids=["reset", "bgp-clear"])
+    def test_intent_that_cannot_be_read_records_no_window(self, monkeypatch, reset, words):
+        from modules import restarts
+        from modules.heal import bounce
+        monkeypatch.setattr(bounce, "committed_intents_of",
+                            lambda network: (None, "host_vars/edge1.yml did not parse"))
+        monkeypatch.setattr(restarts, "record_planned",
+                            lambda *a, **k: pytest.fail("a window was recorded"))
+        declare = P._window_for(_args(bgp_peer="198.51.100.3"))
+        got = declare({"hostname": "edge1"}, "", 30.0, "a probe's clear", reset=reset)
+        assert got == {"ok": False, "error": (
+            "committed intent could not be read (host_vars/edge1.yml did not parse), so "
+            f"{words} cannot be named")}

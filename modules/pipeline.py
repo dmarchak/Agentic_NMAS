@@ -231,6 +231,18 @@ class PipelineContext:
     #: and every other adjacency (the far end's router ID on another interface among them), is
     #: judged as ever.
     pair_transient: dict = None
+    #: ip -> the links the program takes down, for its planned window (C2751; the operator's
+    #: rule of 2026-11-08: a window for any link-affecting operation covers both ends of every
+    #: link it touches): ``{"device", "interfaces", "far_ends": [(device, interface)], "by",
+    #: "why", "error"}``, carried by the caller from the confirmed program and committed intent
+    #: (`expected_effects.touched`, `neighbours.window_far_ends`), never derived here. Stage 5,
+    #: as its last step, records the window (`restarts.record_planned`, restarting nothing)
+    #: before the first push, and stops the run there, nothing sent, when it cannot; the run
+    #: ends it as it ends. None, or no interfaces: no window.
+    link_window: dict = None
+    #: ip -> what stage 5 recorded for :attr:`link_window`: ``{"declared", "record", "words",
+    #: "ended", "end_words"}``, for the result.
+    link_window_record: dict = field(default_factory=dict)
     #: Coverage's combined deploy (artboard A2): every sent line is read back, quick or full,
     #: and a line not read back FAILS verify, so the program is rolled back as one (a quick
     #: verify's missing line only keeps it from passing, nothing rolled back for it).
@@ -507,6 +519,9 @@ class PipelineRunner:
             else:
                 self.ctx.final_status = "success"
         finally:
+            # The links' planned window ends with the run (C2751): verify and any rollback are
+            # done, and the far ends' settle margin runs from here (`restarts.explained_by`).
+            _end_link_windows(self.ctx)
             # Stage 9 always runs — even if an unhandled exception occurs above.
             _stage_audit_log(self.ctx)
         return self.ctx
@@ -884,6 +899,12 @@ def _stage_config_diff(ctx: PipelineContext) -> None:
             f"Config diff check failed for {len(errors)} device(s):\n"
             + "\n".join(errors)
         )
+    # The last thing before the send (CLAUDE.md, "declares its planned-restart window BEFORE
+    # it acts"; C2751): the far end of every link the programs touch is in a planned window,
+    # or the run stops here, at a stage before the send, so it reads as nothing sent
+    # (`receipts.was_sent`).
+    _declare_link_windows(ctx, ([ctx.canary_ip()] if ctx.canary_ip() else [])
+                          + ctx.fleet_ips())
 
 
 # ---------------------------------------------------------------------------
@@ -931,6 +952,104 @@ def _stage_deploy(ctx: PipelineContext) -> None:
             raise PipelineStageError(
                 f"Deploy failed on {'canary ' if is_canary else ''}{hostname}: {_why(exc)}"
             ) from exc
+
+
+def link_window(list_name: str, hostname: str, commands, intents: tuple) -> dict:
+    """What a run's planned window for *hostname*'s program names, for its caller to carry
+    (:attr:`PipelineContext.link_window`, C2751): the interfaces the program changes
+    (`expected_effects.touched`), the far end of each in committed intent
+    (`neighbours.window_far_ends`, the one way far ends are found), and who holds the device
+    and for what (the run's own hold, `device_ops.holder`: one operation per device, so its
+    holder is the verified person accountable). *intents* is the network's ``(intents,
+    error)``; an *error* is carried, and :func:`_declare_link_windows` refuses on it before
+    the send, since the far ends cannot be told. ``{}``: the program touches no interface, so
+    no link goes down."""
+    from modules.neighbours import window_far_ends
+    from modules.nsot import device_ops
+    from modules.nsot.expected_effects import touched
+
+    ports = touched(commands)
+    if not ports:
+        return {}
+    try:
+        hold = device_ops.holder(list_name, hostname) or {}
+    except Exception:                                 # noqa: BLE001 (no person: it refuses)
+        hold = {}
+    data, error = intents
+    operation = hold.get("operation") or "deploy"
+    return {"device": hostname, "interfaces": ports,
+            "far_ends": [] if error else window_far_ends(data or {}, [hostname], ports),
+            "by": hold.get("actor") or "", "error": error or "",
+            "why": f"the {operation} of {hostname}: its program changes {', '.join(ports)}"}
+
+
+def _declare_link_windows(ctx: PipelineContext, ordered: list) -> None:
+    """Record, before anything is pushed, the planned window of each device whose program
+    touches an interface (:attr:`PipelineContext.link_window`; C2751): restarting nothing,
+    naming the interfaces and the far end of each, for the run's longest expected length
+    (`attention.DEPLOY_WINDOW_S`, the adjacency log's own deploy window: one owner), and ended
+    early as the run ends (`_end_link_windows`). A far end committed intent does not name is
+    said, and needs no window. Raises :class:`PipelineStageError`, nothing sent, when the far
+    ends could not be told or a window could not be recorded; a window already recorded for
+    another device of the run is ended then."""
+    from modules import restarts
+    from modules.attention import DEPLOY_WINDOW_S
+
+    for ip in ordered:
+        lw = (ctx.link_window or {}).get(ip) or {}
+        if not lw.get("interfaces") or not ctx.rendered_commands.get(ip):
+            continue
+        host, ports = lw.get("device") or ip, ", ".join(lw["interfaces"])
+        refusal = ""
+        if lw.get("error"):
+            refusal = (f"committed intent could not be read ({lw['error']}), so the far ends "
+                       f"of {host} {ports} cannot be told")
+        elif not lw.get("far_ends"):
+            ctx.link_window_record[ip] = {
+                "declared": False, "record": {},
+                "words": f"no window: committed intent names no far end for {host} {ports}"}
+            continue
+        else:
+            now = time.time()
+            try:
+                got = restarts.record_planned(
+                    [host], now, now + DEPLOY_WINDOW_S, lw.get("by") or "",
+                    lw.get("why") or "", "deploy", list_name=ctx.list_name,
+                    interfaces=lw["interfaces"], far_ends=lw["far_ends"], restarts=False)
+            except Exception as exc:                  # noqa: BLE001 (refused, nothing sent)
+                got = {"ok": False, "error": _why(exc)}
+            if got.get("ok"):
+                far = ", ".join(f"{d} {i}".strip() for d, i in lw["far_ends"])
+                ctx.link_window_record[ip] = {
+                    "declared": True, "record": got.get("record") or {},
+                    "words": (f"planned window recorded until {got['record']['until']}, naming "
+                              f"{host} {ports}; its far ends: {far}")}
+                continue
+            refusal = f"the window could not be recorded ({got.get('error')})"
+        _end_link_windows(ctx, why="the run stopped before anything was sent")
+        raise PipelineStageError(
+            f"{host}: the planned window for the links its program touches ({ports}) was not "
+            f"declared: {refusal}. Nothing was sent.")
+
+
+def _end_link_windows(ctx: PipelineContext, why: str = "") -> None:
+    """End each window :func:`_declare_link_windows` recorded and has not ended, now: the
+    run's push, verify and any rollback are done (or never began). Never raises: an end that
+    could not be recorded leaves the window to its declared end, and is said on the record."""
+    from modules import restarts
+
+    for ip, rec in (ctx.link_window_record or {}).items():
+        if not rec.get("declared") or rec.get("ended"):
+            continue
+        try:
+            got = restarts.end_window(rec["record"], time.time(),
+                                      why or f"the deploy's run ended ({ctx.final_status})",
+                                      by=rec["record"].get("by", ""), via="deploy")
+            rec["ended"] = got.get("ended_at") if got.get("ok") else ""
+            rec["end_words"] = got.get("words") or got.get("error", "")
+        except Exception as exc:                      # noqa: BLE001 (its declared end holds)
+            log.warning("pipeline: the links' window of %s was not ended: %s", ip, exc)
+            rec["end_words"] = f"not ended, so it holds to its declared end ({_why(exc)})"
 
 
 def _push_config(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:

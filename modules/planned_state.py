@@ -215,7 +215,8 @@ PREDICTED_BY = {"reachability": {"restarting": "the operation's own device",
                                  "unreachable": "the preview's What else goes down"},
                 "adjacencies": "an adjacency with the device at one end",
                 "adjacency_log": {"restarting": "the logging device's window",
-                                  "peer": "the peer's window"},
+                                  "peer": "the peer's window",
+                                  "far_end": "the window naming it a link's far end"},
                 "drift": "the window (read again by the next run)"}
 ALERTS_PREDICTED = "the window and its settle time"
 

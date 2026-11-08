@@ -237,16 +237,14 @@ def window_seconds(timer: int = TIMER_MINUTES) -> int:
 
 
 def committed_intents_of(network: str) -> tuple:
-    """``(intents, error)``: *network*'s committed intent, read without creating its list."""
-    from modules.neighbours import committed_intents
-    from modules.nsot import listref
+    """``(intents, error)``: *network*'s committed intent, read without creating its list
+    (`neighbours.committed_intents_of`, the one reader a window's far ends come from, C2751);
+    intents None when it cannot be read whole, so a caller refuses (a read that failed or a
+    document that did not parse came back as ``{}`` with its error before, C2751's survey)."""
+    from modules.neighbours import committed_intents_of as read
 
-    try:
-        if not listref.exists(network):
-            return None, f"no network {network!r}"
-        return committed_intents(listref.resolve(network).repo_dir)
-    except Exception as exc:                          # noqa: BLE001 (named by the caller)
-        return None, f"{type(exc).__name__}: {exc}"
+    intents, error = read(network)
+    return (None, error) if error else (intents, "")
 
 
 def declare_window(network: str, device: str, interface: str, now: float, seconds: float, *,
@@ -734,10 +732,9 @@ class Sources:
         return dev or {}
 
     def intents(self):
-        from modules.neighbours import committed_intents
-        from modules.nsot import listref
-
-        return committed_intents(listref.resolve(self.network).repo_dir)
+        """``(intents, error)``, intents None when committed intent cannot be read whole, so
+        the act's window refuses rather than naming no far end (C2795)."""
+        return committed_intents_of(self.network)
 
     def host_networks(self):
         from modules.nsot import blast_radius

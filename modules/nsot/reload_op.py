@@ -557,11 +557,23 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
             # The devices the preview said Mercury loses its path to, kept on the window as
             # its expected effects (the attribution rule, PHASE8_PLAN 20.2).
             radius = now.get("radius") or {}
+            # A reload takes every link of the device down, so the window covers the far end
+            # of each one committed intent gives it (C2751; the operator's rule of 2026-11-08),
+            # found the one way far ends are (`neighbours.restart_far_ends`). Intent that cannot
+            # be read refuses the window: its far ends cannot be told.
+            from modules.neighbours import restart_far_ends
+            far, ierr = restart_far_ends(list_name, [host])
+            if ierr:
+                step("window", False, f"committed intent could not be read ({ierr}), so the "
+                                      f"far ends of {host}'s links cannot be told: nothing was "
+                                      "sent")
+                return finish("no_window")
             got = restarts.record_planned([host], started, started + now["bound_s"] + 300,
                                           actor, reason, "reload", list_name=list_name,
                                           unreachable=(radius.get("cut") or []
                                                        if radius.get("state") == "known"
-                                                       else []))
+                                                       else []),
+                                          far_ends=far)
             if not got.get("ok"):
                 step("window", False, got.get("error", "not recorded") + ": nothing was sent")
                 return finish("no_window")
@@ -572,7 +584,10 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
             window = got.get("record") or {}
             # Said on the step, never only logged: a silence that could not be set is the
             # one fact a person needs before the alerts arrive (B3).
+            out["window"]["far_ends"] = [f"{d} {i}".strip() for d, i in far]
             step("window", True, f"declared until {out['window']['until']}"
+                 + ("; its links' far ends: " + ", ".join(out["window"]["far_ends"])
+                    if far else f"; committed intent names no far end of {host}'s links")
                  + (f"; {got['silence_words']}" if got.get("silence_words") else ""))
             try:
                 sent = (reloader or (lambda d: with_temp_connection(d, reload_device)))(device)

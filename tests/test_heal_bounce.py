@@ -382,6 +382,18 @@ def auto_src(dev, clock, **kw):
 
 
 class TestTheAct:
+    def test_an_unreadable_intent_refuses_the_window_and_bounces_nothing(self, act_world):
+        # C2795: committed intent that cannot be read is not intent naming no far end.
+        clock = Clock()
+        router = FakeRouter(clock)
+        src = auto_src(router, clock)
+        d = taken(src)
+        src.intents = lambda: (None, "the committed intent could not be listed (boom)")
+        out = B().apply(NET, d, sources=src)
+        assert out["outcome"] != "bounced" and not router.bounced, out["steps"]
+        assert ("committed intent could not be read (the committed intent could not be listed "
+                "(boom)), so the far end") in str(out["steps"]), out["steps"]
+
     def test_bounced_confirmed_after_mercury_is_back_in_and_stable(self, act_world, monkeypatch):
         from modules import restarts
         from modules.heal import decisions, steplog

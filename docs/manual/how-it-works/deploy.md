@@ -173,7 +173,22 @@ the run ends. Its stages, in the order the code declares them:
    Recorded: the counts, in the audit entry. It compares each program line's text with the
    running configuration's lines (by text, not by section) and refuses a program whose every
    line is already present, or one adding more than 200 lines. With no running configuration
-   it is skipped.
+   it is skipped. Last, before anything is sent, **the links' planned window**: when the
+   program changes an interface (any line in an `interface` section, or a `no interface` or
+   `default interface` line), Mercury records a planned window naming the device, those
+   interfaces and the far end of each link, the other device committed intent puts on the
+   same IPv4 or global IPv6 network. Read: committed intent, and the device's hold (the
+   window is recorded as the person running the operation). Recorded: the window, in the
+   planned-restart record, for up to 10 minutes; it ends when the run ends, and History shows
+   it as "Planned window declared (links taken down, nothing restarted)". It restarts
+   nothing: the device's own alerts are not silenced and a restart of it during the run is
+   still unplanned. What it does is keep the far ends' drops quiet: the far end's logged
+   adjacency drop, its link's transitions and self-healing's planned-work guard read as the
+   deploy's expected effect until the window's end plus the settle margin of 19 minutes,
+   never a row or an incident. A program that changes no interface, or whose interfaces
+   committed intent puts no far end on, needs no window, and the result says which. When
+   committed intent cannot be read, or the window cannot be recorded, the run stops here and
+   nothing is sent, naming why.
 6. `deploy`. Read: the device's replies. Sent: `enable`, then the program in configuration
    mode on the pooled SSH session; NOT saved to startup yet (`save_startup` does that once
    verify passes, so a change that fails verify never reaches startup). A reply line such as `% Invalid input`

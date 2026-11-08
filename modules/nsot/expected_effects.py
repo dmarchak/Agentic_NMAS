@@ -96,6 +96,35 @@ def derive(commands) -> dict:
             "up": sorted(n for n, e in effect.items() if e == "up")}
 
 
+_REMOVES_INTERFACE = re.compile(r"^(?:no|default)\s+interface\s+(\S+)$", re.I)
+
+
+def touched(commands) -> list:
+    """The interfaces the program changes, sorted canonical names (C2751): each `interface X`
+    section holding at least one line (`derive`'s sections, read the same way), and each
+    interface a top-level `no interface X` or `default interface X` removes or resets. Any
+    line in a section counts, `shutdown` or not: an address, an OSPF setting or an
+    encapsulation changed there drops the link's adjacency too, so the link's far end is in
+    the deploy's planned window (`pipeline._declare_link_windows`, before the send)."""
+    out = set()
+    current = None
+    for raw in commands or []:
+        line = (raw or "").rstrip()
+        stripped = line.strip()
+        if not stripped or stripped == "!":
+            continue
+        if not line.startswith(" ") and not line.startswith("\t"):
+            m = re.match(r"^interface\s+(\S+)", stripped, re.I)
+            current = canonical(m.group(1)) if m else None
+            gone = _REMOVES_INTERFACE.match(stripped)
+            if gone:
+                out.add(canonical(gone.group(1)))
+            continue
+        if current is not None:
+            out.add(current)
+    return sorted(out)
+
+
 def _ospf_on(commands, interface: str) -> bool:
     """Whether the program enables OSPF on *interface* (`ip ospf N area A` in its section)."""
     current = None

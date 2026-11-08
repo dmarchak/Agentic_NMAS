@@ -437,16 +437,11 @@ def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captu
 
 def _committed_intents_of(list_name: str) -> tuple:
     """``({hostname: host_vars}, error)``: the network's committed intent, read once. A name no
-    network has is an error, never a folder made for it (resolving a list's path creates it)."""
-    from modules.neighbours import committed_intents
-    from modules.nsot import listref
+    network has is an error, never a folder made for it (resolving a list's path creates it).
+    `neighbours.committed_intents_of`, the one reader (C2751)."""
+    from modules.neighbours import committed_intents_of
 
-    try:
-        if not listref.exists(list_name):
-            return {}, f"no network is named {list_name!r}"
-        return committed_intents(listref.resolve(list_name).repo_dir)
-    except Exception as exc:                    # noqa: BLE001
-        return {}, f"{type(exc).__name__}: {exc}"
+    return committed_intents_of(list_name)
 
 
 def _expected_effects(list_name: str, hostname: str, commands, intents=None) -> dict:
@@ -1524,13 +1519,19 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # The program's derived effects (C506 phase 2) and what was declared on them (phase 3), by
     # the computation the plan drew them with; a declaration this program no longer offers
     # stops the device here too, since this path runs whether or not a hash was compared.
+    intents = _committed_intents_of(list_name)
     effects, declared, declare_problems = _effects_and_declared(
-        list_name, hostname, commands, (declare or {}).get(hostname))
+        list_name, hostname, commands, (declare or {}).get(hostname), intents=intents)
     if declare_problems:
         return {"device": hostname, "outcome": FAILED, "stage": "declared",
                 "reason": "a declared effect no longer fits the program: "
                           + "; ".join(declare_problems)}
     ctx.expected_effects = {device.get("ip", ""): effects}
+    # The links the program touches, and the far end of each, for the planned window the
+    # pipeline records before its push (C2751): from the same committed intent, read once.
+    from modules.pipeline import link_window
+    ctx.link_window = {device.get("ip", ""): link_window(list_name, hostname, commands,
+                                                         intents)}
     # The capture the program was computed against, for stage 4 to compare the device
     # with before anything is sent (C78), and the dialect the program was computed for, which
     # answers whether a device-only interface block is its measured default (C1383).
@@ -1621,6 +1622,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # The devices this program cut Mercury's path to (C2243's computation), for the
         # batch's baseline judgement (C2270): a device cut off stands only by its record.
         "reach_lost": effects.get("reach_lost"),
+        # The planned window for the links the program touched (C2751): its record, or why
+        # none was needed; {} when the program touched no interface.
+        "link_window": dict((result.link_window_record or {}).get(device.get("ip", ""), {})),
     }
 
 

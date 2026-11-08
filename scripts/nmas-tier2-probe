@@ -560,10 +560,11 @@ def _window_for(args):
         # every neighbour of that protocol committed intent expects.
         host = device.get("hostname", "")
         intents, err = committed_intents_of(args.list_name)
+        if intents is None:                           # C2795: unreadable is not "names none"
+            return {"ok": False, "error": f"committed intent could not be read ({err}), so "
+                                          + ("the reset's neighbours" if reset else
+                                             "the cleared peer's device") + " cannot be named"}
         if reset:
-            if intents is None:
-                return {"ok": False, "error": f"committed intent could not be read ({err}), so "
-                                              "the reset's neighbours cannot be named"}
             proto = "ospfv3" if "ipv6" in reset else "ospf"
             fars = sorted({(e["peer"], "") for e in expected(intents, host)
                            if e["proto"] == proto and e["peer"] and e["peer"] != host})

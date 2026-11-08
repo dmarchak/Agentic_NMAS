@@ -5090,10 +5090,13 @@ def _peer_names(list_name: str, cache: dict) -> dict:
     return out
 
 
-def _drop_window(drop: dict, a: dict, planned: list, peers: dict = None):
+def _drop_window(drop: dict, a: dict, planned: list, peers: dict = None, ended: dict = None):
     """The planned window covering a logged drop, ``(window, how)``, or None: the logging
     device's own (``restarting``), else its PEER's (``peer``: the device its router id or
-    address names in committed intent; PHASE8_PLAN 20.2)."""
+    address names in committed intent; PHASE8_PLAN 20.2), else a window naming the logging
+    device as the far end of a link its operation takes down (``far_end``: a deploy's
+    interface sections, C2751; `restarts.explained_by`'s rule, until its end and the settle
+    time)."""
     from modules import restarts
 
     at = drop["epoch"]
@@ -5102,17 +5105,27 @@ def _drop_window(drop: dict, a: dict, planned: list, peers: dict = None):
         return p, "restarting"
     peer = (peers or {}).get(str(a.get("neighbor") or ""))
     p = restarts.planned_for(peer, at, planned, a.get("list", "")) if peer else None
-    return (p, "peer") if p else None
+    if p:
+        return p, "peer"
+    got = restarts.explained_by(a["device"], a.get("list", ""), at, planned=planned,
+                                ended=ended)
+    return (got["window"], "far_end") if got and got["how"] == "far_end" else None
 
 
-def _explained(drop: dict, a: dict, planned: list, receipts, peers: dict = None) -> str:
+#: How `_explained` names the window that explained a drop, by `_drop_window`'s *how*.
+_DROP_WORDS = {"restarting": "planned restart", "peer": "the peer's planned restart",
+               "far_end": "a planned operation on its link's far end"}
+
+
+def _explained(drop: dict, a: dict, planned: list, receipts, peers: dict = None,
+               ended: dict = None) -> str:
     """Why a logged drop needs no row, or ``""``: a planned restart's window covering the
     logging device, or its PEER (the device its router id or address names in committed
     intent, *peers*; PHASE8_PLAN 20.2: the peer's planned window, not only the logging
-    device's), or a deploy to it around that time."""
-    window = _drop_window(drop, a, planned, peers)
+    device's), or a window naming it a far end (C2751), or a deploy to it around that time."""
+    window = _drop_window(drop, a, planned, peers, ended)
     if window:
-        return "planned restart" if window[1] == "restarting" else "the peer's planned restart"
+        return _DROP_WORDS[window[1]]
     at = drop["epoch"]
     for r in receipts(a.get("list", ""), a["device"]):
         t = _ts(r.get("at"))
@@ -5251,12 +5264,12 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
         for k, a in sorted(adjacencies.items()):
             drops = a.get("drops") or []
             peers = _peer_names(a.get("list") or "", names)
-            kept = [d for d in drops if not _explained(d, a, planned, receipts, peers)]
+            kept = [d for d in drops if not _explained(d, a, planned, receipts, peers, ended)]
             explained += len(drops) - len(kept)
             # Each window that explained a drop of this adjacency, once (board PS's card).
             by_window = {}
             for d in drops:
-                w = _drop_window(d, a, planned, peers)
+                w = _drop_window(d, a, planned, peers, ended)
                 if w:
                     by_window.setdefault(restarts.window_id(w[0]), (w, []))[1].append(d)
             for (p, how), ds in by_window.values():

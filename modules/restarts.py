@@ -220,7 +220,7 @@ def read_reason(dev: dict) -> dict:
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
                    list_name: str = "", correction: str = "",
                    new_host_keys: bool = False, unreachable=(), interfaces=(),
-                   far_ends=()) -> dict:
+                   far_ends=(), restarts: bool = True) -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
     or an end before its start, because a planned window is what keeps an alert quiet.
@@ -255,7 +255,16 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     ``expected.far_ends``: the far end's drop of the link, its adjacency and its UPDOWN lines
     inside the window are the operation's expected effect (`explained_by`'s ``far_end``,
     `heal.flaps.planned_spans`). Such a device restarts nothing, so it is never a device the
-    window names, and *interface* may be ``""`` (a BGP neighbour, no port taken down)."""
+    window names, and *interface* may be ``""`` (a BGP neighbour, no port taken down).
+
+    *restarts* False declares a window whose operation restarts none of *devices*: it only
+    takes links down (a deploy's interface sections, C2751), kept as ``"restarts": false``.
+    Such a window names its devices only as the links' near ends, so it plans no restart of
+    them (a restart inside it is unplanned, `_window_covers`), holds nothing of theirs as
+    restarting (`holding`, `explained_by`; the operation's own records explain its own device,
+    as a deploy's receipt does), and sets no Grafana silence; what it explains is its
+    *far_ends*. A window recorded before the field restarts its devices (expand, then
+    contract)."""
 
     devices = [d for d in (devices or []) if d]
     if not devices or not by or not (why or "").strip() or end < start:
@@ -275,6 +284,8 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     ports = [i for i in (interfaces or ()) if i]
     if ports:
         row["interfaces"] = ports
+    if not restarts:
+        row["restarts"] = False
     seen = events()
     if seen["state"] == "unreadable":
         return {"ok": False, "error": "the restart record could not be read, so whether this "
@@ -367,6 +378,11 @@ def silence_window(p: dict, now: float = None) -> dict:
     and the result says which."""
     now = time.time() if now is None else now
     start, end = _epoch(p["from"]), _epoch(p["until"]) + SETTLE_SECONDS
+    if p.get("restarts") is False:
+        # A window that restarts nothing silences nothing (C2751): its own device's alerts are
+        # its operation's to answer (a deploy's verify), and its far ends' are C2752's.
+        return {"state": "not_restarting", "silences": [], "ends_at": "",
+                "error": "the operation restarts no device"}
     if end <= now:
         return {"state": "not_needed", "silences": [], "ends_at": _iso(end),
                 "error": "the window and its settle margin have already passed"}
@@ -416,6 +432,8 @@ def silence_words(s: dict) -> str:
         return "Grafana is not configured for this network, so no alert of its was silenced"
     if state == "not_needed":
         return "no Grafana silence: the window and its settle margin have already passed"
+    if state == "not_restarting":
+        return "no Grafana silence: the operation restarts no device"
     set_ = [x["id"] for x in s.get("silences") or []]
     return ("Grafana's alerts are NOT silenced: " + (s.get("error") or "no reason recorded")
             + (f" (silence {', '.join(set_)} was set for the rest)" if set_ else ""))
@@ -584,7 +602,11 @@ def window_end(p: dict, ended: dict) -> float:
 
 
 def _names(p: dict, device: str, list_name: str) -> bool:
-    """Whether window *p* names *device* of *list_name* (by name, or ``"*"`` for its list)."""
+    """Whether window *p* names *device* of *list_name* (by name, or ``"*"`` for its list) as a
+    device it restarts. A window that restarts nothing (``"restarts": false``, a deploy's
+    links, C2751) names none: its devices are only its links' near ends."""
+    if p.get("restarts") is False:
+        return False
     return device in p.get("devices", []) or (
         "*" in p.get("devices", []) and (not p.get("list") or p.get("list") == list_name))
 

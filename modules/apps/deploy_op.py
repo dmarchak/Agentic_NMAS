@@ -493,8 +493,16 @@ def _declare(network, record_into):
     from modules import restarts
 
     def declare(devices, start, end, by, why, unreachable):
+        # The switches restart, so the window covers the far end of each of their links
+        # (C2751); intent that cannot be read refuses it, and nothing is staged.
+        from modules.neighbours import restart_far_ends
+        far, err = restart_far_ends(network, devices)
+        if err:
+            return {"ok": False, "error": f"committed intent could not be read ({err}), so the "
+                                          "far ends of the restarted switches' links cannot "
+                                          "be told"}
         got = restarts.record_planned(devices, start, end, by, why, via=KIND,
-                                      list_name=network, unreachable=unreachable)
+                                      list_name=network, unreachable=unreachable, far_ends=far)
         if got.get("ok"):
             record_into["window"] = got.get("record") or {}
         return got

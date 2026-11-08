@@ -90,17 +90,27 @@ def main(argv=None) -> int:
                   file=sys.stderr)
             return 1
     from modules.identity import host_actor
+    from modules.neighbours import restart_far_ends
+    # The devices restart, so the window covers the far end of each of their links (C2751).
+    far, err = restart_far_ends(args.list, args.devices)
+    if err:
+        print(f"refused: committed intent of {args.list} could not be read ({err}), so the "
+              "far ends of the devices' links cannot be told", file=sys.stderr)
+        return 1
     by = args.by or host_actor()
     out = restarts.record_planned(args.devices, now, now + args.minutes * 60, by, args.why,
                                   "nmas-planned-restart", list_name=args.list,
                                   correction=args.correction,
-                                  new_host_keys=args.new_host_keys)
+                                  new_host_keys=args.new_host_keys, far_ends=far)
     if not out["ok"]:
         print(f"refused: {out['error']}", file=sys.stderr)
         return 1
     r = out["record"]
     print(f"recorded: {', '.join(r['devices'])} in {r['list']} may restart from {r['from']} "
           f"until {r['until']} (and up to 15 min after), by {r['by']}: {r['why']}")
+    print("its links' far ends: " + (", ".join(f"{f['device']} {f['interface']}".strip()
+                                               for f in restarts.far_ends_of(r))
+                                     or "none outside the window's devices in committed intent"))
     print(f"window recorded {r['recorded_at']} (id {restarts.window_id(r)}); if the attempt is "
           f"abandoned, end it at once: nmas-planned-restart {r['list']} --end "
           f"{r['recorded_at']} --why \"<why>\"")

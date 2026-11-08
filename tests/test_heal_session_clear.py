@@ -601,6 +601,19 @@ class TestTheAct:
         else:                                         # the IPv4 clear's peer: r3 holds none
             assert src.far_ends == [[]], src.far_ends
 
+    def test_a_hard_clear_whose_intent_cannot_be_read_records_no_window_and_sends_nothing(
+            self, stores, measured):
+        # C2795: committed intent that cannot be read is not intent naming no neighbour; the
+        # act's own plan reads the device's intent first, so it refuses there, before a window.
+        conn = Conn([down(), down(state="Connect"), back()])
+        src = auto(conn)
+        d = taken(src)
+        src.intents = lambda: (None, "the committed intent could not be listed (boom)")
+        out = S().apply(NET, d, sources=src)
+        assert out["outcome"] != "cleared" and conn.sent == [], out["steps"]
+        assert getattr(src, "windows", []) == [], "no window recorded"
+        assert "r4's committed intent could not be read" in str(out["steps"]), out["steps"]
+
     def test_cleared_its_window_before_the_send_and_its_records(self, stores, measured):
         from modules.heal import decisions, steplog
         conn = Conn([down(), down(state="Connect"), back()])

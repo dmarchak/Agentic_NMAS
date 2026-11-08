@@ -263,20 +263,85 @@ def far_ends(intents: dict, host: str, interface: str) -> list:
     other device's interface on one of its IPv4 or global IPv6 networks, sorted. A link to a
     device with no committed intent, or an interface holding no address, names none: the
     caller says so (C2749: a planned window covers both ends of a link it takes down)."""
+    return sorted(_far_ends(_all_lines(intents), host, interface))
+
+
+def _far_ends(lined: dict, host: str, interface: str) -> set:
+    """`far_ends` over intents already through `_all_lines` (one render for many questions)."""
     from modules.nsot.ifnames import same_interface
 
-    intents = _all_lines(intents)
-    mine = next((i for i in (intents.get(host) or {}).get("interfaces") or []
+    mine = next((i for i in (lined.get(host) or {}).get("interfaces") or []
                  if same_interface(i.get("name", ""), interface or "")), None)
     nets = _subnets(mine) if mine else set()
     out = set()
-    for other, hv in intents.items():
+    for other, hv in lined.items():
         if other == host or not nets:
             continue
         for iface in (hv or {}).get("interfaces") or []:
             if _subnets(iface) & nets:
                 out.add((other, iface.get("name", "")))
+    return out
+
+
+def window_far_ends(intents: dict, devices, interfaces=None) -> list:
+    """``[(device, interface)]``: the far ends of every link a planned window's operation takes
+    down (C2751; the operator's rule of 2026-11-08: a window for any link-affecting operation
+    covers both ends of every link it touches), by `far_ends`, the one way they are found.
+    *interfaces* names the ports taken down on each of *devices* (a deploy's interface
+    sections); None takes every interface committed intent gives each device (a restart takes
+    every link down). A far end that is itself one of *devices* is left out: the window names
+    it already. ``"*"`` (every device of a network) names no far end inside it. Sorted."""
+    lined = _all_lines(intents)
+    named = {d for d in (devices or ()) if d and d != "*"}
+    out = set()
+    for host in sorted(named):
+        ports = (list(interfaces) if interfaces is not None else
+                 [i.get("name", "") for i in (lined.get(host) or {}).get("interfaces") or []])
+        for port in ports:
+            if port:
+                out |= {f for f in _far_ends(lined, host, port) if f[0] not in named}
     return sorted(out)
+
+
+def restart_far_ends(network: str, devices) -> tuple:
+    """``(far_ends, error)``: the far ends of every link a restart of *devices* of *network*
+    takes down (`window_far_ends` over each device's every interface, from committed intent
+    read once), for the restart's planned window (`restarts.record_planned`'s *far_ends*;
+    C2751). A window over the whole network (``"*"``) has none outside it, and reads nothing.
+    *error* names why committed intent could not be read whole, and *far_ends* is then None:
+    the caller refuses the window, since its far ends cannot be told. A network with no list
+    folder, or whose repository does not exist yet (its first commit makes it,
+    `repo.has_repository`), has no committed intent, so no far end: absent, never unreadable."""
+    from modules.nsot import listref
+    from modules.nsot.repo import has_repository
+
+    named = [d for d in (devices or ()) if d and d != "*"]
+    if not named:
+        return [], ""
+    try:
+        if not listref.exists(network) or not has_repository(listref.resolve(network).repo_dir):
+            return [], ""
+    except Exception as exc:                          # noqa: BLE001 (named by the caller)
+        return None, f"{type(exc).__name__}: {exc}"
+    intents, error = committed_intents_of(network)
+    if error:
+        return None, error
+    return window_far_ends(intents, named), ""
+
+
+def committed_intents_of(network: str) -> tuple:
+    """``({hostname: host_vars}, error)``: *network*'s committed intent, read once and without
+    creating its list (resolving a list's path makes its folders). A name no network has is an
+    error, and so is a read that failed or a document that did not parse (`committed_intents`
+    names it): a caller that must know every far end refuses on any *error*."""
+    from modules.nsot import listref
+
+    try:
+        if not listref.exists(network):
+            return {}, f"no network is named {network!r}"
+        return committed_intents(listref.resolve(network).repo_dir)
+    except Exception as exc:                          # noqa: BLE001 (named by the caller)
+        return {}, f"{type(exc).__name__}: {exc}"
 
 
 def peer_device(intents: dict, address: str) -> str:

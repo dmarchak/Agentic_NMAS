@@ -768,13 +768,21 @@ def restart_windows(ctx):
             devices = ["*"]
         elif not any(mine(ctx, d) for d in devices):
             continue
+        # A window that restarts nothing (a deploy's links, C2751) is never called a restart.
         events.append(_event(w.get("recorded_at") or w.get("from"), "window",
-                             "Planned-restart window declared"
+                             ("Planned window declared (links taken down, nothing restarted)"
+                              if w.get("restarts") is False else
+                              "Planned-restart window declared")
                              + (" (a correction)" if w.get("correction") else ""), devices,
                              who=w.get("by", ""), detail=w.get("why", ""),
                              marks=["correction"] if w.get("correction") else [],
                              record=[("From", iso(w.get("from"))), ("Until", iso(w.get("until"))),
                                      ("Devices", ", ".join(w.get("devices") or [])),
+                                     ("Interfaces", ", ".join(w.get("interfaces") or [])),
+                                     # Each link's far end the window covers (C2749, C2751).
+                                     ("Far ends", ", ".join(
+                                         f"{f['device']} {f.get('interface') or ''}".strip()
+                                         for f in _restarts.far_ends_of(w))),
                                      ("Via", w.get("via")), ("Correction", w.get("correction")),
                                      # Ended early (C1389): when, by whom, why.
                                      ("Ended early", (f"{iso(w['ended_at'])} by "

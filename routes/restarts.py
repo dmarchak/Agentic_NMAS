@@ -61,11 +61,19 @@ def planned():
     new_keys = data.get("new_host_keys", False)
     if not isinstance(new_keys, bool):
         return jsonify({"ok": False, "error": "new_host_keys is true or false"}), 400
+    # The devices restart, so the window covers the far end of each of their links (C2751; the
+    # operator's rule of 2026-11-08); intent that cannot be read refuses it, naming why.
+    from modules.neighbours import restart_far_ends
+    far, err = restart_far_ends(list_name, devices)
+    if err:
+        return jsonify({"ok": False, "error": (
+            f"committed intent of {list_name} could not be read ({err}), so the far ends of "
+            f"{', '.join(devices)}'s links cannot be told: no window was recorded")}), 409
     actor = identity.request_actor()
     got = R.record_planned(devices, start, start + minutes * 60, actor, str(data.get("why") or ""),
                            "api", list_name=list_name,
                            correction=str(data.get("correction") or ""),
-                           new_host_keys=new_keys)
+                           new_host_keys=new_keys, far_ends=far)
     if not got["ok"]:
         return jsonify({"ok": False, "error": got["error"]}), 409
     log.info("planned restart recorded through the API by %s: %s", actor, got["record"])
