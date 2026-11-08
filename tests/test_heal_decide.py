@@ -541,7 +541,19 @@ class TestGuards:
     def test_9_the_rate_per_device(self, lab):
         auto("Default", now=T0 - 60)
         self._heals(1)
-        assert (one(GOLDEN + ROUTE4)["guard"] or {}).get("guard") == 9
+        d = one(GOLDEN + ROUTE4)
+        assert (d["guard"] or {}).get("guard") == 9
+        assert "edge-b was healed 1 time(s) in the last hour, the most" in d["words"]
+
+    def test_9_in_dry_run_never_says_a_heal_ran(self, lab):
+        """C2814 (the operator, H11 W2): in dry run guard 9 counts the would-heal decisions,
+        as Auto counts heals, and says so, never "was healed"."""
+        self._heals(1, outcome="would_heal")
+        d = one(GOLDEN + ROUTE4)
+        assert (d["guard"] or {}).get("guard") == 9 and d["mode"] == "dry_run"
+        assert ("edge-b would have been healed 1 time(s) in the last hour (dry run's would-heal "
+                "decisions, counted as Auto counts heals), the most") in d["words"], d["words"]
+        assert "was healed" not in d["words"]
 
     def test_10_the_rate_per_network_halts_in_auto_only(self, lab):
         auto("Default", now=T0 - 60)
@@ -562,6 +574,8 @@ class TestGuards:
                                                sources=Fake(GOLDEN + ROUTE4)), T0)
         DC._act("Default", inc, d, T0)
         assert d["outcome"] == "halted" and DS.halted("Default") == {}
+        assert ("had 6 would-heal decision(s) (dry run's would-heal decisions, counted as Auto "
+                "counts heals) in the last hour") in d["words"], d["words"]
 
     def test_11_the_same_deviation_twice(self, lab):
         from modules.drift_check import departure, drift_diff
@@ -571,6 +585,7 @@ class TestGuards:
                   T0 - 7200)
         d = one(GOLDEN + ROUTE4)
         assert d["guard"]["guard"] == 11 and dep in d["words"]
+        assert f"(departure {dep}) would have been healed (dry run's" in d["words"], d["words"]
 
     def test_12_more_than_one_removal_unit(self, lab):
         d = one(GOLDEN + ROUTE4 + ROUTE6)

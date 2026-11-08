@@ -194,6 +194,11 @@ def g8_grace(incident: dict):
 
 # ── 9, 10, 11: the rates ────────────────────────────────────────────────────────────────────
 
+#: C2814: in dry run the rates count the would-heal decisions, as Auto counts heals, so dry run
+#: measures Auto's rates; its words never say a heal that did not run.
+DRY_COUNTED = "dry run's would-heal decisions, counted as Auto counts heals"
+
+
 def counted(rows: list, outcome: str, since: float) -> list:
     return [d for d in rows if d.get("outcome") == outcome
             and float(d.get("epoch") or 0) >= since]
@@ -202,7 +207,9 @@ def counted(rows: list, outcome: str, since: float) -> list:
 def g9_device_rate(rows: list, device: str, outcome: str, now: float, most: int):
     got = [d for d in counted(rows, outcome, now - 3600) if d.get("device") == device]
     if len(got) >= int(most):
-        return hit(9, "held", (f"{device} was healed {len(got)} time(s) in the last hour, the "
+        did = ("was healed" if outcome == "heal" else "would have been healed")
+        dry = "" if outcome == "heal" else f" ({DRY_COUNTED})"
+        return hit(9, "held", (f"{device} {did} {len(got)} time(s) in the last hour{dry}, the "
                                f"most a device is ({int(most)}): flapping beyond the rate "
                                "limit; stop and escalate"),
                    {"heals_last_hour": len(got), "heal_max_per_device_hour": int(most)})
@@ -212,7 +219,8 @@ def g9_device_rate(rows: list, device: str, outcome: str, now: float, most: int)
 def g10_network_rate(rows: list, network: str, outcome: str, now: float, most: int):
     got = counted(rows, outcome, now - 3600)
     if len(got) >= int(most):
-        return hit(10, "halted", (f"{network} had {len(got)} heal(s) in the last hour, the most "
+        what = ("heal(s)" if outcome == "heal" else f"would-heal decision(s) ({DRY_COUNTED})")
+        return hit(10, "halted", (f"{network} had {len(got)} {what} in the last hour, the most "
                                   f"a network has ({int(most)}): the policy halts until a "
                                   "person lifts it"),
                    {"heals_last_hour": len(got), "heal_max_per_network_hour": int(most)})
@@ -225,8 +233,10 @@ def g11_repeat(rows: list, device: str, departure: str, outcome: str, now: float
     got = [d for d in counted(rows, outcome, now - float(hours) * 3600)
            if d.get("device") == device and d.get("departure") == departure]
     if got:
-        return hit(11, "halted", (f"the same deviation of {device} (departure {departure}) was "
-                                  f"healed at {got[-1].get('at')}, within {int(hours)} hours: "
+        did = ("was healed" if outcome == "heal" else
+               f"would have been healed ({DRY_COUNTED})")
+        return hit(11, "halted", (f"the same deviation of {device} (departure {departure}) {did}"
+                                  f" at {got[-1].get('at')}, within {int(hours)} hours: "
                                   "something keeps re-applying it, so the policy halts"),
                    {"departure": departure, "previous": got[-1].get("id"),
                     "heal_repeat_halts_hours": int(hours)})

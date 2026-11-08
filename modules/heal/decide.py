@@ -85,16 +85,23 @@ class Sources:
             return {"text": None, "commit": "", "state": "unknown",
                     "words": rec.get("refused") or "no golden is saved"}
         repo = self.ref().repo_dir
-        hist, err, _full = device_list._golden_history(repo, only=device)
-        entry = (hist or {}).get(device) or {}
-        intent = entry.get("intent") or {"state": "unrecorded"}
+        # C2815 (H11 W3): THE intent state (C532's one owner, which the Devices list and the
+        # device page draw): the device's NEWEST measurement, a Save All that found it
+        # unchanged included, while nothing it was judged against has moved since. Never the
+        # trailer of the commit that last changed the golden alone: on the lab, one said
+        # "departs" from before the device's intent was corrected, while the Save All after it
+        # measured that device at intent.
+        reads = device_list.reads(repo, only=device)
+        entry = (reads.get("history") or {}).get(device) or {}
+        intent = device_list.intent_state(device, reads)
         if intent.get("state") in ("at_intent", "departs"):
             return {"text": rec["text"], "commit": entry.get("commit", ""),
                     "state": intent["state"], "words": intent.get("words", "")}
         got = intent_match.intent_match(repo, self.network, device, rec["text"])
         state = {"match": "at_intent", "differs": "departs"}.get(got["state"], "unknown")
+        why = intent.get("why") or intent.get("words") or intent.get("state")
         return {"text": rec["text"], "commit": entry.get("commit", ""), "state": state,
-                "words": (f"no Intent-Match trailer recorded ({err or 'none'}); compared now: "
+                "words": (f"its newest measurement does not stand ({why}); compared now: "
                           f"{intent_match.words(got)}")}
 
     def intended(self, device: str, platform: str) -> dict:
