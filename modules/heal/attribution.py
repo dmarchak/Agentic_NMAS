@@ -105,6 +105,11 @@ def person_of(mnemonic: str, text: str) -> dict:
 def person_words(p: dict) -> str:
     """How a record names who the line says made the change, as the line said it."""
     p = p or {}
+    console = (p.get("line") or "").strip().lower() == "console"
+    if console and not p.get("user") and not p.get("process"):
+        # C2819 (the operator, H11 W5): a console line carries no account and names the console
+        # as both its line and its source; said once, plainly.
+        return "made on the console, no account named"
     parts = []
     if p.get("user"):
         parts.append(f"the account {p['user']}")
@@ -114,7 +119,7 @@ def person_words(p: dict) -> str:
         parts.append(f"on {p['line']}")
     if p.get("address"):
         parts.append(f"from {p['address']}")
-    elif p.get("source"):
+    elif p.get("source") and p.get("source") != p.get("line"):
         parts.append(f"from {p['source']}")
     if not parts:
         return "the line names nobody"

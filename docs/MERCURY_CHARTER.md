@@ -147,6 +147,42 @@ only view: an expert can always work at the mechanism level, by hand.
 **The test, beside the industry need:** a feature that changes the network states the outcome
 a non-expert approves, and the checks that prove it.
 
+## Human-facing means human-readable
+
+**A standing design rule (the operator, 2026-11-08), applied to everything human-facing from
+then on.** It is the reading side of "Implement by concept, approve by outcome": a person who
+knows the technology conceptually can act on every item Mercury shows them, without knowing
+Mercury's internals.
+
+1. **Plain language first, four questions in order.** Every human-facing surface (Needs
+   attention, History, device pages, notifications and emails, Settings, the CLI's human
+   output, board pages) leads with plain language that someone who knows the technology
+   conceptually can act on. Every item answers four questions, in this order:
+   - **What happened, and where?** For example: "r6's OSPF router-id was changed on the
+     console to r4's ID; r6 and r4 stopped peering".
+   - **Does it need me?** Yes or no, and why: "a fix restarts OSPF on r6, so a person decides".
+   - **What do I do?** The one action, as the button on the item: Approve, Decline, Open,
+     Acknowledge.
+   - **What happens if I don't?** For example: "r7 stays unreachable"; "nothing; this is a
+     record".
+2. **No dead identifiers.** An incident ID, decision ID, hash, commit or policy ID is never the
+   primary content. Each one shown is either a link to the page for the thing it names, or it
+   sits under a collapsed "Details for the record" disclosure. If no page exists for it, it goes
+   under the disclosure, never in the main text.
+3. **Internals are translated or moved under details:** guard numbers and names, step logs
+   ("1. claim … 8. record"), fix-type keys (`process_reset`, `missing_line`), "Tier 2", "golden
+   departs", "unmodeled", "dry run" phrasing. The main text uses words: "Mercury would have
+   fixed this itself (watching only, so nothing was sent)", never "would heal: missing_line
+   (Tier 1)". A tier can show as a label after the words, never instead of them.
+4. **Who did what is stated truthfully:** "Mercury proposed" against "<person> declined"; a
+   console change reads "made on the console, no account named".
+
+**The test, beside the industry need:** every item a person sees answers the four questions in
+plain words, and every identifier on it is a link or sits under "Details for the record".
+Rule 2 is to be checked by a ratchet test over the rendered pages (a bare identifier outside a
+link or a collapsed disclosure fails, against a backlog that only shrinks); the rest is the
+review's.
+
 ## AI-assisted actions
 
 The Actions menu distinguishes two kinds:

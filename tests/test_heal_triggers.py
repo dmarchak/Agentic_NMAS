@@ -154,8 +154,12 @@ class TestAttribution:
         assert p["words"] == f"the line names the account alice on vty0 from {want}"
 
     def test_a_console_line_names_no_account(self):
+        """C2819 (the operator, H11 W5): said once and plainly, never "the line names no
+        account named on console from console"."""
         p = AT.person_of("%SYS-5-CONFIG_I", "Configured from console by console")
-        assert p["user"] == "" and p["words"].startswith("the line names no account named")
+        assert p["user"] == "" and p["words"] == "made on the console, no account named"
+        p = AT.person_of("%SYS-5-CONFIG_I", "Configured from console by alice on console")
+        assert p["words"] == "the line names the account alice on console", p["words"]
 
     @pytest.mark.parametrize("raw,want", [
         ("192.0.2.7", "192.0.2.7"), ("192.0.2.7:161", "192.0.2.7"),
