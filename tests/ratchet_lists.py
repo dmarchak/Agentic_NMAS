@@ -179,6 +179,9 @@ RATCHETS = (
     # ── T5, the protected set's sender scan (the SDN design revision 6, section 4; P3): a
     #    writer that does not ask B yet, each with its row, only leaves ───────────────────────
     ("tests/test_every_write_asks_protected.py", "GUARD_GAPS", "shrinks"),
+    # ── No dead identifiers (the charter's "Human-facing means human-readable", rule 2): a
+    #    bare identifier on a rendered page, each with its count, only leaves ─────────────────
+    ("tests/test_human_readable.py", "KNOWN_BARE_IDENTIFIERS", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────
     ("tests/ratchet_lists.py", "RATCHETS", "registry"),
 )

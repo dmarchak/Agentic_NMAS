@@ -374,6 +374,17 @@ section 9's "would have converged" records are not built yet.
    The Self-healing tab says so beside the mode, and the dry-run counter shows days and events
    against that bar.
 
+**Auto on Nov 15: the gate** (the operator's decision 3, 2026-11-08, after H11's walks).
+- **Default's first Auto kinds:** `missing_line` (Tier 1), and `added_line` for lines that are
+  not a security control. Excluded: every security class of C2839 (routing authentication and
+  key chains, ACL application, AAA, crypto and SSH, SNMP restrictions, control-plane policing,
+  port security and 802.1X, `transport input`), `security_acl` and `process_reset`.
+- **The condition:** Auto turns on Nov 15 only if C2824, C2813, C2825, C2821 and C2818 have
+  landed, AND W1, W3 and W4 (H11's sheet) re-run clean in dry run that morning. Otherwise Auto
+  waits for the Nov 23 review, and dry run continues.
+- **The checklist:** ~/Documents/nmas-reports/2026-11-15-auto-checklist.md, each item with its
+  PASS line.
+
 ---
 
 ## 8. The step log and the records
