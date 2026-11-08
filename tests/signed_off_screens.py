@@ -76,7 +76,12 @@ SIGNED_OFF = {
                                "drawn under the Phase 7 mode and counted as signed off "
                                "2026-10-27 (docs/STANDING_APPROVAL_LOG.md, the 'SDN boards S1 "
                                "to S7' row); compared, docs/fidelity/sdn.md (the settings "
-                               "card: sdn-settings.md)"),
+                               "card: sdn-settings.md). Its Apps tab (P6, the controller app "
+                               "deploy, not built yet): docs/boards/controller-app-deploy.html, "
+                               "artboards A to L, blob 45d12134 as committed in edd666d4, "
+                               "signed off BY THE OPERATOR (not self-signed) on 2026-11-07 "
+                               "with K1, K2 and K4 to K8 as recommended, K3 changed and K9 "
+                               "both (docs/STANDING_APPROVAL_LOG.md, its 2026-11-07 row)"),
     "logs.html": ("2026-10-11", "the sidebar's Logs, a live tail (C675, the operator's design, "
                                 "2026-10-11): board D (LogsTail, canvas v110, page 'History, "
                                 "Query'), drawn under the Phase 7 mode and counted as signed off "
