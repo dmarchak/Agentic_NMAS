@@ -375,6 +375,52 @@ class TestOutcomes:
         d = one(GOLDEN, how="at_golden", triggers=trig)
         assert (d["outcome"], d["kind"], d["tier"]) == ("cant_fix", "physical", 3)
 
+    def test_a_symptom_that_cleared_by_itself_is_nothing_to_heal(self, lab):
+        # C2750: r3's incident (hi-c027626de88f), held four hours by guard 5, was judged at
+        # 22:03 a link down while administratively up when the link had been up since 18:08.
+        trig = [{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 900, "at": iso(T0 - 900),
+                 "source": "adjacencies", "protocol": "OSPFv3", "related": ["edge-c"],
+                 "words": "the OSPFv3 adjacency edge-b – edge-c is down"}]
+        src = Fake(GOLDEN)
+        src.symptom_now = lambda device, triggers: "gone"
+        d = one(GOLDEN, src=src, how="at_golden", triggers=trig)
+        assert d["outcome"] == "nothing", d
+        assert "has cleared by itself" in d["words"], d["words"]
+
+    def test_a_symptom_gone_inside_the_flap_window_is_still_physical(self, lab):
+        # A link still flapping (I5) can read up at the moment it is read: gone counts only
+        # once the incident's last trigger is the flap window old (10 minutes by default).
+        trig = [{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 120, "at": iso(T0 - 120),
+                 "source": "adjacencies", "words": "the adjacency is down"}]
+        src = Fake(GOLDEN)
+        src.symptom_now = lambda device, triggers: "gone"
+        d = one(GOLDEN, src=src, how="at_golden", triggers=trig)
+        assert (d["outcome"], d["kind"], d["tier"]) == ("cant_fix", "physical", 3), d
+
+    @pytest.mark.parametrize("state", ["present", "stale", "unreadable"])
+    def test_a_symptom_not_read_gone_is_still_physical(self, lab, state):
+        trig = [{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 900, "at": iso(T0 - 900),
+                 "source": "adjacencies", "words": "the adjacency is down"}]
+        src = Fake(GOLDEN)
+        src.symptom_now = lambda device, triggers: state
+        d = one(GOLDEN, src=src, how="at_golden", triggers=trig)
+        assert (d["outcome"], d["kind"], d["tier"]) == ("cant_fix", "physical", 3), d
+
+    def test_the_real_sources_read_the_symptom_by_verifys_rule(self, monkeypatch):
+        from modules import reader_job
+        trig = [{"kind": "adjacency", "epoch": 100.0, "source": "adjacencies",
+                 "protocol": "OSPF", "related": ["edge-c"], "words": "down"}]
+        docs = {"before": {"last_good": {"read_started": 50.0, "value": {}}},
+                "after_up": {"last_good": {"read_started": 200.0, "value": {"adjacencies": {}}}}}
+        for name, doc in docs.items():
+            monkeypatch.setattr(reader_job, "read_cached",
+                                lambda store, doc=doc: {"state": "ok", "doc": doc})
+            want = "stale" if name == "before" else "gone"
+            assert DC.Sources("Default").symptom_now("edge-b", trig) == want, name
+        monkeypatch.setattr(reader_job, "read_cached", lambda store: {"state": "error"})
+        assert DC.Sources("Default").symptom_now("edge-b", trig) == "unreadable"
+        assert DC.Sources("Default").symptom_now("edge-b", [{"kind": "config_change"}]) == "none"
+
     def test_at_its_golden_with_no_symptom_is_nothing_to_heal(self, lab):
         assert one(GOLDEN, how="at_golden")["outcome"] == "nothing"
 

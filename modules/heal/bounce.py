@@ -235,20 +235,48 @@ def window_seconds(timer: int = TIMER_MINUTES) -> int:
     return int(timer) * 60 + WATCH_PAST_S + SETTLE_BOUND_S
 
 
+def committed_intents_of(network: str) -> tuple:
+    """``(intents, error)``: *network*'s committed intent, read without creating its list."""
+    from modules.neighbours import committed_intents
+    from modules.nsot import listref
+
+    try:
+        if not listref.exists(network):
+            return None, f"no network {network!r}"
+        return committed_intents(listref.resolve(network).repo_dir)
+    except Exception as exc:                          # noqa: BLE001 (named by the caller)
+        return None, f"{type(exc).__name__}: {exc}"
+
+
 def declare_window(network: str, device: str, interface: str, now: float, seconds: float, *,
-                   by: str, why: str, via: str) -> dict:
+                   by: str, why: str, via: str, intents: dict = None) -> dict:
     """Record the bounce's planned window on *device*, naming *interface*, BEFORE it sends
     (CLAUDE.md, "declares its planned-restart window BEFORE it acts"; C2702, C2704), so the
     adjacency drops it causes are explained, never a row, and its own UPDOWN lines are no flap
-    (`flaps.flapping`). `restarts.record_planned`'s answer, or ``{"ok": False, "error"}`` when
-    it raises: the caller then sends nothing."""
+    (`flaps.flapping`). It covers the link's FAR END too, the device and interface committed
+    intent puts on the same network (`neighbours.far_ends`; the operator, 2026-11-08, C2749:
+    trial 1a's bounce of one router's port left its neighbour's side unexplained). Committed
+    intent that cannot be read refuses the window, since its far end cannot be told; a link
+    intent names no far
+    end for is said in the record's ``far_end_words``. `restarts.record_planned`'s answer, or
+    ``{"ok": False, "error"}``: the caller then sends nothing."""
     from modules import restarts
+    from modules.neighbours import far_ends
 
+    if intents is None:
+        intents, err = committed_intents_of(network)
+        if intents is None:
+            return {"ok": False, "error": f"committed intent could not be read ({err}), so the "
+                                          f"far end of {device} {interface} cannot be told"}
+    far = far_ends(intents, device, interface)
     try:
-        return restarts.record_planned([device], now, now + float(seconds), by, why, via,
-                                       list_name=network, interfaces=[interface])
+        got = restarts.record_planned([device], now, now + float(seconds), by, why, via,
+                                      list_name=network, interfaces=[interface], far_ends=far)
     except Exception as exc:                          # noqa: BLE001 (refused, said by the caller)
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    got["far_end_words"] = (", ".join(f"{d} {i}" for d, i in far) if far else
+                            f"committed intent names no far end for {device} {interface}")
+    return got
 
 
 # ── Reading answers ─────────────────────────────────────────────────────────────────────────
@@ -1119,20 +1147,27 @@ def _held(run: _Act, s, prog: list, h: str, kind: str, interface: str, dev: dict
         run.note("pre-read", "ok", (f"{device} read before: {pre['port']['line']}; Mercury "
                                     f"({pre['manager']}) reached elsewhere (`{pre['cef_cmd']}`)"))
         secs = window_seconds(timer)
-        w = declare_window(network, device, interface, clock(), secs, by=run.via, via=VIA,
-                           why=(f"self-healing's port bounce of {interface}: shut and no shut "
-                                f"inside a {timer}-minute revert timer (decision "
-                                f"{decision.get('id')})"))
+        intents, ierr = run.src.intents()
+        w = (declare_window(network, device, interface, clock(), secs, by=run.via, via=VIA,
+                            why=(f"self-healing's port bounce of {interface}: shut and no shut "
+                                 f"inside a {timer}-minute revert timer (decision "
+                                 f"{decision.get('id')})"), intents=intents)
+             if intents is not None else
+             {"ok": False, "error": f"committed intent could not be read ({ierr}), so the far "
+                                    f"end of {device} {interface} cannot be told"})
         rec = w.get("record") or {}
-        run.out["records"]["window"] = ({k: rec.get(k) for k in ("from", "until", "via",
-                                                                  "interfaces")}
+        run.out["records"]["window"] = ({**{k: rec.get(k) for k in ("from", "until", "via",
+                                                                     "interfaces")},
+                                         "far_ends": (rec.get("expected") or {}).get(
+                                             "far_ends") or []}
                                         if w.get("ok") else {"error": w.get("error")})
         if not w.get("ok"):
             return {"done": run.refuse("window", (
                 f"the planned window for the bounce could not be recorded ({w.get('error')}): "
                 "an unannounced bounce reads as a fault"))}
         run.note("window", "ok", f"planned window recorded: {secs} s, {rec.get('from')} to "
-                                 f"{rec.get('until')}, naming {interface}")
+                                 f"{rec.get('until')}, naming {interface}; its far end: "
+                                 f"{w.get('far_end_words')}")
         try:
             steplog.record_started(network, decision, list(run.out["steps"]),
                                    [redact_text(x) for x in prog], h, by=run.via, now=clock())

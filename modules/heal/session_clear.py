@@ -208,13 +208,14 @@ class Sources:
 
         return known_secret_values()
 
-    def window(self, network, device, interface, now, seconds, *, by, why):
+    def window(self, network, device, interface, now, seconds, *, by, why, far_ends=()):
         from modules import restarts
 
         try:
             return restarts.record_planned([device], now, now + float(seconds), by, why, VIA,
                                            list_name=network,
-                                           interfaces=[interface] if interface else [])
+                                           interfaces=[interface] if interface else [],
+                                           far_ends=far_ends)
         except Exception as exc:                      # noqa: BLE001 (refused, said by the act)
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
@@ -542,10 +543,15 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
                 return {"state": "refused", "why": f"13c: {g['words']}", "step": "route"}
         note("route", "ok", "a hard clear withdraws no route Mercury uses" if
              plan["variant"] == "hard" else "a soft clear withdraws nothing")
+        # C2749: a hard clear drops the session at the neighbour too, so the window covers the
+        # device committed intent gives the neighbour's address (none for an outside peer).
+        from modules.neighbours import peer_device
+        far_dev = peer_device(intents or {}, plan["peer"]) if plan["variant"] == "hard" else ""
         w = src.window(network, device, c.get("interface") or "", src.clock(),
                        window_seconds(plan), by=by,
                        why=(f"self-healing's {plan['label']}: `{plan['command']}` on {device} "
-                            f"(decision {decision.get('id')})"))
+                            f"(decision {decision.get('id')})"),
+                       far_ends=[(far_dev, "")] if far_dev and far_dev != device else [])
         rec = w.get("record") or {}
         out["records"]["window"] = ({k: rec.get(k) for k in ("from", "until", "via",
                                                              "interfaces")}

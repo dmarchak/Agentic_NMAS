@@ -161,8 +161,13 @@ received it, never by the device's clock, for networks whose self-healing is on.
 line protocol going down together count once. A flap is **A flap: transitions of one interface
 within** on the Self-healing tab (3 in 10 minutes by default); the record keeps an hour. A
 transition received inside a planned window that takes the interface down on purpose (a
-bounce's own window, or a planned restart of the device) is the operation's, not a flap, and the
-count says how many it left out.
+bounce's own window, a bounce of the link's other end, or a planned restart of the device) is
+the operation's, not a flap, and the count says how many it left out.
+
+A problem self-healing held back (a recent change, a person working) is judged on what its
+sources read **when it is decided**, not on what was seen when it was raised: a link or
+adjacency back up by then, and quiet for the flap window since it was last seen down, is
+nothing to heal, and raises no "could not fix" item. One still flapping is judged as before.
 
 ## The port bounce {#bounce}
 
@@ -211,8 +216,11 @@ down with its far end up, or the interface's one OSPF neighbour stuck, is a boun
    session; any one that refuses sends nothing.
 6. `window`: a planned window is recorded on the device, naming the port, before anything is
    sent: 6 minutes 38 seconds (the 2-minute timer, the 3-minute watch past it and the 98-second
-   settle bound). Adjacency drops inside it are explained, never an item, and its own UPDOWN
-   lines are no flap. A window that cannot be recorded sends nothing.
+   settle bound). It covers the link's **far end** too: the device and interface committed
+   intent puts on the same IPv4 or IPv6 network. Adjacency drops inside it are explained at both
+   ends, never an item, and neither end's UPDOWN lines are a flap. A window that cannot be
+   recorded, or whose far end cannot be told because committed intent cannot be read, sends
+   nothing.
 7. `send`: the one batch. A cut session cannot leave the port shut: the device receives the
    batch whole, and its timer reverts it if Mercury never comes back.
 8. `watch`: a new session every 10 seconds.
@@ -297,8 +305,10 @@ with no configuration cause is a clear considered:
 4. `hold`: the device is held, so no other operation runs on it.
 5. `route`: the device's route back to Mercury is read again on the clear's own session.
 6. `window`: a planned window is recorded on the device, naming the neighbour's interface,
-   before anything is sent: the clear's verify bound and a minute. The session drop it causes
-   is explained, never an item. A window that cannot be recorded sends nothing.
+   before anything is sent: the clear's verify bound and a minute. A hard clear's window names
+   the neighbour's device too, when committed intent holds the neighbour's address. The session
+   drop it causes is explained at both ends, never an item. A window that cannot be recorded
+   sends nothing.
 7. `send`: the neighbour is read again and kept (its last reset reason is evidence a clear
    destroys); a hard clear is never sent to a session Established by then. The command is sent
    once, and only the question its measurement recorded is answered.

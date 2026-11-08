@@ -240,6 +240,8 @@ def lab(monkeypatch, tmp_path):
     clock = Clock()
     # The bounce's planned window (C2702) is recorded in this test's own folder (C1864).
     monkeypatch.setattr("modules.restarts._data", lambda name: str(tmp_path / name))
+    # Committed intent with the bounced link's far end (C2749: the window covers it too).
+    monkeypatch.setattr(P, "_intents", lambda l: (LINK, ""))
     monkeypatch.setattr(P, "CLOCK", clock.time)
     monkeypatch.setattr(P, "SLEEP", clock.sleep)
     monkeypatch.setattr("modules.commands.run_device_command",
@@ -262,6 +264,12 @@ def _args(**kw):
 
 
 DEVICE = {"hostname": "r3", "ip": MGMT_IP, "device_type": "cisco_xe"}
+
+#: The r3 to r4 link in committed intent, both families (r4 the far end of r3's Gi4).
+LINK = {"r3": {"interfaces": [{"name": "GigabitEthernet4", "ipv4": "192.0.2.13 255.255.255.252",
+                               "ipv6": ["2001:DB8:34::3/64"]}]},
+        "r4": {"interfaces": [{"name": "GigabitEthernet4", "ipv4": "192.0.2.14 255.255.255.252",
+                               "ipv6": ["2001:DB8:34::4/64"]}]}}
 
 
 def _run(lab, device=DEVICE, **kw):
@@ -510,6 +518,29 @@ class TestThePlannedWindow:
         assert P.window_seconds(1) == 60 + P.WATCH_PAST_S + P.WINDOW_MARGIN_S
         assert "GigabitEthernet4 shut and no shut" in row["why"]
         assert [r["devices"] for r in restarts.planned_rows()] == [["r3"]]
+
+    @pytest.mark.parametrize("family", ["ipv4", "ipv6"])
+    def test_the_window_covers_the_links_far_end(self, lab, monkeypatch, family):
+        # C2749 (the operator, 2026-11-08): trial 1a's bounce of r4's port left r3's side of
+        # the link unexplained; the window names the far end's device and interface.
+        from modules import restarts
+
+        only = {h: {"interfaces": [{k: v for k, v in i.items() if k in ("name", family)}
+                                   for i in hv["interfaces"]]} for h, hv in LINK.items()}
+        monkeypatch.setattr(P, "_intents", lambda l: (only, ""))
+        lab.make()
+        row = _run(lab)["planned_window"]["record"]
+        assert row["expected"]["far_ends"] == [{"device": "r4",
+                                                "interface": "GigabitEthernet4"}], row
+        got = restarts.explained_by("r4", "Lab", restarts._epoch(row["from"]) + 5)
+        assert got and got["how"] == "far_end" and "far end of r3" in got["words"], got
+
+    def test_intent_that_cannot_be_read_sends_nothing(self, lab, monkeypatch):
+        dev = lab.make()
+        monkeypatch.setattr(P, "_intents", lambda l: (None, "the repository is unreadable"))
+        rec = _run(lab)
+        assert dev.batches == [], "nothing was sent"
+        assert "far end of r3 GigabitEthernet4 cannot be told" in rec["refused"], rec
 
     def test_a_window_that_cannot_be_recorded_sends_nothing(self, lab, monkeypatch):
         dev = lab.make()

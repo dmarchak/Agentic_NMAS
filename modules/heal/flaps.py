@@ -240,8 +240,9 @@ def planned_spans(network: str, device: str, interface: str, planned: list = Non
     """``[(from, until)]``, epoch seconds: the planned windows that take *device*'s *interface*
     down on purpose (C2694, H20): a window naming the device and that interface (a port bounce
     declares one, `bounce.declare_window`), or the whole device (a window naming no interface,
-    a planned restart, takes every port down too). Raises when the planned windows cannot be
-    read (never read as none)."""
+    a planned restart, takes every port down too), or a window whose far end is that device's
+    interface (`restarts.far_ends_of`, C2749: the other end of the bounced link logs its
+    transitions too). Raises when the planned windows cannot be read (never read as none)."""
     from modules import restarts
     from modules.nsot.ifnames import canonical
 
@@ -250,10 +251,16 @@ def planned_spans(network: str, device: str, interface: str, planned: list = Non
     out = []
     for p in rows:
         if not restarts._names(p, device, network):
-            continue
-        ports = p.get("interfaces")
-        if ports and want not in {canonical(i) for i in ports}:
-            continue
+            # The far end of a link the window takes down (C2749): its own port only.
+            same_list = not p.get("list") or not network or p.get("list") == network
+            if not same_list or not any(
+                    f["device"] == device and f.get("interface")
+                    and canonical(f["interface"]) == want for f in restarts.far_ends_of(p)):
+                continue
+        else:
+            ports = p.get("interfaces")
+            if ports and want not in {canonical(i) for i in ports}:
+                continue
         start = restarts._epoch(p.get("from", ""))
         end = restarts._epoch(p.get("ended_at") or p.get("until", ""))
         out.append((start, min(end, restarts._epoch(p.get("until", "")))))

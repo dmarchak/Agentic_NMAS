@@ -471,12 +471,20 @@ def declare_window(args, now: float) -> dict:
     """Record the probe's bounce's planned window on the device, naming its interface, as
     every operation that takes a device or its links down does before it acts (CLAUDE.md,
     "declares its planned-restart window BEFORE it acts"; C2702), through the bounce's one
-    `bounce.declare_window`."""
+    `bounce.declare_window`, which covers the link's far end too (C2749: trial 1a's bounce of
+    one router's port left its neighbour's side unexplained)."""
+    try:
+        intents, err = _intents(args.list_name)
+    except Exception as exc:                          # noqa: BLE001 (refused by the caller)
+        intents, err = None, f"{type(exc).__name__}: {exc}"
+    if intents is None:
+        return {"ok": False, "error": f"committed intent could not be read ({err}), so the far "
+                                      f"end of {args.device} {args.interface} cannot be told"}
     return _B.declare_window(
         args.list_name, args.device, args.interface, now, window_seconds(args.timer),
         by=args.actor, via="nmas-revert-probe",
         why=(f"the revert-timer probe ({args.path} path): {args.interface} shut and no shut "
-             f"inside a {args.timer}-minute revert timer"))
+             f"inside a {args.timer}-minute revert timer"), intents=intents)
 
 
 def run(args, device: dict, values: dict) -> dict:

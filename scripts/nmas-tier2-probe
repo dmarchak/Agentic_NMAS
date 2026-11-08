@@ -458,12 +458,21 @@ def _window_for(args):
     def declare(device: dict, interface: str, seconds: float, why: str) -> dict:
         from modules import restarts
 
+        from modules.heal.bounce import committed_intents_of
+        from modules.neighbours import peer_device
+
+        # C2749: the window covers the neighbour's device too, when committed intent holds
+        # the peer's address (an outside peer has none to name).
+        host = device.get("hostname", "")
+        intents, _err = committed_intents_of(args.list_name)
+        far = peer_device(intents or {}, args.bgp_peer) if args.bgp_peer else ""
         now = time.time()
         try:
-            return restarts.record_planned([device.get("hostname", "")], now, now + seconds,
+            return restarts.record_planned([host], now, now + seconds,
                                            args.actor, why, "nmas-tier2-probe",
                                            list_name=args.list_name,
-                                           interfaces=[interface] if interface else [])
+                                           interfaces=[interface] if interface else [],
+                                           far_ends=[(far, "")] if far and far != host else [])
         except Exception as exc:                      # noqa: BLE001 (nothing sent, said)
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return declare

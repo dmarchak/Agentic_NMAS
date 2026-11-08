@@ -129,6 +129,28 @@ class Sources:
 
         return hold.topology(self.network, device, now)
 
+    def symptom_now(self, device: str, triggers: list) -> str:
+        """The incident's symptoms as their stores read them NOW, with no wait (C2750):
+        ``gone`` only when every symptom trigger's store was read after the trigger and no
+        longer holds it; ``present``, ``stale`` or ``unreadable`` otherwise, or ``none``
+        when no trigger names a symptom. `act.judge`'s rule, the one verify uses."""
+        from modules import reader_job
+        from modules.heal import act
+
+        wanted = act.symptom_triggers(triggers)
+        if not wanted:
+            return "none"
+        states = set()
+        for t in wanted:
+            got = reader_job.read_cached(act._store_for(t))
+            states.add("unreadable" if got.get("state") != "ok" else
+                       act.judge(t, got.get("doc"), self.network, device,
+                                 float(t.get("epoch") or 0)))
+        for state in ("unreadable", "stale", "present"):
+            if state in states:
+                return state
+        return "gone"
+
 
 # ── The program: one computation for the decision and the apply ────────────────────────────
 
@@ -306,6 +328,22 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     if base["settled"] == "at_golden":
         base["phase"] = "decide"
         symptom = _symptom(incident)
+        # C2750: an incident held past its symptom (guard 5's topology hold held one for four
+        # hours, 2026-11-07) is judged on what its stores read now, never on its triggers'
+        # words alone: a symptom gone by itself is nothing to heal, and no can't-fix row. Gone
+        # means read gone AND quiet for the flap window since its last trigger, so a link still
+        # flapping (I5), up at the moment it is read, is never called cleared.
+        now_state = (src.symptom_now(device, incident.get("triggers") or [])
+                     if symptom and hasattr(src, "symptom_now") else "")
+        quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
+        last = max((float(t.get("epoch") or 0) for t in incident.get("triggers") or []),
+                   default=0.0)
+        if symptom and now_state == "gone" and now - last >= quiet_s:
+            return dict(base, outcome="nothing",
+                        words=(f"nothing to heal: {device} is at its golden, which matches its "
+                               "intent, and every symptom the incident named has cleared by "
+                               f"itself (read again after it, and quiet {int(quiet_s // 60)} "
+                               "minutes since its last trigger)"))
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",

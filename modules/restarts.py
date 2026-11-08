@@ -219,7 +219,8 @@ def read_reason(dev: dict) -> dict:
 
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
                    list_name: str = "", correction: str = "",
-                   new_host_keys: bool = False, unreachable=(), interfaces=()) -> dict:
+                   new_host_keys: bool = False, unreachable=(), interfaces=(),
+                   far_ends=()) -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
     or an end before its start, because a planned window is what keeps an alert quiet.
@@ -246,7 +247,15 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     *interfaces* names the interfaces an operation takes down on purpose without restarting
     the device (a port bounce, board H's H20: C2704), kept on the window as ``interfaces``: the
     flap record leaves their UPDOWN lines inside it out of guard 13e's count
-    (`heal.flaps.flapping`, C2694). A window without it covers the whole device, as before."""
+    (`heal.flaps.flapping`, C2694). A window without it covers the whole device, as before.
+
+    *far_ends* names, as ``(device, interface)`` pairs, the far end of each link the operation
+    takes down (the operator, 2026-11-08: "a planned window for any link-affecting operation
+    must cover the far end's device and interface too"; C2749), kept on the window as
+    ``expected.far_ends``: the far end's drop of the link, its adjacency and its UPDOWN lines
+    inside the window are the operation's expected effect (`explained_by`'s ``far_end``,
+    `heal.flaps.planned_spans`). Such a device restarts nothing, so it is never a device the
+    window names, and *interface* may be ``""`` (a BGP neighbour, no port taken down)."""
 
     devices = [d for d in (devices or []) if d]
     if not devices or not by or not (why or "").strip() or end < start:
@@ -259,6 +268,10 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     others = sorted({d for d in (unreachable or ()) if d and d not in devices})
     if others:
         row["expected"] = {"unreachable": others}
+    far = sorted({(str(d), str(i or "")) for d, i in (far_ends or ()) if d and d not in devices})
+    if far:
+        row.setdefault("expected", {})["far_ends"] = [{"device": d, "interface": i}
+                                                      for d, i in far]
     ports = [i for i in (interfaces or ()) if i]
     if ports:
         row["interfaces"] = ports
@@ -608,9 +621,11 @@ def explained_by(device: str, list_name: str, now: float, *, margin: float = SET
     ended = ends() if ended is None else ended
     for p in reversed(planned):
         own = _names(p, device, list_name)
-        expected = device in ((p.get("expected") or {}).get("unreachable") or []) and (
-            not p.get("list") or not list_name or p.get("list") == list_name)
-        if not (own or expected):
+        same_list = not p.get("list") or not list_name or p.get("list") == list_name
+        expected = device in ((p.get("expected") or {}).get("unreachable") or []) and same_list
+        far = next((f for f in far_ends_of(p) if f["device"] == device), None) \
+            if same_list else None
+        if not (own or expected or far):
             continue
         end = window_end(p, ended)
         if not _epoch(p.get("from", "")) - 60 <= now <= end + margin:
@@ -620,13 +635,29 @@ def explained_by(device: str, list_name: str, now: float, *, margin: float = SET
         if own:
             # `holding`'s own words, so a row a window already held reads as it did.
             words = f"{device} is restarting as planned (until {_iso(end)}, by {by})"
-        else:
+            how = "restarting"
+        elif expected:
             words = (f"{device} is out of Mercury's reach as expected while "
                      f"{', '.join(p.get('devices') or ['a device'])} restarts as planned (by "
                      f"{by}); expected back by {back}")
-        return {"window": p, "end": end, "how": "restarting" if own else "unreachable",
-                "words": words}
+            how = "unreachable"
+        else:
+            near = ", ".join(p.get("devices") or ["a device"])
+            ports = ", ".join(p.get("interfaces") or [])
+            words = (f"{device}{' ' + far['interface'] if far['interface'] else ''} is the far "
+                     f"end of {near}{' ' + ports if ports else ''}, taken down on purpose "
+                     f"({p.get('via') or 'a planned operation'}, by {by}); expected back by "
+                     f"{back}")
+            how = "far_end"
+        return {"window": p, "end": end, "how": how, "words": words}
     return None
+
+
+def far_ends_of(p: dict) -> list:
+    """Window *p*'s far ends (`record_planned`'s *far_ends*), ``[{"device", "interface"}]``;
+    a window recorded before the field has none (expand, then contract)."""
+    return [f for f in ((p.get("expected") or {}).get("far_ends") or [])
+            if isinstance(f, dict) and f.get("device")]
 
 
 def ended_while_down(device: str, list_name: str, now: float, since: float, *,

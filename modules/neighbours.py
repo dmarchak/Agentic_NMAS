@@ -241,6 +241,64 @@ def ospf_links(hv: dict) -> list:
     return out
 
 
+def _subnets(iface: dict) -> set:
+    """The IPv4 and global IPv6 networks *iface* holds in intent (link-local, /32 and /128
+    name no link)."""
+    out = set()
+    v4 = _v4((iface or {}).get("ipv4", ""))
+    if v4 is not None and v4.network.prefixlen < 32:
+        out.add(v4.network)
+    for addr in (iface or {}).get("ipv6") or []:
+        try:
+            ip = ipaddress.ip_interface(str(addr).split()[0])
+        except (ValueError, IndexError):
+            continue
+        if ip.network.prefixlen < 128 and not ip.ip.is_link_local:
+            out.add(ip.network)
+    return out
+
+
+def far_ends(intents: dict, host: str, interface: str) -> list:
+    """``[(device, interface)]``: the far end of *host*'s *interface* in committed intent, every
+    other device's interface on one of its IPv4 or global IPv6 networks, sorted. A link to a
+    device with no committed intent, or an interface holding no address, names none: the
+    caller says so (C2749: a planned window covers both ends of a link it takes down)."""
+    from modules.nsot.ifnames import same_interface
+
+    intents = _all_lines(intents)
+    mine = next((i for i in (intents.get(host) or {}).get("interfaces") or []
+                 if same_interface(i.get("name", ""), interface or "")), None)
+    nets = _subnets(mine) if mine else set()
+    out = set()
+    for other, hv in intents.items():
+        if other == host or not nets:
+            continue
+        for iface in (hv or {}).get("interfaces") or []:
+            if _subnets(iface) & nets:
+                out.add((other, iface.get("name", "")))
+    return sorted(out)
+
+
+def peer_device(intents: dict, address: str) -> str:
+    """The device whose committed intent holds *address* (IPv4 or IPv6), or ``""``."""
+    try:
+        want = ipaddress.ip_address(str(address))
+    except ValueError:
+        return ""
+    for host, hv in _all_lines(intents).items():
+        for iface in (hv or {}).get("interfaces") or []:
+            v4 = _v4(iface.get("ipv4", ""))
+            if v4 is not None and v4.ip == want:
+                return host
+            for addr in iface.get("ipv6") or []:
+                try:
+                    if ipaddress.ip_interface(str(addr).split()[0]).ip == want:
+                        return host
+                except (ValueError, IndexError):
+                    continue
+    return ""
+
+
 def ospfv3_links(hv: dict) -> list:
     """``[(interface, IPv6Interface)]`` carrying `ipv6 ospf`, not passive, not
     a loopback (link-local adjacencies, matched on the global prefix)."""

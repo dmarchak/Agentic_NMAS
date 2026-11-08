@@ -426,9 +426,10 @@ class Src:
     def values(self):
         return {}
 
-    def window(self, network, device, interface, now, seconds, *, by, why):
+    def window(self, network, device, interface, now, seconds, *, by, why, far_ends=()):
         self.windows.append({"device": device, "interface": interface, "seconds": seconds,
                              "sent_before": list(self.dev.sent) if self.dev else []})
+        self.far_ends = getattr(self, "far_ends", []) + [list(far_ends)]
         if self._window is not None:
             return self._window
         return {"ok": True, "record": {"from": "a", "until": "b", "via": S().VIA,
@@ -583,6 +584,21 @@ def auto(dev, **kw):
 
 
 class TestTheAct:
+    @pytest.mark.parametrize("peer_if", [
+        {"name": "GigabitEthernet1", "ipv4": f"{PEER} 255.255.255.252"},
+        {"name": "GigabitEthernet1", "ipv6": [f"{PEER6}/64"]}], ids=["ipv4", "ipv6"])
+    def test_a_hard_clears_window_names_the_neighbours_device(self, stores, measured, peer_if):
+        # C2749: a hard clear drops the session at the neighbour too; committed intent holding
+        # the peer's address names its device in the window (an outside peer names none).
+        conn = Conn([down(), down(state="Connect"), back()])
+        src = auto(conn, intents_={"r4": hv(), "r3": {"interfaces": [peer_if]}})
+        S().apply(NET, taken(src), sources=src)
+        family_peer = PEER if "ipv4" in peer_if else PEER6
+        if family_peer == PEER:
+            assert src.far_ends == [[("r3", "")]], src.far_ends
+        else:                                         # the IPv4 clear's peer: r3 holds none
+            assert src.far_ends == [[]], src.far_ends
+
     def test_cleared_its_window_before_the_send_and_its_records(self, stores, measured):
         from modules.heal import decisions, steplog
         conn = Conn([down(), down(state="Connect"), back()])

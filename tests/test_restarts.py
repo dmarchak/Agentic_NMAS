@@ -309,3 +309,65 @@ class TestAWindowRecordedLater:
 def _iso(ts):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
+
+class TestTheFarEnd:
+    """C2749 (the operator, 2026-11-08): "a planned window for any link-affecting operation
+    must cover the far end's device and interface too". Trial 1a's bounce of r4's Gi4 opened
+    an incident on r3, the link's other end, which no window named."""
+
+    LINK = {"r3": {"interfaces": [{"name": "GigabitEthernet4",
+                                   "ipv4": "192.0.2.13 255.255.255.252",
+                                   "ipv6": ["2001:DB8:34::3/64", "FE80::3 link-local"]}]},
+            "r4": {"interfaces": [{"name": "Gi4", "ipv4": "192.0.2.14 255.255.255.252",
+                                   "ipv6": ["2001:DB8:34::4/64"]},
+                                  {"name": "Loopback0", "ipv4": "192.0.2.4 255.255.255.255"}]},
+            "r9": {"interfaces": [{"name": "GigabitEthernet1",
+                                   "ipv4": "192.0.2.21 255.255.255.252"}]}}
+
+    @pytest.mark.parametrize("family", ["ipv4", "ipv6"])
+    def test_the_far_end_is_the_device_on_the_same_network(self, family):
+        from modules.neighbours import far_ends
+        only = {h: {"interfaces": [{k: v for k, v in i.items() if k in ("name", family)}
+                                   for i in hv["interfaces"]]} for h, hv in self.LINK.items()}
+        assert far_ends(only, "r4", "GigabitEthernet4") == [("r3", "GigabitEthernet4")]
+        assert far_ends(only, "r3", "Gi4") == [("r4", "Gi4")]
+        assert far_ends(only, "r4", "Loopback0") == [], "a /32 names no link"
+        assert far_ends(only, "r9", "GigabitEthernet1") == [], "no other end in intent"
+
+    @pytest.mark.parametrize("address,owner", [("192.0.2.13", "r3"), ("2001:db8:34::4", "r4"),
+                                               ("198.51.100.9", "")])
+    def test_a_peer_address_names_its_device(self, address, owner):
+        from modules.neighbours import peer_device
+        assert peer_device(self.LINK, address) == owner
+
+    def test_the_window_explains_the_far_end_and_only_its_port(self, store):
+        from modules import restarts
+        from modules.heal.flaps import planned_spans
+        now = time.time()
+        got = restarts.record_planned(["r4"], now, now + 300, "operator@example.com",
+                                      "a port bounce", "self-healing", list_name="Lab",
+                                      interfaces=["GigabitEthernet4"],
+                                      far_ends=[("r3", "GigabitEthernet4"), ("r4", "x")])
+        assert got["ok"], got
+        assert got["record"]["expected"]["far_ends"] == [{"device": "r3",
+                                                          "interface": "GigabitEthernet4"}]
+        why = restarts.explained_by("r3", "Lab", now + 10)
+        assert why["how"] == "far_end", why
+        assert why["words"].startswith("r3 GigabitEthernet4 is the far end of r4 "
+                                       "GigabitEthernet4, taken down on purpose"), why
+        assert restarts.explained_by("r3", "Other", now + 10) is None, "another network's"
+        assert restarts.explained_by("r9", "Lab", now + 10) is None
+        assert restarts.explained_by("r3", "Lab", now + 300 + restarts.SETTLE_SECONDS + 5) \
+            is None, "past the window and its settle time"
+        assert len(planned_spans("Lab", "r3", "Gi4")) == 1, "the far end's own port"
+        assert planned_spans("Lab", "r3", "GigabitEthernet2") == [], "not its other ports"
+
+    def test_a_window_without_far_ends_reads_as_before(self, store):
+        from modules import restarts
+        now = time.time()
+        got = restarts.record_planned(["r4"], now, now + 300, "operator@example.com",
+                                      "a restart", "nmas-planned-restart", list_name="Lab")
+        assert "expected" not in got["record"]
+        assert restarts.far_ends_of(got["record"]) == []
+        assert restarts.explained_by("r3", "Lab", now + 10) is None
+
