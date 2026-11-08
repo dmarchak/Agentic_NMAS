@@ -429,10 +429,13 @@ class TestTheCommittedRecord:
             # C2373 (H11, Lab 10's R3 and V1), s1 (and r2), 2026-11-07, the agent's run under
             # the Phase 7 mode: the OSPF authentication lines and `router ospf`'s `network`.
             "interface.ospf-authentication", "interface.ospf-message-digest-key",
-            "ospf.network"}
+            "ospf.network",
+            # C2416 (H22, Lab 10's I5 revised), the IOS switch (and the IOS-XE router), 2026-11-08,
+            # the agent's run under the Phase 7 mode: interface dampening.
+            "interface.dampening"}
         for dialect in ("cisco_ios", "cisco_iosxe"):
             for key in ("interface.ospf-authentication", "interface.ospf-message-digest-key",
-                        "ospf.network"):
+                        "ospf.network", "interface.dampening"):
                 assert rec["by_dialect"][dialect][key]["result"] == "exact", (dialect, key)
         # vIOS-L2 rejects the IPv6 forms themselves: a fact about the platform, recorded.
         assert rows["interface.ipv6-ospf-cost"]["result"] == "unsupported"

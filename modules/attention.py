@@ -259,6 +259,14 @@ ROW_KINDS = {
                          "stable",
                          "read the bounce's steps on the device's History, check the port and "
                          "its far end, then acknowledge with what you found"),
+    # Board H's amendment, H22 (19.4): self-healing's dampening proposal, a change to intent on
+    # a port still flapping after its one bounce, waiting for a person; or approved and not
+    # ended dampened (rolled back, unverified, NOT RESTORED, refused at its act).
+    ("heal", "dampening"): ("a change to intent waits for a person (dampening on a port still "
+                            "flapping), or its approved deploy did not end dampened",
+                            "review the change, then approve it by its hash with a reason or "
+                            "decline it with a reason; or read what its deploy did on the "
+                            "device's History"),
     # Section 12: the AI analysis of a can't-fix stopped at its cap.
     ("heal", "analysis_capped"): ("the AI analysis of what self-healing could not fix stopped "
                                   "at its cap",
@@ -590,6 +598,13 @@ CLEARS = {
                          "a later bounce of the same port ends bounced and stable, or 7 days "
                          "pass (CANT_FIX_DAYS); or acknowledged with what was found on the "
                          "port"),
+    ("heal", "dampening"): (("resolves", "time"),
+                            "a person approves it on its card (approved and verified) or "
+                            "declines it there with a reason; or the port needs no bounce for 24 "
+                            "hours (dampening.STABLE_HOURS: resolved by time, its Approve then "
+                            "refused as lapsed); an approved deploy that did not end dampened "
+                            "clears with a later need of the port, or 7 days after it "
+                            "(dampening.ENDED_DAYS)"),
     ("heal", "analysis_capped"): (("resolves", "time"),
                                   "a later analysis on the network runs, an admin raises the "
                                   "cap, or the cap's period (its day or its month) ends"),
@@ -5429,9 +5444,12 @@ def heal_source(got=None, now=None, found=None) -> dict:
     out += held
     bounces = _heal_bounce_rows(lst, rows, now)
     out += bounces
+    damp = _heal_dampening_rows(lst, rows, now)
+    out += damp
     said = []
     out += _heal_cant_fix_rows(lst, rows, now, said)
-    cant_fix_n = len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
+    cant_fix_n = (len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
+                  - len(damp))
     out += _heal_capped_rows(lst, now, said)
     try:
         halted = _heal_halted_rows(lst)
@@ -5446,7 +5464,8 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"{interrupted_n} interrupted heal(s), "
                                   f"{proposals_n} proposal(s) waiting, {len(held)} hold(s) a "
                                   f"person resolves, {len(bounces)} port bounce(s) held or "
-                                  f"not ended bounced, {cant_fix_n} can't-fix "
+                                  f"not ended bounced, {len(damp)} dampening change(s) "
+                                  f"waiting or not ended dampened, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
 
@@ -5505,6 +5524,8 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
     for d in rows:
         if d.get("outcome") != "propose" or d.get("taken"):
             continue
+        if (d.get("action") or {}).get("kind") == "dampening_proposal":
+            continue                                  # its own row (`_heal_dampening_rows`)
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [] if u.get("words"))
         out.append(row(
@@ -5520,6 +5541,70 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
                     "device": host},
             operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
                       "tier": d.get("tier"), "mode": d.get("mode")}))
+    return out
+
+
+def _heal_dampening_rows(lst: str, rows: list, now: float) -> list:
+    """Board H's amendment, H22 (19.4; 19.6 rows 8 and 8b): ONE row per port whose NEWEST
+    dampening proposal waits for a person (not taken), until it is approved or declined on its
+    card (`open: heal_proposal`, the proposal's own card), or its port has been stable
+    `dampening.STABLE_HOURS` since its last need (resolved by time: ``clears_at``); and ONE row
+    per port whose newest proposal was approved and ended other than dampened (rolled back,
+    unverified, NOT RESTORED, refused at its act), until a later need of the port or
+    `dampening.ENDED_DAYS`. Read from the rows already read."""
+    from modules.heal import dampening as HDM
+
+    newest = {}
+    for d in rows:
+        a = d.get("action") or {}
+        if a.get("kind") != HDM.KIND or d.get("outcome") != "propose" or not a.get("device"):
+            continue
+        port = (a["device"], (a.get("interface") or "").lower())
+        if float(d.get("epoch") or 0) >= float(newest.get(port, {}).get("epoch") or 0):
+            newest[port] = d
+    out = []
+    for (host, _p), d in sorted(newest.items()):
+        a, at = d.get("action") or {}, float(d.get("epoch") or 0)
+        iface = a.get("interface") or ""
+        last = max(at, HDM.last_need(rows, host, iface))
+        done = d.get("applied") or {}
+        ops = {"list": lst, "decision": d.get("id"), "kind": d.get("kind"), "interface": iface,
+               "outcome": done.get("outcome") or "waiting", "trigger": a.get("trigger")}
+        if not d.get("taken"):
+            stable_at = last + HDM.STABLE_HOURS * 3600
+            if now >= stable_at:
+                continue
+            out.append(row(
+                source="heal", kind="dampening", key=d.get("id") or "?", level="warning",
+                event=d.get("id"), devices=[host], since=at or None, clears_at=stable_at,
+                what=f"A change to intent waits for a person: dampening on {host} {iface}",
+                cause=(f"{d.get('words') or ''}. Nothing is sent until a person approves it by "
+                       f"its hash with a reason (self-healing on {lst}, Tier 2: Propose); it "
+                       f"lapses once {iface} has needed no bounce for {HDM.STABLE_HOURS} h"),
+                action={"label": (f"Review the change for {host} {iface}, then approve it by "
+                                  "its hash with a reason, or decline it with a reason"),
+                        "open": "heal_proposal", "list": lst, "decision": d.get("id"),
+                        "device": host},
+                operands=ops))
+            continue
+        if done.get("outcome") in (None, "", "dampened", "declined", "withdrawn"):
+            continue
+        ended_at = at + HDM.ENDED_DAYS * 86400
+        if now >= ended_at or last > at:
+            continue
+        out.append(row(
+            source="heal", kind="dampening", key=d.get("id") or "?",
+            level="danger" if done["outcome"] in ("failed", "rolled_back") else "warning",
+            event=d.get("id"), devices=[host], since=at or None, clears_at=ended_at,
+            what=(f"The approved dampening of {host} {iface} on {lst}: "
+                  f"{HDM.OUTCOME_WORDS.get(done['outcome'], done['outcome'])}"),
+            cause=(f"{done.get('words') or ''}. Approved by {done.get('by') or 'a person'}"
+                   + ("; self-healing on the network is halted (guard 14) until a person "
+                      "lifts it" if done["outcome"] == "failed" else "")),
+            action={"label": (f"Read the change's steps on {host}'s History, check {iface}'s "
+                              "dampening and its intent, then act on what they show"),
+                    "href": f"/v2/device/{host}?tab=history"},
+            operands=ops))
     return out
 
 

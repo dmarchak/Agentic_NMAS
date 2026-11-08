@@ -3,7 +3,8 @@
 
 A patch names ONE device and a short list of operations, each one of Mercury's own words for a
 change a person asks for: set or clear an interface's description, shut an interface or bring
-it up, add or remove a VLAN, add or remove an OSPF network statement. It is a strict Pydantic v2
+it up, set IP event dampening on it (self-healing's dampening proposal, H22; the AI's draft does
+not offer it), add or remove a VLAN, add or remove an OSPF network statement. It is a strict Pydantic v2
 model (no coercion, no field it does not declare), so whatever produces one later (a person's
 form, feature 7's model) is held to the same shape.
 
@@ -125,6 +126,14 @@ class NoShutdown(_OnInterface):
     op: Literal["no_shutdown"]
 
 
+class SetDampening(_OnInterface):
+    """IP event dampening on the interface, the platform's defaults (intent's
+    ``interfaces[].dampening: true``, the bare ``dampening`` line; H22, N19): self-healing's
+    dampening proposal (`modules/heal/dampening.py`). Nothing clears it here: taking the line
+    off is a removal (Mode B's `interface.dampening` shape), measured first."""
+    op: Literal["set_dampening"]
+
+
 class _OnVlan(_Strict):
     vlan: Annotated[int, Field(ge=1, le=4094)]
 
@@ -193,8 +202,9 @@ class RemoveOspfNetwork(_OspfNetwork):
     op: Literal["remove_ospf_network"]
 
 
-Operation = Annotated[Union[SetDescription, ClearDescription, Shutdown, NoShutdown, AddVlan,
-                            RemoveVlan, AddOspfNetwork, RemoveOspfNetwork],
+Operation = Annotated[Union[SetDescription, ClearDescription, Shutdown, NoShutdown,
+                            SetDampening, AddVlan, RemoveVlan, AddOspfNetwork,
+                            RemoveOspfNetwork],
                       Field(discriminator="op")]
 
 
@@ -280,7 +290,8 @@ def _decides(op) -> tuple:
 
     if isinstance(op, _OnInterface):
         name = ifnames.canonical(op.interface)
-        field = "description" if op.op.endswith("description") else "admin state"
+        field = ("description" if op.op.endswith("description") else
+                 "dampening" if op.op == "set_dampening" else "admin state")
         return (field, name.lower()), f"the {field} of {name}"
     if isinstance(op, _OnVlan):
         return ("vlan", op.vlan), f"VLAN {op.vlan}"
@@ -380,6 +391,25 @@ def _admin(doc: dict, op, index: int, hostname: str) -> dict:
     entry["shutdown"], entry["no_shutdown"] = down, not down
     return _changed(f"{entry.get('name')}: {'shutdown' if down else 'no shutdown'}",
                     was != (down, not down))
+
+
+def _dampening(doc: dict, op, index: int, hostname: str) -> dict:
+    """``dampening: true`` on the interface (the bare line, the platform's defaults). A line
+    with parameters is intent's unmodelled text, never this field (H22's parser), so an
+    interface holding one is refused naming it: the patch would add a second dampening line
+    beside it."""
+    entry = _interface(doc, op.interface, index, hostname)
+    held = [str(l) for l in entry.get("unmodeled") or [] if str(l).strip().startswith(
+        "dampening")]
+    if held:
+        raise Refused(_refusal(409, "intent", (
+            f"operations[{index}] sets dampening on {entry.get('name')}, and {hostname}'s "
+            f"intent holds it already as unmodelled text ({held[0]!r}): its parameters are a "
+            "person's, so the patch does not add the bare line beside them"),
+            operation=index))
+    was = bool(entry.get("dampening"))
+    entry["dampening"] = True
+    return _changed(f"{entry.get('name')}: dampening (the platform's defaults)", not was)
 
 
 def _held_vlan(doc: dict, vlan: int):
@@ -495,7 +525,8 @@ def _ospf_network(doc: dict, op, index: int, hostname: str) -> dict:
 
 #: Each operation's one implementation, by its model.
 _APPLY = {SetDescription: _description, ClearDescription: _description, Shutdown: _admin,
-          NoShutdown: _admin, AddVlan: _add_vlan, RemoveVlan: _remove_vlan,
+          NoShutdown: _admin, SetDampening: _dampening, AddVlan: _add_vlan,
+          RemoveVlan: _remove_vlan,
           AddOspfNetwork: _ospf_network, RemoveOspfNetwork: _ospf_network}
 #: Every operation a patch offers, by its ``op``, in the order above.
 OPERATIONS = tuple(get_args(model.model_fields["op"].annotation)[0] for model in _APPLY)

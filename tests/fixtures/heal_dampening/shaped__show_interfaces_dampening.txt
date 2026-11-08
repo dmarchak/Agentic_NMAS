@@ -1,0 +1,7 @@
+
+ GigabitEthernet2
+  Flaps Penalty    Supp ReuseTm   HalfL  ReuseV   SuppV  MaxSTm    MaxP Restart
+      0       0   FALSE       0       5    1000    2000      20   16000       0
+ GigabitEthernet4
+  Flaps Penalty    Supp ReuseTm   HalfL  ReuseV   SuppV  MaxSTm    MaxP Restart
+      3    2742    TRUE      23       5    1000    2000      20   16000       0

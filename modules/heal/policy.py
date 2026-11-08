@@ -62,13 +62,15 @@ KILL_KEY = "heal_stopped"
 
 #: The fix kinds a policy may name, by tier (section 5). Tier 1 may be allowed AUTO, Tier 2 is
 #: proposed for a person; Tiers 3 and 4 are never settings.
-#: The action kinds built (19.4, H20 and H21: `heal.actions.BUILT`) are kinds a policy may name;
+#: The action kinds built (19.4, H20 to H22: `heal.actions.BUILT`) are kinds a policy may name;
 #: no policy names one by default (the schema's ``heal_kinds_auto`` is empty, and its
 #: ``heal_kinds_propose`` default names none). The session clear is both: Tier 1 on a network
-#: marked lab, Tier 2 (a proposal) elsewhere (N16, `actions.tier_of`).
+#: marked lab, Tier 2 (a proposal) elsewhere (N16, `actions.tier_of`). The dampening proposal
+#: is Tier 2 only (H22).
 TIER1_KINDS = ("missing_line", "changed_line", "added_line", "admin_down", "port_bounce",
                "ospf_reset", "session_clear")
-TIER2_KINDS = ("process_reset", "qos_policy", "secret_added_back", "session_clear")
+TIER2_KINDS = ("process_reset", "qos_policy", "secret_added_back", "session_clear",
+               "dampening_proposal")
 KIND_WORDS = {
     "missing_line": "a missing line", "changed_line": "a changed line, single-valued",
     "added_line": "an added line, a measured shape", "admin_down": "admin down where intent "
@@ -78,6 +80,9 @@ KIND_WORDS = {
     "ospf_reset": "an OSPF adjacency reset (the bounce on its one-neighbour interface)",
     "session_clear": "a BGP session clear of one named neighbour (an action; Auto only on a "
                      "network marked lab)",
+    "dampening_proposal": "dampening proposed on a port still flapping after its one bounce "
+                          "(a change to intent; its Approve refused until its removal is "
+                          "measured on the platform)",
 }
 
 #: The hard stops a network sets, in section 6's order, each with its unit.

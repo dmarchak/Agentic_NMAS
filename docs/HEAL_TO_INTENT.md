@@ -1420,9 +1420,20 @@ command-policy Tier 3, and `clear ip bgp *` is Never.
   true for the platform's defaults, N19), its template line, its parser's round trip, and its
   removal shape, measured on both dialects with `scripts/nmas-removal-probe`. **Built
   (H22's first part, 2026-11-07):** the field, its template line, its parser's round trip and
-  the shape `interface.dampening` with its probe exemplar; the shape is not measured yet, so
-  Mode B refuses the line by name on both dialects, and the proposal below, whose rollback is
-  that removal, is still `actions.NOT_BUILT`. So is intent's `archive.path` (13f), parsed only
+  the shape `interface.dampening` with its probe exemplar. **Measured 2026-11-08:** `exact` on
+  both dialects (the IOS switch and the IOS-XE router, Loopback199, the agent's run under the
+  Phase 7 mode), so Mode B removes the line. **Built (H22's second part, 2026-11-08,
+  `modules/heal/dampening.py`):** the proposal, raised in AUTO only, after a bounce still
+  flapping or 13d's second need, one waiting per port; intent's patch `set_dampening`
+  (`intent_patch`) and the deploy it renders bound by one hash; the act as the approving person
+  (the intent commit, then THE apply, then `show interfaces dampening` on the deploy's own
+  session, a read not listing the port rolled back by the pipeline's rollback and the intent
+  put back); its `CLEARS` entry (`heal`/`dampening`); its Approve refused by name on a platform
+  whose record holds no `exact` row for `interface.dampening` (measured above).
+  `dampening_proposal` left `actions.NOT_BUILT`. The verify read's parser is shaped from
+  Cisco's documented output for a port with dampening; the answer with none is captured (both
+  platforms print nothing, C2761). The first part also built intent's `archive.path` (13f),
+  parsed only
   from `archive` with exactly `path <url>`; an intent committed before it keeps its archive as
   an unmodelled block, which renders as before, and a document holding both is refused
   (`hostvars.archive_problems`).

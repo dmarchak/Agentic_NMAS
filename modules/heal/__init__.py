@@ -58,4 +58,9 @@ H21 is the BGP session clear (19.4, N16): `session_clear` (the decision on the d
 choice, Tier 1 on a network marked lab and a proposal elsewhere, and the act as the policy or
 as the approving person), on `privileged.SESSION_CLEARS` (the command policy, the measured
 prompt and settle time, the one held send, its verify and its Tier 2 record).
+H22 is the dampening proposal (19.4, 19.6 rows 8 and 8b): `dampening` (raised after a bounce
+still flapping or 13d's second need, in AUTO only; intent's ``set_dampening`` patch and its
+deploy bound by one hash; Approve refused by name until the ``interface.dampening`` removal its
+rollback needs is measured on the device's platform; the act as the approving person, verified
+by ``show interfaces dampening`` on the deploy's own session).
 """

@@ -277,6 +277,13 @@ def _unmeasured(chain, line: str, kind: str, dialect: str) -> str:
                 + (f": {row['detail']}" if row.get("detail") else ""))
     return ""
 
+def shape_refusal(chain, line: str, kind: str, dialect: str) -> str:
+    """Why *line* under *chain* may not be removed on *dialect* yet, by Mode B's one gate
+    (its measured shape), or "": what a caller asks before it offers a change whose undo is
+    that removal (self-healing's dampening proposal, H22: `interface.dampening`)."""
+    return _unmeasured(tuple(chain), line, kind, dialect)
+
+
 #: The management path, at the global level. Each may be how the tool
 #: reaches the device, and a removal that breaks it cannot be undone by the
 #: tool (the rollback would travel over it).

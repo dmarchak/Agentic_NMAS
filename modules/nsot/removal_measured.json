@@ -62,6 +62,12 @@
         "device": "s4",
         "result": "exact"
       },
+      "interface.dampening": {
+        "at": "2026-11-08T04:58:24Z",
+        "detail": "",
+        "device": "the Default network's IOS switch the OSPF authentication shapes were measured on",
+        "result": "exact"
+      },
       "interface.description": {
         "at": "2026-09-29T04:17:53Z",
         "detail": "",
@@ -188,6 +194,12 @@
         "at": "2026-09-29T04:48:57Z",
         "detail": "",
         "device": "r3",
+        "result": "exact"
+      },
+      "interface.dampening": {
+        "at": "2026-11-08T04:57:44Z",
+        "detail": "",
+        "device": "the Default network's IOS-XE router the OSPF authentication shapes were measured on",
         "result": "exact"
       },
       "interface.description": {

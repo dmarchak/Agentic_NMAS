@@ -115,7 +115,28 @@ class TestDampening:
         assert verify_scope.read_back(program, _with_line(port))["missing"] == []
 
     @pytest.mark.parametrize("dialect", ("cisco_ios", "cisco_iosxe"))
-    def test_its_removal_is_refused_by_name_until_the_probe_measures_it(self, port, dialect):
+    def test_its_removal_is_the_measured_no_line(self, port, dialect):
+        # C2416: measured exact on both platforms, 2026-11-08 (scripts/nmas-removal-probe on
+        # Loopback199, the agent's run under the Phase 7 mode).
+        _d, _p, name, _a = PORTS[port]
+        chain = [f"interface {name}"]
+        out = RM.removal_program(_with_line(port), [{"chain": chain, "line": " dampening"}],
+                                 mgmt_ip="192.0.2.1", dialect=dialect)
+        assert out["refused"] == [], out
+        assert out["commands"] == [f"interface {name}", " no dampening", "exit"], out
+
+    @pytest.mark.parametrize("dialect", ("cisco_ios", "cisco_iosxe"))
+    def test_its_removal_is_refused_by_name_until_the_probe_measures_it(self, port, dialect,
+                                                                         tmp_path, monkeypatch):
+        # The shipped record with the shape taken back out, so the platform's dampening is
+        # unmeasured again (measured 2026-11-08).
+        import json
+        rec = json.load(open(RM.MEASURED_FILE, encoding="utf-8"))
+        for rows in rec["by_dialect"].values():
+            rows.pop("interface.dampening", None)
+        path = tmp_path / "removal_measured.json"
+        path.write_text(json.dumps(rec))
+        monkeypatch.setattr(RM, "MEASURED_FILE", str(path))
         _d, _p, name, _a = PORTS[port]
         chain = [f"interface {name}"]
         assert RM.shape_for(chain, " dampening", "leaf").key == "interface.dampening"

@@ -1199,7 +1199,8 @@ SCHEMA: dict = {
             "enum": ["missing_line", "changed_line", "added_line", "admin_down",
                      "port_bounce", "ospf_reset", "session_clear"]}},
         "heal_kinds_propose": {"type": "array", "uniqueItems": True, "items": {
-            "enum": ["process_reset", "qos_policy", "secret_added_back", "session_clear"]}},
+            "enum": ["process_reset", "qos_policy", "secret_added_back", "session_clear",
+                     "dampening_proposal"]}},
         "heal_topology_hold_minutes": {"type": "integer", "minimum": 0, "maximum": 10080},
         "heal_max_devices_drifting": {"type": "integer", "minimum": 1},
         "heal_person_working_changes": {"type": "integer", "minimum": 1},

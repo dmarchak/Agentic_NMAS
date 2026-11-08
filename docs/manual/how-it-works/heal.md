@@ -147,14 +147,12 @@ bounce of a port within the repeat window becomes the dampening proposal), and a
 from the logs.
 
 The **port bounce** and the **OSPF adjacency reset** through it are built ([The port
-bounce](#bounce)), and so is the **clear of one BGP neighbour** ([The BGP session
-clear](#clear)); the dampening proposal is not yet: a policy cannot allow it, and it is refused
-by name ("not built yet: H22"). A device's intent can already hold dampening on an interface
-(`dampening: true` under the interface in its host_vars, the bare `dampening` line, the
-platform's defaults), committed and deployed through the intent editor like any other change;
-Mercury cannot yet remove it again (Mode B refuses the line until `interface.dampening` is
-measured on the device's platform), which is why the proposal, whose rollback is that removal,
-waits. Under all of them runs
+bounce](#bounce)), and so are the **clear of one BGP neighbour** ([The BGP session
+clear](#clear)) and the **dampening proposal** ([The dampening proposal](#dampening)). A
+device's intent can hold dampening on an interface (`dampening: true` under the interface in its
+host_vars, the bare `dampening` line, the platform's defaults), committed and deployed through
+the intent editor like any other change, and Mode B removes it again: `no dampening` was
+measured to remove exactly that line on IOS and IOS-XE. Under all of them runs
 the **flap record**: each time the network's syslog is read, every `%LINK-3-UPDOWN` and
 `%LINEPROTO-5-UPDOWN` line is recorded as a transition of its interface at the time Mercury
 received it, never by the device's clock, for networks whose self-healing is on. A link and its
@@ -239,7 +237,8 @@ down with its far end up, or the interface's one OSPF neighbour stuck, is a boun
 **What it ends with.** "Bounced; configuration unchanged" is on History, never a Needs
 attention item; the team's notice of a bounce is not sent yet. Every other end is one item, "Self-healing's bounce of <device> <port>",
 until a later bounce of that port ends bounced, 7 days pass, or you acknowledge it with what you
-found: bounced once and **still flapping** (a dampening change is the next need, for a person);
+found: bounced once and **still flapping** (the [dampening proposal](#dampening) is the next
+need, for a person, and the item says whether it waits);
 the OSPF adjacency **not formed**; **not verified** (the stability window could not be read);
 **reverted by its timer** (no confirm, the device back as before); **repaired**; **NOT
 RESTORED** (a reload returns it, since nothing was saved); or **nothing was sent** (a guard
@@ -322,6 +321,64 @@ clear that **reset** the session (which halts the network's healing until a pers
 **not verified** (the read after could not be understood); **refused by the device** (nothing
 was cleared); or **nothing was sent**. Rollback does not apply, and the record says why: a
 session that was not Established had nothing to lose, and a route refresh resets nothing.
+
+## The dampening proposal {#dampening}
+
+A port that keeps flapping after its one bounce is not something a second bounce fixes. The
+industry's answer is to suppress it: IP event dampening holds a flapping interface down until
+it has been quiet for a while, so the routing protocols over it stop churning. That is a change
+to the device's intent, so it is never automatic: self-healing **proposes** it, and a person
+approves or declines it.
+
+**When it is proposed.** Only in **Auto**, after a real bounce: when the bounce's stability
+window reads the port going down again after it came up (bounced once, **still flapping**), or
+when the port needs a second bounce within the repeat window (24 hours by default). In **Dry
+run** nothing was bounced, so nothing is proposed, and the record says so. It is proposed only
+when **Dampening** under Tier 2 on the Self-healing tab is set to Propose (it is not by default);
+otherwise the record says the policy does not propose it. One proposal waits per port.
+
+**What it proposes.** The device's intent gains `dampening: true` on that interface (the bare
+`dampening` line, the platform's defaults), and the deploy that intent renders: `interface
+<port>`, ` dampening`, `exit`, nothing else. It is not proposed when the device's deploy already
+holds other lines not sent (deploy or resolve those first), when its intent already holds
+dampening, or when the interface carries a `dampening` line with parameters a person chose.
+**One hash** covers both the intent commit and its deploy: if either changes before it runs,
+it is refused, naming both hashes.
+
+**Its card** is the Needs attention item "A change to intent waits for a person: dampening on
+<device> <port>", opened with **Review the fix…**: the program, the intent edit, how it is
+verified, and how it is undone. **Approve and run** is refused, saying why, when the removal of
+`dampening` (`interface.dampening`) is not measured on the device's platform, since that removal
+is its rollback; and once the port has needed no bounce for **24 hours**, when the proposal has
+lapsed (resolved by time; a later flap proposes it again).
+
+**How it runs**, as the person who approved it:
+
+1. `take`: the approved proposal, once.
+2. `stops`: the kill switch, the mode, a halt, planned work, and the kind still proposed.
+3. `rollback`: the removal of `dampening` measured on the device's platform, or nothing is
+   done; its program (`interface <port>`, ` no dampening`, `exit`) is recorded.
+4. `plan`: intent is patched again and its deploy planned; refused unless the one hash is the
+   one you approved.
+5. `intent`: the intent edit is committed as you, with your reason, the proposal's hash and its
+   decision in the commit.
+6. `apply`: the deploy runs as you, holding the device: the deploy's nine stages, its program
+   recomputed from the committed intent and refused if it is not the one approved.
+7. `verify`: after the deploy verified the line, with the device still held and its save held,
+   `show interfaces dampening` must list the port. A read that does not list it rolls the device
+   back by the deploy's own rollback, and the intent edit is put back as you. A read Mercury
+   cannot interpret neither passes nor fails: the change is kept and called not verified. This
+   read's interpretation is built from Cisco's documented output and not yet from a capture of
+   a lab device, and the record says so.
+8. `record`: the outcome on the device's **History**, kind Self-healing, and the incident
+   closed.
+
+**What it ends with.** Dampening deployed and verified, and the item leaves Needs attention; or
+declined with your reason, recorded, nothing sent. Otherwise one item stays, "The approved
+dampening of <device> <port>", until the port needs another bounce or 7 days pass: **rolled
+back** (neither the device nor intent holds dampening); **not verified**; **NOT RESTORED** (which
+halts the network's healing until a person lifts it); or **nothing was sent** (the intent edit put
+back if it had been committed).
 
 ## What it never does {#never}
 

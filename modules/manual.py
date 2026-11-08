@@ -266,6 +266,8 @@ OPERATIONS = {
     # Board H's amendment, H21 (19.4): the BGP session clear's decision and its act.
     "heal-clear-decide": ("modules.heal.session_clear", "DECIDE_STEPS"),
     "heal-clear": ("modules.heal.session_clear", "STEPS"),
+    # Board H's amendment, H22 (19.4): the dampening proposal's approved act.
+    "heal-dampening": ("modules.heal.dampening", "STEPS"),
     "notifications": ("modules.heal_notice", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
@@ -297,7 +299,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
-                  "heal-clear-decide": "heal", "heal-clear": "heal"}
+                  "heal-clear-decide": "heal", "heal-clear": "heal",
+                  "heal-dampening": "heal"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

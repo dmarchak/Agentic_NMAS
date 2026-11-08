@@ -32,6 +32,10 @@ KIND_LABELS = {
     # Auto only on a network marked lab, a proposal elsewhere, so it is drawn in both lists.
     "session_clear": "BGP session clear: one named neighbour, not Established in two reads "
                      "(Auto only on a network marked lab; an action)",
+    # The proposal H22 built (19.4): a change to intent, a person's; its Approve is refused on
+    # a platform where its rollback (the `interface.dampening` removal) is not measured.
+    "dampening_proposal": "Dampening: a port still flapping after its one bounce gains "
+                          "`dampening` in intent (a person approves; a change to intent)",
 }
 #: Tiers 3 and 4: never settings, drawn fixed with why (section 5).
 FIXED_KINDS = (

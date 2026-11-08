@@ -79,7 +79,8 @@ No policy allows the kind by default (`settings_schema`'s ``heal_kinds_auto``: e
    the step log's ``act`` row (History), and the announcement.
 
 **What it ends with** (`OUTCOMES`): ``bounced`` (confirmed, verified, stable); ``still_flapping``
-(H22's dampening proposal is the next need, not built); ``not_formed`` (an OSPF reset's
+(H22's dampening proposal is the next need: `dampening.raise_after`, as is 13d's second need in
+`consider`); ``not_formed`` (an OSPF reset's
 adjacency not FULL); ``unverified`` (its stability not readable); ``reverted`` (no confirm: the
 timer reverted it, ended at BEFORE); ``repaired``; ``failed`` (NOT RESTORED); ``refused``
 (nothing sent). Each but ``bounced`` is a Needs attention row (``heal``/``bounce``), as a held
@@ -832,7 +833,13 @@ def consider(network: str, incident_id: str, diagnosis: dict, *, now: float = No
                 "words": f"the bounce was not decided ({type(exc).__name__}: {exc})"}
     _log_decision(network, dict(d, steps=steps, phase=phase), now)
     _announce()
-    return {"state": "recorded", "decision": d, "words": d.get("words") or ""}
+    out = {"state": "recorded", "decision": d, "words": d.get("words") or ""}
+    if d.get("instead") == "dampening_proposal":
+        # 13d: a second need within the repeat window is the dampening proposal (H22).
+        from modules.heal import dampening
+        out["dampening"] = dampening.raise_after(network, d, trigger="second_need", now=now,
+                                                 sources=getattr(src, "dampening", None))
+    return out
 
 
 def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -> dict:
@@ -969,8 +976,10 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
             from modules.heal.actions import not_built
 
             g["words"] += (f"; {actions.KIND_WORDS[judged['instead']]}: "
-                           f"{not_built(judged['instead']) or 'proposed'}")
+                           f"{not_built(judged['instead']) or 'its own record follows'}")
             g["outcome"] = "cant_fix"
+            # H22: `consider` raises the dampening proposal once this decision is recorded.
+            base["instead"] = judged["instead"]
         if judged["outcome"] == "held":
             g["until"] = (facts.get("13b") or {}).get("until")
         if not judged["guard"]:
@@ -1350,10 +1359,17 @@ def _stable(run: _Act, device: str, interface: str, times: dict) -> dict:
     if downs:
         run.note("stable", "failed", (f"{len(downs)} transition(s) to down after the bounce's "
                                       f"up, the first at {downs[0]['at']}, inside {minutes} min"))
+        # H22 (19.4): the next need is the dampening proposal, a person's change to intent.
+        from modules.heal import dampening
+        got = dampening.raise_after(run.network, run.decision, trigger="still_flapping",
+                                    now=src.clock(), sources=getattr(src, "dampening", None))
+        run.out["records"]["dampening"] = got["words"]
+        waits = ("a dampening change waits for a person" if got["state"] in (
+            "recorded", "waiting") and (got.get("decision") or {}).get("outcome") == "propose"
+            else "no dampening change waits")
         return run.finish("still_flapping", (
             f"{device} {interface} bounced once: still flapping ({len(downs)} down after the "
-            f"bounce in {minutes} min); a dampening change waits for a person (H22, not "
-            "built)"))
+            f"bounce in {minutes} min); {waits}: {got['words']}"))
     run.note("stable", "ok", f"no transition to down in the {minutes}-minute stability window")
     return run.finish("bounced", (f"{device} {interface} bounced; configuration unchanged; "
                                   f"stable for {minutes} min"))

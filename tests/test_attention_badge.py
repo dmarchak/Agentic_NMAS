@@ -146,7 +146,10 @@ class TestARowThatClearsByTime:
                          # The day or month the can't-fix analysis's cap counts ends (H8).
                          ("heal", "analysis_capped"),
                          # A held or failed bounce, 7 days after it (CANT_FIX_DAYS; H20).
-                         ("heal", "bounce")}
+                         ("heal", "bounce"),
+                         # A dampening proposal, its port stable 24 h; an approved one not
+                         # ended dampened, 7 days after it (H22).
+                         ("heal", "dampening")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

@@ -147,7 +147,8 @@ class TestThePatchIsStrict:
         from modules.nsot import intent_patch
         union = get_args(get_args(intent_patch.Operation)[0])
         assert set(union) == set(intent_patch._APPLY)
-        assert len(intent_patch.OPERATIONS) == len(set(intent_patch.OPERATIONS)) == 8
+        # Nine: H22 added `set_dampening` (self-healing's dampening proposal).
+        assert len(intent_patch.OPERATIONS) == len(set(intent_patch.OPERATIONS)) == 9
 
 
 class TestTheNetworkPrefix:

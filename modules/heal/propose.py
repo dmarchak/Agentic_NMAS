@@ -219,12 +219,22 @@ def _stops(network: str, decision: dict, now: float, src) -> str:
 
 
 def _steps_of(decision: dict) -> tuple:
-    """The approved act's steps: a session clear's (H21) or a heal's."""
-    from modules.heal import session_clear
+    """The approved act's steps: a session clear's (H21), the dampening proposal's (H22) or a
+    heal's."""
+    from modules.heal import dampening, session_clear
 
-    if (decision.get("action") or {}).get("kind") in session_clear.KINDS:
+    kind = (decision.get("action") or {}).get("kind")
+    if kind in session_clear.KINDS:
         return session_clear.STEPS
+    if kind == dampening.KIND:
+        return dampening.STEPS
     return STEPS
+
+
+def _is_dampening(decision: dict) -> bool:
+    from modules.heal import dampening
+
+    return (decision.get("action") or {}).get("kind") == dampening.KIND
 
 
 def _find(network: str, decision_id: str) -> dict:
@@ -273,6 +283,20 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
                         + (f" and is {done}" if done else ", and its act is running"))
     if r["refused"]:
         refusals.append(r["refused"])
+    units = [u.get("words") for u in d.get("units") or []]
+    if _is_dampening(d):
+        # H22 (19.4): a change to intent, its rollback Mode B's measured removal (refused by
+        # name until measured), lapsed once its port is stable for 24 h.
+        from modules.heal import dampening, decisions
+        units = dampening.units_words(d)
+        if not d.get("taken") and not d.get("withdrawn"):
+            try:
+                rows = decisions.decisions(network)
+            except Exception as exc:
+                rows = []
+                refusals.append(f"{network}'s heal decisions cannot be read ({exc}), so whether "
+                                "the proposal lapsed cannot be told")
+            refusals += dampening.refusals(d, rows, now)
     why = _stops(network, d, now, src)
     if why:
         refusals.append(why + ". Nothing was sent")
@@ -288,7 +312,7 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
             "diagnosis": diagnosis,
             "device": device, "platform": platform, "kind": d.get("kind"),
             "kind_words": KIND_WORDS.get(d.get("kind"), d.get("kind")), "tier": d.get("tier"),
-            "units": [u.get("words") for u in d.get("units") or []], "program": program,
+            "units": units, "program": program,
             "program_hash": d.get("program_hash") or "", "reset": reset,
             "lines": program + ([plan["command"]] if plan.get("command") else []),
             "hash": proposal_hash(network, d, plan.get("command") or ""),
@@ -370,20 +394,30 @@ def start(network: str, decision: dict, approval: dict, *, sources=None, ident=N
         finally:
             interrupted.release(network, decision["id"])
 
+    # The dampening proposal's act commits intent too, so its job announces intent (H22).
+    from modules.heal import dampening
+    keys, announcer = ((dampening.DONE_KEYS, dampening.ANNOUNCER) if _is_dampening(decision)
+                       else (act.DONE_KEYS, act.ANNOUNCER))
     return capture_job.start(network, f"healing {decision['device']} (approved by "
                                       f"{approval['by']})", approval["by"], work, kind=act.KIND,
-                             announce_keys=act.DONE_KEYS, announcer=act.ANNOUNCER,
+                             announce_keys=keys, announcer=announcer,
                              device=decision["device"])
 
 
 def _approved_for(network: str, decision: dict, approval: dict, *, sources=None) -> dict:
     """An approved proposal's act: a BGP session clear's (19.4, H21: Tier 2 on a network not
-    marked lab, `session_clear.apply_approved`, as the person), or a heal's
-    (`apply_approved`). One approval, one take, one record, whichever it is."""
-    from modules.heal import session_clear
+    marked lab, `session_clear.apply_approved`, as the person), the dampening proposal's (H22,
+    `dampening.apply_approved`: the intent commit and its deploy under one hash, as the
+    person), or a heal's (`apply_approved`). One approval, one take, one record, whichever it
+    is."""
+    from modules.heal import dampening, session_clear
 
     if (decision.get("action") or {}).get("kind") in session_clear.KINDS:
         return session_clear.apply_approved(network, decision, approval)
+    if _is_dampening(decision):
+        return dampening.apply_approved(
+            network, decision, approval,
+            sources=sources if isinstance(sources, dampening.Sources) else None)
     return apply_approved(network, decision, approval, sources=sources)
 
 
@@ -632,7 +666,11 @@ def withdrawn_how(decision: dict, read: dict) -> str:
     departure, `detect.read_device`'s) withdraws the proposal: ``at_intent`` (read back at its
     golden, which matched its intent when it was proposed: guard 4), ``changed`` (a departure
     other than the one the proposal was bound to), or ``""`` (still the departure it was made
-    for, or a read that says nothing of the device: an error, a skip, a busy run)."""
+    for, or a read that says nothing of the device: an error, a skip, a busy run). A dampening
+    proposal (H22) is bound to no departure: its device is at intent by its own rule, so a read
+    never withdraws it; it lapses by time instead (`dampening.lapsed`)."""
+    if _is_dampening(decision):
+        return ""
     state = (read or {}).get("state")
     if state == "clean":
         return "at_intent"

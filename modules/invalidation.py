@@ -199,6 +199,10 @@ ANNOUNCERS = {
     # modules/heal/act.py (board H, H4): a heal's job ended, sent through THE apply or refused:
     # what a deploy changes on its one device.
     "heal-act": ("drift", "goldens", "remote", "baselines", "device_state", "rolled_back"),
+    # modules/heal/dampening.py (board H's amendment, H22): an approved dampening proposal's
+    # job ended: the intent it committed (or put back) and what its deploy changed.
+    "heal-dampening": ("drift", "goldens", "remote", "baselines", "device_state",
+                       "rolled_back", "intent"),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

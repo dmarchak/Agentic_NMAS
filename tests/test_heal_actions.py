@@ -90,23 +90,33 @@ class TestTheKinds:
         assert (A().tier_of("session_clear", True), A().tier_of("session_clear", False)) == (1, 2)
         assert A().tier_of("port_bounce", False) == 1
 
-    def test_every_kind_is_refused_by_name_before_any_guard(self):
-        # H20 built the bounce and the OSPF reset through it, H21 the session clear; dampening
-        # waits.
-        assert A().BUILT == ("port_bounce", "session_clear", "ospf_reset")
-        for kind, part in (("dampening_proposal", "H22"),):
-            got = A().judge(kind, {})
-            assert got["outcome"] == "cant_fix" and f"not built yet: {part}" in got["words"]
-            assert [s["step"] for s in got["steps"]] == ["built"], got
+    def test_every_kind_is_refused_by_name_before_any_guard(self, monkeypatch):
+        # H20 built the bounce and the OSPF reset through it, H21 the session clear, H22 the
+        # dampening proposal: every kind is built. A kind whose part has not landed is still
+        # refused by name before any guard reads, shown on a stand-in part.
+        assert A().BUILT == A().KINDS and A().NOT_BUILT == {}
+        monkeypatch.setitem(A().NOT_BUILT, "dampening_proposal", ("H99", "a stand-in part"))
+        got = A().judge("dampening_proposal", {}, built=("port_bounce",))
+        assert got["outcome"] == "cant_fix" and "not built yet: H99" in got["words"]
+        assert [s["step"] for s in got["steps"]] == ["built"], got
         got = A().judge("port_bounce", {})
         assert [s["step"] for s in got["steps"]] == ["built", "13a"], got
 
-    def test_no_policy_may_allow_an_unbuilt_action(self, networks):
+    def test_no_policy_may_allow_an_unbuilt_action(self, networks, monkeypatch):
         from modules.heal import policy as H
-        for key, kind, part in ((H.KINDS_PROPOSE_KEY, "dampening_proposal", "H22"),):
+        monkeypatch.setitem(A().NOT_BUILT, "dampening_proposal", ("H99", "a stand-in part"))
+        for key, kind, part in ((H.KINDS_PROPOSE_KEY, "dampening_proposal", "H99"),):
             with pytest.raises(H.PolicyRefused) as e:
                 H.plan("Default", {"heal_mode": "dry_run", key: [kind]}, T0)
             assert f"{kind} ({A().KIND_WORDS[kind]}): not built yet: {part}" in str(e.value)
+        monkeypatch.delitem(A().NOT_BUILT, "dampening_proposal")
+        # H22 built the dampening proposal: Propose only (Tier 2), never Auto, none by default.
+        got = H.plan("Default", {"heal_mode": "dry_run",
+                                 H.KINDS_PROPOSE_KEY: ["dampening_proposal"]}, T0)
+        assert "dampening_proposal" in got["after"][H.KINDS_PROPOSE_KEY], got
+        with pytest.raises(H.PolicyRefused):
+            H.plan("Default", {"heal_mode": "dry_run",
+                               H.KINDS_AUTO_KEY: ["dampening_proposal"]}, T0)
         # H21 built the session clear: a policy may name it in either list (Tier 1 on a lab
         # network, a proposal elsewhere), and none does by default.
         for key in (H.KINDS_AUTO_KEY, H.KINDS_PROPOSE_KEY):

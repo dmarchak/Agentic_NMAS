@@ -289,9 +289,13 @@ class TestTheDecision:
     def test_a_second_bounce_within_the_window_is_the_dampening_proposal(self, stores):
         prior = {"id": "hd-1", "outcome": "would_heal", "epoch": T0 - 600, "at": "",
                  "action": {"kind": "port_bounce", "device": "r3", "interface": GI4}}
-        d = decide(Src(rows=[prior]))[1][-1]
+        got, rows = decide(Src(rows=[prior]))
+        d = rows[-1]
         assert d["outcome"] == "cant_fix" and d["guard"]["guard"] == "13d"
-        assert "dampening" in d["words"] and "not built yet: H22" in d["words"]
+        assert "dampening" in d["words"] and d["instead"] == "dampening_proposal"
+        # H22: the dampening proposal follows a real bounce only; in dry run none was sent.
+        assert got["dampening"]["state"] == "none" and "dry_run mode" in \
+            got["dampening"]["words"], got["dampening"]
 
     def test_a_flap_record_that_cannot_be_read_holds_no_bounce(self, stores):
         d = decide(Src(flap={"state": "unreadable", "words": "the record is unreadable"}))[1][-1]
