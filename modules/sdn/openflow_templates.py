@@ -286,16 +286,25 @@ def numbering_problems(values: dict, entry: dict) -> list:
     mode = (entry.get("openflow") or {}).get("port_numbering")
     out = []
     for port, number in sorted(((values or {}).get("port.openflow_port") or {}).items()):
-        if mode == "interface_number":
-            m = re.fullmatch(r"[A-Za-z-]*?([0-9]+)", port)
-        elif mode == "port_number":
-            m = re.fullmatch(r"([0-9]+)", port)
-        else:
-            continue
-        if m and int(m.group(1)) != int(number):
+        own = numbered_by_platform(port, mode)
+        if own is not None and own != int(number):
             out.append(f"{port}'s openflow_port is {number}, and this platform numbers an "
-                       f"OpenFlow port by its {mode.replace('_', ' ')} ({int(m.group(1))})")
+                       f"OpenFlow port by its {mode.replace('_', ' ')} ({own})")
     return out
+
+
+def numbered_by_platform(port: str, mode) -> object:
+    """The OpenFlow port number the platform's own numbering gives *port* (the profile's
+    `port_numbering`), or None where the rule cannot read it: on `interface_number`, a port
+    named with one number (Ethernet18 is 18); on `port_number`, a port named by its number (2
+    is 2); `add_order` gives none (the number is requested, NetBox's `openflow_port`)."""
+    if mode == "interface_number":
+        m = re.fullmatch(r"[A-Za-z-]*?([0-9]+)", str(port or ""))
+    elif mode == "port_number":
+        m = re.fullmatch(r"([0-9]+)", str(port or ""))
+    else:
+        return None
+    return int(m.group(1)) if m else None
 
 
 def render(name: str, values: dict, selected=None) -> dict:

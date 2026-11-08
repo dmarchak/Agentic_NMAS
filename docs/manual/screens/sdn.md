@@ -210,8 +210,10 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   files, the drop-in's before and after, the window, the apply script's outcome, the
   post-check, **Download the receipt (JSON)** and **Open the controller** (the controller's
   card). Every text is masked as History masks.
-- **Not drawn yet**, each a registered gap: a controller's **Read again** and the code
-  repository's **Fetch now** (the controller and registry reads are not wired, C2677's rest),
+- **Not drawn yet**, each a registered gap: a controller's **Read again** (the card draws the
+  newest preview's reads of the host) and the code repository's **Fetch now** (the app registry
+  is not built; where each fact comes from:
+  [Deploy apps to an SDN controller](controller-app-deploy#sources)),
   **Compare** two versions and **Open the review**, and the Needs attention rows drawn from the
   controller's reads (an app's /health failing, a switch or link missing outside a window,
   drift). A deploy whose outcome is not known, or that left the controller not back as it

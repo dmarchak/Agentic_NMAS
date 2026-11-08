@@ -14,6 +14,7 @@ import logging
 
 from flask import Blueprint, render_template, request
 
+from modules.outbound import no_store
 from routes.device_v2 import _strict
 
 log = logging.getLogger(__name__)
@@ -512,18 +513,21 @@ def _apps_form():
 
 
 @bp.route("/apps/preview", methods=["POST"])
+@no_store
 def apps_preview():
     """The plan for the chosen set on the network's controller (artboards C and D): read from
     the controller now, the files staged here from their pins and removed again; nothing is
     sent. *redeploy* (K4) opens the full plan of a set the controller already runs."""
-    from modules import sdn_apps_page
+    from modules import identity, sdn_apps_page
     from modules.apps import deploy_op
 
     network, controller, chosen, refused = _apps_form()
     if refused:
         return _app_card({"state": "refused", "controller": controller, "network": network,
                           "refusals": [refused]}, 400)
-    plan = deploy_op.preview(network, controller, chosen)
+    # The host's three reads go through the reads engine, held and recorded for this person.
+    plan = deploy_op.preview(network, controller, chosen,
+                             src=deploy_op.sources().for_actor(identity.request_actor()))
     d = sdn_apps_page.plan_card(plan, redeploy=request.form.get("redeploy") == "1")
     return _app_card(d, 200 if plan.get("ok") else 409)
 

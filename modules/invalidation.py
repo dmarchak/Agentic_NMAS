@@ -508,7 +508,8 @@ DECLARED = {
     "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),
     "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends"),
-    "sdn_v2.apps_preview": Nothing("previews a controller app deploy in its card; the confirm sends"),
+    # C2765: its host reads are a reads-engine run, recorded (History › Reads).
+    "sdn_v2.apps_preview": ("reads",),
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),

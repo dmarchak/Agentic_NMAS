@@ -20,7 +20,7 @@
 <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="closest .apps-op" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ d.network }}"><input type="hidden" name="controller" value="{{ d.controller }}"><input type="hidden" name="set" value="{{ d.set }}"><input type="hidden" name="redeploy" value="1">
   <a class="btn" href="{{ url_for('sdn_v2.apps', list=d.network) }}">Back to Apps</a>
-  <button class="btn btn-small" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Opens the full plan of the same set, whose confirm restarts the controller"{{ gate('confirm') }}><span class="op-idle">Redeploy the same set and restart {{ d.controller }}…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'redeploy') }}
+  <button class="btn btn-small" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Opens the full plan of the same set, whose confirm restarts the controller"{{ gate('reveal') }}><span class="op-idle">Redeploy the same set and restart {{ d.controller }}…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'redeploy') }}
 </form>
 
 {%- elif d.state == 'preview' %}
@@ -136,7 +136,7 @@
 {%- if d.rollback_set %}
 <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="closest .apps-op" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ d.network }}"><input type="hidden" name="controller" value="{{ d.controller }}"><input type="hidden" name="set" value="{{ d.rollback_set }}">
-  <button class="btn" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Previews deploying the set before this deploy; nothing is sent until you confirm"{{ gate('confirm') }}><span class="op-idle">Preview a rollback…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'running') }}
+  <button class="btn" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Previews deploying the set before this deploy; nothing is sent until you confirm"{{ gate('reveal') }}><span class="op-idle">Preview a rollback…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'running') }}
 </form>
 {%- endif %}
 <p class="apps-acts">{% if d.row %}<a class="btn btn-small" href="{{ url_for('v2.landing') }}">Open its Needs attention row</a> {% endif %}{% if d.outcome in ('apply failed', 'refused', 'not rolled back') %}<a class="btn btn-primary" href="{{ url_for('sdn_v2.apps', list=d.network or None) }}">Preview again</a> {% endif %}<a class="btn btn-small" href="{{ url_for('sdn_v2.apps', receipt=d.id) }}">Open the receipt</a> <a class="btn btn-small" href="{{ url_for('sdn_v2.apps') }}">Back to Apps</a></p>

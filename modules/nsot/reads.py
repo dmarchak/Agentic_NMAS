@@ -382,15 +382,17 @@ def new_id(now: float = None) -> str:
 
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
         purpose: str = "", progress=None, session=None, run_id: str = "",
-        reason: str = "", drivers: dict = None) -> dict:
+        reason: str = "", drivers: dict = None, inline: bool = False) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
     called with each device's outcome as it lands. *session* (tests) replaces
     ``connection.with_temp_connection``. *drivers* (``{host: netmiko driver}``) opens those
     hosts' sessions with that driver instead of the inventory's, recorded in the run (board
-    F4's platform map Test). Raises `Refused` with nothing asked; the refusal
-    is recorded first."""
+    F4's platform map Test). *inline* asks a run of ONE device in the calling thread (its hold
+    is then re-entrant for an operation this thread already holds it for); every other run
+    reads concurrently. Raises `Refused` with nothing asked; the refusal is recorded
+    first."""
     from modules import fanout
     from modules.nsot import device_ops
     from modules.redact import known_secret_values
@@ -494,7 +496,17 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                 log.debug("reads: progress callback failed for %s", host, exc_info=True)
         return out
 
-    results = fanout.read_each(one, hosts, name="reads", max_workers=max_workers(list_name))
+    if inline and len(hosts) == 1:
+        # One device asked in the caller's own thread, so an operation that already holds it
+        # (its hold is re-entrant in the thread that took it) reads it holding it, never
+        # skipped as busy by its own hold (the controller app deploy's confirm, C2765).
+        try:
+            results = [one(hosts[0])]
+        except Exception as exc:                      # noqa: BLE001 (that device's failure)
+            results = [fanout.Failed(exc)]
+    else:
+        results = fanout.read_each(one, hosts, name="reads",
+                                   max_workers=max_workers(list_name))
     for host, got in zip(hosts, results):
         if isinstance(got, fanout.Failed):
             got = {"state": FAILED, "why": str(got)}

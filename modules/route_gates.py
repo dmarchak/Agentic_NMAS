@@ -165,6 +165,13 @@ GATES = {
                                         "person, every run recorded"),
     "privileged_v2.preview": _g(R, "reads a device's before-state for a Tier 2 command through the "
                                  "reads engine (board T2-B); every run recorded"),
+    # C2765: the preview reads the controller host through the reads engine, so a person.
+    "sdn_v2.apps_preview": _g(R, "previews a controller app deploy (P6): reads the controller "
+                                 "host's three shaped reads through the reads engine (every "
+                                 "run recorded) and the controller's switches and links, "
+                                 "stages the chosen versions from their pins into a folder "
+                                 "here that is removed before it answers, and renders the plan "
+                                 "and its hash; sends nothing to the controller"),
     "reads_v2.logging_path_run": _g(R, "tests the logging path (board F): one send log line "
                                      "to each device through the reads engine, then Loki "
                                      "watched; every run recorded"),
@@ -251,7 +258,6 @@ GATES = {
     "sdn_v2.flow_preview": _g(N, "previews an SDN flow change: reads the switch's table and renders the exact requests and their hash; writes nothing"),
     "sdn_v2.response_preview": _g(N, "previews a response awaiting a person: reads the switch's table and renders the exact requests and their hash; writes nothing"),
     "sdn_v2.reapply_preview": _g(N, "previews putting back a response's lost flows and meter (C2018): reads the switch's table and meters and renders the exact requests and their hash; writes nothing"),
-    "sdn_v2.apps_preview": _g(N, "previews a controller app deploy (P6): reads the controller host, stages the chosen versions from their pins into a folder here that is removed before it answers, and renders the plan and its hash; writes nothing and sends nothing"),
     "settings_v2.records_save": _g(K, "saves the installation's records database settings, recorded (board F2; works with the database down)"),
     "settings_v2.records_test": _g(K, "tests the records database (six checks, a temporary row rolled back) and keeps its answer"),
     "settings_v2.records_replace": _g(K, "replaces Mercury's copy of the records database password (a secret), recorded, then tests it"),

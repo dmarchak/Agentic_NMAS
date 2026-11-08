@@ -8,7 +8,7 @@
 {%- macro deploy_form(c, set_text, words, slot, primary=True, redeploy=False, disabled='') -%}
 <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="#{{ slot }}" hx-swap="innerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="controller" value="{{ c.name }}"><input type="hidden" name="set" value="{{ set_text }}">{% if redeploy %}<input type="hidden" name="redeploy" value="1">{% endif %}
-  <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy"{% if disabled %} disabled aria-disabled="true" title="{{ disabled }}" data-refused="Not available: {{ disabled }}"{% else %} title="Reads {{ c.name }} now and shows the plan; nothing is sent until you confirm"{{ gate('confirm') }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">Reading {{ c.name }}…</span></button>{{ how('controller-app-deploy', 'plan') }}
+  <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy"{% if disabled %} disabled aria-disabled="true" title="{{ disabled }}" data-refused="Not available: {{ disabled }}"{% else %} title="Reads {{ c.name }} now and shows the plan; nothing is sent until you confirm"{{ gate('reveal') }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">Reading {{ c.name }}…</span></button>{{ how('controller-app-deploy', 'plan') }}
 </form>
 {%- endmacro %}
 {%- if g.state == 'not_wired' or g.state == 'unreadable' %}

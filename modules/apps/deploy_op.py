@@ -9,10 +9,13 @@ network's controller with the chosen set), confirm by the plan's hash as a verif
 controller host with its unit and listen address (NetBox's ``openflow`` Service), the host's
 three shaped reads (`systemctl show`, `ls -la`, `systemctl cat`), the expected switches and
 links (NetBox), and the controller's live read in the post-check's shape. They are one seam,
-`Sources`, so the operation is whole and tested before each of them is wired; the default,
-`Unwired`, answers each with ``not_wired`` naming what is not built, and the screen draws that,
-never an empty list read as "nothing registered". `Sources.send` is built: the transport over
-the deploy account's plain session (`modules/apps/transport.send`).
+`Sources`; the production default is `modules/apps/sources.Wired` (C2765), each read from the
+carrier Mercury has for it (that module's table), and the registry, which has none yet, refused
+naming what is not built (``not_wired``). The screen draws a refusal as one, never an empty list
+read as "nothing registered". `Unwired` answers every read ``not_wired``. A host read is a
+person's: the preview's and the confirm's sources are made for the actor (`for_actor`).
+`Sources.send` is the transport over the deploy account's plain session
+(`modules/apps/transport.send`).
 
 **The set.** Mercury's record of the controller's set (`deploy_receipts.record`, K2) is what
 runs; a person chooses a version on an app's page, and the set previewed is the record with that
@@ -67,11 +70,16 @@ class Refused(ValueError):
 
 class Sources:
     """What the operation reads, and the one write (`send`). Every read answers a dict with a
-    ``state`` (``ok``, ``not_wired``, ``unreadable``) and its ``error`` in words."""
+    ``state`` (``ok``, ``not_wired``, ``unreadable``, or for the stored read ``unread``: none
+    is recorded yet) and its ``error`` in words."""
+
+    def for_actor(self, actor: str) -> "Sources":
+        """These sources for *actor*, the person a host read is held and recorded for."""
+        return self
 
     def controllers(self, network: str) -> dict:
         """``{"state", "controllers": [{"name", "unit", "dev", "listen": {"host", "port"},
-        "service": words}], "error"}``."""
+        "service": words, "connection", "problems": [words]}], "error"}``."""
         raise NotImplementedError
 
     def registered(self, network: str) -> dict:
@@ -112,7 +120,8 @@ class Sources:
             conn.disconnect()
 
 
-#: What is not built yet behind each read (C2677's rest; registered as its own row).
+#: What `Unwired` says behind each read; only ``registered`` is still unbuilt in production
+#: (`modules/apps/sources.Wired` reads the rest, C2765).
 NOT_WIRED = {
     "controllers": ("the network's controller host (NetBox's 'openflow' Service, its parent "
                     "device and the unit it runs) is not read for the deploy yet"),
@@ -127,7 +136,7 @@ NOT_WIRED = {
 
 
 class Unwired(Sources):
-    """The default: every read says what is not built, never "none"."""
+    """Sources with nothing wired: every read says what is not built, never "none"."""
 
     def _no(self, what, **extra):
         return dict({"state": "not_wired", "error": NOT_WIRED[what]}, **extra)
@@ -151,10 +160,16 @@ class Unwired(Sources):
         return self._no("controller_read", at=None, show="", cat="", health={}, observed=None)
 
 
-SOURCES = Unwired()
+#: The sources in use: None until first asked, then `modules/apps/sources.Wired` (a test sets
+#: its own).
+SOURCES = None
 
 
 def sources() -> Sources:
+    global SOURCES
+    if SOURCES is None:
+        from modules.apps.sources import Wired
+        SOURCES = Wired()
     return SOURCES
 
 
@@ -608,8 +623,9 @@ def run(job_id: str, network: str, controller_name: str, chosen: dict, confirmed
                     receipt = _held(job_id, network, controller_name, chosen, confirmed,
                                     then_parts=then_parts, actor=actor,
                                     actor_verified=actor_verified, src=src, root=root,
-                                    dev=dev, holder=holder, mark=mark, refused=refused,
-                                    clock=clock, sleep=sleep, now=now)
+                                    dev=dev, ctl=found["controller"], holder=holder,
+                                    mark=mark, refused=refused, clock=clock, sleep=sleep,
+                                    now=now)
             except device_ops.DeviceBusy as exc:
                 receipt = refused(f"{controller_name} is held by another operation ({exc}). "
                                   "Nothing was sent; this is not queued")
@@ -623,7 +639,7 @@ def run(job_id: str, network: str, controller_name: str, chosen: dict, confirmed
 
 
 def _held(job_id, network, controller_name, chosen, confirmed, *, then_parts, actor,
-          actor_verified, src, root, dev, holder, mark, refused, clock, sleep, now):
+          actor_verified, src, root, dev, ctl, holder, mark, refused, clock, sleep, now):
     from modules.apps import post_check
 
     mark("plan", "running")
@@ -647,7 +663,7 @@ def _held(job_id, network, controller_name, chosen, confirmed, *, then_parts, ac
 
     def read():
         polls["n"] += 1
-        observed = src.observe(network, {"name": controller_name, "dev": dev}) or {}
+        observed = src.observe(network, ctl) or {}
         got = post_check.evaluate(plan["expected"], observed)
         mark("post-check", "running", reads=polls["n"],
              missing_switches=len(got["missing_switches"]),
@@ -682,8 +698,10 @@ def start(network: str, controller_name: str, chosen: dict, confirmed: str, *,
             _progress.pop(old, None)
 
     def work(job_id):
+        # The job's host reads (the plan made again, holding the controller) are the actor's.
         return run(job_id, network, controller_name, chosen, confirmed, then_parts=then_parts,
-                   actor=actor, actor_verified=actor_verified)
+                   actor=actor, actor_verified=actor_verified,
+                   src=sources().for_actor(actor))
 
     label = f"{controller_name}: {set_text(chosen)}"
     job = capture_job.start(network, label, actor, work, kind=KIND, announce_keys=DONE_KEYS,

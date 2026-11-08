@@ -249,18 +249,11 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
 
 def _connection_name(network: str, values: dict, given: str = "") -> str:
     from modules.sdn import connections
-    names = [c.get("name") for c in (connections.connections(network).get("connections") or [])]
-    want = given or values.get("openflow.connection", "")
-    if want:
-        if want not in names:
-            raise Refused(f"{network} has no controller connection {want!r}: "
-                          f"{', '.join(names) or 'none'}")
-        return want
-    if len(names) != 1:
-        raise Refused(f"{network} has {len(names)} controller connections "
-                      f"({', '.join(names) or 'none'}): the config context's "
-                      "openflow.connection names the one to verify against")
-    return names[0]
+    name, why = connections.choose(network, given or values.get("openflow.connection", ""),
+                                   purpose="the one to verify against")
+    if why:
+        raise Refused(why)
+    return name
 
 
 def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:

@@ -30,8 +30,16 @@ not built), so the second controller is a Ryu one that does not answer.
 Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen also" list
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
+Hashed again 2026-11-08 ~10:3x UTC for C2765, for one argument in three controls: SDN › Apps'
+Preview deploying…, the redeploy's preview and Preview a rollback… post to the preview, a reveal
+now (it reads the controller host as the person), so `_sdn_apps.html` and `_sdn_app_deploy.html`
+carry `gate('reveal')` where they carried `gate('confirm')`. `gate()` draws nothing when `may`
+allows the kind (`preview_confirm.control_gate`: "a person's page is byte for byte what it
+was"), and a verified person may both, so nothing drawn moves for a person; a service sees the
+three drawn disabled with the reveal's reason, as before with the confirm's. Compared by reading
+the diff against `control_gate`, with no new shot.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html
-Templates sha256: `e90f5da8f61268fb0f7a7602bfa2734a69310a05a1a690c81864441d4437846b`
+Templates sha256: `5866d4f6789c06fe1bb9ff3bbaef9e7470cf35899b09b25cb48c7bfae306a0a4`
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

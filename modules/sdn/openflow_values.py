@@ -117,12 +117,8 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
                 f"context's openflow.controller names {want or 'none'}: name one")}
     if chosen:
         svc = chosen[0]
-        ports = svc.get("ports") or []
-        v["controller.port"] = str(ports[0]) if ports else ""
-        own = [_addr(a) for a in svc.get("ipaddresses") or [] if _addr(a)]
-        parent = controllers.get(_service_parent(svc)) or {}
-        v["controller.address"] = (own[0] if own else _addr(parent.get("primary_ip4"))
-                                   or _addr(parent.get("primary_ip6")))
+        target = service_target(svc, controllers.get(_service_parent(svc)) or {})
+        v["controller.port"], v["controller.address"] = target["port"], target["address"]
         v["controller.name"] = _service_parent(svc)
         proto = str(((svc.get("protocol") or {}).get("value")
                      if isinstance(svc.get("protocol"), dict) else svc.get("protocol")) or "")
@@ -175,6 +171,18 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
     if bad:
         return {"ok": False, "values": v, "defaults": defaults, "error": "; ".join(bad)}
     return {"ok": True, "values": v, "defaults": defaults, "error": ""}
+
+
+def service_target(svc: dict, parent: dict) -> dict:
+    """Where an ``openflow`` Service listens: ``{"address", "port"}``, its first IP address,
+    else its device's primary IPv4, else its primary IPv6, and its first port (text, "" when
+    none). One answer for a switch's ``controller.*`` values and the controller host's own
+    listen address (the controller app deploy, `modules/apps/sources.py`)."""
+    ports = svc.get("ports") or []
+    own = [_addr(a) for a in svc.get("ipaddresses") or [] if _addr(a)]
+    return {"port": str(ports[0]) if ports else "",
+            "address": (own[0] if own else _addr((parent or {}).get("primary_ip4"))
+                        or _addr((parent or {}).get("primary_ip6")))}
 
 
 def management_reason(device: dict, iface: dict) -> str:

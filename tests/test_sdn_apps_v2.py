@@ -254,7 +254,7 @@ def test_an_unknown_outcome_offers_the_rollback_as_a_preview_never_runs_it(apps)
 def test_the_routes_are_declared_everywhere_a_mutating_route_must_be():
     from modules import invalidation, operation_stages, route_gates
     assert route_gates.GATES["sdn_v2.apps_confirm"].kind == "confirm"
-    assert route_gates.GATES["sdn_v2.apps_preview"].kind == route_gates.NOT_DEVICE
+    assert route_gates.GATES["sdn_v2.apps_preview"].kind == "reveal"
     assert "controller_deploy" in invalidation.DECLARED["sdn_v2.apps_confirm"]
     assert operation_stages.STAGES["sdn_v2.apps_confirm"].preview == "sdn_v2.apps_preview"
     assert operation_stages.HISTORY["sdn_v2.apps_confirm"] == ("controller_deploys",)

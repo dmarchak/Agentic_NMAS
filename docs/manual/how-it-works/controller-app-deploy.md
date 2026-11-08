@@ -82,6 +82,36 @@ from the set, a version that is not Published or whose staged hash is not its pi
 cannot connect, a config that holds a secret, or Mercury's record of the set that cannot be
 read.
 
+## Where each fact comes from {#sources}
+
+- **The controller host** is the device NetBox's `openflow` Service is on, read from the
+  network's committed NSOT export, never from NetBox live and never from an uncommitted edit.
+  Ryu listens on that Service's own address, or else the device's primary IPv4 or IPv6
+  address, at the Service's port. The systemd unit Ryu runs as is the device's config context
+  key `openflow.unit`. When the network has more than one controller connection,
+  `openflow.connection` names the one this host answers on. Mercury reaches the host with the
+  login its inventory holds for it.
+- **The host's three reads** (`systemctl show -p User -p ExecStart <unit>`,
+  `ls -la /opt/ryu-apps` and `systemctl cat <unit>`) are asked at each preview, and again at
+  the confirm while the controller is held. They go through the same engine as Show commands,
+  so each run is recorded and History › Reads lists it. The controller's card draws the newest
+  run that holds both of its unit's reads.
+- **The expected switches** are the devices whose OpenFlow values name this controller, each
+  identified by its `openflow_datapath_id`. **The expected links** are the connected cables
+  between their OpenFlow ports. Each port is numbered by its `openflow_port`, or by its
+  platform's own numbering where that numbering identifies it.
+- **What is connected now** is the controller's own switch and link lists, read through its
+  controller connection.
+- **The app versions** come from the app registry, which is not built yet. Until it is, no
+  version can be listed, and every preview says so.
+- **An app's /health** is not read yet, so the post-check reports each app's /health as not
+  answering until it is.
+
+A host, switch or cable missing one of these facts is named where the fact is needed. For
+example: a host with no `openflow.unit`, a host the inventory does not hold, or a cable end
+with no OpenFlow port number. The plan is then refused and nothing is sent; a host with no
+unit, or one the inventory does not hold, is not read either.
+
 ## A plan that changes nothing {#redeploy}
 
 When the controller already runs the chosen set (every app at the chosen version, the drop-in

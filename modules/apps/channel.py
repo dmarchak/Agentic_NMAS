@@ -185,6 +185,14 @@ def stage_published(version, repo, path: str, rev: str, dest: str) -> dict:
 
 # ── the host's reads ──────────────────────────────────────────────────────────────────────────
 
+def host_commands(unit: str) -> dict:
+    """The host's three shaped reads for *unit*, by the part of `plan`'s *host* each answers:
+    ``{"show", "ls", "cat"}`` (the Linux host capture list's shapes, `discovery._LINUX_SHAPES`;
+    the reads engine refuses any other)."""
+    return {"show": f"systemctl show -p User -p ExecStart {unit}",
+            "ls": f"ls -la {script().APPS_ROOT}", "cat": f"systemctl cat {unit}"}
+
+
 def parse_show(text: str) -> dict:
     """``{"user", "exec_path", "argv", "readable"}`` from `systemctl show -p User -p ExecStart
     <unit>`'s answer; an absent User line is unreadable, never root."""

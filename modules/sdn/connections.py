@@ -151,6 +151,24 @@ def elsewhere(network: str) -> list:
     return out
 
 
+def choose(network: str, want: str = "", purpose: str = "the one to read") -> tuple:
+    """``(name, "")`` for the connection a NetBox config context's ``openflow.connection``
+    names (*want*), or the network's only one when it names none; else ``("", why)``, naming
+    the name asked for and the connections there are. One rule for every caller that binds a
+    NetBox fact to a Mercury connection (a switch's verify, a controller host's reads)."""
+    names = [c.get("name") for c in (connections(network).get("connections") or [])]
+    if want:
+        if want not in names:
+            return "", (f"{network} has no controller connection {want!r}: "
+                        f"{', '.join(names) or 'none'}")
+        return want, ""
+    if len(names) != 1:
+        return "", (f"{network} has {len(names)} controller connections "
+                    f"({', '.join(names) or 'none'}): the config context's "
+                    f"openflow.connection names {purpose}")
+    return names[0], ""
+
+
 def _find(network: str, name: str):
     """``(stored connection or None, owner)``."""
     owner = _owner(network)
