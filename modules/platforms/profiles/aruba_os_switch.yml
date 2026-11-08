@@ -16,6 +16,7 @@ entries:
       bind_change_requires: null
       openflow_ports_require: [lldp_off]
       port_numbering: port_number
+      instance_takes: vlan_members
       # The Standard Match pipeline (C2601): table 0 holds the one goto to table 100; table 100
       # is hardware and takes only IPv4 or IPv6 matches carrying eth_type and no MAC field;
       # table 200 is software, takes any match, at 100 packets a second.
@@ -49,11 +50,17 @@ entries:
       openflow.tables: [c2601]
       openflow.openflow_ports_require: [c2600]
       openflow.port_numbering: [portdesc]
+      openflow.instance_takes: [c2588]
     unconfirmed: [openflow.hello.rejects_above, "openflow.tables[200].instructions",
                   "openflow.tables[200].apply_actions", "openflow.tables[200].apply_setfield",
                   openflow.bind_change_requires]
     unconfirmed_why: "the guide offers 1.0 and 1.3 but no higher hello was ever sent to the switch (the lab's controller was pinned before it connected), and C2601 records table 200 as taking any match but not its actions; a recorded tablefeatures answer, to make at the lab, settles both. Whether a member-VLAN change on an enabled instance takes effect without disabling it was never changed at the lab (null: no restart is rendered)"
 measurements:
+  c2588:
+    record: C2588
+    what: "an OpenFlow instance takes its member VLAN: every port in that VLAN, tagged or untagged, becomes an OpenFlow port, named or not (the lab's ports 2 and 3, untagged in VLAN 200, are the instance's ports)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/procurve-sw.txt (openflow instance lab9 member vlan 200; vlan 200 untagged 2-3) and ryu-rest.txt portdesc of the ProCurve (ports 2 and 3) (docs/OPEN_FINDINGS.md C2588)"
+    read: "2026-11-06"
   aos-s-version:
     record: "the vendor's guide"
     what: "openflow instance <name> version {1.0|1.3[only]}: the versions a K/KA/KB 16.x instance speaks"

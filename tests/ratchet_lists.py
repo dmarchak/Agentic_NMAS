@@ -176,6 +176,9 @@ RATCHETS = (
     ("tests/test_code_apart_from_state.py", "FLOOR", "floor"),
     # ── The declared skip reasons (C2412): a reason, or a place it is allowed, only leaves ──
     ("tests/skip_reasons.py", "DECLARED", "shrinks"),
+    # ── T5, the protected set's sender scan (the SDN design revision 6, section 4; P3): a
+    #    writer that does not ask B yet, each with its row, only leaves ───────────────────────
+    ("tests/test_every_write_asks_protected.py", "GUARD_GAPS", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────
     ("tests/ratchet_lists.py", "RATCHETS", "registry"),
 )

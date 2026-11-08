@@ -94,12 +94,16 @@ def _service_parent(svc: dict) -> str:
     return str(parent.get("name") or parent.get("display") or "")
 
 
-def from_netbox(device: dict, interfaces: list, services: list, controllers: dict) -> dict:
+def from_netbox(device: dict, interfaces: list, services: list, controllers: dict,
+                vlans=(), prefixes=()) -> dict:
     """The values from NetBox records already fetched (the seam tests use): *device* (with its
     ``config_context`` and ``custom_fields``), its *interfaces* (each with ``tags``,
     ``untagged_vlan`` and ``ip_addresses``), the *services* named ``openflow``, and
-    *controllers* (``{device name: its record}``, for a Service with no address of its own).
-    ``{"ok", "values", "defaults", "error"}``; a value of the wrong shape is refused, named."""
+    *controllers* (``{device name: its record}``, for a Service with no address of its own);
+    the site's *vlans* and *prefixes*, for what they declare protected (`protected.TAG`).
+    ``{"ok", "values", "defaults", "error"}``; a value of the wrong shape is refused, named.
+    The values carry the device's protected objects (``protected.objects``) and the ports
+    carrying the OpenFlow VLAN (``openflow.vlan_members``)."""
     ctx = (device.get("config_context") or {}).get("openflow") or {}
     cf = device.get("custom_fields") or {}
     v, defaults, bad = {"switch.name": device.get("name", "")}, [], []
@@ -138,15 +142,28 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
     v["openflow.datapath_id"] = str(cf.get("openflow_datapath_id") or "").lower()
 
     tagged = [i for i in interfaces or [] if TAG in _slugs(i)]
-    # The management interface is never an OpenFlow port (Lab 9's management network is
-    # separate and non-OpenFlow, the operator, 2026-11-05), tagged or not, and is said by name.
-    excluded = [(str(i.get("name") or ""), management_reason(device, i)) for i in tagged
-                if management_reason(device, i)]
-    of_ifaces = [i for i in tagged if not management_reason(device, i)]
-    v["excluded"] = [f"{name} is the management interface ({why}): excluded from OpenFlow"
-                     for name, why in excluded]
+    # B, the protected set (modules/protected.py): the management interface and everything
+    # carrying the path to the device (its parent, LAG and bridge, its VLAN, every port carrying
+    # that VLAN: C2589) or tagged mercury-protected. A protected interface is never an OpenFlow
+    # port (Lab 9's management network is separate and non-OpenFlow, the operator,
+    # 2026-11-05), tagged or not, and is said by name; the render refuses a platform whose
+    # instance would take one anyway (C2588).
+    from modules import protected
+    objects = protected.device_objects(device, interfaces, vlans, prefixes)
+    v["protected.objects"] = objects
+    # The management interface keeps its own words (`management_reason`); anything else the
+    # set protects is said with its derivation.
+    excluded = [(str(i.get("name") or ""),
+                 ("the management interface", management_reason(device, i))
+                 if management_reason(device, i)
+                 else ("protected", objects["interfaces"][str(i.get("name") or "")]))
+                for i in tagged if str(i.get("name") or "") in objects["interfaces"]]
+    of_ifaces = [i for i in tagged if str(i.get("name") or "") not in objects["interfaces"]]
+    v["excluded"] = [f"{name} is {kind} ({why}): excluded from OpenFlow"
+                     for name, (kind, why) in excluded]
+    excluded = [(name, why) for name, (_kind, why) in excluded]
     if tagged and not of_ifaces:
-        bad.append("every interface tagged openflow is a management interface ("
+        bad.append("every interface tagged openflow is protected ("
                    + "; ".join(f"{n}: {w}" for n, w in excluded)
                    + "), and the management network is never OpenFlow: tag the OpenFlow ports")
     v["ports"] = [str(i.get("name") or "") for i in of_ifaces]
@@ -166,6 +183,11 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
     if v["openflow.vlan"] and v["openflow.vlan"] == v["mgmt.vlan"]:
         bad.append(f"the OpenFlow VLAN {v['openflow.vlan']} is the management VLAN "
                    f"{v['mgmt.vlan']}, and the management network is never OpenFlow")
+    # (A protected OpenFlow VLAN needs no check of its own: every port carrying it is
+    # protected with it, so none is an OpenFlow port and the VLAN is never derived.)
+    # Every port carrying the OpenFlow VLAN, and how (C2588): a platform whose instance takes
+    # its member VLAN's ports takes these, named or not (`openflow_templates.render`).
+    v["openflow.vlan_members"] = _vlan_members(interfaces, v["openflow.vlan"])
 
     bad += _shape_problems(v)
     if bad:
@@ -197,6 +219,24 @@ def management_reason(device: dict, iface: dict) -> str:
         if _addr(device.get(key)) and _addr(device.get(key)) in held:
             return words
     return ""
+
+
+def _vlan_members(interfaces: list, vlan: str) -> dict:
+    """``{interface: "untagged" | "tagged"}``: each physical interface carrying VLAN *vlan*
+    (``tagged-all`` carries every VLAN); ``{}`` for no VLAN."""
+    from modules import protected
+    if not (vlan or "").isdigit():
+        return {}
+    vid, out = int(vlan), {}
+    for raw in interfaces or []:
+        i = protected.interface_of(raw)
+        if i["type"] == "virtual" or not i["name"]:
+            continue
+        if i["untagged"] == vid:
+            out[i["name"]] = "untagged"
+        elif vid in i["tagged"] or i["mode"] == "tagged-all":
+            out[i["name"]] = "tagged"
+    return dict(sorted(out.items()))
 
 
 def _mgmt_vlan(device: dict, interfaces: list) -> str:
@@ -296,7 +336,12 @@ def from_export(export: dict, device_name: str) -> dict:
         parent = X.device(export, s["parent"]) or {}
         controllers[s["parent"]] = {"primary_ip4": addr(parent.get("primary_ip4")),
                                     "primary_ip6": addr(parent.get("primary_ip6"))}
-    got = from_netbox(device, interfaces, services, controllers)
+    body = export.get("body") or {}
+    site = dev.get("site") or ""
+    vlans = [dict(v, tags=tags(v)) for v in body.get("vlans") or []
+             if not v.get("site") or v.get("site") == site]
+    prefixes = [dict(p, tags=tags(p)) for p in body.get("prefixes") or []]
+    got = from_netbox(device, interfaces, services, controllers, vlans, prefixes)
     got["values"]["nsot.export_sha256"] = str(export.get("sha256") or "")
     return got
 
@@ -323,8 +368,12 @@ def read(device_name: str) -> dict:
             if parent and parent not in controllers:
                 got = _nb_get(session, base, "dcim/devices/", name=parent)
                 controllers[parent] = got[0] if got else {}
+        # The site's VLANs and prefixes, for what they declare protected (B).
+        site = (device.get("site") or {}).get("id")
+        vlans = _nb_get(session, base, "ipam/vlans/", site_id=site) if site else []
+        prefixes = _nb_get(session, base, "ipam/prefixes/", site_id=site) if site else []
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         log.warning("openflow_values: NetBox read failed for %s: %s", device_name, exc)
         return {"ok": False, "values": {}, "defaults": [],
                 "error": f"NetBox could not be read: {type(exc).__name__}: {exc}"[:300]}
-    return from_netbox(device, interfaces, services, controllers)
+    return from_netbox(device, interfaces, services, controllers, vlans, prefixes)

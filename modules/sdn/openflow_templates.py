@@ -40,6 +40,12 @@ ranges, and a template reading a key its entry does not hold refuses, naming the
 bind_changed``: the bound ports differ from the switch's own); a line whose condition reads a
 state value not given is left out and said in ``notes``.
 
+**B, the protected set** (`modules/protected.py`; C2588, C2589): `takes` names every port the
+switch's OpenFlow instance will take, by the profile's `instance_takes` (the ports NetBox tags
+``openflow``, and on a `vlan_members` platform every port carrying the member VLAN as well), and
+the render refuses when one is a protected object (``protected.objects``, which
+`openflow_values` carries; values without it refuse too), naming the port and both reasons.
+
 **Draft until confirmed, per network.** A template is ``draft`` until a verified person confirms
 it on a network against a saved capture of one of its devices (`discovery.captures`): the
 confirmation is committed in that network's repository (`openflow_confirmations/<name>.yml`)
@@ -307,12 +313,40 @@ def numbered_by_platform(port: str, mode) -> object:
     return int(m.group(1)) if m else None
 
 
+def takes(values: dict, entry: dict) -> tuple:
+    """``([{"port", "why"}], error)``: every port the switch's OpenFlow instance takes, by the
+    profile's `instance_takes` (C2588): the ports NetBox tags ``openflow``, and on a
+    `vlan_members` platform every port carrying the instance's member VLAN as well, named or
+    not (``openflow.vlan_members``, from `openflow_values`)."""
+    from modules.platforms import profile as P
+    mode = P.value(entry, "openflow.instance_takes")
+    if mode is P.ABSENT:
+        return [], ("the platform profile's entry does not say which ports its OpenFlow "
+                    "instance takes (openflow.instance_takes), so the ports it would hand the "
+                    "controller cannot be named: nothing is rendered")
+    out = [{"port": p, "why": "tagged openflow in NetBox"} for p in values.get("ports") or []]
+    if mode == "vlan_members":
+        vlan = values.get("openflow.vlan") or ""
+        members = values.get("openflow.vlan_members")
+        if vlan and not isinstance(members, dict):
+            return out, (f"the instance takes every port carrying VLAN {vlan}, and the values do "
+                         "not say which ports carry it (openflow.vlan_members): nothing is "
+                         "rendered")
+        named = {t["port"] for t in out}
+        out += [{"port": p, "why": f"{how} in VLAN {vlan}, the instance's member VLAN, so the "
+                                   "switch makes it an OpenFlow port though NetBox does not tag "
+                                   "it openflow"}
+                for p, how in sorted((members or {}).items()) if p not in named]
+    return out, ""
+
+
 def render(name: str, values: dict, selected=None) -> dict:
     """Template *name* with *values*: ``{"ok", "lines": [{"text", "cite", "why"}], "program",
     "error", "missing", "notes", "profile"}``. ``program`` is what would be sent: for
     ``ovs-vsctl`` one invocation, the lines joined by ``" -- "`` after ``sudo -n ovs-vsctl``;
     for ``cli`` the lines. *selected* is `profile.select`'s answer for the switch (see
     `entry_for`). Sends nothing."""
+    from modules import protected
     from modules.platforms import profile as P
     from modules.sdn import openflow_values
     t = load(name)
@@ -320,7 +354,9 @@ def render(name: str, values: dict, selected=None) -> dict:
            "lines": [], "program": [], "error": "", "missing": [], "notes": [], "profile": "",
            # Each management interface left out of the OpenFlow ports, by name and why
            # (`openflow_values.management_reason`): said, never silent.
-           "excluded": list((values or {}).get("excluded") or [])}
+           "excluded": list((values or {}).get("excluded") or []),
+           # Every port the instance takes, each with why (`takes`): the preview names them all.
+           "takes": []}
     bad = problems(t)
     if bad:
         out["error"] = f"the {name} template is refused: " + "; ".join(bad)
@@ -342,6 +378,14 @@ def render(name: str, values: dict, selected=None) -> dict:
     v = derived(values)
     v.update(_flatten(entry.get("openflow") or {}, "profile.openflow"))
     why = _supports(t, v, entry) or "; ".join(numbering_problems(v, entry))
+    if why:
+        out["error"] = why
+        return out
+    # B (modules/protected.py): every port the switch's OpenFlow instance will take, named in
+    # the preview, and none of them protected (C2588, C2589).
+    out["takes"], why = takes(v, entry)
+    why = why or protected.ports_refusal(v.get("switch.name") or name, out["takes"],
+                                         v.get("protected.objects"))
     if why:
         out["error"] = why
         return out

@@ -31,6 +31,23 @@ refused, naming both: `tcp_dst` needs `ip_proto` 6, `udp_dst` 17, an `ipv4_*` fi
 0x0800, an `ipv6_*` field 0x86dd, ARP's fields 0x0806, ICMPv4's `ip_proto` 1 and ICMPv6's 58, and
 the rest of the specification's table. An address of the wrong family is refused too.
 
+**No flow may touch what the network depends on, whoever writes it** (the protected set; a
+person's flow here, a response, a re-apply alike). The plan refuses, naming the change, what it
+compared and where NetBox says it:
+- a flow covering the controller's channel: LLDP, the controller's addresses, OpenFlow's port;
+- a flow meeting a **protected class**: traffic between management addresses (the prefixes
+  holding the devices' management addresses), each switch's channel to its controller (the
+  `openflow` Service), a Service tagged `mercury-protected` (DNS or DHCP, say), or a class the
+  config context's `mercury.protected_flows` declares. A field the flow leaves unset meets every
+  value, so `in_port=3` alone meets them all; a removal is refused only for a flow that names
+  the class's own addresses or ports;
+- a flow naming a protected port (by NetBox's `openflow_port`) or VLAN.
+
+A class's owners (named in it) may write it. The set comes from the network's committed NSOT
+export, or from NetBox read now; its hash is bound with the requests', so a NetBox change between
+the preview and the confirm sends nothing. A network whose devices are not NetBox's guards the
+controller's channel only, and the preview says so.
+
 ## The steps
 
 1. `plan`: Mercury reads the switch's flow table (and its meters where a change touches one)

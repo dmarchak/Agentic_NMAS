@@ -1,5 +1,7 @@
 """The control-plane guard (C2022; PHASE8_PLAN 17.7's gate, built first as a guard): no SDN
-response, in any mode, may cover the network's control channel. Deterministic; no AI.
+response, in any mode, may cover the network's control channel, and since B (C2379) no flow at
+all, whoever writes it: `protected.flow_refusal` asks this first, from `flow_ops.plan`, the
+write path every flow writer shares. Deterministic; no AI.
 
 **What a response's flow may not cover** (its match, as `drivers.base.OXM_FIELDS` names it):
 - **LLDP**, the controller's topology discovery: a match whose EtherType is unset or LLDP's
@@ -138,21 +140,30 @@ def covers(match: dict, channel: dict) -> list:
     return out
 
 
-def refusal(changes: list, connection: dict) -> str:
-    """Why a response's *changes* (`flow_ops`' ask) may not run, or ``""``: the first flow
-    that covers the control channel, named with what it covers."""
+def refusal(changes: list, connection: dict, who: str = "response") -> str:
+    """Why *changes* (`flow_ops`' ask) may not run, or ``""``: the first flow that covers the
+    control channel, named with what it covers. *who* writes them: ``response`` (the closed
+    loop, C2022's words), or any other writer (a person on SDN › Flows, a re-apply, an owner),
+    asked through the same rules since B (C2379): `protected.flow_refusal` asks this first."""
     channel = control_channel(connection)
+    if who == "response":
+        cover, take_off = ("No response may cover it, in any mode (C2022)",
+                           "No response may take it off, in any mode (C2022)")
+    else:
+        cover = f"No flow may cover it, whoever writes it (this is {who}'s; C2022, C2379)"
+        take_off = f"No flow may take it off, whoever writes it (this is {who}'s; C2022, C2379)"
     for n, change in enumerate(changes or []):
         do = change.get("do")
-        if do == "add_flow" and not change.get("reinstall"):
+        if do in ("add_flow", "edit_flow") and not change.get("reinstall"):
             hit = [w for _named, w in covers((change.get("flow") or {}).get("match"), channel)]
             if hit:
-                return (f"change {n + 1} adds a flow whose match covers the control channel: "
-                        f"{'; '.join(hit)}. No response may cover it, in any mode (C2022)")
+                verb = "adds" if do == "add_flow" else "edits to"
+                return (f"change {n + 1} {verb} a flow whose match covers the control channel: "
+                        f"{'; '.join(hit)}. {cover}")
         elif do == "remove_flow":
             hit = [w for named, w in covers((change.get("target") or {}).get("match"), channel)
                    if named]
             if hit:
                 return (f"change {n + 1} removes a flow that carries the control channel: "
-                        f"{'; '.join(hit)}. No response may take it off, in any mode (C2022)")
+                        f"{'; '.join(hit)}. {take_off}")
     return ""

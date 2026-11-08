@@ -1908,11 +1908,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                     f"{c} (its hard timeout ended, or ends within the "
                     f"{reapply.CONFIRM_WINDOW_S} s a confirm may take)" for c in expired]
             out["params"].update(flow=ref, cookie=flow_intent.cookie_hex(found.get("cookie")))
-        # No response covers the control channel, in any mode (C2022).
-        from modules.sdn import control_plane
-        refused = control_plane.refusal(changes, made.get("connection") or {})
-        if refused:
-            raise ResponseRefused(refused)
+        # No response covers the control channel, in any mode (C2022), nor a protected class or
+        # object (B): asked by `flow_ops.plan`, the write path every flow writer shares (C2379),
+        # which the preview and the confirm (`flow_ops.apply` plans again) both run.
         out["ask"] = {"connection": conn, "dpid": dpid, "changes": changes,
                       "response": action_id != "remove_flow", "action": action_id,
                       "detection": {k: detection.get(k) for k in
@@ -2003,12 +2001,8 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         refusal = auto_source_refusal(ask, detection, action_id)
         if refusal:
             return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
-    # The control-plane guard again at the confirm, on the ask carried back (C2022).
-    from modules.sdn import control_plane
-    made = flow_ops._driver(network, ask.get("connection") or "", driver)
-    refusal = control_plane.refusal(ask.get("changes"), (made or {}).get("connection") or {})
-    if refusal:
-        return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
+    # The control-plane guard and B again at the confirm, on the ask carried back (C2022,
+    # C2379): `flow_ops.apply` plans again, and the plan asks them before anything is sent.
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
         action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
         "classified_by": classified_by or DEFAULT_WORDS}

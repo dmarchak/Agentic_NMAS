@@ -124,7 +124,10 @@ def test_a_scan_from_the_controller_s_address_is_refused_at_the_preview():
     d = scan_detection(flows)
     fake = switch_with(flows)
     got = CL.respond_to_threat("Default", d, driver=fake.driver)
-    assert not got["ok"] and got["plan"] is None
+    # Refused by the plan (C2379: the guard is in `flow_ops.plan`, the write path every flow
+    # writer shares), before any request exists.
+    assert not got["ok"] and not got["plan"]["ok"] and got["plan"]["steps"] == []
+    assert got["plan"]["error"] == got["error"]
     assert got["error"] == (
         "change 1 adds a flow whose match covers the control channel: the controller's "
         "address 192.0.2.1 (ipv4_src 192.0.2.1). No response may cover it, in any mode "
@@ -143,9 +146,10 @@ def test_an_ask_carried_back_with_a_covering_flow_is_refused_at_the_confirm(monk
     C.save_connection("Default", {"name": "ctl-1", "kind": "ryu", "url": BASE,
                                   "southbound": "192.0.2.1"}, actor="op")
     got = confirm(fake, preview)
-    assert not got["ok"] and got["outcome"] == "refused"
-    assert got["error"].endswith("No response may cover it, in any mode (C2022): nothing was "
-                                 "sent") and "the controller's address 192.0.2.1" in got["error"]
+    # The plan at apply refuses it (C2379), so nothing reaches the hold or the send.
+    assert not got["ok"] and got["outcome"] == "refused" and got["at"] == "plan"
+    assert got["error"].endswith("No response may cover it, in any mode (C2022)") \
+        and "the controller's address 192.0.2.1" in got["error"]
     assert fake.writes == []
 
 

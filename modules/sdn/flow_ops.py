@@ -27,6 +27,12 @@ every flow the operation touches. A refusal names the comparison it made and bot
 **OpenFlow 1.3's match prerequisites** are enforced before anything else (`match_rules`): a
 field without the field it depends on is refused, naming the field missing and its value.
 
+**B, the protected set** (`modules/protected.py`; C2379): the plan asks the one guard every flow
+writer reaches here, whoever writes (a person on SDN › Flows, a response, a re-apply): the
+controller connection's control channel (`control_plane`, C2022), the network's protected
+classes it does not own, and the protected ports and VLANs a flow names. The set's hash (the
+NSOT export's) is bound with the plan's, and what the guard could not compare is a warning.
+
 **The apply** (`apply`) plans again and compares the hash (a moved table or request is refused,
 naming both hashes; nothing is sent), holds the switch across processes (`device_ops.hold`),
 sends each request through the driver's one send path (`ControllerDriver.apply`, exactly the
@@ -144,16 +150,21 @@ def flow_words(flow: dict) -> str:
             + (f", {' and '.join(times)}" if times else ", no timeout"))
 
 
-def plan_hash(network: str, connection: str, dpid: int, steps: list, before: list) -> str:
+def plan_hash(network: str, connection: str, dpid: int, steps: list, before: list,
+              protected_sha256: str = "") -> str:
     """The sha256 a confirm binds to: the switch, every request and its undo (method, path and
-    the exact body), and the before-state of every flow the operation touches."""
+    the exact body), the before-state of every flow the operation touches, and the protected
+    set it was checked against (`protected.for_network`'s hash, when NetBox gives one), so a
+    NetBox change between the preview and the confirm moves it."""
     def req(r):
         return [r.get("method"), r.get("path"), r.get("body")] if r else None
 
-    text = json.dumps({"network": network, "connection": connection, "dpid": dpid,
-                       "steps": [[s["role"], req(s["request"]), req(s.get("undo"))]
-                                 for s in steps],
-                       "before": before}, sort_keys=True, default=str)
+    bound = {"network": network, "connection": connection, "dpid": dpid,
+             "steps": [[s["role"], req(s["request"]), req(s.get("undo"))] for s in steps],
+             "before": before}
+    if protected_sha256:
+        bound["protected"] = protected_sha256
+    text = json.dumps(bound, sort_keys=True, default=str)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -314,10 +325,12 @@ def _remaining(flow: dict) -> int:
     return max(1, hard - int(flow.get("duration_sec") or 0))
 
 
-def plan(network: str, ask: dict, *, driver=None) -> dict:
+def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
     """The preview of *ask*, reading the switch and writing nothing. See the module's
     docstring. ``{"ok", "error", ...}``: on a refusal ``ok`` is False and ``error`` names the
-    comparison made and both operands."""
+    comparison made and both operands. *writer* is who writes, for B's owners (an internal
+    caller's own name, never read from the ask); given none, ``response`` for a response's ask
+    and ``person`` otherwise."""
     from modules.sdn import flow_intent
     from modules.sdn.drivers.base import SpecError, dpid_hex, parse_dpid
 
@@ -393,9 +406,23 @@ def plan(network: str, ask: dict, *, driver=None) -> dict:
             elif do == "edit_flow":
                 steps += _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids,
                                          before, out)
+        # B, the protected set (C2379): the one guard every flow writer reaches, here in the
+        # write path they share; the controller connection's control channel first (C2022),
+        # then NetBox's protected classes and objects. The set's hash is bound with the plan.
+        from modules import protected
+        who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
+        pset = protected.for_network(network)
+        refused = protected.flow_refusal(pset, changes, dpid, conn, writer=who)
+        if refused:
+            raise Refused(refused)
+        note = protected.switch_note(pset, dpid)
+        if note:
+            out["warnings"].append(note)
+        out["protected"] = {k: pset.get(k) for k in ("state", "source", "sha256")}
         out["steps"] = steps
         out["before"] = before
-        out["hash"] = plan_hash(network, conn_name, dpid, steps, before)
+        out["hash"] = plan_hash(network, conn_name, dpid, steps, before,
+                                protected_sha256=pset.get("sha256") or "")
         out["will_not"].append("No flow but those named above is added, changed or removed: "
                                "every removal is delete-strict, never a wildcard.")
         if response:
@@ -954,7 +981,8 @@ def _inverse(step: dict) -> dict:
 
 def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_verified: str = "",
           typed: str = "", mode: str = "hitl", autonomous: dict = None, response: dict = None,
-          driver=None, sleep=time.sleep, now=time.time, counter_interval: float = None) -> dict:
+          driver=None, sleep=time.sleep, now=time.time, counter_interval: float = None,
+          writer: str = None) -> dict:
     """Apply the previewed operation *ask* as *actor*, bound to *confirmed_hash*. See the
     module's docstring. ``{"ok", "error", "at", "outcome", "id", "hash", "plan", "sent",
     "verify", "counters", "rollback", "record"}``; ``at`` the stage reached (plan, hash, hold,
@@ -976,7 +1004,7 @@ def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_ver
     if mode == "auto" and not (autonomous or {}).get("reason"):
         out["error"] = "an autonomous operation names the AUTO setting and its reason"
         return out
-    p = plan(network, ask, driver=driver)
+    p = plan(network, ask, driver=driver, writer=writer)
     out["plan"] = p
     if not p["ok"]:
         out["error"] = p["error"]

@@ -15,7 +15,9 @@ entries:
       bind_change_requires: agent_restart
       openflow_ports_require: [lldp_off]
       port_numbering: interface_number
+      instance_takes: named_ports
     sources:
+      openflow.instance_takes: [bind-interface]
       openflow.versions: [c2598]
       openflow.hello.rejects_above: [c2598]
       openflow.port_state.live_reliable: [c2602]
@@ -25,6 +27,11 @@ entries:
     unconfirmed: []
     note: "the pipeline is discovered: the Aristas' tables have not been read yet (no tablefeatures recording)"
 measurements:
+  bind-interface:
+    record: "the switch's running configuration"
+    what: "the OpenFlow agent takes the interfaces its block binds (bind interface Et18-19): Ethernet17, a trunk carrying VLAN 100, stays a normal port beside the bound Ethernet18 and Ethernet19"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt, its openflow section and interface Ethernet17; ryu-rest.txt portdesc of the Arista (ports 18 and 19 only)"
+    read: "2026-11-06"
   c2598:
     record: C2598
     what: "EOS 4.17.0F's hello offers 1.0 and 1.3 (version bitmap 0x12) and a 1.4 hello is refused with HELLO_FAILED/INCOMPATIBLE"

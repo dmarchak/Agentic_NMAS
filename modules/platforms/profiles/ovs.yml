@@ -15,7 +15,9 @@ entries:
       bind_change_requires: null
       openflow_ports_require: []
       port_numbering: add_order
+      instance_takes: named_ports
     sources:
+      openflow.instance_takes: [db-transaction, c2603]
       openflow.versions: [ovs-template, harness-2026-11-07]
       openflow.hello.rejects_above: [harness-2026-11-07]
       openflow.port_state.live_reliable: [c2602, harness-2026-11-07]

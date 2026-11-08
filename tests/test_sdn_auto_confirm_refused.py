@@ -103,16 +103,16 @@ def southbound_saved():
 
 #: Each refusal's words, the refusal's own, read off its code by hand: the policy's
 #: (`policy_refusal`), the control plane's (`control_plane.refusal`, the drop's match
-#: ``ipv4_src`` covering the southbound address) and the plan's at apply (the fake's 404 for a
-#: switch it does not hold, as C2159's preview says it).
+#: ``ipv4_src`` covering the southbound address, asked by the plan at apply since C2379, so in
+#: the plan's words) and the plan's at apply (the fake's 404 for a switch it does not hold, as
+#: C2159's preview says it).
 REFUSED = {
     "policy-saved": ("AUTO could not confirm drop_source: drop_source is outside Default's "
                      "response policy for flood, which allows rate_limit_source: nothing was "
                      "sent"),
     "southbound-saved": ("AUTO could not confirm drop_source: change 1 adds a flow whose match "
                          "covers the control channel: the controller's address 192.0.2.2 "
-                         "(ipv4_src 192.0.2.2). No response may cover it, in any mode (C2022): "
-                         "nothing was sent"),
+                         "(ipv4_src 192.0.2.2). No response may cover it, in any mode (C2022)"),
     "switch-gone": ("AUTO could not confirm drop_source: the flow table of switch 1 could not "
                     "be read: HTTP 404: the controller has no switch 1 (0000000000000001)"),
 }

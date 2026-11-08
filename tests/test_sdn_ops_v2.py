@@ -94,9 +94,11 @@ def test_the_editor_opens_in_place_and_its_preview_binds_the_requests(lab):
 
 def test_a_moved_hash_sends_nothing(lab):
     c = lab["client"]
+    # UDP from port 3: `in_port=3` alone would carry LLDP, refused by B since C2379.
     html = c.post("/v2/sdn/flow/preview", data={
         "list": "Default", "do": "add", "connection": "lab-controller", "dpid": "0000000000000001",
-        "priority": "250", "match": "in_port=3", "actions": "drop"}).get_data(as_text=True)
+        "priority": "250", "match": "in_port=3, eth_type=0x0800, ip_proto=17",
+        "actions": "drop"}).get_data(as_text=True)
     fields = form_fields(html)
     fields["hash"] = "f" * 64
     r = c.post("/v2/sdn/flow/confirm", data=fields)

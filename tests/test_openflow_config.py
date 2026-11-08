@@ -27,7 +27,11 @@ V4 = {"switch.name": "srv1", "switch.address": "192.0.2.21", "controller.address
       "controller.port": "6653", "openflow.version": "1.3", "openflow.transport": "tcp",
       "openflow.fail_mode": "secure", "openflow.instance": "br0", "openflow.datapath_id": "",
       "openflow.vlan": "20", "mgmt.vlan": "10", "ports": ["eth1", "eth2"],
-      "port.openflow_port": {"eth1": "1", "eth2": "2"}, "openflow.connection": ""}
+      "port.openflow_port": {"eth1": "1", "eth2": "2"}, "openflow.connection": "",
+      # B's two values, as `from_netbox` gives them over IFACES (modules/protected.py).
+      "protected.objects": {"interfaces": {"eth0": "it holds srv1's primary IPv4 address "
+                                                   "192.0.2.21"}, "vlans": {}},
+      "openflow.vlan_members": {"eth1": "untagged", "eth2": "untagged"}}
 V6 = dict(V4, **{"switch.address": "2001:db8::21", "controller.address": "2001:db8::10"})
 PROGRAM_V4 = ("sudo -n ovs-vsctl --may-exist add-br br0 -- set bridge br0 protocols=OpenFlow13"
               " -- set-fail-mode br0 secure -- set-controller br0 tcp:192.0.2.10:6653"

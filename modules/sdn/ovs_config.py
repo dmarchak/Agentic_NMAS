@@ -212,7 +212,8 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
     if not r["ok"]:
         out["error"] = r["error"]
         return out
-    out["lines"], out["program"] = r["lines"], r["program"]
+    # Every port the bridge takes, each with why (B: none of them protected, C2589).
+    out["lines"], out["program"], out["takes"] = r["lines"], r["program"], r["takes"]
     why = ovs.write_refusal(out["program"][0])
     if why:
         out["error"] = f"the rendered transaction is not of its shape: {why}"

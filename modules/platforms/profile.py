@@ -23,6 +23,11 @@ What P2 adds, read by the OpenFlow templates (`modules/sdn/openflow_templates.py
   (`interface_number`, `port_number`, or `add_order`, where NetBox's number must be requested,
   C2603).
 
+What P3 adds (B, the protected set): `openflow.instance_takes`, which ports an OpenFlow
+instance takes, from `INSTANCE_TAKES` (`named_ports`, or `vlan_members`: every port carrying
+its member VLAN, C2588), so the render names every port the switch will hand the controller
+and refuses a protected one (`protected.ports_refusal`).
+
 **Every value names how it is known.** `sources` maps a value's path to the keys of the file's
 `measurements` (a register row with its evidence, a fixture, or the vendor's guide), and a value
 no source settles is listed in `unconfirmed` with `unconfirmed_why`. `problems` refuses a file
@@ -46,6 +51,10 @@ BIND_CHANGES = ("agent_restart",)
 PORT_REQUIREMENTS = ("lldp_off",)
 #: How a switch numbers its OpenFlow ports (`openflow.port_numbering`).
 PORT_NUMBERING = ("interface_number", "port_number", "add_order")
+#: Which ports an OpenFlow instance takes (`openflow.instance_takes`, C2588): only the ports
+#: the configuration names (`named_ports`: EOS's `bind interface`, OVS's `add-port`), or every
+#: port carrying its member VLAN, tagged or untagged, named or not (`vlan_members`).
+INSTANCE_TAKES = ("named_ports", "vlan_members")
 #: A table's list-valued fields; each is a list or the word "any".
 TABLE_LISTS = ("match", "match_excludes", "eth_types", "instructions", "apply_actions",
                "apply_setfield", "next_tables")
@@ -185,6 +194,9 @@ def problems(doc: dict) -> list:
         if "port_numbering" in of and of["port_numbering"] not in PORT_NUMBERING:
             out.append(f"{where}'s openflow.port_numbering is one of "
                        f"{', '.join(PORT_NUMBERING)}, not {of['port_numbering']!r}")
+        if "instance_takes" in of and of["instance_takes"] not in INSTANCE_TAKES:
+            out.append(f"{where}'s openflow.instance_takes is one of "
+                       f"{', '.join(INSTANCE_TAKES)}, not {of['instance_takes']!r}")
         sources = entry.get("sources") or {}
         for path, keys in sorted(sources.items()):
             for key in keys or []:

@@ -45,6 +45,22 @@ What follows from that, on a switch and an OVS server alike:
   why.
 - **An OpenFlow VLAN equal to the management VLAN is refused,** naming both.
 
+**Nor is anything else the protected set holds** (B, `modules/protected.py`; C2588, C2589). From
+the management interface, Mercury derives what carries the path to the switch, with nothing to
+set: its parent, its LAG and its bridge; its VLAN when it is a VLAN interface (`vlan100`,
+`Vlan100`, `eno1.100`); and every physical port carrying that VLAN, tagged or untagged. The tag
+`mercury-protected` on an interface, a VLAN or a prefix adds what derivation cannot know. For
+Lab 9 that is Management1, eno1 and eno1.100, VLAN 100, and the ProCurve's port 1.
+- A protected interface tagged `openflow` is left out, said with its derivation ("Ethernet17 is
+  protected (it carries the protected VLAN 100 (tagged; the VLAN of Vlan100 …)): excluded from
+  OpenFlow"); an OpenFlow VLAN the set protects is refused.
+- **Every port the switch's instance takes is named in the render's answer** (`takes`, which
+  `ovs_config.plan` carries; no screen draws an OpenFlow preview yet), by the platform
+  profile's `instance_takes`: on EOS and Open vSwitch only the ports Mercury binds; on
+  ArubaOS-Switch (and, unconfirmed, Comware) every port carrying the instance's member VLAN,
+  tagged or untagged, named or not. A taken port that is protected refuses the render, naming
+  the port and both reasons.
+
 **Defaults, each named in the preview when used:** version `1.3`, transport `tcp`, fail mode
 `secure`. Lab 8's switches were secure: Mininet's `OVSSwitch` is secure by default, and in this
 lab only the controller forwards.

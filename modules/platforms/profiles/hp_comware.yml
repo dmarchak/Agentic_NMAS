@@ -14,11 +14,12 @@ entries:
       pipeline: discover
       bind_change_requires: null
       openflow_ports_require: []
+      instance_takes: vlan_members
     sources:
       openflow.versions: [cw-reference]
     unconfirmed: [openflow.hello.rejects_above, openflow.bind_change_requires,
-                  openflow.openflow_ports_require]
-    unconfirmed_why: "no Comware switch has been read: the reference names OpenFlow 1.3.3 and no hello behaviour, port restart or LLDP interaction; a lab's switch, read through Mercury's discovery path, settles each"
+                  openflow.openflow_ports_require, openflow.instance_takes]
+    unconfirmed_why: "no Comware switch has been read: the reference names OpenFlow 1.3.3 and no hello behaviour, port restart or LLDP interaction; its instance is classified by VLAN (classification vlan), so it is taken to take every port of those VLANs, the reading that names more ports and refuses sooner; a lab's switch, read through Mercury's discovery path, settles each"
 measurements:
   cw-reference:
     record: "the vendor's reference"

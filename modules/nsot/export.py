@@ -357,7 +357,8 @@ def read(network: str, rev: str = "HEAD") -> dict:
     from modules.nsot.repo import git_raw
     rc, text, err = git_raw(_repo(network), "show", f"{rev}:{PATH}")
     if rc != 0:
-        return {"ok": False, "export": None, "sha256": "",
+        # ``absent``: nothing committed, apart from one committed that does not verify.
+        return {"ok": False, "export": None, "sha256": "", "absent": True,
                 "error": f"{network} has no committed NSOT export at {rev} ({PATH}): export it "
                          f"first ({str(err).strip()[:120]})"}
     try:
