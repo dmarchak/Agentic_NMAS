@@ -26,6 +26,10 @@ forgotten.
 - **The tags:** a row blocking a course lab ahead of Phase 8 on the operator's roadmap is tagged
   `Lab 10: blocks` or `Lab 9: blocks`, beside `Phase 8: after`.
 - **The counts:** they are counted apart from the Phase 8 cap of 60.
+- **The cap's exception, until 2026-11-30** (the operator, 2026-11-07; CLAUDE.md, beside the
+  cap): past 60 Phase 8-blocking A and B rows, work whose rows are tagged `Lab 9: blocks` or
+  `Lab 10: blocks` continues; all other new feature work waits as register rule 4 says. It
+  ends on 2026-11-30 unless the operator renews it.
 - **Every report shows three counts:** Phase 8 blocking (against 60), Lab 10 blocking and Lab 9
   blocking.
 - **A re-tag or re-sort near the cap** is listed in the weekly downgrades review (board TI
