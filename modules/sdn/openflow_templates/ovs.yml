@@ -7,26 +7,42 @@ name: ovs
 family: Open vSwitch
 drivers: [ovs_linux]
 form: ovs-vsctl
-versions: ["1.0", "1.3"]
 transports: [tcp]
 ipv6_controller: true
 instance_shape: name
 lines:
   - text: "--may-exist add-br {openflow.instance}"
     cite: [vsctl-add-br]
+    why: "The bridge the switch's OpenFlow ports join (input: the device's openflow_instance)."
   - text: "set bridge {openflow.instance} protocols={openflow.ovs_protocol}"
     cite: [vsctl-set, db-protocols]
+    why: "The OpenFlow version the bridge speaks to the controller (input: the config context's openflow.version)."
   - text: "set bridge {openflow.instance} other-config:datapath-id={openflow.datapath_id}"
     when: openflow.datapath_id
     cite: [vsctl-set, db-datapath-id]
+    why: "The datapath id the controller knows this switch by (input: the device's openflow_datapath_id)."
   - text: "set-fail-mode {openflow.instance} {openflow.fail_mode}"
     cite: [vsctl-fail-mode]
+    why: "What the bridge forwards while the controller is unreachable (input: the config context's openflow.fail_mode)."
   - text: "set-controller {openflow.instance} tcp:{controller.host}:{controller.port}"
     cite: [vsctl-set-controller, vsctl-target]
+    why: "The controller the bridge connects to (input: the openflow Service's address and port)."
   - text: "--may-exist add-port {openflow.instance} {port}"
     each: ports
     cite: [vsctl-add-port]
+    why: "{port} is an OpenFlow port of this switch (input: the interface's openflow tag)."
+  - text: "set interface {port} ofport_request={port.openflow_port}"
+    each: ports
+    when: "profile.openflow.port_numbering == add_order"
+    cite: [harness-ofport-request]
+    why: "{port} is OpenFlow port {port.openflow_port}, so flows written against NetBox's numbers reach it: Open vSwitch otherwise numbers ports in the order they are added (input: the interface's openflow_port)."
 citations:
+  harness-ofport-request:
+    measured: "C2603"
+    what: "set interface <port> ofport_request=<n> gives the port number n on Open vSwitch 3.3 in the container harness (the ring's ports at their requested numbers)"
+    evidence: "lab/lab9/fabric_forwarding_acceptance.py"
+    release: "Open vSwitch 3.3"
+    read: "2026-11-07"
   vsctl-add-br:
     document: "ovs-vsctl(8)"
     section: "the command [--may-exist] add-br bridge"

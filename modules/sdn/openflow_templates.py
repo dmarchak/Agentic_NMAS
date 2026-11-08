@@ -9,11 +9,36 @@ the section or command entry, the release, the URL and the date it was read, and
 was read on the vendor's page, ``verified``). `problems` checks this, and `render` refuses a
 template it finds a problem in.
 
+A citation is a vendor document (the fields above) or a **measurement** (``measured``: the
+register row; ``what``, ``evidence``: the masked capture or harness run in this repository that
+shows the line accepted, ``release``, ``read``), for a line the lab's own release was seen to
+take where no document for that release was read.
+
+**Every line says why** (the SDN design revision 6, 11b(e)): ``why`` is a fixed sentence naming
+the concept and the input the line comes from, carried with each rendered line, so the preview
+can show each line beside its reason with no AI call; a line without one is a problem.
+
 **Rendered from NetBox values** (`modules/sdn/openflow_values.py`): a line's ``{name}`` is a
-value; ``each: ports`` repeats it per OpenFlow port (``{port}``); ``when: <name>`` keeps it only
-when that value is given. A missing value refuses the render, naming it and where in NetBox it
-comes from (`openflow_values.WHERE`). A version, transport or IPv6 controller the template does
-not support refuses too, naming both.
+value; ``each: ports`` repeats it per OpenFlow port (``{port}``, and ``{port.<value>}`` that
+port's own value, such as ``{port.openflow_port}``); a ``text`` of several lines renders as
+several program lines. ``when`` keeps a line only when its condition holds (a list: all of
+them): ``<name>`` (the value is given), ``<name> == <word>`` or ``<word> in <name>``. A missing
+value refuses the render, naming it and where in NetBox it comes from
+(`openflow_values.WHERE`). A transport or IPv6 controller the template does not support
+refuses too, naming both.
+
+**The platform profile decides what the release needs** (`modules/platforms/profile.py`): the
+OpenFlow versions the switch offers (a version outside them refuses, naming both; the template
+no longer lists versions, C2598), and the values a template reads as ``profile.openflow.<key>``:
+`bind_change_requires` (the EOS agent restart, C2599), `openflow_ports_require` (LLDP off on
+each OpenFlow port, C2600) and `port_numbering` (an OVS port's number requested as NetBox's,
+C2603; elsewhere NetBox's number checked against the switch's own, `numbering_problems`). The
+entry is the one `profile.select` chose for the switch's OS version, or, given none, the
+profile's only entry; a profile with more than one entry and no selection refuses, naming its
+ranges, and a template reading a key its entry does not hold refuses, naming the key.
+``state.<name>`` values are the switch's present state as a plan compares it (``state.
+bind_changed``: the bound ports differ from the switch's own); a line whose condition reads a
+state value not given is left out and said in ``notes``.
 
 **Draft until confirmed, per network.** A template is ``draft`` until a verified person confirms
 it on a network against a saved capture of one of its devices (`discovery.captures`): the
@@ -35,8 +60,12 @@ log = logging.getLogger(__name__)
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openflow_templates")
 FORMS = ("ovs-vsctl", "cli")
 CITATION_FIELDS = ("document", "section", "release", "url", "read")
+MEASURED_FIELDS = ("measured", "what", "evidence", "release", "read")
 DIR = "openflow_confirmations"
 _PLACE = re.compile(r"\{([a-z_]+(?:\.[a-z_]+)*)\}")
+_EQUALS = re.compile(r"\s*([a-z_]+(?:\.[a-z_]+)*)\s*==\s*([A-Za-z0-9_.-]+)\s*\Z")
+_IN = re.compile(r"\s*([A-Za-z0-9_.-]+)\s+in\s+([a-z_]+(?:\.[a-z_]+)*)\s*\Z")
+_KEY = re.compile(r"\s*([a-z_]+(?:\.[a-z_]+)*)\s*\Z")
 DRAFT, CONFIRMED = "draft", "confirmed"
 
 
@@ -79,10 +108,15 @@ def for_driver(driver: str):
 
 def problems(t: dict) -> list:
     """What is wrong with template *t*: a line with no citation, a citation key it does not
-    define, a citation missing a field, an unknown form."""
+    define, a citation missing a field, a line that does not say why, a condition that is not
+    one of the three forms, an unknown form, or a template still listing its own versions (the
+    platform profile states them, once)."""
     out = []
     if t.get("form") not in FORMS:
         out.append(f"its form {t.get('form')!r} is not one of {', '.join(FORMS)}")
+    if "versions" in t:
+        out.append("it lists its own OpenFlow versions: the platform profile states them "
+                   "(modules/platforms/profiles/)")
     cites = t.get("citations") or {}
     for i, line in enumerate(t.get("lines") or [], 1):
         keys = line.get("cite") or []
@@ -91,11 +125,23 @@ def problems(t: dict) -> list:
         for k in keys:
             if k not in cites:
                 out.append(f"line {i} cites {k!r}, which the template does not define")
+        if not str(line.get("why") or "").strip():
+            out.append(f"line {i} ({line.get('text', '')!r}) does not say why")
+        for cond in _conditions(line):
+            if not (_EQUALS.match(cond) or _IN.match(cond) or _KEY.match(cond)):
+                out.append(f"line {i}'s condition {cond!r} is not <name>, <name> == <word> "
+                           "or <word> in <name>")
     for k, c in sorted(cites.items()):
-        missing = [f for f in CITATION_FIELDS if not str((c or {}).get(f) or "").strip()]
+        c = c or {}
+        if "measured" in c:
+            missing = [f for f in MEASURED_FIELDS if not str(c.get(f) or "").strip()]
+            if missing:
+                out.append(f"measured citation {k!r} names no {', '.join(missing)}")
+            continue
+        missing = [f for f in CITATION_FIELDS if not str(c.get(f) or "").strip()]
         if missing:
             out.append(f"citation {k!r} names no {', '.join(missing)}")
-        if not isinstance((c or {}).get("verified"), bool):
+        if not isinstance(c.get("verified"), bool):
             out.append(f"citation {k!r} does not say whether it was verified on the vendor's page")
     if t.get("support") == "unknown" and not t.get("support_why"):
         out.append("its support is unknown and it does not say why")
@@ -103,12 +149,57 @@ def problems(t: dict) -> list:
 
 
 def citation_count(name: str) -> dict:
-    """``{"lines", "cited", "citations", "verified"}`` for the report and the manual."""
+    """``{"lines", "cited", "citations", "verified", "measured"}`` for the report and the
+    manual."""
     t = load(name)
     cites = t.get("citations") or {}
     return {"lines": len(t["lines"]), "cited": sum(1 for x in t["lines"] if x.get("cite")),
             "citations": len(cites), "verified": sum(1 for c in cites.values()
-                                                     if (c or {}).get("verified") is True)}
+                                                     if (c or {}).get("verified") is True),
+            "measured": sum(1 for c in cites.values() if "measured" in (c or {}))}
+
+
+def _conditions(line: dict) -> list:
+    when = line.get("when")
+    if not when:
+        return []
+    return [str(c) for c in (when if isinstance(when, list) else [when])]
+
+
+def _condition_keys(cond: str) -> list:
+    for rx, group in ((_EQUALS, 1), (_IN, 2), (_KEY, 1)):
+        m = rx.match(cond)
+        if m:
+            return [m.group(group)]
+    return []
+
+
+def profile_keys(t: dict) -> list:
+    """Every ``profile.<path>`` template *t* reads (its conditions and placeholders), sorted:
+    what its platform profile's entry must hold."""
+    keys = set()
+    for line in t.get("lines") or []:
+        for cond in _conditions(line):
+            keys.update(k for k in _condition_keys(cond) if k.startswith("profile."))
+        keys.update(k for k in _PLACE.findall(str(line.get("text") or ""))
+                    if k.startswith("profile."))
+    return sorted(keys)
+
+
+def _holds(cond: str, v: dict):
+    """Whether *cond* holds on *v*: True, False, or None when it reads a ``state.`` value not
+    given (the plan did not compare the switch's state)."""
+    keys = _condition_keys(cond)
+    if keys and keys[0].startswith("state.") and keys[0] not in v:
+        return None
+    m = _EQUALS.match(cond)
+    if m:
+        got = v.get(m.group(1))
+        return ("null" if got is None else str(got)) == m.group(2)
+    m = _IN.match(cond)
+    if m:
+        return m.group(1) in (v.get(m.group(2)) or [])
+    return bool(_lookup(v, cond.strip()))
 
 
 # --------------------------------------------------------------------------- rendering
@@ -130,7 +221,10 @@ def derived(values: dict) -> dict:
     version = v.get("openflow.version")
     if version in ("1.0", "1.3"):
         v["openflow.ovs_protocol"] = {"1.0": "OpenFlow10", "1.3": "OpenFlow13"}[version]
-        v["aos_s.version"] = {"1.0": "1.0", "1.3": "1.3 only"}[version]
+        # `version 1.3` (not `1.3 only`): what the lab's K.16.02 switch runs and negotiates
+        # 1.3 with, as its running configuration prints it, so the hand-built switch plans as
+        # no change; it offers 1.0 and 1.3, the profile's versions.
+        v["aos_s.version"] = {"1.0": "1.0", "1.3": "1.3"}[version]
     mode = v.get("openflow.fail_mode")
     if mode in ("secure", "standalone"):
         v["aos_s.fail_mode"] = f"fail-{mode}"
@@ -141,14 +235,80 @@ def _lookup(values: dict, key: str):
     return values.get(key)
 
 
-def render(name: str, values: dict) -> dict:
-    """Template *name* with *values*: ``{"ok", "lines": [{"text", "cite"}], "program", "error",
-    "missing"}``. ``program`` is what would be sent: for ``ovs-vsctl`` one invocation, the lines
-    joined by ``" -- "`` after ``sudo -n ovs-vsctl``; for ``cli`` the lines. Sends nothing."""
+def entry_for(t: dict, selected=None) -> tuple:
+    """``(entry, profile name, error)``: the platform profile entry template *t* renders with.
+    *selected* is `profile.select`'s answer for the switch; given none, the profile covering
+    the template's drivers is used when it has exactly one entry."""
+    from modules.platforms import profile as P
+    drivers = list(t.get("drivers") or [])
+    if selected is not None:
+        if not selected.get("ok"):
+            return None, "", (f"no platform profile entry covers this switch: "
+                              f"{selected.get('error') or 'none was selected'}")
+        theirs = P.load(selected["profile"]).get("drivers") or []
+        if not set(theirs) & set(drivers):
+            return None, "", (f"the selected profile {selected['profile']} is for "
+                              f"{', '.join(theirs)}, and the {t.get('name')} template is for "
+                              f"{', '.join(drivers)}")
+        return selected["entry"], selected["profile"], ""
+    found = sorted({P.for_driver(d) for d in drivers} - {None})
+    if not found:
+        return None, "", (f"no platform profile covers {t.get('family')} "
+                          f"({', '.join(drivers)}): add one under modules/platforms/profiles/")
+    doc = P.load(found[0])
+    bad = P.problems(doc)
+    if bad:
+        return None, found[0], (f"the platform profile {found[0]} cannot be used: "
+                                + "; ".join(bad))
+    if len(doc["entries"]) != 1:
+        ranges = ", ".join(P.range_words(e["os"]) for e in doc["entries"])
+        return None, found[0], (f"the platform profile {found[0]} has {len(doc['entries'])} "
+                                f"entries ({ranges}): the switch's own OS version selects one "
+                                "(profile.select)")
+    return doc["entries"][0], found[0], ""
+
+
+def _flatten(node, prefix: str) -> dict:
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            out.update(_flatten(value, f"{prefix}.{key}"))
+        return out
+    return {prefix: node}
+
+
+def numbering_problems(values: dict, entry: dict) -> list:
+    """Where NetBox's OpenFlow port numbers disagree with how the switch numbers its ports
+    (the profile's `port_numbering`): on `interface_number`, a port named with one number
+    (Ethernet18) is that number; on `port_number`, a port named by its number (2) is it. A name
+    the rule cannot read (Ethernet1/1) is not judged. `add_order` asks nothing here: the number
+    is requested, and the template refuses a port without one."""
+    mode = (entry.get("openflow") or {}).get("port_numbering")
+    out = []
+    for port, number in sorted(((values or {}).get("port.openflow_port") or {}).items()):
+        if mode == "interface_number":
+            m = re.fullmatch(r"[A-Za-z-]*?([0-9]+)", port)
+        elif mode == "port_number":
+            m = re.fullmatch(r"([0-9]+)", port)
+        else:
+            continue
+        if m and int(m.group(1)) != int(number):
+            out.append(f"{port}'s openflow_port is {number}, and this platform numbers an "
+                       f"OpenFlow port by its {mode.replace('_', ' ')} ({int(m.group(1))})")
+    return out
+
+
+def render(name: str, values: dict, selected=None) -> dict:
+    """Template *name* with *values*: ``{"ok", "lines": [{"text", "cite", "why"}], "program",
+    "error", "missing", "notes", "profile"}``. ``program`` is what would be sent: for
+    ``ovs-vsctl`` one invocation, the lines joined by ``" -- "`` after ``sudo -n ovs-vsctl``;
+    for ``cli`` the lines. *selected* is `profile.select`'s answer for the switch (see
+    `entry_for`). Sends nothing."""
+    from modules.platforms import profile as P
     from modules.sdn import openflow_values
     t = load(name)
     out = {"ok": False, "name": name, "family": t.get("family", ""), "form": t.get("form"),
-           "lines": [], "program": [], "error": "", "missing": [],
+           "lines": [], "program": [], "error": "", "missing": [], "notes": [], "profile": "",
            # Each management interface left out of the OpenFlow ports, by name and why
            # (`openflow_values.management_reason`): said, never silent.
            "excluded": list((values or {}).get("excluded") or [])}
@@ -160,14 +320,30 @@ def render(name: str, values: dict) -> dict:
         out["error"] = (f"{t.get('family')}'s OpenFlow support is UNKNOWN: {t['support_why']}. "
                         "Nothing is rendered.")
         return out
+    entry, out["profile"], why = entry_for(t, selected)
+    if why:
+        out["error"] = why
+        return out
+    absent = [k for k in profile_keys(t) if P.value(entry, k[len("profile."):]) is P.ABSENT]
+    if absent:
+        out["error"] = (f"the {name} template reads {', '.join(absent)}, which the platform "
+                        f"profile {out['profile']}'s entry {entry.get('os')} does not hold: "
+                        "nothing is rendered")
+        return out
     v = derived(values)
-    why = _supports(t, v)
+    v.update(_flatten(entry.get("openflow") or {}, "profile.openflow"))
+    why = _supports(t, v, entry) or "; ".join(numbering_problems(v, entry))
     if why:
         out["error"] = why
         return out
     lines, missing = [], []
     for line in t["lines"]:
-        if line.get("when") and not _lookup(v, line["when"]):
+        held = [_holds(c, v) for c in _conditions(line)]
+        if None in held:
+            out["notes"].append(f"{line['text'].strip()!r} is decided against the switch's "
+                                "present state, and none was given: left out")
+            continue
+        if not all(held):
             continue
         items = [None]
         if line.get("each"):
@@ -176,14 +352,22 @@ def render(name: str, values: dict) -> dict:
                 missing.append(line["each"])
                 continue
         for item in items:
-            text = line["text"]
-            for key in _PLACE.findall(text):
-                got = item if key == "port" else _lookup(v, key)
+            text, reason = line["text"], str(line.get("why") or "")
+            for key in sorted(set(_PLACE.findall(text)) | set(_PLACE.findall(reason))):
+                if key == "port":
+                    got = item
+                elif key.startswith("port."):
+                    got = (v.get(key) or {}).get(item) if isinstance(v.get(key), dict) else None
+                else:
+                    got = _lookup(v, key)
                 if got in (None, "", []):
                     missing.append(key)
                     continue
                 text = text.replace("{" + key + "}", str(got))
-            lines.append({"text": text, "cite": list(line["cite"])})
+                reason = reason.replace("{" + key + "}", str(got))
+            for part in text.split("\n"):
+                if part.strip():
+                    lines.append({"text": part, "cite": list(line["cite"]), "why": reason})
     if missing:
         names_ = sorted(set(missing))
         out["missing"] = names_
@@ -201,14 +385,16 @@ def render(name: str, values: dict) -> dict:
     return out
 
 
-def _supports(t: dict, v: dict) -> str:
-    """Why the template cannot carry these values (both operands named), or ``""``."""
+def _supports(t: dict, v: dict, entry: dict) -> str:
+    """Why the template cannot carry these values (both operands named), or ``""``. The
+    versions are the platform profile entry's (what the release offers, C2598)."""
     import ipaddress
     family = t.get("family")
     version, transport = v.get("openflow.version"), v.get("openflow.transport")
-    if version and version not in (t.get("versions") or []):
-        return (f"{family} supports OpenFlow {', '.join(t.get('versions') or []) or 'none'} by "
-                f"its vendor's document, and NetBox gives version {version}: nothing is rendered")
+    offered = list((entry.get("openflow") or {}).get("versions") or [])
+    if version and version not in offered:
+        return (f"{family} {_range(entry)} offers OpenFlow {', '.join(offered) or 'none'} by its "
+                f"platform profile, and NetBox gives version {version}: nothing is rendered")
     if transport and transport not in (t.get("transports") or []):
         return (f"the {t['name']} template renders transport "
                 f"{', '.join(t.get('transports') or []) or 'none'}, and NetBox gives {transport}: "
@@ -223,6 +409,14 @@ def _supports(t: dict, v: dict) -> str:
         return (f"{family}'s OpenFlow instance is a number, and NetBox gives {inst!r}: nothing "
                 "is rendered")
     return ""
+
+
+def _range(entry: dict) -> str:
+    from modules.platforms import profile as P
+    try:
+        return P.range_words(entry.get("os") or {})
+    except KeyError:
+        return ""
 
 
 # --------------------------------------------------------------------------- draft or confirmed

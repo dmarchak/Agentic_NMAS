@@ -13,6 +13,9 @@ entries:
       port_state:
         live_reliable: true
       pipeline: discover
+      bind_change_requires: null
+      openflow_ports_require: [lldp_off]
+      port_numbering: port_number
       # The Standard Match pipeline (C2601): table 0 holds the one goto to table 100; table 100
       # is hardware and takes only IPv4 or IPv6 matches carrying eth_type and no MAC field;
       # table 200 is software, takes any match, at 100 packets a second.
@@ -44,9 +47,12 @@ entries:
       openflow.hello.rejects_above: [aos-s-version]
       openflow.port_state.live_reliable: [c2602]
       openflow.tables: [c2601]
+      openflow.openflow_ports_require: [c2600]
+      openflow.port_numbering: [portdesc]
     unconfirmed: [openflow.hello.rejects_above, "openflow.tables[200].instructions",
-                  "openflow.tables[200].apply_actions", "openflow.tables[200].apply_setfield"]
-    unconfirmed_why: "the guide offers 1.0 and 1.3 but no higher hello was ever sent to the switch (the lab's controller was pinned before it connected), and C2601 records table 200 as taking any match but not its actions; a recorded tablefeatures answer, to make at the lab, settles both"
+                  "openflow.tables[200].apply_actions", "openflow.tables[200].apply_setfield",
+                  openflow.bind_change_requires]
+    unconfirmed_why: "the guide offers 1.0 and 1.3 but no higher hello was ever sent to the switch (the lab's controller was pinned before it connected), and C2601 records table 200 as taking any match but not its actions; a recorded tablefeatures answer, to make at the lab, settles both. Whether a member-VLAN change on an enabled instance takes effect without disabling it was never changed at the lab (null: no restart is rendered)"
 measurements:
   aos-s-version:
     record: "the vendor's guide"
@@ -57,6 +63,16 @@ measurements:
     record: C2601
     what: "the Standard Match pipeline of K.16.02, read by /stats/tablefeatures at the bring-up with the team's table_features.py"
     evidence: "the operator's finding (e), 2026-11-06 (docs/OPEN_FINDINGS.md C2601); the raw answer is not yet a fixture"
+    read: "2026-11-06"
+  c2600:
+    record: C2600
+    what: "the switch's LLDP agent consumes the controller's LLDP probes on an OpenFlow port, so the controller finds no link through it until lldp admin-status <port> disable is set"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/procurve-sw.txt, lldp admin-status 2-3 disable, and ryu-rest.txt's links (docs/OPEN_FINDINGS.md C2600)"
+    read: "2026-11-06"
+  portdesc:
+    record: "the controller's portdesc"
+    what: "an OpenFlow port's number is the switch's port number: port 2 is 2, port 3 is 3"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt, portdesc of the ProCurve"
     read: "2026-11-06"
   c2602:
     record: C2602

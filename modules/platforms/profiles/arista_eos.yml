@@ -12,10 +12,16 @@ entries:
       port_state:
         live_reliable: false
       pipeline: discover
+      bind_change_requires: agent_restart
+      openflow_ports_require: [lldp_off]
+      port_numbering: interface_number
     sources:
       openflow.versions: [c2598]
       openflow.hello.rejects_above: [c2598]
       openflow.port_state.live_reliable: [c2602]
+      openflow.bind_change_requires: [c2599]
+      openflow.openflow_ports_require: [c2600]
+      openflow.port_numbering: [portdesc]
     unconfirmed: []
     note: "the pipeline is discovered: the Aristas' tables have not been read yet (no tablefeatures recording)"
 measurements:
@@ -23,6 +29,21 @@ measurements:
     record: C2598
     what: "EOS 4.17.0F's hello offers 1.0 and 1.3 (version bitmap 0x12) and a 1.4 hello is refused with HELLO_FAILED/INCOMPATIBLE"
     evidence: "the lab bring-up's handshakes, 2026-11-06 (docs/OPEN_FINDINGS.md C2598)"
+    read: "2026-11-06"
+  c2599:
+    record: C2599
+    what: "a change to bind mode or to the bound interfaces takes effect only after shutdown then no shutdown in the openflow block; the switch stays connected meanwhile with the old binding in force"
+    evidence: "the lab bring-up, 2026-11-06, the operator's finding (c) (docs/OPEN_FINDINGS.md C2599)"
+    read: "2026-11-06"
+  c2600:
+    record: C2600
+    what: "the switch's LLDP agent consumes the controller's LLDP probes on an OpenFlow port, so the controller finds no link through it until no lldp transmit and no lldp receive are set on that port"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt, the bound interfaces' LLDP lines, and ryu-rest.txt's links (docs/OPEN_FINDINGS.md C2600)"
+    read: "2026-11-06"
+  portdesc:
+    record: "the controller's portdesc"
+    what: "an OpenFlow port's number is its interface's number: Ethernet18 is port 18 (0x12), Ethernet19 port 19 (0x13)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/ryu-rest.txt, portdesc of both Aristas"
     read: "2026-11-06"
   c2602:
     record: C2602

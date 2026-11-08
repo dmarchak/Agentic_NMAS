@@ -9,6 +9,7 @@ docs/LAB9_OPENFLOW.md section 1). Read only: nothing here writes to NetBox.
 | ``openflow.instance`` | the device's custom field ``openflow_instance``, else the config context's ``openflow.instance`` |
 | ``openflow.datapath_id`` (optional) | the device's custom field ``openflow_datapath_id`` (16 hex digits) |
 | ``ports`` | the device's interfaces tagged ``openflow`` |
+| ``port.openflow_port`` | each of those interfaces' custom field ``openflow_port`` (its OpenFlow port number, ``{port: number}``; C2603) |
 | ``openflow.vlan`` | the untagged VLAN those interfaces share |
 | ``mgmt.vlan`` | the VLAN of the interface holding the primary IP (its untagged VLAN, or a ``vlan<N>`` interface's N) |
 
@@ -28,7 +29,15 @@ said in ``defaults`` when used; ``openflow.transport`` defaults to ``tcp``.
 
 **Every value is checked for its shape** before any template sees it (a field spliced into a
 command is one token of its shape): an address by `ipaddress`, a port 1 to 65535, a name one
-interface-name token, a VLAN 1 to 4094, a datapath id 16 hex digits and not all zero.
+interface-name token, a VLAN 1 to 4094, a datapath id 16 hex digits and not all zero, an
+OpenFlow port number 1 to 65279 (Open vSwitch's `ofport_request` range, inside OpenFlow 1.3's
+physical ports) and no number given to two ports of one switch. Whether a port number is
+REQUIRED, and whether it must equal the platform's own numbering, is the platform profile's
+(`port_numbering`), checked at render (`openflow_templates.numbering_problems`).
+
+**From NetBox or from an export:** `from_netbox` takes the records as NetBox's REST API returns
+them; `from_export` takes a committed NSOT export (`modules/nsot/export.py`), so a plan reads the
+same bytes offline that it names the hash of.
 """
 
 import ipaddress
@@ -51,7 +60,11 @@ WHERE = {
     "openflow.vlan": "NetBox: the untagged VLAN of the interfaces tagged openflow",
     "mgmt.vlan": "NetBox: the VLAN of the interface holding the device's primary IP",
     "ports": "NetBox: the device's interfaces tagged openflow",
+    "port.openflow_port": "NetBox: each OpenFlow interface's custom field openflow_port",
 }
+#: An OpenFlow port number: Open vSwitch's `ofport_request` takes 1 to 65279
+#: (ovs-vswitchd.conf.db(5), Interface table), inside OpenFlow 1.3's physical ports.
+PORT_MIN, PORT_MAX = 1, 65279
 TAG = "openflow"
 SERVICE = "openflow"
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,63}\Z")
@@ -141,7 +154,13 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
                    + "; ".join(f"{n}: {w}" for n, w in excluded)
                    + "), and the management network is never OpenFlow: tag the OpenFlow ports")
     v["ports"] = [str(i.get("name") or "") for i in of_ifaces]
-    vlans = {(i.get("untagged_vlan") or {}).get("vid") for i in of_ifaces}
+    # Each OpenFlow port's number as NetBox holds it (C2603); a port without one is absent
+    # here, and the render refuses it where the platform numbers ports by add order.
+    v["port.openflow_port"] = {
+        str(i.get("name") or ""): str((i.get("custom_fields") or {}).get("openflow_port"))
+        for i in of_ifaces
+        if (i.get("custom_fields") or {}).get("openflow_port") not in (None, "")}
+    vlans ={(i.get("untagged_vlan") or {}).get("vid") for i in of_ifaces}
     v["openflow.vlan"] = str(vlans.pop()) if len(vlans) == 1 and None not in vlans else ""
     if len({(i.get("untagged_vlan") or {}).get("vid") for i in of_ifaces}) > 1:
         bad.append("the interfaces tagged openflow are on more than one untagged VLAN: "
@@ -213,6 +232,17 @@ def _shape_problems(v: dict) -> list:
     for p in v.get("ports") or []:
         if not NAME.match(p):
             bad.append(f"the OpenFlow port {p!r} is not one interface-name token")
+    numbers = v.get("port.openflow_port") or {}
+    for p, n in sorted(numbers.items()):
+        if not (n.isdigit() and PORT_MIN <= int(n) <= PORT_MAX):
+            bad.append(f"{p}'s openflow_port {n!r} is not {PORT_MIN} to {PORT_MAX}")
+    by_number: dict = {}
+    for p, n in numbers.items():
+        by_number.setdefault(n, []).append(p)
+    for n, ports in sorted(by_number.items()):
+        if len(ports) > 1:
+            bad.append(f"openflow_port {n} is given to {', '.join(sorted(ports))}: one number "
+                       "names one port")
     if v.get("openflow.version") not in ("1.0", "1.3"):
         bad.append(f"openflow.version {v.get('openflow.version')!r} is not 1.0 or 1.3")
     if v.get("openflow.transport") not in ("tcp", "tls"):
@@ -221,6 +251,46 @@ def _shape_problems(v: dict) -> list:
         bad.append(f"openflow.fail_mode {v.get('openflow.fail_mode')!r} is not secure or "
                    "standalone")
     return bad
+
+
+def from_export(export: dict, device_name: str) -> dict:
+    """*device_name*'s values from a committed NSOT export (`modules/nsot/export.py`'s document),
+    with no NetBox read: the export's records put back in NetBox's shapes and read by
+    `from_netbox`, so both read one way. ``{"ok", "values", "defaults", "error"}``; the values
+    carry the export's hash (``nsot.export_sha256``)."""
+    from modules.nsot import export as X
+
+    dev = X.device(export, device_name)
+    if dev is None:
+        return {"ok": False, "values": {}, "defaults": [],
+                "error": f"the NSOT export ({str(export.get('sha256'))[:12]}) holds no device "
+                         f"{device_name!r}"}
+
+    def addr(text):
+        return {"address": text} if text else None
+
+    def tags(obj):
+        return [{"slug": t} for t in obj.get("tags") or []]
+
+    device = dict(dev, primary_ip4=addr(dev.get("primary_ip4")),
+                  primary_ip6=addr(dev.get("primary_ip6")), oob_ip=addr(dev.get("oob_ip")),
+                  tags=tags(dev))
+    interfaces = [dict(i, tags=tags(i),
+                       untagged_vlan={"vid": i["untagged_vlan"]}
+                       if i.get("untagged_vlan") is not None else None,
+                       ip_addresses=[{"address": a} for a in i.get("ip_addresses") or []])
+                  for i in X.interfaces_of(export, device_name)]
+    services = [dict(s, device={"name": s.get("parent", "")},
+                     ipaddresses=[{"address": a} for a in s.get("ipaddresses") or []])
+                for s in X.services_named(export, SERVICE)]
+    controllers = {}
+    for s in services:
+        parent = X.device(export, s["parent"]) or {}
+        controllers[s["parent"]] = {"primary_ip4": addr(parent.get("primary_ip4")),
+                                    "primary_ip6": addr(parent.get("primary_ip6"))}
+    got = from_netbox(device, interfaces, services, controllers)
+    got["values"]["nsot.export_sha256"] = str(export.get("sha256") or "")
+    return got
 
 
 def read(device_name: str) -> dict:

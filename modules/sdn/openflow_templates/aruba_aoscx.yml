@@ -8,7 +8,6 @@ drivers: [aruba_os]
 form: cli
 support: unknown
 support_why: "no AOS-CX document read on 2026-11-05 states whether AOS-CX supports OpenFlow (the AOS-CX references returned 403)"
-versions: []
 transports: []
 ipv6_controller: false
 instance_shape: none

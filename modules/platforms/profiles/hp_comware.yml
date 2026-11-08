@@ -1,0 +1,27 @@
+# HPE/H3C Comware 7: what a release's OpenFlow does, as its vendor's reference says (the SDN
+# platform design revision 6, section 6 D). No Comware switch has been measured: the versions
+# come from the reference the OpenFlow template cites, and every value it does not settle is
+# listed under `unconfirmed`. `port_numbering` is absent (not read anywhere: no NetBox number is
+# required or checked on Comware until it is measured).
+drivers: [hp_comware]
+family: HP Comware
+entries:
+  - os: {from: "7.1", below: "7.2"}
+    openflow:
+      versions: ["1.3"]
+      hello:
+        rejects_above: null
+      pipeline: discover
+      bind_change_requires: null
+      openflow_ports_require: []
+    sources:
+      openflow.versions: [cw-reference]
+    unconfirmed: [openflow.hello.rejects_above, openflow.bind_change_requires,
+                  openflow.openflow_ports_require]
+    unconfirmed_why: "no Comware switch has been read: the reference names OpenFlow 1.3.3 and no hello behaviour, port restart or LLDP interaction; a lab's switch, read through Mercury's discovery path, settles each"
+measurements:
+  cw-reference:
+    record: "the vendor's reference"
+    what: "Comware 7's OpenFlow instance speaks OpenFlow 1.3 (the configuration guide cites OpenFlow 1.3.3)"
+    evidence: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands, R612x-6W103, cited by modules/sdn/openflow_templates/hp_comware.yml"
+    read: "2026-11-05"

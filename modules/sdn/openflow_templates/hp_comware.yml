@@ -9,21 +9,25 @@ name: hp_comware
 family: HP Comware
 drivers: [hp_comware]
 form: cli
-versions: ["1.3"]
 transports: [tcp]
 ipv6_controller: true
 instance_shape: number
 lines:
   - text: "openflow instance {openflow.instance}"
     cite: [cw-instance]
+    why: "The switch's OpenFlow instance (input: the device's openflow_instance)."
   - text: " classification vlan {openflow.vlan}"
     cite: [cw-classification]
+    why: "The instance takes VLAN {openflow.vlan}, the OpenFlow ports' VLAN (input: the untagged VLAN of the interfaces tagged openflow)."
   - text: " controller {controller.id} address {comware.family} {controller.address} port {controller.port}"
     cite: [cw-controller]
+    why: "The controller the instance connects to (input: the openflow Service's address and port)."
   - text: " fail-open mode {openflow.fail_mode}"
     cite: [cw-fail-open]
+    why: "What the instance forwards while the controller is unreachable (input: the config context's openflow.fail_mode)."
   - text: " active instance"
     cite: [cw-active]
+    why: "The instance runs (input: the device's openflow_instance)."
 citations:
   cw-instance:
     document: "H3C S5130S-HI[EI] & S5110V2 & S3100V3-EI Command References, 01-OpenFlow commands"

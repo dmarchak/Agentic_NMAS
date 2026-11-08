@@ -32,7 +32,8 @@ def test_every_profile_is_usable(name):
 
 
 def test_the_profiles_cover_the_three_platforms_p2a_needs():
-    assert profile.names() == ["arista_eos", "aruba_os_switch", "ovs"]
+    # P2 adds Comware's, from its vendor reference, so every rendering template has one (T11).
+    assert profile.names() == ["arista_eos", "aruba_os_switch", "hp_comware", "ovs"]
     for driver in MAKER_DRIVER.values():
         assert profile.for_driver(driver), driver
 
@@ -108,6 +109,14 @@ def _planted():
      "entry 1 lists unconfirmed values and does not say why"),
     (lambda d: d["measurements"]["c2601"].pop("evidence"),
      "measurement 'c2601' names no evidence"),
+    (lambda d: d["entries"][0]["openflow"].__setitem__("bind_change_requires", "reboot"),
+     "entry 1's openflow.bind_change_requires is one of agent_restart or null"),
+    (lambda d: d["entries"][0]["openflow"].__setitem__("openflow_ports_require", ["stp_off"]),
+     "entry 1's openflow.openflow_ports_require is a list from lldp_off"),
+    (lambda d: d["entries"][0]["openflow"].__setitem__("port_numbering", "random"),
+     "entry 1's openflow.port_numbering is one of"),
+    (lambda d: d["entries"][0]["sources"].pop("openflow.port_numbering"),
+     "entry 1: openflow.port_numbering names no source and is not listed unconfirmed"),
 ])
 def test_each_problem_is_found_in_a_planted_profile(plant, words):
     doc = _planted()

@@ -1,0 +1,85 @@
+{
+  "netbox_version": "4.2.6",
+  "devices": [
+    {"id": 11, "name": "arista-sw1", "status": {"value": "active"}, "role": {"slug": "openflow-switch"},
+     "platform": {"slug": "arista-eos"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "dcs-7050q-16"},
+     "primary_ip4": {"address": "192.0.2.2/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {"openflow_datapath_id": null, "openflow_instance": null},
+     "config_context": {"openflow": {"version": "1.3", "transport": "tcp", "fail_mode": "secure"}},
+     "tags": [], "last_updated": "2026-11-06T18:02:11.000000Z"},
+    {"id": 12, "name": "arista-sw2", "status": {"value": "active"}, "role": {"slug": "openflow-switch"},
+     "platform": {"slug": "arista-eos"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "dcs-7050q-16"},
+     "primary_ip4": {"address": "192.0.2.6/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {"openflow_datapath_id": null, "openflow_instance": null},
+     "config_context": {"openflow": {"version": "1.3", "transport": "tcp", "fail_mode": "secure"}},
+     "tags": [], "last_updated": "2026-11-06T18:02:12.000000Z"},
+    {"id": 13, "name": "procurve-sw", "status": {"value": "active"}, "role": {"slug": "openflow-switch"},
+     "platform": {"slug": "hp-procurve"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "j8692a"},
+     "primary_ip4": {"address": "192.0.2.5/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {"openflow_datapath_id": null, "openflow_instance": "lab9"},
+     "config_context": {"openflow": {"version": "1.3", "transport": "tcp", "fail_mode": "secure"}},
+     "tags": [], "last_updated": "2026-11-06T18:02:13.000000Z"},
+    {"id": 14, "name": "ovs1", "status": {"value": "active"}, "role": {"slug": "openflow-switch"},
+     "platform": {"slug": "ovs-linux"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "poweredge-r430"},
+     "primary_ip4": {"address": "192.0.2.3/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {"openflow_datapath_id": "0000000000000003", "openflow_instance": "br0"},
+     "config_context": {"openflow": {"version": "1.3", "transport": "tcp", "fail_mode": "secure"}},
+     "tags": [], "last_updated": "2026-11-06T18:02:14.000000Z"},
+    {"id": 15, "name": "ovs2", "status": {"value": "active"}, "role": {"slug": "openflow-switch"},
+     "platform": {"slug": "ovs-linux"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "poweredge-r430"},
+     "primary_ip4": {"address": "192.0.2.4/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {"openflow_datapath_id": "0000000000000004", "openflow_instance": "br0"},
+     "config_context": {"openflow": {"version": "1.3", "transport": "tcp", "fail_mode": "secure"}},
+     "tags": [], "last_updated": "2026-11-06T18:02:15.000000Z"},
+    {"id": 16, "name": "controller", "status": {"value": "active"}, "role": {"slug": "sdn-controller"},
+     "platform": {"slug": "linux"}, "site": {"id": 1, "slug": "lab"}, "device_type": {"slug": "server"},
+     "primary_ip4": {"address": "192.0.2.1/24"}, "primary_ip6": null, "oob_ip": null,
+     "custom_fields": {}, "config_context": {}, "tags": [], "last_updated": "2026-11-06T18:02:16.000000Z"}
+  ],
+  "interfaces": [
+    {"id": 101, "device": {"id": 11, "name": "arista-sw1"}, "name": "Management1", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": true, "mode": null, "untagged_vlan": null, "tagged_vlans": [], "tags": [], "custom_fields": {"openflow_port": null}, "created": "2026-11-06T17:00:00Z"},
+    {"id": 102, "device": {"id": 11, "name": "arista-sw1"}, "name": "Ethernet18", "type": {"value": "10gbase-x-sfpp"}, "enabled": true, "mgmt_only": false, "mode": {"value": "tagged"}, "untagged_vlan": null, "tagged_vlans": [{"vid": 200}], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 18}},
+    {"id": 103, "device": {"id": 11, "name": "arista-sw1"}, "name": "Ethernet19", "type": {"value": "10gbase-x-sfpp"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": null, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 19}},
+    {"id": 111, "device": {"id": 12, "name": "arista-sw2"}, "name": "Management1", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": true, "mode": null, "untagged_vlan": null, "tagged_vlans": [], "tags": [], "custom_fields": {"openflow_port": null}},
+    {"id": 112, "device": {"id": 12, "name": "arista-sw2"}, "name": "Ethernet17", "type": {"value": "10gbase-x-sfpp"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": null, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 17}},
+    {"id": 113, "device": {"id": 12, "name": "arista-sw2"}, "name": "Ethernet18", "type": {"value": "10gbase-x-sfpp"}, "enabled": true, "mgmt_only": false, "mode": {"value": "tagged"}, "untagged_vlan": null, "tagged_vlans": [{"vid": 200}], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 18}},
+    {"id": 121, "device": {"id": 13, "name": "procurve-sw"}, "name": "1", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": {"value": "tagged"}, "untagged_vlan": null, "tagged_vlans": [{"vid": 100}], "tags": [], "custom_fields": {"openflow_port": null}},
+    {"id": 122, "device": {"id": 13, "name": "procurve-sw"}, "name": "2", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": {"value": "access"}, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 2}},
+    {"id": 123, "device": {"id": 13, "name": "procurve-sw"}, "name": "3", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": {"value": "access"}, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 3}},
+    {"id": 124, "device": {"id": 13, "name": "procurve-sw"}, "name": "vlan100", "type": {"value": "virtual"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": null, "tagged_vlans": [], "tags": [], "custom_fields": {"openflow_port": null}},
+    {"id": 131, "device": {"id": 14, "name": "ovs1"}, "name": "eno1.100", "type": {"value": "virtual"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 100}, "tagged_vlans": [], "tags": [], "custom_fields": {"openflow_port": null}},
+    {"id": 132, "device": {"id": 14, "name": "ovs1"}, "name": "eno2", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 1}},
+    {"id": 133, "device": {"id": 14, "name": "ovs1"}, "name": "eno3", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 2}},
+    {"id": 134, "device": {"id": 14, "name": "ovs1"}, "name": "eno4", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 3}},
+    {"id": 141, "device": {"id": 15, "name": "ovs2"}, "name": "eno1.100", "type": {"value": "virtual"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 100}, "tagged_vlans": [], "tags": [], "custom_fields": {"openflow_port": null}},
+    {"id": 142, "device": {"id": 15, "name": "ovs2"}, "name": "eno2", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 1}},
+    {"id": 143, "device": {"id": 15, "name": "ovs2"}, "name": "eno3", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 2}},
+    {"id": 144, "device": {"id": 15, "name": "ovs2"}, "name": "eno4", "type": {"value": "1000base-t"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 200}, "tagged_vlans": [], "tags": [{"slug": "openflow"}], "custom_fields": {"openflow_port": 3}},
+    {"id": 151, "device": {"id": 16, "name": "controller"}, "name": "enp4s0.100", "type": {"value": "virtual"}, "enabled": true, "mgmt_only": false, "mode": null, "untagged_vlan": {"vid": 100}, "tagged_vlans": [], "tags": [], "custom_fields": {}}
+  ],
+  "ip_addresses": [
+    {"address": "192.0.2.2/24", "assigned_object": {"id": 101}},
+    {"address": "192.0.2.6/24", "assigned_object": {"id": 111}},
+    {"address": "192.0.2.5/24", "assigned_object": {"id": 124}},
+    {"address": "192.0.2.3/24", "assigned_object": {"id": 131}},
+    {"address": "192.0.2.4/24", "assigned_object": {"id": 141}},
+    {"address": "192.0.2.1/24", "assigned_object": {"id": 151}}
+  ],
+  "vlans": [
+    {"vid": 100, "name": "Mgmt", "site": {"slug": "lab"}, "group": null, "status": {"value": "active"}, "tags": []},
+    {"vid": 200, "name": "Data", "site": {"slug": "lab"}, "group": null, "status": {"value": "active"}, "tags": []}
+  ],
+  "prefixes": [
+    {"prefix": "198.51.100.0/24", "site": {"slug": "lab"}, "vlan": {"vid": 200}, "status": {"value": "active"}, "role": null, "tags": []},
+    {"prefix": "192.0.2.0/24", "site": {"slug": "lab"}, "vlan": {"vid": 100}, "status": {"value": "active"}, "role": null, "tags": []}
+  ],
+  "services": [
+    {"device": {"id": 16, "name": "controller"}, "name": "openflow", "protocol": {"value": "tcp"}, "ports": [6653], "ipaddresses": [], "tags": []}
+  ],
+  "cables": [
+    {"a_terminations": [{"object": {"device": {"name": "arista-sw1"}, "name": "Ethernet18"}}], "b_terminations": [{"object": {"device": {"name": "ovs1"}, "name": "eno2"}}], "status": {"value": "connected"}, "label": ""},
+    {"a_terminations": [{"object": {"device": {"name": "arista-sw1"}, "name": "Ethernet19"}}], "b_terminations": [{"object": {"device": {"name": "procurve-sw"}, "name": "2"}}], "status": {"value": "connected"}, "label": ""},
+    {"a_terminations": [{"object": {"device": {"name": "arista-sw2"}, "name": "Ethernet18"}}], "b_terminations": [{"object": {"device": {"name": "ovs2"}, "name": "eno2"}}], "status": {"value": "connected"}, "label": ""},
+    {"a_terminations": [{"object": {"device": {"name": "ovs2"}, "name": "eno4"}}], "b_terminations": [{"object": {"device": {"name": "procurve-sw"}, "name": "3"}}], "status": {"value": "connected"}, "label": ""}
+  ]
+}

@@ -34,6 +34,7 @@ does that (LAB9_SDN_GAP, the one controller path).
 import hashlib
 import json
 import logging
+import re
 import secrets
 import time
 
@@ -80,12 +81,21 @@ def _failed(text: str) -> str:
     return ""
 
 
-def read_bridge(ask, bridge: str) -> dict:
+def _number(text: str) -> str:
+    """`get interface <p> ofport_request` prints ``[]`` (none) or a number; `ofport` a number
+    (``-1`` when the port could not be given one)."""
+    t = (text or "").strip()
+    return t if re.fullmatch(r"-?[0-9]+", t) else ""
+
+
+def read_bridge(ask, bridge: str, ports=()) -> dict:
     """The bridge as it is, through *ask* (a session's send, given one OVS read whole):
     ``{"exists", "controllers", "fail_mode", "protocols", "datapath_override", "ports",
-    "datapath_id", "error"}``."""
+    "datapath_id", "ofport_request", "ofport", "error"}``. For each of *ports* on the bridge,
+    its requested and given OpenFlow port numbers (C2603), ``""`` for none."""
     out = {"exists": False, "controllers": [], "fail_mode": "", "protocols": [],
-           "datapath_override": "", "ports": [], "datapath_id": "", "error": ""}
+           "datapath_override": "", "ports": [], "datapath_id": "", "ofport_request": {},
+           "ofport": {}, "error": ""}
     got = ask(_vsctl("list-br"))
     if _failed(got):
         out["error"] = _failed(got)
@@ -100,6 +110,11 @@ def read_bridge(ask, bridge: str) -> dict:
                                                    "other-config:datapath-id")))
     out["ports"] = _lines(ask(_vsctl("list-ports", bridge)))
     out["datapath_id"] = _unquote(ask(_vsctl("get", "bridge", bridge, "datapath_id")))
+    for p in ports:
+        if p in out["ports"]:
+            out["ofport_request"][p] = _number(ask(_vsctl("get", "interface", p,
+                                                          "ofport_request")))
+            out["ofport"][p] = _number(ask(_vsctl("get", "interface", p, "ofport")))
     for key in ("controllers", "ports"):
         bad = [x for x in out[key] if x.startswith(("ovs-vsctl:", "sudo:"))]
         if bad:
@@ -122,9 +137,16 @@ def undo_of(bridge: str, before: dict, values: dict) -> str:
         parts.append(f"set bridge {bridge} other-config:datapath-id={before['datapath_override']}"
                      if before["datapath_override"]
                      else f"remove bridge {bridge} other-config datapath-id")
+    numbers = values.get("port.openflow_port") or {}
     for p in values.get("ports") or []:
         if p not in before["ports"]:
             parts.append(f"--if-exists del-port {bridge} {p}")
+        elif p in numbers and (before.get("ofport_request") or {}).get(p, "") != numbers[p]:
+            # A port already on the bridge whose number the program requests: its own request
+            # put back (C2603), or none.
+            old = (before.get("ofport_request") or {}).get(p, "")
+            parts.append(f"set interface {p} ofport_request={old}" if old
+                         else f"clear interface {p} ofport_request")
     return "sudo -n ovs-vsctl " + " -- ".join(parts)
 
 
@@ -201,7 +223,8 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
     bridge = v["openflow.instance"]
     try:
         before = session(dev, lambda conn: read_bridge(
-            lambda c: conn.send_command_timing(c, read_timeout=30) or "", bridge))
+            lambda c: conn.send_command_timing(c, read_timeout=30) or "", bridge,
+            ports=list(v.get("ports") or [])))
     except Exception as exc:                          # noqa: BLE001 (that server's failure)
         from modules.utils import error_text
         out["error"] = f"{device} could not be read: {error_text(exc)}"[:300]
@@ -242,7 +265,7 @@ def _connection_name(network: str, values: dict, given: str = "") -> str:
 
 def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
     """The checks after the send: ``{"ok", "checks": [{"name", "state", "words"}], "dpid"}``."""
-    after = read_bridge(ask, bridge)
+    after = read_bridge(ask, bridge, ports=list(values.get("ports") or []))
     want_target = f"tcp:{values.get('controller.host')}:{values.get('controller.port')}"
     proto = {"1.0": "OpenFlow10", "1.3": "OpenFlow13"}.get(values.get("openflow.version"))
     checks = [
@@ -261,6 +284,16 @@ def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
         checks.append(("its datapath id", after["datapath_id"] == values["openflow.datapath_id"],
                        f"datapath_id {after['datapath_id'] or 'none'}, wanted "
                        f"{values['openflow.datapath_id']}"))
+    numbers = values.get("port.openflow_port") or {}
+    if numbers:
+        # Each port's OpenFlow number as OVS gave it, against NetBox's (C2603): a request OVS
+        # could not honour (the number taken) leaves the port numbered otherwise.
+        given = after.get("ofport") or {}
+        wrong = sorted(p for p, n in numbers.items() if given.get(p) != n)
+        checks.append(("its OpenFlow port numbers", not wrong,
+                       ", ".join(f"{p} is {given.get(p) or 'unnumbered'}, wanted {numbers[p]}"
+                                 for p in wrong) or
+                       ", ".join(f"{p} {n}" for p, n in sorted(numbers.items()))))
     out = {"ok": False, "checks": [{"name": n, "state": "pass" if ok else "fail", "words": w}
                                    for n, ok, w in checks], "dpid": after["datapath_id"]}
     if not all(ok for _n, ok, _w in checks):

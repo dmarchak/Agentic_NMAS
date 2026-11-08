@@ -39,7 +39,12 @@ READS = ("ovs-vsctl --version", "sudo -n ovs-vsctl show", "sudo -n ovs-vsctl lis
 BRIDGE_READS = (("get-controller", "<bridge>"), ("get-fail-mode", "<bridge>"),
                 ("list-ports", "<bridge>"), ("get", "bridge", "<bridge>", "protocols"),
                 ("get", "bridge", "<bridge>", "datapath_id"),
-                ("--if-exists", "get", "bridge", "<bridge>", "other-config:datapath-id"))
+                ("--if-exists", "get", "bridge", "<bridge>", "other-config:datapath-id"),
+                # A port's requested and given OpenFlow port number (C2603).
+                ("get", "interface", "<port>", "ofport_request"),
+                ("get", "interface", "<port>", "ofport"))
+#: `ofport_request`'s range (ovs-vswitchd.conf.db(5), Interface table).
+OFPORT_MIN, OFPORT_MAX = 1, 65279
 
 
 def _safe(command) -> bool:
@@ -74,8 +79,9 @@ def read_refusal(command) -> str:
     return (f"REFUSED: {command[:80]!r} is not an OVS read Mercury allows: "
             f"{'; '.join(READS)}; and `sudo -n ovs-vsctl` get-controller, get-fail-mode, "
             "list-ports, get bridge <bridge> protocols or datapath_id, --if-exists get bridge "
-            "<bridge> other-config:datapath-id, or `sudo -n ovs-ofctl -O OpenFlow13 show "
-            "<bridge>`, each <bridge> one interface name.")
+            "<bridge> other-config:datapath-id, get interface <port> ofport_request or ofport, "
+            "or `sudo -n ovs-ofctl -O OpenFlow13 show <bridge>`, each <bridge> and <port> one "
+            "interface name.")
 
 
 def target_refusal(target: str) -> str:
@@ -120,6 +126,14 @@ def _command_refusal(words: list) -> str:
     if verb == "set-controller" and len(args) >= 2 and NAME.match(args[0]):
         bad = [target_refusal(t) for t in args[1:] if target_refusal(t)]
         return "; ".join(bad)
+    if verb in ("set", "clear") and len(args) == 3 and args[0] == "interface" \
+            and NAME.match(args[1]):
+        if verb == "clear" and args[2] == "ofport_request":
+            return ""
+        key, _, value = args[2].partition("=")
+        if verb == "set" and key == "ofport_request" and value.isdigit() \
+                and not value.startswith("0") and OFPORT_MIN <= int(value) <= OFPORT_MAX:
+            return ""
     if verb in ("set", "clear", "remove") and len(args) >= 3 and args[0] == "bridge" \
             and NAME.match(args[1]):
         rest = args[2:]

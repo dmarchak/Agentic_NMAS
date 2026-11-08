@@ -1,33 +1,61 @@
-# HPE ArubaOS-Switch (ProVision; ProCurve): a controller on the management VLAN, one instance
-# whose member VLAN is the OpenFlow ports' VLAN, OpenFlow 1.3 only, the fail mode, then enable.
-# Global configuration lines. DRAFT: no driver sends it yet (hp_procurve is a discovery driver,
-# which refuses every write), and no line may be sent until this network has confirmed it.
-# The guide: the management VLAN cannot be a member VLAN, and controller traffic must transit
-# on a VLAN OpenFlow does not manage; the default version is 1.0, so 1.3 is set.
+# HPE ArubaOS-Switch (ProVision; ProCurve): the OpenFlow ports untagged in their member VLAN,
+# LLDP off on each, a controller on the management VLAN, one instance whose member VLAN is the
+# OpenFlow ports' VLAN, OpenFlow 1.3, the fail mode, then enable. Global configuration lines.
+# DRAFT: no driver sends it yet (hp_procurve is a discovery driver, which refuses every write),
+# and no line may be sent until this network has confirmed it. The guide: the management VLAN
+# cannot be a member VLAN, and controller traffic must transit on a VLAN OpenFlow does not
+# manage; the default version is 1.0, so 1.3 is set. The versions are the platform profile's.
 name: aruba_os_switch
 family: HP ProCurve / ArubaOS-Switch
 drivers: [hp_procurve, aruba_osswitch, aruba_procurve]
 form: cli
-versions: ["1.0", "1.3"]
 transports: [tcp]
 ipv6_controller: false
 instance_shape: name
 lines:
+  - text: "vlan {openflow.vlan} untagged {port}"
+    each: ports
+    cite: [aos-s-vlan-measured]
+    why: "Port {port} carries the OpenFlow instance's member VLAN {openflow.vlan} untagged, so the instance takes it (input: the interface's openflow tag and untagged VLAN)."
+  - text: "lldp admin-status {port} disable"
+    each: ports
+    when: "lldp_off in profile.openflow.openflow_ports_require"
+    cite: [aos-s-lldp-measured]
+    why: "LLDP off on port {port}: the controller discovers links itself, and the switch's own LLDP agent would consume its probes (input: the interface's openflow tag)."
   - text: "openflow controller-id {controller.id} ip {controller.address} port {controller.port} controller-interface vlan {mgmt.vlan}"
     cite: [aos-s-controller]
+    why: "The controller, reached over the management VLAN {mgmt.vlan}, which OpenFlow never manages (input: the openflow Service's address and port, and the management interface's VLAN)."
   - text: "openflow instance {openflow.instance} member vlan {openflow.vlan}"
     cite: [aos-s-member]
+    why: "The instance manages VLAN {openflow.vlan}, the OpenFlow ports' VLAN (input: the untagged VLAN of the interfaces tagged openflow)."
   - text: "openflow instance {openflow.instance} controller-id {controller.id}"
     cite: [aos-s-controller]
+    why: "The instance connects to the controller defined above (input: the openflow Service)."
   - text: "openflow instance {openflow.instance} version {aos_s.version}"
     cite: [aos-s-version]
+    why: "The OpenFlow version the instance speaks (input: the config context's openflow.version)."
   - text: "openflow instance {openflow.instance} connection-interruption-mode {aos_s.fail_mode}"
     cite: [aos-s-fail-mode]
+    why: "What the instance forwards while the controller is unreachable (input: the config context's openflow.fail_mode)."
   - text: "openflow instance {openflow.instance} enable"
     cite: [aos-s-instance]
+    why: "The instance runs (input: the device's openflow_instance)."
   - text: "openflow enable"
     cite: [aos-s-enable]
+    why: "OpenFlow runs on the switch (input: the switch has OpenFlow ports)."
 citations:
+  aos-s-vlan-measured:
+    measured: "C2600"
+    what: "VLAN 200 holds the OpenFlow ports 2 and 3 untagged (vlan 200, untagged 2-3) on K.16.02.0020 with the instance's member vlan 200; the one-line form vlan <vid> untagged <port> is the same command from the global context, its acceptance on the release unconfirmed (C2590)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/procurve-sw.txt"
+    release: "K.16.02.0020"
+    read: "2026-11-06"
+  aos-s-lldp-measured:
+    measured: "C2600"
+    what: "lldp admin-status 2-3 disable on K.16.02.0020, after which the controller's topology finds the links through ports 2 and 3; the per-port form's acceptance on the release unconfirmed (C2590)"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/procurve-sw.txt"
+    release: "K.16.02.0020"
+    read: "2026-11-06"
   aos-s-controller:
     document: "HPE ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03 (5200-2934a)"
     section: "Configuring a controller; openflow controller-id ... controller-interface; openflow instance <name> controller-id"

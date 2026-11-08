@@ -12,6 +12,17 @@ What an entry holds, in P2a:
 - `openflow.pipeline` (`discover` or `single_table`) and, where measured, `openflow.tables`: the
   flow tables a flow may be placed in (`modules/sdn/placement.py`).
 
+What P2 adds, read by the OpenFlow templates (`modules/sdn/openflow_templates.py`, as
+``profile.openflow.<key>``):
+- `openflow.bind_change_requires`: `agent_restart` when a change to the bound ports takes effect
+  only after the OpenFlow agent is shut down and started again (C2599), or null;
+- `openflow.openflow_ports_require`: what each OpenFlow port needs besides binding, from
+  `PORT_REQUIREMENTS` (`lldp_off`: the switch's own LLDP agent consumes the controller's
+  probes, C2600), or an empty list;
+- `openflow.port_numbering`: how the switch numbers its OpenFlow ports, from `PORT_NUMBERING`
+  (`interface_number`, `port_number`, or `add_order`, where NetBox's number must be requested,
+  C2603).
+
 **Every value names how it is known.** `sources` maps a value's path to the keys of the file's
 `measurements` (a register row with its evidence, a fixture, or the vendor's guide), and a value
 no source settles is listed in `unconfirmed` with `unconfirmed_why`. `problems` refuses a file
@@ -29,6 +40,12 @@ HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
 #: The OpenFlow versions a profile may name.
 OPENFLOW_VERSIONS = ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5")
 PIPELINES = ("discover", "single_table")
+#: What a change to the bound ports needs (`openflow.bind_change_requires`), or null.
+BIND_CHANGES = ("agent_restart",)
+#: What an OpenFlow port may need besides binding (`openflow.openflow_ports_require`).
+PORT_REQUIREMENTS = ("lldp_off",)
+#: How a switch numbers its OpenFlow ports (`openflow.port_numbering`).
+PORT_NUMBERING = ("interface_number", "port_number", "add_order")
 #: A table's list-valued fields; each is a list or the word "any".
 TABLE_LISTS = ("match", "match_excludes", "eth_types", "instructions", "apply_actions",
                "apply_setfield", "next_tables")
@@ -156,6 +173,18 @@ def problems(doc: dict) -> list:
                        f"{of.get('pipeline')!r}")
         if "tables" in of:
             out += [f"{where}: {p}" for p in _table_problems(of["tables"])]
+        if "bind_change_requires" in of and of["bind_change_requires"] is not None \
+                and of["bind_change_requires"] not in BIND_CHANGES:
+            out.append(f"{where}'s openflow.bind_change_requires is one of "
+                       f"{', '.join(BIND_CHANGES)} or null, not {of['bind_change_requires']!r}")
+        if "openflow_ports_require" in of and (
+                not isinstance(of["openflow_ports_require"], list)
+                or any(r not in PORT_REQUIREMENTS for r in of["openflow_ports_require"])):
+            out.append(f"{where}'s openflow.openflow_ports_require is a list from "
+                       f"{', '.join(PORT_REQUIREMENTS)}, not {of['openflow_ports_require']!r}")
+        if "port_numbering" in of and of["port_numbering"] not in PORT_NUMBERING:
+            out.append(f"{where}'s openflow.port_numbering is one of "
+                       f"{', '.join(PORT_NUMBERING)}, not {of['port_numbering']!r}")
         sources = entry.get("sources") or {}
         for path, keys in sorted(sources.items()):
             for key in keys or []:
@@ -205,12 +234,12 @@ def select(driver: str, version_text) -> dict:
     for entry in doc["entries"]:
         if covers(entry["os"], version_text):
             return {"ok": True, "profile": name, "family": doc["family"], "entry": entry}
-    ranges = ", ".join(_range_words(e["os"]) for e in doc["entries"])
+    ranges = ", ".join(range_words(e["os"]) for e in doc["entries"])
     return {"ok": False, "error": f"no platform profile covers {doc['family']} "
                                   f"{version_text}: {name} covers {ranges}"}
 
 
-def _range_words(os_range: dict) -> str:
+def range_words(os_range: dict) -> str:
     train = f"{os_range['train']}." if os_range.get("train") else ""
     return f"{train}{os_range['from']} to below {train}{os_range['below']}"
 
@@ -227,3 +256,17 @@ def rejects_above(entry: dict):
 def tables(entry: dict):
     """The entry's measured flow tables, or None where the pipeline is to be discovered."""
     return entry["openflow"].get("tables")
+
+
+#: What `value` answers for a path the entry does not hold (distinct from a held null).
+ABSENT = object()
+
+
+def value(entry: dict, path: str):
+    """The entry's value at dotted *path* (``openflow.port_numbering``), or `ABSENT`."""
+    node = entry
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return ABSENT
+        node = node[part]
+    return node
