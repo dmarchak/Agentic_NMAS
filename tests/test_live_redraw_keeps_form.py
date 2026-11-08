@@ -12,7 +12,7 @@ fragment's first paint is never the ISO time.
 import pytest
 
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
-from tests.test_swaps_in_a_browser import READY, SETTLED, served  # noqa: F401
+from tests.test_swaps_in_a_browser import MARK_REDRAW, READY, SETTLED, redrawn, served  # noqa: F401
 
 #: C1522: its tests write reader stores, or wake readers that do; each test keeps them
 #: in its own folder.
@@ -85,10 +85,9 @@ def test_a_page_with_no_form_open_redraws_at_once(served, needs_one_ack):  # noq
     srv, b = served
     b.go(srv.url("/v2/"))
     b.wait_for(READY, 15)
-    b.js("document.getElementById('attention').dataset.old = '1';"
-         "document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
-    b.wait_for("var a = document.getElementById('attention');"
-               f"return !!a && !a.dataset.old && {SETTLED}", 15)
+    b.js(MARK_REDRAW, "attention")
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
+    b.wait_for("return " + redrawn("attention"), 15)
 
 
 # ── C1388: a sent acknowledgement is answered in place, within a bound ──────
@@ -195,13 +194,14 @@ def test_a_form_marked_not_editing_holds_no_redraw(served):  # noqa: F811
     srv, b = served
     b.go(srv.url("/v2/"))
     b.wait_for(READY, 15)
-    b.js("var a = document.getElementById('attention'); a.dataset.old = '1';"
+    b.js(MARK_REDRAW, "attention")
+    b.js("var a = document.getElementById('attention');"
          "var d = document.createElement('div'); d.setAttribute('data-editing', 'false');"
          "var i = document.createElement('input'); i.type = 'text'; i.name = 'why';"
          "d.appendChild(i); a.appendChild(d); i.value = 'sent already';"
          "document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
     b.wait_for("var a = document.getElementById('attention');"
-               f"return !!a && !a.dataset.old && !a.getAttribute('data-held') && {SETTLED}", 15)
+               "return !a.getAttribute('data-held') && " + redrawn("attention"), 15)
 
 
 # ── C472: what a person opened stays open ───────────────────────────────────
@@ -211,11 +211,9 @@ def test_a_form_marked_not_editing_holds_no_redraw(served):  # noqa: F811
 # had opened. A `<details data-keep>` is reopened after any swap that replaces its region.
 
 def _redraw_and_wait(b, region_id, key):
-    b.js("document.getElementById(arguments[0]).dataset.old = '1';"
-         "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[1])); return 1",
-         region_id, key)
-    b.wait_for("var r = document.getElementById(arguments[0]);"
-               f"return !!r && !r.dataset.old && {SETTLED}", 15, region_id)
+    b.js(MARK_REDRAW, region_id)
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0])); return 1", key)
+    b.wait_for("return " + redrawn(region_id), 15)
 
 
 def test_the_evidence_a_person_opened_stays_open(served):  # noqa: F811

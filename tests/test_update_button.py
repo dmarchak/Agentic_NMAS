@@ -23,6 +23,9 @@ import types
 
 import pytest
 
+#: A live redraw merges into its region and keeps its node (C2810): a redraw is counted.
+from tests.test_swaps_in_a_browser import MARK_REDRAW, redrawn
+
 #: C1522: its tests write reader stores, or wake readers that do; each test keeps them
 #: in its own folder.
 pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
@@ -1532,12 +1535,11 @@ class TestClickingTheShippedButton:
                    "&& !document.querySelector('#update-confirm').disabled")
         b.click("input[data-host-step]")
         for key in ("job_health", "app_version"):
-            b.js("document.getElementById('update-panel').dataset.old = '1';"
-                 "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0]));"
+            # Merged in place since C2810, so the redraw is counted as it settles.
+            b.js(MARK_REDRAW, "update-panel")
+            b.js("document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0]));"
                  "return 1", key)
-            b.wait_for("var p = document.getElementById('update-panel');"
-                       "return !!p && !p.dataset.old && !document.querySelector("
-                       "'.htmx-swapping, .htmx-settling, .htmx-request')", 15)
+            b.wait_for("return " + redrawn("update-panel"), 15)
             assert b.js("return document.querySelector('input[data-host-step]').checked"), key
         b.wait_for("return !document.querySelector('#update-confirm').disabled")
         b.click("#update-confirm")
@@ -1610,15 +1612,19 @@ class TestClickingTheShippedButton:
             b.go(served_update["srv"].url("/v2/update"))
             b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
                        "&& !document.querySelector('#update-confirm').disabled")
-            b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
-                 "window.__redrawn = false; document.body.addEventListener('htmx:beforeSwap',"
+            b.js("window.__redrawn = false; document.body.addEventListener('htmx:beforeSwap',"
                  " function (e) { if (e.detail.pathInfo && /\\/v2\\/update\\/panel/.test("
                  "e.detail.pathInfo.requestPath)) window.__redrawn = true; }); return 1")
+            b.js(MARK_REDRAW, "update-panel")
             b.click("#update-confirm")
             assert asked.wait(10), "the confirm never reached the route"
             b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
             b.wait_for("return window.__redrawn")
-            assert b.js("return document.querySelector('#update-panel').hasAttribute('data-old')"), \
+            # A merge keeps the panel's node whether or not it redraws (C2810), so the hold is
+            # read from the panel's own mark and its redraw count.
+            assert b.js("return document.querySelector('#update-panel').getAttribute('data-held')"
+                        " === '1' && (window.__redraws['update-panel'] || 0) === "
+                        "window.__redrawsAt['update-panel']"), \
                 "the redraw replaced the panel while its confirm was asked"
         finally:
             release.set()
@@ -1636,10 +1642,9 @@ class TestClickingTheShippedButton:
         b.js("document.querySelector('.confirm .how-link').click(); return 1")
         b.wait_for("return !document.querySelector('.htmx-request')")
         assert b.js("return document.querySelector('[data-update-hold]')") is None
-        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
-             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
-        b.wait_for("var p=document.querySelector('#update-panel');"
-                   "return p && !p.hasAttribute('data-old')")
+        b.js(MARK_REDRAW, "update-panel")
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("return " + redrawn("update-panel"))
 
     def test_an_accepted_request_draws_the_stepper_from_the_updaters_record(self, served_update):
         b, calls = served_update["b"], served_update["calls"]
@@ -1686,9 +1691,9 @@ class TestClickingTheShippedButton:
         assert b.js("var s=document.querySelector('#update-stop-waiting');"
                     "return getComputedStyle(s).display !== 'none' && "
                     "getComputedStyle(s.nextElementSibling).display !== 'none'")
-        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
-             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
-        b.wait_for("var p=document.querySelector('#update-panel'); return p && !p.hasAttribute('data-old')")
+        b.js(MARK_REDRAW, "update-panel")
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("return " + redrawn("update-panel"))
         words = b.wait_for("var w=document.querySelector('#update-waiting');"
                            "return w && getComputedStyle(w).display !== 'none' && w.textContent")
         assert words.startswith("Waiting for CI: the update to bbbbbbbbbb starts when CI passes")
@@ -1752,9 +1757,9 @@ class TestClickingTheShippedButton:
                   "s=document.querySelector('#update-stop-waiting');"
                   "return [getComputedStyle(w).display, getComputedStyle(s).display]")
         assert b.js(hidden) == ["none", "none"]
-        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
-             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
-        b.wait_for("var p=document.querySelector('#update-panel'); return p && !p.hasAttribute('data-old')"
+        b.js(MARK_REDRAW, "update-panel")
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("return " + redrawn("update-panel") +
                    " && window.Alpine && document.querySelector('.confirm')._x_dataStack")
         time.sleep(0.5)                       # well past htmx's settle delay (20 ms)
         assert b.js("return document.querySelector('.confirm').getAttribute('data-waiting')") == "no"
@@ -1834,9 +1839,9 @@ class TestCheckAgainInARealBrowser:
         # Busy ON ITSELF: nothing narrated beside the button.
         assert b.js(f"return {CONTROL}.textContent") == "Checking…"
         # Another reader re-draws the panel mid-run: the new one is still busy.
-        b.js("document.querySelector('#installation').setAttribute('data-old', '1');"
-             "htmx.trigger(document.body, 'nmas:job_health'); return 1")
-        b.wait_for("var s = document.querySelector('#installation'); return s && !s.hasAttribute('data-old')")
+        b.js(MARK_REDRAW, "installation")
+        b.js("htmx.trigger(document.body, 'nmas:job_health'); return 1")
+        b.wait_for("return " + redrawn("installation"))
         b.wait_for(f"return window.Alpine && {BUTTON}.disabled && {BUTTON}.textContent === 'Checking…'")
         s["hold"].set()
         assert _wait_until(lambda: s["announced"]), "the answer was not announced"
@@ -1885,12 +1890,11 @@ class TestCheckAgainAfterARefusalInARealBrowser:
                    "&& !document.querySelector('#update-confirm').disabled")
         b.click("#update-confirm")                          # refused: the panel holds it
         b.wait_for("return document.querySelector('[data-update-hold=\"result\"]')")
-        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1'); return 1")
+        b.js(MARK_REDRAW, "update-panel")
         b.click("#update-panel .check-again button")
         assert _wait_until(lambda: s["announced"]), "the answer was not announced"
         b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")   # the page's relay
-        b.wait_for("var p = document.querySelector('#update-panel'); "
-                   "return p && !p.hasAttribute('data-old')")
+        b.wait_for("return " + redrawn("update-panel"))
         b.wait_for(f"return window.Alpine && {UPDATE_CHECK}.textContent === 'Check again' "
                    f"&& !{UPDATE_CHECK}.disabled")
 

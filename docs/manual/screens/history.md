@@ -238,6 +238,12 @@ when a log line or a bootstrap config is revealed; a golden version, revealed in
 the Timeline, is listed the next time it is drawn, so the redraw does not take away the version
 you are reading.
 
+A live update of the Timeline keeps what you were doing: only the rows that changed are
+redrawn, so the rows you opened, a change or a version you loaded into a row, the rows Load more
+added and your place on the page all stay. New records that would arrive above where you are
+reading wait behind **N new, show them** at the top of the window instead of pushing the page
+down; pressing it draws them and takes you to them.
+
 ## Query {#query}
 
 Ask the network's history, starting from a question. The tab says first **what the history

@@ -16,6 +16,7 @@ import pytest
 
 from tests.test_coverage_deploy import r6_probe_unsent  # noqa: F401 (the fixture)
 from tests.test_coverage_grid import r2_snmp_down  # noqa: F401 (the fixture)
+from tests.test_swaps_in_a_browser import MARK_REDRAW, redrawn
 from tests.test_coverage_reporting import read  # noqa: F401 (r2_snmp_down's fixture)
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
 
@@ -46,11 +47,11 @@ def coverage(lab, monkeypatch, r6_probe_unsent, r2_snmp_down):  # noqa: F811
 
 
 def _announce_and_wait(b, key):
-    """Fire the broadcast's event and wait until #coverage was replaced and settled."""
-    b.js("document.getElementById('coverage').dataset.old = '1';"
-         "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0])); return 1", key)
-    b.wait_for("var c = document.getElementById('coverage');"
-               f"return !!c && !c.dataset.old && {SETTLED}", 15)
+    """Fire the broadcast's event and wait until #coverage was redrawn and settled (merged in
+    place since C2810, so counted as it settles: tests/test_swaps_in_a_browser.MARK_REDRAW)."""
+    b.js(MARK_REDRAW, "coverage")
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0])); return 1", key)
+    b.wait_for("return " + redrawn("coverage"), 15)
 
 
 def _load(srv, b):

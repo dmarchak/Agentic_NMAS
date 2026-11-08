@@ -11,7 +11,11 @@ Shots: 1440, 1280 and phone 390 (the page and its first screen). Compared 2026-1
 The range it reads was installed on the host 2026-10-11 21:16 UTC (5cbb226, the host step 10 of 10 PASS); after it, the lab's unreserved hosts renewed through their relays still got 365 days.
 Templates compared: templates/v2/onboard.html, templates/v2/_onboard_discovered.html
 Compared again 2026-10-11: each group carries `data-keep`, so a live redraw keeps it open or closed as the person left it (C472); nothing drawn moved.
-Templates sha256: `bbceab85692b1411559f4931d16d96be9b0340fd447c1ed221d23ab5db6f4743`
+Templates sha256: `7920d4c90e218fe88103424f1ac91e784f9b71d1a0653bfcafa95e2eabda776b`
+Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of Discovered
+(`_onboard_discovered.html`) carries `data-key` by its MAC, which the live merge matches rows by;
+nothing drawn moves. Compared by reading the diff, with no new shot. Before:
+`bbceab85692b1411559f4931d16d96be9b0340fd447c1ed221d23ab5db6f4743`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

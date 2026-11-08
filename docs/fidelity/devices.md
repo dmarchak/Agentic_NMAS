@@ -26,7 +26,11 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
-Templates sha256: `892289d969f9f894435a63812f73131f12f37f34eca238cffb70ef88b36b44d8`
+Templates sha256: `eb4a539d1aab2084a3269f027942ad9d7ecb431b7fce117e45def99754807202`
+(Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of
+`_devices.html` carries `data-key`, its stable key, which the live merge matches rows by;
+nothing drawn moves. Compared by reading the diff, with no new shot. Before:
+`892289d969f9f894435a63812f73131f12f37f34eca238cffb70ef88b36b44d8`.)
 (Before Bulk intent's row left, FC phase 2 (f3), 2026-11-02: `3b4b571f4ee3ae4a7e9511673dd6523218018c970a064aa0c629b6f1666fbece`; the menu's Change a setting on N… removed, FC1's menu now drawn but for Make a group of these N…, every other row unchanged.)
 (Before board FC1's entry, 2026-11-02: `064befed489ff6fdedd7b085d4b7002d832ed1b005aff9603444275176df2829`.)
 

@@ -17,7 +17,11 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `b8de5798017a759672219f70bf99452f0675922d4eb0bc55185be56b2298d108`
+Templates sha256: `a1c0c8448fc3c0adf67b4df0c828bc19f516a9b7a639bcee835fea73966dbbe0`
+(2026-11-08 ~20:5x UTC, C2810: each device row of `_logs_view.html` and its opened lines' row
+carry `data-key`, their stable keys, which the live merge matches rows by; nothing drawn moves.
+Hashed again by reading the diff, with no new shot. Before:
+`b8de5798017a759672219f70bf99452f0675922d4eb0bc55185be56b2298d108`.)
 (2026-11-04, board H, H6: `_history_body.html`'s identity line counts a commit made under a
 confirmed policy under its own words; nothing on this page moved. Before: `faa38c11db29e16fa3171d08c115f59ab48294e15a0c11facf78437799eaf2be`.)
 (2026-11-02, C2268: `_history_body.html` draws a hidden answer slot under History's remote

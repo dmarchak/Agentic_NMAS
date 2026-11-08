@@ -1152,9 +1152,13 @@ def test_a_pan_that_ends_asks_again_for_what_waited_in_a_browser(web):
         b.js("htmx.trigger(document.body, 'nmas:topology')")
         b.wait_for("return window.__done.length >= 1")
         assert b.js("return window.__r1.isConnected")
+        asked = b.js("return window.__done.length")
         _pointer(b, [{"type": "pointerUp", "button": 0}])
         b._call("DELETE", f"/session/{b.session}/actions")
-        b.wait_for("return !window.__r1.isConnected")
+        # The map asks again once the pointer is up (C882). Since C2810 a live answer is merged:
+        # an unchanged map keeps r1's node, so the ask, not a replaced node, is the evidence.
+        b.wait_for(f"return window.__done.slice({asked}).some(function (r) {{"
+                   " return r.indexOf('GET ') === 0; })")
         assert not (web["dir"] / "topology_layout.json").exists()
 
 

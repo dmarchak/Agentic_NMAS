@@ -20,7 +20,12 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `66def9f4db13679f53fb9bf739786561e01a36db0306eb17ca29fd83ccdc37b4`
+Templates sha256: `6635a054ea2058be52da98aaa73bf3f7ec8f9b3de3a37f5209ed28bdaabc9422`
+Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: the timeline's foot in
+`_timeline.html` carries `data-key="tl-foot"`, so the live merge keeps the foot Load more drew in
+its place instead of drawing the first page's again; nothing drawn moves. Compared by reading
+the diff, with no new shot. Before:
+`66def9f4db13679f53fb9bf739786561e01a36db0306eb17ca29fd83ccdc37b4`.
 
 Compared again 2026-11-07 (board H's amendment, H26), by the template diff: the regions and
 verdicts are history.md's of the same date (one template draws both): `_timeline.html` draws

@@ -35,7 +35,11 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `a3b22694cd06df92af9d318cc7a10438d648711f6f7ecd3208a5ea3948d260e3`
+Templates sha256: `89f6d0227bcdb1fd109a193d41838b9278c7af6dca1683404327d39ffe6be905`
+Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each row of Recent
+(`_recent.html`) carries `data-key`, its stable key, which the live merge matches rows by;
+nothing drawn moves. Compared by reading the diff, with no new shot. Before:
+`a3b22694cd06df92af9d318cc7a10438d648711f6f7ecd3208a5ea3948d260e3`.
 
 **Compared again 2026-11-07 for H26** (board H's amendment, artboard M's right column: the
 analysis as the can't-fix row shows it), by the template diff (no new shot): `_heal_analysis.html`

@@ -64,7 +64,7 @@
     <thead><tr><th scope="col">MAC</th><th scope="col">Vendor class (opt. 60)</th><th scope="col">Client-id (opt. 61)</th><th scope="col">Hostname sent</th><th scope="col">Its lease</th><th scope="col">Asking since</th><th scope="col">Last asked</th><th scope="col">Next request</th><th scope="col"><span class="sr-only">Pick</span></th></tr></thead>
     <tbody>
     {%- for d in grp.rows %}
-    <tr>
+    <tr data-key="mac-{{ d.mac }}">
       <td class="mono">{{ d.mac }}</td>
       <td>{% if d.vendor %}{{ badge(d.vendor, 'info') }}{% else %}<span class="faint">none sent</span>{% endif %}</td>
       <td class="mono small">{{ d.client_id or '–' }}</td>
@@ -84,7 +84,7 @@
     <thead><tr><th scope="col">MAC</th><th scope="col">Picked as</th><th scope="col">Asking since</th><th scope="col">Picked</th><th scope="col">Now</th></tr></thead>
     <tbody>
     {%- for d in grp.rows %}
-    <tr>
+    <tr data-key="mac-{{ d.mac }}">
       <td class="mono">{{ d.mac }}</td>
       <td>{% if d.picked_as %}<a href="{{ url_for('device_v2.device', name=d.picked_as, list=g.list) }}">{{ d.picked_as }}</a>{% else %}<span class="faint">reserved{% if d.reserved %} as {{ d.reserved }}{% endif %}, no onboarding names it</span>{% endif %}</td>
       <td>{{ at(d.first_seen) }}</td>
@@ -99,7 +99,7 @@
     <thead><tr><th scope="col">MAC</th><th scope="col">Client-id (opt. 61)</th><th scope="col">Asking since</th><th scope="col">Last asked</th><th scope="col">Now</th></tr></thead>
     <tbody>
     {%- for d in grp.rows %}
-    <tr>
+    <tr data-key="mac-{{ d.mac }}">
       <td class="mono">{{ d.mac }}</td>
       <td class="mono small">{{ d.client_id or '–' }}</td>
       <td>{{ at(d.first_seen) }}</td>

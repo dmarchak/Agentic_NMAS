@@ -4915,7 +4915,21 @@ DHCP's change cards hold a redraw as SDN's do (test_live_refresh_dhcp.py); Monit
 count sent out of band with its list (C2251). Learned: holding is for what a redraw cannot draw
 again (a card, a typed text, an open menu); a select or a ticked box is kept THROUGH the redraw
 ((2), as Devices and Coverage already do), never by holding it, since those regions must show
-the new data. The rest is not built.
+the new data. **Built 2026-11-08 (C2810; the operator's rule of that day, "Live refresh never
+interrupts the person", the charter's "Human-facing means human-readable" rule 6):** (1) the
+keyed merge, Mercury's own (`mergeInto` in static/js/nmas_v2.js, an htmx swap extension every
+live redraw of every region goes through; no library). Each element a region drew is remembered
+with the server's copy of it, and a live answer is compared with that copy: what the server left
+alone is left exactly as the page has it, so (2) follows for every region at once (open
+disclosures, focus, typed text, selects and boxes, Alpine state, inner scroll, a body a person
+loaded into a row, Load more's rows); rows are matched by `id`, `data-key` or `data-keep`, and
+the lists without one carry a `data-key` now. (3) as "N new, show them": a new keyed row that
+would land above the window is drawn hidden and counted in one control fixed at the top of the
+window. The hold for editing, an open entry and a card under review now covers that part alone,
+and the rest of the region is drawn around it; an action in flight still holds the whole region.
+Tested in a real browser per live page (tests/test_live_merge.py). Not built: 21.3's CI check of
+`data-key` on rows, and Monitoring's native panels, which still redraw on their own 30 s timer
+(C2827).
 
 ## 22. Fleet changes: shared intent layers (board FC, approved with changes 2026-11-01; C2283)
 

@@ -274,9 +274,12 @@ class TestInARealBrowser:
         b = served["b"]
         b.go(served["srv"].url("/v2/help/about"))
         b.wait_for(f"return {COUNT} && {COUNT}.textContent.trim() === '0'")
-        b.js(f"{COUNT}.setAttribute('data-old', '1');"
-             f"{COUNT}.setAttribute('data-next-change-at', '2020-01-01T00:00:00Z'); return 1")
-        b.wait_for(f"return {COUNT} && !{COUNT}.hasAttribute('data-old')", 10)
+        # A redraw merges into the count and keeps its node (C2810): it is counted.
+        from tests.test_swaps_in_a_browser import MARK_REDRAW
+        b.js(MARK_REDRAW, "attention-count")
+        b.js(f"{COUNT}.setAttribute('data-next-change-at', '2020-01-01T00:00:00Z'); return 1")
+        b.wait_for("return (window.__redraws['attention-count'] || 0) > "
+                   f"window.__redrawsAt['attention-count'] && !!{COUNT}", 10)
 
     def test_it_says_it_may_be_out_of_date_and_catches_up(self, served):
         """A value past its promise, and a live channel that dropped, each mark the count

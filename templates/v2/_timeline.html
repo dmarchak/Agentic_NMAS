@@ -103,7 +103,7 @@
     {%- endfor %}
     {#- The foot (15.14 part B): Load more, busy on itself until its rows are drawn in its place;
         or that nothing older is left; and any store this page could not read far enough back. -#}
-    <div class="tl-foot">
+    <div class="tl-foot" data-key="tl-foot">
       {#- An appended page's own unreadable stores, said where its rows land (the first page
           says its own above the list). -#}
       {%- if appended and h.errors %}

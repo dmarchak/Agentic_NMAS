@@ -75,7 +75,7 @@
         </tr></thead>
         <tbody>
           {%- for d in c.devices %}
-          <tr>
+          <tr data-key="cov-{{ d.host }}">
             <td class="gcheck"{% if not d.selectable %} title="Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}"{% endif %}>
               {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}" data-missing="{{ d.supplies | length }}"{% if d.checked %} checked{% endif %} x-on:change="recount" aria-label="Select {{ d.host }}: {{ d.supplies | length }} missing" title="{{ d.supplies | length }} missing the profile supplies: {{ d.supplies | join(', ') }}">
               {%- else %}{#- No box where nothing can be deployed (the signed note: "no box on a fully

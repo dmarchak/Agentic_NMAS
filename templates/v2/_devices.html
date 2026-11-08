@@ -80,7 +80,7 @@
         </tr></thead>
         <tbody>
           {%- for r in d.rows %}
-          <tr>
+          <tr data-key="dev-{{ r.name }}">
             <td>{%- if not r.pending %}<input type="checkbox" name="device" value="{{ r.name }}" id="dev-{{ r.name }}" aria-label="Select {{ r.name }}"{% if r.checked %} checked{% endif %}>{% endif -%}</td>
             <th scope="row"><a href="{{ url_for('device_v2.device', name=r.name) }}">{{ r.name }}</a>{% if r.role %}<span class="muted"> · {{ r.role }}</span>{% endif %}{% if r.drained %} {{ badge('Drained', 'warn', title=r.drained) }}{% endif %}</th>
             <td>{% if r.status.link %}<a class="status-op" href="{{ url_for('device_v2.device', name=r.status.link) }}">{% endif %}{{ badge(r.status.words, KIND.get(r.status.state, 'muted'), title=r.status.title or '') }}{% if r.status.link %}</a>{% endif %}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>

@@ -18,6 +18,7 @@ import pytest
 
 from tests.test_devices_v2 import inv  # noqa: F401 (the fixture)
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
+from tests.test_swaps_in_a_browser import MARK_REDRAW, redrawn
 
 SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
 BOXES = ("return Array.prototype.map.call(document.querySelectorAll("
@@ -60,10 +61,10 @@ def served(inv, monkeypatch):  # noqa: F811
 
 
 def _announce_and_wait(b, key):
-    b.js("document.getElementById('devices').dataset.old = '1';"
-         "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0])); return 1", key)
-    b.wait_for("var c = document.getElementById('devices');"
-               f"return !!c && !c.dataset.old && {SETTLED}", 15)
+    # Merged in place since C2810, so the redraw is counted as it settles.
+    b.js(MARK_REDRAW, "devices")
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0])); return 1", key)
+    b.wait_for("return " + redrawn("devices"), 15)
 
 
 def test_in_a_browser_a_tick_survives_another_persons_change(served):

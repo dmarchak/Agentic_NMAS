@@ -118,7 +118,9 @@ V2_PAGES = {
     # in a worker shares, 49,813 bytes alone and 88,687 mid-suite (measured 2026-10-15). What
     # moves with the fleet is read within one environment, so its per-device pins hold.
     "/v2/": (None, 0, 1),
-    "/v2/devices": (22_610, 960, 627),
+    # C2810 (2026-11-08): each keyed row carries `data-key` for the live merge, measured
+    # 28,145 fixed and 983 per device (were 22,610 and 960).
+    "/v2/devices": (28_145, 983, 627),
     "/v2/device/cor0000": (33_319, 0, 19),
 }
 

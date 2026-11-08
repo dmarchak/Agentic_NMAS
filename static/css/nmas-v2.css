@@ -426,7 +426,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 .tab.off { color: var(--ink-3); cursor: default; }
 .tab-body { display: flex; flex-direction: column; gap: 14px; transition: opacity 120ms ease; }
-.tab-body.htmx-request { opacity: 0.55; }
+.tab-body.htmx-request:not([data-nmas-live]) { opacity: 0.55; }
 
 /* ---- cards, facts, checks ---- */
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -712,6 +712,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 /* A live redraw paused while a person works in an open entry (C1852): the words and Show it
    now, under the entry's summary. */
 p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+/* "N new, show them" (C2810, nmas_v2.js `drawNewNote`): rows a live redraw drew above the
+   window wait hidden, counted here. Fixed under the top bar, so it moves nothing on the page. */
+.live-new { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 30; }
+.live-new .btn { box-shadow: var(--shadow); }
 .explain-again-cost { margin-left: 4px; }
 /* Explain's "Advisory (beta)" label (_explain_beta.html, board AlertsExplain revised
    2026-10-29): the chip, the measured figure, How was this measured? and "A person should
@@ -1923,7 +1927,8 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .topo-tools .btn.on, .topo-tab.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 .topo-grow { flex-grow: 1; }
 .topo-faint { color: var(--ink-3); }
-.topo .htmx-request { opacity: .6; cursor: progress; }
+/* A person's own request dims the map; a live redraw (data-nmas-live, nmas_v2.js) does not (C2810). */
+.topo .htmx-request:not([data-nmas-live]) { opacity: .6; cursor: progress; }
 .topo-pop { position: relative; }
 .topo-pop > summary { list-style: none; cursor: pointer; }
 .topo-pop > summary::-webkit-details-marker { display: none; }

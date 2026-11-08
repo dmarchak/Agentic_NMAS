@@ -9,7 +9,11 @@ the lab having no IP SLA policy), then the Decline… card opened as its button 
 reason typed. The board draws no phone width; at 390 the rows stack (label, why, then the
 controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
-Templates sha256: `471a9bc42cf0dbccd6342dc1b17640db8d44930d0be4766a448e790b837fa366`
+Templates sha256: `c67d54294d4875faad9432fbb0856c306406466f7f443c328ab4355d529d54e0`
+Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of
+`_coverage.html` carries `data-key` (its stable key, which the live merge matches rows by), so
+a live redraw changes only the rows that changed; nothing drawn moves. Compared by reading the
+diff, with no new shot. Before: `471a9bc42cf0dbccd6342dc1b17640db8d44930d0be4766a448e790b837fa366`.
 
 Compared again 2026-10-21 (C1491, the tuning sprint): `ip_sla.html` gained a section above the
 suggestions, "Probes off the policy's frequency". It lists each probe that intent holds at

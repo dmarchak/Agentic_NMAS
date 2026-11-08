@@ -12,7 +12,7 @@
   <h4 class="hist-ai-head">Sent to the model</h4>
   {%- for p in c.sent %}
   {%- if p.fold %}
-  <details class="hist-ai-part"><summary>{{ p.name }} <span class="muted small">({{ p.size }} characters, folded)</span></summary><pre class="hist-diff">{{ p.text }}</pre></details>
+  <details class="hist-ai-part" data-keep="ai-part-{{ c.id }}-{{ loop.index }}"><summary>{{ p.name }} <span class="muted small">({{ p.size }} characters, folded)</span></summary><pre class="hist-diff">{{ p.text }}</pre></details>
   {%- else %}
   <p class="hist-ai-name small">{{ p.name }}</p><pre class="hist-diff">{{ p.text }}</pre>
   {%- endif %}

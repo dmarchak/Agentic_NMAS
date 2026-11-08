@@ -283,6 +283,18 @@
   function noteSent(e) {
     var el = e && e.detail && e.detail.elt;
     if (el && el.removeAttribute) el.removeAttribute('data-nmas-sending');
+    if (el && el.removeAttribute) el.removeAttribute('data-nmas-live');
+  }
+
+  /* A live redraw's request is marked on its region (`data-nmas-live`) while it is in flight,
+     so a busy style meant for a person's own press (Topology dimming, a tab fading) is not
+     drawn on every announcement (C2810: the map dimmed on each step of a run). */
+  function noteLiveAsk(e) {
+    var d = (e && e.detail) || {}, el = d.elt;
+    var ev = d.requestConfig && d.requestConfig.triggeringEvent;
+    if (el && el.setAttribute && ev && typeof ev.type === 'string' && ev.type.indexOf('nmas:') === 0) {
+      el.setAttribute('data-nmas-live', '1');
+    }
   }
 
   /* ONE PRESS, ONE KEY (C1854): every request that is not a GET carries a key made for that
@@ -317,23 +329,47 @@
     return !!(ev && typeof ev.type === 'string' && ev.type.indexOf('nmas:') === 0);
   }
 
+  /* The part of *region* a person editing *editing* is working in, where its note goes: its
+     form or Alpine component when that is the region's own, else the field's parent. `<body>`
+     carries x-data (the frame), so a field with no nearer component put the note on the page
+     grid as a new column (Topology's Find box, the operator 2026-10-12). */
+  function editUnit(editing, region) {
+    var unit = editing.closest && editing.closest('form, [x-data]');
+    if (!unit || unit === region || !region.contains(unit)) unit = editing.parentNode || region;
+    return unit;
+  }
+
+  /* Every part of *region* a person is working in, which a merge leaves as it is (C2810): what
+     is being edited, an entry open with the body it loaded, a card under review. */
+  function heldParts(region) {
+    var out = [], i;
+    var fields = region.querySelectorAll('input, textarea, [data-editing="true"]');
+    for (i = 0; i < fields.length; i++) {
+      if (isEditing(fields[i])) out.push(fields[i].getAttribute('data-editing') === 'true'
+                                          ? fields[i] : editUnit(fields[i], region));
+    }
+    var more = region.querySelectorAll('details[hx-get][open], [data-holds-live]');
+    for (i = 0; i < more.length; i++) out.push(more[i]);
+    return out.filter(function (u) { return u !== region; });
+  }
+
   function holdWhileEditing(e) {
     var region = e.detail && e.detail.target;
     if (!e.detail || !e.detail.shouldSwap || !region || !isLiveUpdate(e.detail)) return;
     var why = holdReason(region);
     if (!why) return;
-    e.detail.shouldSwap = false;
+    // C2810: a region the merge can redraw is no longer held whole while a person edits, has
+    // an entry open or reviews a card there. The merge leaves exactly that part as it is
+    // (`heldParts`) and draws the rest, new rows above the window counted; the part says
+    // newer data is waiting, and is drawn once the person is done, as before. An action in
+    // flight still holds the whole region: its answer needs the place it was sent from.
+    if (why === 'sending' || !mergeSpec(e.detail)) e.detail.shouldSwap = false;
     region.setAttribute('data-held', '1');
     // The skipped redraw's open entries are the person's own, still open: nothing to reopen.
     delete keptOpen[region.id];
     if (why !== 'editing') { notePaused(region, why); return; }
     var editing = editingIn(region);
-    // The note stays INSIDE the region, beside the field: its form or Alpine component when
-    // that is the region's own, else the field's parent. `<body>` carries x-data (the frame),
-    // so a field with no nearer component put the note on the page grid as a new column
-    // (Topology's Find box, the operator 2026-10-12).
-    var unit = editing.closest && editing.closest('form, [x-data]');
-    if (!unit || unit === region || !region.contains(unit)) unit = editing.parentNode || region;
+    var unit = editUnit(editing, region);
     if (!unit.querySelector('.held-note')) {
       var note = root.document.createElement('span');
       note.className = 'held-note';
@@ -408,6 +444,492 @@
       if (v === '0') all[i].open = false;
       else if (v === '1') all[i].open = true;
     }
+  }
+
+  /* A LIVE REDRAW MERGES WHAT CHANGED INTO THE PAGE; IT NEVER REPLACES THE REGION (C2810, the
+     operator, 2026-11-08: "Live refresh never interrupts the person. A refresh keeps scroll
+     position, focus, open or closed disclosures, text in inputs, and marks (Right/Wrong). It
+     doesn't flash, and nothing above the reader shifts: new items above the viewport show as
+     'N new, show them' instead of pushing the page."). Each live region replaced itself whole
+     on every announcement (outerHTML or innerHTML), so a focused button, an open entry with no
+     key, a body loaded into a row and the reader's place went with it, and Needs attention was
+     caught half drawn between the swap and the settle that reopened its rows.
+
+     How: every element a region drew is remembered with the server's own copy of it
+     (`drawnFrom`, the page's regions as parsed, before Alpine or htmx touched them, and each
+     redraw's answer after). A live answer is compared with that copy, not with the page: an
+     element whose copy equals its new version is left exactly as it is, whatever the person
+     did to it (opened, typed in, focused, scrolled, marked). One that changed has only the
+     attributes the server changed set, and its children merged the same way, matched by their
+     key (`id`, `data-key`, or a disclosure's `data-keep`; a list's rows carry one) and
+     otherwise by their place among their unkeyed siblings. What the page made itself (a body
+     a person loaded into a row, Load more's rows, Alpine's parts, a held note) has no copy,
+     so the merge keeps it where it is. A new keyed row that would land above the top of the
+     window is drawn hidden, and "N new, show them" says so instead of pushing the page down.
+
+     Mercury's own merge, not a library's (idiomorph, htmx's morph extension): anything that
+     ships in Mercury has its licence decided by the operator, and this needs only what the
+     page already holds. */
+  var drawnFrom = typeof root.WeakMap === 'function' ? new root.WeakMap() : null;
+  var MERGE_OUTER = 'nmas-merge-outer', MERGE_INNER = 'nmas-merge-inner';
+  var NEW_WORDS = ' new, show them';
+
+  function isRegion(el) {
+    return !!(el && el.nodeType === 1 && (el.getAttribute('hx-trigger') || '').indexOf('nmas:') >= 0);
+  }
+
+  /* htmx's own passing classes, and the marks this file puts on a region while it holds or
+     asks (a hold, an action in flight, a live request), are never part of what the server
+     drew. */
+  var PAGE_MARKS = ['data-held', 'data-nmas-sending', 'data-nmas-live'];
+  function scrub(el) {
+    if (!el || el.nodeType !== 1) return;
+    var marked = [el].concat(Array.prototype.slice.call(
+      el.querySelectorAll('[data-held], [data-nmas-sending], [data-nmas-live]')));
+    for (var m = 0; m < marked.length; m++) {
+      for (var p = 0; p < PAGE_MARKS.length; p++) marked[m].removeAttribute(PAGE_MARKS[p]);
+    }
+    var all = [el].concat(Array.prototype.slice.call(el.querySelectorAll('[class*="htmx-"]')));
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i].getAttribute('class');
+      if (c === null || c.indexOf('htmx-') < 0) continue;
+      var kept = c.split(/\s+/).filter(function (t) { return t && t.indexOf('htmx-') !== 0; });
+      if (kept.length) all[i].setAttribute('class', kept.join(' '));
+      else all[i].removeAttribute('class');
+    }
+  }
+
+  /* Pair each node under *live* with its copy under *copy* (the same shape, node for node). */
+  function remember(live, copy) {
+    if (!drawnFrom || !live || !copy) return;
+    drawnFrom.set(live, copy);
+    var a = live.childNodes, b = copy.childNodes;
+    if (a.length !== b.length) return;
+    for (var i = 0; i < a.length; i++) remember(a[i], b[i]);
+  }
+
+  /* Remember *el* as the server drew it: a copy taken before anything on the page changed it. */
+  function capture(el) {
+    if (!drawnFrom || !el || el.nodeType !== 1) return;
+    var copy = el.cloneNode(true);
+    scrub(copy);
+    remember(el, copy);
+  }
+
+  /* Every outermost region under *scope* (or *scope* itself). */
+  function captureRegions(scope) {
+    if (!drawnFrom || !scope || !scope.querySelectorAll) return;
+    if (isRegion(scope)) { capture(scope); return; }
+    var all = scope.querySelectorAll('[hx-trigger*="nmas:"]');
+    for (var i = 0; i < all.length; i++) {
+      var up = all[i].parentNode, inner = false;
+      while (up && up !== scope && up.nodeType === 1) {
+        if (isRegion(up)) { inner = true; break; }
+        up = up.parentNode;
+      }
+      if (!inner) capture(all[i]);
+    }
+  }
+
+  /* A swap that was not a merge drew a region afresh (its first load, a person's own request,
+     a hold's redraw): remember it as drawn. Content a person loaded INTO a region (a row's
+     body, Load more's page) is the page's own and stays unremembered, so a merge keeps it. */
+  var merging = false;
+  function captureSwapped(e) {
+    if (merging || !drawnFrom) return;
+    var t = e.detail && e.detail.target;
+    if (!t || t.nodeType !== 1) return;
+    // A merge's own swap: its region already holds the server's copy, and the page's changes
+    // must not be taken for the server's.
+    if (t.nmasMerged) { delete t.nmasMerged; return; }
+    var now = t.isConnected ? t : (t.id ? root.document.getElementById(t.id) : null);
+    if (!now) return;
+    if (isRegion(now)) { capture(now); return; }
+    var up = now.parentNode;
+    while (up && up.nodeType === 1) {
+      if (isRegion(up)) return;                     // loaded into a region: the page's own
+      up = up.parentNode;
+    }
+    captureRegions(now);
+  }
+
+  /* An out-of-band part the server sent with another answer (Monitoring's Firing count with
+     its list, C2251) is the server's drawing too: remembered as drawn, so the region around it
+     merges it rather than keeping it as the page's own. */
+  function captureOob(e) {
+    if (merging || !drawnFrom) return;
+    var t = e.detail && e.detail.target;
+    if (!t || t.nodeType !== 1) return;
+    if (t.nmasOobMerged) { delete t.nmasOobMerged; return; }
+    var now = t.isConnected ? t : (t.id ? root.document.getElementById(t.id) : null);
+    if (now) capture(now);
+  }
+
+  /* An out-of-band part the page holds the server's copy of, sent again whole (its own
+     element, the same id), merges as a region does: replaced, it was drawn again on every
+     answer that carried it (Monitoring's Firing count, measured by tests/test_live_merge.py). */
+  function mergeOob(e) {
+    var d = e.detail, t = d && d.target, f = d && d.fragment;
+    if (!d || !d.shouldSwap || !t || !f || !drawnFrom) return;
+    var els = Array.prototype.filter.call(f.childNodes, function (n) { return n.nodeType === 1; });
+    if (els.length !== 1 || els[0].tagName !== t.tagName || (els[0].id || '') !== (t.id || '')) return;
+    if (!drawnFrom.get(t)) {
+      // Outside any region, so never remembered: the same drawing again is left alone (and
+      // remembered from now on); a different one is htmx's to replace.
+      var now = t.cloneNode(true);
+      scrub(now);
+      if (!now.isEqualNode(els[0])) return;
+      d.shouldSwap = false;
+      remember(t, els[0]);
+      t.nmasOobMerged = true;
+      return;
+    }
+    d.shouldSwap = false;
+    mergeRegion(true, t, f);
+    delete t.nmasMerged;
+    t.nmasOobMerged = true;       // its `htmx:oobAfterSwap` is not a fresh drawing to capture
+  }
+
+  /* PURE over a node: its key among its siblings, or '' (matched by its place). */
+  function keyOf(n) {
+    if (!n || n.nodeType !== 1) return '';
+    var v = n.getAttribute('id');
+    if (v) return '#' + v;
+    v = n.getAttribute('data-key');
+    if (v) return 'k:' + v;
+    v = n.getAttribute('data-keep');
+    return v ? 'p:' + v : '';
+  }
+
+  function tokens(s) { return String(s || '').split(/\s+/).filter(function (t) { return !!t; }); }
+
+  /* Set on *live* only what the server changed between *was* and *next*: an attribute the
+     server left alone keeps what the page made of it (a disclosure's open, Alpine's style). */
+  function mergeAttrs(live, was, next) {
+    var i, name, a, b;
+    for (i = 0; i < next.attributes.length; i++) {
+      name = next.attributes[i].name; b = next.attributes[i].value; a = was.getAttribute(name);
+      if (a === b || name === 'open') continue;
+      if (name === 'class') {
+        var ta = tokens(a), tb = tokens(b), j;
+        for (j = 0; j < ta.length; j++) if (tb.indexOf(ta[j]) < 0) live.classList.remove(ta[j]);
+        for (j = 0; j < tb.length; j++) if (ta.indexOf(tb[j]) < 0) live.classList.add(tb[j]);
+      } else {
+        live.setAttribute(name, b);
+      }
+    }
+    for (i = 0; i < was.attributes.length; i++) {
+      name = was.attributes[i].name;
+      if (name === 'open' || next.hasAttribute(name)) continue;
+      if (name === 'class') {
+        var gone = tokens(was.attributes[i].value);
+        for (var k = 0; k < gone.length; k++) live.classList.remove(gone[k]);
+      } else {
+        live.removeAttribute(name);
+      }
+    }
+  }
+
+  function sameChildren(a, b) {
+    var x = a.childNodes, y = b.childNodes;
+    if (x.length !== y.length) return false;
+    for (var i = 0; i < x.length; i++) if (!x[i].isEqualNode(y[i])) return false;
+    return true;
+  }
+
+  /* Bring *live* (drawn from its copy) to *next*, keeping everything the server left alone. */
+  /* PURE over two elements: whether *next* asks for something as it is drawn (an htmx `load`,
+     `revealed` or `intersect` trigger) where *was* did not ask the same. */
+  function startsAgain(was, next) {
+    if (!was || was.nodeType !== 1 || !next || next.nodeType !== 1) return false;
+    var a = was.getAttribute('hx-trigger') || '', b = next.getAttribute('hx-trigger') || '';
+    return a !== b && /(^|[\s,])(load|revealed|intersect)([\s,]|$)/.test(b);
+  }
+
+  /* Returns the node that stands for *next* afterwards: *live* itself, or what replaced it. */
+  function morph(live, next, ctx) {
+    var was = drawnFrom.get(live);
+    if (!was) return live;                           // the page's own: kept as it is
+    if (was.isEqualNode(next)) return live;          // unchanged: untouched
+    if (ctx.keep.indexOf(live) >= 0) return live;    // a person is working in it: drawn later
+    if (live.nodeType !== 1) {
+      if (live.nodeValue !== next.nodeValue) live.nodeValue = next.nodeValue;
+      drawnFrom.set(live, next);
+      return live;
+    }
+    // An Alpine component the server drew differently starts again from what it drew, as a
+    // redraw always made it: its state (busy, a late answer's words) belongs to the drawing it
+    // came with. One the server left alone keeps its state (an open menu, a form's choices).
+    // So does an element whose new triggers fire as it is drawn (`load`, `revealed`): htmx
+    // fires those on an element's first wiring only.
+    if (live !== ctx.root && (live.hasAttribute('x-data') || startsAgain(was, next)) && live.parentNode) {
+      var made = root.document.importNode(next, true);
+      live.parentNode.replaceChild(made, live);
+      remember(made, next);
+      return made;
+    }
+    mergeAttrs(live, was, next);
+    if (!sameChildren(was, next)) mergeChildren(live, next, ctx);
+    drawnFrom.set(live, next);
+    return live;
+  }
+
+  /* The node a new one is placed before: hidden rows waiting to be shown are skipped. */
+  function shownAt(node) {
+    while (node && (node.nodeType !== 1 || node.hasAttribute('data-nmas-new'))) node = node.nextSibling;
+    return node;
+  }
+
+  /* Whether a node placed before *ref* in *parent* lands above the top of the window, where
+     drawing it would push down what the person is reading. */
+  function landsAbove(ref, parent) {
+    var at = shownAt(ref);
+    if (at) return at.getBoundingClientRect().top < 0;
+    return parent.getBoundingClientRect().bottom < 0;
+  }
+
+  function holdsPart(node, ctx) {
+    for (var i = 0; i < ctx.keep.length; i++) {
+      if (node === ctx.keep[i] || (node.contains && node.contains(ctx.keep[i]))) return true;
+    }
+    return false;
+  }
+
+  /* Merge *next*'s children into *live*'s (see the comment above `drawnFrom`). */
+  function mergeChildren(live, next, ctx) {
+    var kids = Array.prototype.slice.call(live.childNodes);
+    var mine = kids.filter(function (n) { return !drawnFrom.get(n); });
+    // Every child the page's own (a body a person loaded in): it stays whole.
+    if (kids.length && mine.length === kids.length) return;
+    var byKey = {}, ownByKey = {}, loose = [], used = [], i, k;
+    for (i = 0; i < kids.length; i++) {
+      var was = drawnFrom.get(kids[i]);
+      if (!was) { k = keyOf(kids[i]); if (k) ownByKey[k] = kids[i]; continue; }
+      k = keyOf(was);
+      if (k && !byKey[k]) byKey[k] = kids[i]; else loose.push(kids[i]);
+    }
+    var plan = [], from = 0, wanted = Array.prototype.slice.call(next.childNodes);
+    for (i = 0; i < wanted.length; i++) {
+      var n = wanted[i], m = null;
+      k = keyOf(n);
+      if (k) {
+        m = byKey[k] || null;
+        if (!m && ownByKey[k] && used.indexOf(ownByKey[k]) < 0) {
+          // The page's own version of this keyed part (a person's answer drawn in its place).
+          used.push(ownByKey[k]); plan.push({node: ownByKey[k]}); continue;
+        }
+      } else {
+        for (var j = from; j < loose.length; j++) {
+          var w = drawnFrom.get(loose[j]);
+          if (used.indexOf(loose[j]) < 0 && w.nodeType === n.nodeType && w.nodeName === n.nodeName) {
+            m = loose[j]; from = j + 1; break;
+          }
+        }
+      }
+      if (m && used.indexOf(m) < 0) { used.push(m); plan.push({node: morph(m, n, ctx), was: m}); }
+      else plan.push({fresh: n});
+    }
+    // What the server no longer draws leaves, except a row a person loaded more rows after
+    // (Load more's page follows it): it moved down a page, it did not end.
+    var lastOwn = -1;
+    for (i = 0; i < kids.length; i++) if (!drawnFrom.get(kids[i]) && keyOf(kids[i])) lastOwn = i;
+    // And a part a person is working in stays until they are done.
+    var keptBefore = [];
+    for (i = 0; i < kids.length; i++) {
+      var c = kids[i];
+      if (used.indexOf(c) >= 0 || !drawnFrom.get(c)) continue;
+      if (i < lastOwn && keyOf(drawnFrom.get(c))) { keptBefore.push(c); continue; }
+      if (holdsPart(c, ctx)) { keptBefore.push(c); continue; }
+      if (c.parentNode === live) live.removeChild(c);
+    }
+    // The page's own children, and rows kept so, stay after the child they followed.
+    var after = {}, lead = [], anchor = null;
+    for (i = 0; i < kids.length; i++) {
+      var kid = kids[i];
+      var stays = (!drawnFrom.get(kid) && used.indexOf(kid) < 0) || keptBefore.indexOf(kid) >= 0;
+      if (stays) {
+        if (anchor === null) lead.push(kid);
+        else (after[anchor] = after[anchor] || []).push(kid);
+      } else if (used.indexOf(kid) >= 0) {
+        anchor = used.indexOf(kid);
+      }
+    }
+    var order = lead.slice();
+    for (i = 0; i < plan.length; i++) {
+      order.push(plan[i]);
+      var at = plan[i].node ? used.indexOf(plan[i].was || plan[i].node) : -1;
+      if (at >= 0 && after[at]) order = order.concat(after[at]);
+    }
+    var cur = live.firstChild;
+    for (i = 0; i < order.length; i++) {
+      var o = order[i];
+      if (o && o.fresh) {
+        var made = root.document.importNode(o.fresh, true);
+        if (ctx.hold && keyOf(o.fresh) && landsAbove(cur, live)) {
+          made.setAttribute('data-nmas-new', '1');
+          made.setAttribute('hidden', '');
+        }
+        live.insertBefore(made, cur);
+        remember(made, o.fresh);
+        continue;
+      }
+      var node = o.node || o;
+      if (node === cur) cur = cur.nextSibling;
+      else live.insertBefore(node, cur);
+    }
+  }
+
+  /* The focused element before a merge, to give its focus back if the merge moved it. */
+  function focusIn(region) {
+    var a = root.document.activeElement;
+    return a && a !== root.document.body && region.contains(a) ? {el: a, id: a.id} : null;
+  }
+  function giveFocusBack(was, region) {
+    if (!was || root.document.activeElement === was.el) return;
+    var el = was.el.isConnected ? was.el : (was.id ? root.document.getElementById(was.id) : null);
+    if (el && region.contains(el) && el.focus) {
+      try { el.focus({preventScroll: true}); } catch (x) { el.focus(); }
+    }
+  }
+
+  /* "N new, show them": the rows a merge drew hidden above the window, counted in one quiet
+     control fixed at the top of the window, which moves nothing on the page. Pressed, they are
+     drawn and the window goes to the first of them. */
+  function drawNewNote(region) {
+    var waiting = region.querySelectorAll('[data-nmas-new]');
+    var note = null;
+    for (var i = 0; i < region.children.length; i++) {
+      if (region.children[i].classList.contains('live-new')) { note = region.children[i]; break; }
+    }
+    if (!waiting.length) { if (note) region.removeChild(note); return; }
+    if (!note) {
+      note = root.document.createElement('div');
+      note.className = 'live-new';
+      note.setAttribute('role', 'status');
+      var b = root.document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-small live-new-show';
+      b.title = 'Drawn above where you are reading; shown when you ask, so the page does not move';
+      note.appendChild(b);
+      region.insertBefore(note, region.firstChild);
+    }
+    note.firstChild.textContent = waiting.length + NEW_WORDS;
+  }
+  function showNew(e) {
+    var b = e.target && e.target.closest ? e.target.closest('.live-new-show') : null;
+    if (!b) return;
+    var region = b.parentNode.parentNode;
+    var waiting = region.querySelectorAll('[data-nmas-new]');
+    for (var i = 0; i < waiting.length; i++) {
+      waiting[i].removeAttribute('data-nmas-new');
+      waiting[i].removeAttribute('hidden');
+    }
+    region.removeChild(b.parentNode);
+    if (waiting.length && waiting[0].scrollIntoView) waiting[0].scrollIntoView({block: 'start'});
+  }
+
+  /* htmx wires what a merge added (its hx- attributes) here, at once: handed back to htmx's
+     settle instead, its `[autofocus]` step would take the focus from the person on every
+     redraw. Elements left as they were are not wired twice (htmx compares their attributes). */
+  function wire(els) {
+    if (!root.htmx || !root.htmx.process) return;
+    for (var i = 0; i < els.length; i++) if (els[i].isConnected) root.htmx.process(els[i]);
+  }
+
+  /* Merge an answer into its region: *outer* the region itself redrawn (its outerHTML), else
+     its children (innerHTML). A region the page holds no copy of, or an answer that is not
+     one element of the same kind, is replaced as htmx would have. Returns [] (htmx's settle has
+     nothing left to wire). */
+  function mergeRegion(outer, target, fragment, hold) {
+    target.nmasMerged = true;
+    var done = mergeInto(outer, target, fragment, hold);
+    // Wired once the answer's own request has ended: a merged region is the element that
+    // asked, and htmx drops a request (a redrawn card's `load`) from an element still asking.
+    root.setTimeout(function () { wire(done); }, 0);
+    return [];
+  }
+
+  function mergeInto(outer, target, fragment, hold) {
+    var ctx = {hold: hold !== false, keep: heldParts(target), root: target};
+    var kept = focusIn(target);
+    var els = Array.prototype.filter.call(fragment.childNodes, function (n) { return n.nodeType === 1; });
+    var next = els.length === 1 ? els[0] : null;
+    merging = true;
+    try {
+      if (outer && (!next || !drawnFrom.get(target) || next.tagName !== target.tagName ||
+                    (next.id || '') !== (target.id || '') ||
+                    startsAgain(drawnFrom.get(target), next))) {
+        var parent = target.parentNode, made = [];
+        Array.prototype.slice.call(fragment.childNodes).forEach(function (n) {
+          parent.insertBefore(n, target);
+          if (n.nodeType === 1) { capture(n); made.push(n); }
+        });
+        parent.removeChild(target);
+        return made;
+      }
+      if (outer) {
+        morph(target, next, ctx);
+      } else if (!drawnFrom.get(target)) {
+        while (target.firstChild) target.removeChild(target.firstChild);
+        target.appendChild(fragment);
+        capture(target);
+        return [target];
+      } else {
+        var copy = drawnFrom.get(target).cloneNode(false);
+        Array.prototype.slice.call(fragment.childNodes).forEach(function (n) { copy.appendChild(n); });
+        mergeChildren(target, copy, ctx);
+        drawnFrom.set(target, copy);
+      }
+    } finally {
+      merging = false;
+    }
+    // Ages and clocks are the page's to draw: drawn before the browser paints the merge.
+    drawAges(target);
+    drawClock(target);
+    giveFocusBack(kept, target);
+    drawNewNote(target);
+    return [target];
+  }
+
+  /* A live answer merges (`htmx:beforeSwap`, after the holds have had their say). */
+  /* PURE over a swap's detail: the merge's swap for a live answer to a region the page holds
+     the server's copy of, or '' (any other swap is htmx's own). */
+  function mergeSpec(d) {
+    if (!d || !d.target || !drawnFrom || !isLiveUpdate(d) || !drawnFrom.get(d.target)) return '';
+    var src = (d.requestConfig && d.requestConfig.elt) || d.elt || d.target;
+    var holder = src.closest ? src.closest('[hx-swap]') : null;
+    var spec = d.swapOverride || (holder ? holder.getAttribute('hx-swap') : '') || 'innerHTML';
+    var parts = String(spec).split(/\s+/);
+    if (parts[0] === 'outerHTML') parts[0] = MERGE_OUTER;
+    else if (parts[0] === 'innerHTML') parts[0] = MERGE_INNER;
+    else return '';
+    return parts.join(' ');
+  }
+  function mergeLive(e) {
+    var d = e.detail, spec = d && d.shouldSwap ? mergeSpec(d) : '';
+    if (spec) d.swapOverride = spec;
+  }
+
+  function defineMerge() {
+    if (!root.htmx || !root.htmx.defineExtension || !drawnFrom) return;
+    root.htmx.defineExtension('nmas-merge', {
+      handleSwap: function (style, target, fragment) {
+        if (style !== MERGE_OUTER && style !== MERGE_INNER) return false;
+        return mergeRegion(style === MERGE_OUTER, target, fragment);
+      }
+    });
+    // The extension is asked for by the page's <body>: every swap starts from inside it.
+    var b = root.document.body, ext = b.getAttribute('hx-ext');
+    if (!ext || tokens(ext.replace(/,/g, ' ')).indexOf('nmas-merge') < 0) {
+      b.setAttribute('hx-ext', ext ? ext + ',nmas-merge' : 'nmas-merge');
+    }
+  }
+
+  /* The page's regions as the server drew them, before Alpine (the last deferred script) or
+     htmx (at DOMContentLoaded) touches them: this file runs between the two. */
+  if (root.document && root.document.body && drawnFrom) {
+    captureRegions(root.document.body);
+    defineMerge();
   }
 
   /* Boards AI1 and AI2 (C1843): the spend panel under the top bar's AI chip is read when it
@@ -520,8 +1042,13 @@
     }
     var url = region.getAttribute('hx-get');
     if (url && root.htmx) {
-      var asked = root.htmx.ajax('GET', url, {target: region,
-                                              swap: region.getAttribute('hx-swap') || 'outerHTML'});
+      // A hold that ended by itself merges, as a live redraw does (C2810); Show it now redraws
+      // the region whole, as its words say (the card under review closes).
+      var swap = region.getAttribute('hx-swap') || 'outerHTML';
+      if (!pressed && drawnFrom && drawnFrom.get(region)) {
+        swap = swap.replace(/^outerHTML/, MERGE_OUTER).replace(/^innerHTML/, MERGE_INNER);
+      }
+      var asked = root.htmx.ajax('GET', url, {target: region, swap: swap});
       if (pressed && asked && asked.then) {
         // A redraw that did not land (the region is still this one) leaves the hold as it
         // was and the button pressable again; the failure is said by `neverSilent`.
@@ -1666,6 +2193,12 @@
     root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);
     root.document.addEventListener('htmx:beforeSwap', holdWhileEditing);  // after: the last word on a swap
+    root.document.addEventListener('htmx:beforeSwap', mergeLive);         // a swap the holds let through merges
+    root.document.addEventListener('htmx:afterSwap', captureSwapped);
+    root.document.addEventListener('htmx:oobAfterSwap', captureOob);
+    root.document.addEventListener('htmx:oobBeforeSwap', mergeOob);
+    root.document.addEventListener('htmx:beforeRequest', noteLiveAsk);
+    root.document.addEventListener('click', showNew);
     root.document.addEventListener('focusout', function () { root.setTimeout(releaseHeld, 0); });
     root.document.addEventListener('htmx:sendError', noAnswer('the server did not answer'));
     root.document.addEventListener('htmx:timeout', noAnswer('no answer in time'));
@@ -1689,5 +2222,7 @@
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
                   reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey,
-                  citeTarget: citeTarget, jumpToCite: jumpToCite};
+                  citeTarget: citeTarget, jumpToCite: jumpToCite,
+                  // C2810's merge, for its tests in a real browser.
+                  keyOf: keyOf, capture: capture, mergeInto: mergeInto};
 })(typeof window !== 'undefined' ? window : this);

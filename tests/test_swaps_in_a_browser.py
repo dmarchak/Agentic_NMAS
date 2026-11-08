@@ -24,6 +24,29 @@ from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 FLEET = "rcn-lab-overview"
 SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
 READY = "return !!window.htmx && !!window.Alpine && " + SETTLED
+
+#: A region's redraws counted as they settle, by its id (arguments[0]). A live redraw merges
+#: into the region and never replaces it (C2810), so a mark set on the region before (it was
+#: `dataset.old`) survives a redraw and cannot tell one happened; the count can.
+MARK_REDRAW = """
+window.__redraws = window.__redraws || {};
+if (!window.__redrawWatch) {
+  window.__redrawWatch = 1;
+  document.addEventListener('htmx:afterSettle', function (e) {
+    var t = e.detail && e.detail.target, id = t && t.id;
+    if (id) window.__redraws[id] = (window.__redraws[id] || 0) + 1;
+  });
+}
+window.__redrawsAt = window.__redrawsAt || {};
+window.__redrawsAt[arguments[0]] = window.__redraws[arguments[0]] || 0;
+return 1;
+"""
+
+
+def redrawn(region_id: str) -> str:
+    """A condition (JavaScript) true once *region_id* redrew after MARK_REDRAW and settled."""
+    return (f"(window.__redraws['{region_id}'] || 0) > window.__redrawsAt['{region_id}'] && "
+            f"!!document.getElementById('{region_id}') && {SETTLED}")
 PAGES = ["/v2/monitoring", "/v2/monitoring/coverage", "/v2/devices", "/v2/device/r3",
          "/v2/device/r3?tab=intent", "/v2/device/r3?tab=history", "/v2/device/r3?tab=monitoring",
          "/v2/device/r3?tab=logs", "/v2/device/r3?tab=netbox", "/v2/device/r3?tab=neighbours",

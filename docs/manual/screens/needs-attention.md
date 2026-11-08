@@ -100,6 +100,15 @@ as the devices log them),
 baselines, the remote's publication, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
 
+A live update keeps what you were doing. Only the rows that changed are redrawn; every other
+row is left exactly as you have it, so the page stays where you scrolled it, the rows you
+opened stay open, the control you were on keeps the focus, and nothing flashes. A row whose
+Acknowledge… form you have open, or whose proposal you are reviewing, stays as it is while the
+rest of the list updates around it, and says newer data is waiting. New rows that would arrive
+above where you are reading are not drawn there, since that would push the page down: a button
+at the top of the window says how many, **N new, show them**, and pressing it draws them and
+takes you to them. This is the same on every page that updates live.
+
 The other rows, each with its own cause and action: deploys that failed or were verified and
 not saved to startup; a deploy that landed and whose verify did not pass, its save to startup
 held for a person (a warning naming verify's own words; **Persist <device>…** saves it, and no

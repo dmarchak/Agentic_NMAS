@@ -32,7 +32,12 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `199585e8b10a94923a907b1adaa99aff6283ad51e1e7bb0909d84fe052928a26`
+Templates sha256: `681ef96c7d48387383d3c9eb2c7705820ab540480cb92a4699c1b60a6aaa7fe2`
+Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: the timeline's foot in
+`_timeline.html` carries `data-key="tl-foot"`, so the live merge keeps the foot Load more drew in
+its place instead of drawing the first page's again; nothing drawn moves. Compared by reading
+the diff, with no new shot. Before:
+`199585e8b10a94923a907b1adaa99aff6283ad51e1e7bb0909d84fe052928a26`.
 
 Compared again 2026-11-07 (board H's amendment, H26: the read loop's History rows), against
 board H's artboard M, by the template diff (no new shot): `_timeline.html`'s kind table gains

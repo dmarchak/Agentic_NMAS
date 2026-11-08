@@ -334,10 +334,12 @@ def test_an_open_preview_survives_two_refreshes_and_its_send_works(lab):
         try:
             b.go(srv.url("/v2/sdn/responses?list=Default"))
             b.wait_for(READY, 15)
-            # Nothing open: a refresh redraws the region at once.
-            b.js("window.__oldSdn = document.getElementById('sdn'); return 1")
+            # Nothing open: a refresh redraws the region at once (merged in place since C2810,
+            # so counted as it settles).
+            from tests.test_swaps_in_a_browser import MARK_REDRAW, redrawn
+            b.js(MARK_REDRAW, "sdn")
             _announce_sdn(b)
-            b.wait_for("return document.getElementById('sdn') !== window.__oldSdn && "
+            b.wait_for("return " + redrawn("sdn") + " && "
                        "!document.getElementById('sdn').getAttribute('data-held')", 15)
             b.wait_for(READY, 15)
             # The preview, opened in place.

@@ -518,6 +518,8 @@
     // An answer the page already holds (the logs builder's counts, asked once with the page)
     // arrives in `data-panel-json` and is drawn once, never fetched.
     var inline = section.getAttribute('data-panel-json');
+    // What it is drawn from (`scanNew`): its source as it is now.
+    section.__nmasDrawnFrom = (src || '') + '|' + (inline || '');
     if (!src && inline) {
       if (section.__nmasLoaded) return;
       var p = null;
@@ -553,6 +555,22 @@
     for (var i = 0; i < list.length; i++) load(list[i]);
   }
 
+  /* After a swap settles: only the panels not yet drawn from their own source. A live redraw
+     merges into its region (C2810, nmas_v2.js `mergeInto`), so a panel the server left alone
+     is the same element, its chart drawn: drawing it again cleared its body and destroyed its
+     chart on every announcement, a flash and a lost hover read-out. A panel whose source moved
+     (a new range, a new device) is drawn again. */
+  function scanNew(scope) {
+    var list = (scope || root.document).querySelectorAll('[data-panel-src],[data-panel-json]');
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (s.__nmasLoaded && s.__nmasDrawnFrom === (s.getAttribute('data-panel-src') || '') +
+                                                  '|' + (s.getAttribute('data-panel-json') || '')) continue;
+      s.__nmasLoaded = false;
+      load(s);
+    }
+  }
+
   function refreshVisible() {
     if (root.document.visibilityState && root.document.visibilityState !== 'visible') return;
     scan(root.document);
@@ -580,7 +598,7 @@
 
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('DOMContentLoaded', function () { scan(); schedule(); });
-    root.document.addEventListener('htmx:afterSettle', function (e) { scan(e.target); schedule(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { scanNew(e.target); schedule(); });
     root.document.addEventListener('visibilitychange', refreshVisible);
     // A theme change redraws each drawn panel from its last answer, in the
     // new colours: nothing is fetched again.
