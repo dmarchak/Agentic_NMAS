@@ -91,6 +91,9 @@ ENTRY_POINTS = {
         m for m, _digests, _n in __import__("modules.secret_compare", fromlist=["_masked_lines"])
         ._masked_lines(PLANTED, None, None)),
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
+    # C2821: a drift diff as the approval queue stores it, masked at rest.
+    "modules/approval_queue.py:_masked": lambda: __import__(
+        "modules.approval_queue", fromlist=["_masked"])._masked(PLANTED),
     # A heal unit as its decision record keeps it, each line masked (board H, H3).
     "modules/heal/kinds.py:masked_unit": lambda: "\n".join(
         __import__("modules.heal.kinds", fromlist=["masked_unit"]).masked_unit(

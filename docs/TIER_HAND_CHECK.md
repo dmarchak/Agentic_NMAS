@@ -3996,3 +3996,36 @@ confined. Each file was restored and compared byte for byte after each mutant.
 worktrees removed. Not mutated: `action_todo`'s words, which name the device, its port and
 neighbour (inventory names, as a can't-fix's do) and hold no configuration line by
 construction; and `EP.withhold` itself, which is H8's, hand-checked 2026-11-04.
+
+## 2026-11-08: the approval queue's diff masked at rest (C2821, H11 W6), by hand
+
+**What changed in the tier:** the code that stores and masks secret values. The drift check's
+approval items (`approval_queue.add_approval`, the `update_golden_config` item `drift_check`
+queues) kept each diff as it came, so a device's cleartext secrets (W6's OSPF message-digest key
+on r3, and three older values) sat in `approval_queue.json`, outside the goldens. Now
+`approval_queue._masked` masks the diff before it is stored, by every secret value the
+installation holds (`redact.known_secret_values`) and by position (`redact.redact_text`), and by
+position alone, with `{}` never `None`, when the values cannot be read. The danger the hand check
+guards:
+- the diff stored as it came;
+- a values read that fails taking positional masking down with it (`redact_text(text, None)`
+  reads the values again and raises);
+- one of the two rules (value or position) dropped.
+
+**The method:** each mutant is one exact replacement of a changed line, required to match once,
+applied in a `scripts/nmas-control` throwaway worktree over 9077f3d0 with the change uncommitted
+(`scratchpad/c2821_mut.py`). The tests are tests/test_approval_queue_store.py's, run with no `-x`
+in CI's interpreter, confined; each worktree was removed after its run.
+- **Run** (2026-11-08 20:06:35 to 20:06:52 UTC):
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `_masked` raises before masking | killed (4 failed) | `test_a_key_in_its_position_is_never_stored` and the store's own add, read and save tests |
+| 1 the diff stored as it came (`_masked` not called) | killed (3 failed) | the three `TestTheDiffIsMaskedAtRest` tests |
+| 2 an unreadable values read leaves `None` | killed | `test_values_that_cannot_be_read_still_mask_by_position` |
+| 3 the value rule dropped (`redact_text(diff, {})`) | killed | `test_a_value_the_installation_holds_is_masked_wherever_it_is` |
+| 4 the position rule dropped when no value is held | killed (2 failed) | `test_a_key_in_its_position_is_never_stored`, `test_values_that_cannot_be_read_still_mask_by_position` |
+
+**The result: 4 mutants and the canary, all killed.** Not mutated: `redact.redact_text` and
+`known_secret_values` themselves, unchanged here and checked with their own tier entries. Not
+done here: the five items already stored are masked in place by a host step after the deploy.

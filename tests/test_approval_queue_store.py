@@ -133,3 +133,46 @@ class TestTheWrite:
         inode = os.stat(path).st_ino
         _add(Q, "r2")
         assert os.stat(path).st_ino != inode, "truncated in place, not replaced"
+
+
+class TestTheDiffIsMaskedAtRest:
+    """C2821 (the operator, H11 W6, 2026-11-08): the drift check's diff carried r3's cleartext
+    OSPF key into this store, outside the goldens. A diff is kept masked, by position and by
+    every value the installation holds, read back from the file itself."""
+
+    KEY = "Lab6Ospf9Key"            # a made-up key, long enough for the value rule
+
+    def _diff(self):
+        return ("--- golden\n+++ running\n@@ -1,2 +1,4 @@\n interface GigabitEthernet4\n"
+                "+ ip ospf authentication message-digest\n"
+                f"+ ip ospf message-digest-key 1 md5 {self.KEY}\n"
+                "+ snmp-server community Wr1teCommunity9 RW\n")
+
+    def test_a_key_in_its_position_is_never_stored(self, queue, monkeypatch):
+        Q, path = queue
+        monkeypatch.setattr("modules.redact.known_secret_values", lambda: {})
+        Q.add_approval("update_golden_config", "drift on r3", "192.0.2.13",
+                       device_hostname="r3", diff=self._diff())
+        raw = open(path, encoding="utf-8").read()
+        assert self.KEY not in raw and "Wr1teCommunity9" not in raw
+        (entry,) = json.load(open(path, encoding="utf-8"))
+        assert "+ ip ospf message-digest-key 1 md5 <redacted" in entry["diff"], entry["diff"]
+        assert "+ ip ospf authentication message-digest" in entry["diff"], "the rest is kept"
+
+    def test_a_value_the_installation_holds_is_masked_wherever_it_is(self, queue, monkeypatch):
+        Q, path = queue
+        monkeypatch.setattr("modules.redact.known_secret_values",
+                            lambda: {"Pr0seValue77x": "a test secret"})
+        Q.add_approval("update_golden_config", "drift on r3", "192.0.2.13",
+                       device_hostname="r3", diff="+ description holds Pr0seValue77x by mistake\n")
+        assert "Pr0seValue77x" not in open(path, encoding="utf-8").read()
+
+    def test_values_that_cannot_be_read_still_mask_by_position(self, queue, monkeypatch):
+        Q, path = queue
+
+        def unreadable():
+            raise OSError("the key file is unreadable")
+        monkeypatch.setattr("modules.redact.known_secret_values", unreadable)
+        Q.add_approval("update_golden_config", "drift on r3", "192.0.2.13",
+                       device_hostname="r3", diff=self._diff())
+        assert self.KEY not in open(path, encoding="utf-8").read()

@@ -176,11 +176,22 @@ Mercury's internals.
    (Tier 1)". A tier can show as a label after the words, never instead of them.
 4. **Who did what is stated truthfully:** "Mercury proposed" against "<person> declined"; a
    console change reads "made on the console, no account named".
+5. **Never send a person to look up what Mercury already knows** (added by the operator the same
+   day). "Find who changed it on History" is a bug. The row shows, inline: who (the account, or
+   "on the console, no account named"), when, from where, and the exact lines added and removed
+   (secrets masked), from the CONFIG_I and the diff Mercury already holds. Facts come first; a
+   hypothesis is labelled as one and comes after.
+6. **Live refresh never interrupts the person** (added the same day). A refresh keeps the scroll
+   position, focus, open or closed disclosures, text in inputs, and marks (Right, Wrong). It
+   doesn't flash, and nothing above the reader shifts: new items above the viewport show as "N
+   new, show them" instead of pushing the page. This applies to every live page.
 
 **The test, beside the industry need:** every item a person sees answers the four questions in
 plain words, and every identifier on it is a link or sits under "Details for the record".
-Rule 2 is to be checked by a ratchet test over the rendered pages (a bare identifier outside a
-link or a collapsed disclosure fails, against a backlog that only shrinks); the rest is the
+Rules 2 and 5 are to be checked by a ratchet test over the rendered pages (a bare identifier
+outside a link or a collapsed disclosure, or text sending the reader to look something up on
+History, fails, against a backlog that only shrinks), and rule 6 by a browser test per live page
+(scroll, an open disclosure, typed text and the layout kept across a refresh); the rest is the
 review's.
 
 ## AI-assisted actions

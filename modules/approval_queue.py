@@ -162,6 +162,22 @@ def add_approval(
                            action_params, context, list_name)
 
 
+def _masked(diff: str) -> str:
+    """*diff* as this store keeps it (C2821): masked by every secret value the installation holds
+    and by position; by position alone when the values cannot be read, never kept as it came."""
+    from modules.redact import known_secret_values, redact_text
+
+    if not diff:
+        return diff
+    try:
+        values = known_secret_values()
+    except Exception as exc:                          # noqa: BLE001 (positional masking still runs)
+        log.warning("approval_queue: secret values could not be read (%s); masking by position "
+                    "alone", exc)
+        values = {}                                   # never None: that reads the values again
+    return redact_text(diff, values)
+
+
 def _add_locked(action_type, description, device_ip, device_hostname, diff, action_params,
                 context, list_name: str = "") -> str:
     entries = _expire_old(_load_queue(list_name))
@@ -191,7 +207,10 @@ def _add_locked(action_type, description, device_ip, device_hostname, diff, acti
         "device_ip":       device_ip,
         "device_hostname": device_hostname or device_ip,
         "description":     description,
-        "diff":            diff,
+        # C2821: masked at rest, by value and by position (CLAUDE.md, "Secrets are masked on the
+        # way OUT …, audit records masked at rest"): the drift check's diff carried a device's
+        # cleartext keys into this store, outside the goldens. Its readers only draw it.
+        "diff":            _masked(diff),
         "context":         context,
         "action_params":   action_params or {},
         "resolved_at":     None,

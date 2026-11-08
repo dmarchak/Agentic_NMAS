@@ -375,7 +375,9 @@ def _diff_rows(text: str) -> list:
         elif raw[:1] in ("+", "-", " "):
             rows.append({"kind": {"+": "add", "-": "del", " ": "ctx"}[raw[0]],
                          "text": raw[0] + redact_text(raw[1:]), "masked": None})
-            rows[-1]["masked"] = rows[-1]["text"] != raw
+            # Masked now, or already masked at rest (the approval queue keeps a diff masked
+            # since C2821): either way the line drawn holds a placeholder, not its value.
+            rows[-1]["masked"] = rows[-1]["text"] != raw or "<redacted:" in raw
         else:                                    # a note the run appended ("~ ...")
             rows.append({"kind": "note", "text": redact_text(raw)})
     return rows
