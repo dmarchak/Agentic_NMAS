@@ -7,7 +7,7 @@ each from the carrier Mercury already has for it, and the one that has none refu
 | ``registered`` | **not built**: the app registry is P4's (the SDN design revision 7, 11c.3); refused by name, `deploy_op.NOT_WIRED["registered"]` |
 | ``host_reads`` | the host's three shaped reads (`channel.host_commands`), asked through the reads engine (`reads.run`, the one engine: the capture list's rule, the device held, masked, recorded in History › Reads), as the person previewing or confirming |
 | ``expected`` | the same committed export: every switch whose OpenFlow values (`openflow_values.from_export`) name this controller, its DPID from ``openflow_datapath_id`` as an integer (the driver's form, C2756), its profile entry by its platform and its ``os_version`` (`profile.select`); every connected cable between two of their OpenFlow ports, each end numbered by its ``openflow_port``, else by its platform's own numbering (`openflow_templates.numbered_by_platform`) |
-| ``observe`` | the controller live, through the network's controller connection (`connections.choose`: the controller host's ``openflow.connection``, or the only one) and its driver's ``switches()`` and ``links()``; no app's ``/health`` is read (the driver's read is not built, C2677), so each is said as no answer |
+| ``observe`` | the controller live, through the network's controller connection (`connections.choose`: the controller host's ``openflow.connection``, or the only one) and its driver's ``switches()``, ``links()`` and, for each app the caller names with its manifest's REST prefix, ``app_health(prefix)`` (a GET of ``<prefix>/health``, bounded per request; C2677), each answer taken into the post-check's shape by `post_check.health_entry`: answered, no answer or unreadable, naming why |
 | ``controller_read`` | stored, for the Apps tab: the newest run in the reads engine's records holding both the unit's ``systemctl show`` and ``systemctl cat`` answers for the host (`reads.runs`), and the SDN reader's stored topology for its connection (`topology.stored`); nothing is asked of a device on a page view |
 
 **Each refusal names what it compared and both sides:** a controller host the export names
@@ -317,17 +317,36 @@ class Wired(deploy_op.Sources):
             return None, name, made.get("error") or "no driver"
         return made["driver"], name, ""
 
-    def observe(self, network, controller):
+    def observe(self, network, controller, apps=None):
+        """The switches, the links and each of *apps*' ``/health`` (``{name: its manifest's
+        REST prefix}``) through the controller connection's driver, in the post-check's shape;
+        each app's answer by `post_check.health_entry`. GETs only: nothing is written."""
+        from modules.apps import post_check
+
+        apps = dict(apps or {})
         drv, name, why = self._driver(network, controller)
         if drv is None:
             no = {"ok": False, "error": f"the controller connection: {why}"}
-            return {"switches": dict(no), "links": dict(no), "health": {}, "connection": name}
+            health = {app: post_check.health_entry({
+                "state": post_check.UNREADABLE,
+                "error": f"the controller connection: {why}"}) for app in apps}
+            return {"switches": dict(no), "links": dict(no), "health": health,
+                    "connection": name}
         out = {"health": {}, "connection": name}
         for what in ("switches", "links"):
             try:
                 out[what] = getattr(drv, what)()
             except Exception as exc:                  # noqa: BLE001 (a read's failure, said)
                 out[what] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+        # One controller, its few apps, each answered in its own process: read in turn, each
+        # bounded per request (`base.app_health_bound`); a fan-out is across devices.
+        for app, prefix in sorted(apps.items()):
+            try:
+                got = drv.app_health(prefix)
+            except Exception as exc:                  # noqa: BLE001 (a read's failure, said)
+                got = {"state": post_check.UNREADABLE,
+                       "error": f"{app}'s /health read failed: {type(exc).__name__}"}
+            out["health"][app] = post_check.health_entry(got)
         return out
 
     def controller_read(self, network, controller):

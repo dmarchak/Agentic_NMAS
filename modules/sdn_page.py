@@ -38,10 +38,11 @@ CAPABILITY_WORDS = {"read_topology": "read topology", "read_flows": "read flows"
                     "read_port_stats": "read port stats", "read_meters": "read meters",
                     "write_flows": "write flows", "write_meters": "write meters",
                     "delete_flows": "delete flows", "read_port_desc": "read port health",
-                    "read_table_features": "read table features"}
+                    "read_table_features": "read table features",
+                    "read_app_health": "read app health"}
 CAPABILITY_ORDER = ("read_flows", "read_port_stats", "read_meters", "write_flows",
                     "write_meters", "delete_flows", "read_topology", "read_port_desc",
-                    "read_table_features")
+                    "read_table_features", "read_app_health")
 STATUS_WORDS = {"built": "built", "later": "later", "unmaintained": "unmaintained"}
 
 

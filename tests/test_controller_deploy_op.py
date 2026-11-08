@@ -113,7 +113,7 @@ class FakeSources(deploy_op.Sources):
                 "switches": [eos("sw-a"), dict(eos("sw-b"), dpid=2)],
                 "links": [link(1, 1, 2, 1)]}
 
-    def observe(self, network, controller):
+    def observe(self, network, controller, apps=None):
         return self.reads.pop(0) if self.reads else SWITCH_2_DOWN
 
     def controller_read(self, network, controller):
@@ -251,7 +251,7 @@ def test_the_set_the_controller_runs_changes_nothing_and_offers_the_redeploy(tmp
 
 def test_a_first_deploy_s_confirm_names_no_rollback_and_what_must_recover(tmp_path):
     src = FakeSources(tmp_path)
-    src.observe = lambda n, c: dict(ALL_BACK, health={"of_versions": {"ok": False,
+    src.observe = lambda n, c, apps=None: dict(ALL_BACK, health={"of_versions": {"ok": False,
                                                                       "error": "503"}})
     got = deploy_op.preview(NET, CTL, {"of_versions": "1.0.0"}, src=src)
     assert deploy_op.confirm_words(got) == (

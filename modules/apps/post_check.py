@@ -13,7 +13,13 @@ placeholder. When S1's four times are written down, `RECONNECT` takes the slowes
 **The post-check (`evaluate`, `wait`).** Each poll reads the controller (the caller's `read`):
 the connected switches (DPIDs), the links (each an unordered pair of switch ports) and each
 app's `/health`. An unreadable read neither passes nor fails a poll: it is said, and the
-post-check goes on until the bound. A miss at the bound names what is missing, how many polls
+post-check goes on until the bound. **An app's `/health`** is the driver's `app_health` under
+the REST prefix the app's manifest declares (`sources.Wired.observe`), taken into this shape by
+`health_entry`: an answer whose own ``ok`` is true passes; one whose ``ok`` is false is
+unhealthy, naming the app's ``problems``; no answer (none within the read's bound, a refused
+connection, or no such route: the app is not loaded) and an unreadable answer are unreadable,
+each naming why. Each read's time is kept (`evaluate`'s ``health``), so the first deploy's
+receipt measures the read's placeholder bound (`base.APP_HEALTH_TIMEOUT`). A miss at the bound names what is missing, how many polls
 ran, and the bound with its source.
 
 **Each switch's time is counted from the restart (the board's K8, C2708).** The post-check
@@ -57,6 +63,8 @@ systemd holds, and says so.
 import logging
 import time
 
+from modules.sdn.drivers.base import HEALTH_ANSWERED, HEALTH_NO_ANSWER, HEALTH_UNREADABLE
+
 log = logging.getLogger(__name__)
 
 #: The slowest switch's reconnect after a controller restart. A PLACEHOLDER until S1 measures it.
@@ -82,12 +90,48 @@ def _pair(link: dict) -> frozenset:
                       (link["dst"]["dpid"], link["dst"]["port_no"])))
 
 
+#: One app's /health in the post-check's shape (`health_entry`): answered (healthy or not), no
+#: answer, or unreadable; the driver's own states (`ControllerDriver.app_health`), one owner.
+ANSWERED, NO_ANSWER, UNREADABLE = HEALTH_ANSWERED, HEALTH_NO_ANSWER, HEALTH_UNREADABLE
+#: The longest an app's own words for why it is not healthy are kept in a result.
+PROBLEMS_LIMIT = 500
+
+
+def health_entry(answer) -> dict:
+    """The driver's `app_health` *answer* in the post-check's shape: ``{"ok", "state", "error",
+    "path", "elapsed_s"}``. *ok* is true only for an answer whose own ``ok`` is true (healthy);
+    an answer whose ``ok`` is false is "answered" with the app's ``problems`` as its error
+    (unhealthy); no answer and an unreadable answer keep the driver's words naming why. An
+    answer not of the driver's shape is unreadable, said."""
+    got = answer if isinstance(answer, dict) else {}
+    base = {"path": got.get("path", ""), "elapsed_s": got.get("elapsed_s")}
+    state = got.get("state")
+    if state in (NO_ANSWER, UNREADABLE):
+        return dict(base, ok=False, state=state, error=got.get("error") or state)
+    if state != ANSWERED or not isinstance((got.get("answer") or {}).get("ok"), bool):
+        return dict(base, ok=False, state=UNREADABLE,
+                    error=got.get("error") or f"the driver's answer is not a /health read "
+                                              f"({str(answer)[:80]})")
+    body = got["answer"]
+    if body["ok"]:
+        return dict(base, ok=True, state=ANSWERED, error="")
+    problems = body.get("problems")
+    words = "; ".join(str(p) for p in problems) if isinstance(problems, list) else ""
+    return dict(base, ok=False, state=ANSWERED,
+                error=(words or "its /health answered ok false, naming no problem")[
+                    :PROBLEMS_LIMIT])
+
+
 def evaluate(expected: dict, observed: dict) -> dict:
     """One poll. *expected*: ``{"switches": [dpid], "links": [{"src", "dst"}], "apps": [name]}``;
     *observed*: ``{"switches": driver.switches(), "links": driver.links(), "health": {app:
-    {"ok", "error"}}}``. ``{"ok", "missing_switches", "missing_links", "unhealthy",
-    "unreadable"}``: ok only when every read answered and nothing is missing."""
-    unreadable, missing_sw, missing_links, unhealthy = [], [], [], []
+    health_entry}}`` (an entry with no ``state`` is an answer, its ``ok`` healthy or not).
+    ``{"ok", "missing_switches", "missing_links", "unhealthy", "unreadable", "health"}``: ok
+    only when every read answered and nothing is missing. An app's /health with no answer or
+    unreadable is in *unreadable*, naming why, and one that answered not ok in *unhealthy*,
+    naming the app's problems; *health* is each expected app's state and the read's time (the
+    receipt keeps it: the /health bound's measurement, `base.APP_HEALTH_TIMEOUT`)."""
+    unreadable, missing_sw, missing_links, unhealthy, states = [], [], [], [], {}
     sw = observed.get("switches") or {}
     if sw.get("ok"):
         have = {s["dpid"] for s in sw.get("switches") or []}
@@ -105,11 +149,20 @@ def evaluate(expected: dict, observed: dict) -> dict:
         got = health.get(app)
         if got is None:
             unreadable.append(f"{app}'s /health (no answer)")
+            states[app] = {"state": "not read", "elapsed_s": None}
+            continue
+        state = got.get("state") or ANSWERED
+        states[app] = {"state": state, "ok": bool(got.get("ok")) and state == ANSWERED,
+                       "elapsed_s": got.get("elapsed_s")}
+        if state in (NO_ANSWER, UNREADABLE):
+            unreadable.append(f"{app}'s /health ({state}: {got.get('error') or state})")
+        elif state != ANSWERED:
+            unreadable.append(f"{app}'s /health (its state {state!r} is not a /health read's)")
         elif not got.get("ok"):
             unhealthy.append(f"{app} ({got.get('error') or 'not OK'})")
     ok = not (unreadable or missing_sw or missing_links or unhealthy)
     return {"ok": ok, "missing_switches": missing_sw, "missing_links": missing_links,
-            "unhealthy": unhealthy, "unreadable": unreadable}
+            "unhealthy": unhealthy, "unreadable": unreadable, "health": states}
 
 
 def _link_words(link: dict) -> str:

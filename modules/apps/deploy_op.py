@@ -96,8 +96,10 @@ class Sources:
         """``{"state", "switches": [{"name", "dpid", "selected"}], "links": [...], "error"}``."""
         raise NotImplementedError
 
-    def observe(self, network: str, controller: dict):
-        """The controller read now in the post-check's shape (`post_check.evaluate`), or None."""
+    def observe(self, network: str, controller: dict, apps: dict = None):
+        """The controller read now in the post-check's shape (`post_check.evaluate`), or None;
+        its ``health`` holds each of *apps* (``{name: its manifest's REST prefix}``,
+        `health_prefixes`)."""
         raise NotImplementedError
 
     def controller_read(self, network: str, controller: dict) -> dict:
@@ -153,7 +155,7 @@ class Unwired(Sources):
     def expected(self, network, controller):
         return self._no("expected", switches=[], links=[])
 
-    def observe(self, network, controller):
+    def observe(self, network, controller, apps=None):
         return None
 
     def controller_read(self, network, controller):
@@ -249,6 +251,24 @@ def _version_entry(registered: dict, name: str, version: str):
         return None, (f"{name} has no registered version {version} (its versions: "
                       f"{', '.join(v['version'].version for v in app['versions']) or 'none'})")
     return entry, ""
+
+
+def health_prefixes(manifests) -> dict:
+    """``{name: rest prefix}`` for *manifests*: where each app's ``/health`` is read (its
+    manifest's ``rest.prefix``, the one place it is declared, C2677)."""
+    return {m.name: m.rest.prefix for m in manifests}
+
+
+def sent_prefixes(request: dict, registered: dict) -> dict:
+    """`health_prefixes` of the apps *request* runs, each version's manifest from *registered*
+    (a put-back runs none of Mercury's); an app whose version is not registered is left out,
+    and the post-check then says its /health was not read."""
+    manifests = []
+    for a in (request or {}).get("apps") or []:
+        entry, _why = _version_entry(registered, a.get("name"), a.get("version"))
+        if entry is not None:
+            manifests.append(entry["manifest"])
+    return health_prefixes(manifests)
 
 
 def stage_set(registered: dict, chosen: dict, root: str) -> tuple:
@@ -347,7 +367,8 @@ def build(network: str, controller_name: str, chosen: dict, *, root: str,
     items, why = stage_set(registered, chosen, root)
     if why:
         return dict(base, refusals=why)
-    observed = src.observe(network, ctl) if observe else None
+    observed = src.observe(network, ctl, apps=health_prefixes(
+        i["manifest"] for i in items)) if observe else None
     got = channel.plan(network=network, controller=controller_name, unit=ctl["unit"],
                        enabled=items, host=host, listen=ctl.get("listen") or {},
                        switches=exp.get("switches") or [], links=exp.get("links") or [],
@@ -668,10 +689,16 @@ def _held(job_id, network, controller_name, chosen, confirmed, *, then_parts, ac
                        configs=plan.get("record_configs") or {},
                        progress=lambda n, st, **f: mark(n, st, **f))
     polls = {"n": 0}
+    planned = health_prefixes((plan.get("manifests") or {}).values())
 
     def read():
+        # Each app's /health under the prefix its manifest declares, for the set last sent:
+        # the plan's, or after a rollback's staging its target's (`sent_prefixes`).
+        sent = adapter.tplan
+        apps = planned if sent is None or sent is plan else \
+            sent_prefixes(sent.get("request") or {}, registered)
         polls["n"] += 1
-        observed = src.observe(network, ctl) or {}
+        observed = src.observe(network, ctl, apps=apps) or {}
         got = post_check.evaluate(plan["expected"], observed)
         mark("post-check", "running", reads=polls["n"],
              missing_switches=len(got["missing_switches"]),

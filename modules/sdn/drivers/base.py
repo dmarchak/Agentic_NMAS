@@ -56,9 +56,9 @@ log = logging.getLogger(__name__)
 #: design revision 6, section 8 F, P2a).
 CAPABILITIES = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
                           "write_flows", "write_meters", "delete_flows", "read_port_desc",
-                          "read_table_features"})
+                          "read_table_features", "read_app_health"})
 READS = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
-                   "read_port_desc", "read_table_features"})
+                   "read_port_desc", "read_table_features", "read_app_health"})
 STATUSES = ("built", "later", "unmaintained")
 
 DEFAULT_TIMEOUT = 5.0
@@ -76,6 +76,33 @@ RETRY_PAUSE = 0.3
 #: Credential values shorter than this are not replaced by value in an answer's text (a
 #: one-letter value would take that letter out of every word); the positional mask still runs.
 MIN_SCRUBBED = 4
+
+#: One app's ``/health`` read's bound per request (`app_health`, the SDN platform design
+#: revision 6, section 8's ``app_health`` and section 10's post-check; C2677). A PLACEHOLDER:
+#: no /health answer's time is measured in the repository. It is the driver's default timeout,
+#: the bound every other read on the same REST port has, and a connection whose own timeout is
+#: shorter keeps its own. When the first deploy's receipt records each read's ``elapsed_s``
+#: (its post-check's ``last.health``), this takes 2.5 times the slowest.
+APP_HEALTH_TIMEOUT = {"seconds": 5.0, "measured": False,
+                      "source": ("a placeholder, not measured: the driver's default timeout; "
+                                 "a deploy's receipt records each /health read's time, and "
+                                 "2.5 times the slowest replaces it")}
+#: What one app's /health read answers (`app_health`'s ``state``): its parsed answer, no
+#: answer (the controller did not answer, or serves no such path: the app is not loaded), or
+#: an answer that cannot be read as a /health answer.
+HEALTH_ANSWERED, HEALTH_NO_ANSWER, HEALTH_UNREADABLE = "answered", "no answer", "unreadable"
+
+
+def app_health_bound(connection) -> dict:
+    """``{"seconds", "measured", "words"}``: one /health read's bound on *connection*, the
+    placeholder `APP_HEALTH_TIMEOUT` or the connection's own timeout when that is shorter."""
+    own = getattr(connection, "timeout", None)
+    given = APP_HEALTH_TIMEOUT["seconds"]
+    if isinstance(own, (int, float)) and not isinstance(own, bool) and 0 < own < given:
+        return {"seconds": float(own), "measured": False,
+                "words": f"{float(own):g} s, the controller connection's own timeout"}
+    return {"seconds": given, "measured": APP_HEALTH_TIMEOUT["measured"],
+            "words": f"{given:g} s ({APP_HEALTH_TIMEOUT['source']})"}
 
 UINT64_MAX = 2 ** 64 - 1
 UINT32_MAX = 2 ** 32 - 1
@@ -674,6 +701,7 @@ CALL_CAPABILITY = {
     "port_desc": "read_port_desc",
     "table_features": "read_table_features",
     "meters": "read_meters", "meter_features": "read_meters",
+    "app_health": "read_app_health",
     "add_flow": "write_flows", "render_add_flow": "write_flows",
     "modify_flow_strict": "write_flows", "render_modify_flow_strict": "write_flows",
     "delete_flow_strict": "delete_flows", "render_delete_flow_strict": "delete_flows",
@@ -806,6 +834,16 @@ class ControllerDriver:
         """`{"dpid", "features": MeterFeatures.as_dict() or None}`."""
         return self._call("meter_features", self._meter_features, dpid, dpid_arg=True)
 
+    def app_health(self, prefix) -> dict:
+        """One controller app's ``/health``, read (GET only) under *prefix*, the REST prefix its
+        manifest declares (`modules/apps/manifest.Rest`; refused, nothing sent, unless it has
+        the manifest's shape). ``{"ok", "state", "error", "path", "status", "answer",
+        "elapsed_s", "bound"}``: *state* is `HEALTH_ANSWERED` (ok true, *answer* the app's
+        parsed answer, whose own ``ok`` says whether it is healthy), `HEALTH_NO_ANSWER` or
+        `HEALTH_UNREADABLE` (ok false, *error* naming why). Bounded per request by
+        `app_health_bound`; masked on the way in, as every answer is (`_scrub`)."""
+        return self._call("app_health", self._app_health_at, prefix)
+
     def render_add_flow(self, dpid, spec) -> dict:
         return self._call("render_add_flow", self._render_add_flow, dpid, spec,
                           io=False, dpid_arg=True)
@@ -866,9 +904,21 @@ class ControllerDriver:
 
     _test = _switches = _switch_desc = _links = _flows = _port_stats = _not_implemented
     _hosts = _topology = _port_desc = _table_features = _not_implemented
-    _meters = _meter_features = _not_implemented
+    _meters = _meter_features = _app_health = _not_implemented
     _render_add_flow = _render_modify_flow_strict = _render_delete_flow_strict = _not_implemented
     _render_add_meter = _render_delete_meter = _not_implemented
+
+    def _app_health_at(self, prefix) -> dict:
+        """`app_health`'s refusal of a prefix not of the manifest's shape (nothing sent), else
+        the driver's ``_app_health(path)`` for ``<prefix>/health``. Only that path: the call is
+        never a way to GET anything else."""
+        from modules.apps.manifest import HEALTH, REST_PREFIX
+
+        if not isinstance(prefix, str) or not REST_PREFIX.match(prefix):
+            raise SpecError(f"an app's REST prefix is one segment, {REST_PREFIX.pattern} (its "
+                            f"manifest's rule), not {str(prefix)[:80]!r}, so its {HEALTH} was "
+                            "not read")
+        return self._app_health(prefix + HEALTH)
 
     def _apply(self, method, path, body) -> dict:
         """Send one write; the driver reads the answer (`_write_answer`)."""
@@ -990,11 +1040,13 @@ class ControllerDriver:
             return {}, (creds.get("username", ""), creds.get("password", ""))
         return {}, None
 
-    def _http(self, method, path, body=None) -> dict:
+    def _http(self, method, path, body=None, timeout=None) -> dict:
         """One request against the connection's deadline: `{"ok": True, "status", "text",
         "content_type"}` for any HTTP answer, else `{"ok": False, "error"}`. A read is retried
-        after a connection error or a 502/503/504 while the deadline allows; a write never."""
-        timeout = float(self.connection.timeout)
+        after a connection error or a 502/503/504 while the deadline allows; a write never.
+        *timeout*, given, shortens the deadline (never lengthens it past the connection's)."""
+        timeout = float(self.connection.timeout) if timeout is None else \
+            min(float(self.connection.timeout), float(timeout))
         deadline = self._clock() + timeout
         url = self.connection.base_url + path
         attempts = READ_ATTEMPTS if method == "GET" else 1
@@ -1034,12 +1086,12 @@ class ControllerDriver:
             except _TooLarge:
                 return {"ok": False, "error": f"the answer is larger than {MAX_BODY_BYTES} "
                                               "bytes, so it was not read",
-                        "attempts": attempt}
+                        "too_large": True, "attempts": attempt}
             except requests.exceptions.ConnectionError:
                 last = f"could not connect to {self.connection.base_url}"
                 if attempt < attempts and self._pause(deadline):
                     continue
-                return {"ok": False, "error": last, "attempts": attempt}
+                return {"ok": False, "error": last, "unreachable": True, "attempts": attempt}
             status = response.status_code
             if status in (502, 503, 504) and attempt < attempts and self._pause(deadline):
                 last = f"HTTP {status}"

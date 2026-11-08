@@ -33,6 +33,12 @@ PHASE8_PLAN 17.1 S14; the lab's controller runs it with `--observe-links` since 
   LLDP): an empty link list between two or more switches is said with that possibility
   (`modules/sdn/topology.py`), never as a fabric with no cables.
 
+What it reads of each controller app (`app_health`, the post-check's read, C2677):
+- `GET <prefix>/health`, the route an app's manifest declares (`rest.prefix`, `/health`
+  answering GET), served by the app on Ryu's one WSGI server (its `_CONTEXTS` WSGIApplication),
+  the port ofctl_rest answers on. Its answer is a JSON object whose ``ok`` is true or false, its ``problems`` saying why when false;
+  a 404 is the app not loaded (no such route).
+
 What it does not offer:
 - **no version**: no call answers one and the server sends no version header, so `test` says
   so rather than inventing one.
@@ -60,9 +66,10 @@ import ast
 import json
 
 from modules.sdn.drivers.base import (
-    ACTION_FIELDS, ACTION_NAMES, HEALTH_FROM, INSTRUCTION_NAMES, TABLE_PROPERTIES, UINT64_MAX,
-    UNPARSED, ControllerDriver, Flow, Meter, MeterBand, MeterFeatures, PortStats, SpecError,
-    TableFeatures, dpid_hex, flow_from_spec, meter_from_spec, port_desc_from_bits, topo_host,
+    ACTION_FIELDS, ACTION_NAMES, HEALTH_ANSWERED, HEALTH_FROM, HEALTH_NO_ANSWER,
+    HEALTH_UNREADABLE, INSTRUCTION_NAMES, TABLE_PROPERTIES, UINT64_MAX, UNPARSED,
+    ControllerDriver, Flow, Meter, MeterBand, MeterFeatures, PortStats, SpecError, TableFeatures,
+    app_health_bound, dpid_hex, flow_from_spec, meter_from_spec, port_desc_from_bits, topo_host,
     topo_port)
 
 #: Ryu's OpenFlow 1.0 match keys, and the OXM name each stands for.
@@ -259,7 +266,7 @@ class RyuDriver(ControllerDriver):
     status = "built"
     capabilities = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
                               "write_flows", "write_meters", "delete_flows", "read_port_desc",
-                              "read_table_features"})
+                              "read_table_features", "read_app_health"})
     #: ryu/topology/switches.py `LLDPPacket.CHASSIS_ID_FMT` (rendered by Ryu's own code:
     #: tests/fixtures/sdn/ryu/lldp_from_ryu.json).
     lldp_chassis_prefix = "dpid:"
@@ -373,6 +380,54 @@ class RyuDriver(ControllerDriver):
             return [parse(item) for item in data], None
         except SpecError as exc:
             return None, {"ok": False, "error": f"{path}: {exc}"}
+
+    # ── an app's /health (its own route on Ryu's WSGI, the port ofctl_rest answers on) ──────
+
+    def _app_health(self, path: str) -> dict:
+        """`app_health`'s Ryu form: ``GET <prefix>/health`` on the controller's REST port, where
+        every app registered with Ryu's one `WSGIApplication` serves its routes beside
+        ofctl_rest's. A 200 whose body is a JSON object with a true or false ``ok`` is the
+        app's answer (`HEALTH_ANSWERED`); no answer within the bound, a refused connection, or
+        a 404 (no such route: the app is not loaded, or serves another prefix) is
+        `HEALTH_NO_ANSWER`; anything else, an HTTP answer that is not a /health answer, is
+        `HEALTH_UNREADABLE`, naming what failed."""
+        bound = app_health_bound(self.connection)
+        started = self._clock()
+        got = self._http("GET", path, timeout=bound["seconds"])
+        out = {"path": path, "status": got.get("status"), "answer": None,
+               "elapsed_s": round(self._clock() - started, 3), "bound": bound}
+
+        def said(state, error):
+            return dict(out, ok=state == HEALTH_ANSWERED, state=state, error=error)
+
+        if not got.get("ok"):
+            if got.get("timeout"):
+                return said(HEALTH_NO_ANSWER, f"{got['error']} from {path} (the /health "
+                                              f"read's bound: {bound['words']})")
+            if got.get("unreachable"):
+                return said(HEALTH_NO_ANSWER, f"{got['error']}, asking {path}")
+            return said(HEALTH_UNREADABLE, f"{path}: {got.get('error') or 'no answer'}")
+        status = got["status"]
+        if status == 404:
+            return said(HEALTH_NO_ANSWER, (
+                f"HTTP 404 from {path}: the controller serves no {path}, so the app is not "
+                "loaded (or serves another REST prefix than its manifest declares)"))
+        if status != 200:
+            failed = self._failure(got, path)
+            detail = f" ({failed['detail']})" if failed.get("detail") else ""
+            return said(HEALTH_UNREADABLE, f"{failed['error']} from {path}{detail}")
+        try:
+            data = json.loads(got["text"])
+        except ValueError:
+            return said(HEALTH_UNREADABLE, f"HTTP 200 from {path} with a body that is not JSON")
+        if not isinstance(data, dict):
+            return said(HEALTH_UNREADABLE, f"{path} answered a {type(data).__name__}, not an "
+                                           "object")
+        if not isinstance(data.get("ok"), bool):
+            return said(HEALTH_UNREADABLE, (
+                f"{path}'s answer has no true or false ok (its ok is "
+                f"{str(data.get('ok'))[:40]!r}), so whether the app is healthy can't be told"))
+        return dict(said(HEALTH_ANSWERED, ""), answer=data)
 
     def _links(self) -> dict:
         links, failed = self._topology_get("links", link_from_ryu)

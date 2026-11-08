@@ -496,7 +496,7 @@ def test_the_post_checks_reads_are_of_the_controller_as_netbox_names_it(given, m
                     "not_staged": [], "request_written": True, "command_sent": True,
                     "printed": out, "outcome": out}
 
-        def observe(self, network, controller):
+        def observe(self, network, controller, apps=None):
             seen.append(dict(controller))
             return {"switches": {"ok": True, "switches": [{"dpid": d} for d in range(1, 6)]},
                     "links": {"ok": True, "links": links},

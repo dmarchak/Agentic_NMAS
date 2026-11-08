@@ -47,7 +47,7 @@ CALLS = {
     "test": (), "switches": (), "switch_desc": (1,), "links": (), "hosts": (), "topology": (),
     "flows": (1,),
     "port_stats": (1,), "port_desc": (1,), "table_features": (1,), "meters": (1,),
-    "meter_features": (1,),
+    "meter_features": (1,), "app_health": ("/fabric_forwarding",),
     "add_flow": (1, DROP), "render_add_flow": (1, DROP),
     "modify_flow_strict": (1, DROP), "render_modify_flow_strict": (1, DROP),
     "delete_flow_strict": (1, DROP), "render_delete_flow_strict": (1, DROP),
@@ -103,10 +103,12 @@ def test_a_declaration_out_of_bounds_is_named():
 def test_ryu_declares_what_ofctl_rest_and_rest_topology_offer():
     """Since PHASE8_PLAN 17.1 S14 (C1910) the lab's controller runs ryu.app.rest_topology with
     --observe-links (lab/sdn/ryu/Dockerfile), so the driver reads topology too; a controller
-    without the application answers 404, said as such (tests/test_sdn_topology.py)."""
+    without the application answers 404, said as such (tests/test_sdn_topology.py). Each app's
+    /health is its own route on the same WSGI server (C2677, tests/test_app_health_read.py)."""
     assert RyuDriver.capabilities == frozenset({
         "read_topology", "read_flows", "read_port_stats", "read_meters", "write_flows",
-        "write_meters", "delete_flows", "read_port_desc", "read_table_features"})
+        "write_meters", "delete_flows", "read_port_desc", "read_table_features",
+        "read_app_health"})
     assert RyuDriver.absent == {}
 
 

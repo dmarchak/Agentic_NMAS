@@ -104,8 +104,13 @@ read.
   controller connection.
 - **The app versions** come from the app registry, which is not built yet. Until it is, no
   version can be listed, and every preview says so.
-- **An app's /health** is not read yet, so the post-check reports each app's /health as not
-  answering until it is.
+- **An app's /health** is read through the same controller connection, at the REST prefix the
+  app's manifest declares: `GET <prefix>/health`, one request each, bounded at 5 s (a
+  placeholder until a deploy's receipt measures the read), or the connection's own timeout
+  when that is shorter. The app answers whether it is healthy and, when it is not, why. No
+  answer, or no such path (the app is not loaded), is said as no answer; an answer that is not
+  a /health answer is said as unreadable, naming what failed. Neither passes the post-check.
+  After a rollback, the apps read are the ones the rollback put back.
 
 A host, switch or cable missing one of these facts is named where the fact is needed. For
 example: a host with no `openflow.unit`, a host the inventory does not hold, or a cable end

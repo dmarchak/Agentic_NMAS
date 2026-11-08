@@ -251,7 +251,7 @@ malformed field is refused by name. The contract fixture is the `dns_blacklist` 
 | `openflow_versions` | quoted, such as `["1.3"]` (YAML reads an unquoted 1.3 as a number) |
 | `requires` | optional: other apps loaded first, by name |
 | `config_schema` | a JSON Schema (draft 2020-12) whose top level is an object |
-| `rest` | `prefix` and `endpoints`, each a `path` and its `methods`; `/health` answering GET is required; `/validate`, if offered, answers POST |
+| `rest` | `prefix` and `endpoints`, each a `path` and its `methods`; `/health` answering GET is required; `/validate`, if offered, answers POST. Mercury's post-check reads `GET <prefix>/health` on the controller's REST port, and the app answers a 200 with a JSON object whose `ok` is `true` or `false`, listing in `problems` why when it is false; any other answer is read as unreadable, never as healthy |
 | `owns_flows` | optional: `cookie_prefix` and `cookie_mask` (64-bit hex), and the protected `classes` it owns |
 | `egress` | optional: every network destination the app reaches, each a unique `name`, the `from_config` key whose value is its address (dotted, such as `verdict_service.url`: a string key `config_schema` declares through `properties`) and its `purpose`; none means the app reaches no destination of its own |
 | `tests` | optional: its unit tests, as paths relative to the app's folder: a `test_*.py` file at its root or in `tests/` |
