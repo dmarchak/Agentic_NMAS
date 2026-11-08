@@ -147,6 +147,38 @@ def test_the_card_says_what_approving_sends_and_to_which_device(app_client, meas
         _release(d)
 
 
+def test_in_dry_run_the_card_says_plainly_that_approving_sends(app_client, measured,
+                                                              monkeypatch):
+    """The operator, 2026-11-08 (decision 4): a proposal stays approvable in dry run, and its
+    confirm says "this sends, although <network> is in dry run"; out of dry run it is not said."""
+    from modules.heal import propose
+
+    d = proposed()
+    v = propose.view("Default", d["id"])
+    assert v["dry_run"] is True and v["confirmable"]
+    _r, html = _card(app_client, d)
+    words = html.split("This sends, although Default is in dry run:</strong>")
+    assert len(words) == 2, "the dry-run warning is drawn once"
+    assert words[1].split("</p>")[0].startswith(
+        f" approving runs the program and {v['reset']['label']} on edge-b as you")
+    # said before the control it is about
+    assert "Approve and run on edge-b" not in words[0] and "Approve and run on edge-b" in words[1]
+    monkeypatch.setattr("modules.heal.propose.Sources",
+                        lambda net: FakeApproved(R8, mode=lambda got: dict(got, mode="auto")))
+    _r, auto_html = _card(app_client, d)
+    assert ">Approve and run on edge-b<" in auto_html and "is in dry run" not in auto_html
+    monkeypatch.setattr("modules.heal.propose.Sources", lambda net: FakeApproved(R8))
+    # What the warning says is what happens: pressed in dry run, Approve starts the heal.
+    r = app_client.post(_base(d) + "/approve",
+                        data={"hash": _hidden(html, "hash"), "reason": REASON}, headers=HX)
+    try:
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        (approval,) = app_client.started
+        assert approval["hash"] == v["hash"]
+    finally:
+        _release(d)
+
+
 def test_an_unmeasured_reset_draws_approve_disabled_saying_why(app_client, unmeasured):
     d = proposed()
     _r, html = _card(app_client, d)

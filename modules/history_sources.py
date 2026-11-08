@@ -2158,7 +2158,12 @@ def heal(ctx):
                  for i, s in enumerate(e["steps"], 1)]
         events.append(_event(
             e["at"], "heal", f"Self-healing ({mode}): {steplog.subject(e)} {mark}", [host] + far,
-            who=e.get("by") or pol.get("by") or "", detail=m(e.get("words")),
+            # C2808: a decision self-healing made is Mercury's, under the network's policy, and
+            # never drawn as the policy's confirmer's own act; a person who ran the act (an
+            # approved proposal's) is named as themself.
+            who=e.get("by") or (f"Mercury's self-healing, under {ctx['ref'].name}'s policy"
+                                + (f" confirmed by {pol['by']}" if pol.get("by") else "")),
+            detail=m(e.get("words")),
             sha=rec.get("golden") or "", outcome=outcome,
             marks=[mark, mode] + (["halted"] if e.get("halted") else [])
             + (["applying"] if e["state"] == "applying" else []),

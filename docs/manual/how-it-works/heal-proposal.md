@@ -29,6 +29,11 @@ device):
   the kill switch, a halt or planned work. Approve is drawn disabled with that reason;
 - **What Mercury found and tried**, and **What approving runs**, one level down.
 
+**In dry run, approving still sends.** Dry run holds only what self-healing would do by itself;
+a proposal is a person's decision whatever the mode, so the card says, above Approve, "This
+sends, although <network> is in dry run", naming what runs and on which device. Decline it if
+you only want the record.
+
 **Check drift now on <device>** reads the device against its golden first, changing nothing
 ([Check drift](drift-check)).
 

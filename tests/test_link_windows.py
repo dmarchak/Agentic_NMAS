@@ -506,3 +506,88 @@ class TestTheOtherRestartsName:
                                             "controller app deploy 0123456789ab", [])
         assert got["ok"] is False and "no network is named 'Lab'" in got["error"]
         assert restarts.planned_rows() == []
+
+
+# ── A far end that must not be disturbed (the operator, 2026-11-08, decision 6; C2805) ──────
+
+@pytest.fixture
+def netbox_lab(monkeypatch):
+    """'Lab' as a NetBox-sourced network whose inventory (NetBox's shape, `_tags` the tags'
+    slugs) holds core1, edge1 and edge2, edge2 tagged `mercury-hands-off`; the inventory is
+    held in the returned dict, so a test can change it or make it unreadable."""
+    from modules.inventory import source_config
+    held = {"devices": [{"hostname": "core1", "ip": IP, "_tags": []},
+                        {"hostname": "edge1", "ip": "192.0.2.51", "_tags": ["lab-a"]},
+                        {"hostname": "edge2", "ip": "2001:db8:13::2",
+                         "_tags": ["lab-a", "mercury-hands-off"]}]}
+    monkeypatch.setattr(source_config, "load", lambda name: {
+        "source": source_config.SOURCE_NETBOX if name == "Lab" else "local"})
+
+    def devices(path):
+        if held.get("error"):
+            raise OSError(held["error"])
+        return [dict(d) for d in held["devices"]]
+    monkeypatch.setattr("modules.device.load_saved_devices", devices)
+    return held
+
+
+class TestAHandsOffFarEnd:
+    def _record(self, far, devices=("core1",), **kw):
+        from modules import restarts
+        now = time.time()
+        return restarts.record_planned(list(devices), now, now + 300, "ana@example.invalid",
+                                       "a port bounce of core1 Gi3", "test", list_name="Lab",
+                                       far_ends=far, restarts=False, **kw)
+
+    def test_a_window_naming_a_tagged_far_end_is_refused_naming_it(self, store, netbox_lab):
+        from modules import restarts
+        got = self._record([("edge1", "GigabitEthernet1"), ("edge2", "Gi1")])
+        assert got["ok"] is False
+        assert got["error"] == (
+            "this window names edge2 Gi1 as a far end, and it carries NetBox's tag "
+            "mercury-hands-off on Lab, so no operation on another device may take its link "
+            "down or reset its adjacency (the operator, 2026-11-08): nothing was sent")
+        assert restarts.planned_rows() == []
+
+    def test_untagged_far_ends_are_recorded(self, store, netbox_lab):
+        got = self._record([("edge1", "GigabitEthernet1")])
+        assert got["ok"], got
+
+    def test_the_tagged_device_aimed_at_itself_is_its_persons_choice(self, store, netbox_lab):
+        """Only a far end is refused: the device's own window (a Reload of it, the lab's
+        redeploy) names it among its devices, never as a far end."""
+        got = self._record([("core1", "GigabitEthernet3")], devices=("edge2",))
+        assert got["ok"], got
+
+    def test_a_far_end_not_in_the_inventory_is_refused(self, store, netbox_lab):
+        from modules import restarts
+        netbox_lab["devices"] = netbox_lab["devices"][:2]
+        got = self._record([("edge2", "Gi1")])
+        assert got["ok"] is False and got["error"].startswith(
+            "this window names edge2 as a far end, and it is not in Lab's inventory as read "
+            "now, so whether it carries NetBox's tag mercury-hands-off cannot be told")
+        assert restarts.planned_rows() == []
+
+    def test_an_inventory_that_cannot_be_read_refuses(self, store, netbox_lab):
+        netbox_lab["error"] = "the cache is not filled yet"
+        got = self._record([("edge1", "GigabitEthernet1")])
+        assert got["ok"] is False and got["error"] == (
+            "Lab's inventory could not be read (the cache is not filled yet), so whether a far "
+            "end carries NetBox's tag mercury-hands-off cannot be told: nothing was sent")
+
+    def test_a_correction_records_what_happened(self, store, netbox_lab):
+        """A correction records a window that already ran: refusing it would lose the record
+        of what was done, not stop anything."""
+        got = self._record([("edge2", "Gi1")],
+                           correction="recorded late after the probe already ran on core1")
+        assert got["ok"], got
+
+    def test_the_deploy_naming_it_stops_before_the_send(self, runner, netbox_lab):
+        from modules import restarts
+        from modules.pipeline import PipelineRunner
+        ctx = PipelineRunner(_ctx(dict(LINK_WINDOW))).run()
+        assert runner == [], "nothing was pushed"
+        assert ctx.final_status == "failed" and ctx.stages_failed == ["config_diff"]
+        assert ("the window could not be recorded (this window names edge2 Gi1 as a far end, "
+                "and it carries NetBox's tag mercury-hands-off on Lab") in ctx.error, ctx.error
+        assert restarts.planned_rows() == []

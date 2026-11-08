@@ -14,7 +14,16 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
-Templates sha256: `2abbcd1bd30323b0c68ae4df67278e73a8c84dc3b56343bdd987ae2d81b6ec5e`
+Templates sha256: `e85cfde2f33d2f869b2085bd5000486bd13542d782789fd3912c441a5c2a448b`
+
+**Compared again 2026-11-08 (C2804, the operator's decision 4):** in dry run, a confirmable card
+draws one warning notice above Reason, Approve and Decline: "This sends, although <network> is
+in dry run: approving runs the program (and its reset) on <device> as you. Dry run holds only
+what Mercury would do by itself." Artboard E draws no such notice (it was drawn for a network
+in Auto); the deviation is the operator's decision, logged in docs/STANDING_APPROVAL_LOG.md
+(2026-11-08, "C2804"). Compared by the template diff against artboard E's regions (no new shot:
+tests/test_heal_proposal_v2.py draws it in dry run and out of it); every other region is
+unchanged. Templates sha256 before: `2abbcd1bd30323b0c68ae4df67278e73a8c84dc3b56343bdd987ae2d81b6ec5e`.
 
 **Compared again 2026-11-07 for H17** (board H's amendment, artboard E's teal insert, approved
 with section 19 on 2026-11-04): the card gains Mercury's diagnosis under its table, before the

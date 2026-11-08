@@ -188,7 +188,9 @@ the run ends. Its stages, in the order the code declares them:
    never a row or an incident. A program that changes no interface, or whose interfaces
    committed intent puts no far end on, needs no window, and the result says which. When
    committed intent cannot be read, or the window cannot be recorded, the run stops here and
-   nothing is sent, naming why.
+   nothing is sent, naming why. A far end whose device carries NetBox's tag
+   `mercury-hands-off` stops it too: no operation on another device may take that device's
+   link down or reset its adjacency, whichever operation's window names it ([Reload](reload)).
 6. `deploy`. Read: the device's replies. Sent: `enable`, then the program in configuration
    mode on the pooled SSH session; NOT saved to startup yet (`save_startup` does that once
    verify passes, so a change that fails verify never reaches startup). A reply line such as `% Invalid input`

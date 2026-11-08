@@ -81,6 +81,11 @@
       button). Approve and Decline each post themselves, sending the reason by hx-include;
       Approve carries the hash it confirms in its own hx-vals (tests/test_v2_one_confirm.py's
       pattern). Only a press of either acts. -#}
+  {#- The operator, 2026-11-08 (decision 4): dry run holds only what Mercury would do by
+      itself; a person's approval sends, and the confirm says so plainly. -#}
+  {%- if v.dry_run and v.confirmable %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>This sends, although {{ v.network }} is in dry run:</strong> approving runs the program{% if v.reset %} and {{ v.reset.label }}{% endif %} on {{ host }} as you. Dry run holds only what Mercury would do by itself.</p></div>
+  {%- endif %}
   <div class="heal-form" hx-target="#{{ pid }}" hx-swap="outerHTML">
     <input type="hidden" name="hash" value="{{ v.hash }}">
     <label class="heal-field" for="{{ pid }}-why">Reason<input id="{{ pid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ reason or '' }}"></label>

@@ -89,6 +89,18 @@ class TestRightWrong:
         assert e["heal_mark"] == {"list": "Default", "decision": d["id"], "unreadable": "",
                                   "mark": None}
 
+    def test_a_dry_run_row_names_mercury_as_who_decided_under_the_policy(self, lab):
+        """C2808 (the operator, W1, 2026-11-08): the decision is Mercury's under the policy a
+        person confirmed, never drawn "By <the confirmer>" as if they made it."""
+        d = dry_run()
+        e = _event()
+        by = (d.get("policy") or {}).get("by")
+        assert by, "the test's policy names who confirmed it"
+        assert e["who"] == f"Mercury's self-healing, under Default's policy confirmed by {by}"
+        from html import unescape
+        assert f"By Mercury's self-healing, under Default's policy confirmed by {by}</p>" in \
+            unescape(_timeline(e))
+
     def test_history_draws_right_and_wrong_each_busy_on_itself(self, app_client):
         d = dry_run()
         html = _timeline(_event())

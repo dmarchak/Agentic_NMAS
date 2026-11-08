@@ -286,6 +286,10 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
         row["interfaces"] = ports
     if not restarts:
         row["restarts"] = False
+    if far and not (correction or "").strip():
+        stop = hands_off_far_ends(list_name, far)
+        if stop:
+            return {"ok": False, "error": stop}
     seen = events()
     if seen["state"] == "unreadable":
         return {"ok": False, "error": "the restart record could not be read, so whether this "
@@ -333,6 +337,54 @@ def _grafana(list_name: str):
     from modules.integrations.grafana import GrafanaIntegration
 
     return GrafanaIntegration(list_name=list_name) if list_name else GrafanaIntegration()
+
+
+HANDS_OFF_TAG = "mercury-hands-off"
+
+
+def hands_off_far_ends(list_name: str, far) -> str:
+    """Why a window naming *far* (``(device, interface)`` pairs) as its far ends is refused, or
+    ``""``. A device carrying NetBox's tag ``mercury-hands-off`` is never a far end: no
+    operation on another device may take its link down or reset its adjacency (the operator,
+    2026-11-08, decision 6: "a probe or operation whose window names <the device> as a far end
+    is refused"). An operation aimed at the device itself is its person's own choice, and is
+    not refused here. Why a tag: which device must not be disturbed is a decision about the
+    network that nothing on it can be read to answer. A list whose devices are not NetBox's
+    carries no tags, so it refuses nothing; an inventory that cannot be read refuses, since
+    unread is not "tags none"."""
+    if not list_name:
+        return ("this window names far ends but no network, so whether one carries NetBox's "
+                f"tag {HANDS_OFF_TAG} cannot be told: nothing was sent")
+    from modules.inventory import source_config
+
+    try:
+        source = (source_config.load(list_name) or {}).get("source") or "local"
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return (f"{list_name}'s inventory source could not be read ({exc}), so whether a far "
+                f"end carries NetBox's tag {HANDS_OFF_TAG} cannot be told: nothing was sent")
+    if source != source_config.SOURCE_NETBOX:
+        return ""                                     # a local list's devices carry no tags
+    try:
+        inventory = _inventory_of(list_name)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return (f"{list_name}'s inventory could not be read ({exc}), so whether a far end "
+                f"carries NetBox's tag {HANDS_OFF_TAG} cannot be told: nothing was sent")
+    known = {d.get("hostname"): d for d in inventory or [] if d.get("hostname")}
+    unknown = sorted({d for d, _i in far if d not in known})
+    if unknown:
+        return (f"this window names {', '.join(unknown)} as a far end, and "
+                f"{'it is' if len(unknown) == 1 else 'they are'} not in {list_name}'s inventory "
+                f"as read now, so whether {'it carries' if len(unknown) == 1 else 'each carries'}"
+                f" NetBox's tag {HANDS_OFF_TAG} cannot be told: nothing was sent")
+    named = sorted({(d, i) for d, i in far
+                    if HANDS_OFF_TAG in (known[d].get("_tags") or ())})
+    if not named:
+        return ""
+    words = ", ".join(f"{d} {i}".strip() for d, i in named)
+    return (f"this window names {words} as a far end, and "
+            f"{'it carries' if len(named) == 1 else 'each carries'} NetBox's tag "
+            f"{HANDS_OFF_TAG} on {list_name}, so no operation on another device may take its "
+            "link down or reset its adjacency (the operator, 2026-11-08): nothing was sent")
 
 
 def _inventory_of(list_name: str) -> list:

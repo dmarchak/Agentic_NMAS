@@ -258,9 +258,10 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     """The proposal as a person reads it before deciding (the module's docstring); reads only
     Mercury's records, never the device. ``{"network", "decision", "incident", "device",
     "platform", "kind", "kind_words", "tier", "units", "program", "program_hash", "reset",
-    "lines", "hash", "refusals", "confirmable", "person", "policy", "triggers", "words", "at",
-    "steps", "withdrawn", "diagnosis"}``; *withdrawn* is the withdrawal's record (C2470) or
-    None; *diagnosis* is Mercury's diagnosis of its incident (`auto_diagnose.drawn`, H17)."""
+    "lines", "hash", "refusals", "confirmable", "dry_run", "person", "policy", "triggers",
+    "words", "at", "steps", "withdrawn", "diagnosis"}``; *withdrawn* is the withdrawal's record
+    (C2470) or None; *diagnosis* is Mercury's diagnosis of its incident (`auto_diagnose.drawn`,
+    H17); *dry_run* says the network is in dry run now, when approving still sends."""
     from modules.heal.kinds import KIND_WORDS
 
     now = time.time() if now is None else float(now)
@@ -300,6 +301,12 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     why = _stops(network, d, now, src)
     if why:
         refusals.append(why + ". Nothing was sent")
+    # The operator, 2026-11-08 (decision 4): a proposal stays approvable in dry run, since it
+    # is a person's decision whatever the mode, and its confirm says plainly that it sends.
+    try:
+        dry_run = (src.mode(now) or {}).get("mode") == "dry_run"
+    except Exception:                                 # noqa: BLE001 (_stops said it unreadable)
+        dry_run = False
     reset = ({k: plan.get(k) for k in ("key", "label", "command", "read", "affects", "not_doing",
                                        "rollback", "measured", "bound_s", "refused")}
              if plan else None)
@@ -316,7 +323,7 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
             "program_hash": d.get("program_hash") or "", "reset": reset,
             "lines": program + ([plan["command"]] if plan.get("command") else []),
             "hash": proposal_hash(network, d, plan.get("command") or ""),
-            "refusals": refusals, "confirmable": not refusals,
+            "refusals": refusals, "confirmable": not refusals, "dry_run": dry_run,
             "person": (d.get("person") or {}).get("words") or "", "policy": d.get("policy") or {},
             "triggers": [t for t in d.get("triggers") or [] if t], "words": d.get("words") or "",
             "at": d.get("at"), "steps": [w for _n, w in _steps_of(d)],
