@@ -281,7 +281,7 @@ def deploy(plan: dict, *, channel, read, declare_window, by: str, clock=time.mon
     ``rollback`` (`channel.rollback_target`: the request the controller ran before, or the
     put-back of the drop-in before) and post-check again. What is post-checked and what a
     rollback sends come from the plan alone; the previous request reaches the plan from its
-    caller (`channel.plan`'s *previous*) until the receipt store holds it (C2677). Each
+    caller (`channel.plan`'s *previous*, from `deploy_receipts.record`). Each
     post-check counts every switch's time from its restart (`restart_origin` of the apply's
     outcome, K8). *declare_window(devices, start, end, by, why, unreachable)* is the
     planned-restart record (`restarts.record_planned`), declared before anything is staged.

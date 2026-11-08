@@ -273,6 +273,13 @@ PAGE_RECORD = {
     "sdn_v2.reapply_confirm": ("templates/v2/_sdn_op.html",
                                ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
                                "v2.history_page"),
+    # P6 (board controller-app-deploy, artboards F to H): the controller app deploy's result in
+    # place of its card (the outcome, the post-check, the rollback's, the receipt), read again
+    # on History (`history_sources.controller_deploys`).
+    "sdn_v2.apps_confirm": ("templates/v2/_sdn_app_deploy.html",
+                            ("d.state == 'result'", "d.post_check.words",
+                             "d.rollback_post_check.words", "receipt=d.id"),
+                            "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

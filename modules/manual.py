@@ -96,6 +96,8 @@ PAGES = (
      "how-it-works/notifications.md"),
     ("diagnose", "Diagnose: a runbook's reads, ranked into hypotheses", H,
      "how-it-works/diagnose.md"),
+    ("controller-app-deploy", "Deploy apps to an SDN controller", H,
+     "how-it-works/controller-app-deploy.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -229,6 +231,8 @@ OPERATIONS = {
     # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
     "heal-proposal": ("modules.heal.propose", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
+    # P6 (board controller-app-deploy): a controller's apps deployed as one operation.
+    "controller-app-deploy": ("modules.apps.deploy_op", "STEPS"),
     # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
     "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),

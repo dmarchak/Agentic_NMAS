@@ -1574,6 +1574,40 @@ def sdn_flows():
     ])
 
 
+def controller_app_deploy():
+    return svg(560, (
+        "A controller app deploy: the plan reads the controller host's unit, its app folder "
+        "and its drop-in, stages each chosen version from git's blobs at its pin and checks "
+        "its hash, checks conformance for every expected switch and renders the drop-in; a "
+        "refusal sends nothing. You confirm, bound to the plan's hash; holding the "
+        "controller, the plan is made again and a moved hash sends nothing; the planned-restart "
+        "window is declared; the files and the request are staged over SFTP; the one command "
+        "writes the drop-in and restarts the controller; the post-check waits for every "
+        "expected switch, link and app's /health; a miss applies the request before (or puts "
+        "the drop-in before back) and post-checks again; the receipt records it, and History "
+        "shows it."), [
+        lanes(20, 554, right="THE CONTROLLER HOST"),
+        doc("box", 14, 40, 186, 36, "The plan", "the host read; files and hashes"),
+        num(14, 40, 1),
+        t(14, 92, "refused: nothing sent", "sm"),
+        person(14, 110, 186, 30, "You confirm, bound to its hash"), num(14, 110, 2),
+        band(156, 190, "The deploy · the controller held"),
+        device(262, 226, 118, 160, "The controller", "and its switches", top=True),
+        *rows([
+            (180, None, 3, "Planned again", "a moved hash sends nothing"),
+            (222, None, 4, "The window declared", "its switches expected to drop"),
+            (264, "send", 5, "Staged, the request last", "SFTP as the deploy account"),
+            (306, "send", 6, "The one command", "the drop-in, a restart"),
+            (348, "read", 7, "Post-checked", "switches, links, /health"),
+        ]),
+        t(14, 396, "A miss applies the request before,", "sm"),
+        t(14, 412, "and post-checks again.", "sm"),
+        store(14, 430, 186, 40, "The receipt", "kept with the receipts"), num(14, 430, 8),
+        t(14, 494, "History shows it.", "sm"),
+        t(14, 520, "Nothing is sent to a switch.", "sm"),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1955,6 +1989,7 @@ DIAGRAMS = {
     "heal": heal,
     "notifications": notifications,
     "sdn-flows": sdn_flows,
+    "controller-app-deploy": controller_app_deploy,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

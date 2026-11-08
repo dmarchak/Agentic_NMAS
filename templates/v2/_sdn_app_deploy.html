@@ -1,0 +1,144 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- A controller app deploy's card, drawn in place of the control that asked (P6; board
+    docs/boards/controller-app-deploy.html, signed off by the operator 2026-11-07): the plan
+    (artboard C), its refusals and a plan that changes nothing (D), running (E, the one stepper),
+    the result (F and G), at phone width with the confirm pinned (L).
+    modules/sdn_apps_page.py builds `d`. `data-holds-live`: while it is open, a live redraw of
+    the SDN region is held and said (C2001), so an announcement never takes a plan or its
+    confirm away. -#}
+<div class="card sdn-op apps-op apps-op-{{ d.state }}" data-holds-live="review"{% if d.state == 'running' %} hx-get="{{ url_for('sdn_v2.apps_run', job=d.job) }}" hx-trigger="nmas:controller_deploy from:body" hx-swap="outerHTML"{% endif %}>
+{%- if d.state == 'refused' %}
+<div class="sdn-ctl-hd"><h3>Can't deploy to {{ d.controller or 'the controller' }}: refused before anything was staged</h3>{{ badge('Refused', 'danger') }}</div>
+{%- for r in d.refusals %}
+<p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ r }}.</span></p>
+{%- endfor %}
+
+{%- elif d.state == 'nothing' %}
+<div class="sdn-ctl-hd"><h3>Deploy to {{ d.controller }}: no app changes</h3>{{ badge('Nothing to deploy', 'muted') }}</div>
+<p class="small">{{ d.controller }} already runs this set{% if d.read_at %} (read {{ stamp(d.read_at) }}){% endif %}: every app at the chosen version, the drop-in the same as its render, User <span class="mono">{{ d.user_now }}</span>. Deploying it would change no file and no line, and would still restart the controller, so all {{ d.expected_switches | length }} switch{{ 'es' if d.expected_switches | length != 1 }} drop and reconnect.</p>
+<form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="closest .apps-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ d.network }}"><input type="hidden" name="controller" value="{{ d.controller }}"><input type="hidden" name="set" value="{{ d.set }}"><input type="hidden" name="redeploy" value="1">
+  <a class="btn" href="{{ url_for('sdn_v2.apps', list=d.network) }}">Back to Apps</a>
+  <button class="btn btn-small" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Opens the full plan of the same set, whose confirm restarts the controller"{{ gate('confirm') }}><span class="op-idle">Redeploy the same set and restart {{ d.controller }}…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'redeploy') }}
+</form>
+
+{%- elif d.state == 'preview' %}
+<div class="apps-plan-head"><h3>{{ d.title }}</h3><p class="sub">{{ d.sub }}</p></div>
+<div class="apps-cols">
+<section class="apps-sec" aria-label="Target and set">
+  <h4>The target</h4>
+  <dl class="sdn-kv">
+    <dt>Controller</dt><dd>{{ d.controller }}{% if d.dev.ip %}, reached at <span class="mono">{{ d.dev.ip }}</span>{% endif %} as the deploy account <span class="mono">{{ d.account }}</span>; host kind, driver {{ d.dev.device_type or '?' }}</dd>
+    <dt>Unit</dt><dd><span class="mono">{{ d.unit }}</span>, User <span class="mono">{{ d.user_now }}</span>{% if d.read_at %} (read {{ stamp(d.read_at) }}: <span class="mono">systemctl show -p User -p ExecStart</span>){% endif %}</dd>
+    <dt>App folder</dt><dd><span class="mono">{{ d.apps_root }}</span> <span class="mono">{{ d.folder.owner }}:{{ d.folder.group }} {{ d.folder.mode }}</span> <span class="faint">(<span class="mono">ls -la</span>)</span> · the deploy account can stage, and the unit does not run as root</dd>
+    <dt>Listen</dt><dd><span class="mono">{{ d.listen.host }}</span> TCP {{ d.listen.port }}</dd>
+  </dl>
+  <h4>The set, in load order</h4>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">#</th><th scope="col">App</th><th scope="col">Version</th><th scope="col">Pinned (commit · content hash)</th><th scope="col">Files</th></tr></thead>
+    <tbody>
+    {%- for r in d.rows %}
+    <tr{% if r.changed %} class="apps-changed"{% endif %}><td>{{ r.n }}</td><td>{{ r.name }}</td><td>{% if r.changed and r.from %}<strong>{{ r.from }} → {{ r.version }}</strong>{% elif r.changed %}<strong>{{ r.version }}</strong> added{% else %}{{ r.version }}{% endif %}</td><td class="mono small">{% if r.commit %}{{ r.commit }} · {% endif %}sha256:{{ r.sha[:4] }}…{{ r.sha[-4:] }}</td><td>{{ r.files }} · {{ 'a new folder' if r.changed else 'the same bytes as now' }}{% if r.config %}, its config file{% endif %}</td></tr>
+    {%- endfor %}
+    <tr><td>{{ d.rows | length + 1 }}, {{ d.rows | length + 2 }}</td><td colspan="4" class="muted">Ryu's own <span class="mono">ryu.app.ofctl_rest</span> and <span class="mono">ryu.app.rest_topology</span> (Mercury's reads), always last</td></tr>
+    </tbody>
+  </table></div>
+  {%- for nf in d.new_files %}
+  <h4>{{ nf.app }} {{ nf.version }}'s files, staged to <span class="mono">{{ d.apps_root }}/{{ nf.app }}/{{ nf.version }}/</span></h4>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">File</th><th scope="col">Mode</th><th scope="col">Bytes</th><th scope="col">Blob</th></tr></thead>
+    <tbody>{% for f in nf.files %}<tr><td class="mono">{{ f.path }}</td><td>{{ '755' if f.mode == '100755' else '644' }}</td><td>{{ '{:,}'.format(f.bytes) }}</td><td class="mono small">blob {{ f.blob[:4] }}…{{ f.blob[-4:] }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- endfor %}
+  <p class="muted small">From git's blobs at each pinned commit, never a working tree; each folder's hash recomputed from what was staged equals its Published pin. {{ d.file_count }} file{{ 's' if d.file_count != 1 }} in {{ d.folder_count }} folder{{ 's' if d.folder_count != 1 }} in all.</p>
+</section>
+<section class="apps-sec" aria-label="Conformance and the drop-in">
+  <div class="sdn-ctl-hd"><h4>Conformance: every expected switch can connect</h4>{{ badge(d.conformance.checked | length ~ ' of ' ~ d.conformance.count, 'ok') }}</div>
+  <p class="small muted">The controller offers the versions every loaded app shares: {{ d.conformance.offered }}, its hello {{ d.conformance.hello }}. Each switch is compared by the platform profile entry covering its OS version.</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Switch</th><th scope="col">Common</th><th scope="col">Refuses a hello above</th><th scope="col"><span class="sr-only">Verdict</span></th></tr></thead>
+    <tbody>{% for x in d.conformance.checked %}<tr><td>{{ x.switch }}</td><td>{{ x.common | join(', ') }}</td><td>{{ x.rejects_above or '–' }}</td><td>{{ badge('can connect', 'ok') }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h4>The drop-in, before and after</h4>
+  <p class="small muted"><span class="mono">{{ d.dropin_path }}</span>, rendered by the apply script's own function (Mercury previews the same text). The before is read from <span class="mono">systemctl cat</span>; the apply script keeps it as <span class="mono">mercury.conf.prev</span>.</p>
+  <pre class="mono apps-dropin">{% for l in d.dropin %}<span class="apps-{{ l.kind }}">{{ l.text }}</span>
+{% endfor %}</pre>
+</section>
+</div>
+<div class="apps-cols">
+<section class="apps-sec" aria-label="The restart and the post-check">
+  <h4>The restart, and what must come back</h4>
+  <p class="small">The apply script restarts <span class="mono">{{ d.unit }}</span> and judges it by identity: a new MainPID, active, User <span class="mono">ryu</span>, within <strong>{{ d.up_bound }} s</strong> {{ badge('placeholder', 'warn', title='UP_BOUND_S in the apply script: not measured; the unit\'s restart is timed to active at S1 or S3 (C2687)') }}. Then the post-check waits, within <strong>{{ d.bound.seconds }} s</strong> {{ badge('placeholder' if not d.bound.measured else 'measured', 'warn' if not d.bound.measured else 'ok', title=d.bound.words) }}, for all of these:</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Expected</th><th scope="col">Back when</th></tr></thead>
+    <tbody>
+      <tr><td><strong>{{ d.expected_switches | length }} switch{{ 'es' if d.expected_switches | length != 1 }}</strong>: {% for s in d.expected_switches %}{{ s.name }} <span class="mono faint">{{ s.dpid }}</span>{{ ', ' if not loop.last }}{% endfor %}</td><td>its DPID is in the controller's switch list</td></tr>
+      <tr><td><strong>{{ d.expected_links | length }} link{{ 's' if d.expected_links | length != 1 }}</strong>{% if d.expected_links %}: <span class="mono small">{{ d.expected_links | join(', ') }}</span>{% endif %}</td><td>the controller lists the pair of switch ports</td></tr>
+      <tr><td><strong>{{ d.expected_apps | length }} {{ "apps'" if d.expected_apps | length != 1 else "app's" }} /health</strong>: {{ d.expected_apps | join(', ') }}</td><td>it answers OK</td></tr>
+    </tbody>
+  </table></div>
+  {%- if d.already.expecting %}
+  <p class="apps-question" role="status">{{ icon('warn', 15) }}<span><strong>Already missing or failing before the deploy:</strong> {{ d.already.words }}.</span></p>
+  {%- elif not d.already.read %}
+  <p class="small muted">{{ d.already.words }}.</p>
+  {%- endif %}
+</section>
+<section class="apps-sec" aria-label="Window, rollback, hash and confirm">
+  <h4>Before, and if it misses</h4>
+  <dl class="sdn-kv">
+    <dt>Planned-restart window</dt><dd>declared before anything is staged: {{ d.controller }} restarting, the {{ d.expected_switches | length }} switch{{ 'es' if d.expected_switches | length != 1 }} expected to drop, <strong>{{ (d.window_seconds // 60) }} min {{ d.window_seconds % 60 }} s</strong> <span class="faint">({{ d.window.words }})</span>. It ends when the post-check passes.</dd>
+    <dt>Holds</dt><dd>{{ d.controller }}, as one operation: another deploy, a write or a Reload of {{ d.controller }} is refused by name while this runs</dd>
+    <dt>Sends</dt><dd>{{ d.file_count }} file{{ 's' if d.file_count != 1 }} over SFTP as <span class="mono">{{ d.account }}</span> (only under <span class="mono">{{ d.apps_root }}/&lt;app&gt;/&lt;version&gt;/</span>), the request last, then the one command <span class="mono">{{ d.command }}</span>. Nothing is deleted on {{ d.controller }}; nothing is sent to a switch.</dd>
+    <dt>If the post-check misses</dt><dd>{{ d.rollback_words }}.{% if d.record_state == 'unknown' %} <strong>Mercury's record can't be told:</strong> {{ d.record_words }}.{% endif %}</dd>
+    <dt>Plan hash</dt><dd class="mono" title="{{ d.hash }}">sha256:{{ d.short }}</dd>
+  </dl>
+  {%- if d.rollback_none %}
+  <p class="apps-question" role="status">{{ icon('warn', 15) }}<span><strong>If the post-check misses, nothing is rolled back:</strong> Mercury holds no previous request and the unit has no drop-in before to put back.</span></p>
+  {%- endif %}
+  <form class="sdn-op-confirm apps-pin" hx-post="{{ url_for('sdn_v2.apps_confirm') }}" hx-target="closest .apps-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ d.network }}"><input type="hidden" name="controller" value="{{ d.controller }}"><input type="hidden" name="set" value="{{ d.set }}"><input type="hidden" name="hash" value="{{ d.hash }}"><input type="hidden" name="parts" value="{{ d.parts | tojson | forceescape }}">
+    <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy"{{ gate('confirm') }}><span class="op-idle">{% if d.cw.redeploy %}Redeploy the same set{% else %}Deploy {{ d.cw.what }}{% endif %} and restart {{ d.controller }}{{ d.cw.tail }}</span><span class="op-busy">Deploying…</span></button>{{ how('controller-app-deploy', 'confirm') }}
+    <a class="btn" href="{{ url_for('sdn_v2.apps', list=d.network) }}">Cancel</a>
+  </form>
+  <p class="small muted">Confirmed as you, verified. At the confirm Mercury makes the plan again holding {{ d.controller }}; a hash other than this one sends nothing and says what moved.</p>
+</section>
+</div>
+
+{%- elif d.state == 'running' %}
+<div class="sdn-ctl-hd"><h3>Deploy to {{ d.controller }}</h3>{{ badge('Running', 'info') }}</div>
+<p class="sub">{{ d.controller }} held by {{ d.actor or 'unknown' }} · plan <span class="mono" title="{{ d.hash }}">sha256:{{ d.short }}</span></p>
+{{ run_stepper(d.run) }}
+<p class="apps-act"><button class="btn btn-primary" type="button" disabled aria-disabled="true" aria-busy="true" data-op="controller-app-deploy" title="Runs to its receipt; the restart cannot be taken back mid-way">Deploying…</button>{{ how('controller-app-deploy', 'running') }}</p>
+<p class="small muted">No Cancel once the command is sent: the restart cannot be taken back mid-way. Closing the tab changes nothing; the operation runs to its receipt either way.</p>
+
+{%- elif d.state == 'lost' %}
+<p class="apps-refusal" role="status">{{ icon('warn', 15) }}<span>This server holds no record of the deploy <span class="mono">{{ d.job }}</span> (it restarted, or the result expired). Its receipt is the record: <a href="{{ url_for('v2.history_page', kind='controller_deploy') }}">every deploy on History</a>.</span></p>
+
+{%- elif d.state == 'failed' %}
+<p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span><strong>The deploy's job stopped with an error:</strong> {{ d.error }}. What it reached is in its receipt, when it wrote one: <a href="{{ url_for('v2.history_page', kind='controller_deploy') }}">every deploy on History</a>.</span></p>
+
+{%- elif d.state == 'result' %}
+<div class="sdn-ctl-hd"><h3>{{ d.title }}</h3>{{ badge(d.outcome_words, d.tone) }}</div>
+{%- if d.post_check.words %}<p class="small">{{ d.post_check.words }}.</p>{% endif %}
+{%- if d.error and d.outcome != 'deployed' %}<p class="small"><strong>Why:</strong> {{ d.error }}.</p>{% endif %}
+{%- if d.switches %}
+<div class="table-wrap"><table class="table">
+  <thead><tr><th scope="col">Switch</th><th scope="col">Back after the restart</th></tr></thead>
+  <tbody>{% for s in d.switches %}<tr><td class="mono">{{ s.dpid }}</td><td>{{ s.secs }} s{% if s.slowest %}, the slowest{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div>
+{%- endif %}
+{%- if d.rollback_post_check.words %}<p class="small"><strong>The rollback:</strong> {{ d.rollback_post_check.words }}.</p>{% endif %}
+{%- if d.apply.main_pid_before %}<p class="small muted">The unit: MainPID {{ d.apply.main_pid_before }} → {{ d.apply.main_pid_after or '?' }}{% if d.apply.up_after_s is not none %}, {{ d.apply.up_after_s }} s to active{% endif %}.</p>{% endif %}
+{%- if d.breakglass %}<p class="small"><strong>The break-glass:</strong> <span class="mono">/etc/systemd/system/&lt;unit&gt;.d/mercury.conf.prev</span> on {{ d.controller }}, kept by the apply script: the drop-in before this deploy.</p>{% endif %}
+{%- if d.window.from %}<p class="small muted">{% if d.window.ended %}The window was ended: {% if d.outcome == 'apply failed' %}nothing restarted{% else %}everything came back{% endif %}.{% else %}The window stays until it ends ({{ d.window.until }}); past it, the controller and any switch not back are Needs attention rows.{% endif %}</p>{% endif %}
+{%- if d.write_error %}<p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ d.write_error }}.</span></p>{% endif %}
+{%- if d.rollback_set %}
+<form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="closest .apps-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ d.network }}"><input type="hidden" name="controller" value="{{ d.controller }}"><input type="hidden" name="set" value="{{ d.rollback_set }}">
+  <button class="btn" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy" title="Previews deploying the set before this deploy; nothing is sent until you confirm"{{ gate('confirm') }}><span class="op-idle">Preview a rollback…</span><span class="op-busy">Reading {{ d.controller }}…</span></button>{{ how('controller-app-deploy', 'running') }}
+</form>
+{%- endif %}
+<p class="apps-acts">{% if d.row %}<a class="btn btn-small" href="{{ url_for('v2.landing') }}">Open its Needs attention row</a> {% endif %}{% if d.outcome in ('apply failed', 'refused', 'not rolled back') %}<a class="btn btn-primary" href="{{ url_for('sdn_v2.apps', list=d.network or None) }}">Preview again</a> {% endif %}<a class="btn btn-small" href="{{ url_for('sdn_v2.apps', receipt=d.id) }}">Open the receipt</a> <a class="btn btn-small" href="{{ url_for('sdn_v2.apps') }}">Back to Apps</a></p>
+{%- endif %}
+</div>

@@ -63,9 +63,11 @@ reads and passes the texts.
 request written last, the one command `sudo -n /usr/local/sbin/mercury-ryu-apply`, and the
 script's outcome read back whole.
 
-**Not built here (P6's rest):** the registry the enabled set comes from (P4), the preview and
-confirm route that calls `held_write` (C2677), the receipt and Needs attention rows (C2677,
-C2678), and the screen (a board the operator signs).
+**The operation (`modules/apps/deploy_op.py`, C2677)** calls `plan` for the preview and again at
+the confirm, holding the controller itself for the whole deploy and its rollback (one hold
+across both sends, where `held_write` holds for one send), and passes *previous* from the
+receipt store (`modules/controller_deploy_receipts.record`, K2). Not built here: the registry the
+enabled set comes from (P4).
 """
 
 import functools
@@ -493,8 +495,9 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
     "dpid", "selected"}]`` (`profile.select`'s answer); *links*: every link NetBox names
     between them, ``[{"src": {"dpid", "port_no"}, "dst": {...}}]``; *previous*: the request the
     controller ran before by Mercury's record, or None when none is recorded
-    (`rollback_target`; the caller passes it because the receipt store that will hold it is
-    C2677, not built); *observed*: the controller read at plan time in the post-check's shape
+    (`rollback_target`; the caller passes it from the receipt store,
+    `deploy_receipts.record`); *observed*: the controller read at plan time in the post-check's
+    shape
     (`post_check.evaluate`), or None when it was not read."""
     from modules.apps import conformance, post_check
     from modules.jobs.lifecycle import deploy_refusal

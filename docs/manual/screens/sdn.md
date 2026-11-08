@@ -2,8 +2,8 @@
 
 A network's SDN controllers and the flow tables of the switches they manage, under OBSERVE.
 The sidebar's SDN opens it for the network you are on (`/v2/sdn?list=<network>`). Its tabs are
-**Controllers**, **Flows** and **Responses** (what awaits you, HITL or AUTO, the loop and the
-detection rules).
+**Controllers**, **Flows**, **Apps** (the apps each controller runs, deployed by Mercury) and
+**Responses** (what awaits you, HITL or AUTO, the loop and the detection rules).
 
 The connections are the network's own, set in Settings › Integrations' SDN controllers card
 ([Settings](settings#sdn-controllers)): a network never takes Default's controllers. With none
@@ -169,6 +169,54 @@ will not happen, any warning (the table-miss flow, a flow of the controller's ow
 verified**, or **Rolled back** naming the check that failed. A match missing a field it needs is
 refused at the preview, naming both. How each step works:
 [Change an SDN switch's flows](sdn-flows).
+
+## Apps {#apps}
+
+The apps the network's controller runs (Ryu apps such as `of_versions`, `switch_quirks` and
+`dns_blacklist`), deployed by Mercury from the network's code repository. Each deploy restarts
+the controller, so every switch drops and reconnects. How a deploy works, step by step:
+[Deploy apps to an SDN controller](controller-app-deploy).
+
+- **The controller card** leads: its name and whether it runs **Mercury's record** (the last
+  deploy whose outcome left it running a request Mercury recorded), **differs from Mercury's
+  record**, or **can't tell** (its unit's command line could not be read; never drawn as
+  matching). Under it: the unit and where it listens (NetBox's `openflow` Service), the
+  **Last deploy** with its outcome, who and when, and **its receipt**; what a miss **rolls
+  back to** (what it runs by Mercury's record, or with none the drop-in before, which the apply
+  script keeps); the host, with **Open its device page**.
+- **Preview a deploy…** reads the controller now and opens the plan of the set it runs by
+  Mercury's record (with nothing changed, a plan that changes nothing, and its redeploy). It is
+  disabled, its reason on hover, while Mercury holds no record for it: choose an app's version
+  on its page first.
+- **Drift**: when what systemd holds for the unit differs from Mercury's record, the card draws
+  a table naming each side (each app's version, the User, the drop-in) and **Preview the
+  redeploy…**. It reads what systemd holds, not the running process's own command line, so a
+  unit changed and not yet restarted reads as changed. To keep what the controller runs
+  instead, deploy that version from its app's page: the deploy makes it the record.
+- **The apps** are grouped by what to do: **/health failing**, **Differs from Mercury's
+  record**, **A newer Published version**, **Running as recorded**, and **Registered, not in
+  the set**. Each row names the version running and its place in the load order, the newest
+  Published version and its reviewer (a newer Draft beside it), the OpenFlow versions it
+  declares and its /health as last read. A row opens its app's page.
+- **An app's page** lists its versions as registered (each pinned by commit and content
+  hash): a **Published** one by its reviewer, a **Draft** with why it is never offered (it
+  deploys only in the container harness), a **Retired** one kept for audit. Choosing a version
+  enables "Preview deploying <version>…", the plan of the record's set with that one change;
+  the version the controller runs is disabled, its reason on hover. Beside it: what the chosen
+  version's manifest declares (controllers, OpenFlow versions, what it requires, its REST
+  endpoints with the /health the post-check reads, the flows it owns, its egress, its config).
+- **A receipt** (from **its receipt**, History, or a result's **Open the receipt**): who
+  confirmed it and how they were verified, the plan's hash, the request and the one before, the
+  files, the drop-in's before and after, the window, the apply script's outcome, the
+  post-check, **Download the receipt (JSON)** and **Open the controller** (the controller's
+  card). Every text is masked as History masks.
+- **Not drawn yet**, each a registered gap: a controller's **Read again** and the code
+  repository's **Fetch now** (the controller and registry reads are not wired, C2677's rest),
+  **Compare** two versions and **Open the review**, and the Needs attention rows drawn from the
+  controller's reads (an app's /health failing, a switch or link missing outside a window,
+  drift). A deploy whose outcome is not known, or that left the controller not back as it
+  was, is already a row (see
+  [Deploy apps to an SDN controller](controller-app-deploy)).
 
 ## Responses {#responses}
 

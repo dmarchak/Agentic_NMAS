@@ -212,6 +212,14 @@ STAGES = {
     "sdn_v2.reapply_confirm": Stages(
         "sdn_v2.reapply_preview", "hash", "modules.sdn.flow_ops.verify_installed",
         "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
+    # P6 (C2677; board controller-app-deploy): the controller app deploy. The preview is
+    # `channel.plan` for the chosen set; the confirm binds its hash, made again holding the
+    # controller (`deploy_op._held`); verify is the post-check of every expected switch, link
+    # and app's /health; rollback the plan's own target (the request before, or the put-back of
+    # the drop-in before); the record the receipt, kept with the other receipts.
+    "sdn_v2.apps_confirm": Stages(
+        "sdn_v2.apps_preview", "hash", "modules.apps.post_check.wait",
+        "modules.apps.post_check._roll_back", "modules.controller_deploy_receipts.write"),
     # C2313's condition: a person's decision, a watched large-packet stream made a response
     # awaiting a person; it sends nothing. The response then has the five stages above
     # (sdn_v2.response_preview, its hash, Verify, rollback, the record), unchanged.
@@ -527,6 +535,8 @@ HISTORY = {
     "settings_v2.sdn_saved_test": NOT_A_DEVICE,
     "sdn_v2.controller_test": NOT_A_DEVICE,
     "sdn_v2.flow_confirm": ("sdn_operations",),
+    # P6: the controller host's deploys, one receipt each (modules/controller_deploy_receipts.py).
+    "sdn_v2.apps_confirm": ("controller_deploys",),
     "sdn_v2.response_confirm": ("sdn_operations",),
     "sdn_v2.reapply_confirm": ("sdn_operations",),
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "

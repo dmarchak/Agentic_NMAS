@@ -140,6 +140,8 @@ OPERATION_NAMES = {
     # Out-of-band: the console survey and kick-start, and the one-decision onboarding.
     "console survey": "Console survey", "console kick-start": "Console kick-start",
     "console onboard": "Out-of-band onboarding",
+    # P6: the controller app deploy's one hold (`management.HOST_DEPLOY`), on its host.
+    "controller app deploy": "Controller app deploy",
 }
 
 #: A console run's hold -> its run's declared stepper steps (each run's own table). A console

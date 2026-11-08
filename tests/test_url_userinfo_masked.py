@@ -102,6 +102,10 @@ ENTRY_POINTS = {
         __import__("modules.ai.read_log", fromlist=["_masked"])._masked(
             {"incident": "i-1", "note": PLANTED,
              "reads": [{"command": "show version", "error": PLANTED}]})),
+    # A controller app deploy's receipt, every string masked on the way in (P6, C2677).
+    "modules/controller_deploy_receipts.py:masked": lambda: __import__("json").dumps(
+        __import__("modules.controller_deploy_receipts", fromlist=["masked"]).masked(
+            {"outcome": "deployed", "words": PLANTED, "steps": [{"detail": PLANTED}]})),
     # A heal's facts on its receipt row, every string masked (board H, H4).
     "modules/nsot/receipts.py:_masked": lambda: "\n".join(
         __import__("modules.nsot.receipts", fromlist=["_masked"])._masked(

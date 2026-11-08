@@ -137,6 +137,9 @@ VOCABULARY = {
                    "ended: the console card reads its record by id",
     "sdn": "each network's SDN controllers, their switches, flows and meters, as the SDN reader "
            "last stored them (SDN › Controllers and Flows, PHASE8_PLAN 17.1 S11)",
+    "controller_deploy": "a controller app deploy (P6, modules/apps/deploy_op.py) moved a step "
+                         "or ended: its running card redraws, and SDN › Apps reads its receipt "
+                         "and Mercury's record of the controller's set again",
     "console_servers": "Mercury's console-server store (modules/nsot/console_servers.py) and the "
                        "console servers' keys: Settings › Installation › Console servers reads "
                        "again",
@@ -147,6 +150,9 @@ VOCABULARY = {
 #: they send are senders to `keys_in_use`, exactly as a reader's are.
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
+    # modules/apps/deploy_op.py (P6): each step of a controller app deploy, and at its end the
+    # receipt, the SDN region and the planned-restart window it declared and ended.
+    "controller-deploy": ("controller_deploy", "sdn", "restarts"),
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
     "scheduled-rotation": ("rotation", "credentials"),  # modules/nsot/scheduled_rotation.py (C724)
@@ -502,9 +508,13 @@ DECLARED = {
     "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),
     "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends"),
+    "sdn_v2.apps_preview": Nothing("previews a controller app deploy in its card; the confirm sends"),
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),
+    # P6: the confirm starts the job, which announces each step and its end itself
+    # (ANNOUNCERS controller-deploy); the In progress chip reads again as the job starts.
+    "sdn_v2.apps_confirm": ("controller_deploy", "in_progress"),
     "sdn_v2.response_confirm": ("sdn",),
     "sdn_v2.reapply_confirm": ("sdn",),
     "sdn_v2.response_dismiss": ("sdn",),

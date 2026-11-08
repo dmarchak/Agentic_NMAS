@@ -67,6 +67,9 @@
               // The SDN reader read a network's controllers again, or a connection was saved
               // or removed (PHASE8_PLAN 17.1 S11): SDN › Controllers and Flows re-read.
               'sdn',
+              // A controller app deploy moved a step or ended (P6, modules/apps/deploy_op.py):
+              // its running card and SDN › Apps re-read.
+              'controller_deploy',
               // A History › Query view saved, pinned or removed (C667).
               'saved_views',
               // A device asked anew, was picked or went quiet on the ZTP segment (board L).
@@ -695,6 +698,7 @@
   function relayLogs() { relay('logs'); }
   function relayDhcp() { relay('dhcp'); }
   function relaySdn() { relay('sdn'); }
+  function relayControllerDeploy() { relay('controller_deploy'); }
   function relaySavedViews() { relay('saved_views'); }
   function relayDiscovery() { relay('ztp_discovery'); }
   function relayPathTrace() { relay('path_trace'); }
@@ -915,6 +919,7 @@
     NMAS.subscribe('logs', 'v2Logs', relayLogs);
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
     NMAS.subscribe('sdn', 'v2Sdn', relaySdn);
+    NMAS.subscribe('controller_deploy', 'v2ControllerDeploy', relayControllerDeploy);
     NMAS.subscribe('saved_views', 'v2SavedViews', relaySavedViews);
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);

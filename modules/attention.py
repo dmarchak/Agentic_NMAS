@@ -309,6 +309,19 @@ ROW_KINDS = {
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
     # C2018: a switch's restart drops a response's flows and meter before their hard timeout.
+    # P6 (board controller-app-deploy, artboard I): a controller app deploy that ended leaving
+    # what the controller runs not known, or not back as it was.
+    ("controller_deploy", "outcome_unknown"): ("a controller app deploy sent its one command "
+                                               "and its outcome was not read, so whether the "
+                                               "controller restarted on the new set is not "
+                                               "known",
+                                               "open its receipt on SDN › Apps and preview a "
+                                               "deploy of the set it should run"),
+    ("controller_deploy", "not_back"): ("a controller app deploy missed and the controller "
+                                        "was not put back as it was (the rollback missed too, "
+                                        "or there was nothing to roll back to)",
+                                        "open its receipt on SDN › Apps, then preview a deploy "
+                                        "of the set it should run"),
     ("sdn_mitigation", "lost"): ("a response's flows or meter are missing from their switch "
                                  "while their hard timeout has time left, so the threat it "
                                  "answered is not being mitigated",
@@ -556,6 +569,12 @@ CLEARS = {
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
+    ("controller_deploy", "outcome_unknown"): (("resolves",), "the controller's next deploy "
+                                               "from SDN › Apps writes a receipt whose outcome "
+                                               "is known"),
+    ("controller_deploy", "not_back"): (("resolves",), "the controller's next deploy from SDN › "
+                                        "Apps leaves it running a set Mercury recorded "
+                                        "(deployed, or rolled back to the request before)"),
     ("sdn_mitigation", "lost"): (("resolves", "time"), "the SDN reader reads the response's "
                                  "flows and meter installed again (after its Re-apply… on "
                                  "SDN › Flows), or their hard timeout passes, when the "
@@ -3920,6 +3939,71 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                                  + (f"; {len(rows) - sum(1 for x in rows if x['kind'] == 'awaiting')} "
                                     "high packet rate(s) watched"
                                     if any(x["kind"] == "watching" for x in rows) else ""))
+def controller_deploy_source(found=None, now: float = None) -> dict:
+    """Each network's controller whose last controller app deploy (P6; board
+    controller-app-deploy, artboard I; `modules/controller_deploy_receipts`) ended leaving what it runs
+    not known ("unknown": the command was sent and this run's outcome was not read, K7) or not
+    back as it was ("rollback failed", "not rolled back"). A refused confirm or an apply that
+    failed before the drop-in changed nothing, so the receipt before decides. One small file
+    read per network, never a controller. *found* is ``{network: read() answer}`` (tests)."""
+    from modules import controller_deploy_receipts as DR
+    from modules.nsot import listref
+
+    started = time.time() if now is None else now
+    label = "Controller app deploys"
+    try:
+        reads = found if found is not None else {n: DR.read(n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("controller_deploy", label, read_at=started, took_ms=0,
+                             error=f"the receipts could not be read: {type(exc).__name__}")
+    rows, unread = [], []
+    for network, got in sorted(reads.items()):
+        if got.get("state") == "unreadable":
+            unread.append(network)
+            rows.append(row(
+                source="controller_deploy", kind="unreadable", key=f"{network}:receipts",
+                level="unknown", what=f"{network}'s controller app deploy receipts cannot be read",
+                cause=f"{DR.path_for(network)}: {got.get('error') or 'unreadable'}; Mercury's "
+                      "record of each controller's set is not known, so a deploy is refused",
+                action={"label": "Repair the receipts file; nothing here can rewrite it",
+                        "known": False},
+                operands={"network": network}))
+            continue
+        newest = {}
+        for r in got.get("rows") or []:
+            if r.get("outcome") in DR.UNCHANGED:
+                continue
+            newest.setdefault(r.get("controller"), r)
+        for ctl, r in sorted(newest.items()):
+            outcome = r.get("outcome")
+            if outcome not in ("unknown", "rollback failed", "not rolled back"):
+                continue
+            href = f"/v2/sdn/apps?list={network}&receipt={r.get('id')}"
+            common = dict(
+                key=f"{network}:{ctl}:{r.get('id')}",
+                devices=[ctl], since=_ts(r.get("at")),
+                cause=(f"The deploy of {r.get('at')} by {r.get('actor') or 'unknown'} "
+                       f"({r.get('change_words') or 'its set'}) ended {outcome}: "
+                       f"{r.get('error') or 'no reason recorded'}"),
+                operands={"network": network, "controller": ctl, "receipt": r.get("id") or "",
+                          "outcome": outcome or ""},
+                action={"label": f"Open the receipt on SDN › Apps, then preview a deploy of "
+                                 f"the set {ctl} should run",
+                        "href": href})
+            if outcome == "unknown":
+                rows.append(row(source="controller_deploy", kind="outcome_unknown", level="unknown",
+                                what=f"{ctl}'s deploy outcome is not known", **common))
+            else:
+                rows.append(row(source="controller_deploy", kind="not_back", level="danger",
+                                what=(f"{ctl} is not back as it was after a controller app "
+                                      f"deploy ({outcome})"), **common))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    return source_result("controller_deploy", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"{len(reads)} network(s)' controller deploy receipts: "
+                                  f"{len(rows) - len(unread)} controller(s) not known or not "
+                                  "back" + (f"; {len(unread)} unreadable" if unread else "")))
+
+
 def sdn_mitigation_source(found=None, now: float = None) -> dict:
     """Each response whose flows or meter the SDN reader last read missing from their switch
     while their hard timeout has time left (`modules/sdn/reapply.py` `lost`, C2018): a WARNING
@@ -6449,7 +6533,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
            sdn_mitigation_source, sdn_controllers_source, notify_source, heal_source,
-           controller_python_source)
+           controller_python_source, controller_deploy_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -6514,6 +6598,8 @@ SOURCE_KEYS = {
     # The SDN reader announces sdn at each read; a connection changed in Settings wakes it
     # (reader_wakes), so its read, then its announcement, moves the row (C1999, C1869's row).
     "sdn_controllers_source": ("sdn",),
+    # P6: a controller app deploy's end announces controller_deploy (deploy_op.DONE_KEYS).
+    "controller_deploy_source": ("controller_deploy",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
     # A reload's record (its run, or Verify again) ends a job that announces restarts (C2240;

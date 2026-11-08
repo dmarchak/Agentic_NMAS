@@ -2908,3 +2908,66 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .ntf-form > .set-foot { grid-column: 1 / -1; }
 .ntf-ok { color: var(--ok); }
 .ntf-bad { color: var(--danger); }
+
+/* SDN › Apps (P6; board controller-app-deploy, artboards A to H, J and L): the controller card
+   and its apps, an app's page, the deploy's plan, running and result cards, the receipt.
+   Colours by tokens only, each with its dark value above. */
+.apps-ctl .sdn-ctl-hd { align-items: flex-start; }
+.apps-line { margin: 2px 0 0; }
+.apps-ctl > .apps-line, .apps-ctl > .apps-drift { margin: 0 18px; }
+.apps-acts, .apps-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.apps-act .btn { white-space: normal; max-width: 100%; }
+.apps-slot:empty { display: none; }
+.apps-slot { margin: 0 18px; }
+.apps-sum strong { font-size: 16px; }
+.apps-bad { color: var(--danger); }
+.apps-warn { color: var(--warn); }
+.apps-info { color: var(--accent); }
+.apps-slot.apps-slot-wide { margin: 0; }
+.apps-table { padding: 0; }
+.apps-table th:first-child, .apps-table td:first-child { padding-left: 18px; }
+.apps-grp td { background: var(--surface-2); font-weight: 600; }
+.apps-changed td { background: var(--accent-soft); }
+.apps-picked td { background: var(--surface-2); }
+.apps-crumb { font-size: 12.5px; color: var(--ink-2); margin: 0; }
+.apps-head { margin: 0; }
+.apps-h { margin: 0; font-size: 20px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.apps-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px;
+  align-items: start; }
+.apps-card, .apps-sec { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.apps-card h3, .apps-sec h4, .apps-op h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.apps-plan-head h3 { font-size: 16px; }
+.apps-plan-head .sub { margin: 2px 0 8px; }
+.apps-op { display: flex; flex-direction: column; gap: 12px; }
+.apps-dropin { margin: 0; background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); padding: 8px 10px; white-space: pre-wrap; word-break: break-all;
+  font-size: 12.5px; max-height: 320px; overflow: auto; }
+.apps-dropin span { display: inline; }
+.apps-add { background: var(--ok-soft); color: var(--ink); }
+.apps-del { background: var(--danger-soft); color: var(--ink-2); text-decoration: line-through;
+  text-decoration-color: var(--ink-3); }
+.apps-refusal, .apps-question { display: flex; gap: 8px; align-items: flex-start; margin: 0;
+  padding: 8px 12px; border-radius: var(--r); font-size: 13px; }
+.apps-refusal { border-left: 3px solid var(--danger); background: var(--danger-soft); }
+.apps-question { border-left: 3px solid var(--warn); background: var(--warn-soft); }
+.apps-none { margin-top: 10px; }
+.apps-receipt { padding: 0 0 14px; }
+.apps-receipt > .sdn-kv, .apps-receipt > .apps-acts { margin: 0 18px; }
+@media (max-width: 900px) {
+  .apps-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  /* Board L: the plan full width, its confirm pinned at the bottom, the drop-in scrolling
+     inside its own box; each table row a stacked block. */
+  .apps-pin { position: sticky; bottom: 0; z-index: 2; background: var(--surface);
+    border-top: 1px solid var(--line); padding: 10px 0; }
+  .apps-pin .btn-primary { flex: 1 1 auto; }
+  .apps-dropin { max-height: 160px; white-space: pre; }
+  .apps-slot, .apps-ctl > .apps-line, .apps-ctl > .apps-drift { margin: 0 14px; }
+  .apps-table thead, .apps-versions thead { display: none; }
+  .apps-table tr, .apps-versions tr { display: block; border-bottom: 1px solid var(--line);
+    padding: 6px 10px; }
+  .apps-table td, .apps-versions td { display: block; border-bottom: none; padding: 2px 0; }
+  .apps-table td[data-l]::before, .apps-versions td[data-l]::before { content: attr(data-l);
+    display: inline-block; min-width: 96px; color: var(--ink-3); font-size: 12px; }
+}

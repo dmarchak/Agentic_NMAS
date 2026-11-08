@@ -2539,6 +2539,74 @@ def _oob_onboard(client, _lab, _mp):
         server.close()
 
 
+def _sdn_apps(client, _lab, _mp):
+    """SDN › Apps (P6, board controller-app-deploy) on Lab, through `deploy_op.Sources` faked at
+    its seam (tests/test_controller_deploy_op.py's `FakeSources`, a real code repository with
+    two Published versions): the tab at rest with no record, a refused preview, a first deploy
+    confirmed (its running card, then its result), the controller as recorded and an app's
+    page, a plan that changes nothing, drift, the receipt and its download. Its patches are
+    undone before the next provider."""
+    import re
+    import tempfile
+    from html import unescape
+    from pathlib import Path
+
+    import pytest
+
+    from modules import controller_deploy_receipts as deploy_receipts
+    from modules.apps import channel, deploy_op
+    from modules.nsot import capture_job
+    from tests.test_controller_deploy_op import ALL_BACK_TWO, HEADER, FakeSources
+    from tests.test_sdn_apps_v2 import as_recorded
+
+    import shutil
+
+    mp = pytest.MonkeyPatch()
+    root = tempfile.mkdtemp(prefix="v2ctx-apps-")
+    src = FakeSources(Path(root))
+    mp.setattr(deploy_op, "SOURCES", src)
+    try:
+        mp.setattr("tests.test_sdn_apps_v2.NET", "Lab")
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        form = {"list": "Lab", "controller": "ctl", "set": "of_versions=1.0.0"}
+        assert client.post("/v2/sdn/apps/preview", data=dict(form, set="nope")).status_code == 400
+        html = client.post("/v2/sdn/apps/preview", data=form).get_data(as_text=True)
+        fields = {m.group(1): unescape(m.group(2)) for m in re.finditer(
+            r'<input type="hidden" name="([a-z]+)" value="([^"]*)"', html)}
+        src.reads = [ALL_BACK_TWO]
+        r = client.post("/v2/sdn/apps/confirm", data={k: fields[k] for k in (
+            "list", "controller", "set", "hash", "parts")})
+        job = re.search(r"/v2/sdn/apps/run/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 60)
+        assert "Deployed" in client.get(f"/v2/sdn/apps/run/{job}").get_data(as_text=True)
+        as_recorded(src)
+        for url in ("/v2/sdn/apps?list=Lab",
+                    "/v2/sdn/apps?list=Lab&app=of_versions&controller=ctl",
+                    "/v2/sdn/view?list=Lab&tab=apps&app=of_versions&controller=ctl&v=1.1.0"):
+            assert client.get(url).status_code == 200
+        rid = deploy_receipts.read("Lab")["rows"][0]["id"]
+        assert client.get(f"/v2/sdn/apps?list=Lab&receipt={rid}").status_code == 200
+        assert client.get(f"/v2/sdn/apps/receipt/{rid}.json?list=Lab").status_code == 200
+        rec = deploy_receipts.record("Lab", "ctl")
+        src.cat = (f"{HEADER}\n" + channel.render_dropin(rec["request"],
+                                                         "/opt/ryu-venv/bin/ryu-manager"))
+        assert "Nothing to deploy" in client.post("/v2/sdn/apps/preview", data=form)\
+            .get_data(as_text=True)
+        src.controller_read = lambda n, c: {"state": "ok", "at": "2026-11-08T05:00:00Z",
+                                            "show": "User=ryu\n", "cat": "", "health": {},
+                                            "observed": None, "error": ""}
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        as_recorded(src)
+        recorded = src.controller_read
+        src.controller_read = lambda n, c: dict(recorded(n, c),
+                                                cat=f"{HEADER}\n[Service]\nUser=ryu\n")
+        assert "differs from Mercury" in client.get("/v2/sdn/apps?list=Lab")\
+            .get_data(as_text=True)
+    finally:
+        mp.undo()
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def _sdn(client, _lab, _mp):
     """SDN › Controllers and Flows and Settings' SDN controllers card (PHASE8_PLAN 17.1 S11),
     on Lab with one Ryu connection answered by Ryu 4.34's captured answers through the real
@@ -3118,7 +3186,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _no_change_window, _read_only_account,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
-                   _ai_spend, _assistant, _oob_onboard, _sdn, _heal_and_notify,
+                   _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps, _heal_and_notify,
                    _heal_proposal,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,

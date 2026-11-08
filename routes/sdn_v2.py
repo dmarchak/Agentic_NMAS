@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("sdn_v2", __name__, url_prefix="/v2/sdn")
 
-TABS = (("controllers", "Controllers"), ("flows", "Flows"), ("responses", "Responses"))
+TABS = (("controllers", "Controllers"), ("flows", "Flows"), ("apps", "Apps"),
+        ("responses", "Responses"))
 
 
 def _list_name() -> str:
@@ -34,7 +35,16 @@ def _ctx(tab: str) -> dict:
     from modules import sdn_page
 
     network = _list_name()
-    if tab == "responses":
+    if tab == "apps":
+        from modules import sdn_apps_page
+
+        # Each field by its literal name, so a scan of what the route reads names it.
+        g = sdn_apps_page.apps_view(network, {
+            "app": (request.args.get("app") or "").strip(),
+            "v": (request.args.get("v") or "").strip(),
+            "controller": (request.args.get("controller") or "").strip(),
+            "receipt": (request.args.get("receipt") or "").strip()})
+    elif tab == "responses":
         from modules import sdn_ops_page
 
         g = sdn_ops_page.responses_view(
@@ -66,6 +76,16 @@ def flows():
     from routes.v2 import _page
 
     return _page("v2/sdn.html", active_nav="sdn", list_name=_list_name(), **_ctx("flows"))
+
+
+@bp.route("/apps", methods=["GET"])
+def apps():
+    """SDN › Apps (board controller-app-deploy, artboards A, B, H and J, signed off by the
+    operator 2026-11-07): the network's controllers, the apps each runs by Mercury's record,
+    an app's page (`?app=`), a receipt (`?receipt=`). A read."""
+    from routes.v2 import _page
+
+    return _page("v2/sdn.html", active_nav="sdn", list_name=_list_name(), **_ctx("apps"))
 
 
 @bp.route("/view", methods=["GET"])
@@ -459,3 +479,109 @@ def controller_test(name):
     tested = connections.test_saved(_list_name(), name)
     return _strict(render_template("v2/_sdn_answer.html", tested=tested, name=name,
                                    list_name=_list_name()))
+
+
+# ───────────────────────────────────────────────────────────── the controller app deploy (P6)
+# Board controller-app-deploy (artboards C to H), signed off by the operator 2026-11-07; C2677.
+# One operation (modules/apps/deploy_op.py): the preview is `channel.plan` for the controller
+# with the chosen set; the confirm, bound to the plan's hash as a verified person, starts the
+# job that holds the controller, makes the plan again, declares the window, deploys,
+# post-checks, rolls back on a miss and writes the receipt. The card is drawn in place of the
+# control's slot, and follows the job by its id on `controller_deploy`.
+
+def _app_card(d: dict, status: int = 200):
+    return _strict(render_template("v2/_sdn_app_deploy.html", d=d)), status
+
+
+def _apps_form():
+    """``(network, controller, set, refusal)`` from a preview's or a confirm's form."""
+    from modules.apps import deploy_op
+    from routes.list_param import submitted_list
+
+    name, refusal = submitted_list(request)
+    controller = (request.form.get("controller") or "").strip()
+    if refusal:
+        return name, controller, {}, refusal
+    if not controller:
+        return name, controller, {}, "the form names no controller"
+    try:
+        chosen = deploy_op.parse_set(request.form.get("set") or "")
+    except deploy_op.Refused as exc:
+        return name, controller, {}, str(exc)
+    return name, controller, chosen, ""
+
+
+@bp.route("/apps/preview", methods=["POST"])
+def apps_preview():
+    """The plan for the chosen set on the network's controller (artboards C and D): read from
+    the controller now, the files staged here from their pins and removed again; nothing is
+    sent. *redeploy* (K4) opens the full plan of a set the controller already runs."""
+    from modules import sdn_apps_page
+    from modules.apps import deploy_op
+
+    network, controller, chosen, refused = _apps_form()
+    if refused:
+        return _app_card({"state": "refused", "controller": controller, "network": network,
+                          "refusals": [refused]}, 400)
+    plan = deploy_op.preview(network, controller, chosen)
+    d = sdn_apps_page.plan_card(plan, redeploy=request.form.get("redeploy") == "1")
+    return _app_card(d, 200 if plan.get("ok") else 409)
+
+
+@bp.route("/apps/confirm", methods=["POST"])
+def apps_confirm():
+    """Deploy the previewed set as the verified person, bound to the plan's hash: starts the
+    job (it holds the controller for minutes, a restart and every switch's reconnect) and
+    answers its running card at once."""
+    import json
+
+    from modules import identity, sdn_apps_page
+    from modules.apps import deploy_op
+
+    network, controller, chosen, refused = _apps_form()
+    confirmed = (request.form.get("hash") or "").strip()
+    if not refused and len(confirmed) != 64:
+        refused = "the form carries no plan hash, so what you confirmed cannot be told"
+    if refused:
+        return _app_card({"state": "refused", "controller": controller, "network": network,
+                          "refusals": [refused]}, 400)
+    try:
+        then = json.loads(request.form.get("parts") or "{}")
+    except ValueError:
+        then = {}
+    actor = identity.request_actor()
+    job = deploy_op.start(network, controller, chosen, confirmed,
+                          then_parts=then if isinstance(then, dict) else {}, actor=actor,
+                          actor_verified=identity.actor_verification(actor))
+    return _app_card(sdn_apps_page.run_card(job), 202)
+
+
+@bp.route("/apps/run/<job>", methods=["GET"])
+def apps_run(job):
+    """A confirm's card by its job, read again on `controller_deploy`: its steps while it
+    runs, then its result from the receipt. A read."""
+    from modules import sdn_apps_page
+
+    return _app_card(sdn_apps_page.run_card(job))
+
+
+@bp.route("/apps/receipt/<rid>.json", methods=["GET"])
+def apps_receipt_json(rid):
+    """Download the receipt (JSON), artboard H: the whole record as kept, masked again on the
+    way out. A read; a receipt the network does not hold is a 404 naming it."""
+    import json
+
+    from flask import Response
+
+    from modules import controller_deploy_receipts as deploy_receipts
+
+    r = deploy_receipts.get(_list_name(), rid)
+    if r is None:
+        return Response(f"No receipt {rid[:40]} in {_list_name()}.\n", status=404,
+                        mimetype="text/plain")
+    safe = "".join(ch for ch in rid if ch.isalnum())[:40]
+    return Response(json.dumps(deploy_receipts.masked(r), indent=2, sort_keys=True) + "\n",
+                    mimetype="application/json",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="controller-deploy-{safe}.json"',
+                             "Cache-Control": "no-store"})

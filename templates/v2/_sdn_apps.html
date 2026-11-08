@@ -1,0 +1,162 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{#- SDN › Apps (P6; board docs/boards/controller-app-deploy.html, artboards A, B, H and J, signed
+    off by the operator 2026-11-07): the network's controllers, each card leading with what the
+    controller runs as read against Mercury's record, then its apps grouped by what to do; an
+    app's page (B); a receipt (H). modules/sdn_apps_page.py builds `g`; nothing here reads a
+    controller. A deploy's plan, its run and its result are drawn in the card's slot by
+    v2/_sdn_app_deploy.html. -#}
+{%- macro deploy_form(c, set_text, words, slot, primary=True, redeploy=False, disabled='') -%}
+<form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_preview') }}" hx-target="#{{ slot }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="controller" value="{{ c.name }}"><input type="hidden" name="set" value="{{ set_text }}">{% if redeploy %}<input type="hidden" name="redeploy" value="1">{% endif %}
+  <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy"{% if disabled %} disabled aria-disabled="true" title="{{ disabled }}" data-refused="Not available: {{ disabled }}"{% else %} title="Reads {{ c.name }} now and shows the plan; nothing is sent until you confirm"{{ gate('confirm') }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">Reading {{ c.name }}…</span></button>{{ how('controller-app-deploy', 'plan') }}
+</form>
+{%- endmacro %}
+{%- if g.state == 'not_wired' or g.state == 'unreadable' %}
+<div class="notice notice-{{ 'warn' if g.state == 'not_wired' else 'danger' }} apps-none" role="status">{{ icon('info', 16) }}<p><strong>{{ g.network }}'s controller hosts can't be listed:</strong> {{ g.error }}. Nothing is drawn as known.</p></div>
+{%- elif not g.controllers %}
+<div class="notice notice-muted apps-none" role="status">{{ icon('info', 16) }}<p>{{ g.network }} has no SDN controller host to deploy apps to.</p></div>
+{%- endif %}
+{%- if g.registered_state and g.registered_state != 'ok' and g.controllers %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p><strong>No app version can be listed:</strong> {{ g.registered_error }}. What each controller runs by Mercury's record is still drawn.</p></div>
+{%- endif %}
+
+{%- if g.receipt %}
+{%- set r = g.receipt %}
+{%- if r.missing %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>No receipt <span class="mono">{{ r.missing }}</span> in {{ g.network }}'s controller deploys.</p></div>
+{%- else %}
+<section class="card apps-receipt" aria-label="The receipt">
+  <div class="sdn-ctl-hd"><h2>Receipt: {{ r.controller }}, <time datetime="{{ r.at }}">{{ (r.at or '')[:16] | replace('T', ' ') }} UTC</time></h2>{{ badge(r.outcome_words, r.tone) }}</div>
+  <dl class="sdn-kv">
+    <dt>Confirmed by</dt><dd>{{ r.actor or 'unknown' }}{% if r.actor_verified %}, verified by {{ r.actor_verified }}{% endif %}</dd>
+    <dt>Plan</dt><dd class="mono" title="{{ r.plan }}">sha256:{{ r.plan }}</dd>
+    {%- if r.change %}<dt>What changed</dt><dd>{{ r.change }}</dd>{% endif %}
+    <dt>Request</dt><dd><span class="mono">{{ r.request }}</span>: {{ r.request_apps }}{% if r.listen.host %} · listen <span class="mono">{{ r.listen.host }}</span> {{ r.listen.port }}{% endif %}</dd>
+    <dt>Before</dt><dd>{{ r.before_words }}{% if r.before.receipt %} · <a href="{{ url_for('sdn_v2.apps', list=g.network, receipt=r.before.receipt) }}">its receipt</a>{% endif %}</dd>
+    <dt>Files</dt><dd>{{ r.files }} staged in {{ r.folders }} folder{{ 's' if r.folders != 1 }}, each with its blob and the folders' content hashes</dd>
+    {%- if r.dropin.before_sha256 %}<dt>Drop-in</dt><dd>before <span class="mono">sha256:{{ r.dropin.before_sha256[:4] }}…{{ r.dropin.before_sha256[-4:] }}</span>, after <span class="mono">sha256:{{ r.dropin.after_sha256[:4] }}…{{ r.dropin.after_sha256[-4:] }}</span></dd>{% endif %}
+    {%- if r.window.from %}<dt>Window</dt><dd>{{ r.window.from }} to {{ r.window.until }} declared; {% if r.window.ended %}ended by the operation{% else %}runs to its end{% if r.window.ended_error %} ({{ r.window.ended_error }}){% endif %}{% endif %}</dd>{% endif %}
+    {%- if r.apply %}<dt>The apply script</dt><dd>{% if r.apply.started %}started {{ r.apply.started }}{% endif %}{% if r.apply.finished %}, finished {{ r.apply.finished }}{% endif %}{% if r.apply.main_pid_before %}; MainPID {{ r.apply.main_pid_before }} → {{ r.apply.main_pid_after or '?' }}{% endif %}{% if r.apply.up_after_s is not none %}; {{ r.apply.up_after_s }} s to active{% endif %} (bound {{ r.bounds.unit_up_s.seconds if r.bounds.unit_up_s else '?' }} s, {{ 'measured' if r.bounds.unit_up_s and r.bounds.unit_up_s.measured else 'a placeholder' }}){% if r.apply.error or r.apply.refused %}; {{ r.apply.refused or r.apply.error }}{% endif %}</dd>{% endif %}
+    {%- if r.post_check.words %}<dt>Post-check</dt><dd>{{ r.post_check.words }}</dd>{% endif %}
+    {%- if r.rollback_post_check.words %}<dt>Rollback's post-check</dt><dd>{{ r.rollback_post_check.words }}</dd>{% endif %}
+    {%- if r.error %}<dt>Why</dt><dd>{{ r.error }}</dd>{% endif %}
+    <dt>Steps</dt><dd>{% for s in r.steps %}{{ s.step }}{% if s.ok is defined and s.ok is not none %} ({{ 'ok' if s.ok else 'not ok' }}){% endif %}{{ ' · ' if not loop.last }}{% else %}none ran{% endfor %}</dd>
+  </dl>
+  <p class="apps-acts"><a class="btn btn-small" href="{{ url_for('sdn_v2.apps_receipt_json', rid=r.id, list=g.network) }}" download>Download the receipt (JSON)</a> <a class="btn btn-small" href="{{ url_for('sdn_v2.apps', list=g.network) }}">Open the controller</a></p>
+</section>
+{%- endif %}
+{%- endif %}
+
+{%- for c in g.controllers %}
+{%- set slot = 'apps-slot-' ~ loop.index %}
+{%- if g.app and g.app.controller == c.name %}
+{#- B · an app's page -#}
+{%- set a = g.app %}
+<nav class="crumb apps-crumb" aria-label="Where"><a href="{{ url_for('sdn_v2.page', list=g.network) }}">SDN</a> › <a href="{{ url_for('sdn_v2.apps', list=g.network) }}">Apps</a> › {{ a.name }}</nav>
+<div class="apps-head"><h2 class="apps-h">{{ a.name }} {{ info('sdn', 'apps') }}</h2>
+<p class="sub">{% if a.declares and a.declares.summary %}{{ a.declares.summary }} {% endif %}{% if a.running %}Runs {{ a.running }} on {{ c.name }}.{% else %}Not in {{ c.name }}'s set.{% endif %}</p></div>
+{%- if not a.registered %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ a.name }} has no registered version{% if g.registered_error %}: {{ g.registered_error }}{% endif %}.</p></div>
+{%- else %}
+<div class="apps-cols">
+<section class="card apps-card" aria-label="Versions">
+  <div class="sdn-ctl-hd"><h3>Versions ({{ a.versions | length }})</h3>{{ how('controller-app-deploy', 'versions') }}</div>
+  <div class="table-wrap"><table class="table apps-versions">
+    <thead><tr><th scope="col"><span class="sr-only">Choose</span></th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Pinned</th><th scope="col">On {{ c.name }}</th></tr></thead>
+    <tbody>
+    {%- for v in a.versions %}
+    <tr{% if v.version == a.pick %} class="apps-picked"{% endif %}>
+      <td><input type="radio" name="v" value="{{ v.version }}" aria-label="Choose {{ v.version }}"{% if v.version == a.pick %} checked{% endif %}{% if not v.deployable %} disabled{% else %} hx-get="{{ url_for('sdn_v2.region', tab='apps', list=g.network, app=a.name, v=v.version, controller=c.name) }}" hx-target="#sdn" hx-swap="outerHTML" hx-trigger="change"{% endif %}></td>
+      <td data-l="Version">{{ v.version }}</td>
+      <td data-l="State">{% if v.state == 'published' %}{{ badge('Published', 'ok') }}<div class="small muted">by {{ v.reviewer or 'unknown' }}{% if v.reviewed_at %}, {{ v.reviewed_at }}{% endif %}</div>{% elif v.state == 'draft' %}{{ badge('Draft', 'warn') }}<div class="small muted">deploys only in the container harness; Publish needs a reviewer other than its author</div>{% else %}{{ badge('Retired', 'muted') }}<div class="small muted">kept for audit; never deployed</div>{% endif %}</td>
+      <td data-l="Pinned" class="mono small">{% if v.commit %}commit {{ v.commit }} · {% endif %}sha256:{{ v.sha[:4] }}…{{ v.sha[-4:] }}</td>
+      <td data-l="On {{ c.name }}">{% if v.running %}{{ badge('running', 'ok') }}{% elif v.ran_until %}ran until {{ stamp(v.ran_until) }}{% else %}–{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- set why = (a.pick ~ ' is what ' ~ c.name ~ ' runs: choose another version') if a.pick == a.running else ('' if a.pick_deployable else 'only a Published version deploys to a controller') %}
+  {{ deploy_form(c, a.set, 'Preview deploying ' ~ a.pick ~ '…', slot, disabled=why) }}
+</section>
+<section class="card apps-card" aria-label="What the manifest declares">
+  <h3>What {{ a.pick }} declares</h3>
+  {%- if a.declares %}
+  {%- set d = a.declares %}
+  <dl class="sdn-kv">
+    <dt>Controllers</dt><dd>{{ d.controllers }}</dd>
+    <dt>OpenFlow versions</dt><dd>{{ d.openflow }} <span class="faint">(the controller offers the intersection of every app's)</span></dd>
+    <dt>Requires</dt><dd>{{ d.requires }}</dd>
+    <dt>REST</dt><dd>{% for e in d.rest %}<span class="mono">{{ e.path }}</span> {{ e.methods }}{% if e.health %} <span class="faint">(read by the post-check)</span>{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</dd>
+    <dt>Owns flows</dt><dd>{{ d.owns }}</dd>
+    <dt>Egress</dt><dd>{{ d.egress }}</dd>
+    <dt>Config</dt><dd>no start-time config is compiled for it yet: the compiler is not built (C2760); a config file, when there is one, is staged beside the version and its hash is in the request</dd>
+  </dl>
+  {%- else %}<p class="muted small">No registered version is chosen.</p>{% endif %}
+</section>
+</div>
+{#- The plan opens full width under both cards (artboard C is a page's width). -#}
+<div class="apps-slot apps-slot-wide" id="{{ slot }}" role="region" aria-live="polite"></div>
+{%- endif %}
+{%- else %}
+{#- A · the controller card and its apps -#}
+<section class="card sdn-ctl apps-ctl" aria-labelledby="apps-c-{{ loop.index }}">
+  <div class="sdn-ctl-hd"><div><h2 id="apps-c-{{ loop.index }}">{{ c.name }} {{ badge(c.chip[0], c.chip[1]) }}</h2>
+    <p class="small muted apps-line">unit <span class="mono">{{ c.unit }}</span>{% if c.listen.host %} · listening on <span class="mono">{{ c.listen.host }}</span> TCP {{ c.listen.port }}{% if c.service %} ({{ c.service }}){% endif %}{% endif %}</p></div>
+    <div class="apps-acts">
+      {%- set none_why = '' if c.record.state == 'ok' else ("Mercury's record holds no set for " ~ c.name ~ ": choose an app's version on its page") %}
+      {{ deploy_form(c, c.redeploy_set, 'Preview a deploy…', slot, disabled=none_why) }}
+      {%- if c.read.at %}<span class="faint small" title="The controller's stored read">read {{ stamp(c.read.at) }}</span>{% endif %}
+    </div></div>
+  <div class="apps-slot" id="{{ slot }}" role="region" aria-live="polite"></div>
+  {%- if c.receipts_state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The controller's receipts cannot be read ({{ c.receipts_error }}), so Mercury's record of its set is not known and a deploy is refused.</p></div>
+  {%- endif %}
+  {%- if c.drift.state == 'drift' %}
+  {#- J · drift -#}
+  <div class="apps-drift">
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th scope="col">What</th><th scope="col">Mercury's record{% if c.last.at %} (deploy of {{ (c.last.at or '')[11:16] }} UTC){% endif %}</th><th scope="col">{{ c.name }}'s unit says</th></tr></thead>
+      <tbody>{% for r in c.drift.rows %}<tr><td>{{ r.what }}</td><td>{{ r.record }}</td><td>{% if r.differs %}<strong>{{ r.unit }}</strong>{% else %}the same{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="small muted">Read from {{ c.drift.words }}.</p>
+    <p class="small muted">To keep what the controller runs instead, choose that version on its app's page and deploy it: the deploy makes it the record.</p>
+    {{ deploy_form(c, c.redeploy_set, 'Preview the redeploy…', slot, redeploy=True) }}
+  </div>
+  {%- elif c.drift.state == 'unreadable' %}
+  <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p><strong>Can't tell:</strong> {{ c.drift.words }}. Never drawn as matching.</p></div>
+  {%- elif c.drift.state == 'unread' %}
+  <p class="small muted apps-line">What the controller runs is not read here: {{ c.drift.words }}.</p>
+  {%- endif %}
+  <dl class="sdn-kv">
+    <dt>Last deploy</dt><dd>{% if c.last %}{{ badge(c.last.outcome_words, c.last.tone) }} {{ stamp(c.last.at) }} by {{ c.last.by or 'unknown' }}{% if c.last.change %}: {{ c.last.change }}{% endif %}{% if c.last.slowest %}; {{ c.last.slowest }}{% endif %} · <a href="{{ url_for('sdn_v2.apps', list=g.network, receipt=c.last.id) }}">its receipt</a> · <a href="{{ url_for('v2.history_page', kind='controller_deploy') }}">every deploy on History</a>{% else %}none through Mercury{% endif %}</dd>
+    <dt>Rolls back to, on a miss</dt><dd>{% if c.record.state == 'ok' %}what {{ c.name }} runs by Mercury's record ({{ c.record_words }}){% elif c.record.state == 'none' %}no request Mercury recorded: a miss puts the drop-in before back (the apply script keeps it as <span class="mono">mercury.conf.prev</span>){% else %}{{ c.record.words }}{% endif %}</dd>
+    {%- if g.repo.path or g.repo.commit %}<dt>Code repository</dt><dd><span class="mono">{{ g.repo.path }}</span>{% if g.repo.commit %} at commit <span class="mono">{{ g.repo.commit[:7] }}</span>{% endif %}{% if g.repo.fetched_at %}, fetched {{ stamp(g.repo.fetched_at) }}{% endif %}</dd>{% endif %}
+    {%- if c.dev.hostname %}<dt>The host</dt><dd>{{ c.dev.hostname }} · <a href="{{ url_for('device_v2.device', name=c.dev.hostname) }}">Open its device page</a></dd>{% endif %}
+  </dl>
+</section>
+{%- set m = c.summary %}
+<p class="sdn-sum apps-sum"><strong>{{ m.enabled }}</strong> app{{ 's' if m.enabled != 1 }} in {{ c.name }}'s set{% if m.health %} · <strong class="apps-bad">{{ m.health }}</strong> /health failing{% endif %}{% if m.drift %} · <strong class="apps-warn">{{ m.drift }}</strong> differ{{ 's' if m.drift == 1 }} from the record{% endif %}{% if m.newer %} · <strong class="apps-info">{{ m.newer }}</strong> with a newer Published version{% endif %}{% if m.drafts %} · <strong>{{ m.drafts }}</strong> Draft{{ 's' if m.drafts != 1 }} (deploys only in the harness){% endif %}</p>
+{%- if c.groups %}
+<section class="card apps-table" aria-label="{{ c.name }}'s apps">
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">App</th><th scope="col">State on {{ c.name }}</th><th scope="col">Running (load order)</th><th scope="col">Newest Published</th><th scope="col">OpenFlow</th><th scope="col">/health</th></tr></thead>
+    <tbody>
+    {%- for key, label, rows in c.groups %}
+    <tr class="apps-grp"><td colspan="6">{{ label }} ({{ rows | length }})</td></tr>
+    {%- for r in rows %}
+    <tr>
+      <td data-l="App"><a href="{{ url_for('sdn_v2.apps', list=g.network, app=r.name, controller=c.name) }}">{{ r.name }}</a></td>
+      <td data-l="State">{{ badge(r.state[0], r.state[1]) }}</td>
+      <td data-l="Running">{% if r.running %}{{ r.running }}{% if r.order %} · {{ r.order }}{{ {1: 'st', 2: 'nd', 3: 'rd'}.get(r.order if r.order < 4 else 0, 'th') }}{% endif %}{% else %}–{% endif %}</td>
+      <td data-l="Newest Published">{{ r.newest or '–' }}{% if r.newest_by %}<span class="faint">, reviewed by {{ r.newest_by }}</span>{% endif %}{% if r.draft %} <span class="faint">({{ r.draft }} Draft)</span>{% endif %}</td>
+      <td data-l="OpenFlow">{{ r.openflow or '–' }}</td>
+      <td data-l="/health">{% if r.health is none %}<span class="faint">not read</span>{% elif r.health.ok %}{{ badge('OK', 'ok') }}{% else %}{{ badge(r.health.status or 'failing', 'danger') }}{% if r.health.error %} "{{ r.health.error }}"{% endif %}{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    {%- endfor %}
+    </tbody>
+  </table></div>
+</section>
+{%- endif %}
+{%- endif %}
+{%- endfor %}

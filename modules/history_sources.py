@@ -1977,6 +1977,43 @@ def sdn_operations(ctx):
     return _out(events)
 
 
+def controller_deploys(ctx):
+    """Each controller app deploy (P6, modules/apps/deploy_op.py; board controller-app-deploy,
+    artboard H): what changed on which controller, the outcome, who confirmed it and the
+    receipt's facts, every text masked again on the way out (the receipt is masked at write;
+    this is the second layer, as the device receipts' is). Drawn on History and on the
+    controller host's own tab."""
+    from modules import controller_deploy_receipts as DR
+    from modules.redact import redact_text
+
+    # The whole file, then the page's window, then the newest-N cut (15.14 part B), so a cut
+    # hides no row older than the page's place.
+    got = DR.read(ctx["ref"].name, limit=10 ** 6)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the controller deploy receipts could not be read: {got['error']}"])
+    events = []
+    for r in got["rows"]:
+        if not _recent(ctx, r.get("at")):
+            continue
+        if ctx["device"] and r.get("controller") != ctx["device"]:
+            continue
+        pc = r.get("post_check") or {}
+        before = r.get("before") or {}
+        events.append(_event(
+            r.get("at"), "controller_deploy",
+            f"{r.get('controller')}: {redact_text(r.get('change_words') or 'the set')}: "
+            f"{r.get('outcome')}", [r.get("controller", "")], who=r.get("actor", ""),
+            detail=redact_text(str(r.get("error") or "")), outcome=r.get("outcome", ""),
+            marks=["rolled back"] if r.get("outcome") == "rolled back" else [],
+            record=[("Receipt", r.get("id")), ("Plan", r.get("plan_sha256")),
+                    ("Request", r.get("request_sha256")),
+                    ("Before", before.get("request_sha256") or before.get("kind")),
+                    ("Post-check", redact_text(str(pc.get("words") or ""))),
+                    ("Verified by", r.get("actor_verified"))]))
+    return _out(events[:ctx["limit"]], cut=[f"the controller deploys' newest {ctx['limit']}"]
+                if len(events) > ctx["limit"] else [])
+
+
 def reloads(ctx):
     """Each Reload run from the device page (P.14, modules/nsot/reload_op.py): who, why, and
     how it ended, each step's outcome in the record. The restart and its window are their own
@@ -2467,7 +2504,7 @@ SOURCES = {
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
-    "sdn_operations": sdn_operations,
+    "sdn_operations": sdn_operations, "controller_deploys": controller_deploys,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
     "diagnoses": diagnoses, "ai_reads": ai_reads,
@@ -2507,6 +2544,8 @@ KIND_GROUPS = (
                                ("updates", "App updates", ("update",)),
                                ("ai_calls", "AI calls", ("ai_call", "ai_read")),
                                ("sdn", "SDN flow operations", ("sdn",)),
+                               ("controller_deploy", "Controller app deploys",
+                                ("controller_deploy",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
                                ("alert_rules", "Alert rule changes in Grafana",
@@ -2620,6 +2659,7 @@ SOURCE_KINDS = {
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
+    "controller_deploys": ("controller_deploy",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
     "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",),

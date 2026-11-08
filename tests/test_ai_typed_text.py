@@ -424,6 +424,12 @@ FIELDS = {
         "args.incident": "an incident's id Mercury drew (C1999)",
         "args.q": "the Responses table's search, drawn back to the page, never sent to a model",
         "args.sev": "a severity filter Mercury drew",
+        # P6: SDN › Apps' own choices, read by the shared region builder (`_ctx`) for the
+        # Apps tab; Classify's redraw is Responses, and none of these reaches the gateway.
+        "args.app": "an app's name Mercury drew on SDN › Apps",
+        "args.v": "a version Mercury drew on an app's page",
+        "args.controller": "a controller's name Mercury drew on SDN › Apps",
+        "args.receipt": "a receipt's id Mercury drew on SDN › Apps",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "sdn_v2.loop_set": {
@@ -434,6 +440,12 @@ FIELDS = {
         "args.incident": "an incident's id Mercury drew (C1999)",
         "args.q": "the Responses table's search, drawn back to the page, never sent to a model",
         "args.sev": "a severity filter Mercury drew",
+        # P6: SDN › Apps' own choices, read by the shared region builder (`_ctx`) for the
+        # Apps tab; the loop's redraw is Responses, and none of these reaches the gateway.
+        "args.app": "an app's name Mercury drew on SDN › Apps",
+        "args.v": "a version Mercury drew on an app's page",
+        "args.controller": "a controller's name Mercury drew on SDN › Apps",
+        "args.receipt": "a receipt's id Mercury drew on SDN › Apps",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "settings_v2.install_replace": {

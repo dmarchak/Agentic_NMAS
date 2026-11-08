@@ -45,6 +45,12 @@ DIRECT = {
     "intent_v2.words_commit": ("view", "name"),
     "intent_v2.secrets_set": ("view", "name"),
     "v2.decline_confirm": ("form", "device"),
+    # P6 (C2677): a controller app deploy writes to the controller HOST itself (its app folder,
+    # its drop-in, a restart, over the deploy account's session), named by the form's
+    # `controller`, which is the host's name (the deploy holds it by that name). The host is a
+    # Linux host and never controller-managed; naming a switch the controller manages is
+    # refused here like any direct route.
+    "sdn_v2.apps_confirm": ("form", "controller"),
     # Batches over named devices.
     "v2.save_confirm": ("form_list", "device"),
     "v2.profile_apply_confirm": ("json_keys", "confirmations"),

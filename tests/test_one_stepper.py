@@ -31,6 +31,7 @@ COMPONENT = {"templates/v2/_run_stepper.html", "static/js/nmas_stepper.js"}
 #: survey of 2026-10-12, docs/fidelity/stepper.md): template -> the operations it draws.
 OPERATION_PAGES = {
     "_save.html": "Save (one device or many)",
+    "_sdn_app_deploy.html": "A controller app deploy (P6, board controller-app-deploy, E)",
     "_deploy.html": "Deploy, one device",
     "_apply_job.html": "Deploy several: the monitoring profile's Apply, IP SLA's Send, "
                        "Coverage's Deploy missing, History's Re-apply",

@@ -713,6 +713,9 @@ class TestTheShippedScripts:
                                                     "/v2/settings/installation?tab=console",
                                                     # S11: SDN's view region (sdn).
                                                     "/v2/sdn?list=Lab",
+                                                    # P6: SDN › Apps' region
+                                                    # (controller_deploy).
+                                                    "/v2/sdn/apps?list=Lab",
                                                     # O6b: the console card while its run
                                                     # runs (console_ztp).
                                                     "/v2/onboard/console/7?list_name=Lab&run="
@@ -771,7 +774,9 @@ class TestTheShippedScripts:
         # announcement, workstream 0).
         # +1 2026-11-05: diagnosis (Diagnose…'s card waits for its run's end and reads the
         # result by job id, H16).
-        assert len(keys) == 54
+        # +1 2026-11-08: controller_deploy (SDN › Apps and a controller app deploy's running
+        # card redraw on the deploy's announcements, P6, C2677).
+        assert len(keys) == 55
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {

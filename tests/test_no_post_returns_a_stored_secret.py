@@ -70,6 +70,9 @@ def _bodies(v):
         "sdn_v2.reapply_preview": (409, ("form", {"list": LIST}),
                                    "no connection, switch or response named: refused naming "
                                    "what is missing, nothing read"),
+        # P6: SDN › Apps' preview of a controller app deploy.
+        "sdn_v2.apps_preview": (400, ("form", {"list": LIST}),
+                                "no controller named: refused before any read or staging"),
         "device_v2.reload_start": (400, ("form", {}),
                                    "no network named: refused before any job starts"),
         "device_v2.persist_read": (400, ("form", {}),

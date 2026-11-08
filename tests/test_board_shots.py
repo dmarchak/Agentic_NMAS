@@ -661,6 +661,72 @@ def test_dhcp_reserve(tmp_path, monkeypatch):
                    served, widths=((1440, 1.0), (390, 2.0)))
 
 
+def test_sdn_apps(tmp_path, monkeypatch):
+    """P6: SDN › Apps beside board controller-app-deploy (docs/boards/controller-app-deploy.html,
+    copied into NMAS_BOARDS_DIR; artboards A to L on one page), on Default with
+    `deploy_op.Sources` faked at its seam (tests/test_controller_deploy_op.py's `FakeSources`:
+    one controller, `ctl`, and a code repository with of_versions 1.0.0 and 1.1.0 Published),
+    after one deploy confirmed through the real routes: the tab at rest (A) at 1440, 1280 and
+    390; the app's page (B); the plan opened from it by a click (C) at 1440 and 390; a drifted
+    controller (J); the receipt (H)."""
+    import re
+    from html import unescape
+
+    from tests import browser
+    from tests.test_controller_deploy_op import ALL_BACK_TWO, HEADER, FakeSources
+    from tests.test_sdn_apps_v2 import as_recorded
+    from tests.test_sdn_connections import make_networks
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import controller_deploy_receipts as deploy_receipts
+    from modules.apps import deploy_op
+    from modules.nsot import capture_job
+
+    make_networks(tmp_path, monkeypatch)
+    src = FakeSources(tmp_path / "src")
+    monkeypatch.setattr(deploy_op, "SOURCES", src)
+    import app as A
+    client = A.app.test_client()
+    html = client.post("/v2/sdn/apps/preview", data={
+        "list": "Default", "controller": "ctl", "set": "of_versions=1.0.0"}).get_data(
+            as_text=True)
+    form = {m.group(1): unescape(m.group(2)) for m in re.finditer(
+        r'<input type="hidden" name="([a-z]+)" value="([^"]*)"', html)}
+    src.reads = [ALL_BACK_TWO]
+    started = client.post("/v2/sdn/apps/confirm", data={
+        k: form[k] for k in ("list", "controller", "set", "hash", "parts")})
+    job = re.search(r"/v2/sdn/apps/run/([0-9a-f]+)", started.get_data(as_text=True)).group(1)
+    assert capture_job.wait(job, 60)
+    as_recorded(src)
+    rid = deploy_receipts.read("Default")["rows"][0]["id"]
+
+    def open_plan(b):
+        b.js("document.querySelector('.apps-versions input[value=\"1.1.0\"]').click(); "
+             "return 1")
+        b.wait_for("return !!document.querySelector('form.apps-act button:not([disabled])')")
+        b.js("document.querySelector('form.apps-act button').click(); return 1")
+        b.wait_for("return !!document.querySelector('.apps-op-preview')")
+
+    board = "controller-app-deploy.html"
+    with browser.Served(A.app) as served:
+        _shoot("sdn-apps", board, lambda w: "/v2/sdn/apps?list=Default", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("sdn-apps-app", "",
+               lambda w: "/v2/sdn/apps?list=Default&app=of_versions&controller=ctl", served,
+               widths=((1440, 1.0), (390, 2.0)))
+        _shoot("sdn-apps-plan", "",
+               lambda w: "/v2/sdn/apps?list=Default&app=of_versions&controller=ctl", served,
+               widths=((1440, 1.0), (390, 2.0)), act=open_plan)
+        _shoot("sdn-apps-receipt", "", lambda w: f"/v2/sdn/apps?list=Default&receipt={rid}",
+               served, widths=((1440, 1.0),))
+        recorded = src.controller_read
+        src.controller_read = lambda n, c: dict(recorded(n, c),
+                                                cat=f"{HEADER}\n[Service]\nUser=ryu\n")
+        _shoot("sdn-apps-drift", "", lambda w: "/v2/sdn/apps?list=Default", served,
+               widths=((1440, 1.0), (390, 2.0)))
+
+
 def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0)),
            settled="", act=None):
     """*act*: a function of the browser run once the page has loaded, before the shot (a

@@ -109,6 +109,20 @@ NOT_AN_OPERATION = {
                                   "current (C2003): a read",
     ("_sdn_log.html", "Download log"): "saves one run of the loop's log as text, a read of the "
                                        "log the Responses tab draws (C1971)",
+    # P6, SDN › Apps (board controller-app-deploy): links that navigate or save a record.
+    ("_sdn_app_deploy.html", "Back to Apps"): "opens SDN › Apps again, a read; nothing is sent",
+    ("_sdn_app_deploy.html", "Cancel"): "leaves the plan by opening SDN › Apps again; nothing "
+                                        "is sent",
+    ("_sdn_app_deploy.html", "Preview again"): "opens SDN › Apps, where a deploy is previewed "
+                                               "again from its own control (which carries the "
+                                               "link)",
+    ("_sdn_app_deploy.html", "Open the receipt"): "opens the deploy's receipt on SDN › Apps, a "
+                                                  "read of the receipt store",
+    ("_sdn_app_deploy.html", "Open its Needs attention row"): "opens Needs attention, where the "
+                                                              "deploy's row is, a read",
+    ("_sdn_apps.html", "Download the receipt (JSON)"): "saves the receipt as JSON, a read of "
+                                                       "the receipt store, masked",
+    ("_sdn_apps.html", "Open the controller"): "opens SDN › Apps' controller card, a read",
     ("_intent_words.html", "Discard draft"): "reopens the Intent tab without the draft, which "
                                              "lived on the page only; nothing was written",
     ("_intent_words.html", "btn btn-small iw-choice"):"answers Mercury's own question (which "

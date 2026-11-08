@@ -30,8 +30,51 @@ not built), so the second controller is a Ryu one that does not answer.
 Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen also" list
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `6252c168fa6b0b9b0f1ee73197dfb27a91c1a17dd13088caa8f75011ea220bd1`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html
+Templates sha256: `e90f5da8f61268fb0f7a7602bfa2734a69310a05a1a690c81864441d4437846b`
+
+**Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
+`docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the
+shots' boards folder and shot whole at 1440, 1280 and 390). Shots: `tests/test_board_shots.py::
+test_sdn_apps` (`sdn-apps` at 1440, 1280 and 390 beside the board; `sdn-apps-app` (B) and
+`sdn-apps-plan` (C, opened by a click on the app's page) at 1440 and 390; `sdn-apps-receipt` (H)
+at 1440; `sdn-apps-drift` (J) at 1440 and 390). The data: Default with `deploy_op.Sources`
+faked at its seam (tests/test_controller_deploy_op.py's `FakeSources`: one controller `ctl`,
+two switches, one link, and a code repository with of_versions 1.0.0 and 1.1.0 Published),
+after one deploy confirmed through the real routes, post-check and receipt store. The board's
+data (ctl-1, five switches, four apps) is board data. `_sdn_view.html` changed only to add the
+Apps tab, its heading and its region's arguments; the other tabs draw as before. The cards drawn
+from a POST that the shots do not reach (D's refusals and the plan that changes nothing, E's
+running card, F and G's results) are **later**: their behaviour is held by
+tests/test_sdn_apps_v2.py and the v2 walk's provider (tests/v2_context.py `_sdn_apps`).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Apps tab | Controllers, Flows, Apps, Responses; Apps marked new | the same four tabs, Apps between Flows and Responses | **same** |
+| Apps heading and line | "SDN · Apps" with its (i), "The apps the network's controller runs, deployed by Mercury from the network's code repository. Each deploy restarts the controller." | the same words; the (i) opens the manual's SDN page at Apps | **same** |
+| A: the controller card's head | name, "runs Mercury's record" chip; Ryu version, unit, User, listen address and its NetBox Service, "5 of 5 expected switches connected" | name and chip (runs Mercury's record, differs from Mercury's record, can't tell, not read, no deploy through Mercury); unit and listen address only | **deviation** (log: P6 A: the controller card's line without Ryu's version, User and switch count) |
+| A: the card's actions | Preview a deploy…, Read again, "read 40 s ago", How does this work? | Preview a deploy… (disabled, its reason on hover, while Mercury holds no record), the read's age, How does this work?; no Read again | **deviation** (log: P6 A: no Read again until the controller read is wired) |
+| A: Last deploy | outcome chip, when, who, what changed, the slowest switch, its receipt, every deploy on History | the same | **same** |
+| A: Rolls back to, on a miss | "the request before the last deploy" | what the controller runs by Mercury's record (the request a next deploy's miss rolls back to), or the drop-in before when none is recorded | **deviation** (log: P6 A: Rolls back to names the record's request) |
+| A: Code repository and The host | the repository at its commit with Fetch now and its Settings link; the host with Open its device page and Open in NetBox | the repository line only when the registry gives it, no Fetch now; the host with Open its device page, no Open in NetBox | **deviation** (log: P6 A: no Fetch now and no Open in NetBox) |
+| A: summary line | apps enabled, /health failing, a newer Published version, Drafts | the same counts, and how many differ from the record | **same** |
+| A: the apps table | grouped by what to do, each row opening its app's page; no row buttons | the same columns and groups, with two more groups when they have rows (Differs from Mercury's record; Registered, not in the set) | **same** |
+| B: versions and the one action | radio per version, Draft disabled with its reason, pins, On ctl-1, "Preview deploying 1.3.0…" disabled for the running version with its reason on hover, Compare, Open the review | the same, but no Compare and no Open the review | **deviation** (log: P6 B: no Compare and no Open the review) |
+| B: what the version declares | controllers, OpenFlow, requires, REST, owns flows, egress, the compiled config | the same; Config says no start-time config is compiled yet | **later** (C2760, the config compiler) |
+| C: the target, the set, the files | as drawn | the same, from the plan | **same** |
+| C: conformance | per switch: profile entry, switch speaks, refuses a hello above, common, verdict | per switch: common, refuses a hello above, verdict | **later** (C2710, F6: conformance's rows carry neither the profile entry nor the switch's own versions) |
+| C: the drop-in, before and after | the render with the removed lines struck and the new ones marked | the same, the lines diffed | **same** |
+| C: the restart and what must come back | bounds with their placeholder chips; expected switches, links and apps with a From column and Back when; what already fails | the same, without the From column | **deviation** (log: P6 C: the expected table without its From column) |
+| C: before, and if it misses; the confirm | window, holds, sends, the rollback, the plan hash; Deploy…, Cancel, How does this work? | the same; How does this work? sits right after the confirm, before Cancel | **deviation** (log: P6 C: How does this work? before Cancel) |
+| D: refusals, the moved plan, nothing to deploy | as drawn | built (the refusals in the plan's own words, the moved plan naming each moved part with both hashes, the redeploy offered); not shot | **later** (a shot of a card a POST draws) |
+| D: the first deploy | a card of its own with "no rollback target" | the plan itself: a first deploy's rollback is the put-back of the drop-in before (K3 as the operator changed it), and with no drop-in before the plan and its confirm say "with no rollback" | **deviation** (log: P6 D: the first deploy is the plan with its put-back, K3 as changed) |
+| E: running | the stepper and a per-switch Coming back table | the one stepper (tests/test_one_stepper.py) with the post-check's counts on its step; no Coming back table; not shot | **deviation** (log: P6 E: no per-switch Coming back table while running) |
+| F and G: results | each outcome's card with its controls | each outcome's card from the receipt, green only for deployed; Open the receipt, Back to Apps, Preview again, Preview a rollback… (on Unknown, the set before), Open its Needs attention row; no Read the outcome again, Read ryu-manager.service's log or Open of-hp-1 on SDN › Switches; not shot | **deviation** (log: P6 F and G: the results' read and open controls not built) |
+| H: the receipt | the receipt with its sub-links (its receipt, the list, both texts, its outcome whole, the steps with their times) and Download, Open the controller | the receipt with its receipt-before link, Download the receipt (JSON) and Open the controller; the other sub-links not drawn | **deviation** (log: P6 H: the receipt's sub-links not drawn) |
+| H: History | the deploys listed by day with a kind filter | History's own list, its kind filter "Controller app deploys" | **same** |
+| I: Needs attention | the rows this operation raises and clears | the unknown-outcome row and a red row for a controller not back (rollback failed, not rolled back), each from the receipts and opening its receipt; the /health, switch, link, waiting-planned and drift rows wait on the controller's reads | **later** (C2677's rest: the rows drawn from the controller's reads) |
+| J: drift | the card's chip, a table of both sides, Preview the redeploy…, Read again, can't tell | the same, without Read again | **same** |
+| L: phone width | the plan full-screen, its confirm pinned; tables stacked | tables stacked, the confirm pinned at the bottom; the plan opens in place below the app's page | **deviation** (log: P6 L: the plan opens in place at phone width, its confirm pinned) |
 
 **Compared again 2026-11-03 ~07:2x UTC for C2313** (a flood is a high packet rate of small
 packets, the operator's decision, option (a)):

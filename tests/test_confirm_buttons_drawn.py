@@ -1959,6 +1959,113 @@ class TestSdnOperationCards(_Cards):
         return html
 
 
+class TestControllerAppDeployCards(_Cards):
+    """SDN › Apps (P6, C2677; board controller-app-deploy) on tests/test_sdn_apps_v2.py's world
+    (the real routes, plan, post-check and receipt store; `deploy_op.Sources` faked at its seam):
+    an app's Preview deploying 1.1.0… after a first deploy; the plan's confirm drawn from the real
+    preview; the redeploy offered on a plan that changes nothing; Preview a rollback… on a result
+    whose outcome is not known. Blocked: the plan refused (the controller's reads unreadable)
+    draws no confirm; for the others a verified service, whom `may` refuses, draws each
+    disabled."""
+    from tests import test_sdn_apps_v2 as _sa, test_sdn_connections as _sc
+    networks, apps = hosted(_sc.networks), hosted(_sa.apps)
+
+    CASES = {
+        "preview": ("_sdn_apps.html", "{{ words }}", r"Preview deploying 1\.1\.0…", "viewer"),
+        "deploy": ("_sdn_app_deploy.html",
+                   "{% if d.cw.redeploy %}Redeploy the same set{% else %}Deploy {{ d.cw.what }}"
+                   "{% endif %} and restart {{ d.controller }}{{ d.cw.tail }}",
+                   r"Deploy of_versions 1\.0\.0 and restart ctl, with no rollback",
+                   "data: the controller's unit and app folder cannot be read, so the plan is "
+                   "refused"),
+        "redeploy": ("_sdn_app_deploy.html",
+                     "Redeploy the same set and restart {{ d.controller }}…",
+                     r"Redeploy the same set and restart ctl…", "viewer"),
+        "rollback": ("_sdn_app_deploy.html", "Preview a rollback…", r"Preview a rollback…",
+                     "viewer"),
+    }
+
+    def _app_page(self, request, monkeypatch=None):
+        from tests.test_sdn_apps_v2 import CTL, deploy
+        a = request.getfixturevalue("apps")
+        deploy(a)
+        if monkeypatch is not None:
+            as_service(monkeypatch)
+        html = _text(a["client"].get(f"/v2/sdn/view?tab=apps&app=of_versions&controller={CTL}"
+                                     "&v=1.1.0"))
+        assert "What 1.1.0 declares" in html, "floor: the app's page is drawn"
+        return html
+
+    def drawn_preview(self, request):
+        return self._app_page(request)
+
+    def blocked_preview(self, request, monkeypatch):
+        return self._app_page(request, monkeypatch)
+
+    def drawn_deploy(self, request):
+        from tests.test_sdn_apps_v2 import preview
+        html = _text(preview(request.getfixturevalue("apps")["client"]))
+        assert "The set, in load order" in html, "floor: the plan is drawn"
+        return html
+
+    def blocked_deploy(self, request, monkeypatch):
+        from tests.test_sdn_apps_v2 import preview
+        a = request.getfixturevalue("apps")
+        a["src"].host_reads = lambda n, c: {"state": "ok", "show": "User=root\n", "ls": "",
+                                            "cat": "", "at": "2026-11-08T05:00:00Z",
+                                            "error": ""}
+        html = _text(preview(a["client"]))
+        assert "refused before anything was staged" in html, "floor: the refusal is drawn"
+        return html
+
+    def _nothing(self, request, monkeypatch=None):
+        from modules import controller_deploy_receipts as R
+        from modules.apps import channel
+        from tests.test_sdn_apps_v2 import CTL, HEADER, NET, deploy, preview
+        a = request.getfixturevalue("apps")
+        deploy(a)
+        rec = R.record(NET, CTL)
+        a["src"].cat = f"{HEADER}\n" + channel.render_dropin(rec["request"],
+                                                              "/opt/ryu-venv/bin/ryu-manager")
+        if monkeypatch is not None:
+            as_service(monkeypatch)
+        html = _text(preview(a["client"]))
+        assert "Nothing to deploy" in html, "floor: the plan that changes nothing is drawn"
+        return html
+
+    def drawn_redeploy(self, request):
+        return self._nothing(request)
+
+    def blocked_redeploy(self, request, monkeypatch):
+        return self._nothing(request, monkeypatch)
+
+    def _unknown(self, request, monkeypatch=None):
+        import re as _re
+
+        from tests.test_sdn_apps_v2 import confirm, deploy, preview
+        a = request.getfixturevalue("apps")
+        deploy(a)
+        plan = _text(preview(a["client"], "of_versions=1.1.0"))
+        a["src"].send = lambda dev, tplan: {"ok": False, "step": "done", "command_sent": True,
+                                            "error": "outcome.json did not read",
+                                            "printed": None, "outcome": None, "staged": [],
+                                            "not_staged": []}
+        started, html = confirm(a["client"], plan)
+        if monkeypatch is not None:
+            job = _re.search(r"/v2/sdn/apps/run/([0-9a-f]+)", _text(started)).group(1)
+            as_service(monkeypatch)
+            html = _text(a["client"].get(f"/v2/sdn/apps/run/{job}"))
+        assert "outcome is not known" in html_mod.unescape(html), \
+            "floor: the unknown result is drawn"
+        return html
+
+    def drawn_rollback(self, request):
+        return self._unknown(request)
+
+    def blocked_rollback(self, request, monkeypatch):
+        return self._unknown(request, monkeypatch)
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -2017,9 +2124,12 @@ class TestThePopulation:
         intent, retired for Change across the N ticked…, FC phase 2 (f3), C2307; 73 until a
         watched large-packet stream's Rate-limit this source…, C2313, 2026-11-03; 74 until board
         H's Resume self-healing everywhere, H9, the same day; 75 until board H's Approve and run
-        on <device>, artboard E, H9, 2026-11-04)."""
+        on <device>, artboard E, H9, 2026-11-04; 76 until SDN › Apps' four, P6, C2677,
+        2026-11-08: an app's Preview deploying <version>…, the plan's Deploy … and restart
+        <controller>, the Redeploy the same set and restart <controller>… of a plan that
+        changes nothing, and an unknown result's Preview a rollback…)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 76, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 80, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """
