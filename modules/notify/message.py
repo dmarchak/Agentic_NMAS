@@ -41,6 +41,8 @@ import time
 EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           "halted": "self-healing halted", "held": "a device held from healing",
           "healed": "healed, verified", "cleared": "cleared",
+          # An automatic action that ended as it should (19.4, H23): named as an action.
+          "action": "an action taken, verified",
           "analysis": "AI analysis of what could not be fixed",
           "diagnosis": "Mercury's diagnosis of what could not be fixed",
           "test": "a test send", "verification": "a verification code"}

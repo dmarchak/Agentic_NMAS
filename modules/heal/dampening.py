@@ -632,6 +632,10 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
                       "approval": (f"approved by {by} ({approval.get('verified')}) at "
                                    f"{approval.get('at')}, confirming proposal "
                                    f"{approval.get('hash')}, with the reason \"{reason}\"")}}
+        # H23 (19.4, "Record"): the deterministic change record, kept in the act row.
+        from modules.heal import change_record
+        result["records"]["change_record"] = change_record.build_action(
+            network, decision, result, approval=approval, at=_iso(now))
         try:
             steplog.record_act(network, decision, result, by=by, now=now)
             result["records"]["step_log"] = "written"

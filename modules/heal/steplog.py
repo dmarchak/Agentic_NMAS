@@ -80,6 +80,57 @@ NOT_HEALED = ("symptom_remains", "partial", "rolled_back", "failed", "interrupte
               "still_flapping", "not_formed", "unverified", "reverted", "repaired",
               "not_back", "reset", "rejected")
 MODE_WORDS = {"auto": "AUTO", "dry_run": "dry run", "off": "off"}
+#: Each action kind's family (19.4: an action is named as an action wherever it is drawn).
+ACTION_FAMILY = {"port_bounce": "bounce", "ospf_reset": "bounce", "session_clear": "clear",
+                 "dampening_proposal": "dampening"}
+#: An action's marks where its family's words differ from `MARKS` (H23): a dry run of a bounce
+#: "would bounce", never "would heal"; a clear's or a dampening's end never "bounced".
+ACTION_MARKS = {
+    "bounce": {"heal": "bouncing", "would_heal": "would bounce", "propose": "bounce proposed",
+               "failed": "bounced, NOT RESTORED"},
+    "clear": {"heal": "clearing", "would_heal": "would clear", "propose": "clear proposed",
+              "unverified": "cleared, not verified"},
+    "dampening": {"propose": "dampening proposed", "dampened": "dampened",
+                  "unverified": "dampened, not verified",
+                  "rolled_back": "dampening rolled back",
+                  "failed": "dampening NOT RESTORED"},
+}
+#: The fields of a decision's ``action`` every row keeps (H23), so History names the port or the
+#: neighbour an action was on. A row written before them has none, and is drawn as before.
+ACTION_FIELDS = ("kind", "device", "interface", "peer", "variant", "far_device",
+                 "far_interface", "trigger")
+
+
+def mark(outcome: str, kind: str = "") -> str:
+    """*outcome* as History marks it for *kind* (`ACTION_MARKS`, else `MARKS`)."""
+    fam = ACTION_MARKS.get(ACTION_FAMILY.get(kind or "", ""), {})
+    return fam.get(outcome) or MARKS.get(outcome, (outcome or "").replace("_", " "))
+
+
+def subject(entry: dict) -> str:
+    """What an entry acted on, as History's line names it: ``edge1 GigabitEthernet4`` for a
+    bounce or a dampening, ``edge1's BGP neighbour 198.51.100.3`` for a clear, else the
+    device."""
+    a, host = entry.get("action") or {}, entry.get("device") or ""
+    fam = ACTION_FAMILY.get(a.get("kind") or entry.get("kind") or "", "")
+    if fam == "clear" and a.get("peer"):
+        return f"{host}'s BGP neighbour {a['peer']}"
+    if fam in ("bounce", "dampening") and a.get("interface"):
+        return f"{host} {a['interface']}"
+    return host
+
+
+def far_ends(entry: dict) -> list:
+    """``[{"device", "interface"}]``: the far ends an action's planned window named (C2749), from
+    its act's records, else its decision's far end; the entry's own device left out."""
+    host = entry.get("device") or ""
+    w = (entry.get("records") or {}).get("window") or {}
+    got = [f for f in w.get("far_ends") or [] if isinstance(f, dict) and f.get("device")]
+    if not got:
+        a = entry.get("action") or {}
+        if a.get("far_device"):
+            got = [{"device": a["far_device"], "interface": a.get("far_interface") or ""}]
+    return [f for f in got if f["device"] != host]
 
 
 class Refused(ValueError):
@@ -152,11 +203,15 @@ def read(network: str) -> dict:
 def _of(decision: dict) -> dict:
     """The fields every row names: the decision, its incident and device, its mode, policy."""
     pol = decision.get("policy") or {}
+    a = decision.get("action") or {}
     return {"decision": decision.get("id") or "", "incident": decision.get("incident") or "",
             "device": decision.get("device") or "", "mode": decision.get("mode") or "",
             "kind": decision.get("kind") or "", "tier": decision.get("tier") or 0,
             "policy": {"fingerprint": pol.get("fingerprint") or "", "by": pol.get("by") or "",
-                       "reason": pol.get("reason") or ""}}
+                       "reason": pol.get("reason") or ""},
+            # An action's port or neighbour (H23): History names what it acted on.
+            **({"action": {k: a.get(k) or "" for k in ACTION_FIELDS}} if a.get("kind")
+               else {})}
 
 
 def decision_steps(decision: dict) -> list:
@@ -286,7 +341,7 @@ def _fold(rows: list) -> list:
         e["at"], e["epoch"] = r.get("at"), float(r.get("epoch") or 0)
         # The tier its decision recorded (H17: an Alert incident, Tier 3, is diagnosed before
         # its notice).
-        for k in ("mode", "kind", "tier"):
+        for k in ("mode", "kind", "tier", "action"):
             if r.get(k):
                 e[k] = r[k]
         if (r.get("policy") or {}).get("fingerprint"):
@@ -310,7 +365,8 @@ def _fold(rows: list) -> list:
             e.pop("started", None)
             e["steps"] += steps
             e.update(outcome=r.get("outcome") or "", words=r.get("words") or "", state="done",
-                     records=dict(r.get("records") or {}), by=r.get("by") or e["by"])
+                     records=dict(r.get("records") or {}), by=r.get("by") or e["by"],
+                     sent=bool(r.get("sent")))
         elif row == "raised":
             e["raised"] = r.get("words") or ""
         elif row == "interrupted":

@@ -104,7 +104,8 @@ FREQUENCY_DAYS = 14
 MAX_HYPOTHESES = 3
 #: The store's file, in the network's heal folder.
 FILE = "analyses.jsonl"
-ROWS = ("asked", "analysis", "notice")
+#: ``told``: an action's end taken once for its notice (H23, `claim_told`), keyed by decision.
+ROWS = ("asked", "analysis", "notice", "told")
 #: Each state of an analysis, and the words the row and the message draw for it (section 12,
 #: "A failure or refusal is stated in place": a failure is never a silent absence).
 STATES = ("answered", "pending", "off", "capped", "couldnt_analyse", "no_answer",
@@ -272,6 +273,36 @@ def claim(network: str, incident_id: str, *, job: str, device: str = "",
             fh.write(json.dumps({"row": "asked", "incident": incident_id, "device": device,
                                  "job": job, "network": network, "at": _iso(now),
                                  "epoch": now}, sort_keys=True) + "\n")
+    return True
+
+
+def claim_told(network: str, decision_id: str, *, incident: str, event: str, device: str = "",
+               now: float = None) -> bool:
+    """Take an action's end (its decision *decision_id*) for its one notice (H23,
+    `heal_notice.run_actions`): True when this call took it (its ``told`` row written), False
+    when it was taken before. Under the store's lock across processes, as `claim` is; raises
+    when the store cannot be read, so nothing is told twice for want of a read. No AI call:
+    the notifier's store keeps it beside the can't-fix notices."""
+    from modules import filestore
+    from modules.config import open_secure
+    from modules.nsot import listref
+
+    if not network or not listref.exists(network):
+        raise Refused(f"{network or 'no network'} is no network, so nothing is kept")
+    now = time.time() if now is None else float(now)
+    p = path(network)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with filestore.PathLock(p):
+        got = read(network)
+        if got["state"] == "unreadable":
+            raise RuntimeError(got["error"])
+        if any(r.get("row") == "told" and r.get("decision") == decision_id
+               for r in got["rows"]):
+            return False
+        with open_secure(p, "a") as fh:
+            fh.write(json.dumps({"row": "told", "decision": decision_id, "incident": incident,
+                                 "event": event, "device": device, "network": network,
+                                 "at": _iso(now), "epoch": now}, sort_keys=True) + "\n")
     return True
 
 

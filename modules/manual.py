@@ -273,6 +273,8 @@ OPERATIONS = {
     # Board H's amendment, H22 (19.4): the dampening proposal's approved act.
     "heal-dampening": ("modules.heal.dampening", "STEPS"),
     "notifications": ("modules.heal_notice", "STEPS"),
+    # Board H's amendment, H23 (19.4): an action's end told on its incident's thread.
+    "notifications-actions": ("modules.heal_notice", "ACTION_STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
@@ -304,7 +306,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",
-                  "heal-dampening": "heal"}
+                  "heal-dampening": "heal", "notifications-actions": "notifications"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

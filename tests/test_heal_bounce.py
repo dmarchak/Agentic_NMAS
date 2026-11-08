@@ -611,6 +611,82 @@ class TestTheAct:
         assert seen == [d["id"]]
 
 
+# ── The records (H23: History, the change record) ──────────────────────────────────────────
+
+def history(device):
+    from modules import history_sources as HS
+    return HS.heal({"ref": types.SimpleNamespace(name=NET), "device": device, "limit": 50,
+                    "members": None, "since": None, "until": None})["events"]
+
+
+class TestTheRecords:
+    def test_a_bounce_keeps_its_window_far_end_rollback_and_change_record(self, act_world):
+        from modules.heal import steplog
+        clock = Clock()
+        src = auto_src(FakeRouter(clock), clock)
+        out = B().apply(NET, taken(src), sources=src)
+        assert out["outcome"] == "bounced", out["steps"]
+        rec = out["records"]
+        assert rec["window"]["far_ends"] == [{"device": "r4", "interface": GI4}]
+        assert rec["rollback"].startswith("not needed: confirmed on the device")
+        cr = rec["change_record"]
+        assert cr["state"] == "made" and cr["risk"] == "medium", cr
+        text = cr["markdown"]
+        heads = [x[3:] for x in text.splitlines() if x.startswith("## ")]
+        from modules.heal import change_record
+        assert heads == list(change_record.SECTIONS)
+        assert f"# Change record: r3 {GI4}, a port bounced" in text
+        assert "\n".join(B().program(GI4, 2)) in text, "the program, as sent"
+        assert "its far end: r4 GigabitEthernet4" in text and "revert timer" in text
+        (act_row,) = [r for r in steplog.read(NET)["rows"] if r["row"] == "act"]
+        assert act_row["action"]["interface"] == GI4 and act_row["action"]["far_device"] == "r4"
+        assert act_row["records"]["change_record"]["state"] == "made"
+
+    def test_history_names_the_port_and_draws_it_on_the_far_end_too(self, act_world):
+        clock = Clock()
+        trans = {"state": "read", "words": "", "transitions": [
+            {"epoch": T0 + t, "at": "", "state": s} for s, t in
+            [("up", 12), ("down", 200), ("up", 230)]]}
+        src = auto_src(FakeRouter(clock), clock, transitions=trans)
+        out = B().apply(NET, taken(src), sources=src)
+        assert out["outcome"] == "still_flapping", out["steps"]
+        (e,) = history("r3")
+        assert e["what"] == f"Self-healing (AUTO): r3 {GI4} bounced, still flapping", e["what"]
+        assert e["devices"] == ["r3", "r4"]
+        rec = dict(e["record"])
+        assert rec["Action"] == f"r3 {GI4}" and rec["Far end"] == f"r4 {GI4}"
+        assert rec["Sent to the device"] == "yes: the program above, once"
+        assert rec["Planned window"].endswith(f"naming {GI4} (by {B().VIA})")
+        assert "stable: failed" in rec["Verify"] and "confirm: ok" in rec["Verify"]
+        assert rec["Change record"].startswith("made:")
+        assert "Dampening proposal" in rec
+        assert [x["what"] for x in history("r4")] == [e["what"]], "the far end draws it"
+        assert history("r9") == []
+
+    @pytest.mark.parametrize("kw,outcome,said", [
+        ({"refuse_once": {"no shutdown"}}, "repaired", "repaired: "),
+        ({"refuse": {"no shutdown"}}, "failed", "NOT RESTORED: ")])
+    def test_a_repair_is_the_rollback_history_draws(self, act_world, kw, outcome, said):
+        clock = Clock()
+        src = auto_src(FakeRouter(clock, **kw), clock)
+        out = B().apply(NET, taken(src), sources=src)
+        assert out["outcome"] == outcome, out["steps"]
+        assert out["records"]["rollback"].startswith(said), out["records"]["rollback"]
+        (e,) = history("r3")
+        assert dict(e["record"])["Rollback"] == out["records"]["rollback"]
+        mark = "repaired" if outcome == "repaired" else "bounced, NOT RESTORED"
+        assert e["what"].endswith(f"r3 {GI4} {mark}"), e["what"]
+
+    def test_a_dry_run_bounce_is_would_bounce_never_would_heal(self, stores):
+        src = Src()
+        got, _rows = decide(src)
+        assert got["decision"]["outcome"] == "would_heal"
+        (e,) = history("r3")
+        assert e["what"] == f"Self-healing (dry run): r3 {GI4} would bounce", e["what"]
+        assert dict(e["record"])["Far end"] == f"r4 {GI4}", "the decision's far end"
+        assert "Sent to the device" not in dict(e["record"]), "nothing acted yet"
+
+
 # ── The flap record leaves planned windows out (C2694) ─────────────────────────────────────
 
 class TestTheFlapRecordAndPlannedWindows:

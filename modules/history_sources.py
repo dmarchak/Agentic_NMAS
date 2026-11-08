@@ -2123,7 +2123,9 @@ def heal(ctx):
     def m(value):
         return redact_text(str(value)) if value not in (None, "") else ""
 
-    got = steplog.incidents(ctx["ref"].name, device=ctx["device"])
+    # The whole network's entries (the store is read whole either way): an action's far end
+    # (C2749's window, H23) draws it on its own History too.
+    got = steplog.incidents(ctx["ref"].name)
     if got["state"] == "unreadable":
         return _out(errors=[f"the self-healing step log could not be read: {got['error']}"])
     marks = _heal_marks(ctx["ref"].name, got["entries"])
@@ -2133,11 +2135,13 @@ def heal(ctx):
     events = []
     for e in reversed(got["entries"]):
         host = e["device"]
-        if not _mine(ctx, host) or not _recent(ctx, e["at"]):
+        far = [f["device"] for f in steplog.far_ends(e)]
+        if not any(_mine(ctx, d) for d in [host] + far) or not _recent(ctx, e["at"]):
             continue
         outcome = e["outcome"]
         mode = steplog.MODE_WORDS.get(e["mode"], e["mode"] or "no mode recorded")
-        mark = steplog.MARKS.get(outcome, outcome.replace("_", " "))
+        # An action is named as an action (19.4): "would bounce", "cleared, not verified".
+        mark = steplog.mark(outcome, e.get("kind") or "")
         rec = e.get("records") or {}
         cr = rec.get("change_record") or {}
         journal = rec.get("journal") or {}
@@ -2145,7 +2149,7 @@ def heal(ctx):
         steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
                  for i, s in enumerate(e["steps"], 1)]
         events.append(_event(
-            e["at"], "heal", f"Self-healing ({mode}): {host} {mark}", [host],
+            e["at"], "heal", f"Self-healing ({mode}): {steplog.subject(e)} {mark}", [host] + far,
             who=e.get("by") or pol.get("by") or "", detail=m(e.get("words")),
             sha=rec.get("golden") or "", outcome=outcome,
             marks=[mark, mode] + (["halted"] if e.get("halted") else [])
@@ -2163,7 +2167,8 @@ def heal(ctx):
                     ("Change record", m(cr.get("words"))),
                     ("NetBox journal", m(journal.get("words")))]
             # A Tier 2 proposal a person approved or declined (board H, H5): who, and why.
-            + ([("Approval", m(rec["approval"]))] if rec.get("approval") else []) + steps
+            + ([("Approval", m(rec["approval"]))] if rec.get("approval") else [])
+            + _action_lines(e, m) + steps
             + _advisory_lines(advice.get(e["incident"]) or [], m)))
         if outcome == "would_heal" and e.get("decisions"):
             # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong…
@@ -2181,6 +2186,47 @@ def heal(ctx):
             break
     return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]
                 if len(events) >= ctx["limit"] else [])
+
+
+def _action_lines(e: dict, m) -> list:
+    """An action's record lines (board H's amendment, 19.4's "Records and History", H23): what
+    it acted on, its planned window and the far end the window named (C2749), whether anything
+    was sent, verify's result, its rollback (the repair, the device's revert, or why none
+    applies), and its own records (the dampening proposal it raised, the privileged command's
+    run, the intent commit and its put-back, the verify read). Nothing for a heal to intent:
+    its lines are the ones above."""
+    from modules.heal import steplog
+
+    a = e.get("action") or {}
+    fam = steplog.ACTION_FAMILY.get(a.get("kind") or e.get("kind") or "")
+    if not fam:
+        return []
+    rec = e.get("records") or {}
+    w = rec.get("window") or {}
+    far = steplog.far_ends(e)
+    last = {}
+    for s in e.get("steps") or []:
+        last[s.get("step")] = s
+    verify = [f"{n}: {last[n].get('result')}: {m(last[n].get('words'))}"
+              for n in ("confirm", "verify", "stable") if n in last]
+    window = (f"not recorded: {m(w['error'])}" if w.get("error") else
+              f"{w.get('from')} to {w.get('until')}, naming "
+              f"{', '.join(w.get('interfaces') or []) or 'no interface'} (by "
+              f"{w.get('via') or 'self-healing'})" if w else "")
+    return [("Action", m(steplog.subject(e))),
+            ("Planned window", window),
+            ("Far end", "; ".join(m(f"{f['device']} {f.get('interface') or ''}".strip())
+                                  for f in far)),
+            ("Sent to the device", ("" if e.get("state") != "done" else
+                                    "yes: the program above, once" if e.get("sent") else
+                                    "nothing was sent")),
+            ("Verify", "; ".join(verify)),
+            ("Rollback", m(rec.get("rollback"))),
+            ("Dampening proposal", m(rec.get("dampening"))),
+            ("Privileged command run", m(rec.get("privileged"))),
+            ("Intent commit", m(rec.get("intent"))),
+            ("Intent put back", m(rec.get("put_back"))),
+            ("Verify read", m(rec.get("verify")))]
 
 
 def _advisory_lines(rows: list, m) -> list:

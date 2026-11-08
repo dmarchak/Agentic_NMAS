@@ -107,6 +107,178 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
+# ── An action's end (board H's amendment, 19.4 "Records and History", H23) ──────────────────
+#
+# 17.7 item 6, "notification of every autonomous action": each action's act, once it ends, is
+# told on its incident's thread (`notify.delivery` threads a later message under the first),
+# as the event its end needs a person for, matching its Needs attention row: the row's action
+# label IS the message's What to do (`action_todo`, which `attention` draws). An action that
+# ended as it should is told only when it was automatic (the policy's), as ``action`` under the
+# team's "every automatic heal"; a person's own approved action that ended well is theirs.
+
+#: Each action family's end, as the event it is told as (`notify.message.EVENTS`): ``action``
+#: (it worked, told only when automatic), ``cant_fix`` (a person must look), ``halted`` (it
+#: halted the network, guard 14). An end absent here is not told.
+ACTION_EVENTS = {
+    "bounce": {"bounced": "action", "still_flapping": "cant_fix", "not_formed": "cant_fix",
+               "unverified": "cant_fix", "reverted": "halted", "repaired": "halted",
+               "failed": "halted", "refused": "cant_fix"},
+    "clear": {"cleared": "action", "not_back": "cant_fix", "reset": "halted",
+              "unverified": "cant_fix", "rejected": "cant_fix", "refused": "cant_fix"},
+    "dampening": {"rolled_back": "cant_fix", "unverified": "cant_fix", "failed": "halted",
+                  "refused": "cant_fix"},
+}
+#: An action end's notice's steps, in order (`run_actions`), for the manual's How it works page.
+ACTION_STEPS = (("due", "Find each action that ended in the last 10 minutes and is to be told: "
+                        "every end a person must look at, and a success only when automatic"),
+                ("claim", "Take it once, under the store's lock, so it is told once"),
+                ("send", "Send what it acted on and how it ended, its steps, and What to do in "
+                         "its item's own words, on its incident's thread"))
+#: The outcomes that are each family's success: no Needs attention row, and told only when
+#: automatic.
+ACTION_DONE = {"bounce": "bounced", "clear": "cleared", "dampening": "dampened"}
+#: The Who is told choice an event is sent under when it is not its own (`heal_notify.CHOICES`'
+#: events, as each network saved them): an automatic action that worked is "every automatic
+#: heal"'s, so a team that chose it is told without saving its choices again.
+TOLD_AS = {"action": "healed"}
+
+
+def action_todo(kind: str, outcome: str, host: str, *, interface: str = "", peer: str = "",
+                far_device: str = "", far_interface: str = "") -> str:
+    """What to do about an action's end, in the words its Needs attention row's action draws
+    (`attention._heal_bounce_rows`, `_heal_clear_rows`, `_heal_dampening_rows`) and its notice
+    carries: one sentence, so the row and the message never say different things."""
+    from modules.heal import steplog
+
+    fam = steplog.ACTION_FAMILY.get(kind or "", "")
+    if outcome == ACTION_DONE.get(fam):
+        return f"nothing: read the steps on {host}'s History if you want them"
+    if fam == "bounce":
+        return (f"Read the bounce's steps on {host}'s History, check {interface} and its far end "
+                f"({far_device or 'not named'} {far_interface or ''}), then acknowledge with "
+                "what you found").replace(" )", ")")
+    if fam == "clear":
+        return (f"Read the clear's steps on {host}'s History, check the BGP session to {peer} "
+                "and the neighbour's own device, then acknowledge with what you found")
+    if fam == "dampening":
+        if outcome == "propose":
+            return (f"Review the change for {host} {interface}, then approve it by its hash with "
+                    "a reason, or decline it with a reason")
+        return (f"Read the change's steps on {host}'s History, check {interface}'s dampening "
+                "and its intent, then act on what they show")
+    return TODO_DEFAULT
+
+
+def actions_due(network: str, now: float = None) -> list:
+    """The network's action acts that ended within `NEW_WITHIN_S` of now and are to be told
+    (`ACTION_EVENTS`; a success only when automatic: its decision ``heal``, the policy's), not
+    yet told (`heal_analysis.told`): ``[{"act", "decision", "event", "family"}]``, oldest first.
+    A store that cannot be read gives none, logged: nothing is told twice for want of a read."""
+    from modules.ai import heal_analysis as HA
+    from modules.heal import steplog
+
+    now = time.time() if now is None else float(now)
+    got = steplog.read(network)
+    if got["state"] == "unreadable":
+        log.error("heal notice: %s's step log cannot be read: %s", network, got["error"])
+        return []
+    kept = HA.read(network)
+    if kept["state"] == "unreadable":
+        log.error("heal notice: %s", kept["error"])
+        return []
+    told = {r.get("decision") for r in kept["rows"] if r.get("row") == "told"}
+    decided = {r.get("decision"): r for r in got["rows"] if r.get("row") == "decision"}
+    out = []
+    for r in got["rows"]:
+        fam = steplog.ACTION_FAMILY.get(r.get("kind") or "", "")
+        if r.get("row") != "act" or not fam or not r.get("decision") or not r.get("incident"):
+            continue
+        if r["decision"] in told or now - float(r.get("epoch") or 0) > NEW_WITHIN_S:
+            continue
+        d = decided.get(r["decision"]) or {}
+        outcome = r.get("outcome") or ""
+        event = ACTION_EVENTS[fam].get(outcome)
+        if outcome == ACTION_DONE[fam]:
+            event = "action" if d.get("outcome") == "heal" else None
+        if event:
+            out.append({"act": r, "decision": d, "event": event, "family": fam})
+    return out
+
+
+def action_facts(network: str, due_one: dict, entry: dict = None) -> dict:
+    """One action end's event fields (`notify.message.FIELDS`), Mercury's facts first: what it
+    acted on and how it ended, the decision that chose it and when, each step of the act and
+    its result, What to do (`action_todo`, its row's words) and the link. The incident's
+    configuration lines (its program) are withheld, as a can't-fix's are."""
+    from modules import evidence_pack as EP
+    from modules.heal import steplog
+    from modules.heal.actions import KIND_WORDS
+
+    r, d = due_one["act"], due_one["decision"] or {}
+    a = r.get("action") or d.get("action") or {}
+    host = r.get("device") or ""
+    lines = lines_of(network, entry or {"program": list(d.get("program") or [])})
+    what = steplog.subject({"device": host, "action": a, "kind": r.get("kind")})
+    words = f"{what} {steplog.mark(r.get('outcome') or '', r.get('kind') or '')}: " \
+            f"{r.get('words') or ''}"
+    return {"incident": r.get("incident") or "", "event": due_one["event"],
+            "network": network, "device": host,
+            "kind": KIND_WORDS.get(r.get("kind"), r.get("kind") or ""),
+            "outcome": EP.withhold(words, lines),
+            "detected": EP.withhold(d.get("words") or "", lines),
+            "detected_at": d.get("at") or "",
+            "steps": [{"what": EP.withhold(f"{s.get('step')}: {s.get('words') or ''}", lines),
+                       "result": s.get("result") or ""} for s in (r.get("steps") or [])[:20]],
+            "todo": action_todo(r.get("kind") or "", r.get("outcome") or "", host,
+                                interface=a.get("interface") or "", peer=a.get("peer") or "",
+                                far_device=a.get("far_device") or "",
+                                far_interface=a.get("far_interface") or ""),
+            "link": f"/v2/device/{host}?tab=history" if host else ""}
+
+
+def action_notice(network: str, due_one: dict, *, deliver=None) -> dict:
+    """Tell the network's team about one action's end (`action_facts`), on its incident's
+    thread, as its event. Never raises: a delivery that fails is said and kept."""
+    from modules.heal import steplog
+
+    deliver = deliver or _deliver
+    r = due_one["act"]
+    try:
+        entry = steplog.incident(network, r.get("incident") or "")
+    except Exception as exc:                          # said; the decision's program is withheld
+        log.error("heal notice: %s's incident %s cannot be read: %s", network,
+                  r.get("incident"), exc)
+        entry = None
+    event = action_facts(network, due_one, entry)
+    return _sent(network, r.get("incident") or "", due_one["event"], event, deliver)
+
+
+def run_actions(network: str, *, now: float = None, starter=None) -> dict:
+    """The notify step's actions: each action end due (`actions_due`) taken once
+    (`heal_analysis.claim_told`, under the store's lock across processes) and told in its own
+    thread (*starter*, a thread unless given). ``{"network", "told": [decision ids],
+    "failed"}``."""
+    from modules.ai import heal_analysis as HA
+
+    out = {"network": network, "told": [], "failed": []}
+    for one in actions_due(network, now):
+        r = one["act"]
+        try:
+            if not HA.claim_told(network, r["decision"], incident=r.get("incident") or "",
+                                 event=one["event"], device=r.get("device") or "", now=now):
+                continue
+        except Exception as exc:                      # said; the next pass reads it again
+            out["failed"].append(f"{r['decision']}: {type(exc).__name__}: {exc}")
+            continue
+        if starter is not None:
+            starter(network, one)
+        else:
+            threading.Thread(target=action_notice, args=(network, one), daemon=True,
+                             name=f"heal-action-notice-{r['decision']}").start()
+        out["told"].append(r["decision"])
+    return out
+
+
 # ── Which incidents ───────────────────────────────────────────────────────────────────────────
 
 def due(network: str, now: float = None) -> list:
@@ -130,11 +302,15 @@ def due(network: str, now: float = None) -> list:
             and e["incident"] not in taken and now - float(e.get("epoch") or 0) <= NEW_WITHIN_S]
 
 
-def run(network: str, *, now: float = None, starter=None, wait_s: float = None) -> dict:
+def run(network: str, *, now: float = None, starter=None, wait_s: float = None,
+        action_starter=None) -> dict:
     """The notify step of a runner's pass: each due incident taken once and its notice started
     as its own thread (*starter*, a thread unless given), so the runner never waits on the 60
-    s. ``{"network", "started": [incident ids], "failed"}``."""
+    s; then each action end due (`run_actions`, *action_starter*). ``{"network", "started":
+    [incident ids], "told": [action decision ids], "failed"}``."""
     out = {"network": network, "started": [], "failed": []}
+    acts = run_actions(network, now=now, starter=action_starter)
+    out["told"], out["failed"] = acts["told"], list(acts["failed"])
     from modules.ai import heal_analysis as HA
 
     for e in due(network, now):
@@ -216,7 +392,12 @@ def _deliver(network: str, event: dict) -> dict:
     from modules import heal_notify
     from modules.notify import delivery
 
-    teams = heal_notify.teams_for(network, EVENT)
+    # A can't-fix's follow-ups go to whoever was told the first message; an action's end to
+    # the teams that chose its own event (H23), an automatic action's under the team's "every
+    # automatic heal" (`TOLD_AS`).
+    which = event.get("event") or EVENT
+    teams = heal_notify.teams_for(network, EVENT if which in (
+        EVENT, FOLLOW_UP, DIAGNOSIS_FOLLOW_UP) else TOLD_AS.get(which, which))
     if not teams:
         return {"ok": True, "sent": 0, "failed": 0, "error": "", "nobody": True}
     return delivery.deliver_event(event, teams)

@@ -1449,7 +1449,17 @@ command-policy Tier 3, and `clear ip bgp *` is Never.
 flapping** and **diagnosed**. Every automatic action notifies (17.7 item 6): "r4 Gi4 bounced
 once: still flapping; a dampening change waits for a person". Dry run records "would have
 bounced r4 Gi4 (program <hash>)" on the drift row and in History, with Right / Wrong, as section
-7 does.
+7 does. **Built (H23's first part, 2026-11-08):** History names each action by its port or
+neighbour with its family's marks (`steplog.ACTION_MARKS`: "would bounce", "cleared, not
+verified", "dampening proposed"), and opens to its planned window, the far end the window named
+(C2749; the row is on the far end's History too), what was sent, verify's result, its rollback
+and its own records; every act keeps a deterministic change record (`change_record.build_action`,
+board CR's sections); the session clear's held and failed ends are one Needs attention row
+(`heal`/`clear`), and every row's action is its notice's What to do (`heal_notice.action_todo`);
+each action's end is told once on its incident's thread (`heal_notice.run_actions`: can't fix,
+halted, or an automatic success as ``action`` under "every automatic heal"). The NetBox journal
+entry for an action, the change record's download, the scenario replays (H12's fixtures) and I5's
+sheet (the operator's trial) wait.
 
 **The industry practice it follows:**
 - device-native recovery, then suppression (`errdisable recovery`, then IP event dampening);

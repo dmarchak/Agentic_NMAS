@@ -259,6 +259,13 @@ ROW_KINDS = {
                          "stable",
                          "read the bounce's steps on the device's History, check the port and "
                          "its far end, then acknowledge with what you found"),
+    # Board H's amendment, H21 and H23 (19.4): self-healing's BGP session clear held by a
+    # guard, or one that did not end cleared (the session not back, a soft clear that reset it,
+    # its state after unread, the device refusing it, or refused at its act).
+    ("heal", "clear"): ("self-healing's BGP session clear was held, or did not end with the "
+                        "session Established",
+                        "read the clear's steps on the device's History, check the session and "
+                        "the neighbour's own device, then acknowledge with what you found"),
     # Board H's amendment, H22 (19.4): self-healing's dampening proposal, a change to intent on
     # a port still flapping after its one bounce, waiting for a person; or approved and not
     # ended dampened (rolled back, unverified, NOT RESTORED, refused at its act).
@@ -617,6 +624,9 @@ CLEARS = {
                          "a later bounce of the same port ends bounced and stable, or 7 days "
                          "pass (CANT_FIX_DAYS); or acknowledged with what was found on the "
                          "port"),
+    ("heal", "clear"): (("resolves", "acknowledge", "time"),
+                        "a later clear of the same BGP neighbour ends cleared, or 7 days pass "
+                        "(CANT_FIX_DAYS); or acknowledged with what was found on the session"),
     ("heal", "dampening"): (("resolves", "time"),
                             "a person approves it on its card (approved and verified) or "
                             "declines it there with a reason; or the port needs no bounce for 24 "
@@ -712,6 +722,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # One held or failed port bounce (board H, H20), by its
                                # decision: a later bounce of the port raises its own row.
                                ("heal", "bounce"),
+                               # One held or failed BGP session clear (H23), by its decision:
+                               # a later clear of the neighbour raises its own row.
+                               ("heal", "clear"),
                                # One change of a network's controller Python, by its id
                                # (the operator, 2026-11-07): a later change raises it again.
                                ("controller_python", "changed")})
@@ -5528,12 +5541,14 @@ def heal_source(got=None, now=None, found=None) -> dict:
     out += held
     bounces = _heal_bounce_rows(lst, rows, now)
     out += bounces
+    clears = _heal_clear_rows(lst, rows, now)
+    out += clears
     damp = _heal_dampening_rows(lst, rows, now)
     out += damp
     said = []
     out += _heal_cant_fix_rows(lst, rows, now, said)
     cant_fix_n = (len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
-                  - len(damp))
+                  - len(clears) - len(damp))
     out += _heal_capped_rows(lst, now, said)
     try:
         halted = _heal_halted_rows(lst)
@@ -5548,7 +5563,8 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"{interrupted_n} interrupted heal(s), "
                                   f"{proposals_n} proposal(s) waiting, {len(held)} hold(s) a "
                                   f"person resolves, {len(bounces)} port bounce(s) held or "
-                                  f"not ended bounced, {len(damp)} dampening change(s) "
+                                  f"not ended bounced, {len(clears)} BGP session clear(s) "
+                                  f"held or not ended cleared, {len(damp)} dampening change(s) "
                                   f"waiting or not ended dampened, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
@@ -5636,6 +5652,7 @@ def _heal_dampening_rows(lst: str, rows: list, now: float) -> list:
     per port whose newest proposal was approved and ended other than dampened (rolled back,
     unverified, NOT RESTORED, refused at its act), until a later need of the port or
     `dampening.ENDED_DAYS`. Read from the rows already read."""
+    from modules import heal_notice
     from modules.heal import dampening as HDM
 
     newest = {}
@@ -5665,8 +5682,8 @@ def _heal_dampening_rows(lst: str, rows: list, now: float) -> list:
                 cause=(f"{d.get('words') or ''}. Nothing is sent until a person approves it by "
                        f"its hash with a reason (self-healing on {lst}, Tier 2: Propose); it "
                        f"lapses once {iface} has needed no bounce for {HDM.STABLE_HOURS} h"),
-                action={"label": (f"Review the change for {host} {iface}, then approve it by "
-                                  "its hash with a reason, or decline it with a reason"),
+                action={"label": heal_notice.action_todo(HDM.KIND, "propose", host,
+                                                         interface=iface),
                         "open": "heal_proposal", "list": lst, "decision": d.get("id"),
                         "device": host},
                 operands=ops))
@@ -5685,8 +5702,8 @@ def _heal_dampening_rows(lst: str, rows: list, now: float) -> list:
             cause=(f"{done.get('words') or ''}. Approved by {done.get('by') or 'a person'}"
                    + ("; self-healing on the network is halted (guard 14) until a person "
                       "lifts it" if done["outcome"] == "failed" else "")),
-            action={"label": (f"Read the change's steps on {host}'s History, check {iface}'s "
-                              "dampening and its intent, then act on what they show"),
+            action={"label": heal_notice.action_todo(HDM.KIND, done["outcome"], host,
+                                                     interface=iface),
                     "href": f"/v2/device/{host}?tab=history"},
             operands=ops))
     return out
@@ -5870,6 +5887,7 @@ def _heal_bounce_rows(lst: str, rows: list, now: float) -> list:
     its adjacency not formed, its stability unread, refused at its apply), under
     `CANT_FIX_DAYS` old. A later bounce of the port replaces it (one that ends bounced clears
     it), or a person acknowledges it with what they found. Read from the rows already read."""
+    from modules import heal_notice
     from modules.heal import bounce
 
     newest = {}
@@ -5910,13 +5928,73 @@ def _heal_bounce_rows(lst: str, rows: list, now: float) -> list:
             source="heal", kind="bounce", key=d.get("id") or "?", level=level,
             event=d.get("id"), devices=[host], since=at or None,
             clears_at=at + CANT_FIX_DAYS * 86400, what=what, cause=cause.strip(),
-            action={"label": (f"Read the bounce's steps on {host}'s History, check {iface} and "
-                              f"its far end ({a.get('far_device') or 'not named'} "
-                              f"{a.get('far_interface') or ''}), then acknowledge with what you "
-                              "found").replace(" )", ")"),
+            # The row's action is its notice's What to do (H23): one sentence for both.
+            action={"label": heal_notice.action_todo(
+                        a.get("kind") or "", done.get("outcome") or d.get("outcome") or "",
+                        host, interface=iface, far_device=a.get("far_device") or "",
+                        far_interface=a.get("far_interface") or ""),
                     "href": f"/v2/device/{host}?tab=history"},
             operands={"list": lst, "decision": d.get("id"), "kind": a.get("kind"),
                       "interface": iface, "outcome": done.get("outcome") or d.get("outcome"),
+                      "guard": g.get("guard")}))
+    return out
+
+
+def _heal_clear_rows(lst: str, rows: list, now: float) -> list:
+    """Board H's amendment, H21 and H23 (19.4): ONE row per BGP neighbour whose NEWEST session
+    clear decision was held by a guard (``held``: it is not tried again by itself), or was
+    taken and ended other than cleared (`session_clear.OUTCOMES`: the session not back, a soft
+    clear that reset it, its state after unread, the device refusing the clear, refused at its
+    act), under `CANT_FIX_DAYS` old. A later clear of the neighbour replaces it (one that ends
+    cleared clears it), or a person acknowledges it with what they found. A clear waiting for
+    a person (Tier 2, off a network marked lab) is the proposal's own row. Read from the rows
+    already read."""
+    from modules import heal_notice
+    from modules.heal import session_clear
+
+    newest = {}
+    for d in rows:
+        a = d.get("action") or {}
+        if a.get("kind") not in session_clear.KINDS or not a.get("device"):
+            continue
+        key = (a["device"], (a.get("peer") or "").lower())
+        if float(d.get("epoch") or 0) >= float(newest.get(key, {}).get("epoch") or 0):
+            newest[key] = d
+    out = []
+    for (host, _p), d in sorted(newest.items()):
+        a, at = d.get("action") or {}, float(d.get("epoch") or 0)
+        if now - at > CANT_FIX_DAYS * 86400:
+            continue
+        g, done = d.get("guard") or {}, (d.get("applied") or {})
+        peer = a.get("peer") or ""
+        if d.get("outcome") == "held":
+            what = (f"Self-healing held the clear of {host}'s BGP neighbour {peer} on {lst}: "
+                    f"{g.get('name') or 'a guard applied'}")
+            cause = (f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. Nothing was "
+                     "sent, and it is not tried again by itself: the session stays as it is "
+                     "until a person acts or a later incident is diagnosed")
+            level, outcome = "warning", "held"
+        elif done.get("outcome") in session_clear.OUTCOMES and done["outcome"] != "cleared":
+            outcome = done["outcome"]
+            what = (f"Self-healing's clear of {host}'s BGP neighbour {peer} on {lst}: "
+                    f"{session_clear.OUTCOME_WORDS[outcome]}")
+            cause = (f"{done.get('words') or ''}. "
+                     + ("Nothing was sent. " if outcome == "refused" else
+                        "No configuration line changed. ")
+                     + ("Self-healing on the network is halted (guard 14) until a person "
+                        "lifts it. " if outcome in session_clear.HALTS else ""))
+            level = "danger" if outcome in ("not_back", "reset") else "warning"
+        else:
+            continue
+        out.append(row(
+            source="heal", kind="clear", key=d.get("id") or "?", level=level,
+            event=d.get("id"), devices=[host], since=at or None,
+            clears_at=at + CANT_FIX_DAYS * 86400, what=what, cause=cause.strip(),
+            action={"label": heal_notice.action_todo("session_clear", outcome, host, peer=peer),
+                    "href": f"/v2/device/{host}?tab=history"},
+            operands={"list": lst, "decision": d.get("id"), "kind": a.get("kind"),
+                      "peer": peer, "variant": a.get("variant"),
+                      "outcome": done.get("outcome") or d.get("outcome"),
                       "guard": g.get("guard")}))
     return out
 

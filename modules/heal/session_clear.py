@@ -478,11 +478,12 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     return _act(network, decision, src, now=now,
                 by=f"heal proposal approved by {approval['by']}", actor=approval["by"],
                 reason=approval.get("reason") or "", stops=why,
-                taken=f"taken on {approval['by']}'s approval of proposal {approval.get('hash')}")
+                taken=f"taken on {approval['by']}'s approval of proposal {approval.get('hash')}",
+                approval=approval)
 
 
 def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, reason: str,
-         stops: str, taken: str = "") -> dict:
+         stops: str, taken: str = "", approval: dict = None) -> dict:
     from modules.heal import steplog
     from modules.nsot import privileged
     from modules.redact import redact_text
@@ -498,7 +499,7 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
 
     def finish(outcome, words):
         out.update(outcome=outcome, words=words)
-        return _record(network, decision, out, by=by, now=src.clock())
+        return _record(network, decision, out, by=by, now=src.clock(), approval=approval)
 
     def refuse(step, words, result="refused"):
         note(step, result, words + ". Nothing was sent")
@@ -525,6 +526,8 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
                               "or the command moved")
     note("plan", "ok", f"`{plan['command']}`: its hash {h} is the decision's; measured on "
                        f"{dialect}, verify bound {plan['bound_s']} s")
+    # Why a clear has no rollback (`privileged`'s rule), in its record and History (H23).
+    out["records"]["rollback"] = f"does not apply: {plan.get('rollback') or 'not stated'}"
     values = src.values()
     started = src.clock()
 
@@ -553,8 +556,11 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
                             f"(decision {decision.get('id')})"),
                        far_ends=[(far_dev, "")] if far_dev and far_dev != device else [])
         rec = w.get("record") or {}
-        out["records"]["window"] = ({k: rec.get(k) for k in ("from", "until", "via",
-                                                             "interfaces")}
+        # The far end the window names (C2749), kept so the neighbour's History draws it (H23).
+        out["records"]["window"] = ({**{k: rec.get(k) for k in ("from", "until", "via",
+                                                                "interfaces")},
+                                     "far_ends": (rec.get("expected") or {}).get(
+                                         "far_ends") or []}
                                     if w.get("ok") else {"error": w.get("error")})
         if not w.get("ok"):
             return {"state": "refused", "step": "window", "why": (
@@ -608,10 +614,12 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
     return finish(outcome, words)
 
 
-def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> dict:
+def _record(network: str, decision: dict, out: dict, *, by: str, now: float,
+            approval: dict = None) -> dict:
     """``record``: what the clear did, in the decisions store (a halt, guard 14, for a soft
-    clear that reset its session), the step log (History) and the announcement."""
-    from modules.heal import decisions, steplog
+    clear that reset its session), its change record (H23), the step log (History) and the
+    announcement."""
+    from modules.heal import change_record, decisions, steplog
 
     out["steps"].append({"step": "record", "result": "ok",
                          "words": OUTCOME_WORDS.get(out["outcome"], out["outcome"]),
@@ -630,6 +638,9 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> 
         log.error("heal: %s's clear %s outcome not recorded: %s", network, decision.get("id"),
                   exc)
         out["records"]["error"] = f"the outcome could not be recorded ({exc})"
+    out["records"].setdefault("rollback", "does not apply: nothing was sent")
+    out["records"]["change_record"] = change_record.build_action(
+        network, decision, out, approval=approval, at=_iso(now))
     try:
         steplog.record_act(network, decision, out, by=by, now=now)
     except Exception as exc:

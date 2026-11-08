@@ -552,6 +552,49 @@ class TestTheAct:
         assert src.commits == [] and src.applied == []
 
 
+# ── The records (H23: History, the change record) ──────────────────────────────────────────
+
+def history(device):
+    from modules import history_sources as HS
+    return HS.heal({"ref": types.SimpleNamespace(name=NET), "device": device, "limit": 50,
+                    "members": None, "since": None, "until": None})["events"]
+
+
+class TestTheRecords:
+    def test_the_proposal_is_drawn_as_dampening_proposed_on_its_port(self, stores,
+                                                                     FakeSources):
+        raised(FakeSources())
+        (e,) = history("r2")
+        assert e["what"] == f"Self-healing (AUTO): r2 {GI2} dampening proposed", e["what"]
+        assert dict(e["record"])["Far end"] == "r3 GigabitEthernet2"
+
+    def test_dampened_keeps_its_change_record_naming_the_person_and_its_undo(
+            self, stores, measured, monkeypatch, FakeSources):
+        _d, got = run(FakeSources(), monkeypatch)
+        assert got["outcome"] == "dampened", got["steps"]
+        cr = got["records"]["change_record"]
+        assert cr["state"] == "made" and cr["risk"] == "medium", cr
+        text = cr["markdown"]
+        assert f"# Change record: r2 {GI2}, dampening proposed by self-healing" in text
+        assert f"Approved by {PERSON} (verified: access)" in text
+        assert "interface GigabitEthernet2\n no dampening\nexit" in text, "the measured undo"
+        assert "No planned window: a deploy of one intent line" in text
+        (e,) = history("r2")
+        assert e["what"] == f"Self-healing (AUTO): r2 {GI2} dampened", e["what"]
+        rec = dict(e["record"])
+        assert rec["Intent commit"] == got["records"]["intent"]
+        assert rec["Verify read"].startswith("show interfaces dampening: parsed")
+
+    def test_rolled_back_is_drawn_as_dampening_rolled_back(self, stores, measured, monkeypatch,
+                                                           FakeSources):
+        src = FakeSources(verify=_read(SHAPED).replace("GigabitEthernet2", "GigabitEthernet3"))
+        _d, got = run(src, monkeypatch)
+        assert got["outcome"] == "rolled_back"
+        (e,) = history("r2")
+        assert e["what"].endswith(f"r2 {GI2} dampening rolled back"), e["what"]
+        assert dict(e["record"])["Intent put back"].startswith("put back as")
+
+
 # ── Needs attention ────────────────────────────────────────────────────────────────────────
 
 class TestNeedsAttention:

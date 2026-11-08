@@ -83,6 +83,20 @@ program (masked) and its hash, and the records it wrote: the deploy receipt, the
 and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
 item. The network's team is told as its Self-healing tab chooses ([Notifications](notifications)).
 
+An **action** (a bounce, a clear, a dampening change) is named as one on its row: its line names
+the port or the neighbour and how it ended ("edge1 GigabitEthernet4 bounced, still flapping",
+"edge1's BGP neighbour 192.0.2.3 cleared, session not back", "would bounce" in dry run, never "would
+heal"). Opened, it shows what it acted on, its **planned window** and the **far end** the window
+named, whether anything was sent, verify's result (the confirm, the adjacency, the stability
+window), its **rollback** (the repair, the device's own revert, or why none applies: a clear is
+never put back), and its own records: the dampening change it raised, the privileged command's
+run of a clear, the intent commit of a dampening change and its put-back, and the verify read.
+The row is on the far end's History too, so the device across the link shows the bounce that
+took its port down. Each act keeps a **change record** written by Mercury's code with no AI call,
+in the same sections as a heal's: what was acted on and why, the program, the risk by its stated
+rule, the verify, the rollback and what the act did of it, the window with its far end, who
+allowed it (the policy, or the person who approved it), and its status.
+
 ## Dry run: Right or Wrong {#mark}
 
 In dry run nothing is sent; each would-heal is a record for a person to judge. It is an item on
@@ -235,7 +249,9 @@ down with its far end up, or the interface's one OSPF neighbour stuck, is a boun
 13. `record`: the outcome on the device's **History**, kind Self-healing.
 
 **What it ends with.** "Bounced; configuration unchanged" is on History, never a Needs
-attention item; the team's notice of a bounce is not sent yet. Every other end is one item, "Self-healing's bounce of <device> <port>",
+attention item, and the team is told under **every automatic heal** ([An action's end,
+told](notifications#actions)). Every other end is one item, "Self-healing's bounce of <device>
+<port>", told to the team in the item's own words,
 until a later bounce of that port ends bounced, 7 days pass, or you acknowledge it with what you
 found: bounced once and **still flapping** (the [dampening proposal](#dampening) is the next
 need, for a person, and the item says whether it waits);
@@ -322,6 +338,16 @@ clear that **reset** the session (which halts the network's healing until a pers
 was cleared); or **nothing was sent**. Rollback does not apply, and the record says why: a
 session that was not Established had nothing to lose, and a route refresh resets nothing.
 
+Cleared is on History, never a Needs attention item, and an automatic clear is told under
+**every automatic heal**. Every other end, and a clear **held** by a guard, is one item,
+"Self-healing's clear of <device>'s BGP neighbour <address>", Critical when the session did not
+come back or a soft clear reset it. Its action is to read the clear's steps on the device's
+History, check the session and the neighbour's own device, then acknowledge with what you found;
+the team is told in the same words ([An action's end, told](notifications#actions)). It leaves
+when a later clear of that neighbour ends cleared, 7 days pass, or you acknowledge it. A clear
+waiting for a person off a lab network is the proposal's own item, opened with **Review the
+fix…**.
+
 ## The dampening proposal {#dampening}
 
 A port that keeps flapping after its one bounce is not something a second bounce fixes. The
@@ -378,7 +404,9 @@ declined with your reason, recorded, nothing sent. Otherwise one item stays, "Th
 dampening of <device> <port>", until the port needs another bounce or 7 days pass: **rolled
 back** (neither the device nor intent holds dampening); **not verified**; **NOT RESTORED** (which
 halts the network's healing until a person lifts it); or **nothing was sent** (the intent edit put
-back if it had been committed).
+back if it had been committed). Each of these is told to the team in the item's own words ([An
+action's end, told](notifications#actions)); dampening deployed and verified is yours, and is
+not told.
 
 ## What it never does {#never}
 

@@ -1397,6 +1397,12 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> 
         log.error("heal: %s's bounce %s outcome not recorded: %s", network,
                   decision.get("id"), exc)
         out["records"]["error"] = f"the outcome could not be recorded ({exc})"
+    # H23 (19.4, "Record"): what undid it, and the deterministic change record, both kept in
+    # the act row History draws.
+    from modules.heal import change_record
+    out["records"]["rollback"] = rollback_words(out)
+    out["records"]["change_record"] = change_record.build_action(network, decision, out,
+                                                                 at=utc(now))
     try:
         steplog.record_act(network, decision, out, by=by, now=now)
     except Exception as exc:
@@ -1404,4 +1410,20 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> 
                   decision.get("id"), exc)
     _announce()
     return out
+
+
+def rollback_words(out: dict) -> str:
+    """What undid a bounce, in History's words: its repair, the device's revert, or why none
+    was needed."""
+    rep = (out.get("records") or {}).get("repair") or {}
+    if rep:
+        return (("repaired: " if rep.get("restored") else "NOT RESTORED: ")
+                + "; ".join(f"{s.get('step')}: {s.get('achieved')}" for s in rep.get("steps")
+                            or []))
+    if out.get("outcome") == "reverted":
+        return "the device's revert timer reverted it: no confirm was sent"
+    if out.get("sent"):
+        return ("not needed: confirmed on the device once Mercury was back in, the running "
+                "configuration equal to before")
+    return "not needed: nothing was sent"
 

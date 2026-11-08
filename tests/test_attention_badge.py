@@ -147,6 +147,8 @@ class TestARowThatClearsByTime:
                          ("heal", "analysis_capped"),
                          # A held or failed bounce, 7 days after it (CANT_FIX_DAYS; H20).
                          ("heal", "bounce"),
+                         # A held or failed BGP session clear, 7 days after it (H23).
+                         ("heal", "clear"),
                          # A dampening proposal, its port stable 24 h; an approved one not
                          # ended dampened, 7 days after it (H22).
                          ("heal", "dampening")}

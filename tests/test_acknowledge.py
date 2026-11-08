@@ -132,6 +132,9 @@ class TestEveryKindSaysHowItClears:
                                      ("heal", "held"),
                                      # One held or failed port bounce, by its decision (H20).
                                      ("heal", "bounce"),
+                                     # One held or failed BGP session clear, by its
+                                     # decision (H23).
+                                     ("heal", "clear"),
                                      # One change of a network's controller Python, by its
                                      # id (the operator, 2026-11-07).
                                      ("controller_python", "changed")}

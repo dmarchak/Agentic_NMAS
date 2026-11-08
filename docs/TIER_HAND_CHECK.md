@@ -3954,3 +3954,45 @@ the log unmasked at rest. A test of the log's own at-rest masking was added, and
 in run 2, whose canary was killed too. Each file was restored after each mutant, and the
 worktrees were removed. The run was the H26 agent's. The main thread records it here as the
 agent reported it, without a per-mutant breakdown of the kill counts.
+
+## 2026-11-08: an action's end told to the team (board H's H23), by hand
+
+**What changed in the tier:** data off the host. Each action's end (a port bounce, an OSPF reset
+through it, a BGP session clear, the dampening proposal's act) is now told on its incident's
+thread (`heal_notice.actions_due`, `action_facts`, `action_notice`, `run_actions`; `notify.message`'s
+new `action` event). The danger the hand check guards:
+- a configuration line, the decision's program, leaving the host in the message's outcome, its
+  detected line or a step's words;
+- a person's own approved success, or an end already told, told again;
+- the end told to teams that did not choose it.
+
+The message's own mask covers every byte after it, as before.
+
+**The method:** H17's. Each mutant is one exact replacement of a changed line, required to match
+once, applied in a `scripts/nmas-control` throwaway worktree over d5247b5f with H23 uncommitted
+(`scratchpad/h23_tier.py`). The tests are tests/test_heal_action_records.py, test_heal_notice.py,
+test_notify.py and test_heal_analysis.py, run with no `-x`, two workers, in CI's interpreter,
+confined. Each file was restored and compared byte for byte after each mutant.
+- **Baseline** (06:39:23 UTC): 178 passed.
+- **Run 1** (06:39 to 06:41 UTC):
+  - mutant 2 survived: no test planted a program line in the decision's words;
+  - mutant 3's text matched twice: the can't-fix facts hold the same steps line.
+- **The fixes:** `test_the_program_is_withheld_from_the_decision_and_every_step` was added, and
+  mutant 3 was made to match the action facts' two lines, once.
+- **Run 2** (06:41:54 to 06:42:18 UTC) ran mutants 2 and 3 again.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `action_facts` raises | killed (7 failed) | `test_each_end_is_told_once_as_the_event_its_row_needs` (its cases) and others |
+| 1 `action_facts`: the outcome not withheld | killed | `test_the_program_is_withheld_from_the_message` |
+| 2 `action_facts`: the decision's words (detected) not withheld | killed in run 2 | `test_the_program_is_withheld_from_the_decision_and_every_step` |
+| 3 `action_facts`: a step's words not withheld | killed in run 2 | the same |
+| 4 `actions_due`: a success told whoever chose it, not only when automatic | killed | `test_a_persons_approved_success_and_the_past_are_not_told` |
+| 5 `actions_due`: an end already told is due again | killed (6 failed) | `test_each_end_is_told_once_as_the_event_its_row_needs` |
+| 6 `run_actions`: told without its once-only claim | killed (6 failed) | the same |
+| 7 `_deliver`: an action told to its own event's teams, not under "every automatic heal" | killed | `test_an_automatic_success_goes_under_every_automatic_heal` |
+
+**The result: 7 mutants and the canary, all killed**, each file identical after each and the
+worktrees removed. Not mutated: `action_todo`'s words, which name the device, its port and
+neighbour (inventory names, as a can't-fix's do) and hold no configuration line by
+construction; and `EP.withhold` itself, which is H8's, hand-checked 2026-11-04.

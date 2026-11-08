@@ -745,6 +745,72 @@ class TestTheAct:
         assert conn.sent == []
 
 
+# ── The records (H23: History, the change record) ──────────────────────────────────────────
+
+FAR_WINDOW = {"ok": True, "record": {"from": "2026-11-08T06:00:00Z",
+                                     "until": "2026-11-08T06:01:50Z", "via": "heal-clear",
+                                     "interfaces": ["GigabitEthernet2"],
+                                     "expected": {"far_ends": [{"device": "r3",
+                                                                "interface": ""}]}}}
+
+
+def history(device):
+    import types
+    from modules import history_sources as HS
+    return HS.heal({"ref": types.SimpleNamespace(name=NET), "device": device, "limit": 50,
+                    "members": None, "since": None, "until": None})["events"]
+
+
+class TestTheRecords:
+    def test_a_clear_keeps_its_far_end_rollback_and_change_record(self, stores, measured):
+        conn = Conn([down(), down(state="Connect"), back()])
+        src = auto(conn, window=FAR_WINDOW)
+        out = S().apply(NET, taken(src), sources=src)
+        assert out["outcome"] == "cleared", out["steps"]
+        rec = out["records"]
+        assert rec["window"]["far_ends"] == [{"device": "r3", "interface": ""}]
+        assert rec["rollback"].startswith("does not apply: a session that was not Established")
+        cr = rec["change_record"]
+        assert cr["state"] == "made" and cr["risk"] == "low", cr
+        assert f"# Change record: r4's BGP neighbour {PEER}, a BGP neighbour cleared" \
+            in cr["markdown"]
+        assert f"clear ip bgp {PEER}" in cr["markdown"] and "its far end: r3" in cr["markdown"]
+        assert f"The privileged command's record: {rec['privileged']}" in cr["markdown"]
+        assert "The standing policy fp-1" in cr["markdown"]
+
+    def test_history_names_the_neighbour_and_the_far_end_draws_it(self, stores, measured):
+        conn = Conn([down()])
+        src = auto(conn, window=FAR_WINDOW)
+        out = S().apply(NET, taken(src), sources=src)
+        assert out["outcome"] == "not_back", out["steps"]
+        (e,) = history("r4")
+        assert e["what"] == (f"Self-healing (AUTO): r4's BGP neighbour {PEER} cleared, session "
+                             "not back"), e["what"]
+        rec = dict(e["record"])
+        assert rec["Far end"] == "r3" and rec["Privileged command run"] == \
+            out["records"]["privileged"]
+        assert rec["Rollback"].startswith("does not apply")
+        assert "verify: failed" in rec["Verify"]
+        assert [x["what"] for x in history("r3")] == [e["what"]]
+
+    def test_an_unverified_clear_is_never_marked_bounced(self, stores, measured):
+        from modules.heal import steplog
+        assert steplog.mark("unverified", "session_clear") == "cleared, not verified"
+        assert steplog.mark("would_heal", "session_clear") == "would clear"
+
+    def test_an_approved_clears_record_names_the_person(self, stores, measured):
+        conn = Conn([down(), back()])
+        src = Src(dev=conn, m=mode("dry_run", propose=["session_clear"], stage="production"))
+        d = taken(src)
+        out = S().apply_approved(NET, d, {"by": "person@example.invalid", "verified": "access",
+                                          "reason": "the peer is stuck after the fibre cut",
+                                          "hash": "h-1", "at": "2026-11-08T06:00:00Z"},
+                                 sources=src)
+        text = out["records"]["change_record"]["markdown"]
+        assert "Approved by person@example.invalid (verified: access)" in text
+        assert "sent as person@example.invalid, who approved it" in text
+
+
 # ── The wiring ──────────────────────────────────────────────────────────────────────────────
 
 class TestTheWiring:

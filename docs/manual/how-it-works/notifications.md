@@ -38,6 +38,32 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
 
 Nothing in self-healing reads the analysis or the notice: they are for a person.
 
+## An action's end, told {#actions}
+
+Self-healing's actions (a port bounce, an OSPF adjacency reset, a BGP session clear and an
+approved dampening change; [Self-healing](heal#actions)) each end in their own job, often minutes
+after the can't-fix that led to them was told. Each end is told once, on that incident's thread,
+so it arrives under the first message:
+
+1. `due`: the notifier finds each action that ended in the last 10 minutes and is to be told:
+   every end a person must look at, and an end that worked only when it was automatic (an
+   approved action that worked is the approver's, and is not told).
+2. `claim`: it takes it once, under the store's lock, however many of Mercury's processes look.
+3. `send`: it sends what the action acted on and how it ended ("edge1 GigabitEthernet4 bounced,
+   still flapping: ... a dampening change waits for a person"), the decision that chose it, its
+   steps and their results, and **What to do** in the words of its Needs attention item, then
+   the link to the device's History. The program's lines are withheld, as a can't-fix's are.
+
+Which event it is sent as decides which teams are told, by their choices under **Who is told**:
+
+- **can't fix**: a bounce still flapping, its adjacency not formed, not verified, or nothing
+  sent; a clear whose session did not come back, not verified, refused by the device, or
+  nothing sent; an approved dampening rolled back, not verified, or nothing sent;
+- **halted or held**: a bounce reverted by its timer, repaired or NOT RESTORED; a soft clear
+  that reset its session; an approved dampening NOT RESTORED (each halts the network);
+- **every automatic heal**: an automatic bounce that ended bounced and stable, or an automatic
+  clear that ended cleared, sent as "an action taken, verified".
+
 ## Where it goes {#destinations}
 
 - **Email**, through the installation's relay, to each verified address of the team. With no
