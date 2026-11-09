@@ -768,6 +768,7 @@ def run(network: str, runbook: str, target: dict, actor: str, *, incident: str =
         return _recorded(network, out, record)
     if runbook == "cant_reach":
         from modules.heal import diagnose_reach
+        out["runbook_words"] = p["runbook_words"]           # by its two ends (C2829)
         diagnose_reach.run_plan(p, out, actor, session=session, logs=logs or _logs,
                                 sleep=sleep, started=started)
         out["finished_at"] = _iso(time.time())

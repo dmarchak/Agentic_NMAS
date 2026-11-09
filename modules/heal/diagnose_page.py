@@ -297,12 +297,22 @@ def result(d: dict) -> dict:
     if where and state not in ("refused", "busy"):
         chip, level = f"diverges at {where}", "danger"
     runs = sorted(set(d.get("runs") or []))
+    runbook_words = d.get("runbook_words") or ""
+    ruled_out = [r.get("check") or "" for r in d.get("ruled_out") or []]
+    if d.get("runbook") == "cant_reach":
+        # C2829, for a record written before it: the runbook by its two ends, and a check the
+        # finding already says not said twice.
+        from modules.heal import diagnose_reach as R
+
+        t = d.get("target") or {}
+        runbook_words = R.named(t.get("device") or "", t.get("address") or "")
+        ruled_out = [c for c in ruled_out if c != (d.get("words") or "")]
     return {"id": d.get("id") or "", "words": d.get("words") or "",
-            "runbook_words": d.get("runbook_words") or "", "actor": d.get("actor") or "",
+            "runbook_words": runbook_words, "actor": d.get("actor") or "",
             "incident": d.get("incident") or "", "started_at": d.get("started_at") or "",
             "finished_at": d.get("finished_at") or "", "chip": chip, "level": level,
             "hypotheses": hyps, "more": d.get("more") or 0,
-            "ruled_out": [r.get("check") or "" for r in d.get("ruled_out") or []],
+            "ruled_out": ruled_out,
             "not_checked": [{"check": r.get("check") or "", "why": r.get("why") or ""}
                             for r in d.get("not_checked") or []],
             "steps": [{"step": s.get("step") or "", "device": s.get("device") or "",

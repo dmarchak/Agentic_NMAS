@@ -527,11 +527,18 @@ def test_no_bare_identifier_outside_the_backlog(drawn):
 def test_the_backlog_only_holds_what_still_occurs(drawn):
     got = found(_surfaces(drawn))
     gone = {k: n for k, n in KNOWN_BARE_IDENTIFIERS.items() if got.get(k, 0) < n}
+    # C2879's measurement: what was found on the same surface and of the same kind that the
+    # list does not hold, so a key reshaped (a duration or an age drawn in another form) reads
+    # beside the one it was, and a row not drawn at all reads as nothing beside it.
+    beside = sorted(k for k in got if k not in KNOWN_BARE_IDENTIFIERS
+                    and any(k[:2] == g[:2] for g in gone))
     assert not gone, (
         "fixed, so take them out of KNOWN_BARE_IDENTIFIERS (or lower the count to what is "
         "found): the backlog only shrinks:\n"
         + "\n".join(f"    {k!r}: {n} in the list, {got.get(k, 0)} found"
-                    for k, n in sorted(gone.items())))
+                    for k, n in sorted(gone.items()))
+        + "\nfound on the same surface and of the same kind, not in the list:\n"
+        + ("\n".join(f"    {k!r}: {got[k]}" for k in beside) or "    nothing"))
 
 
 def test_the_backlog_names_only_its_surfaces_and_kinds():

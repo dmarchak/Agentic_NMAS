@@ -2330,15 +2330,21 @@ def diagnoses(ctx):
         about = (target.get("address") or target.get("peer")
                  or " ".join(x for x in (target.get("neighbour"), target.get("interface"))
                              if x))
+        runbook = d.get("runbook_words") or d.get("runbook")
+        if d.get("runbook") == "cant_reach":
+            # C2829: by its two ends, which name the address, so it is not said again.
+            from modules.heal import diagnose_reach as R
+
+            runbook = R.named(target.get("device") or "", target.get("address") or "")
+            about = "" if runbook != R.named("", "") else about
         events.append(_event(
             d.get("at"), "diagnosis",
-            f"Diagnosis on {devices[0] if devices else 'no device'}: "
-            f"{d.get('runbook_words') or d.get('runbook')}"
+            f"Diagnosis on {devices[0] if devices else 'no device'}: {m(runbook)}"
             + (f" ({m(about)})" if about else "") + f": {found}",
             devices, who=d.get("actor") or "", detail=m(d.get("words")),
             outcome="refused" if state in ("refused", "busy") else "done",
             marks=["diagnosis", found],
-            record=[("Diagnosis", d.get("id")), ("Runbook", d.get("runbook_words")),
+            record=[("Diagnosis", d.get("id")), ("Runbook", runbook),
                     ("Devices read", ", ".join(devices)),
                     ("Device commands", (f"{d.get('commands') or 0} of at most "
                                          f"{d.get('cap') or 0}")),

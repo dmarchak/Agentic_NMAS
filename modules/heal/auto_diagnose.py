@@ -266,7 +266,7 @@ def target_for(network: str, incident: dict, *, model: dict = None,
         if not address:
             return {"why": f"intent gives {host} no loopback address to reach"}
         return {"runbook": "cant_reach", "target": {"device": near[0], "address": address},
-                "words": f"\"A can't reach B\" from {near[0]} to {host} ({address})"}
+                "words": f"{R.named(near[0], address)} ({host})"}
     offered, _not = P.adjacencies(network, host, model, intents)
     if not offered:
         return {"why": f"intent holds no adjacency on {host} whose diagnosis can be planned"}

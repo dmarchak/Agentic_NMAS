@@ -220,7 +220,8 @@ def plan(network: str, target: dict, lines: dict) -> dict:
                "devices, then a traceroute; no return path is read")
     worst = (D._bound(ping["command"]) + D._bound(D.render(k["traceroute"], dialect, dest=dest))
              + HOPS_AT_CAP * (PER_HOP * D.SHOW_BOUND_SECONDS + int(D.DELTA_SECONDS)))
-    return {"network": network, "runbook": RUNBOOK, "runbook_words": D.RUNBOOKS[RUNBOOK],
+    # C2829: the runbook named by its two ends, never its template's "A" and "B".
+    return {"network": network, "runbook": RUNBOOK, "runbook_words": named(a, dest),
             "target": {"device": a, "address": dest}, "words": words, "source": a,
             "dest": dest, "family": family, "kinds": k, "dialect": dialect, "owner": owner,
             "owner_interface": owner_if, "src": src, "src_address": src_address, "ends": [],
@@ -597,7 +598,7 @@ def run_plan(p: dict, out: dict, actor: str, *, session=None, logs=None, sleep=N
             if not any(s["step"] == "return" for s in out["steps"]):
                 out["steps"].append({"step": "return", "result": "not_read", "words": (
                     "the return path is not read: " + (
-                        "A reaches B" if ctx.reached else
+                        f"{a} reaches {p['dest']}" if ctx.reached else
                         "the command cap was reached" if out["stopped"] else
                         "the forward path diverges from intent"))})
             if ctx.reached:
@@ -632,7 +633,8 @@ def _reached(out: dict, ctx) -> None:
     f, p = ctx.ping["facts"], ctx.plan
     words = (f"{p['source']} reaches {p['dest']}: {f['received']} of {f['sent']} probes "
              "answered; the path was not followed")
-    out["ruled_out"] = [{"check": words, "rule": "reach"}]
+    # C2829: what was ruled out is the loss, never the finding's own words again.
+    out["ruled_out"] = [{"check": f"{p['source']} not reaching {p['dest']}", "rule": "reach"}]
     out["hypotheses"], out["more"], out["words"] = [], 0, words
     out["steps"].append({"step": "compare", "result": "ok", "words": "nothing compared: "
                                                                     + words})
@@ -665,7 +667,7 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
     if ans is not None:
         facts, ref, why = _parsed(ans, a, ping[0])
         ctx.ping = {"facts": facts, "ref": ref, "why": why}
-    out["hops"] = [_reach_row(a, ping, ans, ctx.ping)]
+    out["hops"] = [_reach_row(a, ping, ans, ctx.ping, p["dest"])]
     f = ctx.ping["facts"]
     if f and f["all"]:
         ctx.reached = True
@@ -802,8 +804,15 @@ def _diverges(ctx: ReachContext, h: Hop) -> str:
 
 # ── The hop table (board H, artboard J's right: the path hop by hop against intent) ────────
 
-def _reach_row(a: str, ping: list, ans, got: dict) -> dict:
-    """Hop 0: A's ping to B: its probes answered, or why it was not read or interpreted."""
+def named(source: str, dest: str) -> str:
+    """The runbook as a person reads it, by its two ends (C2829): ``whether edge1 reaches
+    192.0.2.17``; the template's name where an end is not known."""
+    return f"whether {source} reaches {dest}" if source and dest else D.RUNBOOKS[RUNBOOK]
+
+
+def _reach_row(a: str, ping: list, ans, got: dict, dest: str) -> dict:
+    """Hop 0: A's ping to B (*dest*): its probes answered, or why it was not read or
+    interpreted; its words name both ends (C2829)."""
     cmd = ping[0]["command"] if ping else "ping"
     if ans is None:
         return {"n": 0, "device": a, "read": f"{cmd}: not sent, the command cap was reached",
@@ -820,11 +829,11 @@ def _reach_row(a: str, ping: list, ans, got: dict) -> dict:
     read = f"{cmd}: {f['received']} of {f['sent']} answered" + (
         f" ({f['marks']})" if f["marks"] else "")
     if f["all"]:
-        return {"n": 0, "device": a, "read": read, "against": "A reaches B",
+        return {"n": 0, "device": a, "read": read, "against": f"{a} reaches {dest}",
                 "verdict": "ok"}
     return {"n": 0, "device": a, "read": read, "verdict": "diverges",
-            "against": ("A reaches B only some of the time" if f["reached"] else
-                        "A does not reach B") + ": the path is followed"}
+            "against": (f"{a} reaches {dest} only some of the time" if f["reached"] else
+                        f"{a} does not reach {dest}") + ": the path is followed"}
 
 
 def _hop_row(h: Hop, claim: str, stopped: str = "") -> dict:
@@ -907,7 +916,7 @@ def _return(p: dict, out: dict, reader: _Reader, ctx: ReachContext, owner_of: di
     hops checked, stopping at the first that diverges."""
     owner, family = p["owner"], p["family"]
     if not owner or not ctx.complete or reader.capped:
-        why = ("B is outside management" if not owner else
+        why = (f"{p['dest']} is outside management" if not owner else
                "the forward path did not hold at every hop" if not ctx.complete else
                "the command cap was reached")
         out["steps"].append({"step": "return", "result": "not_read",

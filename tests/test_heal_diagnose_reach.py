@@ -331,7 +331,7 @@ class TestARun:
         got, f = reach(answers, device="r4", address="8.8.8.8")
         assert ("r4", "traceroute 8.8.8.8 numeric timeout 2 probe 1 ttl 1 16") in f.sent
         ret = next(s for s in got["steps"] if s["step"] == "return")
-        assert ret["words"] == "the return path is not read: B is outside management"
+        assert ret["words"] == "the return path is not read: 8.8.8.8 is outside management"
         assert "leaves_network" not in rules(got)
 
     def test_the_cap_stops_and_says_where(self, world, monkeypatch):
@@ -635,7 +635,7 @@ class TestOnHistory:
                                    "is administratively down, line protocol is down")))
         (e,) = _history()["events"]
         assert e["kind"] == "diagnosis" and HS.SOURCE_KINDS["diagnoses"] == ("diagnosis",)
-        assert e["what"] == ("Diagnosis on r1: A can't reach B (10.255.1.14): 1 hypothesis, "
+        assert e["what"] == ("Diagnosis on r1: whether r1 reaches 10.255.1.14: 1 hypothesis, "
                              "the first decisive"), e["what"]
         assert e["devices"] == ["r1", "r4"] == got["devices"] and e["who"] == ACTOR
         record = dict(e["record"])
@@ -724,11 +724,14 @@ class TestH18:
         assert f.sent == [("r2", command)], "nothing on the path is read"
         assert got["state"] == "done" and got["hypotheses"] == []
         words = f"r2 reaches {address}: 5 of 5 probes answered; the path was not followed"
-        assert got["words"] == words and got["ruled_out"] == [{"check": words, "rule": "reach"}]
+        # C2829: what was ruled out is the loss, never the finding said twice.
+        assert got["words"] == words and got["ruled_out"] == [
+            {"check": f"r2 not reaching {address}", "rule": "reach"}]
+        assert got["runbook_words"] == f"whether r2 reaches {address}"
         assert got["hops"] == [{"n": 0, "device": "r2", "read": f"{command}: 5 of 5 answered "
-                                "(!!!!!)", "against": "A reaches B", "verdict": "ok"}]
+                                "(!!!!!)", "against": f"r2 reaches {address}", "verdict": "ok"}]
         ret = next(s for s in got["steps"] if s["step"] == "return")
-        assert ret["words"] == "the return path is not read: A reaches B"
+        assert ret["words"] == f"the return path is not read: r2 reaches {address}"
 
     def test_a_ping_partly_answered_follows_the_path(self, world):
         # r2's real ping, edited to three replies of five and r1's source address.
@@ -737,8 +740,8 @@ class TestH18:
                   .replace("10.255.1.12", "10.255.1.11"))
         got, f = reach(changed(r1_to_r4(), "r1", R2_PING, partly))
         assert got["hops"][0]["verdict"] == "diverges"
-        assert got["hops"][0]["against"] == ("A reaches B only some of the time: the path is "
-                                             "followed")
+        assert got["hops"][0]["against"] == ("r1 reaches 10.255.1.14 only some of the time: "
+                                             "the path is followed")
         assert ("r1", "show ip cef 10.255.1.14") in f.sent
 
     def test_a_default_route_is_read_at_its_own_prefix(self, world):
@@ -782,7 +785,8 @@ class TestH18:
         assert got["hops"][0] == {"n": 0, "device": "s1", "verdict": "diverges",
                                   "read": "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 "
                                           "timeout 2: 0 of 5 answered (.....)",
-                                  "against": "A does not reach B: the path is followed"}
+                                  "against": "s1 does not reach 2001:db8:1::14: the path is "
+                                             "followed"}
         trace = next(s for s in got["steps"] if s["step"] == "trace")
         assert trace["words"] == ("1 branch(es): s1 Gi0/2 > r1: the trace stops at r1: the "
                                   "device answered nothing")
@@ -877,3 +881,36 @@ class TestH18:
         assert got["hypotheses"][0]["claim"] == ("s1 has not learned 10.10.10.3's MAC "
                                                  "0c00.6f31.800a on any port in VLAN 10")
         assert ("s1", "show spanning-tree interface GigabitEthernet0/3") not in f.sent
+
+
+class TestC2829:
+    """r7's can't-fix diagnosis read poorly (H11 W8): the runbook named by its template ("A
+    can't reach B") and one line said twice, as found and as ruled out. A record written
+    before the fix is drawn the same plain way."""
+
+    OLD = {"id": "dg-0123456789ab", "runbook": "cant_reach", "runbook_words": "A can't reach B",
+           "target": {"device": "r6", "address": "10.255.1.17"}, "state": "done",
+           "words": "r6 reaches 10.255.1.17: 5 of 5 probes answered; the path was not followed",
+           "ruled_out": [{"check": "r6 reaches 10.255.1.17: 5 of 5 probes answered; the path "
+                                   "was not followed", "rule": "reach"}],
+           "hypotheses": [], "steps": [], "hops": []}
+
+    def test_a_record_written_before_draws_its_ends_and_no_line_twice(self):
+        from modules.heal import diagnose_page as P
+
+        got = P.result(dict(self.OLD))
+        assert got["runbook_words"] == "whether r6 reaches 10.255.1.17"
+        assert got["ruled_out"] == [] and got["words"] == self.OLD["words"]
+
+    def test_history_names_its_ends_once(self, world):
+        got, _ = reach({("r2", R2_PING): diag(
+            "r2__ping_10.255.1.14_source_Loopback0_repeat_5_timeout_2.txt")},
+            device="r2", address="10.255.1.14")
+        (e,) = _history()["events"]
+        assert e["what"] == "Diagnosis on r2: whether r2 reaches 10.255.1.14: no cause found"
+        assert dict(e["record"])["Runbook"] == got["runbook_words"]
+
+    def test_an_end_not_known_keeps_the_runbook_s_name(self):
+        from modules.heal import diagnose_reach as R
+
+        assert R.named("", "10.255.1.17") == R.named("r6", "") == "A can't reach B"
