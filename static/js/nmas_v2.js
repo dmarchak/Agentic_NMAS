@@ -350,7 +350,38 @@
     }
     var more = region.querySelectorAll('details[hx-get][open], [data-holds-live]');
     for (i = 0; i < more.length; i++) out.push(more[i]);
+    var at = pointedAt(region);
+    if (at) out.push(at);
     return out.filter(function (u) { return u !== region; });
+  }
+
+  /* C2841: the control a person is pointing at, or a button they have focused, in *region*:
+     a part they are working in (a Right about to be pressed). A merge leaves it, and the row
+     holding it, where it is, and holds a new row that would land above it (`mergeChildren`),
+     so the press lands on what was aimed at. Two of the operator's four Right marks never
+     posted: a later decision's row was drawn above the record, in the window, and the press
+     landed on the line Right had moved down from. */
+  var POINTED = 'button, a[href], summary, label, input, select, textarea';
+  function pointedAt(region) {
+    var el = null;
+    try {
+      var hovered = region.querySelectorAll(':hover');
+      if (hovered.length) el = hovered[hovered.length - 1].closest(POINTED);
+    } catch (x) { el = null; }
+    if (el && region.contains(el)) return el;
+    var a = root.document.activeElement;
+    return a && a.tagName === 'BUTTON' && a !== region && region.contains(a) ? a : null;
+  }
+
+  /* Whether a part a person is working in is at or after *ref* among its siblings, in the
+     window: a node drawn before *ref* would push it down. */
+  function heldAfter(ref, ctx) {
+    var at = shownAt(ref);
+    if (!at || !ctx.keep.length || at.getBoundingClientRect().top >= root.innerHeight) return false;
+    for (var n = at; n; n = n.nextSibling) {
+      if (n.nodeType === 1 && holdsPart(n, ctx)) return true;
+    }
+    return false;
   }
 
   function holdWhileEditing(e) {
@@ -765,7 +796,7 @@
       var o = order[i];
       if (o && o.fresh) {
         var made = root.document.importNode(o.fresh, true);
-        if (ctx.hold && keyOf(o.fresh) && landsAbove(cur, live)) {
+        if (ctx.hold && keyOf(o.fresh) && (landsAbove(cur, live) || heldAfter(cur, ctx))) {
           made.setAttribute('data-nmas-new', '1');
           made.setAttribute('hidden', '');
         }

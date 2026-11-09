@@ -25,7 +25,22 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `8e326ef91146d143edd05f4376c6e9fb7a3b8df5f2f512c4b1043f1d0177381d`
+Templates sha256: `70006e10ea294cbfb7a2a2b3969339d4b115877837b01e24a60e7bada425fb1b`
+
+**Compared again 2026-11-09 for C2824 and C2807**, by the template diff against board
+C342Drift's What to do (no new shot): the drift card's What to do first says, in one line,
+whose change it was and whether something broke with it (self-healing's incident, the drift
+row's words); for a change from outside Mercury that broke something it draws two choices,
+**Put it back** (Put it back to intent…, the device's Deploy, saying its apply refuses today on
+a device that left its golden) and **Keep it** (Keep it: add it to intent…, the Intent tab's
+editor), in place of the board's Keep it (Capture), Put intent back and Remove lines; every
+other case draws the board's choices as before. The lines part's counts compare the lines that
+differ (C2807), its words unchanged. One deviation, logged ("C2824 2"). Templates sha256
+before: `8e326ef91146d143edd05f4376c6e9fb7a3b8df5f2f512c4b1043f1d0177381d`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The drift card's choices for a change from outside Mercury that broke something (C2824) | three choices: Keep it (Capture), Put intent back (Plan a deploy…), Remove lines (Mode B) | the case's words, then two choices: Put it back to intent…, Keep it: add it to intent…; no Capture | **deviation** (log: C2824 2) |
 
 **Compared again 2026-11-03 ~05:3x UTC for C2336:** the drift card's What to do (board
 C342Drift) gains "Read it again", Check drift now…, first, opening Check drift now's card; the

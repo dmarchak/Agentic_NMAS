@@ -2183,11 +2183,18 @@ def heal(ctx):
             + ([("Approval", m(rec["approval"]))] if rec.get("approval") else [])
             + _action_lines(e, m) + steps
             + _advisory_lines(advice.get(e["incident"]) or [], m)))
-        if outcome == "would_heal" and e.get("decisions"):
-            # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong…
-            # (H9, C2399), marking the incident's dry-run decision, its mark read from the
-            # network's heal decisions (one read for the page, `_heal_marks`).
+        # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong… (H9,
+        # C2399), marking the incident's dry-run decision, its mark read from the network's
+        # heal decisions (one read for the page, `_heal_marks`). C2841: the incident's newest
+        # dry-run decision, also when a later decision followed it (C2813: a standing incident
+        # judged again, held), so the record Needs attention asks a person to mark is still
+        # markable here; with the decisions unread, the newest decision when it is the dry run.
+        would = marks.get(":would") or {}
+        did = next((x for x in reversed(e.get("decisions") or []) if x in would), None)
+        if did is None and outcome == "would_heal" and e.get("decisions") and \
+                marks.get(":unreadable"):
             did = e["decisions"][-1]
+        if did:
             got_mark = marks.get(did)
             events[-1]["heal_mark"] = {
                 "list": ctx["ref"].name, "decision": did,
@@ -2256,17 +2263,22 @@ def _advisory_lines(rows: list, m) -> list:
 
 def _heal_marks(network: str, entries: list) -> dict:
     """``{decision id: its newest mark}`` for the dry-run incidents among *entries*, from ONE
-    read of the network's heal decisions; ``{":unreadable": why}`` when they cannot be read
-    (the Right / Wrong control then says so, never "unmarked")."""
+    read of the network's heal decisions, and ``":would"``: ``{decision id: True}`` for every
+    dry-run decision (would heal) they hold (C2841: an incident decided again after its dry run
+    is still that record's); ``{":unreadable": why}`` when they cannot be read (the Right /
+    Wrong control then says so, never "unmarked")."""
     from modules.heal import decisions as HD
 
-    if not any(e.get("outcome") == "would_heal" for e in entries):
+    if not any(e.get("outcome") == "would_heal" or len(e.get("decisions") or []) > 1
+               for e in entries):
         return {}
     try:
         rows = HD.decisions(network)
     except Exception as exc:                            # noqa: BLE001 (said on the control)
         return {":unreadable": f"{network}'s heal decisions could not be read ({exc})"}
-    return {d.get("id"): d.get("mark") for d in rows if d.get("mark")}
+    out = {d.get("id"): d.get("mark") for d in rows if d.get("mark")}
+    out[":would"] = {d.get("id"): True for d in rows if d.get("outcome") == "would_heal"}
+    return out
 
 
 def diagnoses(ctx):

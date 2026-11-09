@@ -225,7 +225,10 @@ class TestTheLines:
         text = _text(html)
         assert "-" + DESCRIPTION in html and "+" + EDITED_DESCRIPTION in html
         assert "2 lines only on r3, 2 only in its golden" in text
-        n = result["drifted_devices"][0]["diff_lines"]
+        # C2807: the run's count of the lines that differ (2 + 2), the count its Needs
+        # attention row says, never its diff's length with headers and context.
+        n = result["drifted_devices"][0]["changed_lines"]
+        assert n == 4 < result["drifted_devices"][0]["diff_lines"], result["drifted_devices"]
         assert f"counted the same {n}" in text, text
         assert 'class="dl-add"' in html and 'class="dl-del"' in html
 
@@ -261,7 +264,9 @@ class TestTheLines:
         assert more != _running(), "r2's capture has no `lldp run` to remove"
         result = _drift(monkeypatch, running=more)
         text = _text(_detail(lab))
-        assert f"counted {result['drifted_devices'][0]['diff_lines']} where these are" in text
+        # C2807: both counts are of the lines that differ (the kept diff's 4).
+        assert f"counted {result['drifted_devices'][0]['changed_lines']} where these are 4:" \
+            in text, text
         assert "may have moved since" in text
 
     def test_lines_no_longer_kept_are_said_with_why(self, lab, monkeypatch, loki):  # noqa: F811

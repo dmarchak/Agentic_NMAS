@@ -1241,6 +1241,77 @@ DRIFT_STALE_INTERVALS = 2
 _DRIFT_ACTION = {"label": "Capture what the device holds as its golden, or deploy its intent "
                           "back to it"}
 
+#: The actions a queued drift item never replaces when it attaches (`_attach`): C2824's two,
+#: offered when a change from outside Mercury broke something, whose item says Capture.
+_ACTIONS_KEPT = ("drift_back",)
+
+
+def drift_case(host: str, lst: str, cases: dict) -> dict:
+    """C2824 (the operator, 2026-11-09: "When drift came from outside Mercury and something broke
+    at the same time, the card never offers Capture. Its two actions are 'Put it back to
+    intent' and 'Keep it: add it to intent'. Capture stays available elsewhere for a change
+    that broke nothing."): *host*'s case from self-healing's incidents (*cases*,
+    `incidents.drift_cases`), its words and whether Capture is offered. ``{"case", "words",
+    "capture"}``, *case* one of:
+    - ``broke``: changed from outside Mercury, and a symptom at the same time: Capture would
+      record the fault as the approved state, which self-healing would later put back;
+    - ``unread``: the incidents cannot be read, so whether something broke is not known; Capture
+      is not offered until it is (a guard that cannot be read fails closed);
+    - ``quiet``: changed from outside Mercury, and nothing broke that self-healing saw;
+    - ``unknown``: self-healing holds no incident for the change (it is off on the network, or
+      saw no change): who made it and whether anything broke are not known here.
+    The two last offer Capture, as before."""
+    from modules.heal import incidents as INC
+
+    if cases.get("state") == "unreadable":
+        return {"case": "unread", "capture": False,
+                "words": (f"whether anything broke with {host}'s change cannot be read "
+                          f"({cases.get('error') or 'no reason given'}), so Capture is not "
+                          "offered until it can: put it back to intent, or keep it by adding it "
+                          "to intent")}
+    got = (cases.get("devices") or {}).get(host)
+    if not got:
+        return {"case": "unknown", "capture": True,
+                "words": (f"self-healing holds no incident for {host}'s change, so who made it "
+                          "and whether anything broke with it are not known here")}
+    if got["case"] == "broke":
+        return {"case": "broke", "capture": False,
+                "words": (f"{host} was {got['who']}, and at the same time something broke ("
+                          f"{INC.symptoms_words(got['symptoms'])}). Capturing it would record "
+                          f"the fault as {host}'s approved state, which self-healing would then "
+                          "put back, so Capture is not offered: put it back to intent, or keep "
+                          "it by adding it to intent")}
+    return {"case": "quiet", "capture": True,
+            "words": (f"{host} was {got['who']}, and nothing broke with it that self-healing "
+                      "saw: if the change is wanted, capture it; if not, put intent back")}
+
+
+def _drift_cases(lst: str) -> dict:
+    """`incidents.drift_cases` for *lst*, a read that raised said as unreadable."""
+    from modules.heal import incidents as INC
+
+    try:
+        return INC.drift_cases(lst)
+    except Exception as exc:                       # noqa: BLE001 - said on the row
+        log.error("attention: %s's heal incidents could not be read: %s", lst, exc)
+        return {"state": "unreadable", "devices": {},
+                "error": f"{lst}'s heal incidents raised {type(exc).__name__}"}
+
+
+def _drift_back_action(host: str, lst: str) -> dict:
+    """C2824's two actions, each opening its card on the device's page: Put it back to intent
+    (its Deploy, committed intent merge-only with each line intent lacks removable by Mode B)
+    and Keep it: add it to intent (its Intent tab's editor, committed with a reason). The
+    first is said as it is today: a deploy is planned against the device's golden, and stage
+    4 refuses a device that has left it (`deploy.device_against_capture`, C78), naming Capture
+    as its way out, so it cannot complete on a drifted device (registered, C2848)."""
+    return {"label": (f"Put it back to intent, or keep it: add it to intent (Edit intent, then "
+                      f"commit). Today Put it back's deploy is planned against {host}'s golden, "
+                      f"which {host} has left, so its apply refuses with nothing sent: Mercury "
+                      "cannot yet put a drifted device back to intent without capturing it "
+                      "first"),
+            "open": "drift_back", "device": host, "list": lst}
+
 #: Where a drift check is run and the schedule switched: Settings › Installation ›
 #: Diagnostics, its Drift checks card (board F4). Today's Drift tab, which these rows named
 #: until it left at 7.8 (2026-10-15), had no address.
@@ -1314,24 +1385,35 @@ def drift_source(status=None, now=None, presence=None) -> dict:
             {"label": _CHECK_NOW, "href": _DRIFT_HOME}, "warning",
             since=last_ts + DRIFT_STALE_INTERVALS * interval)
     coverage = f"checked {last.get('checked', 0)} of {last.get('inventory', 0)}"
+    # C2824: what self-healing holds about each changed device, read once for the run's rows.
+    cases = _drift_cases(lst) if last.get("drifted_devices") else {}
     for d in last.get("drifted_devices") or []:
+        host = d["hostname"]
         # C2319: the lines that differ and when THIS device was read, where the run recorded
         # them; a run from before says its diff's length and the run's time, as it did.
         n_lines = (f"{d['changed_lines']} changed line(s)" if "changed_lines" in d
                    else f"{d.get('diff_lines', '?')} diff line(s)")
         read = (f"read at {_iso(d['read_at'])}" if d.get("read_at")
                 else f"seen by the drift check at {_iso(last_ts) or 'an unrecorded time'}")
-        add(f"drifted:{d['hostname']}", f"{d['hostname']} has drifted from its golden",
-            f"the running config differs from the committed golden by {n_lines}, {read}; it "
-            "stands until the next drift check reads the device again (Check drift now, on "
-            "its page's Actions and its drift card, reads it at once); since when it has "
-            "differed is not recorded",
+        case = drift_case(host, lst, cases)
+        add(f"drifted:{host}",
+            (f"{host} was changed from outside Mercury, and something broke at the same time"
+             if case["case"] == "broke" else f"{host} has drifted from its golden"),
+            f"{case['words']}. The running config differs from the committed golden by "
+            f"{n_lines}, {read}; it stands until the next drift check reads the device again "
+            "(Check drift now, on its page's Actions and its drift card, reads it at once); "
+            "since when it has differed is not recorded",
             # Both answers on the row, each opening its card on the device page (the operator's
             # overnight list, item 7: before the AI family and its approval queue go, a drift
             # is answered here): Capture accepts what the device holds, Deploy puts intent back.
-            dict(_DRIFT_ACTION, open="drift", device=d["hostname"], list=lst),
-            "danger", devices=[d["hostname"]],
-            operands={"diff_lines": d.get("diff_lines"), "coverage": coverage})
+            # C2824: never Capture when a change from outside Mercury broke something.
+            (dict(_DRIFT_ACTION, open="drift", device=host, list=lst) if case["capture"]
+             else _drift_back_action(host, lst)),
+            "danger", devices=[host],
+            # C2807: the lines that differ, as the row's words say, never the diff's length; a
+            # run from before C2319 recorded only its diff's length, and says that.
+            operands={**({"changed_lines": d["changed_lines"]} if "changed_lines" in d
+                         else {"diff_lines": d.get("diff_lines")}), "coverage": coverage})
     for d in last.get("skipped") or []:
         no_golden = d.get("reason") == "no golden config saved"
         add(f"skipped:{d['hostname']}", f"{d['hostname']} was not checked for drift",
@@ -6757,7 +6839,10 @@ def _attach(rows: list) -> list:
         target["attached"].append({"id": r["id"], "kind": r["kind"], "source": r["source"],
                                    "what": r["what"], "since": r["since"],
                                    "devices": r["devices"]})
-        if r.get("attach_action", True):
+        # C2824: a drift row offering its two actions because the change broke something keeps
+        # them; the queued item's Capture would record the fault as the approved state.
+        if r.get("attach_action", True) and \
+                (target.get("action") or {}).get("open") not in _ACTIONS_KEPT:
             target["action"] = r["action"]
     return kept
 

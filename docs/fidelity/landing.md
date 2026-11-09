@@ -35,7 +35,23 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `89f6d0227bcdb1fd109a193d41838b9278c7af6dca1683404327d39ffe6be905`
+Templates sha256: `fe0010daa9ae3bd8365f51182c2e91368365988467fd78ce124e001fd639f3fe`
+
+**Compared again 2026-11-09 for C2824** (the operator, 2026-11-09: a change from outside
+Mercury that broke something is never offered Capture), by the template diff (no new shot):
+`_attention.html`'s What to do gains one branch, for a drift row whose action is
+`drift_back`: **Put it back to intent…** (the device's Deploy card) and **Keep it: add it to
+intent…** (its Intent tab, the editor open), each with its (i), in place of Capture <device>…
+and Deploy intent to <device>…. The row's line draws its title as before ("r6 was changed from
+outside Mercury, and something broke at the same time"), and its What to do label the two
+actions in words. The boards draw a drifted device's row with Capture and Deploy intent only:
+one deviation, logged ("C2824 1"). Every other row's line and What to do are unchanged.
+Templates sha256 before: `89f6d0227bcdb1fd109a193d41838b9278c7af6dca1683404327d39ffe6be905`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A drift row whose change from outside Mercury broke something (C2824) | a drifted device's row offers Capture and Deploy intent (Main.dc.html's drift row) | Put it back to intent… and Keep it: add it to intent…, no Capture | **deviation** (log: C2824 1) |
+
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each row of Recent
 (`_recent.html`) carries `data-key`, its stable key, which the live merge matches rows by;
 nothing drawn moves. Compared by reading the diff, with no new shot. Before:

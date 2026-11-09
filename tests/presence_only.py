@@ -333,7 +333,6 @@ PRESENCE_ONLY = frozenset({
     "tests/test_drift_overview.py::TestTheLines::test_a_secret_in_the_diff_is_masked_on_both_sides",
     "tests/test_drift_overview.py::TestTheLines::test_lines_kept_by_an_earlier_run_say_they_may_have_moved",
     "tests/test_drift_overview.py::TestTheLines::test_lines_no_longer_kept_are_said_with_why",
-    "tests/test_drift_overview.py::TestTheLines::test_the_kept_lines_are_drawn_masked_with_their_counts",
     "tests/test_drift_overview.py::TestTheLog::test_loki_not_answering_is_couldnt_load_never_no_lines",
     "tests/test_drift_overview.py::TestTheLog::test_the_drawn_log_names_each_receive_time_and_the_devices_own",
     "tests/test_drift_overview.py::TestTheRow::test_a_network_never_checked_says_so",

@@ -686,6 +686,73 @@ def ends_at_golden(standing: dict) -> bool:
     return s.get("on") == "departure" and bool(s.get("departure")) and s.get("guard") != 4
 
 
+#: How many symptoms a drift's words name; the rest are counted.
+DRIFT_SYMPTOMS_NAMED = 3
+
+
+def drift_cases(network: str) -> dict:
+    """C2824 (the operator, 2026-11-09): what self-healing holds about each device that CHANGED,
+    for the drift row and the drift card to choose their actions by. A read: ``{"state",
+    "error", "devices": {device: {"case", "who", "symptoms"}}}``, *state* the store's (``ok``,
+    ``absent``, ``unreadable``). A device is here when it is the cause (a configuration change
+    from outside Mercury, or the drift record) of an OPEN incident, standing ones included
+    (C2813: a would-heal, a can't-fix or a hold leaves it open while its cause stands):
+    - ``broke``: the incident also holds a symptom (an alert, an adjacency down, a logged drop,
+      a duplicate router-id), on the device or on a device attached to it: a change from outside
+      Mercury and something broke at the same time;
+    - ``quiet``: it holds none.
+    *who* says whose change it was in words: the configuration-change line's attribution (never
+    Mercury's: `triggers.from_logs_tail` sights no change of Mercury's), the line's time and who
+    the line names; or, with no such line, that Mercury holds no record of making it, so it is
+    treated as from outside (the attribution rule: an unknown change is an outside one).
+    *symptoms* names each symptom's device and kind."""
+    got = read(network)
+    out = {"state": got["state"], "error": got["error"], "devices": {}}
+    for inc in got["incidents"]:
+        if inc.get("state") not in OPEN_STATES:
+            continue
+        holders = [inc] + list(inc.get("attached") or [])
+        seen, symptoms = set(), []
+        for h in holders:
+            for t in h.get("triggers") or []:
+                if t.get("kind") in SYMPTOM_KINDS:
+                    words = f"{h.get('device') or '?'}: {KIND_WORDS[t['kind']]}"
+                    if words not in seen:
+                        seen.add(words)
+                        symptoms.append(words)
+        for h in holders:
+            changes = [t for t in h.get("triggers") or [] if t.get("kind") in CAUSE_KINDS]
+            if not h.get("device") or not changes:
+                continue
+            lines = [t for t in changes if t["kind"] == "config_change"]
+            out["devices"][h["device"]] = {"case": "broke" if symptoms else "quiet",
+                                           "who": _change_words(lines[-1] if lines else None),
+                                           "symptoms": symptoms}
+    return out
+
+
+def _change_words(trigger) -> str:
+    """Whose change a configuration-change trigger records, in words (C2824); with none, that
+    Mercury holds no record of making it."""
+    if not trigger:
+        return ("changed with no record of Mercury making it (no configuration-change line from "
+                "it was received), so it is treated as from outside Mercury")
+    by = (trigger.get("attribution") or {}).get("by")
+    whose = ("from outside Mercury" if by != "unknown" else
+             "by a change not known to be Mercury's (a record it is judged by could not be "
+             "read), so treated as from outside Mercury")
+    person = (trigger.get("person") or {}).get("words") or "the line names nobody"
+    return f"changed {whose} at {trigger.get('at') or 'an unrecorded time'} ({person})"
+
+
+def symptoms_words(symptoms: list) -> str:
+    """The symptoms a drift's words name: the first `DRIFT_SYMPTOMS_NAMED`, the rest counted."""
+    named = list(symptoms[:DRIFT_SYMPTOMS_NAMED])
+    if len(symptoms) > DRIFT_SYMPTOMS_NAMED:
+        named.append(f"{len(symptoms) - DRIFT_SYMPTOMS_NAMED} more")
+    return "; ".join(named)
+
+
 def close(network: str, incident_id: str, why: str, now: float = None) -> dict:
     now = time.time() if now is None else float(now)
     if not (why or "").strip():

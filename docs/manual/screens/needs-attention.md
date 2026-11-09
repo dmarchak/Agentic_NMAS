@@ -185,6 +185,24 @@ unless changed). A drifted device's row carries both answers: **Capture** record
 holds as its golden (the change was wanted), and **Deploy intent** puts its committed intent back
 (it was not); each opens its card on the device's page, with its preview and confirm.
 
+**When the change came from outside Mercury and something broke at the same time, the row
+never offers Capture.** Capturing then would record the fault as the device's approved state,
+and self-healing would later put the fault back. Mercury knows both from self-healing's
+incident for the device: its configuration-change line, judged not Mercury's (or no record of
+Mercury making it), and a symptom with it (an alert, an adjacency down, a logged drop) on the
+device or on a device inside its blast radius. The row then says so in its title ("edge1 was
+changed from outside Mercury, and something broke at the same time") and in its words (who
+changed it, when, and what broke), and offers two actions: **Put it back to intent…** (the
+device's Deploy: committed intent, merge-only, each line intent lacks removable with a reason)
+and **Keep it: add it to intent…** (the device's Intent tab, its editor open, committed with
+your reason). The queued drift item's Capture does not replace them. Today a deploy is planned
+against the device's golden, which a drifted device has left, so Put it back's apply refuses
+with nothing sent; the row says so, and Mercury cannot yet put a drifted device back to intent
+without capturing it first. When self-healing's incidents cannot be read, whether something
+broke is not known, and Capture is not offered until they can be. Capture stays offered where
+the change broke nothing, and where self-healing holds no incident for the change (it is off,
+or saw no change): the words say which.
+
 **Persist <device>…** is the action of three rows: a deploy that was verified and not saved to
 startup, a deploy whose save was held because its verify did not pass, and job health's row for a device whose running configuration holds the only working
 credential. It opens the device's Persist card on its page, with its preview and confirm (see

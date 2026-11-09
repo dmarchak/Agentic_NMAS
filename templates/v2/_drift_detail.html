@@ -50,16 +50,31 @@
   </div>
   <div class="drift-part">
     <h3 class="drift-k">What to do</h3>
+    {#- C2824 (the operator, 2026-11-09): whose change it was and whether something broke with
+        it, from self-healing's incident; a change from outside Mercury that broke something is
+        never offered Capture. -#}
+    {%- if d.case and d.case.words %}
+    <p class="drift-sum">{{ d.case.words[0]|upper }}{{ d.case.words[1:] }}.</p>
+    {%- endif %}
     <div class="drift-choices">
       {#- C2336: first, whether it still differs: one device's drift read, read-only. -#}
       <div class="drift-choice"><span class="drift-w">Read it again</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="drift-check" href="{{ url_for('device_v2.device', name=host, tab='overview', op='drift_check') }}" hx-get="{{ url_for('device_v2.drift_check_card', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Check drift now…</span><span class="op-busy">Opening…</span></a>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}</span>
         <span class="muted small">reads {{ host }} now and compares it with its golden, sending nothing: after a revert, this says whether it is back.</span></span></div>
+      {%- if not d.case or d.case.capture %}
       <div class="drift-choice"><span class="drift-w">Keep it</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="capture" href="{{ url_for('device_v2.device', name=host, tab='overview', op='capture') }}" hx-get="{{ url_for('device_v2.capture', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Capture</span><span class="op-busy">Opening…</span></a>{{ how('capture', op='capture') }}</span>
         <span class="muted small">{{ host }}'s golden becomes what it runs now; intent stays as it is, so the Intent check then shows anything that departs from it.</span></span></div>
       <div class="drift-choice"><span class="drift-w">Put intent back</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="deploy" href="{{ url_for('device_v2.device', name=host, tab='overview', op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Plan a deploy…</span><span class="op-busy">Opening…</span></a>{{ how('deploy', compact=True, op='deploy') }}</span>
         <span class="muted small">sends what intent holds and {{ host }} lacks. A deploy is planned against {{ host }}'s golden, and {{ host }} has moved since it: capture first, or the apply refuses with nothing sent.</span></span></div>
       <div class="drift-choice"><span class="drift-w">Remove lines</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="removal" href="{{ url_for('device_v2.device', name=host, tab='overview', op='deploy', focus='removal') }}" hx-get="{{ url_for('device_v2.deploy', name=host, back='overview', focus='removal') }}" hx-target="this" hx-swap="outerHTML"><span class="op-idle">Remove lines (Mode B)…</span><span class="op-busy">Opening…</span></a>{{ how('removal', compact=True, op='removal') }}</span>
         <span class="muted small">takes off {{ host }} the lines intent lacks, only those you tick, each with a reason. Capture first, so the lines {{ host }} holds now are the ones offered.</span></span></div>
+      {%- else %}
+      {#- C2824: the two actions, no Capture. Put it back is said as it is today (C2848): its
+          deploy is planned against the golden the device has left. -#}
+      <div class="drift-choice"><span class="drift-w">Put it back</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="deploy" href="{{ url_for('device_v2.device', name=host, tab='overview', op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Put it back to intent…</span><span class="op-busy">Opening…</span></a>{{ how('deploy', compact=True, op='deploy') }}</span>
+        <span class="muted small">sends what intent holds and {{ host }} lacks, and removes, each with a reason, the lines intent lacks. Today a deploy is planned against {{ host }}'s golden, which {{ host }} has left, so its apply refuses with nothing sent: Mercury cannot yet put a drifted device back to intent without capturing it first.</span></span></div>
+      <div class="drift-choice"><span class="drift-w">Keep it</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="edit-intent" href="{{ url_for('device_v2.device', name=host, tab='intent', edit=1) }}"><span class="op-idle">Keep it: add it to intent…</span><span class="op-busy">Opening…</span></a>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
+        <span class="muted small">{{ host }}'s intent gains the change, committed with your reason; what {{ host }} runs then matches what it should run.</span></span></div>
+      {%- endif %}
     </div>
   </div>
 </div>

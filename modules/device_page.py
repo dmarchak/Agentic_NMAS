@@ -422,13 +422,17 @@ def _kept_diff(ref, host: str, run_lines) -> dict:
     cut = raw.rstrip().endswith(_TRUNCATED)
     body = raw.rstrip()[:-len(_TRUNCATED)].rstrip("\n") if cut else raw
     rows = _diff_rows(body)
-    same = (not cut and isinstance(run_lines, int) and len(rows) == run_lines)
+    # C2807: the kept lines that differ (its + and - lines), compared with the run's own count
+    # of them, never the kept diff's length with its headers and context.
+    only_device = sum(1 for r in rows if r["kind"] == "add")
+    only_golden = sum(1 for r in rows if r["kind"] == "del")
+    differ = only_device + only_golden
+    same = (not cut and isinstance(run_lines, int) and differ == run_lines)
     return {"rows": rows, "cut": cut, "queued_at": _iso(float(item.get("created_ts") or 0))
             if item.get("created_ts") else None,
-            "only_device": sum(1 for r in rows if r["kind"] == "add"),
-            "only_golden": sum(1 for r in rows if r["kind"] == "del"),
+            "only_device": only_device, "only_golden": only_golden,
             "masked": sum(1 for r in rows if r.get("masked")),
-            "lines": len(rows), "run_lines": run_lines, "same": same}
+            "lines": differ, "run_lines": run_lines, "same": same}
 
 
 def _epoch(iso: str):
@@ -450,19 +454,26 @@ def drift_detail(ref, dev: dict, now: float = None) -> dict:
     lines are the drift run's; a fresh read is Capture's preview, a job)."""
     from modules import device_logs
 
+    from modules import attention
+
     host = dev.get("hostname", "")
     last = _drift_last(ref)
-    run_lines = next((d.get("diff_lines") for d in last.get("drifted_devices") or []
-                      if d.get("hostname") == host), None) if not last.get("_error") else None
+    # C2807: the lines that differ as the run counted them (`drift_check.changed_lines`), the
+    # count its Needs attention row says; a run from before C2319 counted its diff's length.
+    run = next((d for d in last.get("drifted_devices") or [] if d.get("hostname") == host),
+               {}) if not last.get("_error") else {}
+    run_lines = run.get("changed_lines") if "changed_lines" in run else None
     golden = _last_commit(ref.repo_dir, f"golden/{host}.cfg")
     logs = device_logs.change_lines(dev, since=_epoch(golden.get("at")), now=now)
     # What the part draws of each line: its receive time, the device's own time and its mark.
     logs["lines"] = [{k: line.get(k) for k in ("at_iso", "devts", "unsync", "mnemonic", "text")}
                      for line in logs["lines"]]
+    # C2824: whether a change from outside Mercury broke something, so Capture is not offered.
+    case = attention.drift_case(host, ref.name, attention._drift_cases(ref.name))
     return {"host": host, "list": ref.name, "run_at": last.get("timestamp"),
             "diff": _kept_diff(ref, host, run_lines),
             "golden": {"sha": golden.get("sha", ""), "at": golden.get("at", "")},
-            "logs": logs}
+            "logs": logs, "case": {"capture": case["capture"], "words": case["words"]}}
 
 
 def checks(ref, dev: dict) -> list:

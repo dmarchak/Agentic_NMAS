@@ -727,7 +727,10 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         try:
             add_approval(
                 action_type     = "update_golden_config",
-                description     = f"Config drift detected on {hostname} — {len(diff)} changed lines",
+                # C2807: the lines that differ, the count its drift row says, never the
+                # unified diff's length with its headers, hunk lines and context.
+                description     = (f"Config drift detected on {hostname} — "
+                                   f"{differing[hostname]['changed_lines']} changed lines"),
                 device_ip       = device_ip,
                 device_hostname = hostname,
                 diff            = diff_text,

@@ -242,7 +242,12 @@ A live update of the Timeline keeps what you were doing: only the rows that chan
 redrawn, so the rows you opened, a change or a version you loaded into a row, the rows Load more
 added and your place on the page all stay. New records that would arrive above where you are
 reading wait behind **N new, show them** at the top of the window instead of pushing the page
-down; pressing it draws them and takes you to them.
+down; pressing it draws them and takes you to them. The control under your pointer (a dry-run
+record's **Right**, say) and its row stay exactly where they are while you point at it, and a new
+record that would arrive above it waits behind **N new, show them** even when it would land
+inside the window, so a press lands on what you aimed at. A dry-run record decided again later
+(self-healing judged its incident again) still carries its **Right** and **Wrong…** for the dry
+run, which Needs attention asks you to mark.
 
 ## Query {#query}
 

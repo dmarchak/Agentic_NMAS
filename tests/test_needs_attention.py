@@ -414,7 +414,9 @@ class TestDriftAsASource:
         import re
         got = re.search(r"by (\d+) changed line\(s\), read at \d{4}-\d\d-\d\dT", drifted["cause"])
         assert got, drifted["cause"]
-        assert 0 < int(got.group(1)) < drifted["operands"]["diff_lines"], drifted["operands"]
+        # C2807: the row's Details carry the same count its words say, never the diff's length.
+        assert 0 < int(got.group(1)) == drifted["operands"]["changed_lines"], drifted["operands"]
+        assert "diff_lines" not in drifted["operands"], drifted["operands"]
         assert "it stands until the next drift check reads the device again" in drifted["cause"]
 
     def test_a_run_recorded_before_says_its_diff_s_length_and_the_run_s_time(self):
@@ -432,7 +434,7 @@ class TestDriftAsASource:
         rows = {r["id"].split(":", 2)[2]: r for r in res["rows"]}
         drifted = rows["drifted:r2"]
         assert drifted["level"] == "danger" and drifted["devices"] == ["r2"]
-        assert drifted["operands"]["diff_lines"] > 0
+        assert drifted["operands"]["changed_lines"] > 0
         assert drifted["operands"]["coverage"] == "checked 2 of 4"
         # Both answers on the row (the operator's overnight list, item 7): Capture and Deploy.
         assert drifted["action"]["label"].startswith("Capture what the device holds")

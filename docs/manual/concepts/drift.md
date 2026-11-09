@@ -97,6 +97,19 @@ intent holds and the device lacks) and **Remove lines (Mode B)…** (the lines t
 and intent lacks, only those you tick, each with a reason). Restore, the second way, is on the
 Actions menu.
 
+**A change from outside Mercury that broke something is never offered Capture** (the
+operator, 2026-11-09). When self-healing's incident for the device holds its configuration
+change, judged not Mercury's, and a symptom at the same time (an alert, an adjacency down, a
+logged drop, on the device or inside its blast radius), capturing would record the fault as
+the approved state, which self-healing would later put back. The device's drift card and its
+[Needs attention](needs-attention) row then offer two actions: **Put it back to intent…** (the
+device's Deploy) and **Keep it: add it to intent…** (its Intent tab's editor, committed with a
+reason), and say whose change it was, when, and what broke. Today a deploy is planned against
+the golden the device has left, so Put it back's apply refuses with nothing sent: Mercury
+cannot yet put a drifted device back to intent without capturing it first, and the card says
+so. Capture stays offered where the change broke nothing, or where self-healing holds no
+incident for it.
+
 1. **Capture the running config as the golden** ([Capture and Save All](capture)). Asserts:
    *the device is right, and the record was behind it.* The device is read now, the change is
    previewed against the golden and against intent, and the confirm records it as you.
