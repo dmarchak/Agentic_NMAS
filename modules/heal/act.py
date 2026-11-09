@@ -806,7 +806,14 @@ def _judge(device, r, report, src, via, step, finish, symptom):
                                   + (f": {again['error']}" if again.get("error") else "")
                                   + "): the documentation is not shown true"), sent=True,
                       report=report)
-    step("golden", "ok", f"golden {golden['commit'][:10]} committed; read again: at its golden")
+    # Lab 10's "documentation is updated and tested", said where it happened: the golden is
+    # the device's documentation of record; it was committed only after Mercury's config check
+    # passed (`repo.commit`), the configuration repository's CI runs that check again on its
+    # push, and the device read again matches it.
+    step("golden", "ok", (f"documentation updated and tested: golden {golden['commit'][:10]} "
+                          "committed after Mercury's config check passed (the configuration "
+                          "repository's CI runs the same check on its push); the device read "
+                          "again matches it"))
     symptom = ((r.get("heal") or {}).get("symptom") or {}) or symptom()
     if symptom.get("state") == "present":
         return finish("symptom_remains", (f"configuration at intent, and {symptom['words']}: "

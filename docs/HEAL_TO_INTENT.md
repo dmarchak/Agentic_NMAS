@@ -473,9 +473,15 @@ section 9's "would have converged" records are not built yet.
   always proposed, so no Auto list can include them; `added_line` no longer holds a security
   control; `security_revert` (only where a network answers yes, default no) is not among the
   first Auto kinds either.
-- **The condition:** Auto turns on Nov 15 only if C2824, C2813, C2825, C2821 and C2818 have
-  landed, AND W1, W3 and W4 (H11's sheet) re-run clean in dry run that morning. Otherwise Auto
-  waits for the Nov 23 review, and dry run continues.
+- **The condition** (narrowed by the operator, 2026-11-09, to what is live): Auto turns on only
+  if C2821, C2813, C2825 and C2824 are deployed (all are, since 7b4a9271 and 37d882b7), AND
+  W1, W3 and W4 (H11's sheet) re-run clean in dry run that morning. Otherwise Auto waits for the
+  Nov 23 review, and dry run continues. **C2818 moved to after Nov 30:** in the Lab 10 demo,
+  faults are injected by the `lab` account, so the change's person is named unambiguously
+  without Mercury's own account.
+- **The supervised window, Nov 13 to 16** (the operator, 2026-11-09): Auto on for
+  `missing_line` only, with `heal_mode_until` set to the window's end, so it returns to dry run
+  by itself; three or four real heals and one can't-fix recorded for the video.
 - **The checklist:** ~/Documents/nmas-reports/2026-11-15-auto-checklist.md, each item with its
   PASS line.
 

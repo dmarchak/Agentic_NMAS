@@ -186,6 +186,16 @@ class TestTheHeal:
         assert names[-3:] == ["golden", "symptom", "record"], names
         assert {"intent", "saved"} <= set(names)
 
+    def test_the_golden_step_says_the_documentation_was_updated_and_tested(self, lab):
+        """Lab 10 (3): the step a person reads names what was updated (the golden, by its
+        commit) and how it was tested (the config check before the commit, the configuration
+        repository's CI on its push, and the device read again)."""
+        got, _src, _d = act(GOLDEN + ROUTE4)
+        (g,) = [s for s in got["steps"] if s["step"] == "golden"]
+        assert g["result"] == "ok"
+        assert g["words"].startswith("documentation updated and tested: golden ")
+        assert "config check passed" in g["words"] and "read again matches it" in g["words"]
+
     def test_a_decision_is_taken_once(self, lab):
         d = decided(GOLDEN + ROUTE4)
         A.act_one("Default", d["id"], now=T0 + 5, sources=FakeAct(GOLDEN + ROUTE4))
