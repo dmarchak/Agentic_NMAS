@@ -2846,9 +2846,19 @@ def _read(name, source, ctx) -> dict:
                                          f"read ({type(exc).__name__}: {exc})"],
                 "cut": [], "unborn": [], "more": False, "floor": None}
     events = list(got.get("events") or [])
+    # Identical records (one kind, time, commit, devices and words: a break-glass record
+    # exported twice in one second) are still two rows, so the second and later of them carry
+    # their place among them (`-2`, `-3`, in the store's order, which a read gives the same each
+    # time): one id is one row on the page, its address and the key a live refresh merges it
+    # by (C2810). Drawn under one id, the merge took the second for a new row on every refresh,
+    # hid it above the window and counted it in "N new, show them" (measured 2026-11-09 by
+    # tests/test_live_marks.py after the break-glass tests: "7 new" for one new row).
+    seen = {}
     for e in events:
-        e["id"] = row_id(e)
-    more = bool(got.get("cut")) or len(events) >= ctx["limit"]
+        base = row_id(e)
+        seen[base] = seen.get(base, 0) + 1
+        e["id"] = base if seen[base] == 1 else f"{base}-{seen[base]}"
+    more =bool(got.get("cut")) or len(events) >= ctx["limit"]
     floor = min((epoch(e["at"]) for e in events), default=float("inf") if more else None)
     # The last row the store returned at its oldest time: rows it did not return come after it.
     last = [e["id"] for e in events if epoch(e["at"]) == floor][-1:] or [""]

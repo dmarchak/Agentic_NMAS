@@ -68,10 +68,24 @@ def _decide(running, at, **fake):
 def marks(lab, tmp_path, monkeypatch):  # noqa: F811
     """Lab marked lab and in dry run, r3's would-heal decided; the mark POSTs counted. The
     network's heal store under this test's folder (`config.list_data_path`, which the lab
-    leaves pointing at the shared store)."""
+    leaves pointing at the shared store), and the installation's own stores too
+    (`config.DATA_DIR`): History draws the rows every network shares that name r3 (the
+    break-glass exports, reveals, rotations, settings), and the session's held what earlier
+    tests wrote, so what these pages drew depended on which tests ran first.
+
+    In place of those, the shape they had, planted: two identical records of r3 (a break-glass
+    record exported twice in one second) between the dry-run record and the decision that
+    follows it. Rows between the two put the record's next row above it, not after it; two
+    identical rows drew one id twice (measured 2026-11-09, 96 files of the gate's browser3
+    shard before this file: "7 new, show them" for one new row, and Right drawn twice, the
+    first copy hidden)."""
     import app as A
+    from modules import breakglass as bg
     from tests.test_heal_policy import confirm, mark
     monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setattr("modules.config.DATA_DIR", str(data))
     for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
                           ("modules.nsot.device_ops.holder", lambda n, d: None),
                           ("modules.change_windows.holding", lambda now=None, given=None: None),
@@ -84,6 +98,10 @@ def marks(lab, tmp_path, monkeypatch):  # noqa: F811
     _change(now - 600, 1)
     d = _decide(GOLDEN + ROUTE4, now - 400)
     assert d["outcome"] == "would_heal", d
+    for _ in range(2):
+        bg.record_export(str(data), list_name=NET, path="/dev/shm/nmas-breakglass.bg",
+                         key_fingerprint="ab12", actor="alex@example.com", at=now - 200,
+                         devices=[{"hostname": HOST, "username": "nmas", "password": "x"}])
     posts = []
     view = A.app.view_functions["heal_proposal_v2.mark"]
 
@@ -195,7 +213,12 @@ def test_c2841_right_pressed_as_a_later_decision_lands_is_recorded(served, marks
     where the person aimed. It must reach the app and be drawn as marked. Before the fix the
     later incident's row was drawn above the record in the window, Right moved 38 px down and
     the press landed on the record's step log; with the same incident, Right was not drawn at
-    all once the incident's newest outcome was held (measured 2026-11-09, both pages)."""
+    all once the incident's newest outcome was held (measured 2026-11-09, both pages).
+
+    With rows between the record and the later decision (`marks`' two identical break-glass
+    records): the incident's next row was drawn above the record, hidden, holding the first
+    `#heal-mark-…` of the page, so Right's answer went there; and the second identical record
+    was drawn again as new on every refresh, "2 new" for one (measured 2026-11-09)."""
     from modules.heal import decisions
     srv, b = served
     did = marks["decision"]
@@ -218,8 +241,8 @@ def test_c2841_right_pressed_as_a_later_decision_lands_is_recorded(served, marks
     assert (decisions.find(NET, did).get("mark") or {}).get("right") is True
     # The later decision's row was held, not lost: counted, and drawn when asked.
     if not same_incident:
-        assert b.js("return /1 new, show them/.test((document.querySelector('.live-new button')"
-                    " || {}).textContent || '')"), url
+        said = b.js("return (document.querySelector('.live-new button') || {}).textContent || ''")
+        assert said == "1 new, show them", f"{url}: {said!r}"
     # Drawn again from the server, the record still carries its mark.
     b.go(srv.url(url))
     b.wait_for(READY + f" && !!{_card(did)}", 20)

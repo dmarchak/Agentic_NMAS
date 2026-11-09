@@ -140,6 +140,25 @@ class TestLoadMoreByKeyset:
         assert re.fullmatch(r"r-[0-9a-f]{16}", last["id"])
         assert HS.row_id(dict(last)) == last["id"], "the same record has the same id"
 
+    def test_identical_records_are_rows_of_their_own_ids(self, stores):
+        """Two records alike in all that makes a row's id (one kind, time, devices and words:
+        a break-glass record exported twice in one second) are two rows, each its own id, the
+        same on every read, and Load more draws each once across a page's edge. One id drawn
+        twice took the second for a new row on every live refresh (measured 2026-11-09)."""
+        a = _rows("a", 60)
+        same = a[48]["at"]
+        for i in (48, 49, 50, 51):
+            a[i] = {"at": same, "what": "Break-glass record exported (1 device)"}
+        stores(a=Store(a))
+        first = HS.timeline(None, members=[])["events"]
+        alike = [e["id"] for e in first if e["what"].startswith("Break-glass")]
+        assert len(alike) == len(set(alike)) == 2, alike
+        assert [e["id"] for e in HS.timeline(None, members=[])["events"]] == \
+            [e["id"] for e in first], "the same ids on every read"
+        drawn, _, _ = _walk()
+        ids = [e["id"] for e in drawn]
+        assert len(ids) == len(set(ids)) == 60, "every row once, its own id"
+
 
 class TestEachSourceIsAskedForOlderRows:
     def test_a_paged_store_is_read_once_a_load_at_any_depth(self, stores):

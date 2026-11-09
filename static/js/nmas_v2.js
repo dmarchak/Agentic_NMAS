@@ -726,6 +726,48 @@
     return false;
   }
 
+  /* PURE over nodes: the ids drawn in *node* (itself and every element under it). */
+  function idsIn(node) {
+    var out = [];
+    if (!node || node.nodeType !== 1) return out;
+    if (node.id) out.push(node.id);
+    var all = node.querySelectorAll('[id]');
+    for (var i = 0; i < all.length; i++) out.push(all[i].id);
+    return out;
+  }
+
+  /* A new row that draws an id a kept row holds is that row's successor (the same record,
+     drawn again under a new key: C2841's incident decided again, its dry run's Right in both).
+     It goes right after the row the person is working in, never above it: drawn above, it was
+     the page's first element of that id, so the Right the person pressed sent its answer into
+     the new row (`hx-target="#heal-mark-…"`) and the row they aimed at never drew it, and the
+     row above was hidden behind "N new, show them" though nothing new was there. Where it
+     lands depended on the rows between them: none (a test alone) put it after; any (rows the
+     same network's other records drew, measured 2026-11-09) put it above. */
+  function successorsAfter(order, kept) {
+    if (!kept.length) return order;
+    var held = kept.map(function (k) { return idsIn(k); });
+    var moved = [], out = [], i, j;
+    for (i = 0; i < order.length; i++) {
+      var o = order[i], owner = -1;
+      if (o && o.fresh) {
+        var ids = idsIn(o.fresh);
+        for (j = 0; j < kept.length && owner < 0; j++) {
+          for (var n = 0; n < ids.length; n++) if (held[j].indexOf(ids[n]) >= 0) { owner = j; break; }
+        }
+      }
+      if (owner >= 0) moved.push({o: o, after: kept[owner]});
+      else out.push(o);
+    }
+    for (i = 0; i < moved.length; i++) {
+      for (j = 0; j < out.length; j++) {
+        if ((out[j] && (out[j].node || out[j])) === moved[i].after) { out.splice(j + 1, 0, moved[i].o); break; }
+      }
+      if (j === out.length) out.push(moved[i].o);
+    }
+    return out;
+  }
+
   /* Merge *next*'s children into *live*'s (see the comment above `drawnFrom`). */
   function mergeChildren(live, next, ctx) {
     var kids = Array.prototype.slice.call(live.childNodes);
@@ -791,6 +833,7 @@
       var at = plan[i].node ? used.indexOf(plan[i].was || plan[i].node) : -1;
       if (at >= 0 && after[at]) order = order.concat(after[at]);
     }
+    order = successorsAfter(order, keptBefore);
     var cur = live.firstChild;
     for (i = 0; i < order.length; i++) {
       var o = order[i];
