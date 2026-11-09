@@ -120,8 +120,10 @@ TODO = {
                        "needs a repair route independent of it",
     "multi_device": "read each device's departure: a change across devices is a person's",
 }
-TODO_DEFAULT = ("read what Mercury tried, then adopt the change into intent (Capture) or put "
-                "the device back on its golden through a deploy")
+#: C2824's two answers (C2876): a can't-fix is a change that something went wrong beside, so it
+#: is never offered Capture, which would record it as the approved state.
+TODO_DEFAULT = ("decide on the change: put it back to intent through the device's deploy plan, "
+                "or keep it by adding it to intent in the device's intent editor")
 #: The act's outcomes that notify as a can't-fix, and what each says to do.
 TODO_OUTCOME = {
     "symptom_remains": "the configuration is back at intent and the symptom remains: read the "

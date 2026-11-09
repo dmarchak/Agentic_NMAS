@@ -255,11 +255,14 @@ class TestARun:
         for words in ("each hop's egress and its next hop's ingress are up",
                       "no hop's egress errors rose across the two reads",
                       "every hop's next hop is resolved",
-                      "every device on the path has a route toward B", "the path never loops",
-                      "the path stays inside the network to B's device",
-                      "the return path from B's device reaches A",
+                      # C2878: each by the diagnosis's own ends, r1 to r4's 10.255.1.14.
+                      "every device on the path has a route toward 10.255.1.14",
+                      "the path never loops",
+                      "the path stays inside the network to r4",
+                      "the return path from r4 reaches r1",
                       "no hop binds an access list intent does not hold",
-                      "each hop's route toward B is known via what intent configures there",
+                      "each hop's route toward 10.255.1.14 is known via what intent "
+                      "configures there",
                       "no configuration change was logged on a device read in the last hour"):
             assert words in ruled, ruled
         assert f.sent[:2] == [("r1", "ping 10.255.1.14 source Loopback0 repeat 5 timeout 2"),
@@ -332,6 +335,10 @@ class TestARun:
         assert ("r4", "traceroute 8.8.8.8 numeric timeout 2 probe 1 ttl 1 16") in f.sent
         ret = next(s for s in got["steps"] if s["step"] == "return")
         assert ret["words"] == "the return path is not read: 8.8.8.8 is outside management"
+        # C2878: a rule not checked names the diagnosis's ends (the owner, none here, is the
+        # address).
+        checks = [n["check"] for n in got["not_checked"]]
+        assert "no return path from 8.8.8.8 to r4" in checks, checks
         assert "leaves_network" not in rules(got)
 
     def test_the_cap_stops_and_says_where(self, world, monkeypatch):
@@ -799,7 +806,8 @@ class TestH18:
         hop = next(s for s in got["steps"] if s["step"] == "hop" and s.get("device") == "s1")
         assert (f"`{S1_ND}` not interpreted: the device has no such read") in hop["words"]
         ruled = [r["check"] for r in got["ruled_out"]]
-        assert "each hop's route toward B is known via what intent configures there" in ruled
+        assert ("each hop's route toward 2001:db8:1::14 is known via what intent configures "
+                "there") in ruled
         checks = [n["check"] for n in got["not_checked"]]
         assert "the path past r1" in checks and "the IPv6 access lists bound on the path" in checks
         assert "next_hop_unresolved" in [n.get("rule") for n in got["not_checked"]]
@@ -909,6 +917,23 @@ class TestC2829:
         (e,) = _history()["events"]
         assert e["what"] == "Diagnosis on r2: whether r2 reaches 10.255.1.14: no cause found"
         assert dict(e["record"])["Runbook"] == got["runbook_words"]
+
+    def test_a_rule_s_words_name_the_ends_where_drawn_and_told(self):
+        """C2878: a reach rule's own words name the diagnosis's ends, on the card (what was
+        not checked) and in the notification's summary (by kind), never "A" or "B"."""
+        from modules.heal import auto_diagnose as AD
+        from modules.heal import diagnose_reach as R
+
+        rule = next(r for r in R.PATH_RULES if r.name == "return_path")
+
+        class Ctx:
+            plan = {"source": "r1", "dest": "10.255.1.14", "owner": "r4"}
+        assert rule.said(Ctx()) == "no return path from r4 to r1"
+        d = {"target": {"device": "r1", "address": "10.255.1.14"}, "state": "done",
+             "ruled_out": [{"rule": "no_route"}], "hypotheses": [], "words": ""}
+        assert AD.summary(d)["ruled_out"] == ["no route to 10.255.1.14 at a hop"]
+        words = AD._rule_words(d)
+        assert not [w for n, w in words.items() if "{" in w], "every placeholder filled"
 
     def test_an_end_not_known_keeps_the_runbook_s_name(self):
         from modules.heal import diagnose_reach as R

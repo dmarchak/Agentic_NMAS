@@ -232,3 +232,20 @@ class TestWhichIncidents:
         assert N.WAIT_S == 60.0
         from modules.ai import gateway
         assert N.follow_up_wait_s() == gateway.reservation_ttl_s()
+
+
+class TestNoCantFixOffersCapture:
+    """C2876 with C2824's rule: a can't-fix is a change something went wrong beside, so what
+    it says to do never offers Capture (recording the change as the approved state); the
+    default names C2824's two answers. Every to-do, the default and each outcome's, by the
+    property, never a list of the kinds."""
+
+    def test_no_to_do_names_capture(self):
+        todos = dict(N.TODO, default=N.TODO_DEFAULT, **{f"outcome:{k}": v
+                                                         for k, v in N.TODO_OUTCOME.items()})
+        assert len(todos) >= 8, "the population: every kind's to-do, the default, the outcomes"
+        assert [k for k, v in todos.items() if "capture" in v.lower()] == []
+
+    def test_the_default_names_both_answers(self):
+        assert "put it back to intent" in N.TODO_DEFAULT
+        assert "adding it to intent" in N.TODO_DEFAULT

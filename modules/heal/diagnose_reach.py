@@ -981,6 +981,14 @@ class PathRule(D.Rule):
         super().__init__(name, layer, strength, words, fn)
         self.scope = scope
 
+    def said(self, ctx) -> str:
+        """The rule's words with the diagnosis's own ends (C2878): ``{source}``, ``{dest}``
+        and ``{owner}`` (the device holding *dest*, else the address), never "A" or "B"."""
+        p = getattr(ctx, "plan", None) or {}
+        return self.words.format(source=p.get("source") or "the source",
+                                 dest=p.get("dest") or "the destination",
+                                 owner=p.get("owner") or p.get("dest") or "the destination")
+
 
 def _intent_of(ctx, host: str, iface: str) -> dict:
     from modules.heal.diagnose import _intent_iface
@@ -1069,11 +1077,12 @@ def _r_no_route(rule, ctx):
             if held and f["protocol"] == "static":
                 todo = (f"{dev}'s {f['prefix']} is intent's own ({words}), and nothing more "
                         f"specific toward {ctx.plan['dest']} is in its table: find why the "
-                        f"route for B ({_b_words(ctx)}) does not reach {dev}")
+                        f"route for {ctx.plan['dest']} ({_b_words(ctx)}) does not reach {dev}")
         return [D.finding(rule, claim, evidence,
                           rule_out=f"`{cef_read} {ctx.plan['dest']}` on {dev} naming a next "
                                    "hop", todo=todo)], ""
-    return [], ("every device on the path has a route toward B" if ctx.complete else "")
+    return [], (f"every device on the path has a route toward {ctx.plan['dest']}"
+                if ctx.complete else "")
 
 
 def _r_loop(rule, ctx):
@@ -1100,7 +1109,7 @@ def _r_leaves(rule, ctx):
                                    "device of the network",
                           todo=f"Compare {hop['device']}'s route toward {ctx.plan['dest']} "
                                "with intent's")], ""
-    return [], ("the path stays inside the network to B's device"
+    return [], (f"the path stays inside the network to {ctx.plan['owner']}"
                 if ctx.complete and ctx.plan["owner"] else "")
 
 
@@ -1240,7 +1249,8 @@ def _r_route_source(rule, ctx):
                                        "route intent holds there",
                               todo=f"Check drift now… on {h.device}: its routing departs from "
                                    "intent"))
-    return hits, ("each hop's route toward B is known via what intent configures there"
+    return hits, (f"each hop's route toward {ctx.plan['dest']} is known via what intent "
+                  "configures there"
                   if seen and seen == len(ctx.hops) and not hits else "")
 
 
@@ -1310,7 +1320,9 @@ def _r_hop_acl(rule, ctx):
                           f"{f.get(key) or 'not set'}",
                           f"ip access-group {intent.get(way) or '(none)'} {way}")],
                     rule_out="the bindings reading as intent holds them",
-                    todo="A person's change: an access list is never healed (Never)"))
+                    todo=("A person's decision: an access list added outside intent is "
+                          "proposed, never fixed by itself (Tier 2, C2839): remove it (back "
+                          "to intent) or keep it by adding it to intent")))
     expected = sum(1 + (1 if h.ingress else 0) for h in four)
     return hits, ("no hop binds an access list intent does not hold"
                   if seen and seen == expected and not hits else "")
@@ -1321,7 +1333,8 @@ def _r_return(rule, ctx):
         return [], ""
     bad = [b for b in ctx.ret["branches"] if b["end"] in ("dropped", "loop", "edge")]
     if not bad:
-        return [], ("the return path from B's device reaches A"
+        return [], (f"the return path from {ctx.plan['owner'] or ctx.plan['dest']} reaches "
+                    f"{ctx.plan['source']}"
                     if all(b["end"] == "delivered" for b in ctx.ret["branches"]) else "")
     b = sorted(bad, key=lambda x: path_trace.RANK[x["cls"]])[0]
     hop = b["hops"][-1]
@@ -1367,13 +1380,14 @@ PATH_RULES = (
              "an SVI hop's next hop not learned in its VLAN, or learned on a port spanning "
              "tree does not forward", _r_switch_port, "hop"),
     PathRule("route_source", "network", "strong",
-             "a hop's route toward B known via what intent does not configure there",
+             "a hop's route toward {dest} known via what intent does not configure there",
              _r_route_source, "hop"),
-    PathRule("no_route", "network", "decisive", "no route to B at a hop", _r_no_route, "path"),
-    PathRule("loop", "network", "decisive", "a forwarding loop toward B", _r_loop, "path"),
+    PathRule("no_route", "network", "decisive", "no route to {dest} at a hop", _r_no_route,
+             "path"),
+    PathRule("loop", "network", "decisive", "a forwarding loop toward {dest}", _r_loop, "path"),
     PathRule("leaves_network", "network", "strong",
-             "the path leaves the network though B is a managed device's", _r_leaves, "path"),
-    PathRule("return_path", "network", "decisive", "no return path from B's device to A",
+             "the path leaves the network though {dest} is {owner}'s", _r_leaves, "path"),
+    PathRule("return_path", "network", "decisive", "no return path from {owner} to {source}",
              _r_return, "path"),
     PathRule("hop_acl", "policy", "decisive",
              "an access list bound on the path that intent does not hold", _r_hop_acl, "hop"),

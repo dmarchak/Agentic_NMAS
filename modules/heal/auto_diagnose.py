@@ -438,13 +438,19 @@ def proposals_step(network: str, starter=None) -> list:
 
 # ── What it says: by kind off the host, whole in Mercury ────────────────────────────────────
 
-def _rule_words() -> dict:
+def _rule_words(d: dict = None) -> dict:
+    """Each rule's words; a reach rule's with diagnosis *d*'s own ends (C2878: its target's
+    device and address), "the source" and "the destination" where none is given."""
     from modules.heal import diagnose as D
     from modules.heal import diagnose_reach as R
     from modules.heal import diagnose_stream as S
 
-    return {r.name: r.words for r in tuple(D.RULES) + tuple(R.PATH_RULES)
-            + tuple(S.STREAM_RULES)}
+    t = (d or {}).get("target") or {}
+    ends = {"source": t.get("device") or "the source",
+            "dest": t.get("address") or "the destination"}
+    ends["owner"] = ends["dest"]
+    return {r.name: (r.words.format(**ends) if isinstance(r, R.PathRule) else r.words)
+            for r in tuple(D.RULES) + tuple(R.PATH_RULES) + tuple(S.STREAM_RULES)}
 
 
 def where(h: dict) -> list:
@@ -493,7 +499,7 @@ def summary(d: dict) -> dict:
     """The diagnosis by kind, as a message and the AI analysis's pack carry it: ``{"state",
     "words", "reads", "hypotheses": [{"claim", "strength", "rule", "layer", "incomplete"}],
     "ruled_out"}``. A diagnosis not made is its words alone."""
-    words = _rule_words()
+    words = _rule_words(d)
     if not d:
         return {"state": "none", "words": "", "reads": "", "hypotheses": [], "ruled_out": []}
     state = d.get("state") or ""

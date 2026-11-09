@@ -69,7 +69,9 @@ def workflow_failures(get_runs) -> list:
                         "what": f"the scheduled workflow {name}'s newest scheduled run, "
                                 f"#{newest['run_number']}, ended {newest.get('conclusion')}",
                         "when": str(newest.get("created_at", ""))[:10],
-                        "url": newest.get("html_url", "")})
+                        # The run by its id, never its URL: the URL names the account, and
+                        # the row is published (C2896).
+                        "url": f"Actions run {newest['id']}" if newest.get("id") else ""})
     return out
 
 

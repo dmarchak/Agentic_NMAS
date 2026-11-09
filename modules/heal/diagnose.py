@@ -972,6 +972,11 @@ class Rule:
         self.name, self.layer, self.strength, self.words, self.fn = (name, layer, strength,
                                                                      words, fn)
 
+    def said(self, ctx) -> str:
+        """The rule's words as this diagnosis draws them (a runbook's rule may name its ends,
+        `diagnose_reach.PathRule.said`, C2878)."""
+        return self.words
+
 
 def _r_admin_down(rule, ctx):
     hits, seen = [], 0
@@ -1553,14 +1558,14 @@ def _judge(ctx, out: dict, rules=None) -> None:
             hits, passed = rule.fn(rule, ctx)
         except Exception as exc:                      # noqa: BLE001 (a rule's own failure)
             log.exception("diagnosis %s: rule %s failed", out["id"], rule.name)
-            not_checked.append({"check": rule.words,
+            not_checked.append({"check": rule.said(ctx),
                                 "why": f"the rule failed ({type(exc).__name__})"})
             continue
         found += hits
         if passed:
             ruled_out.append({"check": passed, "rule": rule.name})
         elif not hits:
-            not_checked.append({"check": rule.words, "rule": rule.name,
+            not_checked.append({"check": rule.said(ctx), "rule": rule.name,
                                 "why": "what it compares was not read, or does not apply"})
     ranked = rank(found)
     for n, h in enumerate(ranked, 1):

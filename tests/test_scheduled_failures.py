@@ -27,8 +27,9 @@ def sf(tmp_path, monkeypatch):
 
 
 def _run(n, event, conclusion, day="2026-11-01"):
-    return {"run_number": n, "event": event, "status": "completed", "conclusion": conclusion,
-            "created_at": f"{day}T18:39:24Z", "html_url": f"https://example.invalid/runs/{n}"}
+    return {"id": 42000 + n, "run_number": n, "event": event, "status": "completed",
+            "conclusion": conclusion, "created_at": f"{day}T18:39:24Z",
+            "html_url": f"https://example.invalid/<account>/runs/{n}"}
 
 
 def _runs(table):
@@ -80,6 +81,15 @@ class TestRaisedOrNot:
         at = next(i for i, ln in enumerate(lines) if ln.startswith("| C12 "))
         assert lines[at + 1].startswith("| C100 | **A scheduled job failed:")
         assert "now raised as C100" in capsys.readouterr().out
+
+    def test_the_row_names_the_run_by_its_id_never_its_url(self, sf, capsys):
+        """C2896: the register is published, and a run's URL names the account."""
+        mod, reg = sf
+        mod.main(["--no-host", "--write"], get_runs=_runs({"mutation-nightly.yml": [
+            _run(68, "schedule", "failure")]}), today="2026-11-05")
+        written = next(ln for ln in reg.read_text().splitlines() if ln.startswith("| C100 "))
+        assert "Actions run 42068" in written
+        assert "http" not in written and "<account>" not in written
 
     def test_a_raised_failure_is_said_and_not_written_again(self, sf, capsys):
         mod, reg = sf
