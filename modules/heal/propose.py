@@ -200,7 +200,10 @@ def _stops(network: str, decision: dict, now: float, src) -> str:
     if mode.get("mode") not in ("dry_run", "auto"):
         return (f"self-healing is off for {network} now ({mode.get('words')}), and a proposal "
                 "is applied only while it is on")
-    proposed = set(mode.get("kinds_propose") or [])
+    from modules.heal.policy import SECURITY_KINDS
+
+    # C2839: the security kinds are always proposed, never a setting a policy drops.
+    proposed = set(mode.get("kinds_propose") or []) | set(SECURITY_KINDS)
     kinds = sorted({u.get("kind") for u in decision.get("units") or [] if u.get("tier") == 2})
     off = [k for k in kinds if k not in proposed]
     if off:
@@ -252,6 +255,31 @@ def _find(network: str, decision_id: str) -> dict:
                       ", not a proposal: only a fix that waits for a person is approved or "
                       "declined")
     return d
+
+
+def security_choice(decision: dict):
+    """C2839 (the operator, 2026-11-09): a proposal whose units hold a security kind (any ACL,
+    or a security control removed or changed outside intent, `policy.SECURITY_KINDS`) offers
+    two answers, each a person's: **Remove it (back to intent)**, the proposal's approval
+    (Mode B's measured removal, by hash, with a reason), and **Keep it: add it to intent**,
+    which writes nothing here: it opens the device's intent editor (the one write path for
+    intent, previewed and committed as the person), where the lines named are added; once
+    intent holds them they are no longer a departure, and the proposal is refused at its plan
+    step if approved after. ``{"lines", "remove_words", "keep_words"}`` (the lines masked), or
+    None for any other proposal."""
+    from modules.heal.policy import SECURITY_KINDS
+
+    units = [u for u in decision.get("units") or [] if u.get("kind") in SECURITY_KINDS]
+    if not units:
+        return None
+    lines = [l for u in units for l in (u.get("remove") or []) + (u.get("add") or [])]
+    return {"lines": lines,
+            "remove_words": ("Remove it (back to intent): the program below, sent as you once "
+                             "approved by its hash with a reason"),
+            "keep_words": ("Keep it: add it to intent: open the intent editor, add the "
+                           f"{len(lines)} line(s) below and commit as you; nothing is sent to "
+                           "the device, and once intent holds them this proposal no longer "
+                           "applies (decline it with your reason)")}
 
 
 def view(network: str, decision_id: str, *, now: float = None, sources=None) -> dict:
@@ -316,7 +344,7 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     from modules.heal import auto_diagnose
     diagnosis = auto_diagnose.drawn(network, d.get("incident") or "", device)
     return {"network": network, "decision": d["id"], "incident": d.get("incident"),
-            "diagnosis": diagnosis,
+            "diagnosis": diagnosis, "security": security_choice(d),
             "device": device, "platform": platform, "kind": d.get("kind"),
             "kind_words": KIND_WORDS.get(d.get("kind"), d.get("kind")), "tier": d.get("tier"),
             "units": units, "program": program,

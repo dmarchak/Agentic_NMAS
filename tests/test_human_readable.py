@@ -441,7 +441,7 @@ KNOWN_BARE_IDENTIFIERS = {
     ('device', 'step', '(Tier #); the program # line(s), hash <hex> <step> would_heal: would heal: added_line'): 1,
     ('device', 'step', '(masked) no ip route #.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on'): 1,
     ('device', 'step', '(the line names the account alice on vty#) <step> ok: decision <decision_id> recorded'): 2,
-    ('device', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing will not'): 1,
+    ('device', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing cannot'): 1,
     ('device', 'step', 'Policy <hex> confirmed by admin@example.com <step> ok: incident <incident_id> on'): 1,
     ('device', 'step', 'c#ffee is the approved state: at intent <step> ok: no topology hold, not many'): 2,
     ('device', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line (Tier'): 1,
@@ -453,14 +453,14 @@ KNOWN_BARE_IDENTIFIERS = {
     ('device', 'step', 'the mode dry_run, no halt, no planned work <step> ok: the golden c#ffee is the approved'): 2,
     # The can't-fix's email: the step log as "N. <step>", the ids its steps' words carry, and
     # the incident's id in the foot.
-    ('email', 'decision_id', 'outside Mercur: cant_fix <step>: decision <decision_id> recorded: ok What to do: decide'): 1,
+    ('email', 'decision_id', 'on a cisco_io: cant_fix <step>: decision <decision_id> recorded: ok What to do: decide'): 1,
     ('email', 'hex', 'the departure the grace period settled on (<hex>): ok <step>: # unit(s), security_acl'): 1,
     ('email', 'incident_id', 'ACL What Mercury tried: <step>: incident <incident_id> on edge-d taken: ok <step>: no'): 1,
     ('email', 'incident_id', 'is not set: notify_link_base) Incident <incident_id> · sent #-#-#T#:#:#Z'): 1,
-    ('email', 'step', '<step>: # unit(s), security_acl (Tier #): ok <step>: self-healing will not fix it:'): 1,
+    ('email', 'step', '<step>: # unit(s), security_acl (Tier #): ok <step>: self-healing cannot fix it yet:'): 1,
     ('email', 'step', 'c#ffee is the approved state: at intent: ok <step>: no topology hold, not many devices'): 1,
     ('email', 'step', 'grace period settled, under every rate: ok <step>: edge-d read again: the departure'): 1,
-    ('email', 'step', 'heals was made outside Mercur: cant_fix <step>: decision <decision_id> recorded:'): 1,
+    ('email', 'step', 'interface.ip-access-group on a cisco_io: cant_fix <step>: decision <decision_id> recorded:'): 1,
     ('email', 'step', 'incident <incident_id> on edge-d taken: ok <step>: no kill switch, the mode dry_run,'): 1,
     ('email', 'step', 'kind: a security ACL What Mercury tried: <step>: incident <incident_id> on edge-d'): 1,
     ('email', 'step', 'mode dry_run, no halt, no planned work: ok <step>: the golden c#ffee is the approved'): 1,
@@ -489,7 +489,7 @@ KNOWN_BARE_IDENTIFIERS = {
     ('history', 'step', '(Tier #); the program # line(s), hash <hex> <step> would_heal: would heal: added_line'): 1,
     ('history', 'step', '(masked) no ip route #.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on'): 1,
     ('history', 'step', '(the line names the account alice on vty#) <step> ok: decision <decision_id> recorded'): 2,
-    ('history', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing will not'): 1,
+    ('history', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing cannot'): 1,
     ('history', 'step', 'Policy <hex> confirmed by admin@example.com <step> ok: incident <incident_id> on'): 1,
     ('history', 'step', 'c#ffee is the approved state: at intent <step> ok: no topology hold, not many'): 2,
     ('history', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line (Tier'): 1,
@@ -513,7 +513,7 @@ KNOWN_BARE_IDENTIFIERS = {
     ('needs_attention', 'incident_id', 'advisory. Details list Default incident <incident_id> outcome cant_fix kind security_acl'): 1,
     ('needs_attention', 'incident_id', "run”); decision <decision_id> , incident <incident_id> . Its record on edge-c's History"): 1,
     ('needs_attention', 'lookup', "Open edge-b Read the record on edge-b's History, then mark it right or wrong Open…"): 1,
-    ('needs_attention', 'lookup', "self-healing never removes a security control (read the steps on edge-d's History first) Open… Diagnose… on edge-d:"): 1,
+    ('needs_attention', 'lookup', "its removal is measured on the platform (read the steps on edge-d's History first) Open… Diagnose… on edge-d:"): 1,
 }
 
 

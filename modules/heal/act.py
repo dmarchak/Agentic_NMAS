@@ -633,8 +633,11 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     if not intended.get("text"):
         return refuse("plan", f"committed intent cannot be rendered: {intended.get('why')}")
     inc = _incident(network, decision["incident"])
+    # C2839: classed at apply as it was decided, the network's answer read again (a no since
+    # makes a security_revert unit Tier 2, refused below as not the decision's tier).
     c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
-                       mgmt_ip=dev.get("ip", ""), related=bool(inc.get("related")))
+                       mgmt_ip=dev.get("ip", ""), related=bool(inc.get("related")),
+                       revert=decide.revert_scope(src.mode(now), inc))
     prog = decide.program(golden["text"], text, c["units"], c["removal_ids"],
                           mgmt_ip=dev.get("ip", ""), platform=platform)
     from modules.drift_check import departure, drift_diff

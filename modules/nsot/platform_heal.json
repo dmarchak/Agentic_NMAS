@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "what": "Self-healing's platform pack, as data, per config dialect (docs/HEAL_TO_INTENT.md section 5 and N13; read by modules/heal/kinds.py). Two declarations. SECURITY: the security-control classes by line shape (C2839, the operator, 2026-11-09): a unit that removes or changes a line of one is Tier 2 (a proposal: a person removes it, back to intent, or keeps it and adds it to intent), the ACL class's kind being security_acl and every other class's security_control; adding back a missing one stays what it was. Each class names its line shapes (`lines`, Python regular expressions searched in the line as the device shows it, leading spaces removed) and the section headers every line under which is the class (`sections`). REFERENCES: the definitions a line references by name (C2822, the operator, 2026-11-08, approved as proposed): each object's defining lines (`defines`, a global line, the name in the group `name`) and the lines that use it (`uses`, any section, the names in the group `names`, separated by spaces); an added definition that only one added unit of the same departure references is one unit with it (N13's dependents), and a definition an unchanged line also uses stays its own unit.",
+  "how": "Shapes written from the IOS and IOS-XE command references for each feature and checked against the lab's captured configurations (tests/fixtures), never keyed on a device or a name. IOS-XE takes IOS's declarations (`same_as`): these lines are one grammar on both, as the parsers and removal.SHAPES read them. A dialect with no entry has no security classes declared, and self-healing then treats every removal or change on it as a person's (kinds.py says so by name); it is never read with another dialect's unless its entry says `same_as`.",
+  "dialects": {
+    "cisco_ios": {
+      "security": {
+        "routing_auth": {
+          "words": "routing authentication or a key chain",
+          "lines": [
+            "^ip ospf (authentication|authentication-key|message-digest-key)\\b",
+            "^ipv6 ospf (authentication|encryption)\\b",
+            "^ospfv3 (\\d+ )?(authentication|encryption)\\b",
+            "^area \\S+ (authentication\\b|virtual-link \\S+ .*(authentication|message-digest-key)\\b)",
+            "^neighbor \\S+ (password|ao)\\b",
+            "^isis authentication\\b",
+            "^authentication (mode|key-chain|send-only)\\b",
+            "^ip rip authentication\\b",
+            "^ipv6 rip \\S+ authentication\\b",
+            "^ip authentication (mode|key-chain) eigrp\\b",
+            "^standby (\\d+ )?authentication\\b",
+            "^vrrp \\d+ authentication\\b",
+            "^key chain \\S+"
+          ],
+          "sections": ["^key chain \\S+"]
+        },
+        "acl": {
+          "words": "an ACL, its entries or its application",
+          "lines": [
+            "^ip access-list\\s",
+            "^ipv6 access-list\\s",
+            "^access-list\\s",
+            "^ip access-group\\s",
+            "^ipv6 traffic-filter\\s",
+            "^access-class\\s",
+            "^ipv6 access-class\\s",
+            "^object-group\\s",
+            "^ntp access-group\\s"
+          ],
+          "sections": ["^ipv6? access-list\\s", "^object-group\\s"]
+        },
+        "aaa": {
+          "words": "AAA",
+          "lines": [
+            "^aaa\\s",
+            "^tacacs(-server)?\\s",
+            "^radius(-server)?\\s",
+            "^login (authentication|block-for|quiet-mode|on-failure|on-success|delay)\\b",
+            "^authorization (exec|commands)\\b",
+            "^accounting (exec|commands|connection)\\b"
+          ],
+          "sections": ["^(tacacs|radius) server\\s", "^aaa group server\\s"]
+        },
+        "crypto_ssh": {
+          "words": "crypto or SSH",
+          "lines": ["^crypto\\s", "^ip ssh\\s", "^ip scp server enable$"],
+          "sections": ["^crypto\\s"]
+        },
+        "snmp_restriction": {
+          "words": "an SNMP restriction",
+          "lines": [
+            "^snmp-server (community|group|user|view)\\s",
+            "^snmp-server (file-transfer access-group|tftp-server-list)\\b"
+          ],
+          "sections": []
+        },
+        "copp": {
+          "words": "control-plane policing",
+          "lines": ["^control-plane\\b"],
+          "sections": ["^control-plane\\b"]
+        },
+        "port_security": {
+          "words": "port security or 802.1X",
+          "lines": [
+            "^switchport port-security\\b",
+            "^dot1x\\s",
+            "^authentication (port-control|host-mode|order|priority|periodic|timer|violation|open|event|control-direction)\\b",
+            "^mab\\b",
+            "^access-session\\s"
+          ],
+          "sections": []
+        },
+        "transport_input": {
+          "words": "a line's transport input",
+          "lines": ["^transport input\\b"],
+          "sections": []
+        }
+      },
+      "references": [
+        {"object": "acl", "words": "an IPv4 ACL",
+         "defines": ["^ip access-list (?:standard |extended |role-based )?(?P<name>\\S+)$",
+                     "^access-list (?P<name>\\d+)\\s"],
+         "uses": ["^ip access-group (?P<names>\\S+) (?:in|out)$",
+                  "^access-class (?P<names>\\S+)(?: (?:in|out))?(?: vrf-also)?$",
+                  "^match ip address (?!prefix-list )(?P<names>.+)$",
+                  "^match access-group (?:name )?(?P<names>\\S+)$"]},
+        {"object": "ipv6-acl", "words": "an IPv6 ACL",
+         "defines": ["^ipv6 access-list (?P<name>\\S+)$"],
+         "uses": ["^ipv6 traffic-filter (?P<names>\\S+) (?:in|out)$",
+                  "^ipv6 access-class (?P<names>\\S+)(?: (?:in|out))?$",
+                  "^match ipv6 address (?!prefix-list )(?P<names>.+)$"]},
+        {"object": "object-group", "words": "an object-group",
+         "defines": ["^object-group (?:network|service) (?P<name>\\S+)$"],
+         "uses": ["\\bobject-group (?!network |service )(?P<names>\\S+)"]},
+        {"object": "prefix-list", "words": "an IPv4 prefix-list",
+         "defines": ["^ip prefix-list (?P<name>\\S+) "],
+         "uses": ["^match ip address prefix-list (?P<names>.+)$",
+                  "^neighbor \\S+ prefix-list (?P<names>\\S+) (?:in|out)$"]},
+        {"object": "ipv6-prefix-list", "words": "an IPv6 prefix-list",
+         "defines": ["^ipv6 prefix-list (?P<name>\\S+) "],
+         "uses": ["^match ipv6 address prefix-list (?P<names>.+)$",
+                  "^neighbor \\S+ prefix-list (?P<names>\\S+) (?:in|out)$"]},
+        {"object": "community-list", "words": "a community-list",
+         "defines": ["^ip community-list (?:standard |expanded )?(?P<name>\\S+) "],
+         "uses": ["^match community (?P<names>.+?)(?: exact-match)?$"]},
+        {"object": "as-path", "words": "an AS-path list",
+         "defines": ["^ip as-path access-list (?P<name>\\d+) "],
+         "uses": ["^match as-path (?P<names>.+)$"]},
+        {"object": "class-map", "words": "a class-map",
+         "defines": ["^class-map (?:type \\S+ )?(?:match-any |match-all )?(?P<name>\\S+)$"],
+         "uses": ["^class (?!class-default$)(?:type \\S+ )?(?P<names>\\S+)$"]},
+        {"object": "policy-map", "words": "a policy-map",
+         "defines": ["^policy-map (?:type \\S+ )?(?P<name>\\S+)$"],
+         "uses": ["^service-policy (?:type \\S+ )?(?:input |output )?(?P<names>\\S+)$"]},
+        {"object": "key-chain", "words": "a key chain",
+         "defines": ["^key chain (?P<name>\\S+)$"],
+         "uses": ["\\bkey-chain (?:eigrp \\d+ )?(?P<names>\\S+)$"]},
+        {"object": "track", "words": "a track",
+         "defines": ["^track (?P<name>\\d+) "],
+         "uses": ["\\btrack (?P<names>\\d+)\\b"]},
+        {"object": "ip-sla", "words": "an IP SLA operation",
+         "defines": ["^ip sla (?P<name>\\d+)$", "^ip sla schedule (?P<name>\\d+)\\b"],
+         "uses": ["^track \\d+ ip sla (?P<names>\\d+)\\b"]}
+      ]
+    },
+    "cisco_iosxe": {"same_as": "cisco_ios"}
+  }
+}

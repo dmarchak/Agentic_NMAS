@@ -22,7 +22,7 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
 4. `cleared`: when that diagnosis reads the symptom gone (the adjacency up at both ends, or
    every probe answered), it waits until nothing has been logged about it for the flap window
    (10 minutes by default) since it was last seen. Still gone, read again from the readers'
-   stored values, with nothing new in that time, the incident ends "cleared by itself by HH:MM
+   stored values, with nothing new in that time, the incident ends "cleared by itself at HH:MM
    UTC, nothing to do": no message is sent and no analysis is asked. Seen again in that time,
    or not read gone, it is told as below. An incident that ended nothing to heal by the time it
    would be told is not told either.

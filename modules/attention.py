@@ -278,6 +278,11 @@ ROW_KINDS = {
     ("heal", "analysis_capped"): ("the AI analysis of what self-healing could not fix stopped "
                                   "at its cap",
                                   "raise the cap in Settings › AI, or leave it off"),
+    # The operator, 2026-11-08: an alert rule that can fire after the fold window
+    # (`incidents.FOLD_STANDING_S`), or whose timing the stored read does not hold.
+    ("heal", "fold_window"): ("an alert rule can fire after self-healing stops taking a symptom "
+                              "into its cause's incident, or whether it can is not read",
+                              "shorten the rule's pending period or its group's interval"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -637,6 +642,10 @@ CLEARS = {
     ("heal", "analysis_capped"): (("resolves", "time"),
                                   "a later analysis on the network runs, an admin raises the "
                                   "cap, or the cap's period (its day or its month) ends"),
+    ("heal", "fold_window"): (("resolves",),
+                              "a grafana-alerts read holds every rule's pending period and its "
+                              "group's interval, and each sum is within the fold window "
+                              "(250 s), or self-healing is turned off on the network"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -5645,6 +5654,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
     cant_fix_n = (len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
                   - len(clears) - len(damp))
     out += _heal_capped_rows(lst, now, said)
+    out += _heal_fold_rows(lst, said)
     try:
         halted = _heal_halted_rows(lst)
     except Exception as exc:
@@ -5663,6 +5673,64 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"waiting or not ended dampened, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
+
+
+#: How many rules the fold window row names (`_heal_fold_rows`); the rest are counted.
+FOLD_RULES_NAMED = 5
+
+
+def _heal_fold_rows(lst: str, said: list, cached=None, mode=None) -> list:
+    """The operator, 2026-11-08: "warn if any alert rule's pending period plus evaluation
+    interval exceeds the window" (`incidents.FOLD_STANDING_S`, 250 s). ONE row while
+    self-healing on *lst* is on (dry run or Auto) and Grafana's rules, as the grafana-alerts
+    reader stored them (`heal.fold_window.check`), hold a rule past the window, naming each
+    rule, both numbers and the window; or hold a rule whose numbers the read does not (unread,
+    never fine). Off, nothing folds, so nothing is checked (said in *said*); a cache that cannot
+    be read is the Grafana source's own row, and said here."""
+    from modules import reader_job
+    from modules.heal import fold_window, policy
+
+    mode = policy.current(lst) if mode is None else mode
+    if mode.get("mode") not in ("dry_run", "auto"):
+        said.append("the alert rules' timing against the fold window is not checked: "
+                    f"self-healing is off on {lst}")
+        return []
+    got = reader_job.read_cached(GRAFANA_READER) if cached is None else cached
+    good = ((got or {}).get("doc") or {}).get("last_good") or {}
+    if got.get("state") != "ok" or not good:
+        said.append("the alert rules' timing against the fold window is not read: the "
+                    f"grafana-alerts reader holds no read ({got.get('why') or got.get('state')})")
+        return []
+    fw = fold_window.check(good.get("value") or {})
+    win = int(fw["window"])
+    if fw["state"] == "ok":
+        said.append(f"{fw['rules']} alert rule(s), each within the {win} s fold window")
+        return []
+    items = fw["past"] or fw["unread"]
+    named = "; ".join(fold_window.words(i, fw["window"]) for i in items[:FOLD_RULES_NAMED])
+    more = len(items) - FOLD_RULES_NAMED
+    named += f"; and {more} more" if more > 0 else ""
+    if fw["past"]:
+        what = (f"{len(fw['past'])} alert rule(s) can fire after self-healing's {win} s fold "
+                "window")
+        cause = (f"{named}. On {lst}, self-healing takes a symptom on another device into the "
+                 f"incident of the change that caused it for {win} s after its decision; an "
+                 "alert that fires later is judged on its own, a can't-fix of its own where it "
+                 "belonged to that change")
+        label = ("Shorten each named rule's pending period (`for`) or its group's evaluation "
+                 f"interval in Grafana's alert rules, so the two sum to {win} s or less")
+    else:
+        what = (f"Whether {len(fw['unread'])} alert rule(s) fire inside self-healing's {win} s "
+                "fold window is not read")
+        cause = (f"{named}: the stored grafana-alerts read does not hold both numbers, so the "
+                 "check cannot be made, and it is never read as fine")
+        label = ("Read the grafana-alerts reader's next run on Job health; a rule the ruler does "
+                 "not list needs the reader's Grafana role to read it")
+    return [row(source="heal", kind="fold_window", key=f"{lst}:{fw['state']}", level="warning",
+                what=what, cause=cause, action={"label": label, "known": False},
+                operands={"list": lst, "window_s": win, "state": fw["state"],
+                          "rules": [{"title": i["title"], "for_s": i["for_seconds"],
+                                     "interval_s": i["interval_seconds"]} for i in items]})]
 
 
 def _heal_halted_rows(lst: str, halt: dict = None, stopped: dict = None) -> list:
@@ -5723,6 +5791,13 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
             continue                                  # its own row (`_heal_dampening_rows`)
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [] if u.get("words"))
+        from modules.heal.propose import security_choice
+        # C2839: a security control's proposal names its two answers, each a person's.
+        label = (f"Review the security change on {host}, then remove it (back to intent) by "
+                 "its hash with a reason, or keep it: add it to intent"
+                 if security_choice(d) else
+                 f"Review the fix for {host}, then approve it by its hash with a reason, or "
+                 "decline it with a reason")
         out.append(row(
             source="heal", kind="proposal", key=d.get("id") or "?", level="warning",
             devices=[host] if host else [], since=float(d.get("epoch") or 0) or None,
@@ -5730,8 +5805,7 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
             cause=(f"{d.get('words') or 'a fix that needs a person'}; program "
                    f"{d.get('program_hash') or '?'}. Nothing is sent until a person approves "
                    f"it by its hash with a reason (self-healing on {lst}, Tier 2: Propose)"),
-            action={"label": (f"Review the fix for {host}, then approve it by its hash with a "
-                              "reason, or decline it with a reason"),
+            action={"label": label,
                     "open": "heal_proposal", "list": lst, "decision": d.get("id"),
                     "device": host},
             operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),

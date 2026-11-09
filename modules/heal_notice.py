@@ -33,7 +33,8 @@ runs one.
 **Cleared by itself, never told** (C2825, H11 W5): a diagnosis that reads the symptom gone
 (`auto_diagnose.symptom_gone`) is waited out to the flap window since the incident's last
 trigger (`_cleared`); still standing, quiet and read gone from its stores, the incident ends
-"cleared by itself by HH:MM UTC, nothing to do", with no analysis and no message. And an
+"cleared by itself at HH:MM UTC, nothing to do" (C2813's wording: "at" for a time Mercury
+measured, "by" only for an estimate or a deadline), with no analysis and no message. And an
 incident whose newest decision is nothing to heal by the time it would be told is not told
 (`_withheld`). A can't-fix is told once per incident (``asked``): one standing and judged again
 (C2813) is never told twice.
@@ -94,8 +95,14 @@ TODO = {
     "physical": "check the link: its cable, optics and far end; the configuration is at intent",
     "unknown_cause": "read the symptom's own source: the configuration is at intent, so the "
                      "cause is elsewhere",
-    "security_acl": "decide on the ACL: adopt it into intent (Capture), or remove it yourself "
-                    "through a deploy; self-healing never removes a security control",
+    # C2839: a security kind is a can't-fix only while its removal is not measured; otherwise
+    # it is a proposal, the person's two answers on its card.
+    "security_acl": "decide on the ACL: keep it (add it to intent in the device's intent "
+                    "editor), or remove it through the device's deploy plan; self-healing "
+                    "proposes it once its removal is measured on the platform",
+    "security_control": "decide on the security control: keep it (add it to intent in the "
+                        "device's intent editor), or remove it through the device's deploy "
+                        "plan; self-healing proposes it once its removal is measured",
     "credentials": "decide on the change: accounts and AAA change only through their own "
                    "operations",
     "management_path": "decide on the change to Mercury's path to the device; a change there "
@@ -661,7 +668,7 @@ def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None
         now, minutes = clock(), int(quiet_s // 60)
         return decide.end_standing(
             network, incident_id,
-            (f"nothing to heal: every symptom the incident named has cleared by itself by "
+            (f"nothing to heal: every symptom the incident named has cleared by itself at "
              f"{decide._hhmm(now)} UTC, nothing to do: Mercury's diagnosis "
              f"{d.get('id') or ''} read {gone}, each symptom reads gone from its store, and "
              f"nothing was logged for {minutes} minutes since its last trigger; no \"could not "

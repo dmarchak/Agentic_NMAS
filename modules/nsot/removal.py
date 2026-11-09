@@ -195,6 +195,15 @@ SHAPES = (
     # by the repair-path class (`_management_routes`, C1422, C531 part 2).
     Shape("global.ip-route", "global", "leaf", r"^ip route .+$"),
     Shape("global.ipv6-route", "global", "leaf", r"^ipv6 route .+$"),
+    # An ACL added outside intent and the line applying it (C2822, C2839; H11 W7's inbound
+    # ACL on an interface): self-healing's one unit removes both, the application then the
+    # ACL, so each is measured before Mode B may remove it, one shape per address family for
+    # the application.
+    Shape("interface.ip-access-group", "interface", "leaf", r"^ip access-group \S+ (in|out)$"),
+    Shape("interface.ipv6-traffic-filter", "interface", "leaf",
+          r"^ipv6 traffic-filter \S+ (in|out)$"),
+    Shape("global.named-acl", "global", "stanza",
+          r"^ip(v6)? access-list (?:(?:standard|extended) )?(?!\d+$)\S+$"),
 )
 
 #: What a measurement found, in words.
@@ -529,7 +538,8 @@ def _is_physical(header: str) -> bool:
     return bool(name) and "." not in name and not name.startswith(VIRTUAL_INTERFACES)
 
 
-def _refusal(unit: dict, running: list, mgmt_ifaces: set, mgmt_routes: dict = None) -> str:
+def _refusal(unit: dict, running: list, mgmt_ifaces: set, mgmt_routes: dict = None,
+             removed_first=frozenset()) -> str:
     chain, line = tuple(unit["chain"]), unit["line"]
     text = line.strip()
     top = chain[0] if chain else text
@@ -563,7 +573,7 @@ def _refusal(unit: dict, running: list, mgmt_ifaces: set, mgmt_routes: dict = No
         return "the management path: the vty lines are how the tool logs in"
     name = _defined_name(text) if not chain else ""
     if name:
-        uses = _references(name, unit, running)
+        uses = _references(name, unit, running, removed_first)
         if uses:
             return (f"{name} is still used by: " + "; ".join(uses[:3])
                     + (f" (and {len(uses) - 3} more)" if len(uses) > 3 else "")
@@ -579,16 +589,21 @@ def _defined_name(text: str) -> str:
     return ""
 
 
-def _references(name: str, unit: dict, running: list) -> list:
+def _references(name: str, unit: dict, running: list, removed_first=frozenset()) -> list:
     """Every other line naming *name* as a whole word, outside the object's
     own definition: its own stanza, and (for a list defined line by line,
-    such as a prefix-list) its other entries."""
+    such as a prefix-list) its other entries. A line the same program removes
+    BEFORE this unit (*removed_first*: its path, or a stanza above it) no longer
+    uses it when this unit is sent (C2822: an ACL and the `ip access-group`
+    applying it, removed use first), so it is not counted."""
     own = tuple(unit["chain"]) + (unit["line"],)
     word = re.compile(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])")
     out = []
     for line, chain in running:
         path = chain + (line,)
         if path[:len(own)] == own:
+            continue
+        if any(path[:len(p)] == p for p in removed_first):
             continue
         if _defined_name(line.strip()) == name and not chain:
             continue
@@ -658,6 +673,9 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
     removed, refused, secret = [], [], []
     for u in units:
         path = tuple(u["chain"]) + (u["line"],)
+        # What this program removes before this unit, its order (C2822): a use removed first
+        # no longer holds the definition removed after it.
+        first = frozenset(tuple(r["chain"]) + (r["line"],) for r in removed)
         if path not in present:
             refused.append({**u, "reason": "not on the device: it moved since the preview, "
                                            "or was never there"})
@@ -665,7 +683,7 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
         if any(path[:len(w)] == w and path != w for w in whole):
             continue                     # implied by a stanza also selected
         kind = "stanza" if path in headers else "leaf"
-        why = (_refusal(u, running, mgmt_ifaces, mgmt_routes)
+        why = (_refusal(u, running, mgmt_ifaces, mgmt_routes, first)
                or _unmeasured(u["chain"], u["line"], kind, dialect))
         if why:
             refused.append({**u, "reason": why})

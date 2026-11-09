@@ -364,8 +364,10 @@ class TestW5:
         (d,) = DC.run("Default", now=later, sources=src)["decided"]
         got = DS.find("Default", d["decision"])
         assert got["outcome"] == "nothing", got
-        assert f"cleared by itself by {time.strftime('%H:%M', time.gmtime(later))} UTC, " \
+        # C2813's wording (the operator): "at HH:MM" for a time Mercury measured.
+        assert f"cleared by itself at {time.strftime('%H:%M', time.gmtime(later))} UTC, " \
                "nothing to do" in got["words"], got["words"]
+        assert "itself by" not in got["words"], "never 'by' for a time Mercury read"
         assert I.read("Default")["incidents"][0]["state"] == "closed"
 
     def standing_cant_fix(self, epoch):
@@ -413,7 +415,7 @@ class TestW5:
         assert events == [] and analysed == [], "no could-not-fix message, no analysis"
         assert 0 < waited[0] <= 600, "the flap window waited out, never longer"
         d = got["cleared"]
-        assert d["outcome"] == "nothing" and "cleared by itself by" in d["words"], d
+        assert d["outcome"] == "nothing" and "cleared by itself at" in d["words"], d
         assert "the adjacency is up now at both ends" in d["words"]
         assert I.read("Default")["incidents"][0]["state"] == "closed"
         assert attention._later_done(DS.decisions("Default"))["edge-b"] >= T0, \

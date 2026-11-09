@@ -40,7 +40,7 @@ you only want the record.
 ## Approve {#approve}
 
 Type a reason of three words or more, then press **Approve and run on <device>** (a verified
-person's). It is refused, with nothing taken or sent, when you are not a verified person, the
+person's; on a security control's proposal it reads **Remove it (back to intent)**, below). It is refused, with nothing taken or sent, when you are not a verified person, the
 reason is short, the hash is not the one the card drew (the refusal names both), the proposal
 was taken already, its reset is not measured, or a stop applies. Otherwise the card says it was
 approved and names the job, and the row leaves Needs attention. The job runs as you:
@@ -69,6 +69,28 @@ approved and names the job, and the row leaves Needs attention. The job runs as 
 Type a reason, then press **Decline**. Nothing is sent. The decline is recorded with your
 name and reason, the incident is closed, and the row leaves Needs attention. A later check
 may propose again.
+
+## A security control: remove it or keep it {#keep}
+
+A security control added or changed outside intent (routing authentication or a key chain, an
+ACL or its application, AAA, crypto or SSH, an SNMP restriction, control-plane policing, port
+security or 802.1X, a line's `transport input`) is never removed by self-healing on its own: it
+may be the first half of a rollout whose far end is not configured yet, or a control an auditor
+asked for. Its proposal names the lines (masked) and offers two answers, each yours:
+
+- **Remove it (back to intent)**: the proposal's approval, as above: the measured removal, by
+  its hash, with your reason. A removal not yet measured on the device's platform is not a
+  proposal: the row says self-healing cannot fix it yet and names the probe.
+- **Keep it: add it to intent**: opens the device's intent editor (its Intent tab), where you
+  add the lines and commit as you; nothing is sent to the device. Once intent holds them they
+  are no longer a departure: decline the proposal with your reason, and an approval after it is
+  refused at its plan step.
+
+An ACL and the line applying it (an `ip access-group` on an interface), or any definition only
+that one added line uses, are one fix: removed together, or kept together. A missing security
+control is put back as any missing line is. A network may also let Mercury put back a one-sided
+security change that broke an adjacency by itself (`heal_security_revert_adjacency`, off by
+default; [Self-healing](heal)).
 
 ## Withdrawn {#withdrawn}
 

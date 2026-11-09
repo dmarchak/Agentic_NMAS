@@ -142,6 +142,27 @@ EXEMPLARS = {
         "unit": {"chain": ["ip access-list standard 96"], "line": " permit 192.0.2.1",
                  "match_in_readback": True},
         "teardown": ["no ip access-list standard 96"]}],
+    # C2822, C2839 (H11 W7): an ACL and its application, each on scratch names. The interface
+    # forms on the scratch loopback, their ACL defined first and torn down after; the stanza
+    # form a scratch ACL nothing applies, IPv4 and IPv6.
+    "interface.ip-access-group": [{
+        "setup": ["ip access-list extended NMASPROBE6", " permit ip any any", LOOP,
+                  " ip access-group NMASPROBE6 in"],
+        "unit": {"chain": [LOOP], "line": " ip access-group NMASPROBE6 in"},
+        "teardown": ["no " + LOOP, "no ip access-list extended NMASPROBE6"]}],
+    "interface.ipv6-traffic-filter": [{
+        "needs": "ipv6 unicast-routing",
+        "setup": ["ipv6 access-list NMASPROBE7", " permit ipv6 any any", LOOP, " ipv6 enable",
+                  " ipv6 traffic-filter NMASPROBE7 in"],
+        "unit": {"chain": [LOOP], "line": " ipv6 traffic-filter NMASPROBE7 in"},
+        "teardown": ["no " + LOOP, "no ipv6 access-list NMASPROBE7"]}],
+    "global.named-acl": [
+        {"setup": ["ip access-list extended NMASPROBE8", " permit ip host 192.0.2.1 any"],
+         "unit": {"chain": [], "line": "ip access-list extended NMASPROBE8"},
+         "teardown": []},
+        {"setup": ["ipv6 access-list NMASPROBE9", " permit ipv6 host 2001:DB8::1 any"],
+         "unit": {"chain": [], "line": "ipv6 access-list NMASPROBE9"},
+         "teardown": []}],
     "named-acl.entry": [{
         "setup": ["ip access-list extended NMASPROBE", " permit ip host 192.0.2.1 any",
                   " permit ip host 192.0.2.2 any"],

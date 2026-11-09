@@ -729,6 +729,15 @@ DEFAULTS: dict = {
     "heal_flap_transitions": 3,
     "heal_flap_minutes": 10,
     "heal_bounce_per_port_hour": 1,
+    # C2839's per-network question (the operator, 2026-11-09): "may Mercury revert a one-sided
+    # security change that broke an adjacency?", default no. No measurement can answer it: it is
+    # the network's tolerance for Mercury undoing a security change mid-rollout (one end
+    # configured before the other), a policy decision, so it is a setting, each network's own,
+    # confirmed by hash with the rest of its heal policy. No reproduces every release before it:
+    # such a change is Tier 2, proposed. Yes makes it `security_revert`, Tier 1, still allowed
+    # AUTO only by name in `heal_kinds_auto`. Its fingerprint counts it only once it is not its
+    # default (`heal.policy.LATER_KEYS`), so a policy confirmed before it keeps its fingerprint.
+    "heal_security_revert_adjacency": False,
     # Who is told about a network's self-healing (board H, artboard A's "Who is told";
     # docs/HEAL_TO_INTENT.md section 10's `heal_notify_*`): the team (its id in the teams store,
     # modules/notify/teams.py) and the events that notify it. Each network's own, never
@@ -1197,7 +1206,7 @@ SCHEMA: dict = {
         },
         "heal_kinds_auto": {"type": "array", "uniqueItems": True, "items": {
             "enum": ["missing_line", "changed_line", "added_line", "admin_down",
-                     "port_bounce", "ospf_reset", "session_clear"]}},
+                     "port_bounce", "ospf_reset", "session_clear", "security_revert"]}},
         "heal_kinds_propose": {"type": "array", "uniqueItems": True, "items": {
             "enum": ["process_reset", "qos_policy", "secret_added_back", "session_clear",
                      "dampening_proposal"]}},
@@ -1214,6 +1223,7 @@ SCHEMA: dict = {
         "heal_flap_transitions": {"type": "integer", "minimum": 2, "maximum": 100},
         "heal_flap_minutes": {"type": "integer", "minimum": 1, "maximum": 60},
         "heal_bounce_per_port_hour": {"type": "integer", "minimum": 0, "maximum": 1},
+        "heal_security_revert_adjacency": _BOOL,
         "heal_stopped": _BOOL,
         "heal_notify_team": {"type": "string", "pattern": r"^(|[0-9a-f]{12})$"},
         "heal_notify_events": {"type": "array", "uniqueItems": True, "items": {

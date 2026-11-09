@@ -113,7 +113,9 @@ class TestUnits:
                                 "md5 S3cretKey\n")))
         (u,) = got["units"]
         assert u["op"] == "remove" and len(u["remove"]) == 2
-        assert u["kind"] == "added_line", "N9: a routing key removed returns to intent, Tier 1"
+        # C2839 (the operator, 2026-11-09): routing authentication added outside intent is a
+        # security control, so removing it is Tier 2, a person's; it was Tier 1 by N9.
+        assert (u["kind"], u["tier"]) == ("security_control", 2), u
 
     def test_two_features_on_one_interface_are_two_units(self):
         got = classify(changed((" ip ospf cost 10\n", " ip ospf cost 10\n load-interval 30\n"
@@ -170,13 +172,15 @@ class TestKinds:
     @pytest.mark.parametrize("added", [
         "ip access-list extended EDGE\n 10 permit tcp any any\n",
         "access-list 101 permit ip any any\n"])
-    def test_every_acl_is_tier_4_n4(self, added):
+    def test_every_acl_is_security_acl_tier_2_c2839(self, added):
+        # C2839 (the operator, 2026-11-09): every ACL is still its own kind (N4), now Tier 2,
+        # a proposal; it was Tier 4.
         got = classify(GOLDEN + added)
-        assert (got["kind"], got["tier"]) == ("security_acl", 4)
+        assert (got["kind"], got["tier"]) == ("security_acl", 2)
 
-    def test_an_acl_binding_is_tier_4(self):
+    def test_an_acl_binding_is_security_acl_tier_2(self):
         got = classify(changed((GI2, GI2 + " ip access-group 101 in\n")))
-        assert got["kind"] == "security_acl"
+        assert (got["kind"], got["tier"]) == ("security_acl", 2)
 
     @pytest.mark.parametrize("added", ["username audit privilege 15 secret 9 $9$abc\n",
                                        "snmp-server community Pub1ic RO\n",
@@ -218,20 +222,27 @@ class TestKinds:
         assert "scripts/nmas-removal-probe" in got["blocked"]["why"]
 
     def test_the_strictest_unit_is_the_incidents_tier(self):
+        # An account is Tier 4 (an ACL, this test's example until C2839, is Tier 2 now).
+        got = classify(GOLDEN + ROUTE4 + "username audit privilege 15 secret 9 $9$abc\n")
+        assert (got["tier"], got["kind"]) == (4, "credentials")
         got = classify(GOLDEN + ROUTE4 + "access-list 101 permit ip any any\n")
-        assert (got["tier"], got["kind"]) == (4, "security_acl")
+        assert (got["tier"], got["kind"]) == (2, "security_acl")
 
     def test_the_tiers_are_a_ceiling_in_code_matching_the_policy(self):
         from modules.heal.actions import LAB_ONLY_AUTO, NOT_BUILT, tier_of
-        from modules.heal.policy import TIER1_KINDS, TIER2_KINDS
+        from modules.heal.policy import SECURITY_KINDS, TIER1_KINDS, TIER2_KINDS
 
         # An action kind (19.4, H19) is in the tier table before its operation is built, and
         # no policy may name it until then; once built it must be in the policy's lists. A kind
         # Auto only on a network marked lab (N16, H21: the session clear) is Tier 2 elsewhere,
-        # so it is in both.
+        # so it is in both. C2839's security kinds are Tier 2 and always proposed, never a
+        # setting, so they are in no policy list.
         built = {k: t for k, t in K.TIER.items() if k not in NOT_BUILT}
         assert {k for k, t in built.items() if t == 1} == set(TIER1_KINDS)
-        assert {k for k, t in built.items() if t == 2} | set(LAB_ONLY_AUTO) == set(TIER2_KINDS)
+        assert {k for k, t in built.items() if t == 2} | set(LAB_ONLY_AUTO) == \
+            set(TIER2_KINDS) | set(SECURITY_KINDS)
+        assert not set(SECURITY_KINDS) & set(TIER2_KINDS + TIER1_KINDS)
+        assert all(K.TIER[k] == 2 for k in SECURITY_KINDS)
         assert all(tier_of(k, False) == 2 for k in LAB_ONLY_AUTO)
         assert set(NOT_BUILT) <= set(K.TIER)
         assert not set(NOT_BUILT) & set(TIER1_KINDS + TIER2_KINDS)
@@ -347,7 +358,8 @@ class TestOutcomes:
         assert (d["outcome"], d["kind"]) == ("propose", "process_reset")
 
     def test_tier_4_is_never_automatic_n4(self, lab):
-        d = one(GOLDEN + "access-list 101 permit ip any any\n")
+        # An account (an ACL, this test's example until C2839, is a proposal now).
+        d = one(GOLDEN + "username audit privilege 15 secret 9 $9$abc\n")
         assert d["outcome"] == "cant_fix" and "never automatic" in d["words"]
         assert d["program"] == [], "nothing is computed for a fix that is never sent"
 

@@ -20,7 +20,11 @@ log = logging.getLogger(__name__)
 KIND_LABELS = {
     "missing_line": "Missing line: re-apply intent's line (merge)",
     "changed_line": "Changed line: set intent's value (merge)",
-    "added_line": "Added line: remove it (a measured shape, one removal unit)",
+    "added_line": "Added line: remove it (a measured shape, one removal unit; never a security "
+                  "control)",
+    # C2839's per-network question (no by default): Tier 1 only where the network says yes.
+    "security_revert": "A one-sided security change that broke an adjacency: put it back (only "
+                       "where the network allows it; no by default)",
     "admin_down": "Admin down where intent says up: no shutdown",
     "process_reset": "Takes effect through a process reset (router-id)",
     "qos_policy": "QoS policy",
@@ -37,11 +41,14 @@ KIND_LABELS = {
     "dampening_proposal": "Dampening: a port still flapping after its one bounce gains "
                           "`dampening` in intent (a person approves; a change to intent)",
 }
-#: Tiers 3 and 4: never settings, drawn fixed with why (section 5).
+#: The kinds that are never settings, drawn fixed with why (section 5): C2839's security kinds
+#: (Tier 2, always proposed), and Tiers 3 and 4.
 FIXED_KINDS = (
+    ("A security control removed or changed outside intent · any ACL", 2, "Always proposed",
+     "A person removes it (back to intent) or keeps it (adds it to intent), C2839"),
     ("Physical or link down while admin up; unknown cause", 3, "Alert only",
      "Configuration cannot fix a cable, an optic or a far end"),
-    ("Security ACL · credentials and AAA · Mercury's management path · multi-device", 4,
+    ("Credentials and AAA · Mercury's management path · multi-device", 4,
      "Never automatic", "Section 13's never list: a person changes these, never a heal"),
 )
 #: The hard stops in the board's order: (label, keys, how a value is said, the unit's words).

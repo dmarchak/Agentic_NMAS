@@ -14,7 +14,20 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
-Templates sha256: `e85cfde2f33d2f869b2085bd5000486bd13542d782789fd3912c441a5c2a448b`
+Templates sha256: `a9ba019e10a59d41cbf293883d55b9d4cd57d5c8d5c028393bfdd5f961cc19b8`
+
+**Compared again 2026-11-09 (C2839, the operator's rule of 2026-11-09):** a proposal whose fix
+is a security control removed or changed outside intent, or an ACL, draws one line above the
+program, "A security control changed outside intent: you decide." with both answers' words and
+the lines (masked) as the record keeps them; its primary button reads **Remove it (back to
+intent)** in place of Approve and run on <device> (the same post, hash and reason); and **Keep
+it: add it to intent** sits beside Decline, opening the device's intent editor (its Intent tab),
+with its (i). Every other proposal draws as before. Artboard E draws neither (it was drawn for
+R8's process reset); the deviation is the operator's rule, logged in
+docs/STANDING_APPROVAL_LOG.md (2026-11-09, "C2839 5"). Compared by the template diff against
+artboard E's regions (no new shot: tests/v2_context.py's provider draws the security state, and
+tests/test_heal_security.py its words); every other region is unchanged. Templates sha256 before:
+`e85cfde2f33d2f869b2085bd5000486bd13542d782789fd3912c441a5c2a448b`.
 
 **Compared again 2026-11-08 (C2804, the operator's decision 4):** in dry run, a confirmable card
 draws one warning notice above Reason, Approve and Decline: "This sends, although <network> is
@@ -75,6 +88,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Reason | the field, "at least three words" | the same; a refusal keeps what was typed | **same** |
 | Approve and run on r6 | the primary button | the same words; bound to the proposal's hash in the form; drawn disabled with each refusal (a reset not measured, a stop, taken already) as its title and a Not confirmable line above; busy on itself ("Approving…") | **same** |
 | Decline… | the button | **Decline**, posting the same reason at once; nothing is sent | **deviation** (log: Board H E built: Decline without its ellipsis) |
+| A security control's two answers | not drawn | on a security control's or an ACL's proposal only: "A security control changed outside intent: you decide." with the lines (masked), **Remove it (back to intent)** as the primary button, and **Keep it: add it to intent** (the device's intent editor) | **deviation** (log: C2839 5) |
 | Check drift now on r6 | the button | the same, opening the device's Check drift now card | **same** |
 | The bound line | "Bound to this program's hash and to r6 as read at 18:12:30. If r6 changes, the proposal is withdrawn and made again. Clears when …" | who is confirming; bound to the proposal's hash and to the device as read when proposed (its age); "If <device> changes, the proposal is withdrawn and made again; if it changes after you approve, the run refuses at its plan step and closes the proposal, sending nothing"; Clears when … is the row's own line, naming a withdrawal too | **deviation** (log: Board H E built: the bound line, withdrawn and made again) |
 | Withdrawn | not drawn | "Withdrawn, no longer waiting: <device> read back at its golden … / changed since it was proposed (read at …, departure …); it was bound to <device> as read at … (departure …)", when it was recorded, nothing sent, a link to the device's History; Approve not drawn, and an approval sent anyway refused naming the hash confirmed and both states | **deviation** (log: Board H E built: a withdrawn proposal's card says why) |

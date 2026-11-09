@@ -330,7 +330,7 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
         minutes = int(quiet_s // 60)
         d = decide.end_standing(
             network, inc["id"],
-            (f"nothing to heal: every symptom the incident named has cleared by itself by "
+            (f"nothing to heal: every symptom the incident named has cleared by itself at "
              f"{decide._hhmm(now)} UTC, nothing to do: {inc['device']} is at its golden, and "
              f"nothing was logged for {minutes} minutes since its last trigger"),
             now=now, by=by,

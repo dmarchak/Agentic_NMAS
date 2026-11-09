@@ -192,7 +192,8 @@ def program(golden: str, running: str, units: list, removal_ids: list, *, mgmt_i
     adds = []
     for u in units:
         if u["op"] in ("add", "change"):
-            lines = u["add"][:1] if u.get("stanza") else u["add"]
+            # A stanza by its header, a leaf by each line, a joined unit (C2822) by its parts'.
+            lines = u.get("heads") or (u["add"][:1] if u.get("stanza") else u["add"])
             adds.extend({"chain": list(c), "line": l} for c, l in lines)
     fragment = _subtree_fragment(adds, golden) if adds else ""
     got = _program(fragment, _stored(running), list(removal_ids), {"ip": mgmt_ip}, platform)
@@ -237,10 +238,31 @@ def _person(incident: dict) -> dict:
     return {}
 
 
-def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list) -> tuple:
-    """Guard 13, the tier: ``(outcome, words)``."""
-    from modules.heal.kinds import KIND_WORDS, NEVER_WHY
+def revert_scope(mode: dict, incident: dict):
+    """C2839's per-network question for this incident: ``{"words"}`` when the network allows
+    Mercury to put back a one-sided security change that broke an adjacency
+    (``heal_security_revert_adjacency``, default no) AND the incident judges an adjacency down
+    (`judged_triggers`: the adjacency reader's or the adjacency log's) AND spans no other device
+    (one-sided: a change on both ends is multi-device, Tier 4); else None. `kinds.classify`
+    makes such a unit's kind `security_revert` (Tier 1)."""
+    if not (mode or {}).get("security_revert") or incident.get("related"):
+        return None
+    adj = [t for t in judged_triggers(incident) if t.get("kind") in ("adjacency",
+                                                                       "adjacency_log")]
+    if not adj:
+        return None
+    return {"words": (f"{len(adj)} adjacency trigger(s) on this incident, no other device in it, "
+                      "and the network allows a one-sided security change that broke an "
+                      "adjacency to be put back (heal_security_revert_adjacency)")}
 
+
+def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list) -> tuple:
+    """Guard 13, the tier: ``(outcome, words)``. The security kinds (C2839,
+    `policy.SECURITY_KINDS`) are always proposed: a person decides, never a setting."""
+    from modules.heal.kinds import KIND_WORDS, NEVER_WHY
+    from modules.heal.policy import SECURITY_KINDS
+
+    kinds_propose = list(kinds_propose) + list(SECURITY_KINDS)
     tier, kind = c["tier"], c["kind"]
     if tier >= 3:
         return "cant_fix", (f"self-healing will not fix it: {KIND_WORDS.get(kind, kind)} "
@@ -384,7 +406,7 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         if symptom and now_state == "gone" and now - last >= quiet_s:
             return dict(base, outcome="nothing",
                         words=(f"nothing to heal: every symptom the incident named has cleared "
-                               f"by itself by {_hhmm(now)} UTC, nothing to do: {device} is at "
+                               f"by itself at {_hhmm(now)} UTC, nothing to do: {device} is at "
                                "its golden, which matches its intent (each symptom read again "
                                f"after it, and quiet {int(quiet_s // 60)} minutes since its "
                                "last trigger)"))
@@ -429,7 +451,8 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         return dict(base, outcome="cant_fix",
                     words=f"committed intent cannot be rendered: {intended.get('why')}")
     c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
-                       mgmt_ip=dev.get("ip", ""), related=bool(incident.get("related")))
+                       mgmt_ip=dev.get("ip", ""), related=bool(incident.get("related")),
+                       revert=revert_scope(mode, incident))
     base.update(units=[kinds.masked_unit(u) for u in c["units"]], kind=c["kind"],
                 tier=c["tier"], left_out=c["left_out"])
     if not c["units"]:

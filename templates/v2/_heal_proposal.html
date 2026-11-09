@@ -35,6 +35,15 @@
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
   {%- endif %}
   <p class="heal-lead">Approve to {{ v.kind_words }} on <strong>{{ host }}</strong>: the program below, sent through the deploy pipeline as you{% if v.reset %}, then {{ v.reset.label }} (<span class="mono" title="Mercury's reset {{ v.reset.key }}{% if v.reset.refused %}: {{ v.reset.refused }}{% endif %}">{{ v.reset.command }}</span>). {{ v.reset.affects[:1] | upper }}{{ v.reset.affects[1:] }}, so choose the moment{% endif %}.</p>
+  {#- C2839 (the operator, 2026-11-09): a security control added or changed outside intent, or
+      an ACL, is a person's choice of two: Remove it (back to intent), this card's approval,
+      or Keep it: add it to intent, the device's intent editor (the one write path for intent);
+      the lines are drawn masked, as the record keeps them. -#}
+  {%- if v.security %}
+  <p class="small"><strong>A security control changed outside intent: you decide.</strong> {{ v.security.remove_words }}; or {{ v.security.keep_words }}.</p>
+  <pre class="op-diff">{% for l in v.security.lines %}{{ l }}
+{% endfor %}</pre>
+  {%- endif %}
   <pre class="op-diff">{% for l in v.program %}{{ l }}
 {% endfor %}{% if v.reset %}! then: {{ v.reset.command }}{% if v.reset.measured %} (its prompt measured on {{ v.reset.measured.device }}, {{ v.reset.measured.at }}){% else %} (not measured){% endif %}{% endif %}</pre>
   <dl class="heal-kv">
@@ -90,7 +99,10 @@
     <input type="hidden" name="hash" value="{{ v.hash }}">
     <label class="heal-field" for="{{ pid }}-why">Reason<input id="{{ pid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ reason or '' }}"></label>
     <div class="att-action">
-      <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.approve', list_name=list_name, decision_id=v.decision) }}" hx-vals='{"hash": "{{ v.hash }}"}' hx-include="closest .heal-form" hx-disabled-elt="this"{% if v.confirmable %}{{ gate('confirm') }}{% else %} disabled aria-disabled="true" title="{{ v.refusals | join('; ') }}"{% endif %}><span class="op-idle">Approve and run on {{ host }}</span><span class="op-busy">Approving…</span></button>{{ how('heal-proposal', compact=True, op='approving a proposal') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.approve', list_name=list_name, decision_id=v.decision) }}" hx-vals='{"hash": "{{ v.hash }}"}' hx-include="closest .heal-form" hx-disabled-elt="this"{% if v.confirmable %}{{ gate('confirm') }}{% else %} disabled aria-disabled="true" title="{{ v.refusals | join('; ') }}"{% endif %}>{% if not v.security %}<span class="op-idle">Approve and run on {{ host }}</span>{% else %}<span class="op-idle">Remove it (back to intent)</span>{% endif %}<span class="op-busy">Approving…</span></button>{{ how('heal-proposal', compact=True, op='approving a proposal') }}</span>
+      {%- if v.security %}
+      <a class="btn btn-small btn-outline" data-op="heal-proposal" href="{{ url_for('device_v2.device', name=host, list=list_name, tab='intent', edit=1) }}" title="Opens {{ host }}'s intent editor: add the lines and commit as you; nothing is sent to {{ host }}">Keep it: add it to intent</a>{{ how('heal-proposal', 'keep', compact=True, op='keeping a security change') }}
+      {%- endif %}
       <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-include="closest .heal-form" hx-disabled-elt="this" title="Records your reason and closes the incident; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
       <a class="btn btn-small btn-outline" data-op="drift-check" href="{{ url_for('device_v2.device', name=host, list=list_name, op='drift_check') }}">Check drift now on {{ host }}</a>{{ how('drift-check', 'one-device', compact=True, op='Check drift now') }}
     </div>

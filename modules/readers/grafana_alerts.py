@@ -350,6 +350,10 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                 "health": r.get("health"), "last_error": r.get("lastError") or "",
                 "last_evaluation": r.get("lastEvaluation"),
                 "for_seconds": cfg.get("for_seconds", 0),
+                # The rule's group's evaluation interval (the rules view's `interval`, seconds;
+                # 0 when the view gives none): self-healing's fold window check reads it beside
+                # `for_seconds` (`heal.fold_window`).
+                "interval_seconds": interval,
                 "no_data_state": cfg.get("no_data_state"),
                 "exec_err_state": cfg.get("exec_err_state"),
                 "query_window_seconds": cfg.get("query_window_seconds", 0),

@@ -3154,6 +3154,15 @@ def _heal_proposal(client, _lab, _mp):
             "Mercury's diagnosis" in r.get_data(as_text=True)
         base = f"/v2/network/{net}/heal/proposal/{did}"
         assert client.get(base, headers=hx).status_code == 200
+        # C2839: a security control's proposal, its two answers and its lines (masked).
+        state["v"] = dict(view, kind="security_control", reset=None, security={
+            "lines": [" ip ospf authentication message-digest",
+                      " ip ospf message-digest-key 1 md5 <redacted:ospf_key>"],
+            "remove_words": "Remove it (back to intent): the program below, sent as you once "
+                            "approved by its hash with a reason",
+            "keep_words": "Keep it: add it to intent: open the intent editor"})
+        secure = client.get(base, headers=hx).get_data(as_text=True)
+        assert "Remove it (back to intent)" in secure and "Keep it: add it to intent" in secure
         state["v"] = refused
 
         def no(*_a, **_kw):

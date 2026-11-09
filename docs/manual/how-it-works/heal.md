@@ -35,7 +35,8 @@ incident every 30 seconds, and at once when a trigger arrives. One pass, per net
 8. `standing`: each can't-fix standing at its golden on a symptom has that symptom read again
    from the readers' stored values (no device is read). Every symptom gone, and nothing logged
    about it for the flap window (10 minutes by default) since it was last seen, ends it:
-   "cleared by itself by HH:MM UTC, nothing to do", and its item leaves Needs attention.
+   "cleared by itself at HH:MM UTC, nothing to do", and its item leaves Needs attention. A time
+   Mercury measured is said "at HH:MM"; "by HH:MM" is only ever an estimate or a deadline.
 
 The detect pass changes nothing on any device.
 
@@ -59,6 +60,26 @@ held. Its steps:
    a Tier 3 or 4 kind is can't fix.
 8. `record`: the decision is recorded in the network's heal decisions and its step log.
 
+**One unit is one feature, with what only it uses.** A unit is one feature on one section (an
+interface's OSPF authentication is one unit, however many lines). A definition that only one
+added line uses by name is one unit with it: an ACL and the `ip access-group` applying it, a
+class-map, its policy-map and the `service-policy`, a key chain and its use, a prefix-list and
+its `neighbor … prefix-list`, an object-group and its ACL, a track and its static route, an IP
+SLA and its track. So an ACL added and applied outside intent is one fix, removed or kept
+together. A definition an unchanged line also uses stays its own unit.
+
+**A security control is a person's** ([Remove it or keep it](heal-proposal#keep)). Removing or
+changing a line outside intent that adds a security control (routing authentication and key
+chains, an ACL or its application, AAA, crypto and SSH, SNMP restrictions, control-plane
+policing, port security and 802.1X, `transport input`; declared per platform by line shape) is
+Tier 2: proposed, never automatic, because it may be half of a rollout whose far end is not
+configured yet. Adding back a missing control stays Tier 1. Accounts, AAA's login lines, crypto
+keys and Mercury's own path stay Tier 4. A network may answer yes to "may Mercury revert a
+one-sided security change that broke an adjacency?" (`heal_security_revert_adjacency`, no by
+default): then such a change on an interface or routing process, on a device whose incident
+holds an adjacency down and no other device, is Tier 1 (`security_revert`), healed in Auto only
+where the policy names that kind.
+
 The rates per device and per network are not counted for an incident whose read found the
 device at its golden: it has nothing to heal, so a person's revert ends "nothing to heal", never
 a hold for the rate the change's own would-heal used. A symptom read gone when it is decided,
@@ -78,7 +99,10 @@ one incident however long it takes a person to deal with it:
   telemetry a minute later, is attached to the changed router's incident, not a can't-fix of
   its own, and the team is told once. This holds for about four minutes after the decision
   (250 seconds); a symptom on another device later than that is judged on its own, so a
-  decision that has stood for days never hides an unrelated fault.
+  decision that has stood for days never hides an unrelated fault. An alert rule whose pending
+  period plus its group's evaluation interval is longer than that can fire too late to fold:
+  while self-healing is on, Needs attention names each such rule with both numbers, and says
+  so too when the alert reader's last read does not hold them.
 - **The drift check finding the same departure joins it:** no second incident, and no second
   decision of the same thing.
 - **Anything else that changes the device** (a configuration change from outside Mercury, a
@@ -91,7 +115,7 @@ one incident however long it takes a person to deal with it:
   check names each device it read clean, and only a read counts, never a device missing from
   the list); or, for a can't-fix at its golden on a symptom, the symptom read gone and quiet for
   the flap window, by the detect pass or by Mercury's own diagnosis before its notice ("cleared
-  by itself by HH:MM UTC, nothing to do"). A hold because the device's golden departs from its
+  by itself at HH:MM UTC, nothing to do"). A hold because the device's golden departs from its
   intent is not ended by a read at that golden. Turning self-healing off ends every standing
   incident.
 

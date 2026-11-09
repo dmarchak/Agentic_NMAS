@@ -103,7 +103,9 @@ class TestWhichIncidents:
     def test_an_alert_incident_is_tier_3_can_t_fix_and_a_never_one_is_not(self, lab):
         alert = alert_incident()
         assert AD.is_alert(SL.incident("Default", alert))
-        never = cant_fix()                   # a security ACL added outside intent: Tier 4
+        # An account added outside intent: Tier 4 (a security ACL, this test's example until
+        # C2839, is Tier 2 now).
+        never = cant_fix(GOLDEN + "username audit privilege 15 secret 9 $9$abc\n")
         entry = SL.incident("Default", never)
         assert (entry["tier"], AD.is_alert(entry)) == (4, False)
 

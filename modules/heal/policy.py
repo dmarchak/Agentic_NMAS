@@ -68,9 +68,19 @@ KILL_KEY = "heal_stopped"
 #: marked lab, Tier 2 (a proposal) elsewhere (N16, `actions.tier_of`). The dampening proposal
 #: is Tier 2 only (H22).
 TIER1_KINDS = ("missing_line", "changed_line", "added_line", "admin_down", "port_bounce",
-               "ospf_reset", "session_clear")
+               "ospf_reset", "session_clear", "security_revert")
 TIER2_KINDS = ("process_reset", "qos_policy", "secret_added_back", "session_clear",
                "dampening_proposal")
+#: C2839 (the operator, 2026-11-09): a security control removed or changed outside intent, and
+#: any ACL, are Tier 2 and ALWAYS proposed: a person removes it (back to intent) or keeps it
+#: (adds it to intent). Never a setting: the policy's propose list is fingerprinted, so adding
+#: them to its default would change every confirmed policy's fingerprint and turn self-healing
+#: off on each network that confirmed one; and there is no Tier 2 choice to make for them.
+SECURITY_KINDS = ("security_acl", "security_control")
+#: C2839's per-network question, "may Mercury revert a one-sided security change that broke an
+#: adjacency?" (default no): yes makes such a change `security_revert`, Tier 1, still allowed
+#: AUTO only by name in `heal_kinds_auto` (N8, one kind at a time).
+SECURITY_REVERT_KEY = "heal_security_revert_adjacency"
 KIND_WORDS = {
     "missing_line": "a missing line", "changed_line": "a changed line, single-valued",
     "added_line": "an added line, a measured shape", "admin_down": "admin down where intent "
@@ -83,6 +93,8 @@ KIND_WORDS = {
     "dampening_proposal": "dampening proposed on a port still flapping after its one bounce "
                           "(a change to intent; its Approve refused until its removal is "
                           "measured on the platform)",
+    "security_revert": "a one-sided security change that broke an adjacency, put back (only "
+                       "where the network allows it, C2839)",
 }
 
 #: The hard stops a network sets, in section 6's order, each with its unit.
@@ -129,12 +141,17 @@ GUARDS = (
     (11, "the same deviation healed twice", ("heal_repeat_halts_hours",)),
     (12, "the program's size", ("heal_max_removed_units", "heal_max_units")),
     # With its action guards, 13a to 13e (19.4; `heal.actions.GUARDS`, their own table).
-    (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + ACTION_GUARD_KEYS),
+    (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + ACTION_GUARD_KEYS
+     + (SECURITY_REVERT_KEY,)),
     (14, "a rolled-back heal", ()),
 )
 
 #: What a person confirms: everything of the group but the confirmation itself.
-POLICY_KEYS = (MODE_KEY, UNTIL_KEY, KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + GUARD_KEYS
+POLICY_KEYS = (MODE_KEY, UNTIL_KEY, KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + GUARD_KEYS + (
+    SECURITY_REVERT_KEY,)
+#: The keys a fingerprint counts only once they are not their default (absent counts as the
+#: default), so a policy confirmed before they existed keeps its fingerprint.
+LATER_KEYS = ACTION_GUARD_KEYS + (SECURITY_REVERT_KEY,)
 
 #: N8: AUTO is on for at most 7 days per enablement, then dry run.
 MAX_AUTO_SECONDS = 7 * 24 * 3600
@@ -189,13 +206,14 @@ def _hash(obj) -> str:
 def policy_fingerprint(values: dict) -> str:
     """The fingerprint of a policy's values (`POLICY_KEYS`): what a person confirmed, and what
     each heal records as the authority it stands on (section 11). An action guard's setting
-    (`ACTION_GUARD_KEYS`) counts only once it is not its default (absent counts as the default):
-    a policy confirmed before those settings existed keeps its fingerprint, and setting one to
-    anything else is a change a person confirms."""
+    (`ACTION_GUARD_KEYS`), and C2839's ``heal_security_revert_adjacency`` (`LATER_KEYS`), count
+    only once not their default (absent counts as the default): a policy confirmed before those
+    settings existed keeps its fingerprint, and setting one to anything else is a change a
+    person confirms."""
     from modules.settings_schema import DEFAULTS
 
     return _hash({k: values.get(k) for k in POLICY_KEYS
-                  if k not in ACTION_GUARD_KEYS or values.get(k) not in (None, DEFAULTS.get(k))})
+                  if k not in LATER_KEYS or values.get(k) not in (None, DEFAULTS.get(k))})
 
 
 def _words(value) -> str:
@@ -319,6 +337,8 @@ def current(network: str, now: float = None, *, kill: dict = None) -> dict:
            "fingerprint": policy_fingerprint(values) if values else "",
            "kinds_auto": list(values.get(KINDS_AUTO_KEY) or []),
            "kinds_propose": list(values.get(KINDS_PROPOSE_KEY) or []),
+           # C2839: only an explicit yes; absent, unreadable or anything else is no.
+           "security_revert": values.get(SECURITY_REVERT_KEY) is True,
            "guards": guards(values, got["origins"], lab) if values else {},
            "stage": stage, "stopped": kill}
     if kill["stopped"]:
