@@ -387,7 +387,11 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   unless a line needs one) and **Decline** (with a reason; nothing is sent)
   ([Approve or decline a self-healing proposal](heal-proposal)). A dry-run record leaves once
   you mark it on its row: **Was that right?** opens it to **Right** and **Wrong…**
-  ([Dry run: Right or Wrong](heal#mark)).
+  ([Dry run: Right or Wrong](heal#mark)). One change is one row: where self-healing holds a
+  device's change as a proposal, a can't-fix or a hold, that device's drift ("<device> has
+  drifted from its golden") is drawn inside that row as "Also: …", never as a Critical row of
+  its own; a dry-run record goes the other way, inside the drift row, which is then the row
+  to act on.
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
   new host keys a planned window kept, a deploy whose verify could not read back lines the

@@ -6925,6 +6925,49 @@ def badge_of(rows: list, results: list) -> dict:
             "unreadable": len(unreadable)}
 
 
+#: The self-healing rows that carry a person's decision about a change Mercury holds, in the
+#: order one is chosen when a device has two (C2806): a device's drift row folds into it.
+HEAL_LEADS = ("proposal", "cant_fix", "held")
+
+
+def _fold_drift_into_heal(rows: list) -> list:
+    """One change, one row (C2806; the operator, H11 W1: "link them as one event"): where
+    self-healing holds a device's change as a proposal, a can't-fix or a hold, the item with
+    the person's action on it, that device's drift row on the same network is the same change
+    said again, so it attaches there (its words kept as "Also: …", its id kept for the
+    record) and never replaces the heal row's action. Rows attached to the drift row (a
+    queued drift item, a dry-run record's marks) follow it to the heal row, never giving it
+    their action. A row naming several devices (a fleet hold) folds nothing: its device's own
+    drift stays its own row. A dry-run record keeps attaching to the drift row (C2817), which
+    stays the item to act on there."""
+    leads = {}
+    for r in rows:
+        ops = r.get("operands") or {}
+        if r["source"] != "heal" or r["kind"] not in HEAL_LEADS or len(r["devices"]) != 1 \
+                or not ops.get("list"):
+            continue
+        key = (ops["list"], r["devices"][0])
+        best = leads.get(key)
+        if best is None or HEAL_LEADS.index(r["kind"]) < HEAL_LEADS.index(best["kind"]):
+            leads[key] = r
+    if not leads:
+        return rows
+    moved = {}
+    for r in rows:
+        ops = r.get("operands") or {}
+        if (r["source"], r["kind"]) != ("drift", "drifted") or len(r["devices"]) != 1 \
+                or r.get("attach_to"):
+            continue
+        lead = leads.get((ops.get("list"), r["devices"][0]))
+        if lead is not None:
+            r["attach_to"], r["attach_action"] = lead["id"], False
+            moved[r["id"]] = lead["id"]
+    for r in rows:
+        if r.get("attach_to") in moved:
+            r["attach_to"], r["attach_action"] = moved[r["attach_to"]], False
+    return rows
+
+
 def _attach(rows: list) -> list:
     """Fold each row that is ABOUT another row into it (NSOT_PLAN 8.6: two
     rows about one event is the three-reports problem). The target keeps its
@@ -7536,9 +7579,9 @@ def needs_attention(sources=None) -> dict:
         for r in res["rows"]:
             if not r.get("read_at"):
                 r["read_at"] = res.get("value_at") or res.get("read_at")
-    rows = _with_networks(_attach(_fold_known_unmonitored(_fold_one_cause(
+    rows = _with_networks(_attach(_fold_drift_into_heal(_fold_known_unmonitored(_fold_one_cause(
         [r for res in results for r in res["rows"]]
-        + _past_promise_rows(results, time.time())))))
+        + _past_promise_rows(results, time.time()))))))
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)
