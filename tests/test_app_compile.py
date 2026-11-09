@@ -22,6 +22,7 @@ Cases, each planted:
 import copy
 import hashlib
 import json
+import re
 
 import pytest
 
@@ -241,6 +242,11 @@ def test_the_preview_draws_the_compiled_config_and_its_confirm_stages_those_byte
            "/opt/ryu-apps/quirky/1.0.0.config.json</span>" in html
     assert "punt_table&#34;: 200" in html and "its config file (new)" in html
     assert f"sw-hp (DPID {PROCURVE}): forward_table 100, punt_table 200, meter_table 100" in html
+    # The app SDK it stages, by its hash (C2852, option A).
+    sha = re.search(r"The app SDK, staged to <span class=\"mono\">/opt/ryu-apps/\.sdk/"
+                    r"([0-9a-f]{64})/</span>", html)
+    assert sha, "the plan card draws the SDK it stages"
+    assert "mercury_app/__init__.py" in html and f"{sha.group(1)[:4]}…" in html
     # The post-check's read: both switches back and the app's /health ok.
     src.reads = [{"switches": {"ok": True, "switches": [{"dpid": PROCURVE}, {"dpid": 3}]},
                   "links": {"ok": True, "links": []}, "health": {"quirky": {"ok": True}}}]

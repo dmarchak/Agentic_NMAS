@@ -342,12 +342,29 @@ and checked by the apply script before the restart. The app reads it once, at lo
 - **The controller's Python, as measured:** every file is held to the version the network's
   controller runs apps on (below).
 
-The app SDK's contract is `modules/apps/sdk/mercury_app/`: `start_config` is its working call
-(a local file, the start-time config); `egress` is a stub until the working package lands
-(C2645). Neither the controller's deploy nor the container harness puts the SDK on a
-controller app's import path yet (C2852), so an app imports it guarded and its `/health` says
-when it is absent (lab/lab9/apps/fabric_forwarding/fabric_forwarding.py). The allowlist is the check a person
-can read; the controller's container and its network policy are the boundary.
+The app SDK is `modules/apps/sdk/mercury_app/`, and both its calls work:
+- `start_config(name, version)` reads the start-time config the deploy staged, without
+  Mercury's reserved key `_mercury`.
+- `egress(...)` reaches only the destinations the calling app's own config carries (C2645).
+  Mercury's compile step resolves each manifest entry's `from_config` address into the
+  config's `_mercury` key, so the address is under the confirmed hash and drawn in the plan.
+  The SDK finds the calling app by its staged file (`/opt/ryu-apps/<name>/<version>/`), follows
+  no redirect, uses no proxy, bounds the timeout at 10 s and the answer at 64 KiB, and answers
+  `{"ok", "status", "body", "error"}`. A call out of shape raises `EgressRefused`, naming why.
+
+**On the import path (C2852, option A).** A controller app deploy stages this release's
+`mercury_app/__init__.py` as `/opt/ryu-apps/.sdk/<sha256>/mercury_app/`. Its hash goes in the
+request, and the apply script recomputes it. The drop-in sets `Environment=PYTHONPATH=` to that
+folder, and the preview draws the folder and its file. The folder is named by its hash and never
+deleted, so a rollback finds the SDK its request named. The container harness mounts
+`modules/apps/sdk` read-only at `/opt/mercury-sdk`, and `ryu-start` sets PYTHONPATH there.
+
+In the harness, an app's egress has no staged config: the harness lays the apps out flat, so
+`egress` refuses there. An app still imports the SDK guarded, and its `/health` says when the
+SDK is absent (lab/lab9/apps/fabric_forwarding/fabric_forwarding.py).
+
+The allowlist is the check a person can read; the controller's container and its network
+policy are the boundary.
 
 ### The controller's Python
 

@@ -86,10 +86,12 @@ def staging_refusal(path, kind: str = "file") -> str:
     root = s.APPS_ROOT
     shown = repr(str(path)[:160])
     rules = (f"a file is written only to {root}/<name>/<version>/<relative path>, "
-             f"{root}/<name>/<version>{s.CONFIG_SUFFIX} or "
-             f"{request_path()}, a folder only to {root}/<name>, {root}/<name>/<version>[/...] "
+             f"{root}/<name>/<version>{s.CONFIG_SUFFIX}, {root}/{s.SDK_DIR}/<sha256>/<relative "
+             f"path> or {request_path()}, a folder only to {root}/<name>, "
+             f"{root}/<name>/<version>[/...], {root}/{s.SDK_DIR}[/<sha256>[/...]] "
              f"or {posixpath.dirname(request_path())}; <name> matches {s.NAME.pattern}, "
-             f"<version> {s.VERSION.pattern}, each further part {PART.pattern}, never . or ..")
+             f"<version> {s.VERSION.pattern}, <sha256> {s.SHA256.pattern}, each further part "
+             f"{PART.pattern}, never . or ..")
     if kind not in ("file", "dir"):
         return f"REFUSED: {kind!r} is neither a file nor a folder write. Nothing was sent."
     if not isinstance(path, str) or not path.isascii() or not path.isprintable():
@@ -98,6 +100,9 @@ def staging_refusal(path, kind: str = "file") -> str:
         return ""
     if kind == "dir" and path == posixpath.dirname(request_path()):
         return ""
+    sdk_root = posixpath.join(root, s.SDK_DIR)
+    if path == sdk_root or path.startswith(sdk_root + "/"):
+        return _sdk_refusal(path, kind, sdk_root, shown, rules)
     if not path.startswith(root + "/"):
         return f"REFUSED: the path {shown} is not under {root} ({rules}). Nothing was sent."
     parts = path[len(root) + 1:].split("/")
@@ -126,6 +131,29 @@ def staging_refusal(path, kind: str = "file") -> str:
                 "Nothing was sent.")
     for part in parts[2:]:
         if not PART.match(part):
+            return (f"REFUSED: the path {shown}'s part {part[:60]!r} does not match "
+                    f"{PART.pattern} ({rules}). Nothing was sent.")
+    return ""
+
+
+def _sdk_refusal(path: str, kind: str, sdk_root: str, shown: str, rules: str) -> str:
+    """The app SDK's staging shapes (C2852, option A): the folder ``.sdk``, a folder named by a
+    content hash under it, and files and folders below that, each part `PART`."""
+    s = _script()
+    if path == sdk_root:
+        return "" if kind == "dir" else (
+            f"REFUSED: the path {shown} is the SDK's folder, not a file in one ({rules}). "
+            "Nothing was sent.")
+    parts = path[len(sdk_root) + 1:].split("/")
+    if not s.SHA256.match(parts[0]):
+        return (f"REFUSED: the path {shown}'s SDK folder {parts[0][:70]!r} is not a content "
+                f"hash ({rules}). Nothing was sent.")
+    if len(parts) == 1:
+        return "" if kind == "dir" else (
+            f"REFUSED: the path {shown} is an SDK's folder, not a file in it ({rules}). "
+            "Nothing was sent.")
+    for part in parts[1:]:
+        if part in ("", ".", "..") or not PART.match(part):
             return (f"REFUSED: the path {shown}'s part {part[:60]!r} does not match "
                     f"{PART.pattern} ({rules}). Nothing was sent.")
     return ""
@@ -188,6 +216,48 @@ def _items(plan: dict) -> list:
                                    "Nothing was sent.")
         out.append((app, local, remote, listed))
     return out
+
+
+def _sdk_item(plan: dict):
+    """``(remote folder, [(file, local path, remote path, perm)])`` for the app SDK the request
+    names (C2852, option A), every byte checked against the plan and its recomputed hash the
+    request's first; None when the request names none."""
+    s = _script()
+    want = (plan["request"].get("sdk") or {}).get("sha256")
+    if not want:
+        return None
+    sdk = plan.get("sdk") or {}
+    if sdk.get("on_controller") is True and sdk.get("sha256") == want:
+        # A rollback to a request whose SDK an earlier deploy staged (deploy_op._Channel): its
+        # folder is on the controller by its hash, and the apply script recomputes it.
+        return None
+    local = sdk.get("folder")
+    if not local or not os.path.isdir(local):
+        raise TransportRefused(f"REFUSED: the app SDK's staged folder {local or '(none)'} is "
+                               "not a folder here. Nothing was sent.")
+    got = s.folder_hash(local)
+    if got != want:
+        raise TransportRefused(f"REFUSED: the app SDK's staged folder {local} hashes {got}, "
+                               f"not the request's {want}: it changed after the plan. Nothing "
+                               "was sent.")
+    remote = s.sdk_folder(s.APPS_ROOT, want)
+    listed = []
+    for f in sdk.get("files") or []:
+        target = f"{remote}/{f['path']}"
+        why = staging_refusal(target, "file")
+        if why:
+            raise TransportRefused(why)
+        path = os.path.join(local, *f["path"].split("/"))
+        with open(path, "rb") as fh:
+            blob = s.blob_id(fh.read())
+        if blob != f["blob"]:
+            raise TransportRefused(f"REFUSED: {f['path']} in the app SDK is blob {blob} here, "
+                                   f"not the plan's {f['blob']}. Nothing was sent.")
+        listed.append((f["path"], path, target, 0o644))
+    if not listed:
+        raise TransportRefused("REFUSED: the plan lists no file for the app SDK. Nothing was "
+                               "sent.")
+    return remote, listed
 
 
 def _configs(plan: dict) -> list:
@@ -292,6 +362,7 @@ def send(conn, plan: dict, *, ip: str) -> dict:
         return result
     try:
         items = _items(plan)
+        sdk = _sdk_item(plan) if plan["request"].get("kind") != _script().PUT_BACK else None
         configs = _configs(plan)
         body = request_bytes(plan)
     except (TransportRefused, OSError) as exc:
@@ -301,13 +372,25 @@ def send(conn, plan: dict, *, ip: str) -> dict:
     if why:
         result["error"] = why
         return result
-    pending = [target for _app, _l, _r, listed in items for _rel, _p, target, _m in listed]
+    pending = [target for _rel, _p, target, _m in (sdk[1] if sdk else [])]
+    pending += [target for _app, _l, _r, listed in items for _rel, _p, target, _m in listed]
     pending += [target for target, _data in configs]
     result["not_staged"] = list(pending)
     result["step"] = "stage"
     sftp = None
     try:
         sftp = connection.open_sftp(conn)
+        if sdk:
+            # The app SDK first (C2852): content-addressed, so writing it again writes the same
+            # bytes over the same paths.
+            remote, listed = sdk
+            for d in _dirs(remote, [r for r, _p, _t, _m in listed]):
+                sftp.mkdir(d)
+            for _rel, path, target, perm in listed:
+                with open(path, "rb") as fh:
+                    sftp.write(target, fh.read(), perm)
+                result["staged"].append(target)
+                result["not_staged"].remove(target)
         for _app, _local, remote, listed in items:
             for d in _dirs(remote, [rel for rel, _p, _t, _m in listed]):
                 sftp.mkdir(d)

@@ -381,13 +381,21 @@ def build(network: str, controller_name: str, chosen: dict, *, root: str,
     config_notes, why = app_config.compile_set(items, exp.get("switches") or [])
     if why:
         return dict(base, refusals=why, config_notes=config_notes)
+    # The app SDK beside the apps (C2852, option A): this release's `mercury_app`, staged
+    # content-addressed, its hash in the request, so the SDK every app imports is confirmed,
+    # previewed and rolled back with them.
+    try:
+        sdk = channel.stage_sdk(f"{root}/.sdk")
+    except (channel.ChannelRefused, OSError) as exc:
+        return dict(base, refusals=[f"the app SDK could not be staged: {exc}"],
+                    config_notes=config_notes)
     observed = src.observe(network, ctl, apps=health_prefixes(
         i["manifest"] for i in items)) if observe else None
     got = channel.plan(network=network, controller=controller_name, unit=ctl["unit"],
                        enabled=items, host=host, listen=ctl.get("listen") or {},
                        switches=exp.get("switches") or [], links=exp.get("links") or [],
                        previous=rec["request"] if rec["state"] == "ok" else None,
-                       observed=observed)
+                       observed=observed, sdk=sdk)
     out = dict(base, **got)
     out["read_at"] = host.get("at")
     out["commits"] = {i["manifest"].name: i.get("commit", "") for i in items}
@@ -481,6 +489,15 @@ class _Channel:
                       "files": {n: i["staged"]["files"] for n, i in by_name.items()},
                       "folders": {n: i["staged"]["folder"] for n, i in by_name.items()},
                       "configs": dict(self.configs)}
+        want = (req.get("sdk") or {}).get("sha256")
+        if want:
+            # The app SDK the request before named (C2852): this release's, staged again when
+            # it hashes the same; otherwise the folder that request's deploy staged, which stays
+            # on the controller by its hash (nothing deletes it), and which the apply script
+            # recomputes before it writes the drop-in, so a missing one is refused there.
+            mine = self.plan.get("sdk") or {}
+            self.tplan["sdk"] = (mine if mine.get("sha256") == want
+                                 else {"sha256": want, "on_controller": True})
 
     def apply(self):
         self.progress("command", "running")

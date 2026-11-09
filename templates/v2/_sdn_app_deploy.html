@@ -52,6 +52,14 @@
   </table></div>
   {%- endfor %}
   <p class="muted small">From git's blobs at each pinned commit, never a working tree; each folder's hash recomputed from what was staged equals its Published pin. {{ d.file_count }} file{{ 's' if d.file_count != 1 }} in {{ d.folder_count }} folder{{ 's' if d.folder_count != 1 }} in all.</p>
+  {%- if d.sdk %}
+  <h4>The app SDK, staged to <span class="mono">{{ d.sdk.path }}</span></h4>
+  <p class="small muted">{{ brand.short }}'s <span class="mono">mercury_app</span> from this release, on every app's import path (the drop-in's PYTHONPATH); its sha256 <span class="mono">{{ d.sdk.sha[:4] }}…{{ d.sdk.sha[-4:] }}</span> is in the request and recomputed by the apply script before the restart. Its folder is named by that hash, so a rollback finds the one its request named.</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">File</th><th scope="col">Mode</th><th scope="col">Bytes</th><th scope="col">Blob</th></tr></thead>
+    <tbody>{% for f in d.sdk.files %}<tr><td class="mono">{{ f.path }}</td><td>644</td><td>{{ '{:,}'.format(f.bytes) }}</td><td class="mono small">blob {{ f.blob[:4] }}…{{ f.blob[-4:] }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- endif %}
   {%- for c in d.configs %}
   <h4>{{ c.app }} {{ c.version }}'s start-time config, staged to <span class="mono">{{ c.path }}</span> {{ badge(c.state if c.state != 'same' else 'the same as now', 'warn' if c.state == 'changed' else 'ok') }}</h4>
   <p class="small muted">Compiled by {{ brand.short }} before this plan; its sha256 <span class="mono">{{ c.sha[:4] }}…{{ c.sha[-4:] }}</span> is in the request, checked by the apply script before the restart, and read by the app at load.{% for n in c.notes %} {{ n }}.{% endfor %}</p>

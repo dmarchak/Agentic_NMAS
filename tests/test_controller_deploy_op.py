@@ -352,6 +352,33 @@ def test_a_miss_rolls_back_to_the_recorded_request_staged_again_from_its_pins(tm
     assert deploy_receipts.record(NET, CTL)["request"] == first["request"]
 
 
+def test_a_preview_stages_this_release_s_sdk_and_names_it_in_the_request(tmp_path):
+    src = FakeSources(tmp_path)
+    shown = deploy_op.preview(NET, CTL, {"of_versions": "1.0.0"}, src=src)
+    assert shown["ok"] is True, shown["refusals"]
+    assert shown["request"]["sdk"] == {"sha256": shown["sdk"]["sha256"]}
+    assert [f["path"] for f in shown["sdk"]["files"]] == ["mercury_app/__init__.py"]
+    assert f"Environment=PYTHONPATH=/opt/ryu-apps/.sdk/{shown['sdk']['sha256']}" in \
+        shown["dropin_after"]
+
+
+@pytest.mark.parametrize("same", [True, False], ids=["this-release-s", "an-earlier-one"])
+def test_a_rollback_sends_the_sdk_its_request_named(tmp_path, same):
+    src = FakeSources(tmp_path)
+    shown = deploy_op.preview(NET, CTL, {"of_versions": "1.0.0"}, src=src)
+    other = shown["sdk"]["sha256"] if same else "c" * 64
+    before = dict(shown["request"], sdk={"sha256": other})
+    plan = dict(shown, rollback=dict(shown["rollback"], kind="request", request=before))
+    ch = deploy_op._Channel(plan, dev=DEV, src=src, registered=src.reg,
+                            root=str(tmp_path / "job"), configs={},
+                            progress=lambda *a, **k: None)
+    ch.stage(before)
+    if same:
+        assert ch.tplan["sdk"] is shown["sdk"], "this release's SDK is staged again"
+    else:
+        assert ch.tplan["sdk"] == {"sha256": "c" * 64, "on_controller": True}
+
+
 def test_a_controller_whose_login_is_not_the_deploy_account_is_refused(tmp_path):
     src = FakeSources(tmp_path)
     src.controllers = lambda n: {"state": "ok", "error": "", "controllers": [

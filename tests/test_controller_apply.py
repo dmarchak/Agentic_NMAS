@@ -702,3 +702,116 @@ def test_a_config_hash_out_of_shape_is_refused(tmp_path):
     m, _, _ = configured(tmp_path, sha="plantedvalue")
     why = refused(m)
     assert "apps[0].config_sha256 does not match" in why and "plantedvalue" not in why
+
+
+# ── the app SDK, on the apps' import path (C2852, option A) ──────────────────────────────────
+
+SDK_INIT = b'"""the SDK, as staged"""\n'
+
+
+def stage_sdk(m, data=SDK_INIT, extra=None) -> str:
+    """The SDK staged as Mercury stages it, under a folder named by its content hash."""
+    tmp = os.path.join(m.APPS_ROOT, ".sdk", "staging")
+    os.makedirs(os.path.join(tmp, "mercury_app"))
+    files = {"mercury_app/__init__.py": data, **(extra or {})}
+    for rel, body in files.items():
+        path = os.path.join(tmp, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(body)
+        os.chmod(path, 0o644)
+    for root, dirs, _ in os.walk(tmp):
+        for d in dirs:
+            os.chmod(os.path.join(root, d), 0o755)
+    os.chmod(tmp, 0o755)
+    sha = m.folder_hash(tmp)
+    os.rename(tmp, m.sdk_folder(m.APPS_ROOT, sha))
+    return sha
+
+
+def sdk_ready(tmp_path, **kw):
+    m = load(tmp_path)
+    put_dropin(m)
+    app_sha = stage_app(m)
+    sdk_sha = stage_sdk(m, **kw)
+    put_sdk_request(m, app_sha, sdk_sha)
+    return m, app_sha, sdk_sha
+
+
+def put_sdk_request(m, app_sha, sdk_sha):
+    body = json.dumps({"apps": [{"name": "of_versions", "version": "1.0.0", "sha256": app_sha}],
+                       "listen": {"host": "192.0.2.10", "port": 6653},
+                       "sdk": {"sha256": sdk_sha}}).encode()
+    put_request(m, [], raw=body)
+
+
+def test_a_request_naming_the_sdk_puts_its_folder_on_the_apps_import_path(tmp_path):
+    m, _, sdk_sha = sdk_ready(tmp_path)
+    out = run(m)
+    assert out["ok"] is True, out
+    folder = os.path.join(m.APPS_ROOT, ".sdk", sdk_sha)
+    assert out["sdk"] == folder
+    lines = dropin(m).splitlines()
+    assert lines[1:4] == ["[Service]", "User=ryu", f"Environment=PYTHONPATH={folder}"]
+    assert lines[4] == "ExecStart="
+
+
+def test_a_request_naming_no_sdk_renders_the_drop_in_it_always_did(tmp_path):
+    m = load(tmp_path)
+    req = {"apps": [{"name": "a", "version": "1.0.0", "sha256": "1" * 64}],
+           "listen": {"host": "192.0.2.1", "port": 6653}}
+    text = m.render_dropin(req, MANAGER, "ryu", "/opt/ryu-apps")
+    assert "Environment=" not in text and "\nUser=ryu\nExecStart=\n" in text
+    with_sdk = m.parse_request(json.dumps(dict(req, sdk={"sha256": "2" * 64})).encode())
+    assert with_sdk["sdk"] == {"sha256": "2" * 64}
+    assert m.request_sha256(with_sdk) != m.request_sha256(m.parse_request(
+        json.dumps(req).encode())), "the SDK's hash is in the request's"
+
+
+@pytest.mark.parametrize("plant, words", [
+    ("edited", "changed after it was staged"),
+    ("absent", "cannot be read"),
+    ("no package", "holds no file mercury_app/__init__.py"),
+    ("link", "is a symbolic link"),
+    ("group-writable", "writable by group or others")])
+def test_an_sdk_folder_other_than_the_request_names_is_refused(tmp_path, plant, words):
+    m, app_sha, sdk_sha = sdk_ready(tmp_path)
+    folder = m.sdk_folder(m.APPS_ROOT, sdk_sha)
+    init = os.path.join(folder, "mercury_app", "__init__.py")
+    if plant == "edited":
+        with open(init, "ab") as fh:
+            fh.write(b"import os\n")
+    elif plant == "absent":
+        put_sdk_request(m, app_sha, "3" * 64)
+    elif plant == "no package":
+        os.rename(init, os.path.join(folder, "mercury_app", "other.py"))
+    elif plant == "link":
+        os.symlink("/etc/passwd", os.path.join(folder, "mercury_app", "extra.py"))
+    else:
+        os.chmod(init, 0o664)
+    before = dropin(m)
+    why = refused(m)
+    assert words in why and "/.sdk/" in why
+    assert dropin(m) == before
+
+
+@pytest.mark.parametrize("raw, words", [
+    (b'{"sha256": "plantedvalue"}', "sdk.sha256 does not match"),
+    (b'{"sha256": "' + b"4" * 64 + b'", "path": "plantedvalue"}', "sdk is not an object of "
+                                                                  "exactly sha256"),
+    (b'"plantedvalue"', "sdk is not an object of exactly sha256")],
+    ids=["hash-shape", "another-field", "not-an-object"])
+def test_an_sdk_entry_of_any_other_shape_is_refused_without_quoting_it(tmp_path, raw, words):
+    m = load(tmp_path)
+    put_dropin(m)
+    put_request(m, [], raw=b'{"apps": [], "listen": {"host": "192.0.2.1", "port": 6653}, '
+                       b'"sdk": ' + raw + b"}")
+    why = refused(m)
+    assert words in why and "plantedvalue" not in why
+
+
+def test_an_app_named_as_the_sdk_s_package_is_refused(tmp_path):
+    m = load(tmp_path)
+    put_dropin(m)
+    put_request(m, [{"name": "mercury_app", "version": "1.0.0", "sha256": "5" * 64}])
+    assert "the app SDK's package" in refused(m)

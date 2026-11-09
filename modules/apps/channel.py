@@ -184,6 +184,35 @@ def stage_published(version, repo, path: str, rev: str, dest: str) -> dict:
     return {"ok": not why, "staged": staged, "refusal": why}
 
 
+#: The app SDK's runtime half, the one file staged to the controller (C2852, option A): the
+#: package `mercury_app` as this release of Mercury holds it. `testing.py` beside it is the
+#: apps' test support and stays here.
+SDK_SOURCE = os.path.join(ROOT, "modules", "apps", "sdk", "mercury_app", "__init__.py")
+
+
+def stage_sdk(dest: str) -> dict:
+    """The app SDK staged into *dest* (which must not exist) as ``mercury_app/__init__.py``,
+    from this release's own file: ``{"folder", "files": [{"path", "mode", "blob", "bytes"}],
+    "sha256"}``, the hash the apply script recomputes (`folder_hash`), so the SDK a deploy
+    stages is under the confirmed hash and its folder on the controller is named by it."""
+    s = script()
+    if os.path.lexists(dest):
+        raise ChannelRefused(f"the staging folder {dest} exists already: a staging writes a "
+                             "fresh folder")
+    with open(SDK_SOURCE, "rb") as fh:
+        body = fh.read()
+    rel = s.SDK_ENTRY.replace(os.sep, "/")
+    target = os.path.join(dest, *rel.split("/"))
+    os.makedirs(os.path.dirname(target), mode=0o755)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(body)
+    os.chmod(target, 0o644)
+    return {"folder": dest, "sha256": s.folder_hash(dest),
+            "files": [{"path": rel, "mode": "100644", "blob": s.blob_id(body),
+                       "bytes": len(body)}]}
+
+
 # ── the host's reads ──────────────────────────────────────────────────────────────────────────
 
 def host_commands(unit: str) -> dict:
@@ -285,15 +314,18 @@ def _app_entry(a: dict) -> dict:
     return entry
 
 
-def request(apps, listen: dict) -> dict:
+def request(apps, listen: dict, sdk_sha256: str = "") -> dict:
     """The request the script reads, normalised by the script's own parser (so its hash is the
     script's): *apps* in load order, each ``{"name", "version", "sha256"}`` and, for an app
     with a start-time config (decision K9), its ``config_sha256`` (`config_bytes`'s sha256).
     An app with no config carries no key, so a request with no config is the shape it always
-    was, and hashes the same."""
-    body = json.dumps({"apps": [_app_entry(a) for a in apps],
-                       "listen": {"host": listen.get("host"), "port": listen.get("port")}},
-                      sort_keys=True).encode("utf-8")
+    was, and hashes the same. *sdk_sha256*, the staged app SDK's hash (`stage_sdk`; C2852),
+    rides as ``"sdk": {"sha256"}``; with none, no key."""
+    doc = {"apps": [_app_entry(a) for a in apps],
+           "listen": {"host": listen.get("host"), "port": listen.get("port")}}
+    if sdk_sha256:
+        doc["sdk"] = {"sha256": sdk_sha256}
+    body = json.dumps(doc, sort_keys=True).encode("utf-8")
     try:
         return script().parse_request(body)
     except script().Refused as exc:
@@ -492,8 +524,12 @@ def already_wrong(expected: dict, observed, switches) -> dict:
 
 
 def plan(*, network: str, controller: str, unit: str, enabled, host: dict, listen: dict,
-         switches, links, previous, observed=None, account: str = "") -> dict:
+         switches, links, previous, observed=None, account: str = "", sdk=None) -> dict:
     """The deploy's plan, or its refusals (see the module's docstring).
+
+    *sdk*: the app SDK staged for the set (`stage_sdk`'s answer; C2852, option A), or None for
+    a request without it. Its hash rides in the request, so it is in the plan's hash, and the
+    plan carries its folder and files for the transport (``sdk``).
 
     *enabled*: ``[{"version": lifecycle.Version, "manifest": Manifest, "staged": stage()'s
     answer or None, "config": the app's compiled start-time config (a JSON object) or absent}]``
@@ -569,7 +605,7 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
                      .hexdigest()} if m.name in configs else {}))
             for m in ordered]
     try:
-        req = request(apps, listen)
+        req = request(apps, listen, sdk["sha256"] if sdk else "")
     except ChannelRefused as exc:
         return dict(out, refusals=[str(exc)])
     ryu_manager = shown["exec_path"] or shown["argv"][0]
@@ -591,6 +627,8 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
                 files={m.name: staged[m.name]["files"] for m in ordered},
                 folders={m.name: staged[m.name]["folder"] for m in ordered},
                 configs=configs,
+                sdk=({"sha256": sdk["sha256"], "folder": sdk["folder"], "files": sdk["files"]}
+                     if sdk else None),
                 dropin_before=before, dropin_after=after,
                 restart=(f"{unit} on {controller} restarts (systemctl restart, by the apply "
                          f"script), so every switch reconnects: {', '.join(names) or 'none'}"),

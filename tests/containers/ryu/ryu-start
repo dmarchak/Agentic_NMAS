@@ -10,7 +10,12 @@ for f in /opt/ryu-apps/*.py; do
     [ -e "$f" ] || continue
     apps="$apps $f"
 done
-echo "ryu-start: $(python --version 2>&1), ryu-manager $(ryu-manager --version 2>&1 | awk '{print $2}'), apps:${apps:- none}"
+# The app SDK on the apps' import path (C2852), as the controller's drop-in puts it there.
+if [ -d /opt/mercury-sdk/mercury_app ]; then
+    PYTHONPATH=/opt/mercury-sdk
+    export PYTHONPATH
+fi
+echo "ryu-start: $(python --version 2>&1), ryu-manager $(ryu-manager --version 2>&1 | awk '{print $2}'), apps:${apps:- none}, sdk: ${PYTHONPATH:-none}"
 # shellcheck disable=SC2086
 exec ryu-manager --ofp-tcp-listen-port 6653 --wsapi-host 0.0.0.0 --wsapi-port 8080 \
     --observe-links ryu.app.ofctl_rest ryu.app.rest_topology $apps

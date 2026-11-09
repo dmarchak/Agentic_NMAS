@@ -218,7 +218,11 @@ def test_no_container_mounts_anything_but_the_code_and_the_harness_folder():
         for volume in svc.get("volumes") or []:
             sources.setdefault(name, []).append(volume.split(":")[0])
     assert sources == {"runner": ["../../modules", "./"],
-                       "ryu": ["${HARNESS_APPS"]}  # the `:?` message follows the colon
+                       # the `:?` message follows the colon; the SDK beside the apps (C2852)
+                       "ryu": ["${HARNESS_APPS", "../../modules/apps/sdk"]}
+    sdk = [v for v in compose()["services"]["ryu"]["volumes"] if "mercury-sdk" in v]
+    assert sdk == ["../../modules/apps/sdk:/opt/mercury-sdk:ro"], "read-only, the SDK alone"
+    assert "PYTHONPATH=/opt/mercury-sdk" in _read("ryu", "ryu-start")
     text = _read("compose.yml")
     assert "data/" not in text and "key.key" not in text
 

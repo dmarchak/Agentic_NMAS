@@ -692,3 +692,102 @@ def test_a_host_is_held_for_the_deploy_channel_and_for_nothing_device_changing(m
         assert D.holder(LIST, "ctl")["operation"] == HOST_DEPLOY
     with pytest.raises(D.NotManaged, match="mercury_kind is host"):
         D.acquire(LIST, "ctl", "deploy", ACTOR)
+
+
+# ── the app SDK beside the apps (C2852, option A) ─────────────────────────────────────────────
+
+SDK_HASH = "a" * 64
+
+
+def _sdk_plan(tmp_path):
+    sdk = channel.stage_sdk(str(tmp_path / "sdk"))
+    got = channel.plan(network=LIST, controller="ctl", unit=UNIT, enabled=enabled(tmp_path),
+                       host={"show": show("ryu"), "ls": ls("mercury"), "cat": ""},
+                       listen=LISTEN, switches=[eos()], links=[], previous=None, sdk=sdk)
+    assert got["ok"] is True, got["refusals"]
+    return got, sdk
+
+
+@pytest.mark.parametrize("path,kind", [
+    ("/opt/ryu-apps/.sdk", "dir"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}", "dir"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}/mercury_app", "dir"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}/mercury_app/__init__.py", "file")])
+def test_the_sdk_staging_shapes_are_allowed(path, kind):
+    assert transport.staging_refusal(path, kind) == ""
+
+
+@pytest.mark.parametrize("path,kind,words", [
+    ("/opt/ryu-apps/.sdk", "file", "is the SDK's folder, not a file"),
+    ("/opt/ryu-apps/.sdk/latest/mercury_app/__init__.py", "file", "is not a content hash"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}", "file", "is an SDK's folder, not a file in it"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}/../../etc/x", "file", "part '..' does not match"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}//x.py", "file", "part '' does not match"),
+    (f"/opt/ryu-apps/.sdk/{SDK_HASH}/a b.py", "file", "part 'a b.py' does not match")])
+def test_every_other_sdk_path_is_refused_naming_it(path, kind, words):
+    why = transport.staging_refusal(path, kind)
+    assert why.startswith("REFUSED") and words in why and why.endswith("Nothing was sent.")
+
+
+def test_the_sdk_is_staged_first_by_its_hash_and_named_in_the_request(tmp_path):
+    plan, sdk = _sdk_plan(tmp_path)
+    assert plan["request"]["sdk"] == {"sha256": sdk["sha256"]}
+    assert plan["sdk"]["files"] == sdk["files"]
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is True, got["error"]
+    target = f"/opt/ryu-apps/.sdk/{sdk['sha256']}/mercury_app/__init__.py"
+    writes = [e[1] for e in EVENTS if e[0] == "write"]
+    assert writes[0] == target and writes[-1] == REQUEST
+    with open(channel.SDK_SOURCE, "rb") as fh:
+        assert FakeConn.fs.files[target] == fh.read()
+    assert channel.script().parse_request(FakeConn.fs.files[REQUEST])["sdk"] == {
+        "sha256": sdk["sha256"]}
+    assert target in got["staged"]
+
+
+def test_an_sdk_changed_after_the_plan_is_refused_naming_both_and_nothing_is_sent(tmp_path):
+    plan, sdk = _sdk_plan(tmp_path)
+    with open(os.path.join(sdk["folder"], "mercury_app", "__init__.py"), "ab") as fh:
+        fh.write(b"# edited\n")
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is False and "the app SDK's staged folder" in got["error"]
+    assert f"not the request's {sdk['sha256']}" in got["error"]
+    assert not [e for e in EVENTS if e[0] in ("write", "command")]
+
+
+def test_the_sdk_s_hash_is_in_the_plan_s_hash(tmp_path):
+    plan, sdk = _sdk_plan(tmp_path)
+    plain = _plan(tmp_path / "plain")
+    assert plain["request"].get("sdk") is None and plain["sdk"] is None
+    assert plan["plan_sha256"] != plain["plan_sha256"]
+    assert "Environment=PYTHONPATH=/opt/ryu-apps/.sdk/" + sdk["sha256"] in plan["dropin_after"]
+
+
+def test_a_rollback_to_an_sdk_already_on_the_controller_stages_no_sdk_file(tmp_path):
+    plan, sdk = _sdk_plan(tmp_path)
+    plan["sdk"] = {"sha256": sdk["sha256"], "on_controller": True}
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is True, got["error"]
+    assert not [e for e in EVENTS if e[0] == "write" and "/.sdk/" in e[1]]
+    assert channel.script().parse_request(FakeConn.fs.files[REQUEST])["sdk"] == {
+        "sha256": sdk["sha256"]}
+
+
+def test_an_on_controller_sdk_of_another_hash_is_not_taken_as_staged(tmp_path):
+    plan, sdk = _sdk_plan(tmp_path)
+    plan["sdk"] = {"sha256": "d" * 64, "on_controller": True}
+    with _held():
+        got = transport.send(_open(), plan, ip=ADDRESSES[0])
+    assert got["ok"] is False and "the app SDK's staged folder (none)" in got["error"]
+    assert not [e for e in EVENTS if e[0] in ("write", "command")]
+
+
+def test_the_staged_sdk_is_this_release_s_runtime_half_only(tmp_path):
+    sdk = channel.stage_sdk(str(tmp_path / "sdk"))
+    assert [f["path"] for f in sdk["files"]] == ["mercury_app/__init__.py"]
+    assert sdk["sha256"] == channel.script().folder_hash(sdk["folder"])
+    with pytest.raises(channel.ChannelRefused, match="exists already"):
+        channel.stage_sdk(sdk["folder"])

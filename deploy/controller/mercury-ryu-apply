@@ -40,6 +40,12 @@ The apply, step by step:
   MAX_BYTES, a JSON object in UTF-8, and its sha256 the request's; without it, no such file may
   be there (the app would read a config nobody confirmed). The script never reads a value from
   it and never needs a secret: Mercury refuses a config holding one before it is staged;
+- 3c. the app SDK (C2852, option A): a request may name it, ``"sdk": {"sha256"}`` beside apps
+  and listen (a request without it keeps its hash and its render); its folder,
+  APPS_ROOT/.sdk/<sha256>/ (`sdk_folder`), is held to step 3's rules and must hold
+  mercury_app/__init__.py, its recomputed content hash the request's (`check_sdk`). The drop-in
+  then carries ``Environment=PYTHONPATH=`` that folder, so every app imports the confirmed SDK;
+  an app named mercury_app is refused (it would shadow it);
 - 4. listen.host parses as an IPv4 or IPv6 address and listen.port is in 1024 to 65535;
 - 5. it renders the ONE drop-in, DROPIN_ROOT/<unit>.d/mercury.conf: `User=` RYU_USER, an empty
   `ExecStart=`, then RYU_MANAGER with the fixed flags, the listen address, the apps' files in
@@ -129,7 +135,14 @@ PREV_SUFFIX = ".prev"
 PUT_BACK = "put-before-back"
 #: An app's start-time config sits beside its version's folder (decision K9; `config_path`).
 CONFIG_SUFFIX = ".config.json"
-ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
+#: The app SDK's folders (C2852, option A): APPS_ROOT/.sdk/<its content hash>/, each holding
+#: the package mercury_app (`SDK_ENTRY`), put on the apps' import path by the drop-in's
+#: PYTHONPATH. Content-addressed, so a version staged once is never written over by another
+#: and a rollback to an earlier request finds its SDK where it left it.
+SDK_DIR = ".sdk"
+SDK_PACKAGE = "mercury_app"
+SDK_ENTRY = os.path.join(SDK_PACKAGE, "__init__.py")
+ENV ={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 
 
 class Refused(Exception):
@@ -311,8 +324,17 @@ def parse_request(raw):
         raise Refused("the request is not JSON in UTF-8")
     if isinstance(doc, dict) and "kind" in doc:
         return parse_put_back(doc)
-    if not isinstance(doc, dict) or sorted(doc) != ["apps", "listen"]:
-        raise Refused("the request is not an object of exactly the keys apps and listen")
+    if not isinstance(doc, dict) or sorted(doc) not in (["apps", "listen"],
+                                                        ["apps", "listen", "sdk"]):
+        raise Refused("the request is not an object of exactly the keys apps and listen (and "
+                      "sdk, for a set given the app SDK)")
+    sdk = None
+    if "sdk" in doc:
+        sdk = doc["sdk"]
+        if not isinstance(sdk, dict) or sorted(sdk) != ["sha256"]:
+            raise Refused("sdk is not an object of exactly sha256")
+        if not isinstance(sdk["sha256"], str) or not SHA256.match(sdk["sha256"]):
+            raise Refused("sdk.sha256 does not match {}".format(SHA256.pattern))
     apps = doc["apps"]
     if not isinstance(apps, list) or len(apps) > MAX_APPS:
         raise Refused("apps is not a list of at most {} apps".format(MAX_APPS))
@@ -332,6 +354,9 @@ def parse_request(raw):
                 raise Refused("{}.{} does not match {}".format(where, key, rule.pattern))
         if app["name"] in seen:
             raise Refused("{}.name names an app listed before it".format(where))
+        if app["name"] == SDK_PACKAGE:
+            raise Refused("{}.name is {}, the app SDK's package: an app of that name would "
+                          "shadow the SDK every app imports".format(where, SDK_PACKAGE))
         seen.add(app["name"])
     listen = doc["listen"]
     if not isinstance(listen, dict) or sorted(listen) != ["host", "port"]:
@@ -345,7 +370,10 @@ def parse_request(raw):
         raise Refused("listen.host does not parse as an IPv4 or IPv6 address")
     if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
         raise Refused("listen.port is not a whole number from 1024 to 65535")
-    return {"apps": [dict(a) for a in apps], "listen": {"host": host, "port": port}}
+    out = {"apps": [dict(a) for a in apps], "listen": {"host": host, "port": port}}
+    if sdk is not None:
+        out["sdk"] = {"sha256": sdk["sha256"]}
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +464,42 @@ def check_folders(request, account):
     return out
 
 
+def sdk_folder(apps_root, sha256):
+    """Where the app SDK of content hash *sha256* is staged: APPS_ROOT/.sdk/<sha256>."""
+    return os.path.join(apps_root, SDK_DIR, sha256)
+
+
+def check_sdk(request, account):
+    """Step 3c (C2852, option A): the SDK folder the request names, its recomputed content hash
+    the request's, holding mercury_app/__init__.py, nothing in it a link, another's or writable
+    by group or others; None when the request names no SDK."""
+    sdk = request.get("sdk")
+    if sdk is None:
+        return None
+    root = os.path.realpath(APPS_ROOT)
+    folder = sdk_folder(root, sdk["sha256"])
+    where = "the app SDK's folder {}".format(folder)
+    if os.path.realpath(folder) != folder:
+        raise Refused("{} is not a real directory under {}: its realpath is elsewhere"
+                      .format(where, root))
+    try:
+        st = os.lstat(folder)
+    except OSError as exc:
+        raise Refused("{} cannot be read ({})".format(where, exc.strerror))
+    if not stat.S_ISDIR(st.st_mode):
+        raise Refused("{} is not a directory".format(where))
+    if st.st_uid != account.pw_uid:
+        raise Refused("{} is owned by {}, not {}".format(where, owner_words(st), DEPLOY_USER))
+    entry = os.path.join(folder, SDK_ENTRY)
+    if not os.path.isfile(entry) or os.path.islink(entry):
+        raise Refused("{} holds no file {}".format(where, SDK_ENTRY))
+    got = folder_hash(folder, account)
+    if got != sdk["sha256"]:
+        raise Refused("{}'s recomputed hash {} is not the request's {}: the folder changed "
+                      "after it was staged".format(where, got, sdk["sha256"]))
+    return folder
+
+
 def config_path(apps_root, name, version):
     """Where an app's start-time config is staged (decision K9): beside its version's folder,
     APPS_ROOT/<name>/<version>.config.json, so the folder's hash stays the reviewed code's."""
@@ -508,10 +572,15 @@ def render_dropin(request, ryu_manager, ryu_user, apps_root):
                + ["--ofp-listen-host", request["listen"]["host"],
                   "--ofp-tcp-listen-port", str(request["listen"]["port"])]
                + files + list(BUILTIN_APPS))
+    # The app SDK on the apps' import path (C2852, option A); a request naming none renders as
+    # it always did, byte for byte.
+    sdk = request.get("sdk")
+    env = ("Environment=PYTHONPATH={}\n".format(sdk_folder(apps_root, sdk["sha256"]))
+           if sdk else "")
     return ("# Rendered by mercury-ryu-apply for request {}. Mercury's next deploy replaces "
             "it; mercury.conf.prev is the one before.\n"
-            "[Service]\nUser={}\nExecStart=\nExecStart={}\n").format(
-                request_sha256(request), ryu_user, " ".join(command))
+            "[Service]\nUser={}\n{}ExecStart=\nExecStart={}\n").format(
+                request_sha256(request), ryu_user, env, " ".join(command))
 
 
 def write_dropin(text):
@@ -630,6 +699,7 @@ def apply(argv):
     if request.get("kind") == PUT_BACK:
         return put_back(request, user)
     files = check_folders(request, account)
+    sdk = check_sdk(request, account)
     text = render_dropin(request, RYU_MANAGER, RYU_USER, os.path.realpath(APPS_ROOT))
     before = unit_properties("MainPID").get("MainPID", "")
     path, kept = write_dropin(text)
@@ -638,6 +708,8 @@ def apply(argv):
                    "listen": request["listen"], "files": files, "dropin": path,
                    "dropin_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                    "prev_kept": kept, "user_before": user})
+    if sdk is not None:
+        result["sdk"] = sdk
     return result
 
 

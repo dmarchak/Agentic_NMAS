@@ -19,21 +19,29 @@ app's `/health` can say so and never answer ok without its config. A file never 
 secret: Mercury refuses one before it is staged (`modules/apps/channel.config_secret_refusal`).
 
 **`egress(destination, method="GET", path="", body=None, timeout=None)`** is the app's one way
-to the network. *destination* is a name its `manifest.yml` declares under `egress`, written as a
-string literal in the call (`mercury app check` refuses any other call, naming it); the address
-is the one the network's config carries at that entry's `from_config` key, so an app never
-holds an address of its own. It answers `{"ok": bool, "error": str, "status": int, "body":
+to the network (C2645). *destination* is a name its `manifest.yml` declares under `egress`,
+written as a string literal in the call (`mercury app check` refuses any other call, naming
+it); the address is the one the network's config carries at that entry's `from_config` key,
+resolved by Mercury's compile step and staged in the app's start-time config under the reserved
+key `_mercury` (`modules/apps/app_config.RESERVED`), so it is under the confirmed hash and an
+app never holds an address of its own. The calling app is found by IDENTITY: the file of the
+nearest caller staged at ``APPS_ROOT/<name>/<version>/``, whose own config's destinations are
+the only ones it may reach. It answers `{"ok": bool, "error": str, "status": int, "body":
 ...}` and raises nothing for a destination that does not answer: `ok` is false and `error`
-says why. A destination the manifest does not declare is refused with `EgressRefused`.
-`egress` is still the contract stub and raises `NotDeployed` (C2645): its working call needs
-the compiled config's address and the harness; `start_config` reads only a local file, so it
-is the working call here.
+says why (a 2xx is ok; anything else, a redirect included, is not: a redirect is never
+followed, so a destination cannot send the app elsewhere). `EgressRefused` is raised, naming
+why, for a destination the app's config does not carry, a caller that is not a staged app, a
+method outside `METHODS`, a path out of shape, a timeout outside (0, `MAX_TIMEOUT_S`] or a
+body that is not JSON. No proxy from the environment is used, and an answer larger than
+`MAX_BYTES` is not ok. `NotDeployed` is kept for apps written against the stub; nothing raises
+it now.
 """
 
 import hashlib
 import json
 import os
 import re
+import sys
 
 __all__ = ["EgressRefused", "NotDeployed", "egress", "start_config"]
 
@@ -54,15 +62,132 @@ class EgressRefused(Exception):
 
 
 class NotDeployed(RuntimeError):
-    """The contract stub was called: the harness or the controller gives the working SDK."""
+    """Kept for apps written against the contract stub; nothing raises it now (C2645)."""
+
+
+#: The start-time config's reserved key (modules/apps/app_config.RESERVED, held equal by
+#: tests/test_app_egress.py): Mercury's, never the app's, stripped before the app reads it.
+RESERVED = "_mercury"
+#: The bound on one egress call, and its default (the dns_blacklist contract's verdict service
+#: allows at most 10 s; NOT MEASURED against a real destination).
+MAX_TIMEOUT_S = 10.0
+DEFAULT_TIMEOUT_S = 5.0
+#: A path the call may add to its destination's address: absolute, printable, no "..", no
+#: doubled slash, no fragment.
+PATH = re.compile(r"^(/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*(\?[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*)?)?$")
+
+
+def _caller_app():
+    """``(name, version)`` of the nearest caller staged at APPS_ROOT/<name>/<version>/, or
+    None. By the caller's own file (identity), never by a name it gives."""
+    root = os.path.realpath(APPS_ROOT) + os.sep
+    frame = sys._getframe(2)  # noqa: SLF001 - the caller's frames are the identity
+    while frame is not None:
+        f = frame.f_globals.get("__file__")
+        if isinstance(f, str):
+            real = os.path.realpath(f)
+            if real.startswith(root):
+                parts = real[len(root):].split(os.sep)
+                if len(parts) >= 3 and NAME.match(parts[0]) and VERSION.match(parts[1]):
+                    return parts[0], parts[1]
+        frame = frame.f_back
+    return None
+
+
+def _destinations(name, version):
+    """``(urls by destination, error)`` from *name* *version*'s start-time config."""
+    got = _read_config(name, version)
+    if not got["ok"]:
+        return None, got["error"]
+    section = got["config"].get(RESERVED)
+    urls = section.get("egress") if isinstance(section, dict) else None
+    return (urls if isinstance(urls, dict) else {}), ""
+
+
+def _refuse(why):
+    raise EgressRefused("mercury_app.egress refused: " + why)
+
+
+def _no_redirects():
+    import urllib.request
+
+    class _Refuse(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _Refuse)
+
+
+def _answer_body(raw, content_type):
+    text = raw.decode("utf-8", "replace")
+    if "json" in (content_type or ""):
+        try:
+            return json.loads(text)
+        except ValueError:
+            return text
+    return text
 
 
 def egress(destination, method="GET", path="", body=None, timeout=None):
     """A request to the declared *destination* (see the module's docstring)."""
-    raise NotDeployed(
-        "mercury_app.egress(%r) was called on the contract stub: the container harness and "
-        "the controller deploy the working SDK beside the app, and only there does it reach "
-        "the network" % (destination,))
+    import socket
+    import urllib.error
+    import urllib.request
+
+    app = _caller_app()
+    if app is None:
+        _refuse("it was called from no app staged at %s/<name>/<version>/, so no manifest's "
+                "destinations apply" % APPS_ROOT)
+    name, version = app
+    urls, error = _destinations(name, version)
+    if urls is None:
+        _refuse("%s %s's start-time config could not be read (%s), so its destinations are "
+                "not known" % (name, version, error))
+    if not isinstance(destination, str) or destination not in urls:
+        _refuse("%r is not a destination %s %s's config carries (it carries: %s)"
+                % (destination, name, version, ", ".join(sorted(urls)) or "none"))
+    method = method.upper() if isinstance(method, str) else method
+    if method not in METHODS:
+        _refuse("the method %r is not one of %s" % (method, ", ".join(METHODS)))
+    if not isinstance(path, str) or not PATH.match(path) or "/../" in path + "/" \
+            or path.startswith("//"):
+        _refuse("the path %r is not an absolute path of the shape %s, without .. or a doubled "
+                "slash" % (path, PATH.pattern))
+    if timeout is None:
+        timeout = DEFAULT_TIMEOUT_S
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) \
+            or not 0 < timeout <= MAX_TIMEOUT_S:
+        _refuse("the timeout %r is not a number of seconds in (0, %s]" % (timeout,
+                                                                        MAX_TIMEOUT_S))
+    data, headers = None, {"Accept": "application/json"}
+    if body is not None:
+        try:
+            data = json.dumps(body, sort_keys=True).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            _refuse("the body is not JSON (%s)" % exc)
+        headers["Content-Type"] = "application/json"
+    url = urls[destination].rstrip("/") + path
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with _no_redirects().open(req, timeout=timeout) as resp:
+            raw = resp.read(MAX_BYTES + 1)
+            status = resp.status
+            ctype = resp.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(MAX_BYTES + 1) if exc.fp is not None else b""
+        return {"ok": False, "status": exc.code, "body": _answer_body(raw[:MAX_BYTES],
+                exc.headers.get("Content-Type", "") if exc.headers else ""),
+                "error": "%s answered %s %s" % (destination, exc.code, exc.reason)}
+    except (urllib.error.URLError, socket.timeout, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", exc)
+        return {"ok": False, "status": 0, "body": None,
+                "error": "%s did not answer (%s)" % (destination, reason)}
+    if len(raw) > MAX_BYTES:
+        return {"ok": False, "status": status, "body": None,
+                "error": "%s's answer is more than %d bytes" % (destination, MAX_BYTES)}
+    ok = 200 <= status < 300
+    return {"ok": ok, "status": status, "body": _answer_body(raw, ctype),
+            "error": "" if ok else "%s answered %s" % (destination, status)}
 
 
 def config_path(name, version):
@@ -76,7 +201,16 @@ def _answer(ok, error, path, config=None, sha256=""):
 
 
 def start_config(name, version):
-    """The app's start-time config (see the module's docstring)."""
+    """The app's start-time config (see the module's docstring), without Mercury's reserved
+    key: the app reads the config its manifest's schema declares, nothing else."""
+    got = _read_config(name, version)
+    if got["ok"]:
+        got["config"] = dict((k, v) for k, v in got["config"].items() if k != RESERVED)
+    return got
+
+
+def _read_config(name, version):
+    """The staged start-time config file as it is, the reserved key included."""
     if not isinstance(name, str) or not NAME.match(name) or "\n" in name:
         return _answer(False, "the app's name %r is not of the shape the apply script stages "
                               "(%s), so no file was opened" % (name, NAME.pattern), "")

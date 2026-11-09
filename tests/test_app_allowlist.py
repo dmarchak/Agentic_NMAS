@@ -301,8 +301,9 @@ def test_the_sdk_stub_publishes_the_names_the_allowlist_accepts_and_parses_as_3_
 def test_the_sdk_stub_reaches_nothing():
     from modules.apps.sdk import mercury_app
 
-    with pytest.raises(mercury_app.NotDeployed, match="egress\\('verdict_service'\\) was "
-                                                      "called on the contract stub"):
+    # C2645: egress is the working call now; from anything but a staged app it reaches nothing
+    # (tests/test_app_egress.py holds the staged app's call).
+    with pytest.raises(mercury_app.EgressRefused, match="called from no app staged at"):
         mercury_app.egress("verdict_service", "POST", "/verdict", {"domain": "x"}, 0.5)
     assert issubclass(mercury_app.EgressRefused, Exception)
 

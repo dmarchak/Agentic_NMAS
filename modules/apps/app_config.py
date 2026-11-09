@@ -121,14 +121,75 @@ def _dpid_key(dpid):
     return str(dpid)
 
 
+#: The start-time config's reserved key (C2645; the SDK's `RESERVED`): what Mercury adds for the
+#: SDK after the app's own config is validated, never the app's, and stripped by
+#: `mercury_app.start_config` before the app reads its config.
+RESERVED = "_mercury"
+
+
+def _at(config: dict, dotted: str):
+    node = config
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def egress_problem(value) -> str:
+    """Why *value* is not an address an app's egress may reach: an http or https URL with a host,
+    no user or password, query or fragment; or ""."""
+    from urllib.parse import urlsplit
+
+    if not isinstance(value, str) or not value:
+        return f"is {type(value).__name__ if not isinstance(value, str) else 'empty'}, not a URL"
+    try:
+        parts = urlsplit(value)
+        _ = parts.port          # a port out of range or not a number raises here
+    except ValueError as exc:
+        return f"does not parse as a URL ({exc})"
+    if parts.scheme not in ("http", "https"):
+        return f"is a {parts.scheme or 'schemeless'} address, not http or https"
+    if not parts.hostname:
+        return "names no host"
+    if "@" in parts.netloc:
+        return "carries a user or password; a secret never goes in a config file"
+    if parts.query or parts.fragment:
+        return "carries a query or a fragment; the call gives its own path"
+    return ""
+
+
+def egress_targets(manifest, config) -> tuple:
+    """``({destination: url}, problems)``: each destination *manifest* declares under `egress`,
+    its address read from *config* at its `from_config` key (C2645), the one place an app's
+    egress may go; a missing or malformed address is a problem naming the key."""
+    who = f"{manifest.name} {manifest.version}"
+    targets, problems = {}, []
+    for e in manifest.egress:
+        value = _at(config or {}, e.from_config)
+        why = egress_problem(value) if value is not None else (
+            "is not set in the network's config")
+        if why:
+            problems.append(f"{who}'s egress {e.name!r}: its address at {e.from_config} {why}")
+            continue
+        targets[e.name] = value
+    return targets, problems
+
+
 def compile_config(manifest, given=None, switches=()) -> dict:
     """``{"ok", "config" (a JSON object, or None: no file), "notes": [words], "problems":
     [words]}`` for *manifest*'s app, from *given* (the network's own config, or None) and the
     expected *switches* (``[{"name", "dpid", "selected"}]``). A switch with no DPID is left out
-    (the plan refuses it by name)."""
+    (the plan refuses it by name). An app that declares egress gets, under `RESERVED`, each
+    destination's address (`egress_targets`), so the SDK's `egress` reaches those and nothing
+    else, under the confirmed hash."""
     who = f"{manifest.name} {manifest.version}"
-    if not manifest.compiled and given is None:
+    if not manifest.compiled and given is None and not manifest.egress:
         return {"ok": True, "config": None, "notes": [], "problems": []}
+    if isinstance(given, dict) and RESERVED in given:
+        return {"ok": False, "config": None, "notes": [],
+                "problems": [f"{who}: the network's config sets {RESERVED}, the key Mercury "
+                             "reserves for the app SDK's egress addresses"]}
     if given is not None and not isinstance(given, dict):
         return {"ok": False, "config": None, "notes": [],
                 "problems": [f"{who}: the network's config is a mapping, not a "
@@ -168,6 +229,13 @@ def compile_config(manifest, given=None, switches=()) -> dict:
         return {"ok": False, "config": None, "notes": notes,
                 "problems": [f"{who}'s compiled config fails its config_schema: {w}"
                              for w in failed]}
+    if manifest.egress:
+        targets, problems = egress_targets(manifest, config)
+        if problems:
+            return {"ok": False, "config": None, "notes": notes, "problems": problems}
+        config[RESERVED] = {"egress": targets}
+        notes.append("egress: " + "; ".join(f"{n} to {u}" for n, u in sorted(targets.items()))
+                     + " (the only destinations its egress calls reach)")
     return {"ok": True, "config": config, "notes": notes, "problems": []}
 
 

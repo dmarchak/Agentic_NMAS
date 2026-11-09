@@ -72,7 +72,12 @@ were integrated on main together).
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html
-Templates sha256: `cbb06ccd24311cf33aaad064e6545526cbdf7601b0a3e5c5853885cfb17f0d06`
+Templates sha256: `00d1e7b9472f8e6a17fac85e5ce3ae41cd9f1ed3d240930b2c3719a7d93cbab3`
+Hashed again 2026-11-09 for C2852 (SDK option A, the operator's go of 2026-11-09): the plan card
+draws the app SDK the request names after the files and before the configs ("The app SDK,
+staged to /opt/ryu-apps/.sdk/<sha256>/", its hash and its one file), the region row "C: the
+app SDK" below; nothing else moves. Compared by reading the template against artboard C, with
+no new shot (the templates then hashed `cbb06ccd24311cf33aaad064e6545526cbdf7601b0a3e5c5853885cfb17f0d06`).
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the
@@ -104,6 +109,7 @@ tests/test_sdn_apps_v2.py and the v2 walk's provider (tests/v2_context.py `_sdn_
 | B: what the version declares | controllers, OpenFlow, requires, REST, owns flows, egress, the compiled config | the same; Config says no start-time config is compiled yet | **later** (C2760, the config compiler) |
 | C: the target, the set, the files | as drawn | the same, from the plan | **same** |
 | C: each app's start-time config (C2760) | not drawn: the set's Files column says "its config file"; B's Config line names the compiled tables and links "the compiled config" | after the files, per app with a config: "<app> <version>'s start-time config, staged to /opt/ryu-apps/<app>/<version>.config.json" with a chip (new, changed, or the same as now against the record's last), the sha256 in the request, each switch's tables and the profile they were placed from, and the JSON masked; the Files cell adds "(changed)" or "(new)". Compared by reading the template against artboard C, not shot (tests/test_app_compile.py renders it) | **deviation** (log: D8-A 4: the plan draws each app's compiled start-time config) |
+| C: the app SDK (C2852) | not drawn: the board predates the SDK's staging | after the files: "The app SDK, staged to /opt/ryu-apps/.sdk/<sha256>/", the hash in the request, on every app's import path, and its file with mode, bytes and blob. Compared by reading the template against artboard C, not shot (tests/test_controller_deploy_op.py builds the plan it draws) | **deviation** (log: C2852 A 1: the plan draws the app SDK it stages) |
 | C: conformance | per switch: profile entry, switch speaks, refuses a hello above, common, verdict | per switch: common, refuses a hello above, verdict | **later** (C2710, F6: conformance's rows carry neither the profile entry nor the switch's own versions) |
 | C: the drop-in, before and after | the render with the removed lines struck and the new ones marked | the same, the lines diffed | **same** |
 | C: the restart and what must come back | bounds with their placeholder chips; expected switches, links and apps with a From column and Back when; what already fails | the same, without the From column | **deviation** (log: P6 C: the expected table without its From column) |

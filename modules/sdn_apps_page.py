@@ -302,6 +302,17 @@ def config_cards(plan: dict, s) -> list:
     return out
 
 
+def _sdk_card(plan: dict, s) -> dict:
+    """The app SDK the request names (C2852, option A), as the plan card draws it: its folder
+    on the controller, its hash and its files; None for a request naming none."""
+    sdk = plan.get("sdk") or {}
+    sha = ((plan.get("request") or {}).get("sdk") or {}).get("sha256")
+    if not sha:
+        return None
+    return {"sha": sha, "path": s.sdk_folder(s.APPS_ROOT, sha) + "/",
+            "files": list(sdk.get("files") or [])}
+
+
 def plan_card(plan: dict, redeploy: bool = False) -> dict:
     """The plan card, its refusals, or the plan that changes nothing (artboards C and D)."""
     from modules.apps import channel, deploy_op, post_check
@@ -356,6 +367,7 @@ def plan_card(plan: dict, redeploy: bool = False) -> dict:
                    "mode": folder.get("mode", "")},
         "apps_root": s.APPS_ROOT, "account": s.DEPLOY_USER, "read_at": plan.get("read_at"),
         "rows": rows, "new_files": new_files, "configs": configs,
+        "sdk": _sdk_card(plan, s),
         "file_count": sum(len(v or []) for v in files.values()), "folder_count": len(files),
         "conformance": {"offered": ", ".join(conf.get("offered") or []),
                         "hello": (conf.get("offered") or ["?"])[-1],
