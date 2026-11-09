@@ -70,6 +70,12 @@
               // A controller app deploy moved a step or ended (P6, modules/apps/deploy_op.py):
               // its running card and SDN › Apps re-read.
               'controller_deploy',
+              // A network's NSOT export committed (C2777): SDN › Apps' export card and its
+              // controllers re-read.
+              'nsot_export',
+              // A network's code repository saved or fetched: its Settings card and SDN › Apps
+              // re-read.
+              'code_repo',
               // A History › Query view saved, pinned or removed (C667).
               'saved_views',
               // A device asked anew, was picked or went quiet on the ZTP segment (board L).
@@ -1300,6 +1306,8 @@
   function relayDhcp() { relay('dhcp'); }
   function relaySdn() { relay('sdn'); }
   function relayControllerDeploy() { relay('controller_deploy'); }
+  function relayNsotExport() { relay('nsot_export'); }
+  function relayCodeRepo() { relay('code_repo'); }
   function relaySavedViews() { relay('saved_views'); }
   function relayDiscovery() { relay('ztp_discovery'); }
   function relayPathTrace() { relay('path_trace'); }
@@ -1521,6 +1529,8 @@
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
     NMAS.subscribe('sdn', 'v2Sdn', relaySdn);
     NMAS.subscribe('controller_deploy', 'v2ControllerDeploy', relayControllerDeploy);
+    NMAS.subscribe('nsot_export', 'v2NsotExport', relayNsotExport);
+    NMAS.subscribe('code_repo', 'v2CodeRepo', relayCodeRepo);
     NMAS.subscribe('saved_views', 'v2SavedViews', relaySavedViews);
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);

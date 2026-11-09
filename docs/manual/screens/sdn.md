@@ -177,6 +177,17 @@ The apps the network's controller runs (Ryu apps such as `of_versions`, `switch_
 the controller, so every switch drops and reconnects. How a deploy works, step by step:
 [Deploy apps to an SDN controller](controller-app-deploy).
 
+- **The NSOT export card** comes first: the committed export the tab reads its controller hosts
+  and every deploy's expected switches and links from (its hash, its commit, who and when,
+  NetBox's version and what it holds), or that none is committed. **Export from NetBox…**
+  reads NetBox now and opens the preview in the card's place: the export's hash beside the
+  committed one and what changes, by kind; **Commit the export** commits it as you, bound to
+  that hash. Step by step: [Commit a network's NSOT export](nsot-export).
+- **No app version can be listed** says why (no code repository set, not fetched yet, or the
+  setting changed since the last fetch), with **Open the code repository's card**, where its
+  location is set and **Fetch now** registers each app folder at the fetched commit (see
+  [A network's code repository](code-repository)). App folders a fetch could not register are
+  named with why.
 - **The controller card** leads: its name and whether it runs **Mercury's record** (the last
   deploy whose outcome left it running a request Mercury recorded), **differs from Mercury's
   record**, or **can't tell** (its unit's command line could not be read; never drawn as
@@ -211,9 +222,10 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   post-check, **Download the receipt (JSON)** and **Open the controller** (the controller's
   card). Every text is masked as History masks.
 - **Not drawn yet**, each a registered gap: a controller's **Read again** (the card draws the
-  newest preview's reads of the host) and the code repository's **Fetch now** (the app registry
-  is not built; where each fact comes from:
-  [Deploy apps to an SDN controller](controller-app-deploy#sources)),
+  newest preview's reads of the host), the code repository's **Fetch now** on this tab (it is
+  on the code repository's card in Settings; where each fact comes from:
+  [Deploy apps to an SDN controller](controller-app-deploy#sources)), Publish (every
+  registered version is a Draft until it is published),
   **Compare** two versions and **Open the review**, and the Needs attention rows drawn from the
   controller's reads (an app's /health failing, a switch or link missing outside a window,
   drift). A deploy whose outcome is not known, or that left the controller not back as it

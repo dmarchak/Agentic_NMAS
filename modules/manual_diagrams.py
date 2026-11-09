@@ -1609,6 +1609,55 @@ def controller_app_deploy():
     ])
 
 
+def nsot_export():
+    return svg(470, (
+        "Committing a network's NSOT export: Export from NetBox reads the network's records from "
+        "NetBox, read only, builds the export and compares it with the committed one by kind, "
+        "and shows its hash; you confirm, bound to that hash and the committed file's; NetBox "
+        "is read again and a moved export, or a commit made since, commits nothing and says "
+        "both; the export is committed to the network's configuration repository as you, the "
+        "commit is the record, and every page reading the export reads it again. No device is "
+        "contacted and nothing is written to NetBox."), [
+        lanes(20, 464, left="IN THE TOOL", right="NETBOX"),
+        store(232, 44, 156, 40, "NetBox", "read only, whole lists"),
+        doc("box", 14, 44, 186, 36, "The export, read now", "its hash; by kind"), num(14, 44, 1),
+        arrow("read", 230, 62, 204, 62),
+        repo(14, 96, 186, 40, "The committed export", "its hash, its commit"), num(14, 96, 2),
+        person(14, 152, 186, 30, "You confirm, bound to its hash"), num(14, 152, 3),
+        band(198, 126, "The confirm"),
+        doc("box", 14, 222, 186, 34, "Read again", "a moved hash commits nothing"),
+        num(14, 222, 4),
+        repo(14, 266, 186, 40, "nsot/export.json", "one commit, as you"), num(14, 266, 5),
+        t(14, 344, "Every page reading it reads it again.", "sm"), num(14, 330, 6),
+        nosend(310, 420, ("no device", "nothing to NetBox")),
+    ])
+
+
+def code_repository():
+    return svg(470, (
+        "A network's code repository: you set where its jobs and apps live, a local path or an "
+        "https URL and a branch; Fetch now fetches that branch into Mercury's own read-only "
+        "copy, with only git's file and https transports, no prompt and no hooks, bounded; "
+        "each apps folder at the fetched commit is registered as a Draft, pinned by the "
+        "location, the commit and its content hash, read from git's blobs and never a working "
+        "tree; the fetch is recorded, a failed one with why, and SDN › Apps lists what is "
+        "registered. Nothing is written to the repository, and the configuration repository is "
+        "never read."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE CODE REPOSITORY"),
+        person(14, 44, 186, 30, "You set its location"), num(14, 44, 1),
+        store(14, 84, 186, 34, "The network's settings", "location and branch"),
+        person(14, 132, 186, 30, "You press Fetch now"), num(14, 132, 2),
+        repo(232, 132, 156, 44, "Its repository", "read, never written"),
+        arrow("read", 230, 150, 204, 150),
+        repo(14, 176, 186, 40, "Mercury's copy", "git's objects, no files"), num(14, 176, 3),
+        doc("box", 14, 230, 186, 36, "Each apps/ folder", "a Draft: commit and hash"),
+        num(14, 230, 4),
+        store(14, 280, 186, 36, "The copy's record", "who, when, what, why"), num(14, 280, 5),
+        t(14, 344, "SDN › Apps lists what is registered.", "sm"),
+        nosend(310, 420, ("nothing written", "to the repository")),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1991,6 +2040,8 @@ DIAGRAMS = {
     "notifications": notifications,
     "sdn-flows": sdn_flows,
     "controller-app-deploy": controller_app_deploy,
+    "nsot-export": nsot_export,
+    "code-repository": code_repository,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

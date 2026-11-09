@@ -286,6 +286,11 @@ STAGES = {
         "modules.nsot.intent_ops.retry_apply"),
     "v2.ip_sla_commit": Stages(
         "v2.ip_sla", "fingerprint", NO_DEVICE, FORWARD, "modules.nsot.ip_sla_policy.apply"),
+    # Board nsot-export (C2777): a network's NSOT export from NetBox, previewed with its hash
+    # and what it changes, confirmed by that hash (and the committed file's), committed; the
+    # commit is the record, and the next export corrects a wrong one.
+    "sdn_v2.export_confirm": Stages(
+        "sdn_v2.export_preview", "hash", NO_DEVICE, FORWARD, "modules.nsot.export.write"),
     # C718: Decline… and Undo decline…, one device's intent only.
     "v2.decline_confirm": Stages(
         "v2.decline_card", "hash", NO_DEVICE,
@@ -516,6 +521,14 @@ HISTORY = {
     "ai_feedback_v2.review": NOT_A_DEVICE,
     # C2009: a network's stage, kept in its settings record with who, before, after and why.
     "settings_v2.sdn_stage": NOT_A_DEVICE,
+    # A network's code repository (board code-repository): its setting and a fetch, each kept
+    # in the network's records (the settings record, the copy's record of fetches), never one
+    # device's.
+    "settings_v2.code_repo_save": NOT_A_DEVICE,
+    "settings_v2.code_repo_fetch": NOT_A_DEVICE,
+    # C2777: the network's NSOT export, one commit in its repository (History › Commits), never
+    # one device's record.
+    "sdn_v2.export_confirm": NOT_A_DEVICE,
     # Heal to intent's policy (board H, H1 and H9): each kept in a settings record with who,
     # when and why (the network's, or the installation's for the kill switch); none is one
     # device's record.

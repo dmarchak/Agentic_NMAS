@@ -68,8 +68,33 @@ tests/test_board_shots.py's `test_read_account_and_ai_classes` (`ai-classes` at 
 state off, and `ai-classes-on`, Turn on… pressed and a reason typed, at 1440, 1280 and 390), in
 the regions whose names begin "N:" below.
 Templates sha256 before: `e34da497422812f0ca947625e27ca014c8854d50b6f5d91d3194f61b2376feb3`.
-Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html
-Templates sha256: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad111545a5908549`
+
+**Compared again 2026-11-08 ~19:0x UTC (board code-repository, the operator's decision 8):**
+the Network tab draws the Code repository card (`_code_repo.html`) after the Inventory source
+card and before What AI may send, spanning the tab; nothing else on the page moved, so every
+other verdict stands. The card is compared with docs/boards/code-repository.html (drawn and
+counted as signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md "D8-R 1") **by
+reading the template against each artboard, with no new shot**: tests/test_board_shots.py has
+no case for this card yet (C2858). Its states and answers are held by tests/test_code_repo_v2.py,
+which draws each one. The regions whose names begin "CR:" below.
+Templates sha256 before: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad111545a5908549`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| CR: the card's place | A: after the network's source card, before What AI may send, spanning the tab | the same | **same** |
+| CR: the head | A: Code repository with its (i), a chip (fetched, none set, not fetched, fetch again) | the same chips, and can't be read for a setting or record that can't be read; How does this work? at the head's right | **same** |
+| CR: what it is | A: one muted line, each network's own, none inherited from Default | the same words | **same** |
+| CR: the fields and Save | A: Location and Branch with their hints, Save with its (i) | the same; Save busy on itself ("Saving…") | **same** |
+| CR: the last fetch and what it registered | A: Last fetch (commit, branch, when, who), Registered (versions of apps, Drafts until published, Open SDN › Apps), Not registered (each folder and why) | the same three lines; Registered counts the versions and apps without naming each | **same** |
+| CR: Fetch now | A: the primary Fetch now with its (i) and what it does; the bound in a note | the same, the bound said in the words beside it | **deviation** (log: D8-R 3) |
+| CR: nothing set | B: the notice, empty fields with their placeholders, Fetch now disabled with its reason on hover | the same | **same** |
+| CR: not fetched | B: chip not fetched, Last fetch none yet, Fetch now | the same | **same** |
+| CR: Fetch now's answers | C: fetched (what registered or moved), nothing new, failed (the copy keeps its commit), the setting changed since the fetch | the same four, each at the card's top, the failed one also kept in Last fetch with the last good one | **same** |
+| CR: Save's refusals | D: each refusal in red naming the rule or both values, what was typed kept | the same | **same** |
+| CR: Saved | D: Saved in green, saying to press Fetch now | the same words, drawn muted | **deviation** (log: D8-R 4) |
+| CR: phone width | F: fields stacked, Save and Fetch now below | the card's set-field layout, as every Settings card at phone width; not shot | **later** (C2858: the card's board shot at 390) |
+Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html, templates/v2/_code_repo.html
+Templates sha256: `67b76a9c938bdef6614f9cb59c49d1b33f76cc8a2b237246993522d907f81323`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

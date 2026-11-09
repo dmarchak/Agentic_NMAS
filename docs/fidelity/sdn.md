@@ -41,9 +41,38 @@ the diff against `control_gate`, with no new shot.
 Hashed again 2026-11-08 for C2760 (decision 8, D8-A 4): `_sdn_app_deploy.html`'s plan card
 draws each app's compiled start-time config after the files (the region row "C: each app's
 start-time config" below) and marks a changed or new config in the set's Files cell; nothing
-else moves. Compared by reading the template against artboard C, with no new shot.
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html
-Templates sha256: `f996aa466fd13f7e0c4e915154739eecc3d43b8d1b0f9b17acf050be75d38c92`
+else moves. Compared by reading the template against artboard C, with no new shot (the
+templates then hashed `f996aa466fd13f7e0c4e915154739eecc3d43b8d1b0f9b17acf050be75d38c92`).
+**Compared 2026-11-08 ~19:0x UTC for C2777 (the operator's decision 8): SDN › Apps' NSOT export
+card**, beside docs/boards/nsot-export.html (drawn and counted as signed off under the Phase 7
+mode, docs/STANDING_APPROVAL_LOG.md "D8-R 2"), and the Apps tab's two registry notices beside
+docs/boards/code-repository.html artboard E ("D8-R 1"), **by reading the templates against each
+artboard, with no new shot**: tests/test_board_shots.py has no case for them yet (C2858). Their
+states are held by tests/test_nsot_export_op.py and tests/test_code_repo_v2.py, which draw each.
+`_sdn_view.html` changed only to redraw the Apps region on `nsot_export` and `code_repo`;
+`_sdn_apps.html` only to include the card above the controllers and draw the two notices with
+their link. Every other verdict stands. The regions whose names begin "X:" below.
+Templates sha256 before: `f996aa466fd13f7e0c4e915154739eecc3d43b8d1b0f9b17acf050be75d38c92`
+(C2760's plan card, above; the card was built beside it on `5866d4f6…`, and the two builds
+were integrated on main together).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| X: the card's place | A: above the controller cards on SDN › Apps | the same | **same** |
+| X: at rest | A: NSOT export, committed chip; Committed (hash, commit, when, who, NetBox's version), Holds (each kind's count), Read by; Export from NetBox… with its (i) and what it does | the same lines; the words of what it does on the button's hover | **same** |
+| X: none committed, not NetBox's | B: the notice and Export from NetBox… primary; for a network not NetBox's the control disabled, its reason on hover | the same | **same** |
+| X: a committed export that can't be read | no artboard | the card says it can't be read and why, and that exporting again replaces it | **deviation** (log: D8-R 5) |
+| X: the preview | C: title, the changes chip, This export, The committed one, Goes to, the table by kind with each kind's names folded, the unchanged kinds in one row | the same, each kind with its count now, each fold keeping its state across a live redraw (`data-keep`); This export says "read from NetBox now" | **deviation** (log: D8-R 6) |
+| X: the preview's actions | C: Commit the export, Cancel, (i) | Commit the export, How does this work?, Cancel; busy on itself ("Committing…") | **deviation** (log: D8-R 6) |
+| X: nothing to commit | D: the words and Close, no confirm | the same | **same** |
+| X: refusals | E: NetBox unreadable; the export moved; the committed file moved; Close and Preview again | the same, each naming both values; Preview again primary when something moved | **same** |
+| X: the result | F: Export (was), Commit as who and how verified, Changed, Close; Open it on History | the same, with Open History's commits | **deviation** (log: D8-R 7) |
+| X: the live redraw | C's note: held while the card is open | the preview, refusal and result cards carry `data-holds-live`, as the deploy's card does | **same** |
+| X: the registry's notices | code-repository E: No app version can be listed (the registry's own words) and the folders not registered, each with Open the code repository's card | the same | **same** |
+| X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
+
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html
+Templates sha256: `cbb06ccd24311cf33aaad064e6545526cbdf7601b0a3e5c5853885cfb17f0d06`
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

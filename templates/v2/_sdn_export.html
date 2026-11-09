@@ -1,0 +1,101 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- SDN › Apps, the NSOT export card (C2777; board docs/boards/nsot-export.html, artboards A to
+    G, signed off under the Phase 7 mode 2026-11-08, docs/STANDING_APPROVAL_LOG.md "D8-R 2"):
+    at rest, the committed export (A, B); Export from NetBox…'s preview (C) or a preview that
+    changes nothing (D), drawn in the card's place; the refusals (E); the result (F).
+    modules/nsot/export_op.py builds `x`. `data-holds-live` while a preview or an answer is
+    open: a live redraw of the SDN region is held and said (C2001), so an announcement never
+    takes a preview or its confirm away. -#}
+{%- set net = x.network -%}
+{%- set kinds = {'devices': 'Devices', 'interfaces': 'Interfaces', 'vlans': 'VLANs', 'prefixes': 'Prefixes', 'services': 'Services', 'cables': 'Cables'} -%}
+{%- macro short(sha) %}<span class="mono" title="sha256:{{ sha }}">sha256:{{ sha[:4] }}…{{ sha[-4:] }}</span>{% endmacro -%}
+{%- macro preview_form(primary=False, words='Export from NetBox…') -%}
+<form class="apps-act export-act" hx-post="{{ url_for('sdn_v2.export_preview') }}" hx-target="#nsot-export" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ net }}">
+  <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="nsot-export"{% if x.netbox is defined and not x.netbox %} disabled aria-disabled="true" title="{{ x.source_words }}" data-refused="Not available: {{ x.source_words }}"{% else %} title="Reads NetBox now and shows what would be committed; nothing is committed until you confirm"{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">Reading NetBox…</span></button>{{ how('nsot-export', 'preview') }}
+</form>
+{%- endmacro -%}
+{#- A kind's names in the preview's table: the count, the first name and the rest folded. -#}
+{%- macro names(list, n, more, key) -%}
+{{ n }}{% if list %} <details data-keep="export-{{ key }}"><summary class="small">{{ list[0] }}{% if n > 1 %} and {{ n - 1 }} more{% endif %}</summary><ul class="small">{% for name in list %}<li>{{ name }}</li>{% endfor %}{% if more %}<li class="faint">and {{ more }} more</li>{% endif %}</ul></details>{% endif %}
+{%- endmacro -%}
+{#- Close and Cancel draw the card at rest again (a read); with no script, they open the tab. -#}
+{%- set back = url_for('sdn_v2.apps', list=net) if net else '' -%}
+{%- set back_get = url_for('sdn_v2.export_card', list=net) if net else '' -%}
+
+{%- if x.state_card == 'rest' %}
+<section class="card sdn-export" id="nsot-export" aria-labelledby="h-nsot-export">
+  <div class="sdn-ctl-hd"><h2 id="h-nsot-export">NSOT export</h2>{{ badge({'ok': 'committed', 'none': 'none committed', 'unreadable': "can't be read"}[x.state], {'ok': 'ok', 'none': 'warn', 'unreadable': 'danger'}[x.state]) }}</div>
+  {%- if x.state == 'none' %}
+  <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ net }} has no committed NSOT export, so its controller hosts and their expected switches and links can't be listed.{% if x.netbox %} Export it from NetBox to list them.{% else %} {{ x.source_words }}.{% endif %}</p></div>
+  {%- elif x.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ net }}'s committed NSOT export can't be read: {{ x.error }}. Nothing on this tab is read from it; exporting again replaces it.</p></div>
+  {%- endif %}
+  {%- if x.state != 'none' %}
+  <dl class="sdn-kv">
+    <dt>Committed</dt><dd>{% if x.sha256 %}{{ short(x.sha256) }} in {% endif %}commit <span class="mono">{{ x.commit[:7] }}</span>, {{ stamp(x.at) }}{% if x.actor %} by {{ x.actor }}{% endif %}{% if x.netbox_version %}, from NetBox {{ x.netbox_version }}{% endif %}</dd>
+    {%- if x.counts %}<dt>Holds</dt><dd>{% for k, label in kinds.items() %}{{ x.counts.get(k, 0) }} {{ label if label in ('VLANs',) else label | lower }}{{ ', ' if not loop.last }}{% endfor %}</dd>{% endif %}
+    <dt>Read by</dt><dd>this tab's controller hosts and the expected switches and links of every controller app deploy; never NetBox live</dd>
+  </dl>
+  {%- endif %}
+  {{ preview_form(primary=(x.state != 'ok')) }}
+</section>
+
+{%- elif x.state_card in ('preview', 'nothing') %}
+<section class="card sdn-op sdn-export export-op" id="nsot-export" data-holds-live="review" aria-labelledby="h-nsot-export">
+  {%- set c = x.committed %}
+  {%- if x.state_card == 'nothing' %}
+  <div class="sdn-ctl-hd"><h2 id="h-nsot-export">{{ net }}'s NSOT export: nothing to commit</h2>{{ badge('unchanged', 'muted') }}</div>
+  <p class="small">NetBox reads now as the committed export ({{ short(x.sha256) }}{% if c.commit %}, commit <span class="mono">{{ c.commit[:7] }}</span>{% endif %}), byte for byte: committing it would change no line, so nothing is offered.</p>
+  <div class="apps-acts"><a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#nsot-export" hx-swap="outerHTML">Close</a>{{ how('nsot-export', 'nothing') }}</div>
+  {%- else %}
+  <div class="sdn-ctl-hd"><h2 id="h-nsot-export">Commit {{ net }}'s NSOT export from NetBox</h2>{{ badge(x.changes.total ~ ' change' ~ ('s' if x.changes.total != 1 else ''), 'warn') }}</div>
+  <dl class="sdn-kv">
+    <dt>This export</dt><dd>{{ short(x.sha256) }}, read from NetBox{% if x.netbox_version %} {{ x.netbox_version }}{% endif %} now</dd>
+    <dt>The committed one</dt><dd>{% if c.blob and c.readable %}{{ short(c.sha256) }}, commit <span class="mono">{{ c.commit[:7] }}</span>{% if c.at %} ({{ stamp(c.at) }}{% if c.actor %}, {{ c.actor }}{% endif %}){% endif %}{% elif c.blob %}can't be read ({{ c.error }}): this commit replaces it{% else %}none: this is {{ net }}'s first export{% endif %}</dd>
+    <dt>Goes to</dt><dd><span class="mono">nsot/export.json</span> in {{ net }}'s configuration repository, one commit as you (<span class="mono">Source: nsot_export</span>, <span class="mono">Export-Sha256</span>); nothing is written to NetBox or to any device</dd>
+  </dl>
+  <div class="table-wrap"><table class="table export-changes">
+    <thead><tr><th scope="col">Kind</th><th scope="col">Added</th><th scope="col">Removed</th><th scope="col">Changed</th></tr></thead>
+    <tbody>
+    {%- set quiet = [] %}
+    {%- for k in x.changes.kinds %}
+    {%- if k.added_n or k.removed_n or k.changed_n %}
+    <tr>
+      <td data-l="Kind">{{ kinds[k.kind] }} <span class="faint">({{ k.count }} now)</span></td>
+      <td data-l="Added">{{ names(k.added, k.added_n, k.added_more, k.kind ~ '-added') }}</td>
+      <td data-l="Removed">{{ names(k.removed, k.removed_n, k.removed_more, k.kind ~ '-removed') }}</td>
+      <td data-l="Changed">{{ names(k.changed, k.changed_n, k.changed_more, k.kind ~ '-changed') }}</td>
+    </tr>
+    {%- else %}{% set _ = quiet.append(kinds[k.kind]) %}{% endif %}
+    {%- endfor %}
+    {%- if quiet %}<tr><td class="faint">{{ quiet | join(', ') }}</td><td class="faint" colspan="3">unchanged</td></tr>{% endif %}
+    </tbody>
+  </table></div>
+  <form class="apps-act export-confirm" hx-post="{{ url_for('sdn_v2.export_confirm') }}" hx-target="#nsot-export" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="hash" value="{{ x.hash }}"><input type="hidden" name="sha256" value="{{ x.sha256 }}"><input type="hidden" name="base_blob" value="{{ x.base_blob }}">
+    <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="nsot-export" title="Reads NetBox again and commits this export as you, if nothing moved"{{ gate('approve') }}><span class="op-idle">Commit the export</span><span class="op-busy">Committing…</span></button>{{ how('nsot-export', 'confirm') }}
+    <a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#nsot-export" hx-swap="outerHTML">Cancel</a>
+  </form>
+  {%- endif %}
+</section>
+
+{%- elif x.state_card == 'refused' %}
+<section class="card sdn-op sdn-export export-op" id="nsot-export" data-holds-live="review" aria-labelledby="h-nsot-export">
+  <div class="sdn-ctl-hd"><h2 id="h-nsot-export">{% if x.moved %}Not committed: the export moved since the preview{% else %}Can't export {{ net or 'the network' }}{% endif %}</h2>{{ badge('Refused', 'danger') }}</div>
+  <p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ x.error }}.</span></p>
+  <div class="apps-acts">{% if net %}<a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#nsot-export" hx-swap="outerHTML">Close</a>{{ preview_form(primary=x.moved, words='Preview again') }}{% endif %}</div>
+</section>
+
+{%- else %}
+{#- committed, or unchanged at the confirm (nothing to commit by then) -#}
+<section class="card sdn-op sdn-export export-op" id="nsot-export" data-holds-live="review" aria-labelledby="h-nsot-export">
+  <div class="sdn-ctl-hd"><h2 id="h-nsot-export">{% if x.state_card == 'committed' %}Committed {{ net }}'s NSOT export{% else %}{{ net }}'s NSOT export: nothing to commit{% endif %}</h2>{{ badge('committed' if x.state_card == 'committed' else 'unchanged', 'ok' if x.state_card == 'committed' else 'muted') }}</div>
+  <dl class="sdn-kv">
+    <dt>Export</dt><dd>{{ short(x.sha256) }}{% if x.before_sha256 and x.before_sha256 != x.sha256 %} (was {{ short(x.before_sha256) }}){% elif not x.before_sha256 and x.state_card == 'committed' %} (the first){% endif %}</dd>
+    {%- if x.commit %}<dt>Commit</dt><dd><span class="mono">{{ x.commit[:7] }}</span> in {{ net }}'s configuration repository, as {{ x.actor }}{% if x.actor_verified %}, verified by {{ x.actor_verified }}{% endif %} · <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></dd>{% endif %}
+    {%- if x.changes %}<dt>Changed</dt><dd>{% for k in x.changes %}{{ kinds[k.kind] }}: {{ k.added_n }} added, {{ k.removed_n }} removed, {{ k.changed_n }} changed{{ '; ' if not loop.last }}{% endfor %}</dd>{% endif %}
+  </dl>
+  <div class="apps-acts"><a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#nsot-export" hx-swap="outerHTML">Close</a>{{ how('nsot-export', 'commit') }}</div>
+</section>
+{%- endif %}

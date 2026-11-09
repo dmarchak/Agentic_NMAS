@@ -280,6 +280,12 @@ PAGE_RECORD = {
                             ("d.state == 'result'", "d.post_check.words",
                              "d.rollback_post_check.words", "receipt=d.id"),
                             "v2.history_page"),
+    # C2777 (board nsot-export, artboard F): the export's commit in place of its card (the
+    # export's hash and the one before, the commit, what changed), read again on the card at
+    # rest and on History's commits.
+    "sdn_v2.export_confirm": ("templates/v2/_sdn_export.html",
+                              ("x.state_card == 'committed'", "x.commit", "x.changes"),
+                              "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

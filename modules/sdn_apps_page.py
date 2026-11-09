@@ -226,6 +226,7 @@ def app_page(network: str, ctl: dict, registered: dict, app: str, chosen: str = 
 def apps_view(network: str, args=None) -> dict:
     """The Apps tab's region: ``g`` for `v2/_sdn_apps.html`."""
     from modules.apps import deploy_op
+    from modules.nsot import export_op
 
     args = args or {}
     src = deploy_op.sources()
@@ -235,8 +236,11 @@ def apps_view(network: str, args=None) -> dict:
     out = {"tab": "apps", "network": network, "state": listed.get("state"),
            "error": listed.get("error", ""), "registered_state": registered.get("state"),
            "registered_error": registered.get("error", ""),
+           "registered_problems": list(registered.get("problems") or []),
            "repo": {"path": repo.get("path", ""), "commit": repo.get("commit", ""),
                     "fetched_at": repo.get("fetched_at", "")},
+           # Board nsot-export, artboards A and B: the committed export, from its history.
+           "export": dict(export_op.last(network), state_card="rest"),
            "controllers": [], "app": None, "receipt": None}
     if listed.get("state") != "ok":
         return out

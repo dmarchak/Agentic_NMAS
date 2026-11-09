@@ -314,10 +314,49 @@ def _repo(network: str) -> str:
     return listref.resolve(network).repo_dir
 
 
-def write(network: str, actor: str, actor_verified: str, *, data: bytes = None, **kw) -> dict:
+def committed_blob(network: str, rev: str = "HEAD") -> str:
+    """The blob id of the committed ``nsot/export.json`` at *rev*, or "" when none is
+    committed: what a preview binds, readable or not (a committed export whose hash is not its
+    own is still a file the confirm must not replace unseen)."""
+    from modules.nsot.repo import git, has_repository
+
+    repo = _repo(network)
+    if not has_repository(repo):
+        return ""
+    rc, out, _err = git(repo, "rev-parse", "--verify", "--quiet", f"{rev}:{PATH}")
+    return out.strip() if rc == 0 else ""
+
+
+def last_commit(network: str) -> dict:
+    """The newest commit that wrote ``nsot/export.json``: ``{"commit", "at", "actor",
+    "sha256"}`` from its own trailers, or {} when none did. Read from the repository's history,
+    so the record reads the same later."""
+    from modules.nsot.repo import git, has_repository
+
+    repo = _repo(network)
+    if not has_repository(repo):
+        return {}
+    rc, out, _err = git(repo, "log", "-1", "--format=%H%x00%cI%x00%B", "--", PATH)
+    if rc != 0 or not out.strip():
+        return {}
+    sha, at, body = (out.split("\x00", 2) + ["", ""])[:3]
+    trailers = {}
+    for line in body.splitlines():
+        key, sep, value = line.partition(": ")
+        if sep and key in ("Actor", "Actor-Verified", "Export-Sha256"):
+            trailers[key] = value.strip()
+    return {"commit": sha.strip(), "at": at.strip(), "actor": trailers.get("Actor", ""),
+            "actor_verified": trailers.get("Actor-Verified", ""),
+            "sha256": trailers.get("Export-Sha256", "")}
+
+
+def write(network: str, actor: str, actor_verified: str, *, data: bytes = None,
+          base_blob: str = None, **kw) -> dict:
     """Build *network*'s export (or take *data*, already built) and commit it as
     ``nsot/export.json``: ``{"ok", "error", "sha256", "commit", "changed"}``. An export equal to
-    the committed one commits nothing (``commit`` empty, ``changed`` False)."""
+    the committed one commits nothing (``commit`` empty, ``changed`` False). *base_blob*: the
+    committed file's blob id the caller previewed against (`committed_blob`, "" for none);
+    with it, a commit made since is refused inside the repository's lock, naming both."""
     from modules.filestore import write_atomic
     from modules.nsot import repo as R
 
@@ -337,6 +376,13 @@ def write(network: str, actor: str, actor_verified: str, *, data: bytes = None, 
                                        f"being written to {network!r}")}
     repo = _repo(network)
     with R.repo_lock(repo):
+        if base_blob is not None:
+            now = committed_blob(network)
+            if now != base_blob:
+                return {"ok": False, "sha256": doc["sha256"], "moved": True,
+                        "error": (f"the committed export moved since the preview (now "
+                                  f"{_blob_words(now)}; previewed {_blob_words(base_blob)}): "
+                                  "nothing was committed")}
         os.makedirs(os.path.join(repo, os.path.dirname(PATH)), exist_ok=True)
         write_atomic(os.path.join(repo, PATH), data.decode("utf-8"))
         got = R._commit_paths(network, [PATH],                                  # noqa: SLF001
@@ -368,7 +414,52 @@ def read(network: str, rev: str = "HEAD") -> dict:
     return {"ok": True, "export": doc, "sha256": doc["sha256"], "error": ""}
 
 
+def _blob_words(blob: str) -> str:
+    return f"blob {blob[:4]}…{blob[-4:]}" if blob else "none committed"
+
+
 # --------------------------------------------------------------------------- readers
+
+def _label(kind: str, item: dict) -> str:
+    """An object's natural key, in words (the body's own sort keys)."""
+    if kind == "devices":
+        return item.get("name") or f"id {item.get('id')}"
+    if kind == "interfaces":
+        return f"{item.get('device')} {item.get('name')}"
+    if kind == "vlans":
+        where = "/".join(p for p in (item.get("site"), item.get("group")) if p) or "global"
+        return f"VLAN {item.get('vid')} {item.get('name') or ''} ({where})".replace("  ", " ")
+    if kind == "prefixes":
+        return f"{item.get('prefix')}" + (f" ({item['site']})" if item.get("site") else "")
+    if kind == "services":
+        ports = ",".join(str(p) for p in item.get("ports") or [])
+        return f"{item.get('parent')} {item.get('name')} ({ports or 'no port'})"
+    if kind == "cables":
+        return " to ".join("+".join(":".join(e) for e in side)
+                           for side in (item.get("a") or [], item.get("b") or []))
+    return json.dumps(item, sort_keys=True)[:80]
+
+
+def changes(old: dict, new: dict) -> dict:
+    """What *new* (an export document) changes against *old* (the committed one, or None):
+    ``{"kinds": [{"kind", "added", "removed", "changed"}], "total", "netbox_version":
+    (old, new)}``, each list the objects' natural keys in words, sorted. Pure."""
+    old_body = (old or {}).get("body") or {}
+    new_body = (new or {}).get("body") or {}
+    kinds, total = [], 0
+    for kind in KINDS:
+        before = {_label(kind, i): i for i in old_body.get(kind) or []}
+        after = {_label(kind, i): i for i in new_body.get(kind) or []}
+        added = sorted(set(after) - set(before))
+        removed = sorted(set(before) - set(after))
+        changed = sorted(k for k in set(after) & set(before) if after[k] != before[k])
+        total += len(added) + len(removed) + len(changed)
+        kinds.append({"kind": kind, "added": added, "removed": removed, "changed": changed,
+                      "count": len(after)})
+    return {"kinds": kinds, "total": total,
+            "netbox_version": ((old or {}).get("netbox_version", ""),
+                               (new or {}).get("netbox_version", ""))}
+
 
 def device(export: dict, name: str):
     """The export's device *name*, or None."""

@@ -776,7 +776,10 @@ class TestTheShippedScripts:
         # result by job id, H16).
         # +1 2026-11-08: controller_deploy (SDN › Apps and a controller app deploy's running
         # card redraw on the deploy's announcements, P6, C2677).
-        assert len(keys) == 55
+        # +2 2026-11-09: nsot_export (SDN › Apps' export card redraws when a network's NSOT
+        # export is committed, C2777) and code_repo (the Code repository card and SDN › Apps
+        # redraw on a save or a fetch, decision 8's registry).
+        assert len(keys) == 57
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {

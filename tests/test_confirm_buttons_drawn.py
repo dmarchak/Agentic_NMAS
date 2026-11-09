@@ -1998,6 +1998,42 @@ class TestControllerAppDeployCards(_Cards):
         return html
 
 
+class TestNsotExportCards(_Cards):
+    """SDN › Apps' NSOT export card (C2777; board nsot-export) on tests/test_nsot_export_op.py's
+    world (the real routes and operation; NetBox's GETs served by a fake client): the preview's
+    confirm drawn from the real preview. Blocked: NetBox reads as the committed export, so the
+    preview changes nothing and draws no confirm."""
+    from tests import test_nsot_export_op as _eo, test_sdn_connections as _sc
+    networks, lab = hosted(_sc.networks), hosted(_eo.lab)
+
+    CASES = {
+        "commit": ("_sdn_export.html", "Commit the export", r"Commit the export",
+                   "data: NetBox reads as the committed export, so its preview changes nothing"),
+    }
+
+    @staticmethod
+    def _preview():
+        import app as A
+        return _text(A.app.test_client().post("/v2/sdn/export/preview",
+                                              data={"list": "Default"}))
+
+    def drawn_commit(self, request):
+        request.getfixturevalue("lab")
+        html = self._preview()
+        assert "Commit Default's NSOT export from NetBox" in html, "floor: the preview is drawn"
+        return html
+
+    def blocked_commit(self, request, monkeypatch):
+        from modules.nsot import export_op
+        request.getfixturevalue("lab")
+        p = export_op.preview("Default")
+        export_op.apply("Default", p["hash"], actor="op@example.invalid",
+                        actor_verified="access-assertion")
+        html = self._preview()
+        assert "nothing to commit" in html, "floor: the preview that changes nothing is drawn"
+        return html
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -2061,9 +2097,9 @@ class TestThePopulation:
         <controller>, the Redeploy the same set and restart <controller>… of a plan that
         changes nothing, and an unknown result's Preview a rollback…; 80 until three of those
         four, the previews, became reveals, C2765, 2026-11-08: they read the controller host as
-        the person)."""
+        the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 77, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 78, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

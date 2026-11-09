@@ -4,8 +4,8 @@ state).
 
 **The population:** every Python module under `modules/jobs/` and `modules/apps/` (their
 subpackages and the app SDK's stub included), `scripts/mercury`, and the code repository's
-module, `modules/coderepo*.py`, by pattern, once it exists. A floor on its size holds the scan
-to reading what it should.
+module, `modules/coderepo*.py`, by pattern (`modules/coderepo.py`, the registry's read side,
+since 2026-11-08). A floor on its size holds the scan to reading what it should.
 
 **The rule, by parsing each module (ast), never by a substring of its text:**
 - no string a module uses as a value (a docstring or a bare string statement is prose, and is
@@ -37,8 +37,9 @@ POPULATION_PREFIX = "coderepo"
 SCRIPTS = ("scripts/mercury",)
 #: Measured 2026-11-07: 18 modules (11 under modules/jobs/, 6 under modules/apps/ with the
 #: SDK's stub, and scripts/mercury). A floor, not the count: a module added raises the count,
-#: and a scan reading fewer fails.
-FLOOR = 18
+#: and a scan reading fewer fails. Measured again 2026-11-08 with the code repository's module
+#: (`modules/coderepo.py`, the registry's read side): 27.
+FLOOR = 27
 FOLDERS = frozenset({"config_repo", "golden", "golden_configs", "host_vars", "templates"})
 READER_MODULES = frozenset({"modules.nsot.hostvars", "modules.nsot.golden_state",
                             "modules.nsot.render_artifact", "modules.nsot.templates_repo",
@@ -140,7 +141,8 @@ def test_the_population_is_every_job_app_and_code_repository_module():
     assert len(files) >= FLOOR, f"the scan reads {len(files)} modules, under its floor {FLOOR}"
     for expected in ("scripts/mercury", "modules/jobs/gate.py", "modules/jobs/runner.py",
                      "modules/apps/gate.py", "modules/apps/allowlist.py",
-                     "modules/apps/sdk/mercury_app/__init__.py"):
+                     "modules/apps/sdk/mercury_app/__init__.py", "modules/coderepo.py",
+                     "modules/apps/sources.py"):
         assert expected in files, expected
 
 

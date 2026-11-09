@@ -26,6 +26,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   one network is never scraped as another's. With no directory named, Mercury writes nothing
   for that Prometheus, and its row says to name one.
 - **Inventory source** (Network tab): where the network's devices come from, its own list on this host or NetBox through filters, and how fresh they are. For a NetBox network it counts the devices loaded, skipped, loaded with a warning and no longer in NetBox, and names each one in groups closed until opened: the skipped by cause with where to put it right, the warned by cause, and those NetBox no longer returns with since when (see [Where a network's devices come from](settings-switch#source)).
+- **Code repository** (Network tab): where the network's jobs and apps live, apart from its configuration repository, a local path or an https URL and a branch, each network's own; the last fetch, what it registered and what it could not; **Fetch now** fetches it into Mercury's read-only copy and registers each app folder at the fetched commit as a Draft (see [A network's code repository](code-repository)).
 - **What AI may send** (Network tab): the network's AI data classes, each with its state (see [What AI may send](#ai-classes)).
 - **SDN controllers** (Integrations tab): the network's own controller connections, on their
   own card, never inherited from Default (see [SDN controllers](#sdn-controllers)).

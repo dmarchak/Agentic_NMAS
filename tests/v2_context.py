@@ -2615,6 +2615,75 @@ def _sdn_apps(client, _lab, _mp):
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _nsot_export_and_code_repo(client, _lab, _mp):
+    """SDN › Apps' NSOT export card (C2777, board nsot-export) and Settings › Network's Code
+    repository card (board code-repository) on Lab: the export none committed, its preview
+    (every object added), its commit, the card at rest committed, a preview that changes
+    nothing and a refused confirm; a code repository with one app and one folder that does not
+    register, saved, fetched and drawn. NetBox's GETs are served by tests/test_openflow_golden's
+    fake client. Its patches are undone before the next provider."""
+    import copy
+    import os
+    import re
+    import shutil
+    import subprocess
+    import tempfile
+    from html import unescape
+
+    import pytest
+
+    from modules.nsot import export as X
+    from tests.test_coderepo import GIT_ENV, manifest
+    from tests.test_openflow_golden import _records, fake_netbox
+
+    mp = pytest.MonkeyPatch()
+    root = tempfile.mkdtemp(prefix="v2ctx-export-")
+    records = copy.deepcopy(_records())
+    real = X.build
+    try:
+        mp.setattr("modules.inventory.source_config.load",
+                   lambda name: {"source": "netbox", "filters": {"role": "openflow-switch"}})
+        mp.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        mp.setattr(X, "build", lambda network, **kw: real(
+            network, get=fake_netbox(records)[0], version=lambda: records["netbox_version"]))
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        html = client.post("/v2/sdn/export/preview", data={"list": "Lab"}).get_data(as_text=True)
+        fields = {m.group(1): unescape(m.group(2)) for m in re.finditer(
+            r'<input type="hidden" name="([a-z_0-9]+)" value="([^"]*)"', html)}
+        assert client.post("/v2/sdn/export/confirm", data={k: fields[k] for k in (
+            "list", "hash", "sha256", "base_blob")}).status_code == 200
+        assert client.get("/v2/sdn/export?list=Lab").status_code == 200
+        assert "nothing to commit" in client.post("/v2/sdn/export/preview",
+                                                  data={"list": "Lab"}).get_data(as_text=True)
+        assert client.post("/v2/sdn/export/confirm", data={
+            "list": "Lab", "hash": "0" * 64, "sha256": fields["sha256"],
+            "base_blob": ""}).status_code == 409
+        # A code repository with one app and a folder that does not register.
+        code = os.path.join(root, "code")
+        os.makedirs(os.path.join(code, "apps", "of_versions"))
+        os.makedirs(os.path.join(code, "apps", "loose"))
+        with open(os.path.join(code, "apps", "of_versions", "manifest.yml"), "w") as fh:
+            fh.write(manifest("of_versions", "1.0.0"))
+        with open(os.path.join(code, "apps", "loose", "x.py"), "w") as fh:
+            fh.write("x = 1\n")
+        env = dict(os.environ, **GIT_ENV)
+        for args in (("init", "-q", "-b", "main"), ("add", "-A"), ("commit", "-q", "-m", "a")):
+            subprocess.run(["git", "-C", code, *args], check=True, capture_output=True, env=env)
+        assert client.post("/v2/settings/network/Lab/code-repository",
+                           data={"location": code, "branch": "", "loaded": "\n"}
+                           ).status_code == 200
+        assert "Fetched commit" in client.post("/v2/settings/network/Lab/code-repository/fetch")\
+            .get_data(as_text=True)
+        assert client.get("/v2/settings/network/Lab?tab=network").status_code == 200
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        assert client.post("/v2/settings/network/Lab/code-repository",
+                           data={"location": "", "branch": "", "loaded": f"{code}\n"}
+                           ).status_code == 200
+    finally:
+        mp.undo()
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def _sdn(client, _lab, _mp):
     """SDN › Controllers and Flows and Settings' SDN controllers card (PHASE8_PLAN 17.1 S11),
     on Lab with one Ryu connection answered by Ryu 4.34's captured answers through the real
@@ -3255,7 +3324,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _no_change_window, _read_only_account,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
-                   _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps, _heal_and_notify,
+                   _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
+                   _nsot_export_and_code_repo, _heal_and_notify,
                    _heal_proposal,
                    _sdn_no_topology, _sdn_evidence,
                    _deploy,

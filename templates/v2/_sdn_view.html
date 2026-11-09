@@ -5,7 +5,7 @@
     per view. Redrawn when the reader announces `sdn`. -#}
 {%- set settings_url = url_for('settings_v2.network', list_name=g.network, tab='integrations') ~ '#sdn-card' -%}
 {%- set region_args = {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} if g.tab == 'flows' else ({'tab': g.tab, 'q': g.incidents.q or None, 'sev': g.incidents.sev or None} if g.tab == 'responses' else ({'tab': g.tab, 'app': g.app.name if g.app else None, 'controller': g.app.controller if g.app else None, 'v': g.app.pick if g.app else None, 'receipt': g.receipt.id if g.receipt else None} if g.tab == 'apps' else {'tab': g.tab})) -%}
-<div id="sdn" class="sdn" hx-get="{{ url_for('sdn_v2.region', **region_args) }}" hx-trigger="nmas:sdn from:body{{ ', nmas:controller_deploy from:body' if g.tab == 'apps' }}" hx-swap="outerHTML">
+<div id="sdn" class="sdn" hx-get="{{ url_for('sdn_v2.region', **region_args) }}" hx-trigger="nmas:sdn from:body{{ ', nmas:controller_deploy from:body, nmas:nsot_export from:body, nmas:code_repo from:body' if g.tab == 'apps' }}" hx-swap="outerHTML">
 <div class="page-head">
   <div class="page-title">
     <h1>SDN · {{ {'flows': 'Flows', 'responses': 'Responses', 'apps': 'Apps'}.get(g.tab, 'Controllers') }} {{ info('sdn', g.tab) }}</h1>

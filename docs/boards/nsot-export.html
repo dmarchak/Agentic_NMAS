@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>NSOT export board</title>
+<!-- Board for committing a network's NSOT export (C2777; the operator's decision 8 of
+     2026-11-08: "the export writer (its own small operation; its board self-signed under the
+     Phase 7 mode and logged)"): A, the NSOT export card on SDN › Apps; B, no export committed;
+     C, the preview (its hash, what changed against the committed one) and its confirm; D, a
+     preview that changes nothing; E, the refusals; F, the result; G, phone width. Drawn by the
+     agent under the Phase 7 operating mode, which counts it as signed off (one line in
+     docs/STANDING_APPROVAL_LOG.md, "D8-R 2"). Self-contained: no external fonts or scripts.
+     Example names (example-net, ctl, sw1) and documentation addresses only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1440px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.art.phone{width:390px}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFF;padding:4px 10px 14px;font-size:15px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}.side a.on{background:var(--side-on);color:#FFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+.phone main{padding:16px}
+h1.page{margin:0;font-size:24px;font-weight:600}h2{margin:0;font-size:16px;font-weight:600}h3{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:var(--mono);font-size:12.5px}.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}.small{font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 10px;font:inherit;font-size:13px;text-decoration:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#FFF}
+.how{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid var(--accent);color:var(--accent);font-size:10px;font-weight:700;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}.tabs a{padding:8px 12px;text-decoration:none;color:var(--ink-2)}.tabs a.on{color:var(--ink);border-bottom:2px solid var(--accent);font-weight:500}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card.op{border-color:var(--accent)}
+.head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head .grow{flex:1}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:4px 12px;font-size:13px}
+.notice{border-radius:6px;padding:8px 12px;font-size:13px}.notice.bad{background:var(--danger-soft);color:var(--danger)}.notice.warn{background:var(--warn-soft);color:var(--warn)}.notice.ok{background:var(--ok-soft);color:var(--ok)}.notice.muted{background:var(--muted-soft);color:var(--ink-2)}
+.phone .kv{grid-template-columns:1fr}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+details summary{cursor:pointer}
+.acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Committing a network's NSOT export: board for sign-off</h1>
+<div>Seven artboards (A to F at 1440, G at 390). The NSOT export is what NetBox says about a network at a moment, one deterministic document committed in the network's configuration repository; SDN › Apps and the controller app deploy read the controller hosts and the expected switches and links from the committed one, never NetBox live. This is its writer: a control on SDN › Apps that reads NetBox now, previews the export's hash and what changed against the committed one, and commits it when a verified person confirms by that hash. It changes no device and writes nothing to NetBox. Yellow dashed notes are annotations. Every other link and control is one the built card has.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · SDN › Apps, the NSOT export card</strong>, above the controller cards: the committed export (its hash, its commit, who and when, NetBox's version, what it holds) and Export from NetBox…</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#">Devices</a><a href="#" class="on">SDN</a><a href="#">History</a></nav>
+<main>
+<h1 class="page">SDN · Apps <span class="how">i</span></h1>
+<nav class="tabs"><a href="#">Controllers</a><a href="#">Flows</a><a href="#" class="on">Apps</a><a href="#">Responses</a></nav>
+<div class="card" id="nsot-export">
+<div class="head"><h2 class="grow">NSOT export <span class="how">i</span></h2><span class="chip ok">committed</span></div>
+<div class="kv">
+<span class="muted">Committed</span><span><span class="mono">sha256:7c41…e09a</span> in commit <span class="mono">b81d2f0</span>, 2026-11-08 13:40 UTC (35 min ago) by operator@example.net, from NetBox 4.2.9</span>
+<span class="muted">Holds</span><span>7 devices, 38 interfaces, 2 VLANs, 3 prefixes, 1 service, 6 cables</span>
+<span class="muted">Read by</span><span>this tab's controller hosts and the expected switches and links of every controller app deploy; never NetBox live</span>
+</div>
+<div class="acts"><button class="btn">Export from NetBox…</button><span class="how">i</span><span class="muted small">Reads NetBox now and shows what would be committed; nothing is committed until you confirm.</span></div>
+</div>
+<p class="faint small">… the controller cards as the signed board controller-app-deploy draws them …</p>
+</main></div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · No export committed</strong>: why the controllers can't be listed and what to do, the card leading with Export from NetBox… as the primary control. A network whose devices are not NetBox's draws the card with the control disabled, saying why.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card" id="nsot-export">
+<div class="head"><h2 class="grow">NSOT export <span class="how">i</span></h2><span class="chip warn">none committed</span></div>
+<div class="notice warn">example-net has no committed NSOT export, so its controller hosts and their expected switches and links can't be listed. Export it from NetBox to list them.</div>
+<div class="acts"><button class="btn primary">Export from NetBox…</button><span class="how">i</span></div>
+</div>
+<div class="card">
+<div class="head"><h2 class="grow">NSOT export <span class="how">i</span></h2><span class="chip">not NetBox's</span></div>
+<div class="acts"><button class="btn" disabled title="example-net's devices come from 'local', not NetBox: an NSOT export is NetBox's view of a network">Export from NetBox…</button><span class="how">i</span></div>
+</div>
+</main></div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The preview</strong>, in the card's place: the new export's hash beside the committed one, what changed by kind (each kind's names folded, opened on a click), where it goes, and the one confirm. Read from NetBox now; nothing is written.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card op">
+<div class="head"><h2 class="grow">Commit example-net's NSOT export from NetBox</h2><span class="chip warn">4 changes</span></div>
+<div class="kv">
+<span class="muted">This export</span><span><span class="mono">sha256:2be0…51f3</span>, read from NetBox 4.2.9 at 14:15 UTC</span>
+<span class="muted">The committed one</span><span><span class="mono">sha256:7c41…e09a</span>, commit <span class="mono">b81d2f0</span> (13:40 UTC, operator@example.net)</span>
+<span class="muted">Goes to</span><span><span class="mono">nsot/export.json</span> in example-net's configuration repository, one commit as you (<span class="mono">Source: nsot_export</span>, <span class="mono">Export-Sha256</span>); nothing is written to NetBox or to any device</span>
+</div>
+<table>
+<thead><tr><th>Kind</th><th>Added</th><th>Removed</th><th>Changed</th></tr></thead>
+<tbody>
+<tr><td>Devices</td><td>1 <details><summary class="small">sw3</summary></details></td><td>0</td><td>1 <details><summary class="small">sw1</summary></details></td></tr>
+<tr><td>Interfaces</td><td>1 <details><summary class="small">sw3 Ethernet1</summary></details></td><td>0</td><td>0</td></tr>
+<tr><td>Cables</td><td>1 <details><summary class="small">sw1:Ethernet3 to sw3:Ethernet1</summary></details></td><td>0</td><td>0</td></tr>
+<tr><td class="faint">VLANs, prefixes, services</td><td class="faint" colspan="3">unchanged</td></tr>
+</tbody></table>
+<div class="acts"><button class="btn primary">Commit the export</button><button class="btn">Cancel</button><span class="how">i</span></div>
+<div class="callout">Commit the export is a verified person's, bound to this preview's hash (the new export's and the committed one's together). At the confirm, Mercury reads NetBox again: if the export or the committed one moved since this preview, nothing is committed and both are named (E). Busy on itself ("Committing…") until the result replaces the card (F). While the card is open the region's live redraw is held and said.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · A preview that changes nothing</strong>: NetBox reads as the committed export; there is nothing to commit, so there is no confirm.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card op">
+<div class="head"><h2 class="grow">example-net's NSOT export: nothing to commit</h2><span class="chip">unchanged</span></div>
+<p class="small">NetBox reads now as the committed export (<span class="mono">sha256:7c41…e09a</span>, commit <span class="mono">b81d2f0</span>), byte for byte: committing it would change no line, so nothing is offered.</p>
+<div class="acts"><button class="btn">Close</button><span class="how">i</span></div>
+</div>
+</main></div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · Refusals</strong>, each in the card's place, saying what was compared and both values; nothing committed.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card op"><div class="head"><h2 class="grow">Can't export example-net</h2><span class="chip bad">refused</span></div>
+<div class="notice bad">NetBox could not be read: ConnectionError: … . Nothing was committed.</div>
+<div class="acts"><button class="btn">Close</button><button class="btn">Preview again</button><span class="how">i</span></div></div>
+<div class="card op"><div class="head"><h2 class="grow">Not committed: the export moved since the preview</h2><span class="chip bad">refused</span></div>
+<div class="notice bad">NetBox's export now hashes sha256:9d02…aa17, and the preview showed sha256:2be0…51f3; the committed export is still sha256:7c41…e09a. Nothing was committed: preview again to see what moved.</div>
+<div class="notice bad">The committed export moved since the preview (now blob 4410…c2e1, by another commit; previewed 8f3a…07bd). Nothing was committed: preview again.</div>
+<div class="acts"><button class="btn">Close</button><button class="btn primary">Preview again</button><span class="how">i</span></div></div>
+</main></div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · The result</strong>: the commit, the hash committed, who; every screen reading the export redraws (this tab's controllers and the deploy's expected switches and links).</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card op">
+<div class="head"><h2 class="grow">Committed example-net's NSOT export</h2><span class="chip ok">committed</span></div>
+<div class="kv">
+<span class="muted">Export</span><span><span class="mono">sha256:2be0…51f3</span> (was <span class="mono">sha256:7c41…e09a</span>)</span>
+<span class="muted">Commit</span><span><span class="mono">e03c9a4</span> in example-net's configuration repository, as operator@example.net, verified by the access assertion · <a href="#">Open it on History</a></span>
+<span class="muted">Changed</span><span>1 device added, 1 changed; 1 interface added; 1 cable added</span>
+</div>
+<div class="acts"><button class="btn">Close</button><span class="how">i</span></div>
+<div class="callout">Close draws the card at rest (A) with the new commit. The commit is the record: History's Commits list it with its Actor and its Export-Sha256, and the card reads its last commit from the repository's history, so it says the same later.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ G -->
+<div class="artlabel"><strong>G · Phone width</strong>: the preview's table stacked by kind, the confirm pinned at the bottom of the card.</div>
+<div class="art phone">
+<main>
+<div class="card op">
+<div class="head"><h2 class="grow">Commit example-net's NSOT export</h2><span class="chip warn">4 changes</span></div>
+<div class="kv"><span class="muted">This export</span><span class="mono">sha256:2be0…51f3</span><span class="muted">The committed one</span><span class="mono">sha256:7c41…e09a</span></div>
+<p class="small">Devices: 1 added, 1 changed · Interfaces: 1 added · Cables: 1 added</p>
+<div class="acts"><button class="btn primary">Commit the export</button><button class="btn">Cancel</button><span class="how">i</span></div>
+</div>
+</main></div>
+
+</body>
+</html>

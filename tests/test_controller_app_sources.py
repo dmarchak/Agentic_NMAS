@@ -7,7 +7,8 @@ Cases, each planted:
   listen address from the Service (IPv4 or IPv6) and its login from the inventory; a host with
   no unit, a unit not of a unit's shape, or a host not in the inventory is listed with the
   problem named, and every read that needs it refuses naming it, asking no device;
-- the registry, which has no carrier, refuses naming P4;
+- the registry is the network's code repository's (modules/coderepo.py): with none set it says
+  so, naming the card that sets it;
 - the expected switches are those whose OpenFlow values name this controller, the controller
   host never among them, each DPID an INTEGER (the driver's form, C2756) and each profile entry
   by the switch's platform and os_version; the links are the connected cables between their
@@ -176,10 +177,12 @@ def test_the_controllers_are_read_from_the_committed_export_never_the_working_tr
     assert got["state"] == "ok" and [c["name"] for c in got["controllers"]] == [CTL]
 
 
-def test_the_registry_has_no_carrier_and_refuses_naming_p4(lab):
+def test_the_registry_is_the_code_repositorys_and_says_when_none_is_set(lab):
+    """The registry's carrier is the network's code repository (modules/coderepo.py,
+    tests/test_coderepo.py): with none set it says so, naming the card, never an empty list."""
     got = S.Wired().registered(NET)
-    assert got["state"] == "not_wired" and got["apps"] == []
-    assert "the app registry (P4) is not built" in got["error"]
+    assert got["state"] == "none" and got["apps"] == []
+    assert "has no code repository set" in got["error"] and "Code repository" in got["error"]
 
 
 # ── what the post-check expects ──────────────────────────────────────────────────────────────
@@ -438,9 +441,10 @@ def test_the_apps_tab_lists_the_controller_host_netbox_names_on_the_wired_source
         .replace("</span>", "")
     assert "listening on 192.0.2.1" in html.replace('<span class="mono">', "") \
         .replace("</span>", "")
-    # The registry alone is not built, and the tab says so in place of an empty list.
-    assert "No app version can be listed:" in html and "the app registry (P4) is not built" \
-        in html
+    # The network has no code repository set, and the tab says so in place of an empty list,
+    # with the card that sets it.
+    assert "No app version can be listed:" in html and "has no code repository set" in html
+    assert "Open the code repository's card" in html
     # The stored read (the run just recorded) is what the card compares; no deploy is recorded.
     assert "no deploy through Mercury" in html
 

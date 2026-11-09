@@ -876,13 +876,16 @@ def network(list_name):
         return _strict(render_template("v2/settings.html", who=_who(), active_nav="settings",
                                        v=v), 410)
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")
-    src = sdn = aic = None
+    src = sdn = aic = crepo = None
     if v.get("tab") == "network" and not v.get("error"):
+        from modules import coderepo
         from modules import network_source as NS
         from modules.ai import egress_classes
         src = NS.view(list_name)
         # Board H, artboard N (H28): the network's AI data classes, its device state switch.
         aic = egress_classes.classes_view(list_name)
+        # Board code-repository, artboard A: the network's code repository and Fetch now.
+        crepo = coderepo.card(list_name)
     if v.get("tab") == "integrations" and not v.get("error"):
         from modules import sdn_page
         sdn = sdn_page.card(list_name)
@@ -892,7 +895,7 @@ def network(list_name):
         from modules import heal_page
         heal = heal_page.view(list_name)
     return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal,
-                 aic=aic)
+                 aic=aic, crepo=crepo)
 
 
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])
@@ -1169,6 +1172,59 @@ def sdn_stage(list_name):
         return _sdn(list_name, 409, refused=str(exc))
     return _sdn(list_name, staged={k: out[k] for k in ("before", "after", "unchanged",
                                                         "recorded")})
+
+
+# ── A network's code repository (the SDN platform design revision 7, 11c.2 and 11c.3; board
+#    docs/boards/code-repository.html, signed off under the Phase 7 mode 2026-11-08): its
+#    location and branch, and Fetch now, on the Network tab's Code repository card. ───────────
+
+def _code_repo(list_name: str, code: int = 200, **ctx):
+    """The Code repository card, drawn whole with *ctx*'s answer at its top."""
+    from modules import coderepo
+
+    return _fragment("v2/_code_repo.html", code, r=coderepo.card(list_name),
+                     list_name=list_name, **ctx)
+
+
+@bp.route("/network/<list_name>/code-repository", methods=["GET"])
+def code_repo_card(list_name):
+    """The card, drawn again (on `code_repo`: another person's save or fetch). A read."""
+    return _code_repo(list_name)
+
+
+@bp.route("/network/<list_name>/code-repository", methods=["POST"])
+def code_repo_save(list_name):
+    """Set the network's code repository (its location and branch) as the verified person,
+    refused when it moved since the card drew it, recorded in the network's settings record;
+    the card drawn again with the answer, a refusal keeping what was typed."""
+    from modules import coderepo, identity
+
+    typed = {"location": request.form.get("location") or "",
+             "branch": request.form.get("branch") or ""}
+    try:
+        out = coderepo.set_location(list_name, typed["location"], typed["branch"],
+                                    actor=identity.request_actor(), actor_verified=_verified(),
+                                    loaded=request.form.get("loaded"))
+    except coderepo.Refused as exc:
+        return _code_repo(list_name, 409, refused=str(exc), typed=typed)
+    return _code_repo(list_name, saved={
+        "unchanged": out["unchanged"], "before_words": coderepo.setting_words(out["before"]),
+        "after_words": coderepo.setting_words(out["after"])})
+
+
+@bp.route("/network/<list_name>/code-repository/fetch", methods=["POST"])
+def code_repo_fetch(list_name):
+    """Fetch now: the network's code repository fetched into Mercury's read-only copy and what
+    is at the fetched commit registered, for the verified person; a failed fetch is recorded
+    and said. Nothing is written to the repository it copies."""
+    from modules import coderepo, identity
+
+    try:
+        out = coderepo.fetch(list_name, actor=identity.request_actor(),
+                             actor_verified=_verified())
+    except coderepo.Refused as exc:
+        return _code_repo(list_name, 409, refused=str(exc))
+    return _code_repo(list_name, 200 if out["ok"] else 502, fetched=out)
 
 
 @bp.route("/network/<list_name>/mode/banner", methods=["GET"])

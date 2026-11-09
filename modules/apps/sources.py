@@ -4,7 +4,7 @@ each from the carrier Mercury already has for it, and the one that has none refu
 | Read (`deploy_op.Sources`) | Where it comes from |
 |---|---|
 | ``controllers`` | the network's committed NSOT export (`modules/nsot/export.read`, HEAD, never the working tree): each device that parents a Service named ``openflow``; its listen address and port from that Service (`openflow_values.service_target`, IPv4 or IPv6); its systemd unit from its rendered config context's ``openflow.unit``; its login from the network's inventory (`load_saved_devices`, no I/O) |
-| ``registered`` | **not built**: the app registry is P4's (the SDN design revision 7, 11c.3); refused by name, `deploy_op.NOT_WIRED["registered"]` |
+| ``registered`` | the registry's read side (`modules/coderepo.registered`; the SDN design revision 7, 11c.3, pulled forward by the operator's decision 8 of 2026-11-08): each ``apps/<name>/`` folder registered at a fetch of the network's code repository, keyed by its location, the commit and the folder's content hash, read again from blobs in Mercury's copy; a network with none set, or not fetched yet, says so. Every version is a Draft until P4's Publish |
 | ``host_reads`` | the host's three shaped reads (`channel.host_commands`), asked through the reads engine (`reads.run`, the one engine: the capture list's rule, the device held, masked, recorded in History › Reads), as the person previewing or confirming |
 | ``expected`` | the same committed export: every switch whose OpenFlow values (`openflow_values.from_export`) name this controller, its DPID from ``openflow_datapath_id`` as an integer (the driver's form, C2756), its profile entry by its platform and its ``os_version`` (`profile.select`); every connected cable between two of their OpenFlow ports, each end numbered by its ``openflow_port``, else by its platform's own numbering (`openflow_templates.numbered_by_platform`) |
 | ``observe`` | the controller live, through the network's controller connection (`connections.choose`: the controller host's ``openflow.connection``, or the only one) and its driver's ``switches()``, ``links()`` and, for each app the caller names with its manifest's REST prefix, ``app_health(prefix)`` (a GET of ``<prefix>/health``, bounded per request; C2677), each answer taken into the post-check's shape by `post_check.health_entry`: answered, no answer or unreadable, naming why |
@@ -254,8 +254,18 @@ class Wired(deploy_op.Sources):
                 "controllers": controllers_from(got["export"], network, inventory)}
 
     def registered(self, network):
-        return {"state": "not_wired", "apps": [], "repo": {},
-                "error": deploy_op.NOT_WIRED["registered"]}
+        """The registry's read side (`modules/coderepo.registered`): each version registered
+        from the network's code repository, read again from blobs at its commit in Mercury's
+        copy. Until P4's Publish every one is a Draft, which stages nothing."""
+        from modules import coderepo
+
+        try:
+            return coderepo.registered(network)
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            log.warning("controller sources: %s's registry could not be read: %s", network, exc)
+            return {"state": "unreadable", "apps": [], "repo": {}, "problems": [],
+                    "error": (f"the app registry could not be read ({type(exc).__name__}: "
+                              f"{exc})")[:300]}
 
     def host_reads(self, network, controller):
         from modules.apps import channel

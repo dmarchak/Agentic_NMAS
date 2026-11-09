@@ -1,0 +1,57 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Settings › a network › Network, the Code repository card (the SDN platform design revision 7,
+    11c.2 and 11c.3; board docs/boards/code-repository.html, artboards A to D and F, signed off
+    under the Phase 7 mode 2026-11-08, docs/STANDING_APPROVAL_LOG.md "D8-R 1"): the network's
+    code repository (its location and branch) with Save, the last fetch, what it registered and
+    what it could not, and Fetch now. Each answer draws the card again with the answer at its
+    top. From modules/coderepo.card. -#}
+{%- set chip = {'ok': ('fetched', 'ok'), 'unfetched': ('not fetched', 'warn'), 'none': ('none set', 'muted'), 'unreadable': ('fetch again', 'danger')}.get(r.registered_state, ('can\'t be read', 'danger')) if r.state != 'unreadable' else ('can\'t be read', 'danger') -%}
+<section class="card set-card set-card-wide code-repo" id="code-repo-card" aria-labelledby="h-code-repo" hx-get="{{ url_for('settings_v2.code_repo_card', list_name=list_name) }}" hx-trigger="nmas:code_repo from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2 id="h-code-repo">Code repository</h2>{{ badge(chip[0], chip[1]) }}<span class="card-head-how">{{ how('code-repository') }}</span></div>
+  {%- if refused is defined and refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
+  {%- endif %}
+  {%- if saved is defined and saved %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p>{% if saved.unchanged %}<strong>Nothing changed:</strong> the setting already was this.{% else %}<strong>Saved</strong>: {{ r.network }}'s code repository is {{ saved.after_words }} (was {{ saved.before_words }}).{% if r.location %} Press Fetch now to register what it holds.{% endif %}{% endif %}</p></div>
+  {%- endif %}
+  {%- if fetched is defined and fetched %}
+  {%- if fetched.ok %}
+  <div class="notice notice-{{ 'ok' if fetched.changed else 'muted' }} set-result" role="status">{{ icon('tick', 16) }}<p><strong>Fetched commit <span class="mono">{{ fetched.commit[:7] }}</span></strong>{% if fetched.changed and fetched.before %} (was <span class="mono">{{ fetched.before[:7] }}</span>){% elif not fetched.changed %}, the commit Mercury already had{% endif %}{% if fetched.registered %}: {{ fetched.registered | join('; ') }}.{% else %}: nothing new to register.{% endif %}</p></div>
+  {%- else %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>The fetch failed</strong>: {{ fetched.error }}.{% if fetched.before %} Mercury's copy keeps commit <span class="mono">{{ fetched.before[:7] }}</span>, and its registered versions stand.{% endif %}</p></div>
+  {%- endif %}
+  {%- endif %}
+  <p class="muted small">Where {{ r.network }}'s jobs and apps live, apart from its configuration repository. Mercury fetches it into its own read-only copy when you press Fetch now, and registers each <span class="mono">apps/&lt;name&gt;/</span> folder at that commit as a Draft. Each network's own: none is inherited from Default.</p>
+  {%- if r.state == 'none' %}
+  <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p>{{ r.network }} has no code repository: SDN › Apps lists no app version for it until one is set here and fetched.</p></div>
+  {%- elif r.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ r.error }}.</p></div>
+  {%- elif r.registered_state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ r.registered_error }}. Until then SDN › Apps lists no version, never the old location's.</p></div>
+  {%- endif %}
+  {%- if r.record_state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>Mercury's record of fetches can't be read: {{ r.record_error }}. Fetch now refuses until it can be, and nothing is listed.</p></div>
+  {%- endif %}
+  <form class="set-form code-repo-form" method="post" action="{{ url_for('settings_v2.code_repo_save', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.code_repo_save', list_name=list_name) }}" hx-target="#code-repo-card" hx-swap="outerHTML">
+    <input type="hidden" name="loaded" value="{{ r.loaded }}">
+    <label class="set-field"><span class="set-label">Location</span><input type="text" name="location" value="{{ typed.location if typed is defined and typed else r.location }}" placeholder="/srv/code/{{ r.network | lower }}.git or https://…" autocomplete="off" spellcheck="false" maxlength="500"><span class="faint small">A local path (starting /, or file://) or an https:// URL with no user name or password in it</span></label>
+    <label class="set-field"><span class="set-label">Branch</span><input type="text" name="branch" value="{{ typed.branch if typed is defined and typed else r.branch }}" placeholder="its default branch" autocomplete="off" spellcheck="false" maxlength="100"><span class="faint small">Empty: the repository's default branch</span></label>
+    <span class="op-act"><button type="submit" class="btn" data-op="code-repository" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('code-repository', 'the-setting', compact=True, op='setting the code repository') }}</span>
+  </form>
+  {%- if r.location %}
+  <dl class="sdn-kv code-repo-facts">
+    <dt>Last fetch</dt><dd>{% if r.last %}{% if r.last.ok %}commit <span class="mono">{{ r.last.commit[:7] }}</span> of <span class="mono">{{ r.last.branch or 'its default branch' }}</span>, {{ stamp(r.last.at) }} by {{ r.last.by }}{% else %}{{ badge('failed', 'danger') }} {{ stamp(r.last.at) }} by {{ r.last.by }}: {{ r.last.error }}{% if r.last_ok %} · the last good one: <span class="mono">{{ r.last_ok.commit[:7] }}</span>, {{ stamp(r.last_ok.at) }}{% endif %}{% endif %}{% else %}none yet: press Fetch now{% endif %}</dd>
+    {%- if r.registered_state == 'ok' %}
+    <dt>Registered</dt><dd>{{ r.versions }} version{{ 's' if r.versions != 1 }} of {{ r.apps }} app{{ 's' if r.apps != 1 }}, each a Draft until it is published · <a href="{{ url_for('sdn_v2.apps', list=r.network) }}">Open SDN › Apps</a></dd>
+    {%- endif %}
+    {%- if r.problems %}
+    <dt>Not registered</dt><dd><ul class="code-repo-problems">{% for p in r.problems %}<li>{{ p }}</li>{% endfor %}</ul></dd>
+    {%- endif %}
+  </dl>
+  {%- endif %}
+  <form class="set-foot code-repo-fetch" method="post" action="{{ url_for('settings_v2.code_repo_fetch', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.code_repo_fetch', list_name=list_name) }}" hx-target="#code-repo-card" hx-swap="outerHTML">
+    {%- set why = 'Set a location and save it first' if not r.location else ('The setting can\'t be used: ' ~ r.error if r.state == 'unreadable' else ('Mercury\'s record of fetches can\'t be read' if r.record_state == 'unreadable' else '')) %}
+    <span class="op-act"><button type="submit" class="btn btn-primary" data-op="code-repository" hx-disabled-elt="this"{% if why %} disabled aria-disabled="true" title="{{ why }}" data-refused="Not available: {{ why }}"{% else %} title="Fetches {{ r.branch or 'its default branch' }} into Mercury's copy and registers what is at its newest commit; nothing is written to the repository"{{ gate('configure') }}{% endif %}><span class="op-idle">Fetch now</span><span class="op-busy">Fetching…</span></button>{{ how('code-repository', 'the-fetch', compact=True, op='fetching the code repository') }}</span>
+    <span class="muted small">Fetches into Mercury's copy and registers what is at the newest commit; nothing is written to the repository (bound {{ r.timeout }} s).</span>
+  </form>
+</section>

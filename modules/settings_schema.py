@@ -642,6 +642,16 @@ DEFAULTS: dict = {
     # guard's purpose. No measurement can say whether a network is a lab: it is a person's
     # declaration. Written only by `modes.set_stage`, from the network's SDN controllers card.
     "network_stage": "",
+    # A network's code repository (the SDN platform design revision 7, 11c.2; the operator's
+    # decision 8 of 2026-11-08): where its jobs and apps live, apart from its configuration
+    # repository, a local path or an https:// URL, and the branch to fetch (empty: its default
+    # branch). Empty by default: a network with none set has no code, as before the setting
+    # existed. Each network's own, never inherited from Default (`OWN_ONLY`). No measurement
+    # can answer it: where a network's code lives is a decision about the network, and nothing
+    # in the network can be read to find it. Written only by `modules/coderepo.py`
+    # (`set_location`), from the network's Code repository card.
+    "code_repository": "",
+    "code_repository_branch": "",
     # SDN detection thresholds (PHASE8_PLAN 17.1 S6, `modules/sdn/detect.py`), per network, the
     # slice's defaults as S6 was asked for (2026-10-26): a scan is 20 distinct destination ports
     # from one source in 60 s (where flows are L4); a flood, a port receiving 5x its baseline
@@ -1178,6 +1188,8 @@ SCHEMA: dict = {
             },
         },
         "network_stage": {"enum": ["", "lab", "pilot", "production"]},
+        "code_repository": {"type": "string", "maxLength": 500},
+        "code_repository_branch": {"type": "string", "maxLength": 100},
         "sdn_scan_ports": {"type": "integer", "minimum": 2, "maximum": 65535},
         "sdn_scan_window_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
         "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},

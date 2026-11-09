@@ -10,8 +10,8 @@ controller host with its unit and listen address (NetBox's ``openflow`` Service)
 three shaped reads (`systemctl show`, `ls -la`, `systemctl cat`), the expected switches and
 links (NetBox), and the controller's live read in the post-check's shape. They are one seam,
 `Sources`; the production default is `modules/apps/sources.Wired` (C2765), each read from the
-carrier Mercury has for it (that module's table), and the registry, which has none yet, refused
-naming what is not built (``not_wired``). The screen draws a refusal as one, never an empty list
+carrier Mercury has for it (that module's table; the registry from the network's code
+repository, `modules/coderepo.py`). The screen draws a refusal as one, never an empty list
 read as "nothing registered". `Unwired` answers every read ``not_wired``. A host read is a
 person's: the preview's and the confirm's sources are made for the actor (`for_actor`).
 `Sources.send` is the transport over the deploy account's plain session
@@ -129,13 +129,14 @@ class Sources:
             conn.disconnect()
 
 
-#: What `Unwired` says behind each read; only ``registered`` is still unbuilt in production
-#: (`modules/apps/sources.Wired` reads the rest, C2765).
+#: What `Unwired` says behind each read; `modules/apps/sources.Wired` reads every one in
+#: production (C2765; the registry from `modules/coderepo.py`, the operator's decision 8 of
+#: 2026-11-08).
 NOT_WIRED = {
     "controllers": ("the network's controller host (NetBox's 'openflow' Service, its parent "
                     "device and the unit it runs) is not read for the deploy yet"),
-    "registered": ("the app registry (P4) is not built: no app version is registered from the "
-                   "network's code repository"),
+    "registered": ("the app registry is not wired to the deploy: no app version is read from "
+                   "the network's code repository"),
     "host_reads": "the controller host's three reads are not wired to the deploy yet",
     "expected": ("the expected switches and links (NetBox's OpenFlow switches for this "
                  "controller and the cables between their OpenFlow ports) are not read yet"),

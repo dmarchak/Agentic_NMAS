@@ -483,6 +483,76 @@ def controller_test(name):
 
 
 # ───────────────────────────────────────────────────────────── the controller app deploy (P6)
+# Board nsot-export (C2777; the operator's decision 8 of 2026-11-08, self-signed under the Phase
+# 7 mode): SDN › Apps' NSOT export card. One operation (modules/nsot/export_op.py): the preview
+# reads NetBox now and draws the export's hash and what it changes; the confirm, bound to that
+# hash as a verified person, reads NetBox again and commits the export. The card is drawn in
+# place of itself (`#nsot-export`).
+
+def _export_card(x: dict, status: int = 200):
+    return _strict(render_template("v2/_sdn_export.html", x=x)), status
+
+
+def _export_network() -> tuple:
+    from routes.list_param import submitted_list
+
+    return submitted_list(request)
+
+
+@bp.route("/export", methods=["GET"])
+def export_card():
+    """The NSOT export card at rest (Cancel, Close): the committed export as its history says.
+    A read."""
+    from modules.nsot import export_op
+
+    return _export_card(dict(export_op.last(_list_name()), state_card="rest"))
+
+
+@bp.route("/export/preview", methods=["POST"])
+def export_preview():
+    """Export from NetBox…: the network's export read from NetBox now, its hash beside the
+    committed one and what it changes by kind (artboards C and D). Writes nothing."""
+    from modules.nsot import export_op
+
+    network, refused = _export_network()
+    if refused:
+        return _export_card({"state_card": "refused", "network": network, "error": refused},
+                            400)
+    p = export_op.preview(network)
+    if not p["ok"]:
+        return _export_card({"state_card": "refused", "network": network,
+                             "error": p["error"]}, 409)
+    # What the card draws: the export's bytes and the outcome's flags stay with the operation.
+    for key in ("bytes", "ok", "error"):
+        p.pop(key, None)
+    return _export_card(dict(p, state_card=p.pop("state")))
+
+
+@bp.route("/export/confirm", methods=["POST"])
+def export_confirm():
+    """Commit the export as the verified person, bound to the preview's hash: NetBox read again,
+    a moved export or committed file refused naming both (artboards E and F)."""
+    from modules import identity
+    from modules.nsot import export_op
+
+    network, refused = _export_network()
+    if refused:
+        return _export_card({"state_card": "refused", "network": network, "error": refused},
+                            400)
+    actor = identity.request_actor()
+    then_blob = request.form.get("base_blob")
+    done = export_op.apply(network, (request.form.get("hash") or "").strip(), actor=actor,
+                           actor_verified=identity.actor_verification(actor),
+                           then_sha=(request.form.get("sha256") or "").strip(),
+                           then_blob=then_blob.strip() if then_blob is not None else None)
+    outcome = done.pop("outcome")
+    if outcome == "refused":
+        return _export_card({"state_card": "refused", "network": network,
+                             "error": done["error"], "moved": done.get("moved", False)}, 409)
+    done.pop("error", None)
+    return _export_card(dict(done, state_card=outcome))
+
+
 # Board controller-app-deploy (artboards C to H), signed off by the operator 2026-11-07; C2677.
 # One operation (modules/apps/deploy_op.py): the preview is `channel.plan` for the controller
 # with the chosen set; the confirm, bound to the plan's hash as a verified person, starts the

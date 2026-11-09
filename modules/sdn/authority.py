@@ -116,6 +116,9 @@ NOT_DIRECT = {
     "sdn_v2.watch_propose": "makes a watched stream a response awaiting a person (C2313) and "
                             "sends nothing; the response is sent by sdn_v2.response_confirm, "
                             "through the switch's controller",
+    # Decision 8's export writer (C2777): it commits a record, never a device's configuration.
+    "sdn_v2.export_confirm": "commits the network's NSOT export (read from NetBox) to its "
+                             "configuration repository; no device is configured",
 }
 
 

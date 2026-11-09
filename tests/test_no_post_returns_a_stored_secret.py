@@ -70,6 +70,11 @@ def _bodies(v):
         "sdn_v2.reapply_preview": (409, ("form", {"list": LIST}),
                                    "no connection, switch or response named: refused naming "
                                    "what is missing, nothing read"),
+        # C2777: SDN › Apps' Export from NetBox… (the NSOT export's preview).
+        "sdn_v2.export_preview": (409, ("form", {"list": LIST}),
+                                  "the network's devices are not NetBox's, or NetBox is not "
+                                  "reachable from the test: refused naming why, nothing "
+                                  "written"),
         # P6's SDN › Apps preview left this population at C2765: it reads the controller host
         # through the reads engine, so it is gated as a read (a person), not as not_device.
         "device_v2.reload_start": (400, ("form", {}),

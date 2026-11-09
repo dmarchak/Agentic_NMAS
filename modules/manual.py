@@ -98,6 +98,9 @@ PAGES = (
      "how-it-works/diagnose.md"),
     ("controller-app-deploy", "Deploy apps to an SDN controller", H,
      "how-it-works/controller-app-deploy.md"),
+    ("nsot-export", "Commit a network's NSOT export", H, "how-it-works/nsot-export.md"),
+    ("code-repository", "A network's code repository: set it, and fetch it", H,
+     "how-it-works/code-repository.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -233,6 +236,10 @@ OPERATIONS = {
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     # P6 (board controller-app-deploy): a controller's apps deployed as one operation.
     "controller-app-deploy": ("modules.apps.deploy_op", "STEPS"),
+    # C2777 (board nsot-export): a network's NSOT export committed as one operation.
+    "nsot-export": ("modules.nsot.export_op", "STEPS"),
+    # The SDN design revision 7, 11c.2 and 11c.3 (board code-repository): a fetch.
+    "code-repository": ("modules.coderepo", "STEPS"),
     # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
     "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),

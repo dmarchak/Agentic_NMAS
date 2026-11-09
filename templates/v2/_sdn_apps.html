@@ -11,13 +11,20 @@
   <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="controller-app-deploy"{% if disabled %} disabled aria-disabled="true" title="{{ disabled }}" data-refused="Not available: {{ disabled }}"{% else %} title="Reads {{ c.name }} now and shows the plan; nothing is sent until you confirm"{{ gate('reveal') }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">Reading {{ c.name }}…</span></button>{{ how('controller-app-deploy', 'plan') }}
 </form>
 {%- endmacro %}
+{#- Board nsot-export (artboards A and B): the committed NSOT export, above the controllers it
+    names; Export from NetBox… opens its preview in the card's place. -#}
+{%- with x=g.export %}{% include "v2/_sdn_export.html" %}{% endwith %}
+{%- set code_repo_url = url_for('settings_v2.network', list_name=g.network, tab='network') ~ '#code-repo-card' -%}
 {%- if g.state == 'not_wired' or g.state == 'unreadable' %}
 <div class="notice notice-{{ 'warn' if g.state == 'not_wired' else 'danger' }} apps-none" role="status">{{ icon('info', 16) }}<p><strong>{{ g.network }}'s controller hosts can't be listed:</strong> {{ g.error }}. Nothing is drawn as known.</p></div>
 {%- elif not g.controllers %}
 <div class="notice notice-muted apps-none" role="status">{{ icon('info', 16) }}<p>{{ g.network }} has no SDN controller host to deploy apps to.</p></div>
 {%- endif %}
 {%- if g.registered_state and g.registered_state != 'ok' and g.controllers %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p><strong>No app version can be listed:</strong> {{ g.registered_error }}. What each controller runs by Mercury's record is still drawn.</p></div>
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p><strong>No app version can be listed:</strong> {{ g.registered_error }}. What each controller runs by Mercury's record is still drawn. <a href="{{ code_repo_url }}">Open the code repository's card</a></p></div>
+{%- endif %}
+{%- if g.registered_problems %}
+<div class="notice notice-warn apps-unregistered" role="status">{{ icon('info', 16) }}<p>{{ g.registered_problems | length }} app folder{{ 's' if g.registered_problems | length != 1 }}{% if g.repo.commit %} at <span class="mono">{{ g.repo.commit[:7] }}</span>{% endif %} could not be registered: {{ g.registered_problems | join('; ') }}. <a href="{{ code_repo_url }}">Open the code repository's card</a></p></div>
 {%- endif %}
 
 {%- if g.receipt %}

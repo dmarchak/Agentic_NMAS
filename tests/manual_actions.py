@@ -112,6 +112,11 @@ NOT_AN_OPERATION = {
                                   "current (C2003): a read",
     ("_sdn_log.html", "Download log"): "saves one run of the loop's log as text, a read of the "
                                        "log the Responses tab draws (C1971)",
+    # C2777, SDN › Apps' NSOT export card (board nsot-export): links that draw the card again.
+    ("_sdn_export.html", "Close"): "draws the NSOT export card at rest again, a read of the "
+                                   "committed export; nothing is committed",
+    ("_sdn_export.html", "Cancel"): "leaves the preview by drawing the card at rest again; "
+                                    "nothing is committed",
     # P6, SDN › Apps (board controller-app-deploy): links that navigate or save a record.
     ("_sdn_app_deploy.html", "Back to Apps"): "opens SDN › Apps again, a read; nothing is sent",
     ("_sdn_app_deploy.html", "Cancel"): "leaves the plan by opening SDN › Apps again; nothing "
