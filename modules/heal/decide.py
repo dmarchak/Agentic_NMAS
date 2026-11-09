@@ -23,7 +23,17 @@ changes nothing: the decision records, and H4 acts.
 
 **What happens to the incident.** ``heal`` and ``propose`` keep it claimed for H4 and H5
 (`decisions.to_apply`, `proposals`); ``held`` with a time, and a read that moved, send it back
-to watching until then (`incidents.defer`); every other outcome closes it, naming the decision.
+to watching until then (`incidents.defer`); ``would_heal``, ``cant_fix`` and ``held`` without a
+time leave its cause standing, so it STANDS on the decision (C2813, `incidents.stand`): a later
+symptom folds into it, and a drift record of the same departure joins it without a second
+decision; every other outcome closes it, naming the decision. A standing incident closes when
+its device is read back (`end_standing`: a drift run's clean read, its symptoms read gone).
+
+**What is judged after a standing incident is sent back** (`judged_triggers`): for a departure,
+only the triggers from the change that sent it back, so a revert to the golden is nothing to
+heal; and the rates (guards 9 to 11) are not counted for an incident settled at its golden,
+which has nothing to heal (C2840). A symptom read gone inside the flap window is checked again
+once the window has passed, once (C2825): never a can't-fix for what Mercury reads gone.
 
 **What is recorded** (`decisions.record`): the outcome and mode, the first guard that applied
 with both operands, each unit by kind and tier with its lines masked, the program masked and
@@ -54,6 +64,10 @@ STEPS = (("claim", "Take a ready incident"),
 
 def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _hhmm(epoch: float) -> str:
+    return time.strftime("%H:%M", time.gmtime(float(epoch)))
 
 
 class Sources:
@@ -191,10 +205,23 @@ def program(golden: str, running: str, units: list, removal_ids: list, *, mgmt_i
 
 # ── The decision ────────────────────────────────────────────────────────────────────────────
 
+def judged_triggers(incident: dict) -> list:
+    """The incident's triggers the decision judges: all of them, or, for an incident sent back
+    to watching from standing on a departure (C2813, `incidents._rejudge`), those from the
+    change that sent it back (``judged_from``) on. The symptoms before it were the departure's
+    its earlier decision judged: a revert that puts the device back at its golden is nothing
+    to heal, never a can't-fix on a symptom the reverted change caused."""
+    since = incident.get("judged_from")
+    trig = list(incident.get("triggers") or [])
+    if since is None:
+        return trig
+    return [t for t in trig if float(t.get("epoch") or 0) >= float(since)]
+
+
 def _symptom(incident: dict) -> str:
-    kinds = {t.get("kind") for t in incident.get("triggers") or []}
-    link = any(t.get("kind") == "adjacency" or t.get("interface") for t in
-               incident.get("triggers") or [])
+    trig = judged_triggers(incident)
+    kinds = {t.get("kind") for t in trig}
+    link = any(t.get("kind") == "adjacency" or t.get("interface") for t in trig)
     if link:
         return "physical"
     if kinds & {"alert", "adjacency_log", "duplicate_router_id"}:
@@ -316,41 +343,65 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
     got = incidents.read(network)
     settled_dep = ((incident.get("settled") or {}).get("operands") or {}).get("departure", "")
+    # C2840: the rates (guards 9 to 11) bound HEALS. An incident whose grace period settled at
+    # its golden (its newest read, after every outside change, found the device at its golden:
+    # a person's revert, say) has nothing to heal, and can end only nothing to heal or a Tier 3
+    # can't-fix, neither of which sends; so it passes them, said, never held by the rate its
+    # own departure's would-heal used.
+    at_golden = base["settled"] == "at_golden"
+    rates = () if at_golden else (
+        guards.g9_device_rate(rows, device, outcome_counted, now,
+                              value(mode, "heal_max_per_device_hour")),
+        guards.g10_network_rate(rows, network, outcome_counted, now,
+                                value(mode, "heal_max_per_network_hour")),
+        guards.g11_repeat(rows, device, settled_dep, outcome_counted, now,
+                          value(mode, "heal_repeat_halts_hours")))
     for g in (guards.g5_topology(src.topology(device, now), now),
               guards.g6_many(got["incidents"], now, grace_s,
                              value(mode, "heal_max_devices_drifting")),
               guards.g7_person(incident, now, value(mode, "heal_person_working_changes"),
                                value(mode, "heal_person_working_minutes")),
-              guards.g8_grace(incident),
-              guards.g9_device_rate(rows, device, outcome_counted, now,
-                                    value(mode, "heal_max_per_device_hour")),
-              guards.g10_network_rate(rows, network, outcome_counted, now,
-                                      value(mode, "heal_max_per_network_hour")),
-              guards.g11_repeat(rows, device, settled_dep, outcome_counted, now,
-                                value(mode, "heal_repeat_halts_hours"))):
+              guards.g8_grace(incident)) + rates:
         if g:
             return stop(g)
     passed("guards", "no topology hold, not many devices at once, no person working, the grace "
-                     "period settled, under every rate", "read")
-    if base["settled"] == "at_golden":
+                     "period settled, " + (
+                         "and no rate counted: its read found it at its golden, so there is "
+                         "nothing to heal" if at_golden else "under every rate"), "read")
+    if at_golden:
         base["phase"] = "decide"
         symptom = _symptom(incident)
+        judged = judged_triggers(incident)
         # C2750: an incident held past its symptom (guard 5's topology hold held one for four
         # hours, 2026-11-07) is judged on what its stores read now, never on its triggers'
         # words alone: a symptom gone by itself is nothing to heal, and no can't-fix row. Gone
         # means read gone AND quiet for the flap window since its last trigger, so a link still
         # flapping (I5), up at the moment it is read, is never called cleared.
-        now_state = (src.symptom_now(device, incident.get("triggers") or [])
+        now_state = (src.symptom_now(device, judged)
                      if symptom and hasattr(src, "symptom_now") else "")
         quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
-        last = max((float(t.get("epoch") or 0) for t in incident.get("triggers") or []),
-                   default=0.0)
+        last = max((float(t.get("epoch") or 0) for t in judged), default=0.0)
         if symptom and now_state == "gone" and now - last >= quiet_s:
             return dict(base, outcome="nothing",
-                        words=(f"nothing to heal: {device} is at its golden, which matches its "
-                               "intent, and every symptom the incident named has cleared by "
-                               f"itself (read again after it, and quiet {int(quiet_s // 60)} "
-                               "minutes since its last trigger)"))
+                        words=(f"nothing to heal: every symptom the incident named has cleared "
+                               f"by itself by {_hhmm(now)} UTC, nothing to do: {device} is at "
+                               "its golden, which matches its intent (each symptom read again "
+                               f"after it, and quiet {int(quiet_s // 60)} minutes since its "
+                               "last trigger)"))
+        if symptom and now_state == "gone" and not incident.get("quiet_deferred"):
+            # C2825 (H11 W5): read gone inside the flap window is not yet cleared (a link still
+            # flapping reads up between its drops), and not a can't-fix either: no Critical row
+            # and no "could not fix" message for what Mercury reads gone. Checked again once
+            # the window has passed since its last trigger; once only, so a link that keeps
+            # flapping is a can't-fix after one window, as before.
+            until = last + quiet_s
+            return dict(base, kind=symptom, tier=3, outcome="deferred", until=until, quiet=True,
+                        words=(f"checked again at {_hhmm(until)} UTC: every symptom the "
+                               f"incident named reads gone now, and {device} is at its golden, "
+                               f"which matches its intent; it is called cleared only once "
+                               f"nothing is logged for {int(quiet_s // 60)} minutes since its "
+                               "last trigger, so a link still flapping is never called "
+                               "cleared"))
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",
@@ -443,10 +494,68 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
     if d["outcome"] in ("heal", "propose"):
         return                                   # claimed: H4's or H5's
     if d["outcome"] in ("deferred", "held") and d.get("until"):
-        incidents.defer(network, incident["id"], d["until"], d["words"], now)
+        incidents.defer(network, incident["id"], d["until"], d["words"], now,
+                        quiet=bool(d.get("quiet")))
+        return
+    if d["outcome"] in incidents.STANDS:
+        # C2813: its cause still stands, so the incident stays open on this decision: a later
+        # symptom folds into it, a later trigger of the same departure joins it.
+        incidents.stand(network, incident["id"], d, settled=incident.get("settled"), now=now)
         return
     incidents.close(network, incident["id"], f"{d['outcome']}: {d['words']} (decision "
                                              f"{d['id']})", now)
+
+
+def end_standing(network: str, incident_id: str, words: str, *, now: float, by: str,
+                 read_words: str) -> dict:
+    """Close a STANDING incident (C2813, C2825) because what read its device back found its
+    cause gone: a drift run that read the device at its golden after its decision, the detect
+    pass reading every symptom it named gone and quiet for the flap window, or the can't-fix
+    notice's diagnosis. One decision of nothing to heal is recorded on it (*words*, what read
+    it and when, *read_words*), in the decisions and the step log, so History says why it
+    closed and its Needs attention item leaves (a later decision of nothing to heal resolves a
+    can't-fix, `attention._later_done`). Taken first (`incidents.take_standing`), so a change
+    that sent it back to watching meanwhile wins: then nothing is recorded and ``{}`` is
+    returned. Returns the decision recorded."""
+    from modules.heal import decisions, incidents, policy
+
+    try:
+        inc = incidents.take_standing(network, incident_id, by=by, now=now)
+    except incidents.Refused as exc:
+        log.info("heal: %s's %s is not ended: %s", network, incident_id, exc)
+        return {}
+    s = inc.get("standing") or {}
+    try:
+        mode = policy.current(network, now)
+    except Exception as exc:                          # the record names the mode it could read
+        mode = {"mode": "unknown", "words": str(exc)}
+    made = {"incident": incident_id, "device": inc.get("device") or "",
+            "mode": mode.get("mode"), "outcome": "nothing", "words": words,
+            "policy": {"fingerprint": mode.get("fingerprint"),
+                       "by": (mode.get("confirmed") or {}).get("by"),
+                       "reason": (mode.get("confirmed") or {}).get("reason")},
+            "person": {}, "settled": (inc.get("settled") or {}).get("how"), "guard": None,
+            "units": [], "kind": "", "tier": 0, "program": [], "program_hash": "",
+            "removal_ids": [], "departure": "", "until": None, "ends": s.get("decision") or "",
+            "triggers": [t.get("words") for t in (inc.get("triggers") or [])[-5:]]}
+    steps = [{"step": "claim", "result": "ok",
+              "words": f"incident {incident_id} on {made['device']} taken by {by}: it stood on "
+                       f"{s.get('decision') or '?'} ({s.get('outcome') or '?'})"},
+             {"step": "read", "result": "ok", "words": read_words}]
+    try:
+        d = decisions.record(network, made, now)
+    except Exception as exc:
+        log.error("heal: %s's %s could not be ended (%s): it stands", network, incident_id, exc)
+        incidents.stand(network, incident_id, None, now=now)
+        return {}
+    incidents.close(network, incident_id, f"nothing: {words} (decision {d['id']})", now)
+    _log_steps(network, dict(d, steps=steps, phase="decide"), now)
+    try:
+        from modules import invalidation
+        invalidation.announce(invalidation.ANNOUNCERS["heal-decide"], by="heal-decide")
+    except Exception as exc:
+        log.info("heal: %s's %s ended, not announced: %s", network, incident_id, exc)
+    return d
 
 
 def _log_steps(network: str, d: dict, now: float) -> None:

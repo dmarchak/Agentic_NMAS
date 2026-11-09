@@ -55,7 +55,9 @@ network, and its Check now and Turn off or Turn on act on that row's network.
 
 Every device in the inventory ends the run in one of these:
 
-- **Clean**: read, and the same as its golden.
+- **Clean**: read, and the same as its golden. The run names each clean device and when it
+  was read, so a self-healing incident standing on that device's departure ends on the read
+  ([Standing](heal#standing)); a device the run did not read ends nothing.
 - **Drifted**: read, and different from its golden, with the number of diff lines.
 - **Not checked**: stale, golden refused, or no golden, each with its reason.
 - **Unreachable**: the read failed or could not be trusted, with the reason. The device may

@@ -17,7 +17,7 @@ the same cause fold into one incident. Self-healing's runner passes over every n
 incident every 30 seconds, and at once when a trigger arrives. One pass, per network:
 
 1. `mode`: it reads the network's mode. Off, or stopped everywhere, closes every incident
-   watching, and nothing new starts.
+   watching or standing, and nothing new starts.
 2. `lock`: it holds the network, one pass at a time across Mercury's processes.
 3. `judge`: it judges each incident's grace period.
 4. `read`: when a read is due, it reads the device, the same read and comparison as **Check
@@ -26,9 +26,16 @@ incident every 30 seconds, and at once when a trigger arrives. One pass, per net
    grace period, so a person's change in progress is never healed half-way.
 5. `members`: a device attached to the incident (its far end, say) is read once, and never
    healed on its own.
-6. `settle`: an incident the two reads agree on is handed to the decision.
+6. `settle`: an incident the two reads agree on is handed to the decision. One that was
+   standing on a decision and changed again, but whose two reads find the same departure that
+   decision judged, stands on that decision again instead: there is no second decision of the
+   same thing ([Standing](#standing)).
 7. `proposals`: each proposal still waiting for a person has its device read again, and is
    withdrawn when it no longer fits ([Withdrawn](heal-proposal#withdrawn)).
+8. `standing`: each can't-fix standing at its golden on a symptom has that symptom read again
+   from the readers' stored values (no device is read). Every symptom gone, and nothing logged
+   about it for the flap window (10 minutes by default) since it was last seen, ends it:
+   "cleared by itself by HH:MM UTC, nothing to do", and its item leaves Needs attention.
 
 The detect pass changes nothing on any device.
 
@@ -51,6 +58,47 @@ held. Its steps:
    **Auto**, a Tier 1 kind the policy allows is healed; a Tier 2 kind is proposed to a person;
    a Tier 3 or 4 kind is can't fix.
 8. `record`: the decision is recorded in the network's heal decisions and its step log.
+
+The rates per device and per network are not counted for an incident whose read found the
+device at its golden: it has nothing to heal, so a person's revert ends "nothing to heal", never
+a hold for the rate the change's own would-heal used. A symptom read gone when it is decided,
+but seen less than the flap window ago, is checked again once that window has passed, never
+called a can't-fix: a link still flapping reads up between its drops, so it is checked again
+once, and a link still flapping then is a can't-fix as before.
+
+## Standing on its decision {#standing}
+
+A decision that leaves the problem in place (in dry run, "would heal"; a can't-fix; a hold that
+a person resolves) keeps its incident open, **standing** on that decision, so one change stays
+one incident however long it takes a person to deal with it:
+
+- **A symptom that arrives later on another device folds into it** by the usual rules: the
+  device is inside the changed device's blast radius, or at the far end of the link the symptom
+  names. A router whose path to the collector runs through the changed router, losing its
+  telemetry a minute later, is attached to the changed router's incident, not a can't-fix of
+  its own, and the team is told once. This holds for about four minutes after the decision
+  (250 seconds); a symptom on another device later than that is judged on its own, so a
+  decision that has stood for days never hides an unrelated fault.
+- **The drift check finding the same departure joins it:** no second incident, and no second
+  decision of the same thing.
+- **Anything else that changes the device** (a configuration change from outside Mercury, a
+  person's revert, the drift check finding a different departure) sends it back to be judged
+  again after the grace period. A revert that puts the device back at its golden ends "nothing
+  to heal". A symptom the reverted change caused is that change's, so it is not judged again as
+  a can't-fix of its own.
+- **It ends** when the device is read back at its golden or its intent: a later decision of
+  nothing to heal; a drift check that read the device at its golden after the decision (the
+  check names each device it read clean, and only a read counts, never a device missing from
+  the list); or, for a can't-fix at its golden on a symptom, the symptom read gone and quiet for
+  the flap window, by the detect pass or by Mercury's own diagnosis before its notice ("cleared
+  by itself by HH:MM UTC, nothing to do"). A hold because the device's golden departs from its
+  intent is not ended by a read at that golden. Turning self-healing off ends every standing
+  incident.
+
+Each end is a decision of nothing to heal, recorded on the incident with what read the device
+and when, so History shows one row per incident, its newest outcome on it, and the incident's
+Needs attention item leaves. A can't-fix is told to the team once per incident, however often a
+standing incident is judged again.
 
 ## Act and verify {#act}
 
@@ -179,7 +227,11 @@ the operation's, not a flap, and the count says how many it left out.
 A problem self-healing held back (a recent change, a person working) is judged on what its
 sources read **when it is decided**, not on what was seen when it was raised: a link or
 adjacency back up by then, and quiet for the flap window since it was last seen down, is
-nothing to heal, and raises no "could not fix" item. One still flapping is judged as before.
+nothing to heal, and raises no "could not fix" item. One back up but seen down less than the
+flap window ago is checked again when the window has passed, and raises no item meanwhile; one
+still flapping then is judged as before. A can't-fix whose diagnosis, run before its notice,
+reads the link or the device's reach back, and which stays quiet for the flap window, ends as
+cleared by itself, and no "could not fix" message is sent ([Notifications](notifications)).
 
 ## The port bounce {#bounce}
 

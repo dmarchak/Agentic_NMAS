@@ -19,7 +19,14 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
 3. `diagnose`: for an Alert incident, it runs Mercury's own diagnosis first, read-only, and
    waits for it up to 150 seconds, so the analysis and the message both carry it. A Never
    incident is told with none.
-4. `analyse`: when the network's AI analysis of a can't-fix is on (a background AI feature,
+4. `cleared`: when that diagnosis reads the symptom gone (the adjacency up at both ends, or
+   every probe answered), it waits until nothing has been logged about it for the flap window
+   (10 minutes by default) since it was last seen. Still gone, read again from the readers'
+   stored values, with nothing new in that time, the incident ends "cleared by itself by HH:MM
+   UTC, nothing to do": no message is sent and no analysis is asked. Seen again in that time,
+   or not read gone, it is told as below. An incident that ended nothing to heal by the time it
+   would be told is not told either.
+5. `analyse`: when the network's AI analysis of a can't-fix is on (a background AI feature,
    off by default, turned on in Settings › AI), it starts it. Where the network's device state
    class is also on, the analysis may ask Mercury for up to 3 read-only reads: Mercury checks
    each against the AI read set, runs the ones it allows as the device's read-only account,
@@ -27,16 +34,18 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
    answers, masked. Each read is a row on History beside the two calls, and the incident's step
    log says what was asked, refused and run. With the class off, the analysis is one call and
    asks for no read.
-5. `wait`: it waits for the analysis for up to 60 seconds, never longer, so a slow model never
+6. `wait`: it waits for the analysis for up to 60 seconds, never longer, so a slow model never
    holds the notice.
-6. `send`: it sends Mercury's facts first (what was detected, Mercury's diagnosis by each
+7. `send`: it sends Mercury's facts first (what was detected, Mercury's diagnosis by each
    hypothesis's rule, the ends it read and its strength, then the steps tried and their
    results), then the analysis, or its state (pending, not run, couldn't analyse), then the link
    to the incident, to every destination of the network's team that is verified and on. A
    diagnosis not finished in time is said so, and follows as its own event.
-7. `follow_up`: when a pending analysis arrives, it is sent on the same thread.
+8. `follow_up`: when a pending analysis arrives, it is sent on the same thread.
 
-Nothing in self-healing reads the analysis or the notice: they are for a person.
+A can't-fix is told once per incident: an incident still standing on its decision and judged
+again later ([Standing](heal#standing)) is never told a second time. Nothing in self-healing
+reads the analysis or the notice: they are for a person.
 
 ## An action's end, told {#actions}
 

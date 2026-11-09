@@ -392,9 +392,22 @@ class TestOutcomes:
         # once the incident's last trigger is the flap window old (10 minutes by default).
         trig = [{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 120, "at": iso(T0 - 120),
                  "source": "adjacencies", "words": "the adjacency is down"}]
+        # C2825 (H11 W5): read gone inside the window is never called cleared, and is not a
+        # can't-fix either (no Critical row, no "could not fix" message for what Mercury reads
+        # gone): the physical symptom is checked again once the window has passed. Once: an
+        # incident deferred so before is a can't-fix, so a link that keeps flapping is told.
         src = Fake(GOLDEN)
         src.symptom_now = lambda device, triggers: "gone"
         d = one(GOLDEN, src=src, how="at_golden", triggers=trig)
+        assert (d["outcome"], d["kind"], d["tier"]) == ("deferred", "physical", 3), d
+        assert d["until"] == T0 - 120 + 600 and d["quiet"], d
+        assert "never called cleared" in d["words"], d["words"]
+        inc = settle(GOLDEN, how="at_golden", triggers=trig, device="edge-c")
+        I._mutate("Default", lambda doc: next(i for i in doc["incidents"]
+                                              if i["id"] == inc["id"]).update(
+            quiet_deferred=True))
+        inc = dict(inc, quiet_deferred=True)
+        d = DC.decide_one("Default", inc, now=T0, sources=src)
         assert (d["outcome"], d["kind"], d["tier"]) == ("cant_fix", "physical", 3), d
 
     @pytest.mark.parametrize("state", ["present", "stale", "unreadable"])
@@ -656,9 +669,11 @@ class TestTheRecordAndTheSeams:
         return DC.run("Default", now=T0, sources=src or Fake(running))
 
     def test_a_decision_is_recorded_and_its_incident_closed(self, lab):
-        got = self.run(GOLDEN + ROUTE4)
+        # C2813: a decision that ends the cause (nothing to heal) closes its incident; one that
+        # leaves it standing (a would-heal) keeps it open (tests/test_heal_standing.py).
+        got = self.run(GOLDEN)
         (d,) = got["decided"]
-        assert d["outcome"] == "would_heal"
+        assert d["outcome"] == "nothing"
         (inc,) = I.read("Default")["incidents"]
         assert inc["state"] == "closed" and d["decision"] in inc["closed_why"]
 

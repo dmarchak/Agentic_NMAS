@@ -30,6 +30,14 @@ without it, and the follow-up carries it (the event ``diagnosis`` when the analy
 in the first message). A Never incident is not diagnosed automatically: Diagnose… on its row
 runs one.
 
+**Cleared by itself, never told** (C2825, H11 W5): a diagnosis that reads the symptom gone
+(`auto_diagnose.symptom_gone`) is waited out to the flap window since the incident's last
+trigger (`_cleared`); still standing, quiet and read gone from its stores, the incident ends
+"cleared by itself by HH:MM UTC, nothing to do", with no analysis and no message. And an
+incident whose newest decision is nothing to heal by the time it would be told is not told
+(`_withheld`). A can't-fix is told once per incident (``asked``): one standing and judged again
+(C2813) is never told twice.
+
 **What a message carries** (`facts`): only `notify.message.FIELDS`, every byte through the
 egress mask at its sender. Each step is said in Mercury's words with the incident's
 configuration lines withheld (`evidence_pack.withhold`), and so is the analysis's text, which
@@ -53,6 +61,8 @@ STEPS = (("due", "Find each new can't-fix: recorded in the last 10 minutes, not 
          ("claim", "Take it once, under the store's lock, so it is told and analysed once"),
          ("diagnose", "An Alert incident: run Mercury's diagnosis first, read-only, waited for "
                       "up to 150 s, so the analysis and the message carry it"),
+         ("cleared", "When the diagnosis reads the symptom gone, wait out the flap window: "
+                     "still gone and quiet, it cleared by itself, and nothing is sent"),
          ("analyse", "Start its AI analysis, a background call, if the feature is on"),
          ("wait", "Wait for the analysis up to 60 s, never longer"),
          ("send", "Send Mercury's facts, then the analysis or its state (pending, not run, "
@@ -471,7 +481,8 @@ def _consider(network: str, incident_id: str, diagnosis: dict, consider=None) ->
 
 def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAIT_S,
            follow_s: float = None, send=None, deliver=None, now: float = None,
-           diagnose=None, diagnosis_wait_s: float = None, consider=None) -> dict:
+           diagnose=None, diagnosis_wait_s: float = None, consider=None, quiet_wait=None,
+           symptom=None) -> dict:
     """Tell the network's team about one can't-fix, its analysis waited for up to *wait_s*
     (section 12), then the follow-up when it was not back in time. An Alert incident (Tier 3,
     `auto_diagnose.is_alert`) is diagnosed first (H17, 19.3), waited for up to
@@ -479,7 +490,10 @@ def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAI
     message carries it; not back in time, the message says so and the follow-up carries it.
     ``{"incident", "first", "follow_up", "analysis", "diagnosis"}``: each message's state and
     delivery. *send* replaces the provider (tests), *deliver* the delivery (``(network,
-    event) -> result``), *diagnose* the diagnosis run (`diagnose.run`'s shape)."""
+    event) -> result``), *diagnose* the diagnosis run (`diagnose.run`'s shape), *quiet_wait*
+    the flap window's wait and *symptom* the stores' read (`_cleared`). A diagnosis that read
+    the symptom gone and stayed quiet ends it, ``{"cleared": decision}``, nothing sent; an
+    incident whose newest decision is nothing to heal is ``{"first": {"withheld": why}}``."""
     from modules.ai import heal_analysis as HA
     from modules.heal import auto_diagnose as AD
     from modules.heal import incidents, steplog
@@ -499,8 +513,19 @@ def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAI
         dheld, ddone = _diagnosis_thread(network, incident_id, diagnose)
         diagnosed = ddone.wait(max(0.0, diag_wait))
         if diagnosed and dheld.get("got"):
+            # C2825: the diagnosis read the symptom gone, and it stayed quiet: cleared by itself,
+            # nothing to do, and no "could not fix" message, no analysis.
+            cleared = _cleared(network, incident_id, dheld["got"], wait=quiet_wait,
+                               symptom=symptom)
+            if cleared:
+                return {"incident": incident_id, "first": None, "follow_up": None,
+                        "analysis": None, "diagnosis": dheld["got"], "cleared": cleared}
             # 19.3: "then item 2's actions are considered (19.4), and then the notice is sent".
             _consider(network, incident_id, dheld["got"], consider)
+    why = _withheld(network, incident_id)
+    if why:
+        return {"incident": incident_id, "first": {"withheld": why}, "follow_up": None,
+                "analysis": None, "diagnosis": dheld.get("got")}
     held, done = {}, threading.Event()
 
     def work():
@@ -566,6 +591,89 @@ def notice(network: str, incident_id: str, *, job: str = "", wait_s: float = WAI
     follow["event"] = which
     out["follow_up"] = _sent(network, incident_id, which, follow, deliver)
     return out
+
+
+def _withheld(network: str, incident_id: str) -> str:
+    """C2825: why the can't-fix notice of *incident_id* is not sent, or ``""``: the incident's
+    newest decision (not an action's: an action's own "came back by itself" is its guard's, read
+    once) is nothing to heal, recorded after the can't-fix (its symptom cleared by itself, or
+    its device read back at its golden). A store that cannot be read withholds nothing: the
+    notice goes, as before."""
+    from modules.heal import decisions
+
+    try:
+        rows = [d for d in decisions.decisions(network) if d.get("incident") == incident_id
+                and not (d.get("action") or {}).get("kind")]
+    except Exception as exc:                          # said; the notice goes
+        log.error("heal notice: %s's decisions could not be read: %s", network, exc)
+        return ""
+    if not rows:
+        return ""
+    newest = max(rows, key=lambda d: float(d.get("epoch") or 0))
+    if newest.get("outcome") != "nothing":
+        return ""
+    return (f"not sent: the incident's newest decision {newest.get('id')} found nothing to "
+            f"heal ({newest.get('words') or ''})")
+
+
+def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None,
+             clock=time.time) -> dict:
+    """C2825 (H11 W5): when Mercury's diagnosis *d* of an Alert incident read its symptom gone
+    (`auto_diagnose.symptom_gone`), the notice waits until nothing has been logged for the flap
+    window since the incident's last trigger (*wait*, `time.sleep` unless given; at most the
+    window), then reads again: still standing, no trigger since, and every symptom read gone
+    from its store (*symptom*, `decide.Sources.symptom_now` unless given), the incident ends as
+    cleared by itself, nothing to do (`decide.end_standing`), and no message is sent. Anything
+    else returns ``{}``, and the notice goes as before: a link still flapping is told."""
+    from modules.heal import auto_diagnose as AD
+    from modules.heal import decide, incidents, policy
+    from modules.heal.guards import value
+
+    gone = AD.symptom_gone(d)
+    if not gone:
+        return {}
+
+    def standing():
+        got = incidents.read(network).get("incidents") or []
+        return next((i for i in got if i.get("id") == incident_id
+                     and i.get("state") == "standing"), {})
+
+    def last_of(inc):
+        return max((float(t.get("epoch") or 0) for t in decide.judged_triggers(inc)),
+                   default=0.0)
+
+    try:
+        inc = standing()
+        if not inc:
+            return {}
+        quiet_s = float(value(policy.current(network, clock()), "heal_flap_minutes") or 10) * 60
+        last = last_of(inc)
+        left = last + quiet_s - clock()
+        if left > 0:
+            (wait or time.sleep)(min(left, quiet_s))
+        again = standing()
+        if not again or last_of(again) > last:
+            return {}
+        state = (symptom or decide.Sources(network).symptom_now)(
+            again["device"], decide.judged_triggers(again))
+        if state != "gone":
+            return {}
+        now, minutes = clock(), int(quiet_s // 60)
+        return decide.end_standing(
+            network, incident_id,
+            (f"nothing to heal: every symptom the incident named has cleared by itself by "
+             f"{decide._hhmm(now)} UTC, nothing to do: Mercury's diagnosis "
+             f"{d.get('id') or ''} read {gone}, each symptom reads gone from its store, and "
+             f"nothing was logged for {minutes} minutes since its last trigger; no \"could not "
+             "fix\" message was sent"),
+            now=now, by="the can't-fix notice",
+            read_words=(f"Mercury's diagnosis {d.get('id') or ''} "
+                        f"({d.get('finished_at') or '?'}): {gone}; every symptom read again from "
+                        f"its store: gone; quiet {minutes} minutes since its last trigger"))
+    except Exception as exc:                          # said; the notice goes as before
+        log.error("heal notice: whether %s cleared by itself could not be judged: %s",
+                  incident_id, exc)
+        return {}
 
 
 def _sent(network: str, incident_id: str, which: str, event: dict, deliver) -> dict:

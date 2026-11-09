@@ -494,7 +494,9 @@ def merged(previous: dict, one: dict, hostname: str, by: str) -> dict:
     schedule does not move."""
     out = dict(previous or {})
     was, now = _bucket(out, hostname), _bucket(one, hostname)
-    for key in ("drifted_devices", "errors", "skipped"):
+    for key in ("drifted_devices", "errors", "skipped", "clean_devices"):
+        if key == "clean_devices" and key not in out and key not in one:
+            continue                                  # a run recorded before the field
         keep = [d for d in out.get(key) or []
                 if (d.get("hostname") if isinstance(d, dict) else d) != hostname]
         out[key] = keep + [d for d in one.get(key) or []
@@ -623,6 +625,7 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
     drifted_list: list[tuple[str, int]] = []
     differing: dict = {}
     clean_list:   list[str]             = []
+    clean_at:     dict                  = {}
     error_list:   list[tuple[str, str]] = []
     skip_list:    list[tuple[str, str]] = []
     cert_list:    list[str]             = []
@@ -699,6 +702,7 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         if not diff:
             log.debug("drift_check: %s clean", hostname)
             clean_list.append(hostname)
+            clean_at[hostname] = read_at
             # An item queued by an earlier run no longer stands: this run, under
             # the rules in force now, finds the device at its golden.
             from modules.approval_queue import supersede_drift
@@ -799,6 +803,11 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         errors          = [{"hostname": h, "reason": r} for h, r in error_list],
         drifted_devices = [{"hostname": h, "diff_lines": n, **differing.get(h, {})}
                            for h, n in drifted_list],
+        # C2813: each device READ at its golden, by name, with when it was read, so a heal
+        # incident standing on a departure ends on evidence: a count is not a read of a
+        # device, and absence is not evidence. Expand, then contract: a stored run without it
+        # stays readable, and ends nothing (`heal.triggers.after_drift_record`).
+        clean_devices   = [{"hostname": h, "read_at": clean_at.get(h)} for h in clean_list],
         summary         = summary,
         excluded        = excluded,
     )

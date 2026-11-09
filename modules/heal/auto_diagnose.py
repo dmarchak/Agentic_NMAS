@@ -91,6 +91,27 @@ def _iso(epoch: float) -> str:
 
 # ── Which incidents ─────────────────────────────────────────────────────────────────────────
 
+#: C2825: each runbook's check that, passed, says the symptom it was run for is itself absent
+#: now: "adjacency down with both ends at intent" reading the adjacency up at both ends
+#: (`diagnose._r_one_way`'s passed check), "A can't reach B" with every probe answered
+#: (`diagnose_reach._reached`).
+SYMPTOM_GONE_RULES = {"adjacency_down": "one_way", "cant_reach": "reach"}
+
+
+def symptom_gone(d: dict) -> str:
+    """C2825: the words of the check by which Mercury's diagnosis *d* read the symptom it was
+    run for gone (`SYMPTOM_GONE_RULES`), or ``""``. Only a diagnosis that finished, stopped at
+    no cap, found no hypothesis, and ruled that check out: anything else (refused, busy, not
+    finished, a cause found) is not evidence the symptom cleared."""
+    d = d or {}
+    if (d.get("state") in ("refused", "busy", "running", "not_finished", "failed")
+            or d.get("stopped") or d.get("hypotheses")):
+        return ""
+    rule = SYMPTOM_GONE_RULES.get(d.get("runbook") or "")
+    return next((r.get("check") or "" for r in d.get("ruled_out") or []
+                 if rule and r.get("rule") == rule), "")
+
+
 def is_alert(entry: dict) -> bool:
     """Whether the incident's step log *entry* stopped at can't fix at Tier 3 (Alert): the
     decision's outcome, its tier as recorded."""

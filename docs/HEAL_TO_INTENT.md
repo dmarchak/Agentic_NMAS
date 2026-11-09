@@ -177,6 +177,39 @@ device that changed:
 - **The attached device is still checked, and is not healed on its own.** The incident's
   verify waits for it to come back (section 4, step 5).
 
+**An incident stands while its cause stands** (C2813, built 2026-11-08 after H11's W2, W3 and
+W7: an incident closed at its decision, so a symptom arriving a minute later opened its own
+incident and its own decision). `modules/heal/incidents.py` holds the states:
+- **watching** (read until the grace period settles it), **ready** (settled, for the
+  decision), **claimed** (the decision's, or H4's and H5's for a heal or a proposal);
+- **standing**: decided, and its cause still stands: a dry run's would-heal, a can't-fix, or a
+  hold a person resolves (guards 4, 6 and 9, no until). It stays open, so the fold holds for it:
+  a symptom later on another device folds in (blast radius, far end) within
+  `incidents.FOLD_STANDING_S` of its decision (250 s, 2.5 times W7's 99 s; later, it is judged
+  on its own, so a decision that stood for days never swallows an unrelated fault), a symptom
+  on its own device joins it, and a drift record of THE departure its decision judged (the
+  fingerprint compared) joins it with no second decision;
+- **back to watching** on any other cause (a configuration change from outside Mercury, a
+  person's revert, a drift record of another departure): judged again after the grace period,
+  as a ready incident is. For a departure, only the triggers from that change on are judged
+  (`decide.judged_triggers`): the symptoms before it were the departure's, so a revert to the
+  golden is nothing to heal, never a can't-fix on a symptom the reverted change caused. Read
+  again with the same departure, it stands on its decision again (`incidents.restand`);
+- **closed**, naming why: a later decision of nothing to heal; a drift run that READ the device
+  at its golden after its decision (`clean_devices`, each device read clean by name with its
+  read time; a run naming none ends nothing, since absence is not evidence; guard 4's hold is
+  not ended by a read at the golden it departs from); for a can't-fix at its golden on a
+  symptom, every symptom read gone from its stores and quiet for the flap window (the detect
+  pass's `standing` step, and the can't-fix notice's diagnosis, C2825); and self-healing turned
+  off. Each end is one decision of nothing to heal on the incident (`decide.end_standing`), so
+  History keeps one row per incident and its Needs attention item leaves.
+
+**One incident per device and one per cause still hold:** a standing incident is open
+(`incidents.OPEN_STATES`), so its device and its members are in no other incident. Not built:
+a cause arriving after a symptom-only incident was decided does not absorb it (only a watching
+one is absorbed: a decided incident keeps its decision); an act's own end (healed, symptom
+remains, rolled back) still closes its incident.
+
 ---
 
 ## 4. Detect → decide → act → verify → record → notify
@@ -285,6 +318,19 @@ in the step log (section 8).
 
 **6. Notify.** Section 10: a Needs attention row, email and webhooks. A can't-fix notification
 also carries the AI analysis (section 12).
+- **Never for what cleared by itself** (C2825, built 2026-11-08 after H11 W5, where a can't-fix
+  and its email went out for an adjacency Mercury's own diagnosis read up at both ends):
+  - at the decision, a symptom read gone inside the flap window is checked again once the
+    window has passed (`decide`, deferred once: a link still flapping is a can't-fix after one
+    window), and past it is nothing to heal, "cleared by itself by HH:MM UTC, nothing to do";
+  - at the notice, a diagnosis that reads the symptom gone (`auto_diagnose.symptom_gone`: the
+    adjacency runbook's "up now at both ends", the reach runbook's every probe answered, no
+    hypothesis, no cap reached) is waited out to the flap window; still standing, no trigger
+    since, and read gone from its stores, the incident ends cleared, with no message and no
+    analysis (`heal_notice._cleared`);
+  - an incident whose newest decision is nothing to heal when it would be told is not told
+    (`heal_notice._withheld`); a can't-fix is told once per incident, however often a standing
+    incident is judged again.
 
 ---
 
@@ -345,6 +391,24 @@ the first that applies is named in the step log with both operands.
 
 **Halts and stops are themselves Needs attention rows** (section 9). Each names the guard, both
 operands and its one action.
+
+**What each guard counts with a standing incident** (C2813, section 3):
+- **6, many devices at once:** the devices whose own change opened an incident within one grace
+  period, by the incident's opening. A standing incident counts once, when it opened; being
+  judged again does not reopen it.
+- **7, a person working:** the device's outside changes its incident holds in the window. A
+  standing incident's changes are its device's, so they count (and they count for a far end's
+  guard too, `actions.outside_changes_on`).
+- **9, 10 and 11, the rates:** the decisions that heal (Auto's heals; dry run's would-heals,
+  counted as Auto counts heals). A drift record of the same departure joins a standing incident
+  and makes no decision, and a read of the same departure stands it again, so neither is
+  counted twice; a new departure is a new decision and counts, as a new incident did. **They are
+  not counted for an incident settled at its golden** (C2840): its read, after every outside
+  change, found nothing to heal, and its only outcomes (nothing to heal, a Tier 3 can't-fix)
+  send nothing, so a person's revert is never held by the rate the change's own would-heal
+  used. Chosen over reading the device again before the rates: the settling read IS a fresh
+  read (the same pass), and a second read would cost a device session per incident for no new
+  fact.
 
 ---
 

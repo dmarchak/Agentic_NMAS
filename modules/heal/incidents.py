@@ -9,7 +9,26 @@ with its kind, time, source and words), the reads the detect pass made of it
 - ``watching``: open, its reads being made (detect's);
 - ``ready``: settled (`grace.SETTLED_STATES`), waiting for the decision. **This is where H2
   ends and H3 begins:** `ready` lists them, and the decision takes one with `claim`;
-- ``claimed``: the decision has it (H3, then H4's act and verify); it closes it;
+- ``claimed``: the decision has it (H3, then H4's act and verify); it closes it, or leaves it
+  standing;
+- ``standing`` (C2813): decided, and its cause still stands: a dry run's would-heal, a can't
+  fix, or a hold a person resolves (no until). It stays OPEN, so the rules below still hold
+  for it: a symptom arriving later on another device folds into it (its blast radius, its far
+  end) within `FOLD_STANDING_S` of its decision, and a later trigger of the same cause joins
+  it (`sight`). Its ``standing`` names the
+  decision, its outcome and the departure it judged, and ``on``: ``departure`` (the device
+  had departed from its golden) or ``symptom`` (it was at its golden, with a symptom: a Tier 3
+  can't-fix). What happens next:
+  - a drift record of THE SAME departure joins it: no second incident, no second decision;
+  - any other cause (a configuration change, a person's revert, a drift record of another
+    departure) sends it back to ``watching``, judged again after the grace period as a ready
+    incident is (`_rejudge`); read again with the same departure, it stands on its decision
+    again (`restand`), never a second decision of the same thing;
+  - it closes when the device is read back at its golden or intent: a later decision of
+    nothing to heal, a drift run that read the device at its golden after its decision (an
+    ``on: departure`` incident, `triggers.after_drift_record`), or, for ``on: symptom``, every
+    symptom it named read gone and quiet for the flap window (`detect`'s standing step, and
+    the can't-fix notice's diagnosis, C2825); and when self-healing is turned off;
 - ``closed``: with why. Closed incidents are kept, the newest `CLOSED_KEPT`; the step log
   (H6) is the record.
 
@@ -65,8 +84,20 @@ KIND_WORDS = {"config_change": "a configuration change from outside Mercury",
               "alert": "a firing alert", "adjacency": "a routing adjacency down",
               "adjacency_log": "a logged routing adjacency drop",
               "duplicate_router_id": "a duplicate OSPF router-id logged (C2446)"}
-OPEN_STATES = ("watching", "ready", "claimed")
+OPEN_STATES = ("watching", "ready", "claimed", "standing")
 STATES = OPEN_STATES + ("closed",)
+#: The decision's outcomes that leave an incident standing (C2813): the cause is still there
+#: after them. ``held`` stands only without an until (a person resolves it); with one it is
+#: deferred (`defer`). ``heal`` and ``propose`` stay claimed for H4 and H5; every other
+#: outcome closes it.
+STANDS = ("would_heal", "cant_fix", "held")
+#: How long after its decision a standing incident takes in a symptom on ANOTHER device (its
+#: blast radius, its far end): 2.5 times the longest measured, H11's W7 (a lost telemetry
+#: stream 99 s after its changed neighbour's decision; W2's alert 64 s, W3's IP SLA alert 57
+#: and 89 s). Later, the symptom is
+#: judged on its own, so a decision that stood for days never swallows an unrelated fault. A
+#: trigger on the incident's own device, or a member's, always joins it.
+FOLD_STANDING_S = 250.0
 
 
 class HealBusy(Exception):
@@ -250,17 +281,38 @@ def _cut(radius_of, device: str) -> tuple:
                                        f"{got.get('why') or 'from committed intent'}")
 
 
-def _fold_target(doc: dict, device: str, trigger: dict, radius_of) -> tuple:
+def _too_late(inc: dict, now: float) -> str:
+    """Why a symptom on ANOTHER device at *now* does not fold into *inc*, a standing incident
+    decided more than `FOLD_STANDING_S` ago, or ``""``: a symptom that late is judged on its
+    own, never swallowed by a decision made before it (C2813)."""
+    s = inc.get("standing") or {}
+    if inc.get("state") != "standing" or now - float(s.get("epoch") or now) <= FOLD_STANDING_S:
+        return ""
+    return (f"{inc['device']}'s {inc['id']} stood on its decision since {s.get('at')}, more than "
+            f"{int(FOLD_STANDING_S)} s before this symptom, so it is judged on its own")
+
+
+def _fold_target(doc: dict, device: str, trigger: dict, radius_of, now: float = None) -> tuple:
     """``(incident, why)``: the open incident a symptom on *device* folds into, or ``(None,
-    why)``."""
+    why)``. A standing incident takes a symptom on another device only within
+    `FOLD_STANDING_S` of its decision (`_too_late`)."""
+    now = time.time() if now is None else float(now)
     related = set(trigger.get("related") or [])
-    for inc in _open(doc):
-        if inc.get("device") in related:
-            return inc, (f"{inc['device']} is the far end of the link this "
-                         f"{KIND_WORDS.get(trigger['kind'], trigger['kind'])} names")
     whys = []
     for inc in _open(doc):
+        if inc.get("device") in related:
+            late = _too_late(inc, now)
+            if late:
+                whys.append(late)
+                continue
+            return inc, (f"{inc['device']} is the far end of the link this "
+                         f"{KIND_WORDS.get(trigger['kind'], trigger['kind'])} names")
+    for inc in _open(doc):
         if inc.get("cause") != "change":
+            continue
+        late = _too_late(inc, now)
+        if late:
+            whys.append(late)
             continue
         cut, why = _cut(radius_of, inc["device"])
         if cut is None:
@@ -303,13 +355,43 @@ def _absorb(doc: dict, inc: dict, radius_of, now: float) -> list:
     return taken
 
 
+def same_departure(standing: dict, trigger: dict) -> bool:
+    """Whether *trigger* is a drift record of THE departure a standing incident's decision
+    judged (C2813): both fingerprints present and equal (`drift_check.departure`, the masked
+    differing lines). A departure the decision did not judge, or a read with none, is not the
+    same: it is judged again."""
+    if trigger.get("kind") != "drift":
+        return False
+    dep = (trigger.get("read") or {}).get("departure") or trigger.get("departure") or ""
+    return bool(dep) and dep == (standing or {}).get("departure")
+
+
+def _rejudge(inc: dict, trigger: dict, now: float) -> None:
+    """A standing incident's device changed again (a configuration change, a revert, or a
+    drift record of another departure): back to watching, judged again after the grace period
+    as a ready incident is. ``stood`` keeps what it stood on (a read of the same departure
+    stands on it again, `restand`); for a departure, the symptoms it held before this change
+    were that departure's (``judged_from``: the decision judges only the symptoms after it,
+    so a revert that puts the device back is nothing to heal, never a can't-fix on a symptom
+    the reverted change caused). A symptom-only incident's symptoms are still its cause."""
+    s = inc.get("standing") or {}
+    inc.update(state="watching", settled=None, claimed=None, stood=s, standing=None,
+               updated_at=_iso(now),
+               unsettled={"at": _iso(now), "why": trigger.get("words") or "",
+                          "from": f"standing on {s.get('decision') or '?'}"})
+    if s.get("on") == "departure":
+        inc["judged_from"] = float(trigger.get("epoch") or now)
+
+
 def sight(network: str, device: str, trigger: dict, *, now: float = None,
           radius_of=None) -> dict:
     """Record *trigger* ("check *device* now") in *network*'s incidents: ``{"action",
     "incident", "words"}``, *action* one of ``opened``, ``added``, ``attached``, ``promoted``,
     ``moved`` or ``duplicate`` (a trigger already held, by its ``key``). *trigger* is
     ``{"kind", "key", "epoch", "at", "source", "words", "related"?, ...}``; *radius_of(device)*
-    gives a device's blast radius (`blast_radius.radius`'s answer)."""
+    gives a device's blast radius (`blast_radius.radius`'s answer). On a STANDING incident
+    (C2813) a symptom is ``added``; a drift record of the departure its decision judged is
+    ``joined`` (no second decision); any other cause is ``rejudged``: back to watching."""
     now = time.time() if now is None else float(now)
     if trigger.get("kind") not in CAUSE_KINDS + SYMPTOM_KINDS:
         raise Refused(f"a trigger is one of {', '.join(CAUSE_KINDS + SYMPTOM_KINDS)}, not "
@@ -331,6 +413,22 @@ def sight(network: str, device: str, trigger: dict, *, now: float = None,
                 # Settled on reads before this change: they no longer stand.
                 inc.update(state="watching", settled=None,
                            unsettled={"at": _iso(now), "why": trigger.get("words") or ""})
+            if inc.get("state") == "standing":
+                s = inc.get("standing") or {}
+                if not cause:
+                    return {"action": "added", "incident": inc["id"],
+                            "words": (f"{device}'s incident {inc['id']} takes it: it stands on "
+                                      f"its decision {s.get('decision') or '?'}")}
+                if same_departure(s, trigger):
+                    return {"action": "joined", "incident": inc["id"],
+                            "words": (f"{device}'s incident {inc['id']} takes it: the same "
+                                      f"departure its decision {s.get('decision') or '?'} judged "
+                                      f"({s['departure']}), so no second decision")}
+                _rejudge(inc, trigger, now)
+                return {"action": "rejudged", "incident": inc["id"],
+                        "words": (f"{device} changed again, so its incident {inc['id']} is judged "
+                                  f"again after the grace period (it stood on "
+                                  f"{s.get('decision') or '?'})")}
             return {"action": "added", "incident": inc["id"],
                     "words": f"{device}'s incident {inc['id']} takes it"}
         if inc is not None:
@@ -369,7 +467,7 @@ def sight(network: str, device: str, trigger: dict, *, now: float = None,
             return {"action": "moved", "incident": new["id"],
                     "words": f"{device} moved from {inc['id']} to its own {new['id']}: {why}"}
         if not cause:
-            target, why = _fold_target(doc, device, trigger, radius_of)
+            target, why = _fold_target(doc, device, trigger, radius_of, now)
             if target is not None:
                 target.setdefault("attached", []).append(_member(device, trigger, now, why))
                 target["updated_at"] = _iso(now)
@@ -469,11 +567,15 @@ def claim(network: str, incident_id: str, *, by: str, now: float = None) -> dict
     return _mutate(network, change)
 
 
-def defer(network: str, incident_id: str, until: float, why: str, now: float = None) -> dict:
+def defer(network: str, incident_id: str, until: float, why: str, now: float = None,
+          quiet: bool = False) -> dict:
     """The decision (H3) sends a claimed incident back to watching until *until* (a planned
     window's end and its settle time, the topology hold's end, a person working): no read
     before it, and the grace period restarts at it (`detect.outside_changes`), so the decision
-    sees the device as it is after it, never as it was inside it."""
+    sees the device as it is after it, never as it was inside it. *quiet* (C2825): deferred
+    because its symptom read gone inside the flap window, which is done once an incident
+    (``quiet_deferred``), so a link still flapping is told about after one window, never
+    deferred for ever."""
     now = time.time() if now is None else float(now)
     if not (why or "").strip():
         raise Refused("an incident is deferred with why, and none was given")
@@ -485,9 +587,103 @@ def defer(network: str, incident_id: str, until: float, why: str, now: float = N
         inc.update(state="watching", settled=None, claimed=None, updated_at=_iso(now),
                    defer_until=float(until), deferred={"at": _iso(now), "until": _iso(until),
                                                         "why": why})
+        if quiet:
+            inc["quiet_deferred"] = True
         return inc
 
     return _mutate(network, change)
+
+
+def stand(network: str, incident_id: str, decision: dict = None, *, settled: dict = None,
+          now: float = None) -> dict:
+    """C2813: a claimed incident whose decision leaves its cause standing (`STANDS`) stays
+    open, ``standing`` on *decision* (``{"id", "outcome", "words", "departure"}``). Its
+    departure is the decision's, else the one its grace period settled on; ``on`` is
+    ``symptom`` when the grace period found the device at its golden, else ``departure``.
+    *decision* None puts back a standing incident taken by `take_standing` (a decision that
+    could not be recorded)."""
+    now = time.time() if now is None else float(now)
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if inc.get("state") != "claimed":
+            raise Refused(f"{incident_id} is {inc.get('state')}, not claimed, so it does not "
+                          "stand")
+        if decision is None:
+            if not inc.get("standing"):
+                raise Refused(f"{incident_id} stood on nothing, so it is not put back")
+            inc.update(state="standing", claimed=None, updated_at=_iso(now))
+            return inc
+        how = ((settled if settled is not None else inc.get("settled")) or {})
+        dep = (decision.get("departure") or (how.get("operands") or {}).get("departure")
+               or "")
+        inc.update(state="standing", claimed=None, updated_at=_iso(now), stood=None,
+                   standing={"decision": decision.get("id") or "",
+                             "outcome": decision.get("outcome") or "",
+                             "words": (decision.get("words") or "")[:300],
+                             "at": _iso(now), "epoch": now, "departure": dep,
+                             "guard": (decision.get("guard") or {}).get("guard"),
+                             "on": "symptom" if how.get("how") == "at_golden" else "departure"})
+        return inc
+
+    return _mutate(network, change)
+
+
+def restand(network: str, incident_id: str, judged: dict, now: float = None) -> dict:
+    """C2813: a standing incident sent back to watching (`_rejudge`) whose grace period settled
+    on THE departure its decision judged stands on that decision again: the device changed
+    nothing that decision did not already judge, so there is no second decision of it."""
+    now = time.time() if now is None else float(now)
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        s = inc.get("stood") or {}
+        dep = ((judged or {}).get("operands") or {}).get("departure") or ""
+        if inc.get("state") != "watching" or not s.get("departure") or dep != s["departure"]:
+            raise Refused(f"{incident_id} is {inc.get('state')}, and settled on "
+                          f"{dep or 'no departure'} against {s.get('departure') or 'none'}, so "
+                          "it does not stand again")
+        inc.update(state="standing", stood=None, updated_at=_iso(now),
+                   standing=dict(s, reread={"at": _iso(now),
+                                            "words": (judged or {}).get("words") or ""}))
+        return inc
+
+    return _mutate(network, change)
+
+
+def take_standing(network: str, incident_id: str, *, by: str, now: float = None) -> dict:
+    """A standing incident taken to be closed by what read its device back (`decide.
+    end_standing`): ``claimed`` by *by*, refused when it is not standing (another took it, or a
+    change sent it back to watching)."""
+    now = time.time() if now is None else float(now)
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if inc.get("state") != "standing":
+            raise Refused(f"{incident_id} is {inc.get('state')}, not standing, so it is not "
+                          "taken")
+        inc.update(state="claimed", claimed={"by": by, "at": _iso(now), "from": "standing"},
+                   updated_at=_iso(now))
+        return inc
+
+    return _mutate(network, change)
+
+
+def standing_of(network: str, device: str) -> dict:
+    """*device*'s standing incident in *network*, as its device (a read), or ``{}``."""
+    got = read(network)
+    return next((i for i in got["incidents"] if i.get("state") == "standing"
+                 and i.get("device") == device), {})
+
+
+def ends_at_golden(standing: dict) -> bool:
+    """Whether a read of the device AT ITS GOLDEN ends what *standing* stands on (C2813): a
+    decision that judged a departure from the golden (a would-heal, a can't-fix, a hold of many
+    devices or of the rate), never one at its golden with a symptom (the symptom is its cause,
+    `detect`'s standing step reads it) and never guard 4's (its cause is a golden that departs
+    from intent, which a device at that golden does not end)."""
+    s = standing or {}
+    return s.get("on") == "departure" and bool(s.get("departure")) and s.get("guard") != 4
 
 
 def close(network: str, incident_id: str, why: str, now: float = None) -> dict:
@@ -506,18 +702,20 @@ def close(network: str, incident_id: str, why: str, now: float = None) -> dict:
 
 
 def close_watching(network: str, why: str, now: float = None) -> list:
-    """Close every incident still watching (self-healing turned off for the network, or
-    stopped everywhere): nothing new starts. Returns their ids. Ready and claimed incidents
-    are left to the decision, which checks the mode first (guard 2)."""
+    """Close every incident still watching, and every one standing on its decision (C2813),
+    when self-healing is turned off for the network or stopped everywhere: nothing new starts,
+    and nothing later folds into an incident decided before. Returns their ids. Ready and
+    claimed incidents are left to the decision, which checks the mode first (guard 2)."""
     now = time.time() if now is None else float(now)
+    shut = ("watching", "standing")
     got = read(network)
-    if got["state"] != "ok" or not any(i.get("state") == "watching" for i in got["incidents"]):
+    if got["state"] != "ok" or not any(i.get("state") in shut for i in got["incidents"]):
         return []
 
     def change(doc):
         out = []
         for inc in doc["incidents"]:
-            if inc.get("state") == "watching":
+            if inc.get("state") in shut:
                 inc.update(state="closed", closed_at=_iso(now), closed_why=why,
                            updated_at=_iso(now))
                 out.append(inc["id"])

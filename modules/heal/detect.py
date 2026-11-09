@@ -7,20 +7,25 @@ network's stored run so the drift row says what it found.
 **A pass, per network, under its heal lock** (`incidents.HealLock`: one at a time across
 processes, refused by name). In it:
 1. the network's mode (`policy.current`): off (or stopped everywhere) closes every watching
-   incident, "nothing new starts", and reads nothing; an AUTO whose expiry passed is recorded
-   once (`policy.record_expiry`);
+   or standing incident, "nothing new starts", and reads nothing; an AUTO whose expiry passed
+   is recorded once (`policy.record_expiry`);
 2. each watching incident, oldest first: the grace period's judgement (`grace.judge`) on its
    reads and the outside changes its triggers hold; a read made when one is due (the first at
    once, the second at least ``heal_grace_seconds`` after the first: 120 s on a network marked
    lab, 900 s otherwise);
 3. each attached member read once: it is still checked, and never healed on its own;
-4. an incident the grace period settles (`grace.SETTLED_STATES`) is made ``ready``;
+4. an incident the grace period settles (`grace.SETTLED_STATES`) is made ``ready``; one sent
+   back from standing (C2813) that settled on THE departure its decision judged stands on that
+   decision again (`incidents.restand`), never a second decision of it;
 5. each Tier 2 proposal still waiting for a person (`decisions.proposals`) has its device read
    again once its last read is a grace period old, or a cause trigger arrived after it (C2470;
    board H artboard E): read back at intent, the proposal is withdrawn and its incident closed;
    read with another departure than the one it was bound to, it is withdrawn and its incident
    watching again, so the decision makes it again (`propose.withdraw`). Each withdrawal is
-   recorded in the decisions store and the step log, with the read and the bound state.
+   recorded in the decisions store and the step log, with the read and the bound state;
+6. each incident standing at its golden on a symptom (a Tier 3 can't-fix; C2813, C2825) has
+   its symptoms read from their stores, no device: every one gone, and nothing logged for the
+   flap window since its last trigger, ends it as cleared by itself (`_standing`).
 
 **Where H2 ends.** A ready incident is the decision's (H3): `incidents.ready(network)` lists
 them, each whole, and the decision takes one with `incidents.claim`. Nothing here classifies,
@@ -57,9 +62,12 @@ STEPS = (("mode", "Read the network's mode"),
          ("judge", "Judge each incident's grace period"),
          ("read", "Read the device when a read is due"),
          ("members", "Read each attached device once"),
-         ("settle", "Hand each settled incident to the decision"),
+         ("settle", "Hand each settled incident to the decision, or stand it on its decision "
+                    "again when it read the departure that decision judged"),
          ("proposals", "Read each waiting proposal's device again, and withdraw one it no "
-                       "longer fits"))
+                       "longer fits"),
+         ("standing", "Read each standing can't-fix's symptoms from their stores, and end one "
+                      "that cleared by itself"))
 
 _wake = threading.Event()
 _stop = threading.Event()
@@ -122,16 +130,17 @@ def outside_changes(incident: dict) -> list:
 
 
 def run(network: str, *, now: float = None, check=None, clock=time.time,
-        by: str = "heal to intent") -> dict:
+        by: str = "heal to intent", symptom=None) -> dict:
     """One detect pass of *network*: ``{"ran", "network", "mode", "words", "ready", "waiting",
-    "reads", "deferred", "closed", "busy", "withdrawn"}``. *check* stands in for
-    `drift_check.check_device` and *clock* for the time a read was made, in a test."""
+    "reads", "deferred", "closed", "busy", "withdrawn", "stood", "cleared"}``. *check* stands in
+    for `drift_check.check_device`, *clock* for the time a read was made, and *symptom* for
+    `decide.Sources.symptom_now` (``(device, triggers) -> state``), in a test."""
     from modules.heal import incidents, policy
 
     now = clock() if now is None else float(now)
     out = {"ran": False, "network": network, "mode": "off", "words": "", "ready": [],
            "waiting": [], "reads": 0, "deferred": [], "closed": [], "busy": "",
-           "withdrawn": []}
+           "withdrawn": [], "stood": [], "cleared": []}
     mode = policy.current(network, now)
     out.update(mode=mode["mode"], words=mode["words"])
     if mode["mode"] == "off":
@@ -163,6 +172,7 @@ def run(network: str, *, now: float = None, check=None, clock=time.time,
                     log.info("heal: %s's %s moved during the pass: %s", network, inc["id"],
                              exc)
             _proposals(network, got["incidents"], out, budget, grace_s, now, by, check, clock)
+            _standing(network, got["incidents"], out, mode, now, by, symptom)
     except incidents.HealBusy as exc:
         return dict(out, busy=str(exc))
     out["ran"] = True
@@ -204,7 +214,16 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
         out["reads"] += 1
         if r["state"] != "busy":
             incidents.record_read(network, inc["id"], m["device"], r)
-    if j["state"] in grace.SETTLED_STATES:
+    stood = inc.get("stood") or {}
+    if (j["state"] == "persisted" and stood.get("departure")
+            and (j.get("operands") or {}).get("departure") == stood["departure"]):
+        # C2813: sent back from standing by a change, and read again with THE departure its
+        # decision judged: it stands on that decision again, never a second decision of it.
+        incidents.restand(network, inc["id"], j, now)
+        out.setdefault("stood", []).append({"incident": inc["id"], "device": inc["device"],
+                                            "decision": stood.get("decision") or "",
+                                            "words": j["words"]})
+    elif j["state"] in grace.SETTLED_STATES:
         incidents.settle(network, inc["id"], j, now)
         out["ready"].append({"incident": inc["id"], "device": inc["device"],
                              "how": j["state"], "words": j["words"]})
@@ -281,9 +300,51 @@ def _proposals(network, incidents_now, out, budget, grace_s, now, by, check, clo
     return budget
 
 
+def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
+    """Each incident standing on a decision at its golden with a symptom (a Tier 3 can't-fix,
+    ``on: symptom``; C2813, C2825) has its symptoms read from their stores (no device: the
+    readers' stored values, `decide.Sources.symptom_now`, verify's rule): every one read gone,
+    and nothing logged for the flap window since its last trigger, ends it as cleared by itself
+    (`decide.end_standing`), so its can't-fix item leaves and nothing later folds into it. A
+    symptom present, stale or unreadable leaves it standing: an unread symptom is not gone."""
+    from modules.heal import decide
+    from modules.heal.guards import value
+
+    quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
+    read = symptom or decide.Sources(network).symptom_now
+    for inc in incidents_now:
+        if inc.get("state") != "standing" or (inc.get("standing") or {}).get("on") != "symptom":
+            continue
+        trig = decide.judged_triggers(inc)
+        last = max((float(t.get("epoch") or 0) for t in trig), default=0.0)
+        if now - last < quiet_s:
+            continue
+        try:
+            state = read(inc["device"], trig)
+        except Exception as exc:                      # said; it stands, read at the next pass
+            log.error("heal: %s's %s: its symptoms could not be read: %s", network, inc["id"],
+                      exc)
+            continue
+        if state != "gone":
+            continue
+        minutes = int(quiet_s // 60)
+        d = decide.end_standing(
+            network, inc["id"],
+            (f"nothing to heal: every symptom the incident named has cleared by itself by "
+             f"{decide._hhmm(now)} UTC, nothing to do: {inc['device']} is at its golden, and "
+             f"nothing was logged for {minutes} minutes since its last trigger"),
+            now=now, by=by,
+            read_words=(f"every symptom {inc['id']} named read again from its store after it: "
+                        f"gone, and quiet {minutes} minutes since its last trigger"))
+        if d:
+            out["cleared"].append({"incident": inc["id"], "device": inc["device"],
+                                   "decision": d["id"]})
+
+
 def watching_networks() -> list:
     """The networks with an incident still watching, ready for the decision, or claimed (a
-    proposal waiting is read again, C2470; one read of each network's store)."""
+    proposal waiting is read again, C2470), or standing at its golden on a symptom (read again
+    from its stores, C2825); one read of each network's store."""
     from modules.heal import incidents
     from modules.integration_groups import network_names
 
@@ -293,7 +354,10 @@ def watching_networks() -> list:
         if got["state"] == "unreadable":
             log.error("heal: %s", got["error"])
             continue
-        if any(i.get("state") in ("watching", "ready", "claimed") for i in got["incidents"]):
+        if any(i.get("state") in ("watching", "ready", "claimed")
+               or (i.get("state") == "standing"
+                   and (i.get("standing") or {}).get("on") == "symptom")
+               for i in got["incidents"]):
             out.append(name)
     return out
 

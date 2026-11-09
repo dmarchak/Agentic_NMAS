@@ -576,14 +576,21 @@ def from_topology(store: str, value: dict, now: float = None) -> dict:
 
 def after_drift_record(network: str, result: dict, now: float = None) -> dict:
     """The drift record's trigger (`DriftChecker.record`): each device the run found departed,
-    its read kept as the incident's first."""
+    its read kept as the incident's first; and each device the run READ at its golden
+    (``clean_devices``, C2813) ends the incident standing on a departure it judged before that
+    read (`clean_ended`). A run that names no device read clean (one recorded before the field,
+    or a run that read none) ends nothing: absence is not evidence of a clean read."""
     now = time.time() if now is None else float(now)
     ctx, counts, out = _Context(now), _counts(), []
     drifted = (result or {}).get("drifted_devices") or []
-    if not drifted:
+    clean = (result or {}).get("clean_devices") or []
+    if not drifted and not clean:
         return counts
     if ctx.mode(network) == "off":
         counts["off"] += len(drifted)
+        return counts
+    counts["ended"] = clean_ended(network, result, now)
+    if not drifted:
         return counts
     for e in drifted:
         host = e.get("hostname") or ""
@@ -597,6 +604,42 @@ def after_drift_record(network: str, result: dict, now: float = None) -> dict:
             "words": (f"the drift check ({(result or {}).get('triggered_by') or '?'}) found "
                       f"{host} departed from its golden ({e.get('changed_lines')} line(s))")}))
     return _deliver(ctx, out, counts)
+
+
+def clean_ended(network: str, result: dict, now: float) -> list:
+    """C2813: each device the drift run read at its golden (``clean_devices``, each with its
+    ``read_at``) whose incident stands on a departure from that golden (`incidents.
+    ends_at_golden`) and was decided BEFORE the read is ended: nothing to heal, the run named
+    (`decide.end_standing`). Returns the decisions recorded. Never raises: a failure is
+    logged, and the incident stands until the next run reads it."""
+    from modules.heal import decide, incidents
+
+    by = (result or {}).get("triggered_by") or "?"
+    ended = []
+    for e in (result or {}).get("clean_devices") or []:
+        host = (e or {}).get("hostname") or ""
+        at = float((e or {}).get("read_at") or 0)
+        try:
+            inc = incidents.standing_of(network, host) if host else {}
+            s = inc.get("standing") or {}
+            if not inc or not at or at <= float(s.get("epoch") or 0) \
+                    or not incidents.ends_at_golden(s):
+                continue
+            d = decide.end_standing(
+                network, inc["id"],
+                (f"nothing to heal: the drift check ({by}) read {host} at its golden at "
+                 f"{decide._hhmm(at)} UTC, after its decision {s.get('decision') or '?'}, so the "
+                 "departure it judged no longer stands"),
+                now=now, by=f"the drift check ({by})",
+                read_words=(f"{host} read by the drift check ({by}) at {_iso(at)}: at its "
+                            "golden"))
+        except Exception as exc:
+            log.error("heal: %s's clean read in %s did not end its incident: %s: %s", host,
+                      network, type(exc).__name__, exc)
+            continue
+        if d:
+            ended.append(d["id"])
+    return ended
 
 
 def _counts() -> dict:
