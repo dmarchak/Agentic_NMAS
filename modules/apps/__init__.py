@@ -5,7 +5,15 @@ deploy channel is `channel` (staging from blobs, the plan), `conformance` (T17) 
 `post_check` (the bounded post-check, rollback and drift).
 docs/DEVELOPING_JOBS_AND_APPS.md is the guide."""
 
-from modules.apps.manifest import Manifest, ManifestError, load_manifest, parse_manifest, \
-    validate_config
-
 __all__ = ["Manifest", "ManifestError", "load_manifest", "parse_manifest", "validate_config"]
+
+
+def __getattr__(name):
+    """The manifest's names, imported when first asked for (PEP 562), so importing the package
+    needs nothing outside the standard library: `scripts/nmas-harness` imports
+    `modules.apps.test_run` and `channel` on CI's bare harness Python, which has no PyYAML
+    (59fa89ba's CI, "No module named 'yaml'")."""
+    if name in __all__:
+        from modules.apps import manifest
+        return getattr(manifest, name)
+    raise AttributeError(f"module 'modules.apps' has no attribute {name!r}")

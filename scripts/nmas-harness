@@ -298,16 +298,17 @@ def build_test_image(python: str) -> str:
 
 def test_app(folder: str, python: str) -> dict:
     """The app at *folder*'s listed tests on *python*: `test_run.run`'s answer."""
+    # The standard library alone: CI's harness job runs this script on a bare Python, so the
+    # manifest's test list is read by `test_run.listed_tests`, held equal to the manifest
+    # parser's own answer by tests/test_app_test_run.py (59fa89ba's CI: "No module named
+    # 'yaml'" from `modules.apps.manifest`).
     from modules.apps import test_run
-    from modules.apps.manifest import load_manifest
-    from modules.jobs.base import ContractError
 
     if not os.path.isdir(folder):
         raise Stop(f"--app {folder} is not a folder")
-    try:
-        tests = list(load_manifest(folder).tests)
-    except ContractError as exc:
-        raise Stop(f"the app's manifest is refused: {exc}") from None
+    tests, problem = test_run.listed_tests(folder)
+    if problem:
+        raise Stop(f"the app's manifest: {problem}")
     build_test_image(python)
     return test_run.run(folder, python, tests=tests, timeout_s=test_run.BOUND_S)
 

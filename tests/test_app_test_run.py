@@ -17,6 +17,7 @@ hash `channel.stage` pins); the output masked before it is cut.
 """
 
 import os
+import re
 import subprocess
 import sys
 import types
@@ -378,3 +379,66 @@ def test_stderr_is_kept_after_stdout_and_masked(tmp_path):
     assert got["ok"] is True
     assert got["output"].endswith("warning: snmp-server community <redacted:snmp_community> "
                                   "RO\n")
+
+
+# ── the manifest's test list, read on the standard library alone (59fa89ba's CI) ─────────────
+
+def _app_folders() -> list:
+    found = []
+    for base in ("lab/lab9/apps", "tests/fixtures/apps"):
+        for name in sorted(os.listdir(os.path.join(ROOT, base))):
+            folder = os.path.join(ROOT, base, name)
+            if os.path.isfile(os.path.join(folder, "manifest.yml")):
+                found.append(folder)
+    return found
+
+
+def test_the_harness_reads_each_manifest_s_tests_as_the_manifest_parser_does():
+    from modules.apps.manifest import load_manifest
+
+    folders = _app_folders()
+    assert len(folders) >= 5, f"the floor on app folders read: {folders}"
+    for folder in folders:
+        tests, problem = test_run.listed_tests(folder)
+        assert problem == "" and tests == tuple(load_manifest(folder).tests), folder
+
+
+@pytest.mark.parametrize("text, want", [
+    ("name: a\ntests:\n  - tests/test_a.py\n  - test_b.py  # the second\nrest: {}\n",
+     (("tests/test_a.py", "test_b.py"), "")),
+    ("name: a\ntests: [tests/test_a.py, 'test_b.py']\n", (("tests/test_a.py", "test_b.py"), "")),
+    ("name: a\ntests: []\n", ((), "")),
+    ("name: a\n", ((), "lists no tests")),
+    ("name: a\ntests:\n  run: everything\n", ((), "is not a list of file names"))],
+    ids=["block", "flow", "empty", "absent", "a-mapping"])
+def test_the_two_list_shapes_are_read_and_anything_else_is_a_problem(tmp_path, text, want):
+    (tmp_path / "manifest.yml").write_text(text)
+    tests, problem = test_run.listed_tests(str(tmp_path))
+    assert tests == want[0] and (want[1] in problem if want[1] else problem == "")
+
+
+def test_the_package_s_manifest_names_resolve_when_asked_for_and_nothing_else_does():
+    import modules.apps as package
+    from modules.apps import manifest
+
+    assert package.load_manifest is manifest.load_manifest
+    assert package.Manifest is manifest.Manifest
+    with pytest.raises(AttributeError, match="has no attribute 'nothing_here'"):
+        package.nothing_here
+
+
+def test_the_harness_s_test_path_imports_nothing_outside_the_standard_library():
+    """CI's harness job runs scripts/nmas-harness on a bare Python with nothing installed: the
+    module and the reader it uses must import with no site packages (-S)."""
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); "
+            "from modules.apps import test_run; "
+            "print(test_run.listed_tests(sys.argv[2])); "
+            "print(test_run._hash(sys.argv[2])); "
+            "print(test_run._mask('snmp-server community Leaky-Comm-4471 RO'))")
+    got = subprocess.run([sys.executable, "-I", "-S", "-c", code, ROOT,
+                          os.path.join(ROOT, "lab", "lab9", "apps", "of_versions")],
+                         capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stderr
+    assert "tests/test_of_versions_logic.py" in got.stdout
+    assert re.search(r"[0-9a-f]{64}", got.stdout), "the folder's hash, from channel, on stdlib"
+    assert "<redacted:snmp_community>" in got.stdout and "4471" not in got.stdout

@@ -84,6 +84,46 @@ _TERM = re.compile(r"^(?P<n>[0-9]+) (?P<kind>passed|failed|errors?|skipped|xfail
                    r"deselected|warnings?|rerun)$")
 
 
+_TESTS_KEY = re.compile(r"^tests:[ \t]*(?P<flow>\[.*\])?[ \t]*(#.*)?$")
+_TESTS_ITEM = re.compile(r"^[ \t]+-[ \t]+(?P<item>[^#\s]+)[ \t]*(#.*)?$")
+
+
+def listed_tests(folder: str) -> tuple:
+    """``(tests, problem)``: the test files *folder*'s ``manifest.yml`` lists under ``tests``,
+    read on the standard library alone, because `scripts/nmas-harness` runs on a bare Python
+    (CI's harness job installs nothing; C2854). It reads the two shapes the manifests here use,
+    a block list (``tests:`` then ``  - <file>`` lines) or a flow list (``tests: [a, b]``), and
+    answers a problem for anything else; tests/test_app_test_run.py holds it equal to
+    `modules.apps.manifest.load_manifest(folder).tests` on every app folder in the repository."""
+    path = os.path.join(folder, "manifest.yml")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError as exc:
+        return (), f"{path} cannot be read ({exc.strerror or exc})"
+    for i, line in enumerate(lines):
+        m = _TESTS_KEY.match(line)
+        if not m:
+            continue
+        if m.group("flow"):
+            inner = m.group("flow")[1:-1].strip()
+            items = [s.strip().strip("'\"") for s in inner.split(",")] if inner else []
+            return tuple(s for s in items if s), ""
+        items = []
+        for nxt in lines[i + 1:]:
+            if not nxt.strip() or nxt.lstrip().startswith("#"):
+                continue
+            item = _TESTS_ITEM.match(nxt)
+            if item:
+                items.append(item.group("item").strip("'\""))
+                continue
+            if nxt[:1] in (" ", "\t"):
+                return (), f"{path}'s tests is not a list of file names: {nxt.strip()[:60]!r}"
+            break
+        return tuple(items), ""
+    return (), f"{path} lists no tests"
+
+
 def default_runner(argv, timeout_s):
     """`subprocess.run` over the argv list, output captured, bounded by *timeout_s*."""
     return subprocess.run(argv, capture_output=True, timeout=timeout_s, check=False)
