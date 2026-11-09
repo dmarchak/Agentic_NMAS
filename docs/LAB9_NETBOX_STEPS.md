@@ -113,3 +113,92 @@ These are Mercury's own screens, not NetBox's, listed so the steps above end in 
    - **PASS (S1's goal 1):** lab9 lists the managed devices with no "No login" status, the
      controller with the kind `host`, and one skip, the end host with no primary IPv4; Needs
      attention has no "have no login" row for lab9.
+
+## 8. The end hosts: tagged, never managed (C2776)
+
+Each end host on the OpenFlow fabric (each PC or server a switch port serves) is a NetBox
+device tagged `mercury-end-host`. The NSOT export reads every device with that tag at the
+network's sites as a **host**, never as a managed device: Mercury neither logs in to it nor
+polls or protects it. The trace (A4), DHCP (A3), the DNS app (A2) and the intent checks (B2)
+read each host's MAC, addresses and switch port from it. Steps 8.1 and 8.2 are made once; steps
+8.3 to 8.6 are made for each host.
+
+1. **Customization › Tags › Add.** Name `mercury-end-host`, slug `mercury-end-host` (check that
+   it reads exactly that), any colour. **Create**.
+   - **PASS:** **Customization › Tags** lists `mercury-end-host`.
+2. **Devices › Device Roles › Add** (once). Name `End host`, slug `end-host`. Leave **Mercury
+   kind** empty: an end host is none of Mercury's kinds. **Create**.
+3. **Devices › Devices › Add**, for each host:
+   - **Name:** the host's name.
+   - **Role:** `End host`.
+   - **Device type:** any generic type (for example a `Generic host` type of one interface).
+   - **Site:** the network's site.
+   - **Platform:** leave it empty.
+   - **Tags:** `mercury-end-host`.
+
+   Press **Create**. With no platform and no primary IPv4, Mercury's inventory skips the host
+   by name (step 7's "one skip"); the export reads it by its tag.
+4. **The host's interface.** On the host's **Interfaces** tab, add the NIC (for example `eth0`,
+   type `1000BASE-T`) if the device type gave it none.
+5. **Its MAC** (NetBox 4.2 and later: **Devices › MAC Addresses › Add**). Type the NIC's MAC and
+   assign it to the host's interface. Then edit the interface and choose that MAC as its
+   **Primary MAC address**. (Before 4.2, type it in the interface's **MAC address** field.)
+6. **Its addresses.** **IPAM › IP Addresses › Add**: the host's IPv4 address with its prefix
+   length (and its IPv6 address, if it has one), each assigned to the host's interface. Leave
+   **Primary IP** unset on the device, so Mercury never tries to reach the host.
+7. **Its cable.** On the host's interface, **Connect › Interface**: the switch and the switch
+   port it plugs into, status Connected. That port is one of the switch's OpenFlow ports, with
+   its `openflow_port` number set (P1b).
+
+- **PASS (in Mercury, after the steps):** SDN › Apps, the **NSOT export** card, **Export from
+  NetBox…**: the
+  changes name each host under **End hosts** as added, and none of them under Devices; then
+  **Commit the export**. A host whose switch has no datapath id, or whose port has no
+  `openflow_port`, is named with the value that is missing wherever a host's port is read (the
+  trace, DHCP); the card itself lists hosts by name.
+
+## 9. The protected DNS and DHCP flows (C2776)
+
+Management traffic is protected with nothing to enter. It is derived from every management
+interface and prefix (B, `modules/protected.py`), so check only that each management interface
+is marked **Management only** or holds the device's primary address.
+
+DNS and DHCP are declared once, as a config context assigned to the network's site. Each class
+names its **owners**, the one writer that may install flows meeting it; every other writer is
+refused, naming the class.
+
+1. **Provisioning › Config Contexts › Add.**
+   - **Name:** `Mercury protected flows`.
+   - **Weight:** `1000`.
+   - **Sites:** the network's site.
+   - **Data:** exactly this:
+
+   ```json
+   {"mercury": {"protected_flows": [
+     {"name": "dns", "invariant": "must_reach dns", "owners": ["app:dns_blacklist"],
+      "reason": "every host's DNS: the blacklist app answers or forwards each query",
+      "match": {"eth_type": "0x0800", "ip_proto": 17, "udp_dst": 53}},
+     {"name": "dns-ipv6", "invariant": "must_reach dns", "owners": ["app:dns_blacklist"],
+      "reason": "every host's DNS over IPv6",
+      "match": {"eth_type": "0x86dd", "ip_proto": 17, "udp_dst": 53}},
+     {"name": "dhcp", "invariant": "must_reach dhcp", "owners": ["feature:dhcp-unicast"],
+      "reason": "every host's lease: requests are steered to the router as unicast (A3)",
+      "match": {"eth_type": "0x0800", "ip_proto": 17, "udp_dst": 67}},
+     {"name": "dhcp-reply", "invariant": "must_reach dhcp", "owners": ["feature:dhcp-unicast"],
+      "reason": "the router's replies to every host",
+      "match": {"eth_type": "0x0800", "ip_proto": 17, "udp_src": 67, "udp_dst": 68}}
+   ]}}
+   ```
+
+   Press **Create**. NetBox merges it into each device's rendered context beside the
+   `mercury.management` key of steps 1 and 2. An entry of any other shape makes the whole
+   protected set unreadable, and an unreadable set refuses every flow write, naming why.
+2. **If the DNS server is a device in NetBox:** a Service on it named `dns`, protocol UDP,
+   port 53, with the server's address chosen in **IP addresses**, and the tag
+   `mercury-protected`, adds the server's own class (`must_reach dns`, owned by nobody).
+   That Service is optional: the context entry already covers every host's queries.
+
+- **PASS (in Mercury, after the export of step 8 is confirmed):** SDN › Flows, **Preview** a
+  flow you write yourself matching UDP destination port 53 (drop): it is refused, naming the
+  protected class `dns`, its owner `app:dns_blacklist` and the config context it came from.
+  The same flow matching UDP port 5353 is not refused.

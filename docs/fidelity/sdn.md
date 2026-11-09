@@ -72,7 +72,11 @@ were integrated on main together).
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html
-Templates sha256: `00d1e7b9472f8e6a17fac85e5ce3ae41cd9f1ed3d240930b2c3719a7d93cbab3`
+Templates sha256: `51d2180eb5e7d0dd38bc8ca5d371def5a54f533fffb4b0f0183e800d9a41f624`
+Hashed again 2026-11-09 for C2776 (the export's end hosts): `_sdn_export.html`'s kind names
+gain "End hosts", so the preview's changes table and the result's Changed line name the new
+kind; nothing else moves. Compared by reading the template against docs/boards/nsot-export.html,
+with no new shot (the templates then hashed `00d1e7b9472f8e6a17fac85e5ce3ae41cd9f1ed3d240930b2c3719a7d93cbab3`).
 Hashed again 2026-11-09 for C2852 (SDK option A, the operator's go of 2026-11-09): the plan card
 draws the app SDK the request names after the files and before the configs ("The app SDK,
 staged to /opt/ryu-apps/.sdk/<sha256>/", its hash and its one file), the region row "C: the

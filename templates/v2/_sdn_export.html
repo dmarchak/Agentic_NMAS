@@ -7,7 +7,7 @@
     open: a live redraw of the SDN region is held and said (C2001), so an announcement never
     takes a preview or its confirm away. -#}
 {%- set net = x.network -%}
-{%- set kinds = {'devices': 'Devices', 'interfaces': 'Interfaces', 'vlans': 'VLANs', 'prefixes': 'Prefixes', 'services': 'Services', 'cables': 'Cables'} -%}
+{%- set kinds = {'devices': 'Devices', 'interfaces': 'Interfaces', 'vlans': 'VLANs', 'prefixes': 'Prefixes', 'services': 'Services', 'cables': 'Cables', 'hosts': 'End hosts'} -%}
 {%- macro short(sha) %}<span class="mono" title="sha256:{{ sha }}">sha256:{{ sha[:4] }}…{{ sha[-4:] }}</span>{% endmacro -%}
 {%- macro preview_form(primary=False, words='Export from NetBox…') -%}
 <form class="apps-act export-act" hx-post="{{ url_for('sdn_v2.export_preview') }}" hx-target="#nsot-export" hx-swap="outerHTML" hx-disabled-elt="find button">

@@ -13,7 +13,14 @@ the objects a network's features read, each projected to its declared fields (`_
   VLANs, parent, LAG and bridge, tags, custom fields (``openflow_port`` among them) and
   addresses;
 - ``vlans`` by site then VID; ``prefixes`` by prefix; ``services`` by parent then name; and
-  ``cables`` by their two ends.
+  ``cables`` by their two ends;
+- ``hosts`` by name (C2776, 2026-11-09): every device tagged ``mercury-end-host`` (`HOST_TAG`)
+  at one of the network's sites, read by its tag whatever the list's filters, and never one of
+  ``devices`` (so never managed, polled or protected as a device): its id, site, status, role
+  and tags, and each interface's MAC, addresses and the far end of its cable (``attached``).
+  `host_ports` resolves each to its switch's DPID and the port's OpenFlow number, naming a
+  value NetBox does not record. A document from before the kind has no ``hosts`` key, which
+  `hosts_of` answers as None (not recorded), never as no hosts.
 
 **Nothing time-varying is in the document**: no ``created``, ``last_updated``, URL or read time
 (the read time is the commit's). Two builds of an unchanged NetBox are byte-identical, so an
@@ -43,7 +50,13 @@ SCHEMA_VERSION = 1
 PATH = "nsot/export.json"
 SOURCE = "nsot_export"
 #: The body's lists, in the order the document names them.
-KINDS = ("devices", "interfaces", "vlans", "prefixes", "services", "cables")
+KINDS = ("devices", "interfaces", "vlans", "prefixes", "services", "cables", "hosts")
+#: The end hosts (C2776, the operator's replan of 2026-11-09): a NetBox device tagged
+#: ``mercury-end-host`` at one of the network's sites is an END HOST, not a device Mercury
+#: manages: it is the export's ``hosts`` kind and never one of its ``devices``. Added to schema 1
+#: as an optional key (expand, then contract): a document from before has no ``hosts`` key, which
+#: `hosts_of` answers as None (not recorded), never as "no hosts".
+HOST_TAG = "mercury-end-host"
 #: NetBox's list filters take many ids at once; this many per request.
 CHUNK = 100
 
@@ -157,6 +170,41 @@ def _cable(c: dict) -> dict:
             "label": str(c.get("label") or "")}
 
 
+def _mac(i: dict) -> str:
+    """An interface's MAC, lower case with colons: NetBox 4.2's ``primary_mac_address``, else the
+    ``mac_address`` field of the releases before; "" when it records none."""
+    raw = (i.get("primary_mac_address") or {}).get("mac_address") if isinstance(
+        i.get("primary_mac_address"), dict) else None
+    raw = raw or i.get("mac_address") or ""
+    hexes = "".join(c for c in str(raw).lower() if c in "0123456789abcdef")
+    return ":".join(hexes[n:n + 2] for n in range(0, 12, 2)) if len(hexes) == 12 else ""
+
+
+def _host(d: dict, interfaces: list, cables: list) -> dict:
+    """An end host: its own fields and each interface with its MAC, its addresses and the far
+    end of its cable (``attached``: ``[device, interface]``, or None when no cable is
+    recorded)."""
+    name = _name(d)
+    peer = {}
+    for c in cables:
+        if c["a"] and c["b"]:
+            for mine, theirs in ((c["a"], c["b"]), (c["b"], c["a"])):
+                for end in mine:
+                    if end[0] == name and len(theirs) == 1:
+                        peer[end[1]] = list(theirs[0])
+    return {"name": name, "id": d.get("id"), "site": _slug(d.get("site")),
+            "status": _slug(d.get("status")), "role": _slug(d.get("role") or
+                                                             d.get("device_role")),
+            "tags": _tags(d),
+            "interfaces": sorted(({"name": _name(i), "mac": _mac(i),
+                                   "ip_addresses": sorted(_address(a) for a in
+                                                          i.get("ip_addresses") or []),
+                                   "attached": peer.get(_name(i))}
+                                  for i in interfaces
+                                  if ((i.get("device") or {}).get("id") == d.get("id"))),
+                                 key=lambda i: i["name"])}
+
+
 def _addr_key(text: str):
     try:
         net = ipaddress.ip_network(text, strict=False)
@@ -168,11 +216,18 @@ def _addr_key(text: str):
 def body_of(records: dict) -> dict:
     """The body from NetBox *records* (``{kind: [raw NetBox objects]}`` for each of `KINDS`),
     each projected and sorted by its natural key. Pure: the seam the tests use."""
-    devices = [_device(d) for d in records.get("devices") or []]
+    host_ids = {h.get("id") for h in records.get("hosts") or []}
+    devices = [_device(d) for d in records.get("devices") or []
+               if d.get("id") not in host_ids and HOST_TAG not in _tags(d)]
     names = {d["id"]: d["name"] for d in devices}
+    names.update({h.get("id"): _name(h) for h in records.get("hosts") or []})
+    host_ifaces = [i for i in records.get("interfaces") or []
+                   if (i.get("device") or {}).get("id") in host_ids]
+    cables_all = [_cable(c) for c in records.get("cables") or []]
     out = {
         "devices": sorted(devices, key=lambda d: (d["name"], d["id"] or 0)),
-        "interfaces": sorted((_interface(i, names) for i in records.get("interfaces") or []),
+        "interfaces": sorted((_interface(i, names) for i in records.get("interfaces") or []
+                              if (i.get("device") or {}).get("id") not in host_ids),
                              key=lambda i: (i["device"], i["name"])),
         "vlans": sorted((_vlan(v) for v in records.get("vlans") or []),
                         key=lambda v: (v["site"], v["group"], v["vid"] or 0, v["name"])),
@@ -180,12 +235,16 @@ def body_of(records: dict) -> dict:
                            key=lambda p: (_addr_key(p["prefix"]), p["site"])),
         "services": sorted((_service(s) for s in records.get("services") or []),
                            key=lambda s: (s["parent"], s["name"], s["ports"])),
-        "cables": sorted((_cable(c) for c in records.get("cables") or []),
-                         key=lambda c: (c["a"], c["b"])),
+        "cables": sorted(cables_all, key=lambda c: (c["a"], c["b"])),
     }
-    # One object per natural key: a Service read both by device and by name is one Service.
+    if "hosts" in records:
+        out["hosts"] = sorted((_host(h, host_ifaces, cables_all) for h in records["hosts"]),
+                              key=lambda h: (h["name"], h["id"] or 0))
+    # One object per natural key: a Service read both by device and by name is one Service; a
+    # cable read from both of its ends is one cable.
     for kind, key in (("services", lambda s: (s["parent"], s["name"], tuple(s["ports"]))),
-                      ("devices", lambda d: (d["name"], d["id"]))):
+                      ("devices", lambda d: (d["name"], d["id"])),
+                      ("cables", lambda c: json.dumps([c["a"], c["b"]]))):
         seen, kept = set(), []
         for item in out[kind]:
             if key(item) not in seen:
@@ -268,14 +327,18 @@ def collect(network: str, *, get=None, version=None) -> dict:
         known = {_name(d) for d in devices}
         for parent in sorted({_service_parent(s) for s in services} - known - {""}):
             devices += list(get("dcim/devices/", name=parent, include="config_context"))
-        ids = sorted({d["id"] for d in devices if d.get("id") is not None})
+        sites = sorted({(d.get("site") or {}).get("id") for d in devices} - {None})
+        # The end hosts (C2776): tagged, at the network's sites, whatever the list's filters.
+        hosts = list(get("dcim/devices/", tag=HOST_TAG, site_id=sites)) if sites else []
+        # A host the list's own filter also returned stays among the raw devices; `body_of`
+        # keeps every host out of the export's devices (tests/test_nsot_export.py).
+        ids = sorted({d["id"] for d in devices + hosts if d.get("id") is not None})
         interfaces, addresses, cables = [], [], []
         for chunk in _chunks(ids):
             interfaces += get("dcim/interfaces/", device_id=chunk)
             addresses += get("ipam/ip-addresses/", device_id=chunk)
             services += get("ipam/services/", device_id=chunk)
             cables += get("dcim/cables/", device_id=chunk)
-        sites = sorted({(d.get("site") or {}).get("id") for d in devices} - {None})
         vlans, prefixes = [], []
         if sites:
             vlans = list(get("ipam/vlans/", site_id=sites))
@@ -294,7 +357,8 @@ def collect(network: str, *, get=None, version=None) -> dict:
         i["ip_addresses"] = by_iface.get(i.get("id"), [])
     return {"ok": True, "netbox_version": nb_version, "error": "",
             "records": {"devices": devices, "interfaces": interfaces, "vlans": vlans,
-                        "prefixes": prefixes, "services": services, "cables": cables}}
+                        "prefixes": prefixes, "services": services, "cables": cables,
+                        "hosts": hosts}}
 
 
 def build(network: str, **kw) -> dict:
@@ -437,6 +501,8 @@ def _label(kind: str, item: dict) -> str:
     if kind == "cables":
         return " to ".join("+".join(":".join(e) for e in side)
                            for side in (item.get("a") or [], item.get("b") or []))
+    if kind == "hosts":
+        return item.get("name") or f"id {item.get('id')}"
     return json.dumps(item, sort_keys=True)[:80]
 
 
@@ -472,6 +538,53 @@ def device(export: dict, name: str):
 def interfaces_of(export: dict, name: str) -> list:
     return [i for i in (export.get("body") or {}).get("interfaces") or []
             if i.get("device") == name]
+
+
+def hosts_of(export: dict):
+    """The export's end hosts (C2776), or None when the document predates the kind (it was
+    built before hosts were recorded): never an empty list for "not recorded"."""
+    body = export.get("body") or {}
+    return list(body["hosts"]) if "hosts" in body else None
+
+
+def host_ports(export: dict) -> list:
+    """Each end host's interface where it meets the fabric: ``[{"host", "interface", "mac",
+    "ip_addresses", "switch", "switch_interface", "dpid", "port_no", "error"}]``, the switch's
+    DPID and the port's number from the switch's OpenFlow values (`openflow_values.from_export`:
+    ``openflow.datapath_id`` and ``port.openflow_port``); a value NetBox does not record is None,
+    with *error* naming it. An interface with no cable is listed with no switch. Pure."""
+    from modules.sdn import openflow_values
+    from modules.sdn.drivers.base import SpecError, parse_dpid
+
+    out = []
+    for h in hosts_of(export) or []:
+        for i in h.get("interfaces") or []:
+            row = {"host": h["name"], "interface": i["name"], "mac": i.get("mac") or "",
+                   "ip_addresses": list(i.get("ip_addresses") or []), "switch": "",
+                   "switch_interface": "", "dpid": None, "port_no": None, "error": ""}
+            att = i.get("attached")
+            if not att:
+                row["error"] = f"{h['name']} {i['name']} has no cable recorded in NetBox"
+                out.append(row)
+                continue
+            row["switch"], row["switch_interface"] = att[0], att[1]
+            got = openflow_values.from_export(export, att[0])
+            values = got.get("values") or {} if isinstance(got, dict) else {}
+            missing = []
+            try:
+                raw = values.get("openflow.datapath_id")
+                row["dpid"] = parse_dpid(raw) if raw not in (None, "") else None
+            except SpecError as exc:
+                missing.append(f"{att[0]}'s datapath id: {exc}")
+            if row["dpid"] is None and not missing:
+                missing.append(f"{att[0]} records no openflow.datapath_id")
+            port = str((values.get("port.openflow_port") or {}).get(att[1]) or "")
+            row["port_no"] = int(port) if port.isdigit() else None
+            if row["port_no"] is None:
+                missing.append(f"{att[0]} {att[1]} records no openflow_port")
+            row["error"] = "; ".join(missing)
+            out.append(row)
+    return out
 
 
 def services_named(export: dict, service: str) -> list:

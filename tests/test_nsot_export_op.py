@@ -279,6 +279,21 @@ def test_the_preview_and_confirm_answer_in_the_cards_place_and_declare_what_move
     assert f"sha256:{p['sha256'][:4]}…{p['sha256'][-4:]}" in rest and ">committed<" in rest
 
 
+def test_the_preview_draws_the_end_hosts_kind_by_name(lab):
+    """C2776: the export's end hosts are drawn as their own kind, never among the devices."""
+    from tests.test_nsot_export import _with_hosts
+
+    lab["records"] = _with_hosts(lab["records"])
+    html = _client().post("/v2/sdn/export/preview", data={"list": NET}).get_data(as_text=True)
+    row = html[html.index('data-l="Kind">End hosts'):]
+    row = row[:row.index("</tr>")]
+    assert "(2 now)" in row and "h1" in row and "h2" in row
+    devices = html[html.index('data-l="Kind">Devices'):]
+    assert "h1" not in devices[:devices.index("</tr>")]
+    # The effect of the press: a preview commits nothing and announces nothing.
+    assert OP.last(NET)["state"] == "none" and lab["announced"] == []
+
+
 def test_a_confirm_whose_hash_moved_answers_409_and_commits_nothing(lab):
     c = _client()
     p = OP.preview(NET)

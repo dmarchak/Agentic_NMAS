@@ -132,8 +132,11 @@ class TestReads:
         # 256 devices: three hundred-device chunks for each per-device list.
         assert per["dcim/interfaces/"] == per["ipam/ip-addresses/"] == 3
         assert per["dcim/cables/"] == 3 and per["ipam/services/"] == 1 + 3
-        # The list's devices, then its one controller outside the filter, by name.
-        assert per["dcim/devices/"] == 2 and per["ipam/vlans/"] == per["ipam/prefixes/"] == 1
+        # The list's devices, then its one controller outside the filter, by name, then the
+        # end hosts at its sites, by their tag (C2776): one read each, never one per device.
+        assert per["dcim/devices/"] == 3 and per["ipam/vlans/"] == per["ipam/prefixes/"] == 1
+        host_reads = [p for path, p in calls if path == "dcim/devices/" and "tag" in p]
+        assert host_reads == [{"tag": X.HOST_TAG, "site_id": host_reads[0]["site_id"]}]
 
     def test_a_list_whose_devices_are_local_is_refused(self, monkeypatch):
         monkeypatch.setattr("modules.inventory.source_config.load",
@@ -232,6 +235,94 @@ class TestOffline:
         got = V.from_export(doc, "nowhere")
         assert not got["ok"] and "holds no device 'nowhere'" in got["error"]
         assert doc["sha256"][:12] in got["error"]
+
+
+def _with_hosts(records=None):
+    """The Lab 9 records with two end hosts tagged ``mercury-end-host`` at the switches' site:
+    h1 cabled to ovs1 eno4 (OpenFlow port 3 on DPID 3), IPv4 and IPv6, its MAC in NetBox 4.2's
+    shape; h2 with no cable, its MAC in the older field; and a host at another site, not read."""
+    records = copy.deepcopy(records or _records())
+    tag = [{"slug": X.HOST_TAG, "name": X.HOST_TAG}]
+    site = {"id": 1, "slug": "lab"}
+    for n, (dev_id, name, at) in enumerate(((901, "h1", site), (902, "h2", site),
+                                            (903, "elsewhere", {"id": 9, "slug": "other"}))):
+        records["devices"].append({"id": dev_id, "name": name, "role": {"slug": "end-host"},
+                                   "status": {"value": "active"}, "site": at, "tags": tag,
+                                   "custom_fields": {}, "platform": None})
+        iface = {"id": 9100 + n, "device": {"id": dev_id, "name": name}, "name": "eth0",
+                 "type": {"value": "1000base-t"}, "enabled": True, "mgmt_only": False,
+                 "mode": None, "untagged_vlan": None, "tagged_vlans": [], "tags": [],
+                 "custom_fields": {}}
+        if name == "h1":
+            iface["primary_mac_address"] = {"mac_address": "AA:BB:CC:00:00:01"}
+        else:
+            iface["mac_address"] = "aa-bb-cc-00-00-02"
+        records["interfaces"].append(iface)
+    records["ip_addresses"] += [
+        {"id": 9201, "address": "192.0.2.101/24", "assigned_object": {"id": 9100}},
+        {"id": 9202, "address": "2001:db8::101/64", "assigned_object": {"id": 9100}}]
+    records["cables"].append({
+        "a_terminations": [{"object": {"device": {"name": "h1"}, "name": "eth0"}}],
+        "b_terminations": [{"object": {"device": {"name": "ovs1"}, "name": "eno4"}}],
+        "status": {"value": "connected"}, "label": ""})
+    return records
+
+
+class TestEndHosts:
+    """C2776: end hosts are the export's own kind, tagged in NetBox, never managed devices."""
+
+    def test_a_tagged_host_at_the_network_s_site_is_a_host_and_not_a_device(self, netbox_list):
+        doc = json.loads(_build(_with_hosts())[0]["bytes"])
+        hosts = X.hosts_of(doc)
+        assert [h["name"] for h in hosts] == ["h1", "h2"], "the other site's host is not read"
+        assert "h1" not in [d["name"] for d in doc["body"]["devices"]]
+        assert "h1" not in [i["device"] for i in doc["body"]["interfaces"]]
+        h1 = hosts[0]["interfaces"][0]
+        assert h1 == {"name": "eth0", "mac": "aa:bb:cc:00:00:01",
+                      "ip_addresses": ["192.0.2.101/24", "2001:db8::101/64"],
+                      "attached": ["ovs1", "eno4"]}
+        assert hosts[1]["interfaces"][0]["mac"] == "aa:bb:cc:00:00:02"
+        assert hosts[1]["interfaces"][0]["attached"] is None
+
+    def test_each_host_port_is_resolved_to_its_switch_s_dpid_and_port(self, netbox_list):
+        doc = json.loads(_build(_with_hosts())[0]["bytes"])
+        rows = {r["host"]: r for r in X.host_ports(doc)}
+        assert rows["h1"]["switch"] == "ovs1" and rows["h1"]["switch_interface"] == "eno4"
+        assert rows["h1"]["dpid"] == 3 and rows["h1"]["port_no"] == 3
+        assert rows["h1"]["error"] == "" and rows["h1"]["ip_addresses"] == [
+            "192.0.2.101/24", "2001:db8::101/64"]
+        assert rows["h2"]["dpid"] is None and "has no cable recorded in NetBox" in \
+            rows["h2"]["error"]
+
+    def test_a_host_on_a_switch_with_no_dpid_says_which_value_is_missing(self, netbox_list):
+        records = _with_hosts()
+        records["cables"][-1]["b_terminations"] = [
+            {"object": {"device": {"name": "arista-sw1"}, "name": "Ethernet18"}}]
+        doc = json.loads(_build(records)[0]["bytes"])
+        h1 = next(r for r in X.host_ports(doc) if r["host"] == "h1")
+        assert h1["dpid"] is None and h1["port_no"] == 18
+        assert h1["error"] == "arista-sw1 records no openflow.datapath_id"
+
+    def test_a_host_the_list_s_own_filter_also_returns_is_a_host_only(self):
+        records = _with_hosts()
+        records["hosts"] = [d for d in records["devices"] if d["name"] in ("h1", "h2")]
+        body = X.body_of(dict(records, interfaces=records["interfaces"],
+                              cables=records["cables"]))
+        assert [h["name"] for h in body["hosts"]] == ["h1", "h2"]
+        assert not {"h1", "h2", "elsewhere"} & {d["name"] for d in body["devices"]}, \
+            "a tagged device is never a managed device, read by either path"
+
+    def test_an_export_from_before_hosts_says_not_recorded_never_none(self, netbox_list):
+        doc = json.loads(_build()[0]["bytes"])
+        del doc["body"]["hosts"]
+        assert X.hosts_of(doc) is None and X.host_ports(doc) == []
+        assert X.hosts_of(json.loads(_build()[0]["bytes"])) == []
+
+    def test_a_host_s_change_is_named_in_the_export_s_changes(self, netbox_list):
+        old = json.loads(_build()[0]["bytes"])
+        new = json.loads(_build(_with_hosts())[0]["bytes"])
+        kinds = {k["kind"]: k for k in X.changes(old, new)["kinds"]}
+        assert kinds["hosts"]["added"] == ["h1", "h2"] and kinds["hosts"]["count"] == 2
 
 
 class TestTheFixtureIsMasked:

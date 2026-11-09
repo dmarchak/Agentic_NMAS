@@ -102,6 +102,13 @@ def fake_netbox(records: dict):
                 rows = [d for d in rows if d["name"] == params["name"]]
             elif "role" in params:
                 rows = [d for d in rows if d["role"]["slug"] == params["role"]]
+            if "tag" in params:
+                rows = [d for d in rows if params["tag"] in
+                        [t.get("slug") for t in d.get("tags") or []]]
+            if "site_id" in params:
+                sites = params["site_id"]
+                sites = set(sites if isinstance(sites, list) else [sites])
+                rows = [d for d in rows if (d.get("site") or {}).get("id") in sites]
             return copy.deepcopy(rows)
         if path == "dcim/interfaces/":
             return by_device(records["interfaces"])
