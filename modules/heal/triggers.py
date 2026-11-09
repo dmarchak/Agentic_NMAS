@@ -457,8 +457,13 @@ def from_adjacency_log(store: str, value: dict, now: float = None, *, planned=No
             continue
         peer = peers.get(str(a.get("neighbor") or ""), "")
         at = float(d.get("epoch") or 0)
+        # C2823: the drop's own facts, kept for the decision to name its cause (the interface
+        # it was logged on, the neighbour, who logged it and why). ``port``, never
+        # ``interface``: a logged drop is not a link's symptom (`decide._symptom`).
         base = {"kind": "adjacency_log", "epoch": at, "at": d.get("at") or _iso(at),
                 "source": store, "protocol": a.get("protocol") or "",
+                "port": a.get("interface") or "", "neighbor": str(a.get("neighbor") or ""),
+                "peer": peer, "logged_by": device, "reason": d.get("reason") or "",
                 "words": (f"{device} logged its {a.get('protocol')} adjacency to "
                           f"{a.get('neighbor')}" + (f" ({peer})" if peer else "")
                           + f" down at {d.get('at') or _iso(at)}: {d.get('reason') or ''}")}

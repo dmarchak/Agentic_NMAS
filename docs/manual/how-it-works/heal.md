@@ -79,6 +79,26 @@ one-sided security change that broke an adjacency?" (`heal_security_revert_adjac
 default): then such a change on an interface or routing process, on a device whose incident
 holds an adjacency down and no other device, is Tier 1 (`security_revert`), healed in Auto only
 where the policy names that kind.
+**What the decision says.** Its words are plain. First come the facts Mercury holds, each at its
+time: the change (who made it, as the configuration line named them, and what it changed) and
+each symptom. Then comes what Mercury did or would do, with the tier as a label after it. The
+fix kind, the guard and the mode are the record's own fields, under **Details for the record**.
+Where Mercury holds both ends of a cause, it adds a **likely cause** after the facts, labelled
+as a hypothesis. Both ends means one of two things:
+
+- a change on an interface, and a symptom on that interface after it. An ACL the same change
+  added and applied there, whose entries permit no OSPF, is said as a fact, and the hypothesis
+  is that the ACL drops OSPF there;
+- a router-id the change set, and a duplicate router-id report naming it.
+
+A symptom on another interface, or before the change, links nothing: Mercury never guesses.
+
+**A can't-fix whose likeliest cause is another device's change.** A symptom on a device whose
+configuration matches its intent may come from another device. When another device's change,
+made outside Mercury and not fixed yet, came at most 10 minutes before the symptom, the
+can't-fix leads with **Open <device> (likely cause)**, labelled as a hypothesis. The device is
+the one the symptom's own records name, or the only such device in the network. Mercury names
+none when several unnamed devices changed. **Acknowledge…** records the cause, if you know it.
 
 The rates per device and per network are not counted for an incident whose read found the
 device at its golden: it has nothing to heal, so a person's revert ends "nothing to heal", never
@@ -149,10 +169,14 @@ amber, "symptom remains", never green.
 ## The records {#records}
 
 Every incident is one row on **History**, kind Self-healing, its line the newest outcome with
-the mode on it ("dry run" is never read as Auto), opening to every step and its result, the
-program (masked) and its hash, and the records it wrote: the deploy receipt, the golden commit
-(`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the change record
-and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
+the mode on it ("dry run" is never read as Auto). A decision's own outcome (would have put it
+back, a proposal, can't fix) leads with what happened in plain words. Opened, the row says what
+happened (each fact at its time, then a likely cause labelled as a hypothesis where Mercury
+holds both ends of one) and what Mercury did or would do. **Details for the record**, closed
+until you open it, holds every step and its result, the incident and decision ids, the program
+(masked) and its hash, the policy, and the records the incident wrote: the deploy receipt, the
+golden commit (`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the
+change record and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
 item. The network's team is told as its Self-healing tab chooses ([Notifications](notifications)).
 
 An **action** (a bounce, a clear, a dampening change) is named as one on its row: its line names
@@ -172,17 +196,22 @@ allowed it (the policy, or the person who approved it), and its status.
 ## Dry run: Right or Wrong {#mark}
 
 In dry run nothing is sent; each would-heal is a record for a person to judge. It is an item on
-**Needs attention**, "Self-healing: dry run on <network>: it would have healed <device>",
-carried by the device's drift item, for up to 7 days. Open the record on the device's
-**History** (or History, kind Self-healing): under its steps, **Was this the right fix?**
+**Needs attention** for up to 7 days, carried by the device's drift item when there is one. Its
+line says what changed and what Mercury would have done, for example "edge1: “logging host
+192.0.2.10” was removed from the global configuration. Mercury would have put it back itself,
+but Default is watching only (dry run), so nothing was sent". **Was that right?** opens it.
+Opened, it says what happened, each fact at its time in your time zone, and then **Was this the
+right fix?** in place. The same question is under the record on the device's **History** (or
+History, kind Self-healing):
 
 - **Right** records that what it would have done was right, with your name.
 - **Wrong…** opens a reason: type why it was wrong (what it would have broken, or the fix that
   was right) and press **Mark it wrong**. Pressing Enter in the reason sends nothing.
 
-Each is a verified person's, sends nothing to a device, and is answered in place. The mark is
-recorded in the network's heal decisions; marked again, the newest mark counts, and every mark
-stays. The marks are counted per fix kind as the dry run's false-positive rate, which a network's
+Each is a verified person's, sends nothing to a device, and is answered in place. A mark is
+drawn on its control wherever the record is drawn again: the answer chosen shown selected, with
+"Marked right by <person> at <time>" beside it. Pressing the other answer changes it. Every mark
+is recorded in the network's heal decisions, the newest counting, and every mark stays. The marks are counted per fix kind as the dry run's false-positive rate, which a network's
 Self-healing tab shows against production's bar, and the record's Needs attention item leaves.
 A mark is refused, naming what it compared, for a record that is not a dry run's, or for a
 caller who is not a verified person. When the heal decisions cannot be read, the record says so,

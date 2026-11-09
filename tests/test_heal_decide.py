@@ -338,7 +338,7 @@ def one(running, src=None, **kw):
 class TestOutcomes:
     def test_dry_run_would_heal_with_its_program_and_hash(self, lab):
         d = one(GOLDEN + ROUTE4)
-        assert d["outcome"] == "would_heal" and "the mode is dry run" in d["words"]
+        assert d["outcome"] == "would_heal" and "watching only, in dry run" in d["words"]
         assert d["program"] == ["no ip route 192.0.2.128 255.255.255.128 192.0.2.10"]
         assert len(d["program_hash"]) >= 16 and d["removal_ids"]
 
@@ -351,7 +351,8 @@ class TestOutcomes:
     def test_auto_keeps_a_kind_it_does_not_allow_in_dry_run(self, lab):
         auto("Default", now=T0 - 60, kinds=("added_line",))
         d = one(changed(("logging host 192.0.2.50\n", "")))
-        assert d["outcome"] == "would_heal" and "missing_line is not allowed AUTO" in d["words"]
+        assert d["outcome"] == "would_heal" and \
+            "a missing line is not allowed to be fixed by itself" in d["words"]
 
     def test_a_tier_2_kind_the_policy_proposes_is_proposed(self, lab):
         d = one(changed((" router-id 192.0.2.6\n", " router-id 192.0.2.99\n")))
@@ -360,7 +361,8 @@ class TestOutcomes:
     def test_tier_4_is_never_automatic_n4(self, lab):
         # An account (an ACL, this test's example until C2839, is a proposal now).
         d = one(GOLDEN + "username audit privilege 15 secret 9 $9$abc\n")
-        assert d["outcome"] == "cant_fix" and "never automatic" in d["words"]
+        assert d["outcome"] == "cant_fix" and \
+            "Mercury does not fix credentials or AAA by itself" in d["words"]
         assert d["program"] == [], "nothing is computed for a fix that is never sent"
 
     def test_a_blocked_unit_cannot_be_fixed_yet(self, lab):

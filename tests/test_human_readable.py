@@ -415,105 +415,28 @@ def _surfaces(drawn):
 #: Today's bare identifiers, the allowed backlog: ``(surface, kind, context): count``. It only
 #: shrinks (tests/ratchet_lists.py, `shrinks`): each fixed one leaves, and a new key or a risen
 #: count needs a Test-Weakened trailer naming its row. The lookups (kind ``lookup``) are held
-#: here too. It starts at the full count (the operator, 2026-11-08, decision 1: "The backlog
-#: starts at the full count"), every row's body read as shown: 96 in 88 keys.
+#: here too. It started at the full count (the operator, 2026-11-08, decision 1: "The backlog
+#: starts at the full count"), every row's body read as shown: 96 in 88 keys. C2817 and C2823
+#: (2026-11-09) took out the heal records' own: their ids, hashes and steps under a collapsed
+#: "Details for the record" on Needs attention and History, the email's steps by what they do,
+#: and the two lookups drawn in place: 12 in 12 keys, the AI call's and the notification's
+#: History rows and the email's foot.
 KNOWN_BARE_IDENTIFIERS = {
-    # The device page: edge-b's and edge-d's History tab (each row's record and step log, and the
-    # AI call and notification rows).
-    ('device', 'decision_id', 'account alice on vty#) <step> ok: decision <decision_id> recorded AI analysis (advice;'): 1,
-    ('device', 'decision_id', 'account alice on vty#) <step> ok: decision <decision_id> recorded Was this the right fix?'): 1,
-    ('device', 'decision_id', 'admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry run Fix added_line Policy'): 1,
-    ('device', 'decision_id', 'admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry run Fix security_acl'): 1,
-    ('device', 'hex', '<decision_id> Mode dry run Fix added_line Policy <hex> confirmed by admin@example.com'): 1,
-    ('device', 'hex', '<decision_id> Mode dry run Fix security_acl Policy <hex> confirmed by admin@example.com'): 1,
+    # The device page: edge-d's History tab (the AI call and notification rows).
     ('device', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
-    ('device', 'hex', 'added_line (Tier #); the program # line(s), hash <hex> <step> would_heal: would heal:'): 1,
-    ('device', 'hex', 'admin@example.com Program # line(s), hash <hex> Program lines (masked) no ip route'): 1,
     ('device', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
-    ('device', 'hex', 'the departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line'): 1,
-    ('device', 'hex', 'the departure the grace period settled on (<hex>) <step> ok: # unit(s), security_acl'): 1,
-    ('device', 'incident_id', '#.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on edge-b taken <step> ok: no'): 1,
     ('device', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
     ('device', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s # min'): 1,
-    ('device', 'incident_id', 'by admin@example.com <step> ok: incident <incident_id> on edge-d taken <step> ok: no'): 1,
-    ('device', 'incident_id', 'confirmed by admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry'): 2,
     ('device', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
-    ('device', 'step', '(Tier #); the program # line(s), hash <hex> <step> would_heal: would heal: added_line'): 1,
-    ('device', 'step', '(masked) no ip route #.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on'): 1,
-    ('device', 'step', '(the line names the account alice on vty#) <step> ok: decision <decision_id> recorded'): 2,
-    ('device', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing cannot'): 1,
-    ('device', 'step', 'Policy <hex> confirmed by admin@example.com <step> ok: incident <incident_id> on'): 1,
-    ('device', 'step', 'c#ffee is the approved state: at intent <step> ok: no topology hold, not many'): 2,
-    ('device', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line (Tier'): 1,
-    ('device', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), security_acl (Tier'): 1,
-    ('device', 'step', 'ok: incident <incident_id> on edge-b taken <step> ok: no kill switch, the mode dry_run,'): 1,
-    ('device', 'step', 'ok: incident <incident_id> on edge-d taken <step> ok: no kill switch, the mode dry_run,'): 1,
-    ('device', 'step', 'the grace period settled, under every rate <step> ok: edge-b read again: the departure'): 1,
-    ('device', 'step', 'the grace period settled, under every rate <step> ok: edge-d read again: the departure'): 1,
-    ('device', 'step', 'the mode dry_run, no halt, no planned work <step> ok: the golden c#ffee is the approved'): 2,
-    # The can't-fix's email: the step log as "N. <step>", the ids its steps' words carry, and
-    # the incident's id in the foot.
-    ('email', 'decision_id', 'on a cisco_io: cant_fix <step>: decision <decision_id> recorded: ok What to do: decide'): 1,
-    ('email', 'hex', 'the departure the grace period settled on (<hex>): ok <step>: # unit(s), security_acl'): 1,
-    ('email', 'incident_id', 'ACL What Mercury tried: <step>: incident <incident_id> on edge-d taken: ok <step>: no'): 1,
+    # The can't-fix's email: the incident's id in the foot.
     ('email', 'incident_id', 'is not set: notify_link_base) Incident <incident_id> · sent #-#-#T#:#:#Z'): 1,
-    ('email', 'step', '<step>: # unit(s), security_acl (Tier #): ok <step>: self-healing cannot fix it yet:'): 1,
-    ('email', 'step', 'c#ffee is the approved state: at intent: ok <step>: no topology hold, not many devices'): 1,
-    ('email', 'step', 'grace period settled, under every rate: ok <step>: edge-d read again: the departure'): 1,
-    ('email', 'step', 'interface.ip-access-group on a cisco_io: cant_fix <step>: decision <decision_id> recorded:'): 1,
-    ('email', 'step', 'incident <incident_id> on edge-d taken: ok <step>: no kill switch, the mode dry_run,'): 1,
-    ('email', 'step', 'kind: a security ACL What Mercury tried: <step>: incident <incident_id> on edge-d'): 1,
-    ('email', 'step', 'mode dry_run, no halt, no planned work: ok <step>: the golden c#ffee is the approved'): 1,
-    ('email', 'step', 'the grace period settled on (<hex>): ok <step>: # unit(s), security_acl (Tier'): 1,
-    # History: each heal row's record and step log, the AI call and notification rows, and
-    # the Person filter's choice.
-    ('history', 'decision_id', 'account alice on vty#) <step> ok: decision <decision_id> recorded AI analysis (advice;'): 1,
-    ('history', 'decision_id', 'account alice on vty#) <step> ok: decision <decision_id> recorded Was this the right fix?'): 1,
-    ('history', 'decision_id', 'admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry run Fix added_line Policy'): 1,
-    ('history', 'decision_id', 'admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry run Fix security_acl'): 1,
-    ('history', 'hex', '<decision_id> Mode dry run Fix added_line Policy <hex> confirmed by admin@example.com'): 1,
-    ('history', 'hex', '<decision_id> Mode dry run Fix security_acl Policy <hex> confirmed by admin@example.com'): 1,
+    # History: the AI call and notification rows, and the Person filter's choice.
     ('history', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
-    ('history', 'hex', 'added_line (Tier #); the program # line(s), hash <hex> <step> would_heal: would heal:'): 1,
-    ('history', 'hex', 'admin@example.com Program # line(s), hash <hex> Program lines (masked) no ip route'): 1,
     ('history', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
-    ('history', 'hex', 'the departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line'): 1,
-    ('history', 'hex', 'the departure the grace period settled on (<hex>) <step> ok: # unit(s), security_acl'): 1,
-    ('history', 'incident_id', '#.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on edge-b taken <step> ok: no'): 1,
     ('history', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
     ('history', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s Open'): 1,
-    ('history', 'incident_id', 'by admin@example.com <step> ok: incident <incident_id> on edge-d taken <step> ok: no'): 1,
-    ('history', 'incident_id', 'confirmed by admin@example.com Incident <incident_id> Decisions <decision_id> Mode dry'): 2,
     ('history', 'incident_id', 'confirmed by admin@example.com job:heal-notice-<incident_id> Kind Every kind The repository'): 1,
     ('history', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
-    ('history', 'step', '(Tier #); the program # line(s), hash <hex> <step> would_heal: would heal: added_line'): 1,
-    ('history', 'step', '(masked) no ip route #.#.#.# #.#.#.# #.#.#.# <step> ok: incident <incident_id> on'): 1,
-    ('history', 'step', '(the line names the account alice on vty#) <step> ok: decision <decision_id> recorded'): 2,
-    ('history', 'step', '<step> ok: # unit(s), security_acl (Tier #) <step> cant_fix: self-healing cannot'): 1,
-    ('history', 'step', 'Policy <hex> confirmed by admin@example.com <step> ok: incident <incident_id> on'): 1,
-    ('history', 'step', 'c#ffee is the approved state: at intent <step> ok: no topology hold, not many'): 2,
-    ('history', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), added_line (Tier'): 1,
-    ('history', 'step', 'departure the grace period settled on (<hex>) <step> ok: # unit(s), security_acl (Tier'): 1,
-    ('history', 'step', 'ok: incident <incident_id> on edge-b taken <step> ok: no kill switch, the mode dry_run,'): 1,
-    ('history', 'step', 'ok: incident <incident_id> on edge-d taken <step> ok: no kill switch, the mode dry_run,'): 1,
-    ('history', 'step', 'the grace period settled, under every rate <step> ok: edge-b read again: the departure'): 1,
-    ('history', 'step', 'the grace period settled, under every rate <step> ok: edge-d read again: the departure'): 1,
-    ('history', 'step', 'the mode dry_run, no halt, no planned work <step> ok: the golden c#ffee is the approved'): 2,
-    # Needs attention: the rows' bodies (Why this happened, Details), the proposal's card and
-    # the two What to do lookups.
-    ('needs_attention', 'decision_id', "admin@example.com (“Lab #'s dry run”); decision <decision_id> , incident <incident_id> . Its"): 1,
-    ('needs_attention', 'decision_id', 'record: no AI. Details list Default decision <decision_id> kind added_line tier # mode dry_run'): 1,
-    ('needs_attention', 'decision_id', 'record: no AI. Details list Default decision <decision_id> kind process_reset tier # mode'): 1,
-    ('needs_attention', 'hex', "Approving is bound to this proposal's hash ( <hex> ) and to edge-c as read # min"): 1,
-    ('needs_attention', 'hex', 'back # line(s) in router ospf # Program <hex> · proposed # min ago , # line(s)'): 1,
-    ('needs_attention', 'hex', 'names the account alice on vty#); program <hex>. Nothing is sent until a person'): 1,
-    ('needs_attention', 'hex', 'names the account alice on vty#); program <hex>. Nothing was sent: the network'): 1,
-    ('needs_attention', 'hex', "on vty#. Proposed under Default's policy <hex> , confirmed by admin@example.com"): 1,
-    ('needs_attention', 'hex', "other routing process is reset Proposal hash <hex> Mercury's diagnosis is not recorded"): 1,
-    ('needs_attention', 'incident_id', 'advisory. Details list Default incident <incident_id> outcome cant_fix kind security_acl'): 1,
-    ('needs_attention', 'incident_id', "run”); decision <decision_id> , incident <incident_id> . Its record on edge-c's History"): 1,
-    ('needs_attention', 'lookup', "Open edge-b Read the record on edge-b's History, then mark it right or wrong Open…"): 1,
-    ('needs_attention', 'lookup', "its removal is measured on the platform (read the steps on edge-d's History first) Open… Diagnose… on edge-d:"): 1,
 }
 
 
@@ -525,14 +448,21 @@ def _literal(counter) -> str:
 
 #: What each surface must hold, so a page that drew nothing, or drew without the records,
 #: fails here before the scan is believed.
+#: C2817: each record's line in plain words (the mocks' rows), the same on Needs attention and
+#: History. C2839: a security ACL is Tier 2, a person's, and this one is not fixed until its
+#: removal shape is measured.
+CANT_FIX = ("edge-d: “ip access-group EDGE-IN in” was added to interface GigabitEthernet2. "
+            "Mercury cannot fix it by itself: it needs a person")
+WOULD_HEAL = ("edge-b: “ip route 192.0.2.128 255.255.255.128 192.0.2.10” was added to the global "
+              "configuration. Mercury would have put it back itself, but Default is watching "
+              "only (dry run), so nothing was sent")
 DRAWS = {
-    "needs_attention": ("Self-healing could not fix edge-d", "A fix waits for a person on edge-c",
-                        "it would have healed edge-b", "Approve and run on edge-c"),
-    "history": ("Self-healing (dry run): edge-b would heal",
-                "Self-healing (dry run): edge-d can't fix"),
-    "device": ("Self-healing (dry run): edge-b would heal",
-               "Self-healing (dry run): edge-d can't fix"),
-    "email": ("Mercury: could not fix", "What Mercury tried:", "Open in Mercury:"),
+    "needs_attention": (CANT_FIX, "Mercury has a fix that restarts OSPF on edge-c: it needs your "
+                                  "decision", WOULD_HEAL, "Approve and run on edge-c"),
+    "history": (WOULD_HEAL, CANT_FIX),
+    "device": (WOULD_HEAL, CANT_FIX),
+    "email": ("Mercury: could not fix", "What happened: ", "What Mercury tried:",
+              "Open in Mercury:"),
 }
 
 
@@ -560,11 +490,22 @@ def test_each_surface_is_drawn_with_the_heal_records(drawn):
 
 
 def test_the_scan_finds_identifiers_on_every_surface(drawn):
-    """A floor on the population: each surface carries a bare identifier today, so a scan that
+    """A floor on the population: each surface whose backlog holds a key is found carrying it,
+    and on every surface, Needs attention's among them now that its heal records draw none
+    bare (C2817), a bare identifier planted in each body it draws is found, so a scan that
     found none would be blind, not clean."""
-    got = found(_surfaces(drawn))
-    for surface in SURFACES:
+    s = _surfaces(drawn)
+    got = found(s)
+    for surface in {k[0] for k in KNOWN_BARE_IDENTIFIERS}:
         assert any(k[0] == surface for k in got), f"nothing found on {surface}"
+    for surface, bodies in s.items():
+        for where, body, plain in bodies:
+            planted = (body + "\nIncident hi-0123456789ab · planted\n" if plain else
+                       body.replace("</body>", "<p>hd-0123456789ab</p></body>", 1)
+                       if "</body>" in body else body + "<p>hd-0123456789ab</p>")
+            more = sum(found({surface: [(where, planted, plain)]}).values()) - sum(
+                found({surface: [(where, body, plain)]}).values())
+            assert more == 1, f"{surface}: {where}: a planted identifier found {more} times"
 
 
 # ── The ratchet ────────────────────────────────────────────────────────────────────────────

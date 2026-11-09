@@ -227,7 +227,7 @@ ROW_KINDS = {
     # Board H, H3 (docs/HEAL_TO_INTENT.md section 7): what self-healing would have done, in
     # dry run, carried by the device's drift row (it attaches there, keeping the row's action).
     ("heal", "would_heal"): ("self-healing, in dry run, would have healed a device",
-                             "read what it would have done, then mark it right or wrong"),
+                             "mark whether what it would have done was the right fix"),
     # Board H, H6 (H4's finding): a heal whose job ended before it recorded its outcome, which
     # left its decision taken and its incident claimed with nothing to show it.
     ("heal", "interrupted"): ("a heal's job ended before it recorded what it did",
@@ -235,8 +235,8 @@ ROW_KINDS = {
                               "acknowledge with what you found"),
     # Board H, H5 and H9 (artboard E): a Tier 2 fix waits for a person, its card on the row.
     ("heal", "proposal"): ("a fix that needs a person waits (Tier 2, Propose)",
-                           "review the fix, then approve it by its hash with a reason, or "
-                           "decline it with a reason"),
+                           "review the fix, then approve it (a reason optional) or decline it "
+                           "with a reason"),
     # Board H, H9 (artboard E, C2471; docs/HEAL_TO_INTENT.md section 9's table): self-healing
     # halted on a network by a guard (a rate cap, a repeat, a rollback) until a person lifts it.
     ("heal", "halted"): ("self-healing stopped on a network (a rate cap, a repeat, a rollback)",
@@ -612,8 +612,9 @@ CLEARS = {
                               "later heal of it is healed and verified; or acknowledged with "
                               "what was found on the device"),
     ("heal", "proposal"): (("resolves",),
-                           "a person approves it on its card (its heal then runs as them, and "
-                           "History records what it did), or declines it there with a reason; "
+                           "a person approves it on its card (Mercury then sends it, recorded "
+                           "as approved by them, and History records what it did), or declines "
+                           "it there with a reason; "
                            "or self-healing's next read of the device finds it back at intent "
                            "(withdrawn) or changed again (withdrawn and made again, C2470)"),
     ("heal", "halted"): (("resolves",),
@@ -5600,6 +5601,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
     mode on the network ("self-healing: dry run on <network>"): a dry run is never read as
     AUTO."""
     from modules.heal import decisions as HD
+    from modules.heal import said as SAID
 
     started = time.time()
     now = now or started
@@ -5621,20 +5623,26 @@ def heal_source(got=None, now=None, found=None) -> dict:
         units = "; ".join(u.get("words", "") for u in d.get("units") or [])
         # An action is named as an action wherever it is drawn (19.4, H20): never "healed".
         did = "bounced" if (d.get("action") or {}).get("kind") else "healed"
+        # C2817 (mock 2): what happened and what Mercury would have done, in plain words, and
+        # the marks on the row itself; the record's ids and hash under "Details for the record"
+        # (rule 2), never "read the record on History" (rule 5, C2823's amendment).
         r = row(source="heal", kind="would_heal", key=d.get("id") or "?", level="warning",
-                what=(f"Self-healing: dry run on {lst}: it would have {did} {host}"
-                      + (f": {units}" if units else "")),
-                cause=(f"{d.get('words') or ''}; program {d.get('program_hash') or '?'}. Nothing "
-                       "was sent: the network is in dry run, so what it would have done is "
-                       "recorded for a person to judge"),
-                action={"label": f"Read the record on {host}'s History, then mark it right or "
-                                 "wrong", "href": f"/v2/device/{host}?tab=history"},
+                what=(d.get("headline") or
+                      (f"Self-healing: dry run on {lst}: it would have {did} {host}"
+                       + (f": {units}" if units else ""))),
+                cause=(f"{d.get('outcome_words') or d.get('words') or ''}. Unanswered, this "
+                       "record does not count toward letting Mercury act alone"),
+                action={"label": "Was that the right fix? Mark it here", "open": "heal_mark",
+                        "list": lst, "decision": d.get("id"), "device": host},
                 devices=[host] if host else [], since=at,
                 clears_at=at + HD.MARK_DAYS * 86400,
-                operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
-                          "tier": d.get("tier"), "mode": d.get("mode")},
+                operands={"list": lst, "decision": d.get("id"), "incident": d.get("incident"),
+                          "kind": d.get("kind"), "tier": d.get("tier"), "mode": d.get("mode"),
+                          "program_hash": d.get("program_hash") or ""},
                 attach_to=f"drift:{lst}:drifted:{host}" if host else None)
         r["attach_action"] = False
+        r["heal_cause"] = SAID.drawn(d.get("cause"))
+        r["heal_mark"] = {"list": lst, "decision": d.get("id"), "mark": None, "unreadable": ""}
         out.append(r)
     marked = len(out)
     out += _heal_interrupted_rows(lst, rows, found)
@@ -5783,6 +5791,8 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
     take), until a person approves or declines it on its card. Its action opens the card in
     place (`open: heal_proposal`), which reads the proposal when the row is opened; the row
     itself reads nothing more."""
+    from modules.heal import said as SAID
+
     out = []
     for d in rows:
         if d.get("outcome") != "propose" or d.get("taken"):
@@ -5792,24 +5802,27 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [] if u.get("words"))
         from modules.heal.propose import security_choice
+        # C2817 (mock 1): in Critical, the item with the action on it; what happened and what
+        # the fix does in plain words; the hash and ids under "Details for the record".
         # C2839: a security control's proposal names its two answers, each a person's.
-        label = (f"Review the security change on {host}, then remove it (back to intent) by "
-                 "its hash with a reason, or keep it: add it to intent"
+        label = (f"Review the security change on {host}, then remove it (back to intent) with "
+                 "a reason, or keep it: add it to intent"
                  if security_choice(d) else
-                 f"Review the fix for {host}, then approve it by its hash with a reason, or "
-                 "decline it with a reason")
+                 f"Review the fix for {host}, then approve it (a reason optional) or decline "
+                 "it with a reason")
         out.append(row(
-            source="heal", kind="proposal", key=d.get("id") or "?", level="warning",
+            source="heal", kind="proposal", key=d.get("id") or "?", level="danger",
             devices=[host] if host else [], since=float(d.get("epoch") or 0) or None,
-            what=(f"A fix waits for a person on {host}" + (f": {units}" if units else "")),
-            cause=(f"{d.get('words') or 'a fix that needs a person'}; program "
-                   f"{d.get('program_hash') or '?'}. Nothing is sent until a person approves "
-                   f"it by its hash with a reason (self-healing on {lst}, Tier 2: Propose)"),
+            what=(d.get("headline") or
+                  (f"A fix waits for a person on {host}" + (f": {units}" if units else ""))),
+            cause=(d.get("outcome_words") or d.get("words") or "a fix that needs a person"),
             action={"label": label,
                     "open": "heal_proposal", "list": lst, "decision": d.get("id"),
                     "device": host},
-            operands={"list": lst, "decision": d.get("id"), "kind": d.get("kind"),
-                      "tier": d.get("tier"), "mode": d.get("mode")}))
+            operands={"list": lst, "decision": d.get("id"), "incident": d.get("incident"),
+                      "kind": d.get("kind"), "tier": d.get("tier"), "mode": d.get("mode"),
+                      "program_hash": d.get("program_hash") or ""}))
+        out[-1]["heal_cause"] = SAID.drawn(d.get("cause"))
     return out
 
 
@@ -5915,7 +5928,10 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
     # the network: Diagnose…'s runbook and target (H16's second part). Unreadable or gone, the
     # row's Diagnose… opens the dialog on its first choice.
     from modules.heal import incidents as INC
-    triggers = {i.get("id"): i.get("triggers") or [] for i in INC.read(lst)["incidents"]}
+    from modules.heal import said as SAID
+    every = INC.read(lst)["incidents"]
+    triggers = {i.get("id"): i.get("triggers") or [] for i in every}
+    by_id = {i.get("id"): i for i in every}
     out = []
     for e in got["entries"]:
         if e.get("outcome") not in HA.CANT_FIX or not e.get("incident"):
@@ -5927,21 +5943,35 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
         failed = [s for s in steps if s.get("result") not in ("ok", "")]
         todo = (heal_notice.TODO_OUTCOME.get(e.get("outcome"))
                 or heal_notice.TODO.get(e.get("kind") or "", heal_notice.TODO_DEFAULT))
+        # C2817 (mock 3a) and C2823: what happened, in plain words, the facts drawn in place
+        # (never "read the steps on History first", rule 5); the steps and ids under "Details
+        # for the record"; and, where another device's change is the likeliest cause, that
+        # device's button first, labelled as a hypothesis (the operator, 2026-11-09).
+        last = failed[-1] if failed else {}
+        likely = SAID.likely_elsewhere(by_id.get(e["incident"]) or {}, every)
+        # The decision's own words only where the decision ended it (an act's outcome, a
+        # symptom remaining or a rollback, says its own).
+        decided = e.get("outcome") == "cant_fix"
         r = row(source="heal", kind="cant_fix", key=e["incident"], level="danger",
                 event=e["incident"], devices=[host] if host else [], since=at or None,
-                what=f"Self-healing could not fix {host} on {lst}: {e.get('words') or ''}",
-                cause=(f"Mercury's facts: {len(steps)} step(s) tried in "
-                       f"{steplog.MODE_WORDS.get(e.get('mode'), e.get('mode') or 'its mode')}, "
-                       f"ending {steplog.MARKS.get(e.get('outcome'), e.get('outcome'))}"
-                       + (f"; the last that did not pass: {failed[-1].get('step')}: "
-                          f"{failed[-1].get('words') or ''}" if failed else "")
+                what=((e.get("headline") if decided else "")
+                      or f"Self-healing could not fix {host} on {lst}: {e.get('words') or ''}"),
+                cause=(((e.get("outcome_words") if decided else "") or e.get("words") or "")
+                       + (f". Where it stopped: {last.get('words')}"
+                          if last.get("words") and last.get("step") != "decide"
+                          and last.get("words") not in (e.get("words") or "") else "")
                        + ". The AI analysis below is advisory: a person decides."),
-                action={"label": f"{todo[0].upper()}{todo[1:]} (read the steps on {host}'s "
-                                 "History first)",
-                        "href": f"/v2/device/{host}?tab=history"},
+                # Its buttons are the row's own: the likeliest cause's device, the device,
+                # Diagnose… and Acknowledge… (mock 3a); no second "Open…".
+                action={"label": f"{todo[0].upper()}{todo[1:]}"},
                 operands={"list": lst, "incident": e["incident"],
                           "outcome": e.get("outcome"), "kind": e.get("kind"),
-                          "mode": e.get("mode")})
+                          "mode": e.get("mode"),
+                          "steps": [f"{s.get('step')}: {s.get('result')}: {s.get('words')}"
+                                    for s in steps]})
+        r["heal_cause"] = SAID.drawn(e.get("cause"))
+        r["likely"] = likely
+        r["ack_placeholder"] = "The cause, if you know it (recorded with your name)"
         r["heal_analysis"] = {"network": lst, "incident": e["incident"]}
         # H17 (19.3, N14): Mercury's diagnosis attached to the incident, from the entry
         # already read; an Alert incident's (Tier 3) runs by itself before its notice, so one
@@ -6906,6 +6936,9 @@ def _attach(rows: list) -> list:
     for r in rows:
         target = by_id.get(r.get("attach_to") or "")
         if target is None or target is r:
+            # Whether it gives its target its action is this fold's alone: a row standing
+            # alone carries no such marker to its page.
+            r.pop("attach_action", None)
             kept.append(r)
             continue
         # Its id and kind kept, so Needs attention's record (C1192) sees a folded row as
@@ -6913,6 +6946,10 @@ def _attach(rows: list) -> list:
         target["attached"].append({"id": r["id"], "kind": r["kind"], "source": r["source"],
                                    "what": r["what"], "since": r["since"],
                                    "devices": r["devices"]})
+        # C2817 (rule 5): a dry-run record attached to its device's drift row brings its
+        # Right / Wrong marks there, so the person marks it where they read it.
+        if r.get("heal_mark"):
+            target.setdefault("heal_marks", []).append(dict(r["heal_mark"], what=r["what"]))
         # C2824: a drift row offering its two actions because the change broke something keeps
         # them; the queued item's Capture would record the fault as the approved state.
         if r.get("attach_action", True) and \

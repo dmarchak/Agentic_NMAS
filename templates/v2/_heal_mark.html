@@ -1,31 +1,37 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, clock -%}
 {#- A dry-run record's Right / Wrong (board H, artboard C's dry-run record: "Was this the right
     fix?" Right, Wrong…, approved by the operator 2026-11-03; part H9, C2399;
     docs/fidelity/tab-history.md). Drawn under a self-healing incident's History row whose
-    outcome is would heal (dry run) by templates/v2/_timeline.html, and again by
-    routes/heal_proposal_v2.mark with its answer in place: marked, or the refusal (naming what
-    it compared) with the reason typed kept. Wrong… opens its reason; the reason is outside any
-    form, so Enter in it submits nothing (C2472's shape), and the button sends it by
-    hx-include. Marked again, the newest mark counts; every mark stays in the record. -#}
+    outcome is would heal (dry run) by templates/v2/_timeline.html, on its Needs attention row
+    by templates/v2/_attention.html (C2817: marked where it is read, never "mark it on
+    History"), and again by routes/heal_proposal_v2.mark with its answer in place: marked, or
+    the refusal (naming what it compared) with the reason typed kept. Wrong… opens its reason;
+    the reason is outside any form, so Enter in it submits nothing (C2472's shape), and the
+    button sends it by hx-include. C2809: a mark is drawn ON its control, the answer chosen
+    shown selected (`aria-pressed`) with who and when beside it, however the record is drawn
+    (a live refresh, a page load); pressing the other answer changes it, and every mark stays
+    in the record. -#}
 {%- set mid = 'heal-mark-' ~ decision_id -%}
+{%- set chose = mark.right if mark else none -%}
 <div class="heal-mark" id="{{ mid }}">
 {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not marked:</strong> {{ refused }}.</p></div>
 {%- endif %}
 {%- if marked %}
-  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>Marked {{ 'right' if mark.right else 'wrong' }} by you</strong> at {{ mark.at }}{% if mark.why %}, “{{ mark.why }}”{% endif %}. Counted in {{ list_name }}'s dry run, per fix kind, as the rate its enablement reads; this record's Needs attention item leaves.</p></div>
-{%- elif mark %}
-  <p class="small heal-mark-said">Marked {{ 'right' if mark.right else 'wrong' }} by {{ mark.by }} at {{ mark.at }}{% if mark.why %}, “{{ mark.why }}”{% endif %}. Marked again, the newest mark counts.</p>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>Marked {{ 'right' if mark.right else 'wrong' }} by you</strong>. Counted in {{ list_name }}'s dry run, per fix kind, as the rate its enablement reads; this record's Needs attention item leaves.</p></div>
 {%- elif unreadable %}
   <p class="small warn-text">{{ icon('warn', 14) }} Whether this record is marked cannot be read: {{ unreadable }}. Not the same as unmarked.</p>
 {%- endif %}
   <div class="att-action heal-mark-act">
     <span class="muted small">Was this the right fix?</span>
-    <span class="op-act"><button type="button" class="btn btn-small" data-op="heal" hx-post="{{ url_for('heal_proposal_v2.mark', list_name=list_name, decision_id=decision_id) }}" hx-vals='{"right": "yes"}' hx-target="#{{ mid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records that what self-healing would have done was right, with your name; sends nothing to a device"{{ gate('configure') }}><span class="op-idle">Right</span><span class="op-busy">Marking…</span></button>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}</span>
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="heal" aria-pressed="{{ 'true' if chose == true else 'false' }}" hx-post="{{ url_for('heal_proposal_v2.mark', list_name=list_name, decision_id=decision_id) }}" hx-vals='{"right": "yes"}' hx-target="#{{ mid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records that what self-healing would have done was right, with your name; sends nothing to a device"{{ gate('configure') }}><span class="op-idle">{% if chose == true %}{{ icon('tick', 14) }} {% endif %}Right</span><span class="op-busy">Marking…</span></button>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}</span>
     <details class="heal-mark-wrong" data-keep="{{ mid }}-wrong"{% if refused and why %} open{% endif %}>
-      <summary class="btn btn-small btn-outline">Wrong…</summary>
+      <summary class="btn btn-small btn-outline" aria-pressed="{{ 'true' if chose == false else 'false' }}">{% if chose == false %}{{ icon('tick', 14) }} {% endif %}Wrong…</summary>
       <label class="heal-field" for="{{ mid }}-why">Why it was wrong<input id="{{ mid }}-why" name="why" type="text" autocomplete="off" placeholder="what it would have broken, or the fix that was right" value="{{ why or '' }}"></label>
       <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal" hx-post="{{ url_for('heal_proposal_v2.mark', list_name=list_name, decision_id=decision_id) }}" hx-vals='{"right": "no"}' hx-include="#{{ mid }}-why" hx-target="#{{ mid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records that what self-healing would have done was wrong, with your reason and name; sends nothing to a device"{{ gate('configure') }}><span class="op-idle">Mark it wrong</span><span class="op-busy">Marking…</span></button>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}</span>
     </details>
+    {%- if mark %}
+    <span class="small heal-mark-said">Marked {{ 'right' if mark.right else 'wrong' }} by {{ 'you' if marked else (mark.by or 'an unrecorded person') }} at {{ clock(mark.at) }}{% if mark.why %}, “{{ mark.why }}”{% endif %}</span>
+    {%- endif %}
   </div>
 </div>

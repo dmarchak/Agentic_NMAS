@@ -32,7 +32,15 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `681ef96c7d48387383d3c9eb2c7705820ab540480cb92a4699c1b60a6aaa7fe2`
+Templates sha256: `49d92b598bb7934177e176c424e7927e463e8e7d05cf128f9b226bddee39acfc`
+
+Compared again 2026-11-09 (C2817, C2809, C2823), by the template diff: the regions and verdicts
+are tab-history.md's of the same date (one template, `_timeline.html`, draws both): a
+self-healing row its decision ended leads with its plain line, its cause's facts first when
+opened, its mark drawn on its control, its record under a collapsed **Details for the
+record**; every other kind unchanged. **deviation** (log: C2817 12). Templates sha256 before:
+`681ef96c7d48387383d3c9eb2c7705820ab540480cb92a4699c1b60a6aaa7fe2`.
+
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: the timeline's foot in
 `_timeline.html` carries `data-key="tl-foot"`, so the live merge keeps the foot Load more drew in
 its place instead of drawing the first page's again; nothing drawn moves. Compared by reading

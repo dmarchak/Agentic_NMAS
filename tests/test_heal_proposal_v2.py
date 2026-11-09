@@ -79,10 +79,12 @@ def test_a_proposal_is_one_row_naming_the_fix_and_how_it_clears(app_client, meas
 
     d = proposed()
     (r,) = _rows()
-    assert r["what"].startswith("A fix waits for a person on edge-b: a fix that takes effect "
-                                "only through a process reset")
+    # C2817 (mock 1): what happened and that it needs a decision, in plain words, in Critical.
+    assert r["what"] == ("edge-b: in router ospf 1, “router-id 192.0.2.6” was changed to "
+                         "“router-id 192.0.2.99”. Mercury has a fix that restarts OSPF on "
+                         "edge-b: it needs your decision")
     assert r["action"]["open"] == "heal_proposal" and r["action"]["decision"] == d["id"]
-    assert r["level"] == "warning" and r["devices"] == ["edge-b"]
+    assert r["level"] == "danger" and r["devices"] == ["edge-b"]
     assert ("heal", "proposal") in ROW_KINDS
     assert r["clears"]["when"] == CLEARS[("heal", "proposal")][1]
     assert "approves it on its card" in r["clears"]["when"]
@@ -97,7 +99,7 @@ def test_needs_attention_draws_review_the_fix_and_the_card_it_opens(app_client, 
     r = app_client.get("/v2/attention")
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
-    assert "A fix waits for a person on edge-b" in html
+    assert "Mercury has a fix that restarts OSPF on edge-b: it needs your decision" in html
     # Review the fix… jumps to the card's slot, which the row loads when it is opened, naming
     # its opener (tests/test_next_steps_act.py's OPENERS).
     assert f'class="btn btn-small btn-outline att-jump" data-op="heal-proposal" ' \
@@ -126,12 +128,18 @@ def test_the_card_says_what_approving_sends_and_to_which_device(app_client, meas
     assert _hidden(html, "hash") == v["hash"]
     for line in v["program"]:
         assert line.strip() in html, line
-    assert "! then: clear ip ospf 1 process (its prompt measured on edge-b, 2026-11-10T00:00:00Z)" \
-        in html
-    assert "every OSPF adjacency of process 1 on edge-b" in html
+    # C2817 (mock 1): the commands inline under Show the commands, the reset's prompt measured
+    # where and when (the viewer's time, UTC on hover); what it affects with the measured
+    # settle time; Approve, Decline and How does this work? (Check drift now left the card).
+    cmds = html.split(">Show the commands</summary>")[1].split("</details>")[0]
+    assert "<span class=\"mono\">clear ip ospf 1 process</span>, its prompt measured on edge-b " \
+           "at <time class=\"clock\" datetime=\"2026-11-10T00:00:00Z\" data-clock " \
+           "title=\"2026-11-10 00:00:00 UTC\">00:00 UTC</time>" in cmds
+    assert "Every OSPF adjacency of process 1 on edge-b" in html
+    assert f"back within about {v['reset']['settle_s']} s" in html
     assert "a reset cannot be undone" in html
     assert ">Approve and run on edge-b<" in html and ">Decline<" in html
-    assert "Check drift now on edge-b" in html and "op=drift_check" in html
+    assert "Check drift now on edge-b" not in html
     assert 'data-holds-live="review"' in html
     assert f'hx-post="{_base(d)}/approve"' in html and f'hx-post="{_base(d)}/decline"' in html
     # What is confirmed is what is sent: pressed, Approve's form sends the hash drawn, and the
@@ -157,10 +165,10 @@ def test_in_dry_run_the_card_says_plainly_that_approving_sends(app_client, measu
     v = propose.view("Default", d["id"])
     assert v["dry_run"] is True and v["confirmable"]
     _r, html = _card(app_client, d)
-    words = html.split("This sends, although Default is in dry run:</strong>")
+    words = html.split("Watching only on Default (dry run):</strong>")
     assert len(words) == 2, "the dry-run warning is drawn once"
-    assert words[1].split("</p>")[0].startswith(
-        f" approving runs the program and {v['reset']['label']} on edge-b as you")
+    assert words[1].split("</p>")[0] == (" Mercury sends nothing by itself. <strong>Approving "
+                                         "this sends it.</strong>")
     # said before the control it is about
     assert "Approve and run on edge-b" not in words[0] and "Approve and run on edge-b" in words[1]
     monkeypatch.setattr("modules.heal.propose.Sources",
@@ -185,7 +193,7 @@ def test_an_unmeasured_reset_draws_approve_disabled_saying_why(app_client, unmea
     assert "Not confirmable:</strong>" in html and "is not measured on cisco_iosxe" in html
     approve = html.split("Approve and run on edge-b")[0].rsplit("<button", 1)[1]
     assert " disabled " in approve and "is not measured" in approve
-    assert "! then: clear ip ospf 1 process (not measured)" in html
+    assert "<span class=\"mono\">clear ip ospf 1 process</span>, not measured." in html
     # Sent anyway (as a script could), it is refused with nothing taken.
     r = app_client.post(_base(d) + "/approve",
                         data={"hash": _hidden(html, "hash"), "reason": REASON}, headers=HX)
@@ -225,8 +233,12 @@ def test_approve_pressed_starts_the_heal_as_the_person_and_the_row_clears(app_cl
     out = r.get_data(as_text=True)
     try:
         assert r.status_code == 200, out
-        assert "Approved by you:</strong> its heal runs as you on edge-b (job" in out
-        assert "j-1" in out and "Approve and run" not in out
+        # C2817 (rule 4): Mercury applies it, recorded as approved by the person; the job and
+        # the hash are the record's, under its collapsed disclosure.
+        assert "<strong>You approved it.</strong> Mercury is applying it on edge-b now, " \
+               "recorded as approved by you" in out
+        rec = out.split("<summary>Details for the record</summary>")[1]
+        assert "j-1" in rec and "Approve and run" not in out
         assert "drift" in r.headers["X-NMAS-Invalidates"]
         (approval,) = app_client.started
         assert approval["by"] == TEST_PERSON and approval["reason"] == REASON
@@ -349,7 +361,7 @@ def test_enter_in_the_reason_field_approves_nothing_and_approve_pressed_does(
             assert b.js(f"return document.querySelector('{field}').value") == REASON, \
                 "the card keeps what was typed"
             b.click(approve)
-            b.wait_for(f"return /Approved by you/.test(document.querySelector("
+            b.wait_for(f"return /You approved it/.test(document.querySelector("
                        f"'#heal-prop-{d['id']}').textContent)", 15)
             posts = [s for s in b.js("return window.__sent") if s.startswith("post ")]
             assert posts == [f"post {_base(d)}/approve"], posts    # then the panels re-fetch
@@ -367,7 +379,7 @@ def test_a_withdrawn_proposal_s_card_says_why_and_approve_is_refused(app_client,
     d = proposed()
     _r, html = _card(app_client, d)
     drawn = _hidden(html, "hash")
-    assert "If edge-b changes, the proposal is withdrawn and made again" in html
+    assert "If edge-b changes before you approve, the proposal is withdrawn and made again" in html
     _pass(d["epoch"] + 121, _Check(R8_AGAIN))
     r, html = _card(app_client, d)
     assert r.status_code == 200

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, heal_cause -%}
 {#- History as ONE timeline (C369; board D, signed off 2026-10-03): the rows of
     modules/history_sources.timeline(), drawn the SAME way on the History page and on a device's
     History tab, which is the same timeline filtered to the device. One line per record (when,
@@ -67,15 +67,22 @@
         <span class="hist-what"><strong>{{ e.what }}</strong>{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}</span>
         <span class="hist-who">{{ e.who_short }}</span></summary>
       <div class="hist-detail tl-more">
+        {#- C2823: what happened, as the decision stated it, facts first (their times in the
+            viewer's zone, UTC on hover), then a hypothesis labelled as one; then the outcome. -#}
+        {%- if e.heal_cause %}{{ heal_cause(e.heal_cause) }}{% endif %}
         <p>{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
         {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
         {%- if e.kind == 'golden' %}<p class="muted" data-concept="golden-is-a-record">A golden is a record of what the device ran when it was captured, not a target: the target is its committed intent, rendered, and a deploy sends that.</p>{% endif %}
         {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</p>{% endif %}
         {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
         {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
-        {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
-        {#- A self-healing dry-run record's Right / Wrong (board H artboard C, C2399). -#}
+        {#- A self-healing dry-run record's Right / Wrong (board H artboard C, C2399), its mark
+            drawn on the control (C2809). -#}
         {%- if e.heal_mark %}{% with list_name=e.heal_mark.list, decision_id=e.heal_mark.decision, mark=e.heal_mark.mark, unreadable=e.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endif %}
+        {#- C2817, C2820 (rule 2): a self-healing record's ids, hashes and steps under a
+            collapsed "Details for the record", its times UTC as the record keeps them; every
+            other record drawn open, as before. -#}
+        {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {#- A read an AI call asked for (19.5, H26; board M): linked to both passes' calls and to its read on History › Reads. -#}
         {%- if e.read_of %}<p class="small tl-links">

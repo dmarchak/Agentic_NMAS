@@ -216,9 +216,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   3 only alerts, 4 is never automatic). **Change fix kinds…** chooses which Tier 1 kinds heal in
   Auto (one more at a time, each after its lab scenario passed) and which Tier 2 kinds are
   proposed, previewed and confirmed as a mode change is. A proposal waits on **Needs
-  attention** ("A fix waits for a person on <device>"): **Review the fix…** opens its card, with
-  **Approve and run on <device>** (by its hash, with a reason) and **Decline** (with a reason;
-  nothing is sent) ([Approve or decline a self-healing proposal](heal-proposal)).
+  attention** as a Critical row naming what changed and that the fix needs your decision:
+  **Review the fix…** opens its card, with **Approve and run on <device>** (by its hash, a
+  reason optional unless a line needs one) and **Decline** (with a reason; nothing is sent)
+  ([Approve or decline a self-healing proposal](heal-proposal)).
 - **Hard stops and guards**: each value, where it comes from (set, lab default or default) and
   its default, with **Edit…**, previewed and confirmed as a mode change is. On a network marked
   lab the grace period and the hold after a nearby change read 120 s and 60 minutes unless set.

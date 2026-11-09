@@ -14,11 +14,23 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
-Templates sha256: `a9ba019e10a59d41cbf293883d55b9d4cd57d5c8d5c028393bfdd5f961cc19b8`
+Templates sha256: `95570340b4bc6f8570eb298986ac18e0fe52ebb0abd44566a7618b1e871af392`
 
-**Compared again 2026-11-09 (C2839, the operator's rule of 2026-11-09):** a proposal whose fix
-is a security control removed or changed outside intent, or an ACL, draws one line above the
-program, "A security control changed outside intent: you decide." with both answers' words and
+**Compared again 2026-11-09 (C2817 and C2823):** the card and its row are redrawn as the
+operator's first template ("The three templates are right as drawn", 2026-11-09;
+~/Documents/nmas-reports/2026-11-08T2000Z-human-readable-mocks.md, mock 1), which amends
+artboards D and E. Compared by the template diff against mock 1's regions, the text board the
+operator accepted. No new shot was taken: tests/test_heal_proposal_v2.py and
+tests/test_heal_said.py draw each state through the real app, and tests/test_board_shots.py's
+`test_heal_proposal` needs Firefox, which this overnight run did not use. Each region that moved
+is in the table below, its deviation from board H logged (docs/STANDING_APPROVAL_LOG.md,
+2026-11-09, "C2817 1" to "C2817 8", "C2817 14"). The halt's card (`_heal_halt.html`) is
+unchanged. Templates sha256 before: `e85cfde2f33d2f869b2085bd5000486bd13542d782789fd3912c441a5c2a448b`.
+
+**Compared again 2026-11-09 (C2839, the operator's rule of 2026-11-09; merged with C2817's card,
+whose sha256 was `c85ff86d1ca807f426d82afd3213bd685d159f695c62455125842de5f22d0913`):** a
+proposal whose fix is a security control removed or changed outside intent, or an ACL, draws a
+block above "Does it need you?", "A security control changed outside intent: you decide." with both answers' words and
 the lines (masked) as the record keeps them; its primary button reads **Remove it (back to
 intent)** in place of Approve and run on <device> (the same post, hash and reason); and **Keep
 it: add it to intent** sits beside Decline, opening the device's intent editor (its Intent tab),
@@ -26,8 +38,7 @@ with its (i). Every other proposal draws as before. Artboard E draws neither (it
 R8's process reset); the deviation is the operator's rule, logged in
 docs/STANDING_APPROVAL_LOG.md (2026-11-09, "C2839 5"). Compared by the template diff against
 artboard E's regions (no new shot: tests/v2_context.py's provider draws the security state, and
-tests/test_heal_security.py its words); every other region is unchanged. Templates sha256 before:
-`e85cfde2f33d2f869b2085bd5000486bd13542d782789fd3912c441a5c2a448b`.
+tests/test_heal_security.py its words); every other region is as C2817's card draws it.
 
 **Compared again 2026-11-08 (C2804, the operator's decision 4):** in dry run, a confirmable card
 draws one warning notice above Reason, Approve and Decline: "This sends, although <network> is
@@ -75,25 +86,27 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 
 | Region | Board | Built | Verdict |
 |---|---|---|---|
-| Where it is | a Warning row on Needs attention, its line "A fix waits for a person: r6's OSPF router-id differs from intent · 9 min · Propose" with Review the fix… (artboard D) | the same place and level; the title "A fix waits for a person on <device>: <each unit's words>", the age in the row's corner, Review the fix… with its (i) | **deviation** (log: Board H E built: the proposal row's title from the decision's own words) |
+| Where it is | a Warning row on Needs attention, its line "A fix waits for a person: r6's OSPF router-id differs from intent · 9 min · Propose" with Review the fix… (artboard D) | a Critical row (mock 1), its line "<device>: <what changed>. Mercury has a fix that restarts <process> on <device>: it needs your decision", the age in the row's corner, Review the fix… with its (i) | **deviation** (log: C2817 1) |
 | The tier on the line | "Propose, process reset" beside the age | not on the line: the line draws severity, title, age and its action (board NA-R); the tier is the card's Fix row, a Propose chip | **deviation** (log: Board H E built: the tier drawn on the card, not the line) |
 | Review the fix… | opens the row | the same: it opens the row and every section holding the card, and focuses it; the card is read when the row opens | **same** |
-| What to do | "Approve to set r6's router-id back to intent and reset its OSPF process. The reset drops every OSPF adjacency on r6 (2) …" | the same sentence from the proposal: the fix's kind, the device, the reset's command, what it drops, "so choose the moment"; the adjacency count is not drawn | **deviation** (log: Board H E built: no adjacency count in What to do) |
-| The program | the lines, then "! then, measured: clear ip ospf 1 process (prompt answered: yes)" | the recorded program (masked when recorded), then "! then: <command> (its prompt measured on <device>, <when>)" or "(not measured)"; the prompt and its answer are the measurement record's, not shown | **deviation** (log: Board H E built: the reset line names where it was measured) |
-| Program | "prog-e1c4772b · read at 18:12:30" | the program's hash, when it was proposed, its line count, the device and platform | **same** |
-| Expected effects | the adjacencies that drop, and the blast radius | what the measured reset drops (every adjacency of the process) until it forms again; no blast radius (no topology read is made for a card) | **deviation** (log: Board H E built: Expected effects without the blast radius) |
-| Verify reads | "both adjacencies FULL within 120 s; no duplicate router-id logged on r4" | the deploy's verify, then the neighbour table until the adjacencies formed before form again, within the measured bound; the symptom read again once released | **deviation** (log: Board H E built: Verify reads as the approved act verifies) |
+| What to do | "Approve to set r6's router-id back to intent and reset its OSPF process. The reset drops every OSPF adjacency on r6 (2) …" | mock 1's four questions in order: What happened (the decision's cause, its facts each at its time in the viewer's zone, then a likely cause labelled as a hypothesis where both ends are held, C2823), Does it need you? Yes (why, and a "Tier 2: a person decides" chip), The fix Mercury proposes (the fix in plain words, as intent says, then the reset) | **deviation** (log: C2817 2) |
+| The program | the lines, then "! then, measured: clear ip ospf 1 process (prompt answered: yes)" | under **Show the commands**, a button that opens inline: the recorded program (masked when recorded), each line at its depth, then "Then <command>, its prompt measured on <device> at <time>" or "not measured" | **deviation** (log: C2817 3) |
+| Program | "prog-e1c4772b · read at 18:12:30" | under Details for the record: the program's hash, its line count, the device and platform; when it was proposed in the card's "Mercury proposed this at <time>" line | **deviation** (log: C2817 2) |
+| Expected effects | the adjacencies that drop, and the blast radius | **What it affects**: what the measured reset drops until it forms again, "Measured on <device>: back within about N s" from the record, what it does not change; no names and no blast radius | **deviation** (log: C2817 6) |
+| Verify reads | "both adjacencies FULL within 120 s; no duplicate router-id logged on r4" | **How Mercury checks it worked**: the deploy's verify and each part read at intent, every neighbour forming again within the bound, each symptom read again once released; one Mercury does not read again "can't tell" | **deviation** (log: C2817 7) |
+| If you don't | mock 1: "r6 keeps r4's ID: r4 and r6 stay unpeered …" | **If you don't**: the device keeps the change, its first symptom is not put right, and the proposal is withdrawn if the device changes again | **same** |
+| Times | not drawn | each time in the viewer's zone (the browser's), UTC on hover; Details for the record keeps UTC | **deviation** (log: C2817 14) |
 | Rollback | "the router-id back; a reset cannot be undone" | the same, and "It will not": the reset changes no configuration and no other process | **same** |
 | Mercury's diagnosis | the teal insert, "run before this was offered (16 reads on r6, r4 and r7, 18:12:10): 1. … (decisive; …); 2. … The fix proposed addresses hypothesis 1. The diagnosis" | built (H17, 2026-11-07), under the card's table: "Mercury's diagnosis, run before this was offered: <runbook>, N read(s) on <devices>, <when>", its chip, each hypothesis whole with its strength, layer and what to do, what was ruled out, where it stopped, and a link to the device's History with its (i); running ("it is drawn here when it ends. Approving does not wait for it"), not made (its words), unreadable and not yet recorded each said. It runs once the fix is proposed, in its own thread, so the card can be opened while it runs. It never says a fix addresses a hypothesis: only that the fix does not change a decisive physical or link first hypothesis | **deviation** (log: Board H built: the proposal's diagnosis runs once it is offered, and says only what a fix cannot change) |
-| Reason | the field, "at least three words" | the same; a refusal keeps what was typed | **same** |
+| Reason | the field, "at least three words" | the field, "optional to approve, needed to decline" (or "needed to approve" where a line needs a stated reason); a refusal keeps what was typed | **deviation** (log: C2817 4) |
 | Approve and run on r6 | the primary button | the same words; bound to the proposal's hash in the form; drawn disabled with each refusal (a reset not measured, a stop, taken already) as its title and a Not confirmable line above; busy on itself ("Approving…") | **same** |
 | Decline… | the button | **Decline**, posting the same reason at once; nothing is sent | **deviation** (log: Board H E built: Decline without its ellipsis) |
+| Check drift now on r6 | the button | not on the card (mock 1's buttons); the device page keeps it | **deviation** (log: C2817 5) |
+| The bound line | "Bound to this program's hash and to r6 as read at 18:12:30. If r6 changes, the proposal is withdrawn and made again. Clears when …" | "Mercury proposed this at <time> under <network>'s policy, confirmed by <who>. Approving sends exactly the commands shown, recorded as approved by you"; then who is confirming and "If <device> changes before you approve, the proposal is withdrawn and made again; if it changes after, the run refuses at its plan step and closes the proposal, sending nothing"; the hash itself under Details for the record | **deviation** (log: C2817 2) |
 | A security control's two answers | not drawn | on a security control's or an ACL's proposal only: "A security control changed outside intent: you decide." with the lines (masked), **Remove it (back to intent)** as the primary button, and **Keep it: add it to intent** (the device's intent editor) | **deviation** (log: C2839 5) |
-| Check drift now on r6 | the button | the same, opening the device's Check drift now card | **same** |
-| The bound line | "Bound to this program's hash and to r6 as read at 18:12:30. If r6 changes, the proposal is withdrawn and made again. Clears when …" | who is confirming; bound to the proposal's hash and to the device as read when proposed (its age); "If <device> changes, the proposal is withdrawn and made again; if it changes after you approve, the run refuses at its plan step and closes the proposal, sending nothing"; Clears when … is the row's own line, naming a withdrawal too | **deviation** (log: Board H E built: the bound line, withdrawn and made again) |
 | Withdrawn | not drawn | "Withdrawn, no longer waiting: <device> read back at its golden … / changed since it was proposed (read at …, departure …); it was bound to <device> as read at … (departure …)", when it was recorded, nothing sent, a link to the device's History; Approve not drawn, and an approval sent anyway refused naming the hash confirmed and both states | **deviation** (log: Board H E built: a withdrawn proposal's card says why) |
-| What Mercury found and tried | a link, "(5 steps)" | one level down in the card: the decision's words, its triggers, the change it would fix, the policy it was made under, the decision and incident, a link to the device's History; and What approving runs, the twelve steps | **deviation** (log: Board H E built: What Mercury found and tried opens in place) |
-| Answers in place | not drawn | Approved by you (the job and the hash), Declined (the words, nothing sent, the records), Not done: <why> with the reason kept, Couldn't load the proposal: <why>; the row leaves on the next redraw, which the answer holds until Show it now | **deviation** (log: Board H E built: each answer drawn in the card) |
+| What Mercury found and tried | a link, "(5 steps)" | **Details for the record**, collapsed, last on the card: the proposal and incident (links to the device's History), the proposal's hash, the program's hash, the fix type and tier, the reset's measurement, the policy, when it was proposed (UTC), the decision's words, the change's person, what raised it, and what approving runs, the twelve steps | **deviation** (log: C2817 2) |
+| Answers in place | not drawn | "You approved it. Mercury is applying it on <device> now, recorded as approved by you" (the job and the hash under Details for the record), Declined (the words, nothing sent; the records and steps under Details for the record), Not done: <why> with the reason kept, Couldn't load the proposal: <why>; the row leaves on the next redraw, which the answer holds until Show it now | **deviation** (log: C2817 8) |
 | The halted row's line | a Critical row, "Self-healing halted on Default: a heal on r2 failed its verify and was rolled back · 3 min" | a Critical row, "Self-healing halted on <network>: <the halt's name>" (a rolled-back heal, the same fix twice, a network's rate), its age, and **Lift the halt…** on the line, which opens the row to its card | **deviation** (log: Board H E built: the halted row's title from the halt's own name) |
 | The halted row's What to do | "Removing the OSPF network statement … The line was put back … Decide whether the statement belongs in r2's intent, then lift the halt. No device on Default is healed until then; dry-run records continue." | the action's words ("Read why …, then lift the halt with a reason") and Why this happened: the guard, its name and its words with both operands, then "No device on <network> is healed, and no dry-run record is made, until a person lifts the halt; a proposal waiting cannot be approved until then" | **deviation** (log: Board H E built: a halt stops dry-run records too) |
 | Reason and Lift the halt | the Reason field ("at least three words") and **Lift the halt**, primary | the same field (outside any form, so Enter submits nothing, C2472) and **Lift the halt**, primary, busy on itself ("Lifting…"), with its (i) | **same** |

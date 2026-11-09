@@ -544,15 +544,22 @@ def masked_unit(u: dict) -> dict:
     text."""
     from modules.redact import redact_text
 
-    return {"id": u.get("id"), "op": u["op"], "kind": u.get("kind"), "tier": u.get("tier"),
-            "why": u.get("why", ""), "blocked": u.get("blocked", ""),
-            "section": (u["chain"][0] if u["chain"] else (u["lines"][0] if u["lines"] else "")),
-            "stanza": bool(u.get("stanza")),
-            "joined": len(u.get("parts") or []),
-            "add": [redact_text(l) for _c, l in u["add"]],
-            "remove": [redact_text(l) for _c, l in u["remove"]],
-            "secret_position": bool(u.get("secret_position")),
-            "words": unit_words(u)}
+    out = {"id": u.get("id"), "op": u["op"], "kind": u.get("kind"), "tier": u.get("tier"),
+           "why": u.get("why", ""), "blocked": u.get("blocked", ""),
+           "section": (u["chain"][0] if u["chain"] else (u["lines"][0] if u["lines"] else "")),
+           "stanza": bool(u.get("stanza")),
+           "joined": len(u.get("parts") or []),
+           "add": [redact_text(l) for _c, l in u["add"]],
+           "remove": [redact_text(l) for _c, l in u["remove"]],
+           "secret_position": bool(u.get("secret_position")),
+           "words": unit_words(u)}
+    if u.get("parts"):
+        # C2822 with C2823: a joined unit keeps its parts, each masked in its own section, so
+        # its words name the use where it is (the access-group on its interface) and the
+        # definition on its own, never all its lines as the use's section's.
+        out["parts"] = [{k: v for k, v in masked_unit(p).items() if k != "parts"}
+                        for p in u["parts"]]
+    return out
 
 
 def unit_words(u: dict) -> str:

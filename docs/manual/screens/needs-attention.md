@@ -19,7 +19,9 @@ The landing page answers one question: does anything need you?
   item asks the model nothing; with no answer kept, Explain is offered behind its cost); for
   anything Mercury found itself, **Why this happened**, written by Mercury from its own record
   with no AI. Then the **Details**: the alerts, the devices with their networks, since when and
-  which source.
+  which source, and last **Details for the record**, closed until you open it: the record's
+  ids, hashes and steps, its times in UTC. A time a self-healing item names (when a change was
+  made, when a symptom began) is drawn in your browser's time zone, with UTC on hover.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the action that deals with it. Most rows have one; a drifted
   device's row has two, which mean opposite things (below), and so has a rollback's
@@ -379,10 +381,13 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
 - **The condition resolves.** Most rows: the source reads the thing fixed (a later drift check
   finds the device matching, a job's next run reads ok, a device answers again). Doing the
   row's action is how you make that happen; the row leaves at the source's next read. A
-  self-healing proposal ("A fix waits for a person on <device>") leaves once a person decides
-  on its card: **Review the fix…** opens the row to it, with **Approve and run on <device>**
-  (by the proposal's hash, with a reason) and **Decline** (with a reason; nothing is sent)
-  ([Approve or decline a self-healing proposal](heal-proposal)).
+  self-healing proposal (a Critical row: "<device>: <what changed>. Mercury has a fix …: it
+  needs your decision") leaves once a person decides on its card: **Review the fix…** opens the
+  row to it, with **Approve and run on <device>** (by the proposal's hash, a reason optional
+  unless a line needs one) and **Decline** (with a reason; nothing is sent)
+  ([Approve or decline a self-healing proposal](heal-proposal)). A dry-run record leaves once
+  you mark it on its row: **Was that right?** opens it to **Right** and **Wrong…**
+  ([Dry run: Right or Wrong](heal#mark)).
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
   new host keys a planned window kept, a deploy whose verify could not read back lines the

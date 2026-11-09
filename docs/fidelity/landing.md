@@ -35,7 +35,34 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `fe0010daa9ae3bd8365f51182c2e91368365988467fd78ce124e001fd639f3fe`
+Templates sha256: `efb6c6240f451997636916e359ccba78cc0cbbac0fcf5fa20dff3d5d30c887e3`
+
+**Compared again 2026-11-09 for C2817 and C2823** (the operator's three templates, "right as
+drawn", 2026-11-09; ~/Documents/nmas-reports/2026-11-08T2000Z-human-readable-mocks.md), by the
+template diff against the mocks' rows (no new shot: tests/test_heal_said.py and
+tests/test_human_readable.py draw each row through the real app). `_attention.html` gains, for
+self-healing's rows: a dry-run record's **Was that right?** on its line and its Right and
+Wrong… in place (on a drift row it attaches to too); a can't-fix's **Open <device> (likely
+cause)** first on its line and in What to do, with its hypothesis sentence; the cause's facts
+under Why this happened, each at its time in the viewer's zone; and Acknowledge…'s field
+asking for the cause. For every row, Details ends with its operands under a collapsed
+**Details for the record**, after the devices, since and source. Each deviation from the
+boards is logged ("C2817 1", "C2817 9", "C2817 11", "C2817 13", "C2817 14", "C2817 15"). Every
+other row's line and What to do are unchanged. Templates sha256 before:
+`fe0010daa9ae3bd8365f51182c2e91368365988467fd78ce124e001fd639f3fe`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A Tier 2 proposal's row (C2817) | Warning, "A fix waits for a person: …" (board H, artboard D) | Critical, "<device>: <what changed>. Mercury has a fix that restarts <process> on <device>: it needs your decision" (mock 1) | **deviation** (log: C2817 1) |
+| A dry-run record's row (C2817) | board H's dry-run record on the device's History, marked there | its line plain (mock 2), Was that right? on it, Right and Wrong… in the opened row; no Open <device>'s History (a next step that only navigates) | **deviation** (log: C2817 9) |
+| A mark, drawn again (C2809) | a grey line under the record | the answer chosen selected on its control, who and when beside it | **deviation** (log: C2817 10) |
+| A can't-fix's row (C2817) | "Self-healing could not fix r1 …" with Open r1 | its line plain (mock 3a); Open <device> (likely cause) first where another device's open change is the likeliest cause, its hypothesis sentence in What to do | **deviation** (log: C2817 11) |
+| Why this happened, a heal row (C2823) | the cause in Mercury's words | the decision's facts, each at its time, then a likely cause labelled as a hypothesis, then what Mercury did or would do | **deviation** (log: C2817 2) |
+| Details for the record | the operands drawn open under Details | collapsed, last in Details, after the devices, since and source | **deviation** (log: C2817 13) |
+| Times | not drawn | a self-healing record's times in the viewer's zone, UTC on hover | **deviation** (log: C2817 14) |
+| Acknowledge…, a can't-fix | "Why this needs nothing more" | "The cause, if you know it (recorded with your name)" | **deviation** (log: C2817 15) |
+| Every other row | Main.dc.html's rows | unchanged | **same** |
+| A row's Details | alerts, since, source | unchanged above the record's disclosure | **same** |
 
 **Compared again 2026-11-09 for C2824** (the operator, 2026-11-09: a change from outside
 Mercury that broke something is never offered Capture), by the template diff (no new shot):

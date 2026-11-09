@@ -2872,6 +2872,21 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .heal-mark-wrong .op-act { align-self: flex-start; }
 .heal-mark-wrong > summary::-webkit-details-marker { display: none; }
 .heal-mark-wrong[open] { flex-basis: 100%; }
+/* C2809: the mark drawn on its control: the chosen answer selected, who and when beside it. */
+.heal-mark-act .btn[aria-pressed="true"], .heal-mark-wrong > summary[aria-pressed="true"] {
+  background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.heal-mark-said { margin: 0; color: var(--ink-2); }
+/* C2817, C2823: the cards' plain words: what happened (the facts, then a labelled hypothesis),
+   the four questions as short headed paragraphs, the commands inline, the record collapsed. */
+.heal-facts { margin: 0; padding-left: 18px; font-size: 13px; }
+.heal-hyp { margin: 0; font-size: 13px; }
+.heal-q { margin: 0; font-size: 13px; }
+.heal-q > strong:first-child { color: var(--ink); }
+.heal-cmds > summary { list-style: none; cursor: pointer; width: fit-content; }
+.heal-cmds > summary::-webkit-details-marker { display: none; }
+.att-record > summary, .heal-record > summary, .tl-record-d > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); }
+.tl-record-d .tl-record { margin-top: 6px; }
+.att-record .att-ops { margin-top: 6px; }
 .heal-what { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .heal-radio { display: flex; gap: 16px; font-size: 13px; align-items: center; flex-wrap: wrap; }
 .heal-radio label { display: inline-flex; align-items: center; gap: 4px; }

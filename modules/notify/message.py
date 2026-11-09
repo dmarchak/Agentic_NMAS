@@ -47,9 +47,11 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           "diagnosis": "Mercury's diagnosis of what could not be fixed",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
+#: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a
+#: hypothesis labelled), before the outcome; the outcome's bound holds the plain words.
 FIELDS = {"incident": 80, "event": 20, "network": 80, "device": 80, "kind": 80,
-          "outcome": 200, "detected": 400, "detected_at": 40, "steps": 20, "todo": 400,
-          "link": 400, "analysis": 1, "diagnosis": 1}
+          "happened": 800, "outcome": 400, "detected": 400, "detected_at": 40, "steps": 20,
+          "todo": 400, "link": 400, "analysis": 1, "diagnosis": 1}
 #: Mercury's diagnosis block's fields (H17) and each one's bound; its hypotheses at most
 #: `DIAGNOSIS_HYPOTHESES` (the diagnosis's own `MAX_SHOWN`), each `DIAGNOSIS_HYPOTHESIS_FIELDS`;
 #: what was ruled out at most `DIAGNOSIS_RULED_OUT` checks.
@@ -57,7 +59,9 @@ DIAGNOSIS_FIELDS = {"state": 20, "words": 400, "reads": 200, "hypotheses": 5,
                     "ruled_out": 20}
 DIAGNOSIS_HYPOTHESIS_FIELDS = {"claim": 300, "strength": 20}
 DIAGNOSIS_HYPOTHESES, DIAGNOSIS_RULED_OUT = 5, 20
-STEP_FIELDS = {"what": 200, "result": 200}
+#: A step's *said* is what it does in words (`heal_notice.STEP_WORDS`), drawn in the text;
+#: *what* keeps its key, for the webhook's JSON.
+STEP_FIELDS = {"what": 200, "said": 240, "result": 200}
 #: The AI analysis block's fields (H8) and each one's bound; its hypotheses at most
 #: `ANALYSIS_HYPOTHESES`, each `HYPOTHESIS_FIELDS`.
 ANALYSIS_FIELDS = {"state": 20, "words": 400, "label": 120, "score": 300, "rationale": 800,
@@ -105,7 +109,8 @@ def check_event(event: dict) -> dict:
     for s in steps[:FIELDS["steps"]]:
         if not isinstance(s, dict) or set(s) - set(STEP_FIELDS):
             raise ValueError(f"a step carries only {', '.join(STEP_FIELDS)}")
-        out["steps"].append({k: _line(s.get(k), b) for k, b in STEP_FIELDS.items()})
+        out["steps"].append({k: _line(s.get(k), b) for k, b in STEP_FIELDS.items()
+                             if k != "said" or s.get("said")})
     return out
 
 
@@ -228,6 +233,8 @@ def text(facts: dict, *, sent_at: float = None) -> str:
     if where:
         lines.append(where)
     lines.append("")
+    if facts.get("happened"):
+        lines.append(f"What happened: {facts['happened']}")
     if facts.get("outcome"):
         lines.append(f"Outcome: {facts['outcome']}")
     if facts.get("detected"):
@@ -241,7 +248,7 @@ def text(facts: dict, *, sent_at: float = None) -> str:
         lines += diagnosis_lines(facts["diagnosis"])
     if facts["steps"]:
         lines.append("What Mercury tried:")
-        lines += [f"  {i}. {s['what']}: {s['result']}" for i, s in enumerate(facts["steps"], 1)]
+        lines += [f"  - {s.get('said') or s['what']}: {s['result']}" for s in facts["steps"]]
     if facts.get("todo"):
         lines.append(f"What to do: {facts['todo']}")
     if facts.get("analysis"):

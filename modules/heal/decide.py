@@ -256,35 +256,44 @@ def revert_scope(mode: dict, incident: dict):
                       "adjacency to be put back (heal_security_revert_adjacency)")}
 
 
-def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list) -> tuple:
-    """Guard 13, the tier: ``(outcome, words)``. The security kinds (C2839,
-    `policy.SECURITY_KINDS`) are always proposed: a person decides, never a setting."""
-    from modules.heal.kinds import KIND_WORDS, NEVER_WHY
+def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
+             device: str = "") -> tuple:
+    """Guard 13, the tier: ``(outcome, words)``, the words plain (`said.outcome_words`: what
+    Mercury did or would do, the tier a label after them; the fix kind's key, the tier's
+    number and the mode's key are the record's own fields, which "Details for the record"
+    draws: C2817, the survey's item 3, one function behind four surfaces' words). The security
+    kinds (C2839, `policy.SECURITY_KINDS`) are always proposed: a person decides, never a
+    setting."""
+    from modules.heal import said
+    from modules.heal.kinds import NEVER_WHY, masked_unit
     from modules.heal.policy import SECURITY_KINDS
 
     kinds_propose = list(kinds_propose) + list(SECURITY_KINDS)
     tier, kind = c["tier"], c["kind"]
+    units = [u if "section" in u else masked_unit(u) for u in c.get("units") or []]
     if tier >= 3:
-        return "cant_fix", (f"self-healing will not fix it: {KIND_WORDS.get(kind, kind)} "
-                            f"(Tier {tier}) is never automatic: {NEVER_WHY.get(kind, '')}")
+        return "cant_fix", said.outcome_words("cant_fix", units=units, kind=kind, tier=tier,
+                                              device=device, why=NEVER_WHY.get(kind, ""))
     if c.get("blocked"):
         b = c["blocked"]
-        return "cant_fix", (f"self-healing cannot fix it yet: {KIND_WORDS.get(b['kind'])}: "
-                            f"{b['why']}")
+        return "cant_fix", said.outcome_words("cant_fix", units=units, kind=b["kind"],
+                                              tier=tier, device=device, why=b["why"])
     kinds = sorted({u["kind"] for u in c["units"]})
     if tier == 2:
         missing = [k for k in kinds if k not in kinds_propose and _tier(k) == 2]
         if missing:
-            return "cant_fix", (f"a Tier 2 fix ({', '.join(missing)}) the policy does not "
-                                "propose: nothing is sent, and a person fixes it")
-        return "propose", f"a fix that needs a person: {', '.join(kinds)} (Tier 2)"
+            return "cant_fix", said.outcome_words("cant_fix", units=units, kind=kind,
+                                                  tier=tier, device=device,
+                                                  not_proposed=missing)
+        return "propose", said.outcome_words("propose", units=units, kind=kind, tier=tier,
+                                             device=device)
     not_auto = [k for k in kinds if k not in kinds_auto]
     if mode.get("mode") == "auto" and not not_auto:
-        return "heal", f"heal now: {', '.join(kinds)} (Tier 1), allowed AUTO"
-    why = ("the mode is dry run" if mode.get("mode") != "auto" else
-           f"{', '.join(not_auto)} {'is' if len(not_auto) == 1 else 'are'} not allowed AUTO, "
-           "so dry run for it")
-    return "would_heal", f"would heal: {', '.join(kinds)} (Tier 1); {why}"
+        return "heal", said.outcome_words("heal", units=units, kind=kind, tier=tier,
+                                          device=device)
+    return "would_heal", said.outcome_words("would_heal", units=units, kind=kind, tier=tier,
+                                            device=device, not_auto=not_auto,
+                                            dry_run=mode.get("mode") != "auto")
 
 
 def _tier(kind: str) -> int:
@@ -293,10 +302,49 @@ def _tier(kind: str) -> int:
     return TIER.get(kind, 4)
 
 
+#: The outcomes whose words state the cause first (C2823): what a person reads where they
+#: decide, or where Mercury says what it did or could not do. A deferral, an off and nothing to
+#: heal say only why.
+SAYS_CAUSE = ("heal", "would_heal", "propose", "cant_fix", "held", "halted")
+#: What a guard's stop says before the guard's own words (C2817: its number and name go to the
+#: record, `guard`).
+MODE_WORDS = {"dry_run": "watching only (dry run)", "auto": "fixing by itself (Auto)",
+              "off": "off"}
+STOP_WORDS = {"held": "Self-healing holds {device}: ",
+              "halted": "Self-healing stops on {network}: ",
+              "off": "Self-healing does nothing: ",
+              "cant_fix": "Mercury cannot fix this by itself: ",
+              "deferred": "Checked again later: "}
+
+
 def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None) -> dict:
     """The decision for one claimed incident: a record (not yet written) ``{"incident",
-    "device", "outcome", "mode", "guard", "words", "kind", "tier", "units", "program",
-    "program_hash", "removal_ids", "departure", "policy", "person", "until", "verify"}``."""
+    "device", "outcome", "mode", "guard", "words", "outcome_words", "cause", "kind", "tier",
+    "units", "program", "program_hash", "removal_ids", "departure", "policy", "person",
+    "until", "verify"}``. *cause* is what happened, from the incident's judged triggers and the
+    decision's units (`said.cause_of`, C2823: facts first, a hypothesis labelled), or None;
+    *words* state it first, then *outcome_words*, what Mercury did or would do."""
+    from modules.heal import said
+
+    d = _decide_one(network, incident, now=now, sources=sources, mode=mode)
+    d["outcome_words"] = d.get("words") or ""
+    try:
+        d["cause"] = said.cause_of(judged_triggers(incident), d)
+    except Exception as exc:                      # the decision stands; its cause is not said
+        log.error("heal: %s's cause on %s could not be said: %s: %s", network,
+                  d.get("device"), type(exc).__name__, exc)
+        d["cause"] = None
+    if d["cause"] and d.get("outcome") in SAYS_CAUSE:
+        d["words"] = said.with_cause(d["cause"], d["outcome_words"])
+    elif (d.get("person") or {}).get("words") and d.get("outcome") in SAYS_CAUSE:
+        d["words"] += (f"; the change was made outside Mercury "
+                       f"({d['person']['words']})")
+    d["headline"] = said.headline(d, network)
+    return d
+
+
+def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None) -> dict:
+    """`decide_one`'s decision, its words what Mercury did or would do."""
     from modules.drift_check import departure, drift_diff
     from modules.heal import decisions, guards, incidents, kinds, policy
     from modules.heal.guards import value
@@ -314,8 +362,9 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
             "triggers": [t.get("words") for t in (incident.get("triggers") or [])[-5:]],
             # The step log's (H6, `steplog.decision_steps`): each step passed, and the step
             # the decision is on, which a return ends with its outcome.
+            # C2817: a step's words name no id or hash; the record's own fields hold them.
             "steps": [{"step": "claim", "result": "ok",
-                       "words": f"incident {incident['id']} on {device} taken"}],
+                       "words": f"the incident on {device} taken"}],
             "phase": "stops"}
 
     def passed(name, words, then):
@@ -323,9 +372,12 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         base["phase"] = then
 
     def stop(g):
+        # C2817: the guard's number and name are its record's (``guard``), drawn under
+        # "Details for the record"; the words say what holds it.
+        lead = STOP_WORDS.get(g["outcome"], "").format(device=device, network=network)
         return dict(base, outcome=g["outcome"], guard={k: g[k] for k in
                                                        ("guard", "name", "words", "operands")},
-                    words=f"guard {g['guard']}, {g['name']}: {g['words']}", until=g.get("until"))
+                    words=f"{lead}{g['words']}", until=g.get("until"))
 
     try:
         halt = decisions.halted(network)
@@ -335,8 +387,8 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
               guards.g3_planned(network, device, now)):
         if g:
             return stop(g)
-    passed("stops", f"no kill switch, the mode {mode.get('mode')}, no halt, no planned work",
-           "approved")
+    passed("stops", f"no kill switch, {MODE_WORDS.get(mode.get('mode'), mode.get('mode'))}, no "
+                    "halt, no planned work", "approved")
     dev = src.device(device)
     # C2606, C2608: an observe-only device or a host has no approved state Mercury may heal
     # to; held under guard 4 (the approved state), naming the key and where NetBox set it.
@@ -427,8 +479,7 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",
-                        words=_outcome(mode, out, [], [])[1]
-                        + f": {device} is at its golden, which matches its intent")
+                        words=_outcome(mode, out, [], [], device)[1])
         return dict(base, outcome="nothing",
                     words=f"nothing to heal: {device} is at its golden, which matches its intent")
     text, error = src.read(dev)
@@ -443,8 +494,8 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
                     words=(f"{device} changed since its grace period settled (departure "
                            f"{settled_dep}, now {now_dep or 'none: at its golden'}): its grace "
                            "period starts again"))
-    passed("read", f"{device} read again: the departure the grace period settled on "
-                   f"({now_dep or 'none'})", "classify")
+    passed("read", f"{device} read again: it holds the change the grace period settled on",
+           "classify")
     platform = src.platform(device, dev)
     intended = src.intended(device, platform)
     if not intended.get("text"):
@@ -495,14 +546,13 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
         base["verify"] = {"read_back": len(prog["commands"]),
                           "symptom": [t for t in base["triggers"] if t][:2],
                           "intent": "intent_match on the read after the change"}
-    passed("classify", (f"{len(c['units'])} unit(s), {c['kind']} (Tier {c['tier']})"
-                        + (f"; the program {len(base['program'])} line(s), hash "
-                           f"{base['program_hash']}" if base["program_hash"] else "")),
+    passed("classify", (f"{len(c['units'])} part(s) changed, "
+                        f"{kinds.KIND_WORDS.get(c['kind'], c['kind'])} (Tier {c['tier']})"
+                        + (f"; the fix {len(base['program'])} line(s)"
+                           if base["program_hash"] else "")),
            "decide")
     outcome, words = _outcome(mode, c, list(mode.get("kinds_auto") or []),
-                              list(mode.get("kinds_propose") or []))
-    if base.get("person"):
-        words += f"; the change it heals was made outside Mercury ({base['person']['words']})"
+                              list(mode.get("kinds_propose") or []), device)
     return dict(base, outcome=outcome, words=words)
 
 
@@ -562,8 +612,8 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
             "removal_ids": [], "departure": "", "until": None, "ends": s.get("decision") or "",
             "triggers": [t.get("words") for t in (inc.get("triggers") or [])[-5:]]}
     steps = [{"step": "claim", "result": "ok",
-              "words": f"incident {incident_id} on {made['device']} taken by {by}: it stood on "
-                       f"{s.get('decision') or '?'} ({s.get('outcome') or '?'})"},
+              "words": f"the incident on {made['device']} taken by {by}: it stood on its "
+                       f"decision ({s.get('outcome') or '?'})"},
              {"step": "read", "result": "ok", "words": read_words}]
     try:
         d = decisions.record(network, made, now)

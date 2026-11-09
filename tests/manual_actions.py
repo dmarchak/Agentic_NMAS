@@ -78,6 +78,9 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Open"): "navigates to the device page",
     ("_attention.html", "Open…"): "navigates to the screen the row names",
     ("_attention.html", "Open on GitHub"): "opens the CI run a row names, on GitHub, a read (C418)",
+    ("_attention.html", "Open (likely cause)"): ("opens the device a can't-fix names as its "
+                                                  "likeliest cause, labelled a hypothesis, a "
+                                                  "read (C2817)"),
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_ai_classes.html", "Cancel"): "draws What AI may send again without the reason: device "

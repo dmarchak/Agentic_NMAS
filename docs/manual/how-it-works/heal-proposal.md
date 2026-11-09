@@ -3,47 +3,72 @@
 Self-healing heals some departures from intent by itself (Tier 1, Auto). A fix that takes
 effect only through something rollback cannot undo, such as an OSPF router-id that needs its
 routing process reset, is never automatic: it is **proposed** (Tier 2, Propose). Mercury records
-the proposal with its program and hash and sends nothing. A person approves it by that hash
-with a reason, or declines it with a reason. A network's Self-healing tab chooses which Tier 2
+the proposal with its program and hash and sends nothing. A person approves it by that hash (a
+reason optional, unless a line of it needs one), or declines it with a reason. A network's Self-healing tab chooses which Tier 2
 kinds are proposed ([Self-healing](settings#self-healing)).
 
-![Approve a self-healing proposal: self-healing found a fix that needs a person and recorded it with its program and hash, sending nothing; its card on Needs attention shows the program, the measured process reset it needs, what that affects and the proposal's hash; you approve by that hash with a reason, or decline with a reason, which sends nothing; approved, a job takes the proposal once and, holding the device as you, reads it again, recomputes the program and refuses if its hash moved, applies it through the deploy pipeline, then sends the measured reset and reads the adjacencies back; a failure before the reset puts the change back; the outcome is recorded and History shows it.](diagrams/heal-proposal.svg)
+![Approve a self-healing proposal: self-healing found a fix that needs a person and recorded it with its program and hash, sending nothing; its card on Needs attention says what happened, whether it needs you, the fix, what it affects, how Mercury checks it worked and what happens if you don't, the program one press away; you approve by the proposal's hash, a reason optional unless a line needs one, or decline with a reason, which sends nothing; approved, a job takes the proposal once and, holding the device as you, reads it again, recomputes the program and refuses if its hash moved, applies it through the deploy pipeline, then sends the measured reset and reads the adjacencies back; a failure before the reset puts the change back; the outcome is recorded and History shows it.](diagrams/heal-proposal.svg)
 
 ## The proposal's card {#card}
 
-A proposal waiting is a row on **Needs attention**: "A fix waits for a person on <device>".
-**Review the fix…** opens the row to its card, read from Mercury's own records (never the
-device):
+A proposal waiting is a **Critical** row on **Needs attention**. Its line says what changed on
+the device and that a fix needs your decision, for example "edge1: in router ospf 1,
+“router-id 192.0.2.16” was changed to “router-id 192.0.2.14”. Mercury has a fix that restarts
+OSPF on edge1: it needs your decision". **Review the fix…** opens the row to its card. The card is read
+from Mercury's own records, never from the device. It answers four questions, in order, in
+plain words:
 
-- what approving does and on which device: the program as recorded, masked, and the process
-  reset it needs, with whether that reset is measured on the device's platform;
-- **Expected effects**: what the reset drops (every adjacency of the process) until it forms
-  again;
-- **Verify reads**: the deploy's verify, then the neighbour table until the adjacencies formed
-  before form again, within about 2.5 times the measured settle time;
-- **Rollback**: the change is put back if a step fails or the reset is not made; a reset
-  cannot be undone;
-- **Proposal hash**: what Approve sends, bound to the network, the device, the decision, the
-  program's hash and the reset's command;
-- each reason it would be refused now (**Not confirmable**), such as a reset not yet measured,
-  the kill switch, a halt or planned work. Approve is drawn disabled with that reason;
-- **What Mercury found and tried**, and **What approving runs**, one level down.
+- **What happened.** What Mercury holds about the change, each fact at its time: who made the
+  change (as the configuration line named them) and what it changed, then each symptom it
+  caused. Where Mercury holds both ends of a cause, a **likely cause** follows the facts,
+  labelled as a hypothesis. Both ends means a change on an interface and a symptom on that
+  interface after it, or a router-id the change set that a duplicate router-id report names.
+  For example: "Likely cause (a hypothesis, not checked): this ACL drops OSPF on Gi2, so edge1
+  lost its OSPF neighbour edge2". Mercury never guesses a link it does not hold.
+- **Does it need you? Yes**, and why. A process reset briefly drops all of the device's
+  neighbours, so a person decides when.
+- **The fix Mercury proposes**, and **What it affects**. What affects covers what the reset
+  drops and how long the adjacencies took to form again where it was measured ("back within
+  about 6 s"). It also says what the reset does not change.
+- **How Mercury checks it worked.** Each check is listed. A check Mercury does not make yet
+  says **can't tell**, never a pass. The card also says what happens if a step fails before
+  the reset: Mercury puts the change back, and a reset cannot be undone.
+- **If you don't.** The device keeps the change, the symptom stays, and the proposal is
+  withdrawn if the device changes again.
 
-**In dry run, approving still sends.** Dry run holds only what self-healing would do by itself;
-a proposal is a person's decision whatever the mode, so the card says, above Approve, "This
-sends, although <network> is in dry run", naming what runs and on which device. Decline it if
-you only want the record.
+Then come who proposed it and when, and each reason it would be refused now (**Not
+confirmable**), such as a reset not yet measured, the kill switch, a halt or planned work.
+Approve is drawn disabled with that reason. **Show the commands** opens the exact lines inline,
+with the reset's command and where its prompt was measured. **Details for the record**, closed
+until you open it, holds the proposal's and the incident's ids, the proposal's hash that Approve
+sends, the program's hash, the fix type and tier, the policy, the decision's words, what raised
+it and the steps approving runs.
 
-**Check drift now on <device>** reads the device against its golden first, changing nothing
-([Check drift](drift-check)).
+**Times** are drawn in your browser's time zone, with UTC on hover. The record's own times,
+under Details for the record, are UTC.
+
+**In dry run, approving still sends.** Dry run holds only what self-healing would do by itself.
+A proposal is a person's decision whatever the mode, so the card says above Approve: "Watching
+only on <network> (dry run): Mercury sends nothing by itself. Approving this sends it."
+Decline it if you only want the record.
 
 ## Approve {#approve}
 
-Type a reason of three words or more, then press **Approve and run on <device>** (a verified
-person's; on a security control's proposal it reads **Remove it (back to intent)**, below). It is refused, with nothing taken or sent, when you are not a verified person, the
-reason is short, the hash is not the one the card drew (the refusal names both), the proposal
-was taken already, its reset is not measured, or a stop applies. Otherwise the card says it was
-approved and names the job, and the row leaves Needs attention. The job runs as you:
+Press **Approve and run on <device>** (a verified person's; on a security control's proposal
+it reads **Remove it (back to intent)**, below). A reason is optional. It is required, of three
+words or more, when a line of the fix needs a stated reason: a dangerous line or a removal. The card's Reason field says so. A reason you do give is held to that shape.
+Approving is refused, with nothing taken or sent, when:
+
+- you are not a verified person;
+- a reason is needed and missing, or the one given is short;
+- the hash is not the one the card drew (the refusal names both);
+- the proposal was taken already;
+- its reset is not measured;
+- a stop applies.
+
+Otherwise the card says "You approved it. Mercury is applying it on <device> now, recorded as
+approved by you", with the job under Details for the record, and the row leaves Needs
+attention. The job runs as you:
 
 1. `take`: the proposal is taken once; a second approval is refused by name.
 2. `stops`: the kill switch, the mode, a halt, planned work and the kind proposed are checked

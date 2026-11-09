@@ -218,10 +218,13 @@ def decision_steps(decision: dict) -> list:
     """The decision's steps (`decide.STEPS`): each step it passed, then the step it ended on
     (its outcome and words), then the record."""
     steps = [dict(s) for s in decision.get("steps") or []]
+    # The step's words are what Mercury did or would do (C2817); the cause is the decision's
+    # own, said once where the decision is drawn.
     steps.append({"step": decision.get("phase") or "decide",
-                  "result": decision.get("outcome") or "", "words": decision.get("words") or ""})
-    steps.append({"step": "record", "result": "ok",
-                  "words": f"decision {decision.get('id') or '?'} recorded"})
+                  "result": decision.get("outcome") or "",
+                  "words": decision.get("outcome_words") or decision.get("words") or ""})
+    # C2817: the decision's id is the row's own field, drawn under "Details for the record".
+    steps.append({"step": "record", "result": "ok", "words": "the decision recorded"})
     return steps
 
 
@@ -236,7 +239,11 @@ def record_decision(network: str, decision: dict, now: float = None) -> dict:
         program_hash=decision.get("program_hash") or "",
         units=[u.get("words") for u in decision.get("units") or []],
         triggers=[t for t in decision.get("triggers") or [] if t],
-        person=(decision.get("person") or {}).get("words") or ""), now)
+        person=(decision.get("person") or {}).get("words") or "",
+        # C2817, C2823 (expand: a row written before them has neither): what Mercury did or
+        # would do on its own, and the cause it stated, facts first.
+        outcome_words=decision.get("outcome_words") or "",
+        headline=decision.get("headline") or "", cause=decision.get("cause") or None), now)
 
 
 def record_started(network: str, decision: dict, steps: list, program: list,
@@ -335,7 +342,8 @@ def _fold(rows: list) -> list:
                            "words": "", "mode": "", "kind": "", "policy": {}, "by": "",
                            "first_at": r.get("at"), "at": r.get("at"),
                            "epoch": float(r.get("epoch") or 0), "state": "decided",
-                           "units": [], "triggers": [], "person": "", "guard": {}, "tier": 0}
+                           "units": [], "triggers": [], "person": "", "guard": {}, "tier": 0,
+                           "cause": None, "outcome_words": "", "headline": ""}
         if r.get("decision") and r["decision"] not in e["decisions"]:
             e["decisions"].append(r["decision"])
         e["at"], e["epoch"] = r.get("at"), float(r.get("epoch") or 0)
@@ -351,7 +359,11 @@ def _fold(rows: list) -> list:
         if row == "decision":
             e.update(outcome=r.get("outcome") or "", words=r.get("words") or "",
                      state="decided", guard=r.get("guard") or {}, units=r.get("units") or [],
-                     triggers=r.get("triggers") or [], person=r.get("person") or "")
+                     triggers=r.get("triggers") or [], person=r.get("person") or "",
+                     outcome_words=r.get("outcome_words") or "",
+                     headline=r.get("headline") or "")
+            if r.get("cause"):
+                e["cause"] = r["cause"]
             e["steps"] += steps
             if r.get("program_hash"):
                 e.update(program=list(r.get("program") or []), program_hash=r["program_hash"])

@@ -245,7 +245,9 @@ class TestThePerNetworkQuestion:
         confirm("Default", heal_mode="auto", heal_mode_until=iso(T0 + 3600),
                 heal_kinds_auto=["added_line"], heal_security_revert_adjacency=True, now=T0 - 60)
         d = one(W6, triggers=[CONFIG, ADJ])
-        assert d["outcome"] == "would_heal" and "security_revert" in d["words"], d
+        # C2817: the kind is the record's field; the words name it plainly.
+        assert (d["outcome"], d["kind"]) == ("would_heal", "security_revert"), d
+        assert K.KIND_WORDS["security_revert"] in d["words"], d["words"]
         confirm("Default", heal_mode="auto", heal_mode_until=iso(T0 + 3600),
                 heal_kinds_auto=["added_line", "security_revert"],
                 heal_security_revert_adjacency=True, now=T0 - 60)

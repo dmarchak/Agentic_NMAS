@@ -1,0 +1,491 @@
+"""Self-healing in plain words (docs/MERCURY_CHARTER.md, "Human-facing means human-readable",
+rules 1 to 5; C2817, C2823): what happened, what Mercury did or would do, and the cause where
+Mercury holds both ends of one. Deterministic, from what the decision already holds: the
+incident's triggers (each with its kind, time and words) and the decision's units (each with
+its section and its lines, masked). Never a guess: a link between a change and a symptom is
+drawn only where both name the same interface, or the same router-id, and the change came
+first; and it is labelled as a hypothesis, after the facts (rule 5).
+
+**The cause** (`cause_of`): ``{"facts": [{"text", "at", "epoch"}], "hypothesis": {"text",
+"label", "at"} or None}``, the facts in time order: the change (who made it, as the line named
+them, and what it changed, from the units) and each symptom (an adjacency lost, an alert, a
+duplicate router-id); then the hypothesis, when both ends are held:
+- **an interface**: a unit in ``interface X`` and a symptom on X after the change. Where the
+  unit applies an ACL (``ip access-group N in|out``, ``ipv6 traffic-filter``) whose entries the
+  same change added and none of them permits OSPF, and the symptom is OSPF's, that is a fact
+  too ("none of its 3 entries permits OSPF"), and the hypothesis says the ACL drops OSPF there
+  (C2823, H11 W7); otherwise that the change on X broke what was lost on X (W6's key on Gi4);
+- **a router-id**: a unit whose line sets a router-id that a duplicate router-id report names
+  (W5): two routers with one router-id cannot peer.
+
+**The words** (`outcome_words`, `decide._outcome`'s): what Mercury did or would do, in plain
+words, the tier a label after them; the fix kind, the tier's number, the guard and the mode's
+key go to the record's own fields, which "Details for the record" draws.
+
+**Times.** A record keeps UTC (`at`, ISO); text built here for a message or a record says
+"at HH:MM UTC" (a time Mercury measured: "by HH:MM" is only for an estimate or a deadline,
+the operator, 2026-11-09). A page draws each fact's own ``at`` in the viewer's zone
+(`_macros.clock`), UTC on hover.
+"""
+
+import logging
+import re
+import time
+
+log = logging.getLogger(__name__)
+
+#: The longest a change on one device is taken as the likeliest cause of a symptom on another
+#: (`likely_elsewhere`): 600 s, 2.5 times the 4 minutes measured in H11 (W4: a change 3 minutes
+#: before the probe it broke failed; W7: a change 4 minutes before the streams behind it were
+#: lost, 20:00:51 to 20:04:50 UTC).
+LIKELY_S = 600
+#: Lines of one unit quoted in a sentence; more are counted.
+QUOTED = 2
+#: The label a hypothesis carries (rule 5: labelled as one, after the facts).
+HYPOTHESIS = "Likely cause (a hypothesis, not checked)"
+SYMPTOMS = ("adjacency_log", "adjacency", "alert", "duplicate_router_id")
+_ISO_TAIL = re.compile(r"\s+(?:since|at)\s+\d{4}-\d\d-\d\dT[\d:.]+Z?")
+_IFACE = re.compile(r"^\s*([A-Za-z][A-Za-z-]*)\s*(\d[\d/.:]*)\s*$")
+_APPLY = re.compile(r"^\s*(ip access-group|ipv6 traffic-filter)\s+(\S+)\s+(in|out)\b")
+_ACL_HEAD = re.compile(r"^\s*(ip|ipv6) access-list\s+(?:(extended|standard)\s+)?(\S+)\s*$")
+_NUMBERED = re.compile(r"^\s*access-list\s+(\S+)\s+(permit|deny)\b(.*)$")
+_ENTRY = re.compile(r"^\s*(?:\d+\s+)?(permit|deny)\b\s*(\S*)")
+_ROUTER_ID = re.compile(r"^\s*(?:bgp\s+)?router-id\s+(\S+)")
+_PROCESS = {"router ospf": "OSPF", "ipv6 router ospf": "OSPFv3", "router ospfv3": "OSPFv3",
+            "router bgp": "BGP"}
+
+
+def hhmm(epoch) -> str:
+    return time.strftime("%H:%M", time.gmtime(float(epoch)))
+
+
+def _iso(epoch) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(epoch)))
+
+
+def _q(line: str) -> str:
+    return f"“{(line or '').strip()}”"
+
+
+def _plural(n: int, one: str, many: str = "") -> str:
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+# ── Units, in words ─────────────────────────────────────────────────────────────────────────
+
+def _where(u: dict) -> str:
+    s = (u.get("section") or "").strip()
+    # A top-level line's unit names the line as its section (`kinds.masked_unit`): it is in
+    # the global configuration.
+    if not s or (not u.get("stanza") and s in {(l or "").strip() for l in
+                                                 (u.get("add") or []) + (u.get("remove") or [])}):
+        return "the global configuration"
+    return s
+
+
+def interface_of(u: dict) -> str:
+    """The interface a unit is in (its section ``interface X``), or ``""``."""
+    s = (u.get("section") or "").strip()
+    return s.split(None, 1)[1] if s.lower().startswith("interface ") and " " in s else ""
+
+
+def same_interface(a: str, b: str) -> bool:
+    """Whether two names are one interface (``Gi2`` and ``GigabitEthernet2``): the type's first
+    two letters and the whole number. A name either side cannot be read as one is not."""
+    ma, mb = _IFACE.match(a or ""), _IFACE.match(b or "")
+    return bool(ma and mb and ma.group(1)[:2].lower() == mb.group(1)[:2].lower()
+                and ma.group(2) == mb.group(2))
+
+
+def current_lines(u: dict) -> list:
+    """The unit's lines as the device holds them now (masked): what was added or changed to."""
+    return list(u.get("remove") or [])
+
+
+def changed_words(u: dict) -> str:
+    """What happened to one unit, as a fact: ``“logging host 192.0.2.10” was removed``,
+    ``in router ospf 1, “router-id 192.0.2.6” was changed to “router-id 192.0.2.99”``."""
+    add, rem, op = list(u.get("add") or []), list(u.get("remove") or []), u.get("op")
+    where = _where(u)
+    if u.get("stanza") and op == "remove":
+        return f"{_q(where)} was added ({_plural(len(rem), 'line')})"
+    if u.get("stanza") and op == "add":
+        return f"{_q(where)} was removed ({_plural(len(add), 'line')})"
+    if op == "change":
+        if len(add) == 1 and len(rem) == 1:
+            return f"in {where}, {_q(add[0])} was changed to {_q(rem[0])}"
+        return f"{_plural(max(len(add), len(rem)), 'line')} in {where} were changed"
+    if op == "add":
+        if len(add) <= QUOTED:
+            return f"{' and '.join(_q(l) for l in add)} {'was' if len(add) == 1 else 'were'} " \
+                   f"removed from {where}"
+        return f"{_plural(len(add), 'line')} were removed from {where}"
+    if len(rem) <= QUOTED:
+        return f"{' and '.join(_q(l) for l in rem)} {'was' if len(rem) == 1 else 'were'} " \
+               f"added to {where}"
+    return f"{_plural(len(rem), 'line')} were added to {where}"
+
+
+def fix_words(u: dict) -> str:
+    """What putting one unit back does: ``put back “logging host 192.0.2.10” in …``."""
+    add, rem, op = list(u.get("add") or []), list(u.get("remove") or []), u.get("op")
+    where = _where(u)
+    if u.get("stanza") and op == "remove":
+        return f"remove {_q(where)} ({_plural(len(rem), 'line')})"
+    if u.get("stanza") and op == "add":
+        return f"put back {_q(where)} ({_plural(len(add), 'line')})"
+    if op == "change":
+        if len(add) == 1 and len(rem) == 1:
+            return f"set {_q(rem[0])} back to {_q(add[0])} in {where}"
+        return f"set {_plural(max(len(add), len(rem)), 'line')} in {where} back"
+    if op == "add":
+        if len(add) <= QUOTED:
+            return f"put back {' and '.join(_q(l) for l in add)} in {where}"
+        return f"put back {_plural(len(add), 'line')} in {where}"
+    if len(rem) <= QUOTED:
+        return f"remove {' and '.join(_q(l) for l in rem)} from {where}"
+    return f"remove the {_plural(len(rem), 'added line')} from {where}"
+
+
+def _join(parts: list, more: int = 0) -> str:
+    parts = [p for p in parts if p]
+    text = parts[0] if len(parts) == 1 else (", ".join(parts[:-1]) + " and " + parts[-1]
+                                             if parts else "")
+    return text + (f", and {_plural(more, 'more change')}" if more else "")
+
+
+def flat(units: list) -> list:
+    """The units as they are worded and linked: a joined unit (C2822: a use and the definitions
+    only it references) as its parts, the use first, each in its own section."""
+    return [p for u in units or [] for p in (u.get("parts") or [u])]
+
+
+def changes_words(units: list, limit: int = 3) -> str:
+    units = flat(units)
+    return _join([changed_words(u) for u in units[:limit]], max(0, len(units) - limit))
+
+
+def fixes_words(units: list, limit: int = 3) -> str:
+    units = flat(units)
+    return _join([fix_words(u) for u in units[:limit]], max(0, len(units) - limit))
+
+
+def process_of(units: list) -> str:
+    """The routing process a reset restarts, by name (``OSPF``), from a ``process_reset``
+    unit's section; ``""`` when none."""
+    for u in units or []:
+        if u.get("kind") != "process_reset":
+            continue
+        s = (u.get("section") or "").lower()
+        for head, name in sorted(_PROCESS.items(), key=lambda x: -len(x[0])):
+            if s.startswith(head):
+                return name
+        return "the routing process"
+    return ""
+
+
+# ── The decision's words (`decide._outcome`) ───────────────────────────────────────────────
+
+def outcome_words(outcome: str, *, units: list, kind: str, tier: int, device: str = "",
+                  why: str = "", not_auto: list = (), dry_run: bool = True,
+                  not_proposed: list = ()) -> str:
+    """What Mercury did or would do, in plain words, its tier a label after them."""
+    from modules.heal.kinds import KIND_WORDS
+
+    host = device or "the device"
+    fixes = fixes_words(units)
+    proc = process_of(units)
+    if outcome == "cant_fix" and tier >= 3 and kind in ("physical", "unknown_cause"):
+        return (f"{host} is at its golden, which matches its intent, so no configuration fix "
+                f"on {host} can cure this ({why}): Mercury fixes nothing by itself, and a "
+                f"person decides (Tier {tier})")
+    if outcome == "cant_fix" and tier >= 3:
+        return (f"Mercury does not fix {KIND_WORDS.get(kind, kind)} by itself: {why}; nothing "
+                f"was sent, and a person decides (Tier {tier})")
+    if outcome == "cant_fix" and not_proposed:
+        return (f"Nothing was sent: this fix needs a person, and the policy does not propose "
+                f"{_join([KIND_WORDS.get(k, k) for k in not_proposed])}, so a person fixes it "
+                f"(Tier {tier})")
+    if outcome == "cant_fix":
+        return f"Mercury cannot fix this yet: {why}; nothing was sent (Tier {tier})"
+    if outcome == "propose":
+        restart = (f", then restart {proc} on {host}, which briefly drops all of {host}'s "
+                   f"{proc} neighbours, so a person decides when" if proc else
+                   ", so a person decides")
+        return (f"Mercury proposes a fix: {fixes}{restart}. Nothing is sent until a person "
+                f"approves it (Tier {tier})")
+    if outcome == "heal":
+        return (f"Mercury is putting it back itself: {fixes}; this kind of fix may run by "
+                f"itself here (Tier {tier})")
+    if not_auto and not dry_run:
+        names = _join([KIND_WORDS.get(k, k) for k in not_auto])
+        return (f"Mercury would have put it back itself: {fixes}. Nothing was sent: {names} "
+                f"{'is' if len(not_auto) == 1 else 'are'} not allowed to be fixed by itself "
+                f"(Tier {tier})")
+    return (f"Mercury would have put it back itself: {fixes}. Nothing was sent: the network "
+            f"is watching only, in dry run (Tier {tier})")
+
+
+def headline(d: dict, network: str = "") -> str:
+    """The one line a row and a History entry lead with (C2817; the mocks' rows): what
+    happened on the device, then what Mercury did or would do and whether a person is needed.
+    ``""`` for an outcome it has no line for (its caller's own words stand)."""
+    from modules.heal.kinds import KIND_WORDS
+
+    host, outcome = d.get("device") or "the device", d.get("outcome")
+    units, tier, kind = list(d.get("units") or []), int(d.get("tier") or 0), d.get("kind") or ""
+    changed = changes_words(units)
+    lead = f"{host}: {changed}" if changed else ""
+    if outcome == "would_heal" and lead:
+        net = network or d.get("network") or "the network"
+        why = (f"{net} is watching only (dry run)" if d.get("mode") != "auto" else
+               "this kind of fix is not allowed to run by itself")
+        return f"{lead}. Mercury would have put it back itself, but {why}, so nothing was sent"
+    if outcome == "propose" and lead:
+        proc = process_of(units)
+        does = f" that restarts {proc} on {host}" if proc else ""
+        return f"{lead}. Mercury has a fix{does}: it needs your decision"
+    if outcome == "heal" and lead:
+        return f"{lead}. Mercury is putting it back itself"
+    if outcome == "cant_fix" and tier >= 3 and kind in ("physical", "unknown_cause"):
+        facts = (d.get("cause") or {}).get("facts") or []
+        what = next((f["text"] for f in facts if f.get("kind") in SYMPTOMS), "") or \
+            f"{host} shows a symptom"
+        return f"{_cap(what)}. {host} itself is as intended, so no fix on {host} can cure it"
+    if outcome == "cant_fix" and lead:
+        return (f"{lead}. Mercury does not fix {KIND_WORDS.get(kind, kind)} by itself: it "
+                "needs a person" if tier >= 3 else
+                f"{lead}. Mercury cannot fix it by itself: it needs a person")
+    return ""
+
+
+# ── The cause (C2823) ──────────────────────────────────────────────────────────────────────
+
+def _epoch(t: dict) -> float:
+    try:
+        return float(t.get("epoch") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _at(t: dict) -> str:
+    """A trigger's time as a record keeps it, ISO UTC, from its epoch (a reader's own ``at``
+    may be in another form)."""
+    return _iso(_epoch(t)) if _epoch(t) else str(t.get("at") or "")
+
+
+def _ports(t: dict) -> list:
+    """The interfaces a symptom names: a logged drop's, an alert's, a duplicate's."""
+    out = [t.get("port") or "", t.get("interface") or ""] + list(t.get("interfaces") or [])
+    return [p for p in out if p]
+
+
+def symptom_words(t: dict, device: str) -> str:
+    """One symptom as a fact, without its time (the fact carries it)."""
+    kind = t.get("kind")
+    if kind == "adjacency_log" and (t.get("neighbor") or t.get("peer")):
+        who = t.get("logged_by") or device
+        peer, nbr = t.get("peer") or "", t.get("neighbor") or ""
+        named = f"{peer} ({nbr})" if peer and nbr and peer != nbr else (peer or nbr)
+        return (f"{who} lost its {t.get('protocol') or 'routing'} neighbour {named}"
+                + (f" on {t['port']}" if t.get("port") else "")
+                + (f": {t['reason'].strip()}" if (t.get("reason") or "").strip() else ""))
+    if kind == "adjacency":
+        ends = " – ".join([device] + [d for d in t.get("related") or [] if d != device])
+        return f"the {t.get('protocol') or 'routing'} adjacency {ends} went down"
+    return _ISO_TAIL.sub("", t.get("words") or "").strip() or (kind or "a symptom")
+
+
+def _acl_entries(name: str, units: list) -> list:
+    """The ACL *name*'s entries as the same change added them, or None when the change did not
+    define it (its entries are then not known here)."""
+    for u in units or []:
+        m = _ACL_HEAD.match(u.get("section") or "")
+        if m and m.group(3) == name and u.get("op") == "remove":
+            return [l for l in current_lines(u)[1:] if _ENTRY.match(l)] \
+                if current_lines(u) and _ACL_HEAD.match(current_lines(u)[0]) else \
+                [l for l in current_lines(u) if _ENTRY.match(l)]
+    numbered = [l for u in units or [] if u.get("op") == "remove" for l in current_lines(u)
+                if (_NUMBERED.match(l) or ["", ""])[1] == name]
+    return numbered or None
+
+
+def _standard(name: str, units: list) -> bool:
+    for u in units or []:
+        m = _ACL_HEAD.match(u.get("section") or "")
+        if m and m.group(3) == name:
+            return m.group(2) == "standard"
+    return name.isdigit() and (1 <= int(name) <= 99 or 1300 <= int(name) <= 1999)
+
+
+def permits_ospf(entries: list, *, ipv6: bool, standard: bool) -> bool:
+    """Whether any entry permits OSPF: a standard ACL's permit (it filters by source only), or
+    an extended entry permitting ``ip``/``ipv6``, ``ospf`` or protocol 89."""
+    for line in entries:
+        m = _NUMBERED.match(line)
+        action, proto = ((m.group(2), (m.group(3).split() or [""])[0]) if m else
+                         (_ENTRY.match(line).groups() if _ENTRY.match(line) else ("", "")))
+        if action != "permit":
+            continue
+        if standard or proto.lower() in ("ospf", "89", "ipv6" if ipv6 else "ip"):
+            return True
+    return False
+
+
+def _link(units: list, symptoms: list, change_epoch: float, device: str) -> tuple:
+    """``(extra facts, hypothesis)`` where both ends of one cause are held, else ``([], None)``."""
+    for s in symptoms:
+        if change_epoch and _epoch(s) and _epoch(s) < change_epoch:
+            continue
+        for port in _ports(s):
+            for u in units:
+                where = interface_of(u)
+                if not where or not same_interface(where, port):
+                    continue
+                at = _at(s)
+                lost = symptom_words(s, device)
+                ospf = (s.get("protocol") or "").upper().startswith("OSPF")
+                for line in current_lines(u):
+                    m = _APPLY.match(line)
+                    if not m or not ospf:
+                        continue
+                    ipv6, name, way = m.group(1).startswith("ipv6"), m.group(2), m.group(3)
+                    entries = _acl_entries(name, units)
+                    if entries is None or permits_ospf(entries, ipv6=ipv6,
+                                                       standard=_standard(name, units)):
+                        continue
+                    n = _plural(len(entries), "entry", "entries")
+                    fact = {"text": (f"the ACL {name}, applied {way}bound on {where}, permits "
+                                     f"no OSPF: none of its {n} does, and an ACL drops what it "
+                                     "does not permit"), "at": "", "epoch": 0.0, "kind": "acl"}
+                    return [fact], {"label": HYPOTHESIS, "at": at,
+                                    "text": f"this ACL drops OSPF on {where}, so {lost}"}
+                return [], {"label": HYPOTHESIS, "at": at,
+                            "text": (f"the change on {where} broke what was lost on it: "
+                                     f"{lost}")}
+    for s in symptoms:
+        rid = s.get("router_id") or ""
+        if s.get("kind") != "duplicate_router_id" or not rid:
+            continue
+        for u in units:
+            if any((_ROUTER_ID.match(l) or [None, None])[1] == rid for l in current_lines(u)):
+                others = [d for d in s.get("related") or [] if d != device]
+                also = f", which {_join(others)} also uses" if others else ""
+                return [], {"label": HYPOTHESIS, "at": _at(s),
+                            "text": (f"{device}'s router-id is now {rid}{also}: two routers "
+                                     "with one router-id cannot peer")}
+    return [], None
+
+
+def cause_of(triggers: list, decision: dict) -> dict:
+    """The cause the decision states (the module's docstring), or None when nothing is held.
+    *triggers* are the incident's judged triggers (`decide.judged_triggers`), whole."""
+    device = decision.get("device") or ""
+    units = flat(decision.get("units"))
+    trig = [t for t in triggers or [] if isinstance(t, dict)]
+    changes = sorted((t for t in trig if t.get("kind") == "config_change"), key=_epoch)
+    symptoms = sorted((t for t in trig if t.get("kind") in SYMPTOMS), key=_epoch)
+    facts = []
+    what = changes_words(units)
+    if changes:
+        last = changes[-1]
+        person = ((decision.get("person") or {}).get("words")
+                  or (last.get("person") or {}).get("words") or "")
+        facts.append({"text": (f"{device}'s configuration was changed outside Mercury"
+                               + (f" ({person})" if person else "")
+                               + (f": {what}" if what else "")),
+                      "at": _at(last), "epoch": _epoch(last), "kind": "config_change"})
+    elif what:
+        facts.append({"text": f"{device} differs from its approved configuration: {what}",
+                      "at": "", "epoch": 0.0, "kind": "departure"})
+    seen = set()
+    for s in symptoms:
+        text = symptom_words(s, device)
+        if text in seen:
+            continue
+        seen.add(text)
+        facts.append({"text": text, "at": _at(s), "epoch": _epoch(s), "kind": s.get("kind")})
+        if len(seen) >= 4:
+            break
+    extra, hypothesis = _link(units, symptoms, _epoch(changes[-1]) if changes else 0.0, device)
+    facts += extra
+    if not facts:
+        return None
+    timed = sorted((f for f in facts if f["epoch"]), key=lambda f: f["epoch"])
+    return {"facts": timed + [f for f in facts if not f["epoch"]], "hypothesis": hypothesis}
+
+
+def drawn(cause: dict) -> dict:
+    """The cause as a page draws it (`_macros.heal_cause`): each fact's words and time, the
+    hypothesis's label and words; None when there is none."""
+    if not cause or not cause.get("facts"):
+        return None
+    h = cause.get("hypothesis")
+    return {"facts": [{"text": f.get("text") or "", "at": f.get("at") or ""}
+                      for f in cause["facts"]],
+            "hypothesis": {"label": h.get("label") or HYPOTHESIS, "text": h.get("text") or ""}
+            if h else None}
+
+
+def _cap(text: str) -> str:
+    """*text* to start a sentence: a leading "the" or "a" capitalised, never a device's name
+    (a label, its case its own)."""
+    return text[:1].upper() + text[1:] if re.match(r"(?:the|a|an) ", text or "") else text
+
+
+def _clause(f: dict) -> str:
+    return f"At {hhmm(f['epoch'])} UTC, {f['text']}" if f.get("epoch") else _cap(f["text"])
+
+
+def sentence(cause: dict) -> str:
+    """The cause as one paragraph for a record or a message: each fact "At HH:MM UTC, …", then
+    the hypothesis, labelled."""
+    if not cause:
+        return ""
+    out = [_clause(f) + "." for f in cause.get("facts") or []]
+    h = cause.get("hypothesis")
+    if h:
+        out.append(f"{h['label']}: {h['text']}.")
+    return " ".join(out)
+
+
+def with_cause(cause: dict, words: str) -> str:
+    """The decision's words with its cause first (facts first, rule 5)."""
+    said = sentence(cause)
+    return f"{said} {words}" if said and words else (said or words)
+
+
+# ── A can't-fix whose likeliest cause is another device's change (C2817's amendment) ───────
+
+def likely_elsewhere(incident: dict, incidents: list) -> dict:
+    """Another device's change that is the likeliest cause of *incident*'s symptom, labelled
+    as a hypothesis (the operator, 2026-11-09: "Open <device> (likely cause)"): an open incident on
+    another device holding a configuration change from outside Mercury, made at most
+    `LIKELY_S` before this incident's first symptom; one the symptom's own triggers name
+    (``related``) first, else the only one in the network. None when none is held, or when
+    several unnamed ones are (never a guess between them). ``{"device", "at", "epoch",
+    "words"}``."""
+    from modules.heal import incidents as INC
+
+    host = incident.get("device") or ""
+    trig = [t for t in incident.get("triggers") or [] if isinstance(t, dict)]
+    first = min((_epoch(t) for t in trig if t.get("kind") in SYMPTOMS and _epoch(t)),
+                default=0.0)
+    if not first:
+        return None
+    related = {d for t in trig for d in t.get("related") or []}
+    found = []
+    for other in incidents or []:
+        dev = other.get("device") or ""
+        if dev == host or other.get("state") not in INC.OPEN_STATES:
+            continue
+        ch = [t for t in other.get("triggers") or [] if isinstance(t, dict)
+              and t.get("kind") == "config_change" and first - LIKELY_S <= _epoch(t) <= first]
+        if ch:
+            c = max(ch, key=_epoch)
+            found.append({"device": dev, "at": _at(c),
+                          "epoch": _epoch(c),
+                          "words": (c.get("person") or {}).get("words") or ""})
+    named = [f for f in found if f["device"] in related]
+    pick = named or (found if len({f["device"] for f in found}) == 1 else [])
+    return max(pick, key=lambda f: f["epoch"]) if pick else None

@@ -90,6 +90,10 @@ OPENERS = {
     # A halted network's Lift the halt… (board H artboard E's second row, C2471): its reason and
     # its button drawn in the opened row (pressed in a browser by tests/test_board_shots.py's
     # test_heal_proposal).
+    # A dry-run record's Was that right? (C2817, mock 2): its Right and Wrong… drawn in the
+    # opened row (tests/test_heal_said.py renders it).
+    "heal_mark": ("document.querySelector('.heal-mark button[hx-post]') && "
+                  "document.querySelector('.heal-mark-wrong summary')"),
     "heal_halt": ("document.querySelector('.heal-halt input[name=reason]') && "
                   "document.querySelector('.heal-halt button[hx-include]')"),
     #: v2 pages whose content IS the action.

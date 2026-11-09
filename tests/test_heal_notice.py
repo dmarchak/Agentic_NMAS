@@ -177,7 +177,9 @@ class TestNoConfigurationLine:
         N.notice("Default", inc, send=ai.send, deliver=told(events), wait_s=30, now=T0 + 1)
         (ev,) = events
         text = message.text(message.check_event(ev))
-        assert "192.0.2.128" not in text and "authorise:" in text
+        # C2817: each step by what it does (its key is the webhook's), the line withheld.
+        assert "192.0.2.128" not in text and \
+            "Carried the reasons the lines need: dangerous: (a configuration line, withheld)" in text
 
     def test_an_analysis_block_carries_only_its_fields(self):
         import pytest

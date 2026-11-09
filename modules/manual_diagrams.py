@@ -1448,18 +1448,19 @@ def heal_proposal():
     return svg(540, (
         "Approve a self-healing proposal: self-healing found a fix that needs a person and "
         "recorded it with its program and hash, sending nothing; its card on Needs attention "
-        "shows the program, the measured process reset it needs, what that affects and the "
-        "proposal's hash; you approve by that hash with a reason, or decline with a reason, "
-        "which sends nothing; approved, a job takes the proposal once and, holding the device "
-        "as you, reads it again, recomputes the program and refuses if its hash moved, applies "
+        "says what happened, whether it needs you, the fix, what it affects, how Mercury checks "
+        "it worked and what happens if you don't, the program one press away; you approve by "
+        "the proposal's hash, a reason optional unless a line needs one, or decline with a "
+        "reason, which sends nothing; approved, a job takes the proposal once and, holding "
+        "the device as you, reads it again, recomputes the program and refuses if its hash moved, applies "
         "it through the deploy pipeline, then sends the measured reset and reads the "
         "adjacencies back; a failure before the reset puts the change back; the outcome is "
         "recorded and History shows it."), [
         lanes(20, 534),
         doc("box", 14, 40, 186, 36, "The proposal", "its program and hash"), num(14, 40, 1),
         t(14, 92, "recorded; nothing sent", "sm"),
-        doc("box", 14, 110, 186, 36, "Its card", "the reset, its effects"), num(14, 110, 2),
-        person(14, 160, 186, 30, "You approve, with a reason"), num(14, 160, 3),
+        doc("box", 14, 110, 186, 36, "Its card", "what happened, the fix"), num(14, 110, 2),
+        person(14, 160, 186, 30, "You approve, by its hash"), num(14, 160, 3),
         t(14, 206, "or decline: nothing is sent", "sm"),
         band(222, 150, "The heal · a job, as you, the device held"),
         device(262, 300, 118, 120, "The device", "the fix", top=True),

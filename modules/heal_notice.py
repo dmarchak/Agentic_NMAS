@@ -89,6 +89,17 @@ JOB_PREFIX = "heal-notice"
 EVENT, FOLLOW_UP = "cant_fix", "analysis"
 #: The follow-up that carries only Mercury's diagnosis (H17: the analysis was in the first).
 DIAGNOSIS_FOLLOW_UP = "diagnosis"
+#: Each step of a can't-fix's record by what it does, in a message (C2817, rule 3: never the
+#: step's key and number alone): the decision's steps, then the act's, then a proposal's.
+STEP_WORDS = {
+    "claim": "Took the incident", "stops": "Checked the kill switch, the mode and planned work",
+    "approved": "Found the approved state", "guards": "Checked the holds, the fleet and the rates",
+    "read": "Read the device again", "classify": "Found what changed and its tier",
+    "decide": "Decided", "record": "Recorded it", "take": "Took the approved proposal",
+    "plan": "Recomputed the fix", "authorise": "Carried the reasons the lines need",
+    "apply": "Applied it", "intent": "Checked each part at intent", "reset": "Reset the process",
+    "saved": "Saved it", "golden": "Read it against its new golden",
+    "symptom": "Read the symptom again", "verify": "Verified it", "rollback": "Put it back"}
 #: What to do, by the kind the decision found (section 9's can't-fix row: "the action the
 #: reason names").
 TODO = {
@@ -379,13 +390,24 @@ def facts(network: str, entry: dict, incident: dict = None) -> dict:
     device = entry.get("device") or ""
     outcome = entry.get("outcome") or "cant_fix"
     todo = TODO_OUTCOME.get(outcome) or TODO.get(entry.get("kind") or "", TODO_DEFAULT)
+    from modules.heal import said as SAID
+
+    # C2817, C2823: what happened first, the cause the decision stated (facts, then a
+    # hypothesis labelled); the outcome in plain words; each step by what it does, never its
+    # key and number alone.
+    cause = entry.get("cause") if outcome == "cant_fix" else None
+    words = ((entry.get("outcome_words") if cause else "") or entry.get("words")
+             or outcome.replace("_", " "))
     return {"incident": entry.get("incident") or "", "event": EVENT, "network": network,
             "device": device,
             "kind": kinds.KIND_WORDS.get(entry.get("kind"), entry.get("kind") or ""),
-            "outcome": EP.withhold(entry.get("words") or outcome.replace("_", " "), lines),
+            **({"happened": EP.withhold(SAID.sentence(cause), lines)} if cause else {}),
+            "outcome": EP.withhold(words, lines),
             "detected": EP.withhold(first.get("words") or "", lines),
             "detected_at": first.get("at") or (incident or {}).get("opened_at") or "",
             "steps": [{"what": EP.withhold(f"{s.get('step')}: {s.get('words') or ''}", lines),
+                       "said": EP.withhold(f"{STEP_WORDS.get(s.get('step'), s.get('step'))}: "
+                                           f"{s.get('words') or ''}", lines),
                        "result": s.get("result") or ""}
                       for s in (entry.get("steps") or [])[:20]],
             "todo": todo, "link": f"/v2/device/{device}?tab=history" if device else ""}

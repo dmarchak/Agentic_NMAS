@@ -3108,6 +3108,40 @@ def _heal_proposal(client, _lab, _mp):
                                                       "by": "v2-context", "reason": "dry run"},
             "triggers": ["r3 logged a configuration change from vty0 by lab"],
             "words": d["words"], "at": "2026-11-04T18:12:30Z", "steps": [w for _k, w in P.STEPS]}
+    # C2817, C2823: the card's plain words, the cause facts first with a labelled hypothesis,
+    # and a check Mercury does not make yet ("can't tell").
+    cause = {"facts": [
+        {"text": "r3's configuration was changed outside Mercury (the line names the account "
+                 "lab on vty0): in router ospf 1, “router-id 192.0.2.13” was changed to "
+                 "“router-id 192.0.2.14”", "at": "2026-11-04T18:02:00Z", "epoch": 1.0,
+         "kind": "config_change"},
+        {"text": "r3 logged a duplicate OSPF router-id 192.0.2.14", "at": "2026-11-04T18:03:00Z",
+         "epoch": 2.0, "kind": "duplicate_router_id"},
+        {"text": "the alert “Telemetry lost” fired on r7", "at": "2026-11-04T18:04:00Z",
+         "epoch": 3.0, "kind": "telemetry"}],
+        "hypothesis": {"label": "Likely cause (a hypothesis, not checked)",
+                       "text": "r3's router-id is now 192.0.2.14, which r4 also uses: two "
+                               "routers with one router-id cannot peer",
+                       "at": "2026-11-04T18:03:00Z"}}
+    d.update(cause=cause, headline="r3: in router ospf 1, “router-id 192.0.2.13” was changed "
+             "to “router-id 192.0.2.14”. Mercury has a fix that restarts OSPF on r3: it needs "
+             "your decision", outcome_words="Mercury proposes a fix (Tier 2)")
+    reset["settle_s"] = 6
+    from modules.heal import said as SAID
+    view.update(headline=d["headline"], cause=SAID.drawn(cause), outcome_words=d["outcome_words"],
+                fix="set “router-id 192.0.2.14” back to “router-id 192.0.2.13” in router ospf 1",
+                checks=[("the lines sent are read back on r3", "checked"),
+                        ("the alert “Telemetry lost” fired on r7: Mercury does not read this "
+                         "again yet", "cant_tell")],
+                if_not="r3 keeps the change", reason_needed=False)
+    # A dry-run record attached to r3's drift row brings its Right / Wrong there (C2817).
+    would = {"id": "hd-0123456789ac", "row": "decision", "outcome": "would_heal",
+             "device": host, "epoch": _time.time() - 300, "kind": "missing_line", "tier": 1,
+             "mode": "dry_run", "program_hash": "0123456789abcdee", "words": "would heal",
+             "headline": "r3: “logging host 192.0.2.10” was removed from the global "
+                         "configuration. Mercury would have put it back itself, but Lab is "
+                         "watching only (dry run), so nothing was sent", "cause": cause,
+             "units": []}
     # H17 (artboard E's insert): Mercury's diagnosis, run before the proposal was offered, on
     # the card; and on a can't-fix row of the same network, under "Mercury's diagnosis".
     from modules.heal import auto_diagnose as AD
@@ -3137,7 +3171,7 @@ def _heal_proposal(client, _lab, _mp):
                    refusals=["`clear ip ospf 1 process` is not measured on cisco_iosxe"])
     mp = pytest.MonkeyPatch()
     try:
-        mp.setattr(HD, "decisions", lambda n: [d] if n == net else [])
+        mp.setattr(HD, "decisions", lambda n: [d, would] if n == net else [])
         mp.setattr(SL, "incidents", lambda n, device="": (
             {"state": "ok", "entries": [entry], "error": ""} if n == net else
             {"state": "absent", "entries": [], "error": ""}))
@@ -3163,6 +3197,24 @@ def _heal_proposal(client, _lab, _mp):
             "keep_words": "Keep it: add it to intent: open the intent editor"})
         secure = client.get(base, headers=hx).get_data(as_text=True)
         assert "Remove it (back to intent)" in secure and "Keep it: add it to intent" in secure
+        from modules import attention as A
+
+        def drift_source():
+            return A.source_result("drift", "Drift", read_at=_time.time(), took_ms=0, rows=[
+                A.row(source="drift", kind="drifted", key=f"{net}:drifted:{host}",
+                      what=f"{host} has drifted from its golden", cause="2 lines differ",
+                      action={"label": "Capture it, or put it back", "open": "drift",
+                              "device": host, "list": net},
+                      level="danger", devices=[host])])
+        mp.setattr(A, "SOURCES", [drift_source, A.heal_source])
+        attached = client.get(f"/v2/attention?list={net}").get_data(as_text=True)
+        assert f'id="heal-mark-{would["id"]}"' in attached
+        mp.undo()
+        mp.setattr(HD, "decisions", lambda n: [d, would] if n == net else [])
+        mp.setattr(SL, "incidents", lambda n, device="": (
+            {"state": "ok", "entries": [entry], "error": ""} if n == net else
+            {"state": "absent", "entries": [], "error": ""}))
+        mp.setattr(P, "view", read)
         state["v"] = refused
 
         def no(*_a, **_kw):

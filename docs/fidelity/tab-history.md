@@ -20,7 +20,20 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `6635a054ea2058be52da98aaa73bf3f7ec8f9b3de3a37f5209ed28bdaabc9422`
+Templates sha256: `55da93d6206537a2c77c6b99ad084f64e10c6955d498bf77139f21d1999f39bb`
+
+Compared again 2026-11-09 (C2817, C2809, C2823; the operator's templates, "right as drawn",
+2026-11-09), by the template diff against mock 1's and mock 2's History lines (no new shot:
+tests/test_heal_said.py draws the row and its mark through the real templates). A self-healing
+row its decision ended leads with its plain line ("edge-b: “…” was added to the global
+configuration. Mercury would have put it back itself, but Default is watching only (dry run),
+so nothing was sent"); opened, the cause's facts come first, each at its time in the viewer's
+zone, then what Mercury did or would do, then its Right / Wrong with the mark drawn on its
+control, and last its record (ids, hashes, steps, policy) under a collapsed **Details for the
+record**. Every other kind's record is drawn open, as before. **deviation** (log: C2817 12);
+**deviation** (log: C2817 10); **deviation** (log: C2817 14). Templates sha256 before:
+`6635a054ea2058be52da98aaa73bf3f7ec8f9b3de3a37f5209ed28bdaabc9422`.
+
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: the timeline's foot in
 `_timeline.html` carries `data-key="tl-foot"`, so the live merge keeps the foot Load more drew in
 its place instead of drawing the first page's again; nothing drawn moves. Compared by reading

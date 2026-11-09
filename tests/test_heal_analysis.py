@@ -456,7 +456,14 @@ class TestTheCantFixRow:
         (r,) = self.rows(monkeypatch)
         assert r["level"] == "danger" and r["event"] == inc and r["acknowledge"]
         assert r["action"]["label"].startswith("Decide on the ACL")
-        assert r["cause"].startswith("Mercury's facts:") and "step(s) tried" in r["cause"]
+        # C2817 (mock 3a): the cause in plain words, what happened drawn from the decision's own
+        # cause (C2823) and the steps tried under "Details for the record" (the operands).
+        # C2839: a security ACL is Tier 2; this one waits on its removal shape's measurement.
+        assert r["cause"].startswith("Mercury cannot fix this yet"), r["cause"]
+        assert r["heal_cause"]["facts"][0]["text"].startswith(
+            "edge-b's configuration was changed outside Mercury")
+        assert [s.split(":")[0] for s in r["operands"]["steps"]][:2] == ["claim", "stops"]
+        assert "History" not in r["action"]["label"], "rule 5: the facts are drawn in place"
         assert r["heal_analysis"] == {"network": "Default", "incident": inc}
         # Board H's amendment, artboard I (H16's second part): Diagnose… on a can't-fix row
         # of any tier, Never's included (this ACL's), on the incident's device.

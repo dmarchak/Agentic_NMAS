@@ -569,7 +569,7 @@ file fallback (`receipts.on_database`'s pattern), so one store holds Mercury's r
 | Kind | What is wrong | Action | Clears when |
 |---|---|---|---|
 | `heal`/`cant_fix` | self-healing could not fix a device's problem | read what Mercury tried, then the action the reason names (adopt into intent, capture, check the link, or approve or decline the proposal) | resolves: a later check finds the device at intent and the symptom gone; or acknowledged with a reason |
-| `heal`/`proposal` | a fix that needs a person waits (Tier 2) | Approve… (confirm by hash, a reason) or Decline… | resolves: approved and verified, or the device back at intent; acknowledged: declined with a reason |
+| `heal`/`proposal` | a fix that needs a person waits (Tier 2) | Approve… (confirm by hash; a reason optional unless a line needs one, the operator, 2026-11-09, C2817) or Decline… (a reason required) | resolves: approved and verified, or the device back at intent; acknowledged: declined with a reason |
 | `heal`/`halted` | self-healing stopped on a network (a rate cap, a repeat, a rollback, the kill switch) | read why, then **Lift the halt…** with a reason | resolves: lifted |
 | `heal`/`held` | a device is held from healing (a person working, its golden departs from intent, many devices drifting) | resolve what the hold names | resolves: the condition clears at a later check |
 | `notify`/`failed` | a notification could not be delivered | read the delivery log's error, fix the relay or the webhook, Test send | resolves: the next delivery to that channel succeeds; or acknowledged |

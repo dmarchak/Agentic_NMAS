@@ -135,6 +135,23 @@ resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day
 {% endfor %}</pre>
 {%- endmacro %}
 
+{#- A time Mercury measured, in the viewer's own zone (the operator, 2026-11-09, C2817: "Show
+    times in the viewer's time zone, with UTC on hover and UTC in Details for the record"):
+    drawn "HH:MM UTC" by the server and as the browser's own time by nmas_v2.js `drawClock`
+    ("19:41 MST"), the record's UTC on hover. *iso* is a record's UTC time. -#}
+{% macro clock(iso) -%}
+{%- if iso %}<time class="clock" datetime="{{ iso }}" data-clock title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[11:16] }} UTC</time>{% else %}<span class="clock">at an unrecorded time</span>{% endif -%}
+{%- endmacro %}
+
+{#- What happened, as a self-healing decision stated it (C2823, `heal.said.cause_of`): the facts
+    in time order, each its time in the viewer's zone, then the hypothesis labelled as one
+    (MERCURY_CHARTER, "Human-facing means human-readable", rule 5: facts first). -#}
+{% macro heal_cause(c) -%}
+{%- if c and c.facts %}<ul class="set-list heal-facts">{% for fact in c.facts %}<li>{% if fact.at %}At {{ clock(fact.at) }}, {% endif %}{{ fact.text }}.</li>{% endfor %}</ul>
+{%- if c.hypothesis %}<p class="heal-hyp"><strong>{{ c.hypothesis.label }}:</strong> {{ c.hypothesis.text }}.</p>{% endif %}
+{%- endif %}
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

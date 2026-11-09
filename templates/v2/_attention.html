@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how, badge -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge, clock, heal_cause -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key).
     Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
@@ -22,6 +22,11 @@
 {#- Board H, artboard E's second row (C2471): a halt's Lift the halt… opens the row to its
     reason and its button, drawn in the row. -#}
 {%- elif r.action.open == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
+{#- C2817 (mock 2): a dry-run record's question opens the row to its Right / Wrong. -#}
+{%- elif r.action.open == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
+{#- C2817's amendment (the operator, 2026-11-09): a can't-fix whose likeliest cause is another
+    device's change leads with that device, labelled as a hypothesis. -#}
+{%- elif r.likely %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
 {%- elif r.devices %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
 {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
@@ -61,6 +66,8 @@
       <div class="att-todo">
       <h3>What to do</h3>
       <div class="att-action">
+        {#- C2817's amendment: the likeliest cause first, labelled as a hypothesis. -#}
+        {%- if r.likely %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}">Open {{ r.likely.device }} (likely cause)</a>{% endif %}
         {#- In the device's own network when it is known (C493), never the active one's. -#}
         {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>{% endfor %}
         <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>
@@ -93,6 +100,8 @@
         {%- elif r.action.open == 'heal_proposal' %}
         {#- A halt's Lift the halt is its card, drawn below. -#}
         {%- elif r.action.open == 'heal_halt' %}
+        {#- A dry-run record's Right / Wrong, drawn below (C2817, mock 2). -#}
+        {%- elif r.action.open == 'heal_mark' %}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
@@ -104,6 +113,14 @@
         {%- if r.diagnose and r.diagnose.device %} <span class="op-act"><a class="btn btn-small btn-outline" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=r.diagnose.device, list=r.diagnose.list) if r.diagnose.unreachable else url_for('device_v2.device', name=r.diagnose.device, list=r.diagnose.list, op='diagnose', **r.diagnose.args) }}" title="{{ r.diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted">{{ r.diagnose.words }}</span>
         {%- elif r.diagnose %} <span class="muted">Diagnose… is not offered: {{ r.diagnose.words }}</span>{% endif %}
       </div>
+      {%- if r.likely %}
+      <p class="small heal-hyp"><strong>Likely cause (a hypothesis, not checked):</strong> {{ r.likely.device }}'s configuration was changed outside Mercury at {{ clock(r.likely.at) }}{% if r.likely.words %} ({{ r.likely.words }}){% endif %}, shortly before this began, and that change is not fixed yet.</p>
+      {%- endif %}
+      {#- C2817 (mock 2, C2809): a dry-run record's Right / Wrong on the row itself, its own and
+          any a drift row carries for the record attached to it (rule 5: never "mark it on
+          History"). -#}
+      {%- if r.heal_mark %}{% with list_name=r.heal_mark.list, decision_id=r.heal_mark.decision, mark=r.heal_mark.mark, unreadable=r.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endif %}
+      {%- for hm in r.heal_marks or [] %}<p class="small">{{ hm.what }}</p>{% with list_name=hm.list, decision_id=hm.decision, mark=hm.mark, unreadable=hm.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endfor %}
       {#- Board H, artboard E: a self-healing proposal's card, read when the row is opened
           (routes/heal_proposal_v2.proposal), with Approve and Decline. -#}
       {%- if r.action.open == 'heal_proposal' %}
@@ -137,7 +154,7 @@
           <label class="sr-only" for="ackh-{{ r.id }}">How long it covers</label>
           <select id="ackh-{{ r.id }}" name="hours"><option value="">Until something new happens</option>{% for h in (1, 2, 4, 8, 24) %}<option value="{{ h }}">A planned quiet period: {{ h }} hour{{ '' if h == 1 else 's' }}</option>{% endfor %}</select>
           {%- endif %}
-          <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
+          <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="{{ r.ack_placeholder or 'Why this needs nothing more (recorded with your name)' }}">
           <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
           <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>
         </span>
@@ -157,6 +174,9 @@
       {%- else %}
       <div class="att-why">
         <h3>Why this happened</h3>
+        {#- C2823: what happened, facts first, each at its time in the viewer's zone, then a
+            hypothesis labelled as one; then what Mercury did or would do. -#}
+        {%- if r.heal_cause %}{{ heal_cause(r.heal_cause) }}{% endif %}
         <p class="att-cause">{{ r.cause }}</p>
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
       </div>
@@ -207,9 +227,6 @@
       {%- if r.packs %}<p class="att-cause">{{ r.cause }}</p>{% endif %}
       {%- set ops = (r.operands or {}) %}
       {%- if ops %}
-      <dl class="att-ops">
-        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join(', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
-      </dl>
       {%- if ops.members %}
       <ul class="att-members">
         {#- C1277: a silence set in Grafana is drawn on the member it covers (who, until when,
@@ -241,6 +258,17 @@
         {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
       </p>
+      {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
+          operands, its ids, hashes and steps, under a collapsed "Details for the record", last;
+          what the row says stays above it, an alert's members and the rows it folded with it.
+          Times there stay UTC, as the record keeps them. -#}
+      {%- if ops.keys() | reject('equalto', 'members') | list %}
+      <details class="att-record" data-keep="att-rec-{{ r.id }}"><summary>Details for the record</summary>
+      <dl class="att-ops">
+        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
+      </dl>
+      </details>
+      {%- endif %}
       </div>
       </div>
     </details>

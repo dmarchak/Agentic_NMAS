@@ -2125,7 +2125,7 @@ def heal(ctx):
     (its own row, naming the decision), the golden re-check, the change record and the NetBox
     journal entry. The network's own store: a device's History draws its device's rows. Every
     text masked again on the way out."""
-    from modules.heal import steplog
+    from modules.heal import said, steplog
     from modules.redact import redact_text
 
     def m(value):
@@ -2156,14 +2156,21 @@ def heal(ctx):
         pol = e.get("policy") or {}
         steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
                  for i, s in enumerate(e["steps"], 1)]
+        # C2817 (the mocks' History lines): an entry its decision ended leads with what
+        # happened and what Mercury did or would do, in plain words; an act's end, an action
+        # and a record written before the words were kept, as before.
+        plain = (e.get("headline") if e.get("state") == "decided" and outcome in (
+            "would_heal", "propose", "cant_fix", "heal") else "")
         events.append(_event(
-            e["at"], "heal", f"Self-healing ({mode}): {steplog.subject(e)} {mark}", [host] + far,
+            e["at"], "heal", (m(plain) if plain else
+                              f"Self-healing ({mode}): {steplog.subject(e)} {mark}"), [host] + far,
             # C2808: a decision self-healing made is Mercury's, under the network's policy, and
             # never drawn as the policy's confirmer's own act; a person who ran the act (an
             # approved proposal's) is named as themself.
             who=e.get("by") or (f"Mercury's self-healing, under {ctx['ref'].name}'s policy"
                                 + (f" confirmed by {pol['by']}" if pol.get("by") else "")),
-            detail=m(e.get("words")),
+            detail=m((e.get("outcome_words") if plain and e.get("cause") else "")
+                     or e.get("words")),
             sha=rec.get("golden") or "", outcome=outcome,
             marks=[mark, mode] + (["halted"] if e.get("halted") else [])
             + (["applying"] if e["state"] == "applying" else []),
@@ -2183,6 +2190,12 @@ def heal(ctx):
             + ([("Approval", m(rec["approval"]))] if rec.get("approval") else [])
             + _action_lines(e, m) + steps
             + _advisory_lines(advice.get(e["incident"]) or [], m)))
+        # C2817, C2820 (rule 2): the record, its ids, hashes and steps, under a collapsed
+        # "Details for the record" (`_timeline.html`); the cause drawn above it, facts first,
+        # its times in the viewer's zone (C2823).
+        events[-1]["record_closed"] = True
+        if plain and e.get("cause"):
+            events[-1]["heal_cause"] = said.drawn(steplog.masked(e["cause"]))
         # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong… (H9,
         # C2399), marking the incident's dry-run decision, its mark read from the network's
         # heal decisions (one read for the page, `_heal_marks`). C2841: the incident's newest

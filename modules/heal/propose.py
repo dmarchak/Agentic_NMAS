@@ -10,8 +10,10 @@ rollback cannot undo it; whether that reset is measured on the device's platform
 that would refuse it now; and the **proposal's hash** (`proposal_hash`: the network, the
 device, the decision, the program's hash and the reset's command), which the approval confirms.
 
-**Approve** (`approve`): a verified person, a reason of three words or more, and the hash as
-previewed. Refused with nothing taken or sent when any of those fails, when the proposal was
+**Approve** (`approve`): a verified person and the hash as previewed; a reason is optional
+(the operator, 2026-11-09, C2817), required of three words or more where the program holds a
+line that needs a stated reason (a dangerous line or a removal), and held to that shape when
+one is given. Refused with nothing taken or sent when any of those fails, when the proposal was
 taken already, when its reset is not measured on the device's platform (`privileged.reset_plan`:
 the shipped record holds no measurement, so R8's proposal is refused, saying so, until H11's lab
 measurements), or when a stop applies (the kill switch, self-healing off on the network, a halt,
@@ -336,9 +338,10 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
     except Exception:                                 # noqa: BLE001 (_stops said it unreadable)
         dry_run = False
     reset = ({k: plan.get(k) for k in ("key", "label", "command", "read", "affects", "not_doing",
-                                       "rollback", "measured", "bound_s", "refused")}
+                                       "rollback", "measured", "bound_s", "settle_s", "refused")}
              if plan else None)
     program = list(d.get("program") or [])
+    said_ = _plain(d, device, reset)
     # H17 (19.3, N14; artboard E's insert): Mercury's diagnosis, run once the proposal was
     # made, drawn beside Approve…; running while its device is held for it. Never withdraws.
     from modules.heal import auto_diagnose
@@ -355,7 +358,44 @@ def view(network: str, decision_id: str, *, now: float = None, sources=None) -> 
             "person": (d.get("person") or {}).get("words") or "", "policy": d.get("policy") or {},
             "triggers": [t for t in d.get("triggers") or [] if t], "words": d.get("words") or "",
             "at": d.get("at"), "steps": [w for _n, w in _steps_of(d)],
-            "withdrawn": dict(d["withdrawn"]) if d.get("withdrawn") else None}
+            "withdrawn": dict(d["withdrawn"]) if d.get("withdrawn") else None, **said_}
+
+
+def _plain(d: dict, device: str, reset: dict) -> dict:
+    """The card's plain words (C2817, the mocks' first template): ``{"headline", "cause",
+    "fix", "checks", "if_not", "reason_needed"}``. *cause* is the decision's (C2823), *fix*
+    what approving does, *checks* each check Mercury makes after it, ``(words, state)`` with
+    state ``checked`` or ``cant_tell`` (a check not built is "can't tell", never a pass),
+    *if_not* what happens if no one acts, and *reason_needed* whether approving needs a reason
+    (CLAUDE.md: "a dangerous line or re-added secret needs a stated reason")."""
+    from modules.heal import said
+
+    units = list(d.get("units") or [])
+    cause = d.get("cause") or None
+    facts = (cause or {}).get("facts") or []
+    fix = said.fixes_words(units)
+    proc = said.process_of(units)
+    checks = [("the lines sent are read back on " + device + " (the deploy's verify), and each "
+               "part fixed is read at its intent", "checked")]
+    if reset:
+        within = f", within {reset['bound_s']} s" if reset.get("bound_s") else ""
+        checks.append((f"every {proc or 'routing'} neighbour {device} had before the reset forms "
+                       f"again (read by “{reset.get('read')}”{within})", "checked"))
+    for f in facts:
+        if f.get("kind") in act.SYMPTOM_SECONDS:
+            checks.append((f"{f['text']}: read again once {device} is released", "checked"))
+        elif f.get("kind") not in ("config_change", "departure", "acl"):
+            checks.append((f"{f['text']}: Mercury does not read this again yet", "cant_tell"))
+    symptoms = [f["text"] for f in facts if f.get("kind") not in ("config_change", "departure",
+                                                                  "acl")]
+    if_not = (f"{device} keeps the change ({said.changes_words(units) or 'as it is now'})"
+              + (f", and {symptoms[0]} is not put right" if symptoms else "")
+              + f". The proposal is withdrawn if {device} changes again or is put back by "
+                "someone else")
+    return {"headline": d.get("headline") or "", "cause": said.drawn(cause),
+            "outcome_words": d.get("outcome_words") or "", "fix": fix,
+            "checks": checks, "if_not": if_not,
+            "reason_needed": bool(d.get("dangerous") or d.get("removal_ids"))}
 
 
 # ── Approve ─────────────────────────────────────────────────────────────────────────────────
@@ -370,8 +410,13 @@ def approve(network: str, decision_id: str, *, confirmed_hash: str, reason: str,
 
     now = time.time() if now is None else float(now)
     _person(actor, actor_verified, person, "approving a self-healing proposal")
-    reason = _reason(reason, "approving a proposal")
     v = view(network, decision_id, now=now, sources=sources)
+    # The operator, 2026-11-09 (C2817): a reason is optional on Approve, required on Decline;
+    # one is still required where the program holds a dangerous line or a removal, and a
+    # reason given is held to its shape. CLAUDE.md:
+    # "a dangerous line or re-added secret needs a stated reason".
+    reason = (_reason(reason, "approving a proposal whose lines need a stated reason")
+              if v["reason_needed"] or (reason or "").strip() else "")
     if v["withdrawn"]:
         raise Refused(f"not approved: the proposal you confirmed ({confirmed_hash or 'no hash'}"
                       f"; the proposal's {v['hash']}) is no longer waiting: "
@@ -594,6 +639,10 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     held.update(prog=prog, platform=platform)
 
     flagged = authorisation.flagged(prog["commands"], prog["keys"])
+    if flagged and not (approval.get("reason") or "").strip():
+        # C2817: a reason is optional on Approve only where no line needs one.
+        return refuse("authorise", (f"{len(flagged)} line(s) need a stated reason, and the "
+                                    "approval gave none"))
     authorise = [{"line": k, "reason": approval["reason"]} for k in flagged]
     held["authorise"] = authorise
     step("authorise", "ok", (f"{len(authorise)} line(s) that need a reason carry {by}'s"
