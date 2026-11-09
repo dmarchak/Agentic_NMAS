@@ -422,12 +422,31 @@ def stp(text: str, interface: str = "") -> dict:
                                    for m in _STP_ROW.finditer(text)]})
 
 
+#: `show telemetry ietf subscription all` (IOS-XE; captured 2026-10-17, tests/fixtures/diagnose/):
+#: the brief's
+#: heading, then one row per subscription (its id, type, state and filter type).
+_TEL_HEAD = re.compile(r"^\s*ID\s+Type\s+State\s+Filter type\s*$", re.MULTILINE)
+_TEL_ROW = re.compile(r"^\s*(?P<id>\d+)\s+(?P<type>\S+)\s+(?P<state>\S+)\s+(?P<filter>\S+)\s*$",
+                      re.MULTILINE)
+
+
+def telemetry_brief(text: str, interface: str = "") -> dict:
+    """``{id: {type, state, filter}}`` for each subscription the device holds (C2828). No
+    heading is unreadable, never read as a device holding none."""
+    head = _TEL_HEAD.search(text or "")
+    if not head:
+        return _out(UNREADABLE, why="no subscription table in the answer")
+    return _out(PARSED, {m.group("id"): {"type": m.group("type"), "state": m.group("state"),
+                                         "filter": m.group("filter")}
+                         for m in _TEL_ROW.finditer(text, head.end())})
+
+
 #: Each read kind's parser (`diagnose.READS` names the kinds).
 PARSERS = {"interfaces": interfaces, "ip_interface": ip_interface, "cdp": cdp, "lldp": lldp,
            "ospf_neighbor": ospf_neighbor, "ospfv3_neighbor": ospfv3_neighbor,
            "bgp_summary": peers_from_summary, "arp": arp, "ipv6_interface": ipv6_interface,
            "reach_ping": ping, "route": route, "traceroute": traceroute, "acl_counters": access_list,
-           "nd": nd, "mac": mac_table, "stp": stp}
+           "nd": nd, "mac": mac_table, "stp": stp, "telemetry_brief": telemetry_brief}
 #: The parsers that read by the device's dialect (the platform pack's entries are per dialect).
 BY_DIALECT = frozenset({"arp"})
 

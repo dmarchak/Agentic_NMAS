@@ -1,0 +1,6 @@
+  Telemetry subscription brief
+
+  ID               Type        State       Filter type
+  --------------------------------------------------------
+  101              Configured  Valid       xpath
+  102              Configured  Valid       xpath

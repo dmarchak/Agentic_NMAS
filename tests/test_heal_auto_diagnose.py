@@ -193,7 +193,8 @@ class TestTheTarget:
         got = AD.target_for("Default", {"device": "r3", "triggers": [trig]}, model=model,
                             intents=intents)
         assert got == {"why": ("no runbook fits what raised it (config_change): the runbooks "
-                               "read an adjacency, an interface or a device not reached")}
+                               "read an adjacency, an interface, a device not reached or a "
+                               "telemetry stream lost")}
 
 
 # ── The run: once, bounded, recorded, announced ────────────────────────────────────────────
@@ -212,6 +213,22 @@ class TestTheRun:
         assert (("diagnosis", "drift"), "heal-diagnose") in heard
         again = AD.run("Default", inc, AD.ALERT, diagnose=fake, model=model, intents=intents)
         assert again == {"state": "taken", "incident": inc} and len(fake.calls) == 1
+
+    def test_a_lost_streams_incident_runs_the_stream_runbook(self, lab, heard):
+        """C2828 (H11 W8): r3's lost stream is diagnosed device to collector, never "can't
+        reach" from a neighbour, its subscription from the trigger the alert labelled."""
+        lost = {"kind": "alert", "key": "alert:tel-101", "epoch": T0 - 900,
+                "at": iso(T0 - 900), "rule": "NMAS telemetry stream lost: r3 subscription 101",
+                "interface": "", "subscription": "101", "words": "r3 stopped streaming 101"}
+        inc = alert_incident(trigger=lost)
+        model, intents = fleet()
+        fake = Runbook([])
+        got = AD.run("Default", inc, AD.ALERT, diagnose=fake, model=model, intents=intents)
+        assert got["state"] == "done" and len(fake.calls) == 1
+        runbook, target, _actor, _inc = fake.calls[0]
+        assert (runbook, target["device"], target["subscriptions"]) == (
+            "stream_lost", "r3", ["101"])
+        assert target["cause"]["state"] == "none", "no other device changed before it"
 
     def test_no_fitting_runbook_is_recorded_on_its_incident_with_why(self, lab, heard):
         inc = alert_incident(trigger=dict(ALERT_GI4, interface="GigabitEthernet9"))

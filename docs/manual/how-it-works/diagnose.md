@@ -6,7 +6,8 @@ alert's evidence pack (Monitoring › Alerts, above Explain) and on a can't-fix 
 attention, any tier, Never's included; each opens the device's card with its runbook and target
 taken from what raised it (see [Where it opens from](#from)). A runbook is a list of
 steps in code. Each step is a read of a device, or a comparison of what was read with committed
-intent. It sends no command that is not a read, changes nothing, and calls no model. What it
+intent. Self-healing has a third runbook of its own, "a telemetry stream lost", which it runs
+when a device stops streaming (see [A telemetry stream lost](#stream)). It sends no command that is not a read, changes nothing, and calls no model. What it
 answers is a **diagnosis**: each step with its result, the hypotheses ranked with their
 evidence, and the checks that passed.
 
@@ -105,6 +106,51 @@ Some devices do not have a read the runbook sends: an IOS switch refuses the bou
 traceroute and `show ipv6 neighbors <address>`. The step then says the device has no such read,
 and a rule that needed it says its evidence is incomplete.
 
+## The steps: a telemetry stream lost {#stream}
+
+A telemetry stream runs from the device to its collector, on the port the subscription's
+receiver names in intent. So this runbook reads that path, from both of its ends, and not a
+path between two devices. Self-healing runs it when a lost-stream alert raised the incident
+(see [When self-healing runs it by itself](#automatic)).
+
+1. `plan`: the device, its lost subscriptions, and each subscription's receiver address and
+   port from intent. A subscription intent does not declare is named and not read. A receiver
+   with no address and port in intent has no collector to read, said.
+2. `hold`: the device is held for this diagnosis.
+3. `read`: on the device, through the reads engine: `show telemetry ietf subscription all`
+   (each subscription's state), `show telemetry ietf subscription <id> receiver` for each lost
+   subscription, and a ping to each collector address (`ping ipv6` for an IPv6 one). The
+   receiver's answer is not yet interpreted: it is on History › Reads to read, and a hypothesis
+   that needed it says its evidence is incomplete.
+4. `collector`: when the collector is Mercury's own host, its TCP sockets on the stream's port,
+   read from the kernel's tables on the host, IPv4 and IPv6: whether anything listens there,
+   each session from one of the device's addresses and its state, and how many sessions stand
+   from other devices. Nothing is sent and nothing is changed. A collector at an address that
+   is not Mercury's host is not read, and the result says so.
+5. `cause`: from self-healing's own records, the change on another device just before the
+   stream was lost (the one the alert names, or the only one), and whether Mercury has read
+   that device back at intent since, and when.
+6. `logs`: the device's configuration lines in the last hour, from Loki.
+7. `compare`, `rank` and `record`: as for an adjacency, with this runbook's rules: Mercury
+   cannot read the device either; a subscription missing on the device, or not Valid; the
+   device not reaching its collector; nothing listening on the collector's port; a half-open
+   session (the collector still holds a session from the device while its stream is lost); no
+   session from the device though the collector listens; the stream still lost well after its
+   cause was put back; the cause put back too recently for the alert to have cleared; the
+   cause still standing; a configuration change on the device.
+
+**A stream that outlived its cause is a different problem from a stale one.** When the change
+that broke the stream was put back longer ago than the lost-stream alert takes to clear (its
+window and its evaluation interval, about 150 s), and the stream is still lost, the result
+leads with that: "edge2's telemetry hasn't recovered since edge1 was put back at 20:05 UTC, 40
+minutes before this diagnosis". The stream is then stuck at the device or the collector, not waiting on
+the path. When it was put back less than that ago, the stream may already be back and the
+alert not yet cleared: the result says so, and when to diagnose again.
+
+What to do about a stuck stream is said with it: for each lost subscription, remove its
+receiver, wait about 10 s, add it back, and check its state. Mercury has no operation that does
+this yet, so the diagnosis names it and changes nothing.
+
 ## The result
 
 The diagnosis is drawn in the card's place when the run ends: its headline (how many
@@ -143,8 +189,11 @@ Self-healing runs the same runbooks itself, once per incident, on two kinds of i
   Mercury read. When its first hypothesis is decisive and is a physical or link fault, the card
   says the fix does not change it. A diagnosis never withdraws a proposal.
 
-It chooses the runbook from what raised the incident: an alert that the device is unreachable
-runs "can't reach" toward the device's loopback from its first neighbour by intent; an alert
+It chooses the runbook from what raised the incident: a lost telemetry stream runs "a
+telemetry stream lost" on the device, whatever else raised it too (when Mercury cannot read the
+device either, that is its first hypothesis, pointing at Can't reach); an alert that the device
+is unreachable runs "can't reach" toward the device's loopback from its first neighbour by
+intent; an alert
 naming an interface, or an adjacency down, runs "an adjacency is down" on that adjacency, and
 only on it. A named interface that intent holds no adjacency over is not diagnosed, and the row
 says so: no other link is read in its place.
@@ -159,4 +208,6 @@ its row runs one.
 
 It sends no configuration command, no `clear counters`, no `send log` and no `terminal`
 setting: every command passes the reads engine's read-only allowlist with nothing added. It
-calls no AI model. It reads no device that is not part of the adjacency or the path.
+calls no AI model. It reads no device that is not part of the adjacency or the path. On
+Mercury's host it only reads the kernel's socket and address tables, for a lost stream's
+collector.

@@ -378,6 +378,13 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
         silenced = " (silenced in Grafana)" if inst.get("silenced_by") else ""
         base = {"kind": "alert", "epoch": at, "at": _iso(at), "source": store,
                 "rule": inst.get("rule") or "", "interface": iface}
+        if labels.get("nmas") == "telemetry" and labels.get("subscription"):
+            # A lost telemetry stream (scripts/nmas-telemetry-rules' labels): its subscription,
+            # and how long its alert takes to see a stopped stream, for the stream runbook
+            # (C2828, `diagnose_stream.stream_of`).
+            base["subscription"] = str(labels["subscription"])
+            if labels.get("detect_seconds"):
+                base["detect_seconds"] = str(labels["detect_seconds"])
         out.append((network, device, dict(
             base, key=f"alert:{key}", related=far,
             words=(f"the alert {inst.get('rule') or '?'} fired on {device}{on}{silenced}"

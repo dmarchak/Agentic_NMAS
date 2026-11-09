@@ -14,7 +14,10 @@ it sends no command that is not a read, changes nothing and calls no model.
 - **Never** and the other can't-fix outcomes run none: Diagnose… on their rows runs one.
 
 **Its runbook and target, from what raised the incident** (`target_for`, its triggers in order,
-the first that names one): an alert whose rule is the device unreachable runs "A can't reach
+the first that names one): a lost telemetry stream (an alert of the stream rules, by its
+subscription label or its rule's title) runs "a telemetry stream lost" on the device, first
+whatever else raised it, with its likely cause read from the heal records (C2828,
+`modules/heal/diagnose_stream.py`); an alert whose rule is the device unreachable runs "A can't reach
 B" toward the device's intended loopback from its first neighbour by intent; an alert naming
 an interface, or a routing adjacency down or logged naming its other end, runs "adjacency down
 with both ends at intent" on the adjacency intent holds over that interface or toward that
@@ -221,18 +224,49 @@ class AutoSlots:
 
 # ── The runbook and its target ──────────────────────────────────────────────────────────────
 
+def _heal_records(network: str, every, decided) -> tuple:
+    """``(incidents, decisions)`` for the stream runbook's cause: those given, else read (a
+    store that cannot be read gives None, and the cause is said not read)."""
+    from modules.heal import decisions, incidents
+
+    if every is None:
+        try:
+            got = incidents.read(network)
+            every = got.get("incidents") if got.get("state") != "unreadable" else None
+        except Exception as exc:                      # said as the cause not read
+            log.info("heal: %s's incidents not read for a stream's cause: %s", network, exc)
+    if decided is None:
+        try:
+            decided = decisions.decisions(network)
+        except Exception as exc:                      # said as the cause not read
+            log.info("heal: %s's decisions not read for a stream's cause: %s", network, exc)
+    return every, decided
+
+
 def target_for(network: str, incident: dict, *, model: dict = None,
-               intents: dict = None) -> dict:
+               intents: dict = None, incidents: list = None, decided: list = None) -> dict:
     """``{"runbook", "target", "words"}`` for *incident* (its record, with its triggers), or
-    ``{"why"}`` naming why none fits. Reads intent and the network model only."""
+    ``{"why"}`` naming why none fits. Reads intent and the network model; a lost telemetry
+    stream also reads the heal records for its cause (*incidents*, *decided*: the network's
+    incidents and decisions, read when not given)."""
     from modules.heal import diagnose as D
     from modules.heal import diagnose_page as P
     from modules.heal import diagnose_reach as R
+    from modules.heal import diagnose_stream as S
     from modules.neighbours import _all_lines
 
     host = (incident or {}).get("device") or ""
     if not host:
         return {"why": "the incident names no device"}
+    # C2828: a lost telemetry stream runs its own runbook, the device to its collector on the
+    # stream's port, before any other trigger's: an unreachable alert on the same device is
+    # read by it too (the device not read is its own hypothesis, naming Can't reach).
+    if any(S.stream_of(t) for t in (incident or {}).get("triggers") or []):
+        every, decided = _heal_records(network, incidents, decided)
+        target = S.target_from(incident, every, decided)
+        return {"runbook": S.RUNBOOK, "target": target,
+                "words": (f"\"{D.RUNBOOKS[S.RUNBOOK]}\" on {host} "
+                          f"({S._subs_words(target['subscriptions'])})")}
     pick = None
     for t in (incident or {}).get("triggers") or []:
         if not isinstance(t, dict):
@@ -250,8 +284,8 @@ def target_for(network: str, incident: dict, *, model: dict = None,
         kinds = sorted({str(t.get("kind")) for t in (incident or {}).get("triggers") or []
                         if isinstance(t, dict)})
         return {"why": ("no runbook fits what raised it (" + (", ".join(kinds) or "nothing")
-                        + "): the runbooks read an adjacency, an interface or a device not "
-                          "reached")}
+                        + "): the runbooks read an adjacency, an interface, a device not "
+                          "reached or a telemetry stream lost")}
     try:
         if model is None or intents is None:
             model, intents = D._sources(network, model, intents)
@@ -336,16 +370,18 @@ def run(network: str, incident_id: str, kind: str, *, diagnose=None, model: dict
                   incident_id, exc)
         return {"state": "failed", "incident": incident_id,
                 "words": f"not diagnosed: it could not be taken ({type(exc).__name__}: {exc})"}
+    every = None
     try:
         got = incidents.read(network)
-        incident = next((i for i in got.get("incidents") or [] if i.get("id") == incident_id),
-                        {})
+        every = got.get("incidents") or []
+        incident = next((i for i in every if i.get("id") == incident_id), {})
     except Exception as exc:                          # said on its row
         incident = {}
         why = f"the incident could not be read ({type(exc).__name__}: {exc})"
     else:
         why = "" if incident else "the incident is no longer in the heal incidents' store"
-    pick = {"why": why} if why else target_for(network, incident, model=model, intents=intents)
+    pick = {"why": why} if why else target_for(network, incident, model=model, intents=intents,
+                                               incidents=every)
     if pick.get("why"):
         out = _not_diagnosed(network, incident, incident_id,
                              f"not diagnosed: {pick['why']}", "refused", now)
@@ -405,8 +441,10 @@ def proposals_step(network: str, starter=None) -> list:
 def _rule_words() -> dict:
     from modules.heal import diagnose as D
     from modules.heal import diagnose_reach as R
+    from modules.heal import diagnose_stream as S
 
-    return {r.name: r.words for r in tuple(D.RULES) + tuple(R.PATH_RULES)}
+    return {r.name: r.words for r in tuple(D.RULES) + tuple(R.PATH_RULES)
+            + tuple(S.STREAM_RULES)}
 
 
 def where(h: dict) -> list:

@@ -452,6 +452,10 @@ def test_golden_interfaces_are_the_interface_lines_as_written():
 RUNBOOK_ONLY = {
     "acl_counters": "an access list's entries are configuration",
     "df_ping": "'size' is a word the shape `ping {address} repeat 5 timeout 2` does not name",
+    # C2828's lost-stream runbook (C2894): a subscription's state and receiver hold the
+    # collector's address and port, data the AI set has not been decided to carry off the host.
+    "telemetry_brief": "is not one of the AI read set's commands",
+    "telemetry_receiver": "is not one of the AI read set's commands",
 }
 
 
@@ -478,4 +482,5 @@ def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(
         assert got["command"] == command
         matched += 1
     assert excepted == set(RUNBOOK_ONLY)
-    assert matched == 2 * 35 - 2 * len(RUNBOOK_ONLY)   # the floor: every other template
+    # the floor: every other template (37 since C2828's two telemetry reads)
+    assert matched == 2 * 37 - 2 * len(RUNBOOK_ONLY)

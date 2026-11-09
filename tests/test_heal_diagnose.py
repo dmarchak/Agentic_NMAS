@@ -260,7 +260,7 @@ def every_command():
             address = "2001:db8::1" if "ipv6" in template else "192.0.2.1"
             args = {"if": "GigabitEthernet0/1", "src": "Loopback0", "far": address,
                     "peer": address, "mtu": "1500", "dest": address, "nh": address,
-                    "acl": "EDGE-IN", "mac": "0c00.6f31.800a"}
+                    "acl": "EDGE-IN", "mac": "0c00.6f31.800a", "sub": "101"}
             names = [f for _, f, _, _ in string.Formatter().parse(template) if f]
             yield kind, dialect, D.render(kind, dialect, **{n: args[n] for n in names})
 
@@ -277,7 +277,8 @@ class TestThePipeRule:
             assert _cli_rule(kind, command) == "", command
             assert "|" not in command and not command.startswith("clear"), command
             seen += 1
-        assert seen == 2 * 35                          # the floor: every template, both dialects
+        # The floor: every template, both dialects (C2828 added the stream runbook's two).
+        assert seen == 2 * 37
 
     def test_a_diagnosis_has_no_extras_and_never_clears_counters(self):
         from modules.nsot import reads

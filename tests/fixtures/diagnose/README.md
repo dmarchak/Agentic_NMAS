@@ -146,3 +146,17 @@ answer shape (`tests/fixtures/loki/lines_r4.json`'s):
 The shutdown printed no `%LINK-5-CHANGED ... administratively down` line in Loki, and no
 `%LINK-3-UPDOWN ... down`. s1's window (GigabitEthernet1/1, 18:09 to 18:13 UTC) holds no
 UPDOWN line at all: its lines there are the configuration and rollback timer's own.
+
+## A lost telemetry stream (C2828)
+
+- `r6__show_telemetry_ietf_subscription_all.txt`: r6's (IOS-XE) `show telemetry ietf
+  subscription all`, read through Mercury's Show commands on 2026-10-17 at 06:01:53 UTC (W3's
+  step 35, after r6's boot): subscriptions 101 and 102, Configured and Valid. **Edit:** the
+  walk's record put one heading line (time, device, command, duration) and a blank line before
+  the answer; both are removed, and nothing of the device's answer is edited.
+- **Not captured (C2890):** `show telemetry ietf subscription <id> receiver`, the receiver's
+  state as the device holds it (the operator read r7's as Disconnected, "Connection is not
+  up", in H11 W8, 2026-11-08, and kept no copy). The runbook sends it and does not interpret
+  it.
+- `collector/`: the collector's side, the kernel's socket tables on Mercury's host
+  (`collector/README.md`).

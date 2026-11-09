@@ -5,8 +5,10 @@ output is a **diagnosis**: the steps with their results, a ranked list of hypoth
 evidence, and the checks that passed ("ruled out").
 
 **The runbooks** (`RUNBOOKS`): "adjacency down with both ends at intent" (H14: OSPF, OSPFv3
-and BGP, here) and "A can't reach B" (H15, `modules/heal/diagnose_reach.py`, on `path_trace`:
-IPv4, and IPv6 by `show ipv6 cef` since H18's captures, its limits said there).
+and BGP, here), "A can't reach B" (H15, `modules/heal/diagnose_reach.py`, on `path_trace`:
+IPv4, and IPv6 by `show ipv6 cef` since H18's captures, its limits said there) and "a
+telemetry stream lost" (C2828, `modules/heal/diagnose_stream.py`: the device to its collector
+on the stream's port, both ends, and the time since the stream's cause was put back).
 
 **Every read goes through the one reads engine** (`modules/nsot/reads.py`), as its caller kind
 ``diagnosis``, whose `reads.EXTRAS` entry is empty: every command passes
@@ -67,9 +69,10 @@ import uuid
 log = logging.getLogger(__name__)
 
 RUNBOOKS = {"adjacency_down": "adjacency down with both ends at intent",
-            "cant_reach": "A can't reach B"}
+            "cant_reach": "A can't reach B",
+            "stream_lost": "a telemetry stream lost"}
 #: The runbooks built so far.
-BUILT = ("adjacency_down", "cant_reach")
+BUILT = ("adjacency_down", "cant_reach", "stream_lost")
 #: The reads engine's caller kind for a diagnosis (`reads.EXTRAS`: none).
 KIND = "diagnosis"
 #: Device commands per diagnosis (N24): about 2.5 x the longest runbook's 28.
@@ -98,6 +101,8 @@ _IFNAME = re.compile(r"[A-Za-z][A-Za-z-]{0,30}[0-9][0-9/.:]{0,15}")
 _ACLNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 #: A MAC address as IOS prints it in ARP and the MAC table (captures: tests/fixtures/diagnose/).
 _MAC = re.compile(r"[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}")
+#: A telemetry subscription's id as IOS-XE takes it (0 to 2147483647), one word of digits.
+_SUBSCRIPTION = re.compile(r"[0-9]{1,10}")
 _STUCK = ("EXSTART", "EXCHANGE")
 _UP = ("FULL", "2WAY")
 
@@ -283,6 +288,12 @@ TEMPLATES = {
     # port's spanning-tree state (both captured on an IOS switch).
     "mac": {"*": "show mac address-table address {mac}"},
     "stp": {"*": "show spanning-tree interface {if}"},
+    # "a telemetry stream lost" (C2828; `diagnose_stream`): the device's subscriptions and
+    # their states (captured on IOS-XE), and one subscription's receiver as the device holds it
+    # (`{sub}` a subscription id intent declares; not captured yet, C2890). IOS-XE's; on an
+    # IOS device intent declares no subscription, so the plan never sends them there.
+    "telemetry_brief": {"*": "show telemetry ietf subscription all"},
+    "telemetry_receiver": {"*": "show telemetry ietf subscription {sub} receiver"},
 }
 #: The kind a template's answer is parsed as (an IPv6 form is its IPv4 kind's twin).
 PARSE_KIND = {"link_ping6": "link_ping", "bgp_summary6": "bgp_summary",
@@ -315,7 +326,9 @@ READ_WORDS = {
     "source", "reach_ping6": "does A reach B (IPv6)", "reach_ping6_src": "does A reach B "
     "(IPv6), from its loopback", "traceroute6": "the IPv6 path past the managed devices",
     "nd": "the next hop resolved (IPv6 neighbours)",
-    "mac": "where the next hop's MAC is learned", "stp": "that port's spanning-tree state"}
+    "mac": "where the next hop's MAC is learned", "stp": "that port's spanning-tree state",
+    "telemetry_brief": "the device's telemetry subscriptions and their states",
+    "telemetry_receiver": "a subscription's receiver as the device holds it"}
 _DIALECT = {"cisco_iosxe": "cisco_iosxe", "cisco_xe": "cisco_iosxe", "cisco_ios": "cisco_ios"}
 
 
@@ -368,6 +381,10 @@ def render(kind: str, dialect: str, **args) -> str:
         elif key == "mac":
             if not _MAC.fullmatch(text):
                 raise Refused(f"{text!r} is not a MAC address, so `{template}` is not sent")
+        elif key == "sub":
+            if not (_SUBSCRIPTION.fullmatch(text) and int(text) <= 2147483647):
+                raise Refused(f"{text!r} is not a telemetry subscription id, so `{template}` "
+                              "is not sent")
         values[key] = text
     return template.format(**values)
 
@@ -499,6 +516,9 @@ def plan(network: str, runbook: str, target: dict, model: dict = None,
     if runbook == "cant_reach":
         from modules.heal import diagnose_reach
         return diagnose_reach.plan(network, target, lines)
+    if runbook == "stream_lost":
+        from modules.heal import diagnose_stream
+        return diagnose_stream.plan(network, target, lines)
     a = str(target.get("device") or "")
     if a not in lines:
         raise Refused(f"{a or 'no device'} has no committed intent in {network}, so there is "
@@ -747,11 +767,13 @@ def _logs(network: str, host: str, now: float) -> dict:
 
 def run(network: str, runbook: str, target: dict, actor: str, *, incident: str = "",
         session=None, logs=None, sleep=time.sleep, model: dict = None, intents: dict = None,
-        now: float = None, record: bool = True) -> dict:
+        now: float = None, record: bool = True, collector=None) -> dict:
     """Run *runbook* on *target* and answer the diagnosis (recorded in the step log unless
     *record* is False). A refusal is a diagnosis too (``state`` ``refused`` or ``busy``,
     nothing read), never raised. *session* (tests) is the reads engine's seam; *logs* is
-    ``logs(network, host, now) -> {state, why, lines}``; *sleep* waits between the rounds."""
+    ``logs(network, host, now) -> {state, why, lines}``; *sleep* waits between the rounds;
+    *collector* (tests) replaces the lost-stream runbook's local read of the collector's
+    sockets (`diagnose_stream.read_collector`)."""
     started = time.time() if now is None else float(now)
     did = new_id()
     out = {"id": did, "network": network, "runbook": runbook,
@@ -771,6 +793,12 @@ def run(network: str, runbook: str, target: dict, actor: str, *, incident: str =
         out["runbook_words"] = p["runbook_words"]           # by its two ends (C2829)
         diagnose_reach.run_plan(p, out, actor, session=session, logs=logs or _logs,
                                 sleep=sleep, started=started)
+        out["finished_at"] = _iso(time.time())
+        return _recorded(network, out, record)
+    if runbook == "stream_lost":
+        from modules.heal import diagnose_stream
+        diagnose_stream.run_plan(p, out, actor, session=session, logs=logs or _logs,
+                                 collector=collector, started=started)
         out["finished_at"] = _iso(time.time())
         return _recorded(network, out, record)
     out["devices"] = [e["host"] for e in p["ends"]]

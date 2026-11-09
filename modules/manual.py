@@ -267,6 +267,8 @@ OPERATIONS = {
     # Board H's amendment, H16 (artboards I and J): Diagnose…, each runbook's steps.
     "diagnose": ("modules.heal.diagnose", "STEPS"),
     "diagnose-reach": ("modules.heal.diagnose_reach", "STEPS"),
+    # C2828: the lost-stream runbook self-healing runs on a lost telemetry stream.
+    "diagnose-stream": ("modules.heal.diagnose_stream", "STEPS"),
     # Board H, H10: the heal loop (its pass, its decision and its act) and its notices.
     "heal": ("modules.heal.decide", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),
@@ -310,6 +312,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "console-server-key": "installation-settings",
                   "console-server-rekey": "rekey",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
+                  "diagnose-stream": "diagnose",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",

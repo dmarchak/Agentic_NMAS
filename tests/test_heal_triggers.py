@@ -263,6 +263,20 @@ class TestAlerts:
         assert (inc["device"], inc["cause"]) == ("core-b", "symptom")
         assert "NMAS heartbeat missing fired on core-b" in inc["triggers"][0]["words"]
 
+    def test_a_lost_streams_trigger_carries_its_subscription(self, world):
+        """C2828: the stream runbook reads which subscription was lost, and how long its alert
+        takes to see one, from the trigger (the generator's labels)."""
+        inst = alert(rule="NMAS telemetry stream lost: core-b subscription 101",
+                     labels={"device": "core-b", "nmas": "telemetry", "subscription": "101",
+                             "detect_seconds": "150"})
+        T.from_alerts("grafana-alerts", {"instances": [inst]}, now=T0)
+        (inc,) = stored()
+        t = inc["triggers"][0]
+        assert (t["subscription"], t["detect_seconds"]) == ("101", "150")
+        T.from_alerts("grafana-alerts", {"instances": [alert(rule_uid="u2")]}, now=T0)
+        assert not any("subscription" in t for i in stored() for t in i["triggers"]
+                       if "heartbeat" in t["rule"]), "only a stream rule's labels carry it"
+
     def test_once_an_episode(self, world):
         T.from_alerts("grafana-alerts", {"instances": [alert()]}, now=T0)
         assert T.from_alerts("grafana-alerts", {"instances": [alert()]},
