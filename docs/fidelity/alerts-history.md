@@ -15,7 +15,11 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `d04f002bea3ebc0723e0e761b973cf4ce6f862bf82b236d71e04a44f465debba`
+Templates sha256: `797bbac2570cc1a3f7889f5895df9e8fdf0a78c1c7daea0f4778003ccb20cf84`
+Hashed again 2026-11-09 for the replan's item 4: `_explain_ask.html` and `_explain.html`, which
+this record compares, draw the pack's own Explain task (`sdn_explain` for an SDN detection's
+pack); a past alert's History row draws Explain's, unchanged. Nothing drawn here moves (the
+templates then hashed `d04f002bea3ebc0723e0e761b973cf4ce6f862bf82b236d71e04a44f465debba`).
 (2026-11-05, H16's second part: `_evidence_pack.html` gains Diagnose… beside Explain, compared
 in docs/fidelity/alerts-explain.md the same day; drawn the same in a History row's pack.
 Before: `620d7e7f1f4f7a63233264848b611eb6e972fc834aea7619241ebc88e540ed0f`.)

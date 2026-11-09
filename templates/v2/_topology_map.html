@@ -19,9 +19,11 @@
 <input type="hidden" name="list" value="{{ t.list }}">
 {%- for k, v in t.s.items() if k not in skip and v not in (none, '') %}{% if k == 'p' %}<input type="hidden" name="p" value="{{ v | join(',') }}">{% else %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
 {%- endmacro -%}
+{%- import "v2/_topology_flowtrace.html" as ft with context -%}
 {%- macro path_form(t, tr, sfx='', cls='topo-popform') -%}
     <form method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML" class="{{ cls }}">
-      {{- hidden_state(t, ('a', 'b', 'sel', 'trace')) }}
+      {{- hidden_state(t, ('a', 'b', 'sel', 'trace', 'layer', 'src', 'dst', 'proto', 'dport')) }}
+      {{- ft.layer_switch(t) }}
       <label for="topo-a{{ sfx }}">From</label>
       <select id="topo-a{{ sfx }}" name="a"><option value="">a device…</option>{% for d in t.path_from %}<option{% if d == t.s.a %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
       <label for="topo-b{{ sfx }}">to</label>
@@ -29,7 +31,8 @@
       <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
     </form>
 {%- endmacro -%}
-<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}, nmas:device_holds from:body, nmas:device_progress from:body throttle:5s, nmas:restarts from:body" hx-swap="outerHTML">
+{%- set flow_shown = t.flow and t.flow.state != 'form' -%}
+<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}{{ ', nmas:sdn from:body' if t.flow }}, nmas:device_holds from:body, nmas:device_progress from:body throttle:5s, nmas:restarts from:body" hx-swap="outerHTML">
 <svg class="topo-defs" width="0" height="0" aria-hidden="true"><defs>{{ t.symbols | safe }}</defs></svg>
 {%- if op.state == 'refused' %}
 <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not changed:</strong> {{ op.refused }}.</p></div>
@@ -114,9 +117,9 @@
   </div>
   {{ go(t, {'weak': '0' if t.s.weak == '1' else '1', 'tab': 'map'}, 'Weak points', 'btn btn-small topo-wide' ~ (' on' if t.s.weak == '1'), t.s.weak == '1') }}
   {%- set tr = t.trace or {} %}
-  <details class="topo-pop topo-wide" data-keep="topo-path{{ '-shown' if t.trace or path_refused }}"{% if (t.s.a or t.s.b) and not t.trace and not path_refused %} open{% endif %}>
+  <details class="topo-pop topo-wide" data-keep="topo-path{{ '-shown' if t.trace or path_refused or flow_shown }}"{% if ((t.s.a or t.s.b) and not t.trace and not path_refused) or (t.s.layer == 'of' and not flow_shown) %} open{% endif %}>
     <summary class="btn btn-small">Path…</summary>
-    {{ path_form(t, tr) }}
+    {%- if t.layer == 'of' %}{{ ft.of_form(t, t.flow) }}{% else %}{{ path_form(t, tr) }}{% endif %}
   </details>
   <details class="topo-pop topo-wide" data-keep="topo-whatif"{% if t.s.out %} open{% endif %}>
     <summary class="btn btn-small">Take out a device (what-if)…</summary>
@@ -174,6 +177,12 @@
   {%- endif %}
   <div class="topo-trace-acts">{{ go(t, {'a': '', 'b': '', 'trace': ''}, 'Clear the path') }}{% if tr.state in ('done', 'failed') %}<form class="topo-inline" method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML">{{ hidden_state(t, ('trace', 'sel')) }}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace again</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}</form>{% endif %}</div>
 </section>
+{%- elif flow_shown %}
+{{ ft.of_card(t, t.flow) }}
+{%- elif t.layer == 'of' %}
+{#- Board D, artboard G: at phone width, where Path…'s popover is not drawn, the Flow tables
+    question is a card above the tab's content. #}
+<section class="card topo-panel topo-of-narrow" aria-label="Path… on the flow tables">{{ ft.of_form(t, t.flow, '-n', 'topo-cardform') }}</section>
 {%- endif %}
 <div class="topo-body">
 <section class="topo-pane topo-pane-map" aria-label="The map">

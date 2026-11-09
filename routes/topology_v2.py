@@ -44,7 +44,8 @@ def _ctx(values=None, **extra) -> dict:
     from modules.preview_confirm import confirm_part
 
     v = topology_page.view(_list_name(), request.args if values is None else values)
-    return dict({"t": v, "may": confirm_part(request, "configure")}, **extra)
+    return dict({"t": topology_page.drawn(v), "may": confirm_part(request, "configure")},
+                **extra)
 
 
 def _region(code: int = 200, values=None, **extra):
@@ -72,8 +73,19 @@ def page():
 def region():
     """The map region alone: re-read when `topology` is announced, and asked again with its
     question (protocols, ports, labels, zoom, a selected link, a path, a what-if, a search, the
-    attention list's filter). Writes nothing."""
-    return _region()
+    attention list's filter). Writes nothing. Path…'s Flow tables form (board D of
+    docs/boards/sdn-trace.html) asks it with its question; that answer's address is pushed, so
+    a trace is a link anyone can open (a redraw on an announcement pushes nothing)."""
+    from flask import url_for
+
+    from modules import topology_page
+
+    resp = _region()
+    if request.headers.get("HX-Trigger", "").startswith("topo-of-form"):
+        s = topology_page.ask(request.args)
+        resp.headers["HX-Push-Url"] = url_for("topology_v2.page") + topology_page.qs(
+            _list_name(), s)
+    return resp
 
 
 @bp.route("/expected", methods=["GET"])

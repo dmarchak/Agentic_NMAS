@@ -2002,6 +2002,51 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .topo-onpath-out .topo-ic { stroke: var(--ink-2); }
 .topo-pathglow.topo-path-l2 { stroke-dasharray: 14 10; stroke-linecap: butt; }
 .topo-onpath-drop .topo-ic { stroke: var(--danger); }
+/* Path…'s Flow tables layer (docs/boards/sdn-trace.html): the Layer switch, the question, the
+   answer card's strip of switches, its hops table and each ending in its colour (board D, D5). */
+.topo-of-form { align-items: flex-end; }
+.topo-of-q { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.topo-of-field { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.topo-of-field input, .topo-of-field select { font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink);
+  width: 190px; max-width: 100%; }
+.topo-of-field select { width: auto; }
+.topo-of-field input.topo-of-port { width: 80px; }
+.topo-of-field input:disabled { background: var(--surface-2); color: var(--ink-3); }
+.topo-of-hint { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--ink-2); }
+.topo-of-read { flex-basis: 100%; }
+.topo-narrow-only, .topo-of-narrow { display: none; }
+.topo-of-headrow { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.topo-of-hops { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.topo-of-hops li { border: 1px solid var(--line); border-radius: var(--r); padding: 4px 9px; background: var(--surface-2); }
+.topo-of-hops li.topo-of-arrow { border: 0; background: none; padding: 0; color: var(--ink-3); }
+.topo-of-hops li.topo-of-dst { border-color: var(--ok); background: var(--ok-soft); }
+.topo-of-hops li.topo-of-stopped { border-color: var(--danger); background: var(--danger-soft); }
+.topo-of-table td, .topo-of-pipe td { vertical-align: top; }
+.topo-of-flow summary { cursor: pointer; font-size: 12px; }
+.topo-of-flow .mono, .topo-of-pipe .mono { font-family: var(--mono); font-size: 12px; }
+.topo-of-end td { font-size: 12.5px; }
+.topo-of-end-ok td, p.topo-of-end-ok { color: var(--ok); }
+.topo-of-end-danger td, p.topo-of-end-danger { color: var(--danger); }
+.topo-of-end-warn td, p.topo-of-end-warn { color: var(--warn); }
+.topo-of-end-neutral td, p.topo-of-end-neutral { color: var(--ink-2); }
+.topo-of-sum { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; }
+.topo-of-sum b { display: block; font-size: 18px; }
+.topo-of-n-ok { color: var(--ok); } .topo-of-n-danger { color: var(--danger); } .topo-of-n-warn { color: var(--warn); }
+.topo-of-groups { display: flex; flex-direction: column; gap: 6px; }
+.topo-of-group > summary { cursor: pointer; }
+.topo-of-branch { padding: 6px 0 6px 14px; border-left: 2px solid var(--line-2); margin: 6px 0; }
+.topo-of-branch p { margin: 4px 0 0; }
+.topo-of-kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; font-size: 13px; margin: 6px 0 0; }
+.topo-of-kv dt { color: var(--ink-2); } .topo-of-kv dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .topo-of-layer .topo-wide-only { display: none; }
+  .topo-of-layer .topo-narrow-only { display: inline; }
+  .topo-of-narrow { display: flex; }
+  .topo-of-field input { width: 100%; }
+  .topo-of-field { flex: 1 1 140px; }
+  .topo-of-kv { grid-template-columns: 1fr; }
+}
 .topo-trace-table td { vertical-align: top; }
 .topo-trace-drop { color: var(--danger); }
 .topo-inline { display: inline-flex; gap: 4px; align-items: center; }

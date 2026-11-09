@@ -1878,6 +1878,17 @@
         }
       };
     });
+    // Topology › Path…'s Flow tables form (docs/boards/sdn-trace.html, artboard A): Port is
+    // off while the protocol is an ICMP echo, which has no port, so a disabled field sends
+    // nothing. The server draws the same state first (no script: the field as drawn).
+    A.data('ofproto', function () {
+      return {
+        proto: 'icmp',
+        init: function () { this.proto = this.$el.getAttribute('data-proto') || 'icmp'; },
+        get noPort() { return this.proto === 'icmp'; },
+        get portHint() { return this.proto === 'icmp' ? 'no port' : '1 to 65535'; }
+      };
+    });
     // The theme menu (the operator, 2026-09-30): System, Light or Dark, kept
     // per browser by nmas_theme.js. Getters and argument-free methods only,
     // as Alpine's CSP build evaluates.

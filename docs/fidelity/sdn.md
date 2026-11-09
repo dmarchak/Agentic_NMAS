@@ -72,7 +72,7 @@ were integrated on main together).
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html
-Templates sha256: `3335260fc1f3d0be28248bba24d7f7d52847dfa283cb4c94d7f49396bccae9fc`
+Templates sha256: `94c428ab196518687ff4258e4c5f6b8109a94c9096d27a844efafc018ed3904d`
 Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
 publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)
@@ -89,6 +89,13 @@ draws the app SDK the request names after the files and before the configs ("The
 staged to /opt/ryu-apps/.sdk/<sha256>/", its hash and its one file), the region row "C: the
 app SDK" below; nothing else moves. Compared by reading the template against artboard C, with
 no new shot (the templates then hashed `cbb06ccd24311cf33aaad064e6545526cbdf7601b0a3e5c5853885cfb17f0d06`).
+Hashed again 2026-11-09 for C2578 (board D of docs/boards/sdn-trace.html, artboard A's "SDN ›
+Flows: the way in"): `_sdn_view.html`'s Flows filter gains **Trace a packet…** after Show, a link
+to Topology › Path… on the Flow tables layer with its form open, its How does this work? beside
+it; the board draws it beside the search, and the trace is compared in docs/fidelity/topology.md,
+"The SDN trace (board D, sdn-trace.html)". Nothing else moves. Compared by reading the template
+against artboard A, with no new shot (the templates then hashed
+`3335260fc1f3d0be28248bba24d7f7d52847dfa283cb4c94d7f49396bccae9fc`, after C2854's Publish).
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the
@@ -393,6 +400,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Flows' summary | "4 switches · 61 flows: 3 Mercury's · 57 the controller's own · 1 unauthorised · 1 of Mercury's missing · 1 meter · lab-controller, read 18 s ago" | the same shape over the capture ("1 switch · 9 flows …"), every controller named | **same** |
 | Granularity note | under the summary, once, when it limits a rule | under the summary, per switch whose flows are L2 or L3 only, in closed_loop's words (shot with the capture's L2 flows alone in tests/test_sdn_v2.py, not at 1440) | **same** |
 | Filter | text, "Hide the controller's own flows" ticked, Show | the same | **same** |
+| Trace a packet… (C2578; sdn-trace.html, artboard A) | beside the search, opening Topology › Path… on Flow tables with the form open | the same, after Show, with its How does this work? | **same** |
 | Switches folded | a `<details>` per switch, the wrong ones open, chips (unauthorised, missing, as expected), counts | the same, kept open across redraws (`data-keep`) | **same** |
 | A flow row | owner chip, priority, match, actions, packets, timeouts, cookie, Remove… (SdnFlowEdit: Edit… and Remove… on each flow row) | the same columns; the unauthorised row's why under its chip; Remove… on every flow and Edit… on Mercury's, each with its (i), each opening the editor in a row under the flow | **same** |
 | Add flow… | SdnFlowEdit: "Add flow… sits on each switch in the list" | Add flow… with its (i) at the top of each opened switch | **same** |

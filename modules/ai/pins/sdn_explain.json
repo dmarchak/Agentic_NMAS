@@ -1,0 +1,14 @@
+{
+  "words": "Explain an SDN detection (Monitoring › Alerts, an SDN network's alert)",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 27000,
+  "max_tokens": 5760,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {
+    "model": "The operator's replan of 2026-11-09, item 4: \"the SDN network's AI uses Haiku\". Explain of a pack carrying an SDN section (an SDN detection's alert) runs on Haiku 5.5, the smallest model; explain's other alerts stay on their own pin. Not measured on Haiku: Explain's recorded cases (tests/fixtures/ai_cases/explain/) are device alerts, none an SDN detection's, so its floor is not shown on this task yet.",
+    "max_prompt_tokens": "Explain's own bound (pins/explain.json, C2048: 27,000 by the provider's count, the largest recorded Explain request 26,053 real tokens), the same prompt and pack format; under Haiku 5.5's long tier (100,000), so every call is billed at its base rates.",
+    "max_tokens": "Explain's own bound (pins/explain.json: about 2.5x the largest of 65 measured outputs, 2,286 tokens on Sonnet 5.5). Not measured on Haiku 5.5; a call is billed for what it uses.",
+    "thinking": "Explain's own (adaptive), so the same prompt asks the same way; Haiku 5.5 accepts adaptive."
+  }
+}

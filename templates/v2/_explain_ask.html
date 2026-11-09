@@ -13,7 +13,8 @@
 
     Either way the press swaps the whole block (`#explain-block-<pack>`, _explain_block.html),
     and the button is busy on itself until the answer arrives. -#}
-{%- set aic = ai_control('explain') %}
+{#- An SDN detection's pack is explained on its own task (sdn_explain, Haiku): its mark, its readiness and its cap are that task's (the operator's replan, 2026-11-09). -#}
+{%- set aic = ai_control('sdn_explain') if explain_task is defined and explain_task == 'sdn_explain' else ai_control('explain') %}
 {%- set pid = x.pack_id if (x and x.pack_id) else pack.id %}
 {#- Explain again: an answer is kept, or whether one is cannot be read (then only a press that
     says it is a new call asks). -#}

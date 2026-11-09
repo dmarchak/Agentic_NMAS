@@ -1,0 +1,139 @@
+{#- Topology › Path… on the Flow tables layer (board D, docs/boards/sdn-trace.html; the final SDN
+    lab's A4, C2578 and C1911), included by _topology_map.html: the Layer switch, the question
+    (From, to, Protocol, Port) and the answer card, from `modules/sdn_trace_page.py`'s view
+    (`t.flow`). A read of the SDN reader's stored value: any viewer, nothing held, recorded or
+    invalidated; the card redraws as each read arrives (`nmas:sdn`). Compared region by region
+    in docs/fidelity/topology.md, "The SDN trace (board D, sdn-trace.html)". -#}
+{%- macro layer_switch(t, short=False) -%}
+{%- if t.layer_switch %}
+<span class="seg topo-of-layer" role="group" aria-label="Layer">
+  <a class="seg-btn{{ ' on' if t.layer != 'of' }}" href="{{ page }}{{ t.qs({'layer': '', 'src': '', 'dst': '', 'dport': '', 'proto': 'icmp'}) }}" hx-get="{{ region }}{{ t.qs({'layer': '', 'src': '', 'dst': '', 'dport': '', 'proto': 'icmp'}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'layer': '', 'src': '', 'dst': '', 'dport': '', 'proto': 'icmp'}) }}" aria-pressed="{{ 'false' if t.layer == 'of' else 'true' }}"><span class="topo-wide-only">Routing (CEF)</span><span class="topo-narrow-only">Routing</span></a>
+  <a class="seg-btn{{ ' on' if t.layer == 'of' }}" href="{{ page }}{{ t.qs({'layer': 'of', 'a': '', 'b': '', 'trace': ''}) }}" hx-get="{{ region }}{{ t.qs({'layer': 'of', 'a': '', 'b': '', 'trace': ''}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'layer': 'of', 'a': '', 'b': '', 'trace': ''}) }}" aria-pressed="{{ 'true' if t.layer == 'of' else 'false' }}"><span class="topo-wide-only">Flow tables (OpenFlow)</span><span class="topo-narrow-only">Flow tables</span></a>
+</span>
+{%- endif %}
+{%- endmacro -%}
+{%- macro of_link(t, over, words, label='') -%}
+<a class="btn btn-small" data-op="sdn-trace" href="{{ page }}{{ t.qs(over) }}" hx-get="{{ region }}{{ t.qs(over) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs(over) }}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>{{ how('sdn-trace', compact=True, op='a flow-table trace') }}
+{%- endmacro -%}
+{%- macro of_form(t, f, sfx='', cls='topo-popform') -%}
+<form id="topo-of-form{{ sfx }}" method="get" action="{{ page }}" hx-get="{{ region }}" hx-target="#topo" hx-swap="outerHTML" class="{{ cls }} topo-of-form" x-data="ofproto" data-proto="{{ t.s.proto }}">
+  {{- hidden_state(t, ('layer', 'src', 'dst', 'proto', 'dport', 'a', 'b', 'trace', 'sel')) }}
+  <input type="hidden" name="layer" value="of">
+  {{- layer_switch(t) }}
+  {%- if f.read_at %}<span class="faint small topo-of-read">{{ f.controller }}'s tables, read {{ stamp(f.read_at) }}</span>{% endif %}
+  <span class="topo-of-q">
+  <label class="topo-of-field" for="topo-src{{ sfx }}">From<input id="topo-src{{ sfx }}" name="src" type="text" value="{{ t.s.src }}" list="topo-of-hosts{{ sfx }}" autocomplete="off" spellcheck="false" placeholder="an address, MAC or name"></label>
+  <label class="topo-of-field" for="topo-dst{{ sfx }}">to<input id="topo-dst{{ sfx }}" name="dst" type="text" value="{{ t.s.dst }}" list="topo-of-hosts{{ sfx }}" autocomplete="off" spellcheck="false" placeholder="an address, MAC or name"></label>
+  <label class="topo-of-field" for="topo-proto{{ sfx }}">Protocol<select id="topo-proto{{ sfx }}" name="proto" x-model="proto">{% for k, w in (('icmp', 'ICMP echo'), ('tcp', 'TCP'), ('udp', 'UDP')) %}<option value="{{ k }}"{% if t.s.proto == k %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
+  <label class="topo-of-field" for="topo-dport{{ sfx }}">Port<input id="topo-dport{{ sfx }}" name="dport" type="text" inputmode="numeric" class="topo-of-port" value="{{ t.s.dport if t.s.proto != 'icmp' }}" placeholder="{{ 'no port' if t.s.proto == 'icmp' else '1 to 65535' }}"{% if t.s.proto == 'icmp' %} disabled{% endif %} x-bind:disabled="noPort" x-bind:placeholder="portHint"></label>
+  <span class="op-act"><button type="submit" class="btn btn-small{{ ' btn-primary' if cls == 'topo-popform' }}" data-op="sdn-trace" hx-disabled-elt="this"><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('sdn-trace', compact=(cls != 'topo-popform'), op='a flow-table trace') }}</span>
+  </span>
+  <datalist id="topo-of-hosts{{ sfx }}">{% for h in f.suggest.hosts %}<option value="{{ h.value }}" label="{{ h.words }}"></option>{% endfor %}</datalist>
+  {%- if cls == 'topo-popform' %}
+  <p class="hint topo-of-hint">An IPv4 or IPv6 address or a MAC, as {{ f.controller or 'the controller' }} lists its hosts{% if f.suggest.of %} ({{ f.suggest.hosts | length }} of {{ f.suggest.of }} suggested; any may be typed){% endif %}, or an end host's name as NetBox records it. The packet is the one a host sends: an ICMP echo, or TCP or UDP from port 49152 to the port given, untagged.</p>
+  {%- endif %}
+</form>
+{%- endmacro -%}
+{%- macro hop_row(t, h, b) -%}
+<tr class="{{ 'topo-of-stop' if h.last and b.outcome != 'delivered' }}">
+  <td>{{ h.n }}</td>
+  <td><a href="{{ url_for('sdn_v2.flows', list=t.list, q=h.dpid_hex) }}" title="{{ h.switch }}'s flows on SDN › Flows">{{ h.switch }}</a><div class="mono faint">{{ h.dpid_hex }}</div></td>
+  <td>{{ h.in_port }} <span class="faint">{{ h.in_port_name }}</span></td>
+  <td class="topo-of-flow">{%- if h.decided %}<details data-keep="topo-of-hop-{{ b.outcome }}-{{ h.n }}-{{ h.dpid_hex }}"><summary><span class="mono">table {{ h.decided.table }} · priority {{ h.decided.priority }} · cookie {{ h.decided.cookie }}</span><br><span class="mono">{{ h.decided.match }} → {{ h.decided.actions }}</span>{% if h.flows_drawn | length > 1 %} <span class="faint">· {{ h.flows_drawn | length }} flows, tables {{ h.flows_drawn[0].table }} to {{ h.flows_drawn[-1].table }}</span>{% endif %}</summary>
+    <p class="small muted">{{ h.flows_drawn | length }} flow{{ 's' if h.flows_drawn | length != 1 }}, in the order the switch's pipeline ran them (table 0 first, forward only):</p>
+    <div class="table-wrap"><table class="table topo-of-pipe">
+      <thead><tr><th scope="col">Table</th><th scope="col">Priority</th><th scope="col">Cookie</th><th scope="col">Owner</th><th scope="col">Match</th><th scope="col">Instructions</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+      <tbody>{% for fl in h.flows_drawn %}<tr><td>{{ fl.table }}</td><td>{{ fl.priority }}</td><td class="mono">{{ fl.cookie }}</td><td>{{ badge(fl.owner, fl.owner_kind) }}</td><td class="mono">{{ fl.match }}</td><td class="mono">{{ fl.actions }}</td><td><a href="{{ url_for('sdn_v2.flows', list=t.list, q=h.dpid_hex) }}">Open in SDN › Flows</a></td></tr>{% endfor %}</tbody>
+    </table></div>
+  </details>{%- else %}<span class="faint">{{ 'its table was not read' if b.outcome == 'not_read' and h.last else 'no flow taken' }}</span>{% endif %}</td>
+  <td>{% if h.decided %}{{ badge(h.decided.owner, h.decided.owner_kind) }}{% endif %}</td>
+  <td>{% if h.out_port is not none %}{{ h.out_port }} <span class="faint">{{ h.out_port_name }}</span>{% else %}<span class="faint">no out port</span>{% endif %}</td>
+  <td class="small">{{ h.then }}</td>
+</tr>
+{%- endmacro -%}
+{%- macro hops_table(t, b, label) -%}
+<div class="table-wrap"><table class="table topo-of-table" aria-label="{{ label }}">
+  <thead><tr><th scope="col">#</th><th scope="col">Switch · DPID</th><th scope="col">In port</th><th scope="col">The flow that decided it</th><th scope="col">Owner</th><th scope="col">Out port</th><th scope="col">Then</th></tr></thead>
+  <tbody>
+  {%- for h in b.fold.head %}{{ hop_row(t, h, b) }}{% endfor %}
+  {%- if b.fold.middle %}
+  <tr class="topo-of-fold"><td></td><td colspan="6"><details data-keep="topo-of-fold-{{ b.outcome }}-{{ b.hops[0].dpid_hex }}"><summary>Hops {{ b.fold.middle[0].n }} to {{ b.fold.middle[-1].n }} ({{ b.fold.middle | length }} switches: {{ b.fold.middle | map(attribute='switch') | join(', ') }})</summary>
+    <div class="table-wrap"><table class="table topo-of-table"><tbody>{% for h in b.fold.middle %}{{ hop_row(t, h, b) }}{% endfor %}</tbody></table></div>
+  </details></td></tr>
+  {%- endif %}
+  {%- for h in b.fold.tail %}{{ hop_row(t, h, b) }}{% endfor %}
+  <tr class="topo-of-end topo-of-end-{{ b.kind }}"><td></td><td colspan="6">{{ b.words }}{{ ': delivered.' if b.outcome == 'delivered' }}</td></tr>
+  </tbody>
+</table></div>
+{%- endmacro -%}
+{%- macro strip(b) -%}
+<ol class="topo-of-hops" aria-label="The switches in order, with their ports">
+  {%- for h in b.hops %}
+  <li class="{{ 'topo-of-dst' if h.last and b.outcome == 'delivered' }}{{ ' topo-of-stopped' if h.last and b.outcome != 'delivered' }}"><strong>{{ h.switch }}</strong> <span class="mono">{{ h.dpid_hex }}</span> · in {{ h.in_port }}{% if h.in_port_name %} <span class="faint">{{ h.in_port_name }}</span>{% endif %}{% if h.out_port is not none %} → out {{ h.out_port }}{% if h.out_port_name %} <span class="faint">{{ h.out_port_name }}</span>{% endif %}{% else %}, no out port{% endif %}</li>
+  {%- if not loop.last %}<li class="topo-of-arrow" aria-hidden="true">→</li>{% endif %}
+  {%- endfor %}
+</ol>
+{%- endmacro -%}
+{%- macro of_card(t, f) -%}
+<section class="card topo-panel topo-of-card" id="topo-of" aria-labelledby="topo-of-h">
+  {{ of_form(t, f, '-c', 'topo-cardform') }}
+  {%- if f.state == 'refused' %}
+  <h2 id="topo-of-h">Path: not traced</h2>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not traced:</strong> {{ f.error }}. Nothing was asked of the controller or any switch.</p></div>
+  {%- if f.places %}
+  <p class="topo-trace-acts">{% for p in f.places %}{{ of_link(t, {('src' if f.end == 'source' else 'dst'): p.mac}, ('Trace from ' if f.end == 'source' else 'Trace to ') ~ p.mac, label=p.words) }}{% endfor %}</p>
+  {%- endif %}
+  {%- elif f.state == 'failed' %}
+  <h2 id="topo-of-h">Path: not traced</h2>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The trace failed:</strong> {{ f.error }}. Nothing was asked of the controller or any switch.</p></div>
+  {%- else %}
+  <div class="topo-of-headrow"><h2 id="topo-of-h">{{ f.title }}: {{ f.summary }}</h2>{{ badge(f.chip, f.kind) }}</div>
+  {%- if not f.current %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ f.controller }} has not been read since {{ stamp(f.read_at) }}: {{ f.read_why }}. This is where the packet went through the tables as they were then; the switches may hold other flows now. <a href="{{ url_for('sdn_v2.page', list=t.list) }}">SDN › Controllers</a></p></div>
+  {%- endif %}
+  {%- for n in f.notes %}<p class="small muted topo-of-note">{{ n }}.</p>{% endfor %}
+  <p class="small muted">From {{ f.from_words }} to {{ f.to_words }} · through {{ f.controller }}'s flow tables, read {{ stamp(f.read_at) }}</p>
+  {%- if f.many %}
+  <div class="topo-of-sum" aria-label="The branches by ending">
+    {%- for g in f.groups %}<div><b class="topo-of-n-{{ g.kind }}">{{ g.branches | length }}</b>{{ g.chip }}</div>{% endfor %}
+    {%- if f.more %}<div><b class="topo-of-n-warn">{{ f.more }}</b>past the {{ f.max }} drawn</div>{% endif %}
+  </div>
+  {%- endif %}
+  {%- if f.lead %}
+  {{ strip(f.lead) }}
+  {{ hops_table(t, f.lead, 'The hops') }}
+  {%- endif %}
+  {%- if f.many %}
+  <div class="topo-of-groups" aria-label="Every branch, grouped by ending">
+  {%- for g in f.groups %}
+    <details class="topo-of-group" data-keep="topo-of-group-{{ g.outcome }}"{% if g.open %} open{% endif %}>
+      <summary>{{ badge(g.chip, g.kind) }} {{ g.branches | length }} branch{{ 'es' if g.branches | length != 1 }}{% if g.branches[0].at %} <span class="faint">· first: {{ g.branches[0].path }}</span>{% endif %}</summary>
+      {%- for b in g.branches[:20] %}
+      <div class="topo-of-branch">
+        {{ strip(b) }}
+        <p class="small topo-of-end-{{ b.kind }}">{{ b.words }}</p>
+      </div>
+      {%- endfor %}
+      {%- if g.branches | length > 20 %}<p class="faint small">and {{ g.branches | length - 20 }} more {{ g.chip }} branches, counted here, not drawn</p>{% endif %}
+    </details>
+  {%- endfor %}
+  </div>
+  {%- endif %}
+  {%- if f.more %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>Past the {{ f.max }} drawn:</strong> and {{ f.more }} more branch{{ 'es' if f.more != 1 }}, counted, not drawn.</p></div>
+  {%- endif %}
+  {%- if f.way_notes %}
+  <div class="notice" role="note"><p><strong>Noted on the way, not modelled:</strong> {{ f.way_notes | join('; ') }}.</p></div>
+  {%- endif %}
+  <details class="topo-of-packet" data-keep="topo-of-packet"><summary class="small">The packet traced: {{ f.proto }}, {{ f.family }}, from {{ t.s.src }}{% if f.source_port %} port {{ f.source_port }}{% endif %} to {{ t.s.dst }}{% if t.s.proto != 'icmp' %} port {{ t.s.dport }}{% endif %}, untagged</summary>
+    <dl class="topo-of-kv">{% for k, v in f.packet_lines %}<dt>{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}<dt>Where the MACs come from</dt><dd>{{ f.controller }}'s host table, as if ARP had already resolved them (ARP and IPv6 neighbour discovery are not traced)</dd></dl>
+  </details>
+  <p class="faint small">Walked through {{ f.controller }}'s tables as the SDN reader stored them, {{ stamp(f.read_at) }}; nothing was asked of the controller or any switch, and no traffic was sent. The answer redraws as each new read arrives. On the map: {{ 'the path drawn on, each switch on it ringed' if f.trace_state == 'delivered' else 'the branch drawn to the switch where it ends' }}. <a href="{{ url_for('sdn_v2.page', list=t.list) }}">SDN › Controllers</a></p>
+  <div class="topo-trace-acts">
+    {{- of_link(t, {'src': t.s.dst, 'dst': t.s.src}, 'Trace the reverse') }}
+    <button type="button" class="btn btn-small" data-op="sdn-trace" x-data="copy" data-label="Copy the hops" data-copy="{{ f.words }}" x-on:click="copy" x-text="label">Copy the hops</button>{{ how('sdn-trace', compact=True, op='a flow-table trace') }}
+    {{- of_link(t, {'src': '', 'dst': '', 'dport': '', 'proto': 'icmp'}, 'Clear the path') }}
+  </div>
+  {%- endif %}
+</section>
+{%- endmacro -%}

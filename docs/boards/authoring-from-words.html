@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Authoring from words board</title>
+<!-- Board for authoring an app or a job from plain words (I-1 jobs, I-2 apps; the operator's
+     replan of 2026-11-09, item 5: "the authoring-from-words board line (board only)"): A, the
+     form on SDN › Apps; B, the draft and the gate's read-only checks; C, its tests in the
+     container harness; D, the download and what follows; E, refusals. Drawn by the agent under
+     the Phase 7 operating mode, which counts it as signed off (one line in
+     docs/STANDING_APPROVAL_LOG.md, "I-2 W 1"). Nothing of it is built. Self-contained: no
+     external fonts or scripts. Example names and documentation values only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1440px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.art.phone{width:390px}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFF;padding:4px 10px 14px;font-size:15px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}.side a.on{background:var(--side-on);color:#FFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+.phone main{padding:16px}
+h1.page{margin:0;font-size:24px;font-weight:600}h2{margin:0;font-size:16px;font-weight:600}h3{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:var(--mono);font-size:12.5px}.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}.small{font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 10px;font:inherit;font-size:13px;text-decoration:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#FFF}.btn[disabled]{opacity:.5}
+.how{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid var(--accent);color:var(--accent);font-size:10px;font-weight:700;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}.tabs a{padding:8px 12px;text-decoration:none;color:var(--ink-2)}.tabs a.on{color:var(--ink);border-bottom:2px solid var(--accent);font-weight:500}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head .grow{flex:1}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:13px}
+.notice{border-radius:6px;padding:8px 12px;font-size:13px}.notice.bad{background:var(--danger-soft);color:var(--danger)}.notice.warn{background:var(--warn-soft);color:var(--warn)}.notice.ok{background:var(--ok-soft);color:var(--ok)}.notice.muted{background:var(--muted-soft);color:var(--ink-2)}
+.form{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;font-size:13px;align-items:center}
+.form input{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;width:420px;max-width:100%}
+.phone .form{grid-template-columns:1fr}.phone .kv{grid-template-columns:1fr}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+ul.tight{margin:0;padding-left:18px;font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>An app or a job from your words (I-1, I-2): board for sign-off</h1>
+<div>Five artboards at 1440. You describe the app or job in plain words; Mercury's assistant drafts its spec card (summary and examples), its manifest, its code and its tests, as one recorded AI call (a person's, capped, on the network's AI pin); Mercury then runs the gate's read-only checks on the draft and, when you ask, its own tests in the container harness. Nothing is written to the code repository: Mercury has no write path to it (the code repository's design), so you take the draft as a folder and commit it there; Fetch now registers it as a Draft, and Publish follows (board app-publish). Yellow dashed notes are annotations; every other link and control is one the built screen has. Example names and documentation values only.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · SDN › Apps, New from words…: the form</strong>, opened in the tab's slot under the controllers.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#">Devices</a><a href="#" class="on">SDN</a><a href="#">Settings</a></nav>
+<main>
+<div class="small muted">SDN › Apps</div>
+<h1 class="page">Apps <span class="how">i</span></h1>
+<div class="card">
+<div class="head"><h2 class="grow">New app or job from your words</h2><span class="how">i</span></div>
+<div class="form">
+<div>Kind</div><div><label><input type="radio" checked> a controller app (runs in the SDN controller)</label> <label><input type="radio"> a job (runs in Mercury's sandbox)</label></div>
+<div>Name</div><div><input type="text" value="dhcp_watch" style="width:240px"> <span class="faint small">lowercase, digits and _; not a name the code repository already holds</span></div>
+<div>Your words</div><div><textarea style="width:600px;height:90px;font:inherit">Count DHCP requests per edge port and report a port asking more than 20 times a minute on /health.</textarea></div>
+</div>
+<div><span class="chip">AI</span> <button class="btn primary">Draft it</button> <span class="faint small">One recorded AI call (Claude Haiku 5.5, this network's pin), up to $0.0x; it writes nothing</span></div>
+<div class="callout">The AI mark's hover names the task (Draft an app or job from words), its pinned model and its cap, as every AI control's. With hosted AI off, Draft it is disabled with the reason in place.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · The draft</strong>: every file it wrote, the gate's read-only checks on it, and what it reaches.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="card">
+<div class="head"><h2 class="grow">Draft: dhcp_watch 0.1.0</h2><span class="chip warn">not in the code repository</span></div>
+<div class="kv">
+<div>Spec card</div><div>Counts DHCP requests per edge port; 3 examples (a quiet port, a busy port, a port that goes quiet again)</div>
+<div>Files</div><div class="mono small">manifest.yml · spec.yml · dhcp_watch.py · watch_logic.py · tests/test_watch_logic.py (5 files, 3.1 KB)</div>
+<div>Reaches</div><div>nothing outside the controller (no egress declared)</div>
+<div>Checks</div><div><span class="chip ok">manifest</span> <span class="chip ok">spec</span> <span class="chip ok">static (Python 3.5)</span> <span class="chip ok">examples</span> <span class="chip ok">asserts</span> <span class="faint small">the gate's read-only checks; tests not run yet</span></div>
+</div>
+<details open><summary class="small">watch_logic.py</summary><pre class="mono small">def busy(ports, limit=20):
+    return sorted(p for p, n in ports.items() if n &gt; limit)</pre></details>
+<div><button class="btn">Run its tests</button> <button class="btn primary">Download the draft</button> <button class="btn">Draft it again…</button> <span class="how">i</span></div>
+<div class="callout">Each file opens in place; the AI call's record (History › AI calls) and its Right/Wrong marks are under the draft, as under every AI answer.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · Run its tests, on the draft</strong>: the plain test run in the container harness, on the network's controller Python, before anything is committed.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="notice ok"><b>4 passed</b> on Python 3.5 in the container harness, at the draft's hash sha256:7c1e…a2f0. A draft's run is not kept as a version's: Publish asks for a run of the registered version.</div>
+<div class="notice bad"><b>Its tests did not pass</b>: 3 passed, 1 failed. <details open><summary>The output's last lines</summary><pre class="mono small">FAILED tests/test_watch_logic.py::test_a_port_that_goes_quiet_again</pre></details> Draft it again… with what failed added to your words, or change the files after you download them.</div>
+</main></div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · Download the draft: what you do next</strong>.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="notice ok"><b>Downloaded dhcp_watch-0.1.0.tar</b> (5 files). Put it at <span class="mono">apps/dhcp_watch/</span> in example-net's code repository and commit it; then <a href="#">Fetch now</a> on the Code repository card registers it as a Draft, and its row on SDN › Apps offers Run its tests and Review and publish….</div>
+<div class="callout">Decision for the operator (recorded with this board): Mercury writes nothing to the code repository today. The alternative, Mercury committing the draft to a branch of it, is a new write path needing a credential the code repository's design does not give Mercury. The board draws the download.</div>
+</main></div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · Refusals, in place</strong>.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
+<main>
+<div class="notice bad"><b>Not drafted</b>: the code repository already holds apps/dhcp_watch/ (registered at 4b2c1d0): choose another name, or change that app in the repository.</div>
+<div class="notice bad"><b>Not drafted</b>: hosted AI is off until it is allowed on Settings › Installation › AI (hosted).</div>
+<div class="notice warn"><b>The draft fails the gate's static check</b>: watch_logic.py line 4 imports socket; an app reaches the network only by mercury_app.egress. Draft it again… says what to avoid.</div>
+</main></div>
+
+</body>
+</html>

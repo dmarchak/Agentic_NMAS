@@ -116,6 +116,9 @@ ASKS = {"p": None,          # the protocols toggled on, comma-separated; absent:
         "sel": "",          # the selected link's id
         "a": "", "b": "",   # Path…'s From (a device) and To (an address)
         "trace": "",        # the path trace's record id (board D)
+        # Path…'s Flow tables layer (docs/boards/sdn-trace.html; modules/sdn_trace_page.py):
+        # the layer ("" routing, "of" flow tables), From, to, Protocol and destination port.
+        "layer": "", "src": "", "dst": "", "proto": "icmp", "dport": "",
         "out": "",          # a device taken out (what-if)
         "q": "",            # find on the map
         "f": "",            # filter the attention list
@@ -140,6 +143,10 @@ def ask(values) -> dict:
     s["snap"] = "1" if s["snap"] == "1" else "0"
     s["show"] = s["show"] if s["show"] in ("all", "bad", "warn", "unread", "weak") else "all"
     s["tab"] = s["tab"] if s["tab"] in ("att", "dev", "map") else "att"
+    s["layer"] = "of" if s["layer"] == "of" else ""
+    s["proto"] = s["proto"].lower() if s["proto"].lower() in ("icmp", "tcp", "udp") else "icmp"
+    for k in ("src", "dst", "dport"):
+        s[k] = s[k][:128]
     return s
 
 
@@ -755,6 +762,15 @@ def view(list_name: str, values) -> dict:
     from modules import path_trace
     out["path_from"] = path_trace.sources(nodes)
     out["path_to"] = path_trace.destinations(nodes, layers.get("bgp") or [])
+    # Path…'s Flow tables layer (docs/boards/sdn-trace.html, D1): on a network with a
+    # controller layer; the Layer switch only where routing devices are traced too. The SDN
+    # reader's stored value is read once, only when that layer is the one asked.
+    of_layer = bool(net.get("sdn"))
+    out["layer_switch"] = of_layer and bool(out["path_from"])
+    out["layer"] = "of" if of_layer and (s["layer"] == "of" or not out["path_from"]) else ""
+    if out["layer"] == "of":
+        from modules import sdn_trace_page
+        out["flow"] = sdn_trace_page.view(list_name, s)
     if s["trace"]:
         out["trace"] = trace_view(list_name, s["trace"], phys, nodes)
     if s["out"]:
@@ -763,6 +779,39 @@ def view(list_name: str, values) -> dict:
     out["selected"] = next((l for l in links if l["id"] == s["sel"]), None)
     if not out["collapsed"]:
         out["svg"] = _svg(nodes, phys, links, weak, s, out, layers.get("bgp") or [])
+    return out
+
+
+#: What `view` computes for its own drawing (the map's SVG, the path's lit links) and the
+#: template never reads: handed to `_svg` and `trace_view`, never to the template (CLAUDE.md,
+#: "Every carried field is drawn"; tests/test_v2_context_is_drawn.py). Found when the context
+#: walk first reached a drawn Topology (the SDN trace's provider, 2026-11-09).
+_PYTHON_ONLY_TOP = ("nodes", "layout", "critical")
+_PYTHON_ONLY_LINK = ("chips", "sources", "whats")
+
+
+def drawn(v: dict) -> dict:
+    """*v* (`view`'s) as the template takes it: a copy without what only Python drew from."""
+    out = {k: val for k, val in v.items() if k not in _PYTHON_ONLY_TOP}
+
+    def link(l):
+        return {k: val for k, val in l.items() if k not in _PYTHON_ONLY_LINK}
+
+    if isinstance(out.get("arranged"), dict):
+        out["arranged"] = {k: val for k, val in out["arranged"].items() if k != "positions"}
+    if isinstance(out.get("sdn"), dict):
+        out["sdn"] = {k: val for k, val in out["sdn"].items()
+                      if k not in ("controllers", "orphans")}
+    if isinstance(out.get("svg"), dict):
+        out["svg"] = dict(out["svg"], links=[link(l) for l in out["svg"].get("links") or []])
+    att = out.get("attention")
+    if isinstance(att, dict) and isinstance(att.get("groups"), dict):
+        out["attention"] = dict(att, groups={
+            g: [{k: val for k, val in e.items() if k != "link"} if isinstance(e, dict) else e
+                for e in entries] if isinstance(entries, list) else entries
+            for g, entries in att["groups"].items()})
+    if isinstance(out.get("flow"), dict):
+        out["flow"] = {k: val for k, val in out["flow"].items() if k != "lit"}
     return out
 
 
@@ -1080,7 +1129,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
     geo = dict(geo, positions={k: tuple(v) for k, v in geo["positions"].items()})
     pos, height, width = geo["positions"], geo["height"], geo["width"]
     trace = view_.get("trace") or {}
-    lit = trace.get("lit") or {}
+    lit = trace.get("lit") or ((view_.get("flow") or {}).get("lit") or {})
     on_path = lit.get("edges") or {}
     wi = view_.get("what_if") or {}
     gone, lost = wi.get("device"), set(wi.get("lost") or [])

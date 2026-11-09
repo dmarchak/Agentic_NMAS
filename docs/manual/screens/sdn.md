@@ -109,6 +109,9 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   flows match only Ethernet fields and the switch port (L2), or IP addresses and no transport
   port (L3), cannot show a port scan as distinct destination ports; a port's high packet rate
   there is **High packet rate**, at lower confidence, watched and never called a scan.
+- **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
+  tables layer chosen and its form open: the trace has one home ([A flow-table
+  trace](sdn-trace)).
 - **The filter**: words matched against the switch, a flow's match, its actions or its cookie;
   **Show** applies it. **Hide the controller's own flows** is ticked by default.
 - **The switches**, folded, one row each: its datapath id, its own name, its controller, and

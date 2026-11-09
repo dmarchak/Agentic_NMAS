@@ -15,7 +15,13 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `579b73fa95c1ce16b645fda3727e438a0b925ab4390aa78c14cd023c5658ae43`
+Templates sha256: `53456fc8cbfe112b3563141f598bfca193c0c295c9b28d6d071674f9fba4cce7`
+Hashed again 2026-11-09 for the replan's item 4 ("the SDN network's AI uses Haiku"): Explain's
+control and its answer's header draw the pack's own task, `sdn_explain` for an SDN detection's
+pack and `explain` otherwise (two literal `ai_control` names, so the registry's scan sees both),
+and nothing else moves: the mark draws that task's words, model and cap as it drew Explain's.
+Compared by reading `_explain_ask.html` and `_explain.html`, with no new shot (the templates then
+hashed `579b73fa95c1ce16b645fda3727e438a0b925ab4390aa78c14cd023c5658ae43`).
 
 **Compared again 2026-11-05 (board H's amendment, artboard I, H16's second part):** by the
 template diff, against artboard I's alert card ("Explain · Diagnose… · Open the evidence pack ·

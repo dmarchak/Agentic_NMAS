@@ -101,7 +101,14 @@ _PIPELINE = frozenset({"in_port", "in_phy_port", "metadata"})
 
 
 class Refused(ValueError):
-    """A trace that cannot start, in words naming what it compared."""
+    """A trace that cannot start, in words naming what it compared. *places* are the hosts an
+    address was found at when it was found at more than one (each a `find_host` host), so a
+    screen can offer each one's MAC; *end* is which end they answer (``source`` or
+    ``destination``)."""
+
+    def __init__(self, words, places=(), end=""):
+        super().__init__(words)
+        self.places, self.end = list(places), end
 
 
 # ───────────────────────────────────────────────────────────────────────────── the fabric
@@ -201,7 +208,8 @@ def find_host(controllers: list, text: str) -> tuple:
     if len(places) > 1:
         said = " and ".join(sorted(host_words(h) for _c, h in found))
         raise Refused(f"{text} is listed at {len(places)} places: {said}; the controller keeps "
-                      "a host until it restarts, so one may be old: give its MAC")
+                      "a host until it restarts, so one may be old: give its MAC",
+                      places=sorted((h for _c, h in found), key=host_words))
     return found[0]
 
 
@@ -585,8 +593,14 @@ def trace(network: str, source: str, destination: str, *, protocol: str = "icmp"
             raise Refused(f"the controller's topology is not read: {fab['why']}")
         if not fab["controllers"]:
             raise Refused("no controller connection of this network reads a topology")
-        sc, src = find_host(fab["controllers"], source)
-        dc, dst = find_host(fab["controllers"], destination)
+        try:
+            sc, src = find_host(fab["controllers"], source)
+        except Refused as exc:
+            raise Refused(str(exc), exc.places, "source") from None
+        try:
+            dc, dst = find_host(fab["controllers"], destination)
+        except Refused as exc:
+            raise Refused(str(exc), exc.places, "destination") from None
         if sc["name"] != dc["name"]:
             raise Refused(f"the source is on {sc['name']}'s fabric and the destination on "
                           f"{dc['name']}'s: a trace stays inside one controller's fabric")
@@ -594,7 +608,8 @@ def trace(network: str, source: str, destination: str, *, protocol: str = "icmp"
             raise Refused(f"the source and the destination are the same host, {host_words(src)}")
         pkt = packet_of(src, dst, source, destination, protocol, port)
     except Refused as exc:
-        return {"ok": False, "error": str(exc), "state": "", "branches": []}
+        return {"ok": False, "error": str(exc), "state": "", "branches": [],
+                "places": [dict(h, words=host_words(h)) for h in exc.places], "end": exc.end}
     got = walk(sc, pkt, (int(src["dpid"]), src["port_no"]),
                (int(dst["dpid"]), dst["port_no"]))
     branches = got["branches"]

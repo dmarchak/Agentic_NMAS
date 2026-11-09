@@ -808,41 +808,14 @@ EMPTY_IN_FIXTURE = {
     "v2/_templates_table.html r.bound #2": _LIBRARY,
     "v2/_timeline.html (e.marks or ())": "a History event's marks (a baseline, a golden state): no event on the walk's store carries one",
     "v2/_timeline.html h.errors": _ERRORS + " (a History source that could not be read)",
-    "v2/_topology_map.html (3 literal items)": _TOPOLOGY,
-    "v2/_topology_map.html (3 literal items) #2": _TOPOLOGY,
-    "v2/_topology_map.html (3 literal items) #3": _TOPOLOGY,
-    "v2/_topology_map.html (4 literal items)": _TOPOLOGY,
-    "v2/_topology_map.html (9 literal items)": _TOPOLOGY,
     "v2/_topology_map.html at.groups.apart": _TOPOLOGY,
-    "v2/_topology_map.html at.groups.weak": _TOPOLOGY,
-    "v2/_topology_map.html at.groups[…]": _TOPOLOGY,
     "v2/_topology_map.html b.hops": _TOPOLOGY,
-    "v2/_topology_map.html d.links": _TOPOLOGY,
-    "v2/_topology_map.html g.links": _TOPOLOGY,
-    "v2/_topology_map.html g.links #2": _TOPOLOGY,
-    "v2/_topology_map.html g.links #3": _TOPOLOGY,
-    "v2/_topology_map.html g.nodes": _TOPOLOGY,
-    "v2/_topology_map.html grp.devices": _TOPOLOGY,
-    "v2/_topology_map.html l.chip_list": _TOPOLOGY,
-    "v2/_topology_map.html l.readers": _TOPOLOGY,
-    "v2/_topology_map.html l.rows": _TOPOLOGY,
-    "v2/_topology_map.html n.tags": _TOPOLOGY,
-    "v2/_topology_map.html n.tags #2": _TOPOLOGY,
-    "v2/_topology_map.html r.lines": _TOPOLOGY,
     "v2/_topology_map.html r.lines #2": _TOPOLOGY,
     "v2/_topology_map.html sl.rows": _TOPOLOGY,
-    "v2/_topology_map.html t.coverage": _TOPOLOGY,
     "v2/_topology_map.html t.errors": _TOPOLOGY,
-    "v2/_topology_map.html t.fleet": _TOPOLOGY,
-    "v2/_topology_map.html t.list_groups": _TOPOLOGY,
     "v2/_topology_map.html t.matches": _TOPOLOGY,
-    "v2/_topology_map.html t.not_read": _TOPOLOGY,
     "v2/_topology_map.html t.path_from": _TOPOLOGY,
     "v2/_topology_map.html t.path_to": _TOPOLOGY,
-    "v2/_topology_map.html t.s.items()": _TOPOLOGY,
-    "v2/_topology_map.html t.svg.links": _TOPOLOGY,
-    "v2/_topology_map.html t.svg.nodes": _TOPOLOGY,
-    "v2/_topology_map.html t.toggle_words": _TOPOLOGY,
     "v2/_topology_map.html tr.branches": _TOPOLOGY,
     "v2/_update.html (d.shas or (1 literal items))": _UPDATE,
     "v2/_update.html (o.notes or ())": _UPDATE,
@@ -878,7 +851,10 @@ EMPTY_IN_FIXTURE = {
 #: short program draw.
 #: 359 with board H's artboard E (H9, 2026-11-04): its provider's render of Needs attention for
 #: Lab drew a row's "Also:" lines (an attached row), measured.
-EMPTY_IN_FIXTURE_CEILING = 359
+#: 332 with the SDN trace's provider (board D of docs/boards/sdn-trace.html, C2578,
+#: 2026-11-09): Topology drawn from a topology reader value for the first time, with its
+#: controller layer, so 27 of `_topology_map.html`'s loops drew, measured.
+EMPTY_IN_FIXTURE_CEILING = 332
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

@@ -200,6 +200,9 @@ SDN_PAGES = {"sdn_classify": ["/v2/sdn/responses?list=Default",
 #: A background feature with no control drawn (board H, H8): what it kept is drawn by a
 #: can't-fix row's block when the item opens: `test_a_cant_fix_s_analysis_calls_no_model`'s.
 HEAL_PAGES = {"heal_analysis": ["/v2/attention/heal-analysis/Lab/hi-000000000000"]}
+#: Drawn on an SDN detection's pack card (the replan's item 4: its own task, Haiku):
+#: `test_an_sdn_pack_s_card_calls_no_model`'s, on tests/test_ai_sdn_explain.py's pack.
+SDN_EXPLAIN_PAGES = {"sdn_explain": ["/v2/monitoring/alerts/pack/ep-" + "5d" * 10]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -250,9 +253,22 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
     assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
-        HEAL_PAGES) == set(controls.CONTROLS), "every registered control names its pages"
+        HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) == set(controls.CONTROLS), \
+        "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
+    assert seen == {"asked": [], "sends": []}
+
+
+def test_an_sdn_pack_s_card_calls_no_model(world, monkeypatch):
+    """An SDN detection's pack card draws its own Explain control (sdn_explain), loaded and
+    refreshed, and asks no model."""
+    from tests.test_ai_sdn_explain import sdn_pack
+
+    p = sdn_pack(world.pack)
+    assert SDN_EXPLAIN_PAGES["sdn_explain"] == [f"/v2/monitoring/alerts/pack/{p['id']}"]
+    seen = _count_ai(monkeypatch)
+    assert _load_each(world.lab["client"], SDN_EXPLAIN_PAGES) == set(SDN_EXPLAIN_PAGES)
     assert seen == {"asked": [], "sends": []}
 
 

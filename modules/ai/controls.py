@@ -60,6 +60,18 @@ CONTROLS = {
         "screen": "Monitoring › Alerts, an alert's card",
         "beside": "the evidence pack",
     },
+    # The operator's replan of 2026-11-09, item 4 ("the SDN network's AI uses Haiku"): Explain
+    # of a pack carrying an SDN detection is its own task (`explain.feature_for`), so the mark,
+    # readiness and cap drawn on that pack's card are this task's, Haiku's.
+    "sdn_explain": {
+        "task": "sdn_explain",
+        "words": "Explain an SDN detection",
+        "endpoints": ("v2.monitoring_alert_explain",),
+        "template": "v2/_explain_ask.html",
+        "also": ("v2/_explain.html",),
+        "screen": "Monitoring › Alerts, an SDN detection's alert card",
+        "beside": "the evidence pack",
+    },
     "ai_card_test": {
         "task": "connection_check",
         "words": "Test (the AI card)",

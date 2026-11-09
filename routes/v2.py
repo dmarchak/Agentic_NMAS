@@ -1538,7 +1538,7 @@ def monitoring_alert_pack(pack_id):
     html = render_template("v2/_evidence_pack.html", pack=pack, state=got["state"],
                            error=got["error"], pid=pid,
                            intact=evidence_pack.intact(pack) if pack else False,
-                           explain_model=_explain_model(), explained=_explained(pack),
+                           **_explain_ctx(pack), explained=_explained(pack),
                            **_pack_context(pack, got["rows"]))
     return _strict(html, 200 if pack else 404)
 
@@ -1584,11 +1584,25 @@ def _pack_context(pack, rows) -> dict:
                 diagnose=diagnose_page.from_pack(pack) if pack else None)
 
 
-def _explain_model() -> str:
-    from modules.ai import profiles
+def _explain_ctx(pack) -> dict:
+    """What an Explain control and answer draw for *pack*: its task (`explain.feature_for`: an
+    SDN detection's pack is explained on its own pin, Haiku; the operator's replan of
+    2026-11-09) and that task's model, in words."""
+    from modules.ai import explain, profiles
 
-    pin = profiles.task("explain")
-    return f"{profiles.profile(pin['model'])['words']}, {pin['model']}"
+    task = explain.feature_for(pack) if pack else explain.FEATURE
+    pin = profiles.task(task)
+    return {"explain_task": task,
+            "explain_model": f"{profiles.profile(pin['model'])['words']}, {pin['model']}"}
+
+
+def _pack_by_id(pid: str):
+    """The evidence pack *pid*, or None (one read of the store)."""
+    from modules import evidence_pack
+
+    got = evidence_pack.read() if pid.startswith("ep-") else {"rows": []}
+    match = [r for r in got.get("rows") or [] if r.get("id") == pid]
+    return match[-1] if match else None
 
 
 def _explained(pack):
@@ -1621,7 +1635,7 @@ def attention_explain(pack_id):
     pack = match[-1] if match else None
     return _strict(render_template("v2/_attention_explain.html", pack=pack, pid=pid,
                                    state=got["state"], error=got["error"],
-                                   x=_explained(pack), explain_model=_explain_model()))
+                                   x=_explained(pack), **_explain_ctx(pack)))
 
 
 #: A heal incident's id as the route takes one (`heal.incidents._new`).
@@ -1661,7 +1675,7 @@ def monitoring_alert_explain(pack_id):
     got = explain_answers.press(pid, actor=actor, trigger=triggers.person(actor),
                                 again=request.form.get("again") == "1")
     return _strict(render_template("v2/_explain_block.html", x=got, pack={"id": pid},
-                                   explain_model=_explain_model()))
+                                   **_explain_ctx(_pack_by_id(pid))))
 
 
 # ---------------------------------------------------------------------------
@@ -1735,7 +1749,7 @@ def monitoring_alert_history_evidence(episode_id):
             rows = rows + [pack]
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
-                           explain_model=_explain_model(), explained=_explained(pack),
+                           **_explain_ctx(pack), explained=_explained(pack),
                            **_pack_context(pack, rows))
     return _strict(html)
 
@@ -1792,7 +1806,7 @@ def monitoring_alert_pack_rebuild(pack_id):
             rows = rows + [pack]
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
-                           explain_model=_explain_model(), explained=_explained(pack),
+                           **_explain_ctx(pack), explained=_explained(pack),
                            **_pack_context(pack, rows))
     return _strict(html)
 

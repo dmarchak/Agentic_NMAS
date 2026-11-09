@@ -32,6 +32,8 @@ MARKUP = {
     "ask_in_words": {"button": r'<button\b[^>]*\bdata-op="ask-in-words"[^>]*>',
                      "input": r'<input\b[^>]*\bid="lq-words"[^>]*>'},
     "explain": {"button": r'<button\b[^>]*\bdata-op="alert-evidence"[^>]*>', "input": None},
+    # The same control on an SDN detection's pack, its own task (the replan, 2026-11-09).
+    "sdn_explain": {"button": r'<button\b[^>]*\bdata-op="alert-evidence"[^>]*>', "input": None},
     "ai_card_test": {"button": r'<button\b[^>]*\bhx-post="[^"]*/installation/card/ai/test"[^>]*>',
                      "input": None},
     "intent_in_words": {"button": r'<button\b[^>]*\bdata-op="intent-in-words"[^>]*>',

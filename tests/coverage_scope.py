@@ -55,6 +55,8 @@ EXCEPTIONS = {
     "modules/device_page.py": (SUPPORT, "the device page's model"),
     "modules/dhcp_page.py": (SUPPORT, "the DHCP page's model"),
     "modules/sdn_page.py": (SUPPORT, "SDN › Controllers', Flows' and Settings' SDN card's model"),
+    "modules/sdn_trace_page.py": (SUPPORT, "Topology › Path…'s Flow tables layer: the SDN "
+                                           "trace's question and answer"),
     "modules/discovery_page.py": (SUPPORT, "the Discovered page's model"),
     "modules/filestore.py": (SUPPORT, "the app's atomic file writes"),
     "modules/history_query.py": (SUPPORT, "History's query page"),

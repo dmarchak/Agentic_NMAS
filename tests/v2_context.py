@@ -3010,6 +3010,58 @@ def _sdn_no_topology(client, _lab, _mp):
         mp.undo()
 
 
+def _sdn_trace(client, _lab, _mp):
+    """Topology › Path… on the Flow tables layer (board D, docs/boards/sdn-trace.html; C2578):
+    Lab's Topology drawn from tests/test_sdn_trace_v2.py's `topology_value()` (the captured
+    network with its controller layer), the SDN reader's store answering the captured fabric
+    (`fresh()`): the form with its suggestions, IPv6 TCP delivered with every hop's pipeline,
+    an address listed at two places (each MAC offered), an end host named from the NSOT export,
+    and the nine-switch flooded chain (`chain_fabric`: the folded middle, the summary and the
+    groups). The Topology store it replaced is put back; patches undone."""
+    import pytest
+
+    from modules import reader_job
+    from modules.sdn import trace as TR
+    from tests import test_sdn_trace_v2 as V
+    from tests.test_sdn_trace import _twice
+    from tests.test_topology_v2 import _store
+
+    mp = pytest.MonkeyPatch()
+    path = reader_job.store_path("topology-graph")
+    before = None
+    if os.path.exists(path):
+        with open(path, "rb") as fh:
+            before = fh.read()
+    try:
+        _store(V.topology_value())
+        box = {"store": V.fresh(), "asked": []}
+        V.answering(mp, box)
+        q = "/v2/topology/map?list=Lab&layer=of"
+        assert "Trace the path" in client.get("/v2/topology?list=Lab&layer=of").get_data(
+            as_text=True)
+        html = client.get(f"{q}&src=2001:db8:8::1&dst=2001:db8:8::3&proto=tcp&dport=80")\
+            .get_data(as_text=True)
+        assert "delivered through 2 switches" in html
+        box["store"] = V.fresh(topo_edit=_twice("192.0.2.3"))
+        assert "Trace to " in client.get(f"{q}&src=192.0.2.1&dst=192.0.2.3").get_data(
+            as_text=True)
+        box["store"] = V.fresh()
+        mp.setattr("modules.nsot.export.read", lambda network: V._export(V.H1_EXPORT))
+        assert "end hosts, in the NSOT export" in client.get(f"{q}&src=h1&dst=192.0.2.3").get_data(
+            as_text=True)
+        mp.setattr(TR, "fabric", lambda network, cached=None, now=None: V.chain_fabric(9))
+        assert "Hops 3 to 7" in client.get(f"{q}&src=192.0.2.1&dst=192.0.2.3").get_data(
+            as_text=True)
+    finally:
+        mp.undo()
+        if before is None:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            with open(path, "wb") as fh:
+                fh.write(before)
+
+
 def _sdn_evidence(client, _lab, _mp):
     """An SDN detection's evidence on Monitoring › Alerts (C1867): Lab's connection over Ryu
     4.34's capture (tests/test_sdn_v2.py's `Captured`), the SDN reader run, and the detection
@@ -3362,7 +3414,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _heal_and_notify,
                    _heal_proposal,
-                   _sdn_no_topology, _sdn_evidence,
+                   _sdn_no_topology, _sdn_evidence, _sdn_trace,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
                    _change_record,

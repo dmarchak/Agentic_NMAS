@@ -173,6 +173,26 @@ between two routed hops are dashed, since a trace reads layer 3 only. Every read
 **Clear the path** takes it off the map; **Trace again** reads it afresh. The latest 50 traces
 of a network are kept; a link to an older one says it is no longer kept.
 
+### Through an SDN fabric's flow tables {#flow-tables}
+
+On a network with a controller layer (see [From an SDN controller](#controller)), Path… asks
+which **Layer** to follow: **Routing (CEF)** is the trace above; **Flow tables (OpenFlow)**
+walks a packet through the flow tables the controller reported. On a network with switches and
+no routing devices there is no Layer switch: Path… is the flow-table trace. **From** and **to**
+take an IPv4 or IPv6 address or a MAC, as the controller lists its hosts (the first 20 are
+suggested; any may be typed), or an end host's name as NetBox records it; **Protocol** is an
+ICMP echo, TCP or UDP, and **Port** the destination port for TCP or UDP. **Trace the path** is
+busy on itself until the answer arrives; any viewer may trace, because it reads only the stored
+value and changes nothing.
+
+The card names each switch by its DPID with the port the packet came in by and the port it left
+by, the flow that decided each hop, and how it ended, in its colour: green only for delivered,
+red for a packet stopped short or sent where it was not meant to go, amber where the trace
+cannot follow, grey where the fabric's knowledge ends. A read older than its promise is said
+above the answer and never green. **Trace the reverse**, **Copy the hops** and **Clear the
+path** sit under it; SDN › Flows' **Trace a packet…** opens this form. Switching Layer keeps
+nothing typed on the other side. How it works: [A flow-table trace](sdn-trace).
+
 ## Take out a device (what-if) {#what-if}
 
 **Take out a device (what-if)…** works out, on the stored map, what losing one device would cut

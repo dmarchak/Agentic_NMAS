@@ -86,7 +86,7 @@
   {%- set hs = a.hypotheses or [] %}
   <article class="answer-card" aria-label="Explain's answer" data-outcome="{{ a.outcome }}">
     <header class="answer-head">
-      <h3>{{ ai.mark(ai_control('explain')) }} Explain's answer</h3>
+      <h3>{{ ai.mark(ai_control('sdn_explain') if explain_task is defined and explain_task == 'sdn_explain' else ai_control('explain')) }} Explain's answer</h3>
       {{- beta.label() }}
     </header>
     <div class="answer-body">

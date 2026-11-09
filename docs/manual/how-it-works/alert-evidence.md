@@ -292,6 +292,12 @@ call. When hosted AI cannot answer (it is off, no key is set, or today's cap wou
 crossed), Explain is drawn disabled with the reason under it, and the pack is drawn whole as
 ever (see [The AI mark](installation-settings#ai-mark)).
 
+A pack carrying an SDN detection's section ([An SDN detection's pack](#sdn)) is explained under
+its own task, **Explain an SDN detection**, on the smallest model, Haiku. It uses the same
+prompt, the same checks, and Explain's own bounds. Its mark names that task, its model and its
+cap, and its calls are recorded under that task in History › AI calls. Every other alert stays
+on Explain's own pin.
+
 1. `pack`: the alert's stored pack is read and its hash checked; a pack that changed since it
    was built is not explained.
 2. `kept`: an answer already kept with this pack (below) is drawn, and nothing is sent. Only

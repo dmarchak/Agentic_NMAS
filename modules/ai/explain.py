@@ -87,6 +87,19 @@ from modules.ai.schemas import StrictModel, register
 log = logging.getLogger(__name__)
 
 FEATURE = "explain"
+#: The task Explain asks for a pack carrying an SDN detection (`evidence_pack.SDN_SECTION`): the
+#: operator's replan of 2026-11-09, "the SDN network's AI uses Haiku" (pins/sdn_explain.json).
+#: The same prompt, schema and checks; only the pin (its model and bounds) differs.
+SDN_FEATURE = "sdn_explain"
+
+
+def feature_for(pack: dict) -> str:
+    """The task *pack* is explained under: `SDN_FEATURE` when it carries an SDN detection's
+    section, else `FEATURE`."""
+    from modules import evidence_pack as EP
+
+    names = {s.get("name") for s in (pack or {}).get("sections") or []}
+    return SDN_FEATURE if EP.SDN_SECTION in names else FEATURE
 PROMPT = ("explain", 4)
 #: Prompt v1's request (before the topology, 15.15, and the health figures, C1714): its
 #: sections and its data blocks, kept so a replay can ask both ways (scripts/nmas-pack-replay).
@@ -1038,7 +1051,8 @@ def _topology_yaml(topo: dict, why: bool, source: bool, omitted: list) -> str:
     return NM._yaml(doc)
 
 
-def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dict:
+def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None,
+             feature: str = FEATURE) -> dict:
     """v6 under the context budget rule (PHASE8_PLAN 10.6; the operator, 2026-10-26), the
     task's `max_prompt_tokens` its budget: the network context's parts dropped in
     `nl_query.CONTEXT_DROPS`' order (the device index, the summary's links and counts, each
@@ -1050,7 +1064,7 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dic
     from modules import network_model as NM
     from modules.ai import fact_sheet, nl_query, prompts, profiles
 
-    loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+    loaded, pin = prompts.load(*prompt), profiles.TASKS[feature]
     budget = pin["max_prompt_tokens"]
     base_sections = sent_sections(pack, topo)
     # The fact sheet is computed from the pack as sent before anything is dropped for size, so
@@ -1104,7 +1118,7 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dic
 
 
 def trimmed(pack: dict, prompt: tuple, schema, data: dict, ctx: dict, sections: list,
-            counter=None, topo: dict = None) -> dict:
+            counter=None, topo: dict = None, feature: str = FEATURE) -> dict:
     """Every other version's pack trimmed to the task's bound (C2198; the operator, 2026-10-29:
     trim per version): v9's screen had a recorded case refused "prompt_too_long" on every run,
     since only v6's `budgeted` fitted a pack to the bound. Here the request is the version's
@@ -1121,7 +1135,7 @@ def trimmed(pack: dict, prompt: tuple, schema, data: dict, ctx: dict, sections: 
     "pack_dropped", "estimate", "budget"}``, *pack_dropped* each trimmed section's count."""
     from modules.ai import fact_sheet, prompts, profiles
 
-    loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+    loaded, pin = prompts.load(*prompt), profiles.TASKS[feature]
     budget = pin["max_prompt_tokens"]
     order = _pack_drop_order(pack, sections)
 
@@ -1149,7 +1163,7 @@ def trimmed(pack: dict, prompt: tuple, schema, data: dict, ctx: dict, sections: 
 
 
 def _ask_round(prompt, schema, data, ctx, network, *, actor, trigger, send, today,
-               subject) -> dict:
+               subject, feature: str = FEATURE) -> dict:
     """v6's call and its needs round (at most one follow-up, `needs.run`), as Ask in words'
     (`nl_query._ask_round`): the follow-up's answer in place of the first's when there was one,
     the cost the round's, ``parent_call_id`` the first call's."""
@@ -1158,7 +1172,7 @@ def _ask_round(prompt, schema, data, ctx, network, *, actor, trigger, send, toda
 
     kw = {"actor": actor, "trigger": trigger, "context": ctx, "send": send, "today": today,
           "network": network}
-    got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=nl_query.looked_up([])),
+    got = gateway.ask(feature, prompt, schema, dict(data, looked_up=nl_query.looked_up([])),
                       subject=subject, **kw)
     wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
     if not wanted:
@@ -1166,7 +1180,7 @@ def _ask_round(prompt, schema, data, ctx, network, *, actor, trigger, send, toda
     held = {}
 
     def follow(results, link):
-        held["got"] = gateway.ask(FEATURE, prompt, schema,
+        held["got"] = gateway.ask(feature, prompt, schema,
                                   dict(data, looked_up=nl_query.looked_up(results)),
                                   subject=dict(subject, **link), **kw)
         return held["got"]
@@ -1194,10 +1208,10 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     if prep["round"]:
         got = _ask_round(tuple(prompt), prep["schema"], prep["data"], prep["ctx"],
                          pack.get("network") or "", actor=actor, trigger=trigger, send=send,
-                         today=today, subject=prep["subject"])
+                         today=today, subject=prep["subject"], feature=prep["feature"])
     else:
-        got = gateway.ask(FEATURE, tuple(prompt), prep["schema"], prep["data"], actor=actor,
-                          trigger=trigger, context=prep["ctx"], send=send, today=today,
+        got = gateway.ask(prep["feature"], tuple(prompt), prep["schema"], prep["data"],
+                          actor=actor, trigger=trigger, context=prep["ctx"], send=send, today=today,
                           subject=prep["subject"], network=pack.get("network") or "")
     return _checked(pack, prep, got, actor=actor)
 
@@ -1210,6 +1224,7 @@ def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> di
     from modules import evidence_pack as EP
 
     pack_id = pack.get("id") or ""
+    feature = feature_for(pack)
     # Which pack an answer read (C1862): two packs of one alert are told apart by id, schema
     # and when each was built, drawn with the answer.
     read = {"id": pack_id, "schema": EP.schema_of(pack), "built_at": EP.built_when(pack),
@@ -1247,22 +1262,22 @@ def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> di
         # The context budget rule: what is sent fits the task's bound, what was dropped said
         # in the prompt ("omitted for size") and kept with the answer.
         sel = budgeted(pack, topo, tuple(prompt), schema,
-                       counter=gateway.counter(FEATURE, tuple(prompt), actor=actor,
-                                               trigger=trigger))
+                       counter=gateway.counter(feature, tuple(prompt), actor=actor,
+                                               trigger=trigger), feature=feature)
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
     elif tuple(prompt) != ("explain", 1):
         # Every other version trimmed to the bound with its own prompt (C2198), what was left
         # out said in the pack as sent and kept with the answer.
         sel = trimmed(pack, tuple(prompt), schema, data, ctx, sections,
-                      counter=gateway.counter(FEATURE, tuple(prompt), actor=actor,
-                                              trigger=trigger), topo=topo)
+                      counter=gateway.counter(feature, tuple(prompt), actor=actor,
+                                              trigger=trigger), topo=topo, feature=feature)
         data, sections = sel["data"], sel["sections"]
         if sel["said"]["pack_dropped"]:
             kept = {"trimmed": sel["said"]}
     return {"pack_id": pack_id, "read": read, "topo": topo, "said": said, "schema": schema,
             "subject": subject, "data": data, "ctx": ctx, "sections": sections, "kept": kept,
-            "round": rounds}
+            "round": rounds, "feature": feature}
 
 
 def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:

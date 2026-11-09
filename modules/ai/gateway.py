@@ -107,6 +107,7 @@ TYPED_PARTS = {
     "intent_patch": ("sentence",),    # Change it in words: the sentence, its quoted text
                                       # already held back as placeholders (intent_words)
     "explain": (),                    # an evidence pack: Mercury's own data
+    "sdn_explain": (),                # the same, an SDN detection's pack (the replan, 2026-11-09)
     "sdn_classify": (),               # a detection's pack: Mercury's own data
     "heal_analysis": (),              # a heal incident's pack and its step log: Mercury's own
                                       # data (its configuration said only by kind)

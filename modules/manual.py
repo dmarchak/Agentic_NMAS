@@ -88,6 +88,8 @@ PAGES = (
     ("intent-in-words", "Change it in words: a sentence drafts an intent change", H,
      "how-it-works/intent-in-words.md"),
     ("path-trace", "A path trace: the path packets take", H, "how-it-works/path-trace.md"),
+    ("sdn-trace", "A flow-table trace: a packet through an SDN fabric", H,
+     "how-it-works/sdn-trace.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
@@ -213,6 +215,8 @@ OPERATIONS = {
     "record-decision": ("modules.installation_settings", "RATIFY_STEPS"),
     "platform-map": ("modules.platform_maps", "SAVE_STEPS"),
     "path-trace": ("modules.path_trace", "STEPS"),
+    # Board D of docs/boards/sdn-trace.html (C2578): Path… on the Flow tables layer.
+    "sdn-trace": ("modules.sdn_trace_page", "STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
