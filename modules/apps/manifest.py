@@ -24,6 +24,13 @@ The fields:
   app reaches the network only by `mercury_app.egress("<name>", ...)` (C2635; the app
   allowlist, `modules/apps/allowlist.py`, refuses any other), and `mercury app check` prints
   each for the reviewer (optional: none means the app reaches no destination of its own);
+- `compiled`: what Mercury compiles into the app's start-time config from what it knows of
+  the network (C2760; the design's section 12, "the compile step"), each a `key` (a top-level
+  key the `config_schema` declares through `properties`, unique) and what it holds:
+  `per_switch`, the table ROLES (`TABLE_ROLES`) Mercury places from each expected switch's
+  platform profile, keyed by its DPID in decimal (`modules/apps/app_config.py`); so the app
+  never branches on a vendor and never hard-codes a table (optional: none means nothing is
+  compiled, and only the network's own config, if any, is staged);
 - `tests`: its unit tests, as paths relative to the app's folder (optional; the app gate
   holds each to the layout rule, a `test_*.py` file at the root or in `tests/`).
 
@@ -60,6 +67,13 @@ HEALTH, VALIDATE = "/health", "/validate"
 EGRESS_NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 #: A config key, dotted through the schema's `properties` (`verdict_service.url`).
 CONFIG_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$")
+#: A compiled key: one top-level key of the config.
+TOP_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+#: The table roles Mercury compiles per switch (`compiled`'s `per_switch`), each placed from the
+#: switch's platform profile by the flows that role carries (`modules/apps/app_config.ROLES`):
+#: the table a host's forwarding flow goes in, the table a miss, ARP and LLDP go to the
+#: controller from, and the table a meter instruction is taken in.
+TABLE_ROLES = ("forward_table", "punt_table", "meter_table")
 
 
 class ManifestError(ContractError):
@@ -166,6 +180,30 @@ class Egress(Contract):
                 f"{self.purpose}")
 
 
+class Compiled(Contract):
+    """One key of the start-time config Mercury compiles (see the module's docstring)."""
+
+    key: str
+    per_switch: Tuple[str, ...]
+
+    @field_validator("key")
+    @classmethod
+    def _key(cls, v):
+        return matches(TOP_KEY, v, "a top-level config key")
+
+    @field_validator("per_switch")
+    @classmethod
+    def _per_switch(cls, v):
+        if not v:
+            raise ValueError(f"per_switch names at least one table role "
+                             f"({', '.join(TABLE_ROLES)})")
+        for role in v:
+            if role not in TABLE_ROLES:
+                raise ValueError(f"{role!r} is not a table role Mercury compiles "
+                                 f"({', '.join(TABLE_ROLES)})")
+        return no_duplicates(v, "per_switch")
+
+
 def config_key_problem(schema: dict, key: str) -> str:
     """Why *key* (dotted) is not a string key *schema* declares through `properties`, or ""
     when it is. A `$ref` is not followed: an address's key is declared where it is read."""
@@ -196,6 +234,7 @@ class Manifest(Contract):
     rest: Rest
     owns_flows: Optional[OwnsFlows] = None
     egress: Tuple[Egress, ...] = ()
+    compiled: Tuple[Compiled, ...] = ()
     tests: Tuple[str, ...] = ()
 
     def egress_names(self) -> tuple:
@@ -289,6 +328,17 @@ class Manifest(Contract):
                     for why in [config_key_problem(self.config_schema, e.from_config)] if why]
         if problems:
             raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
+    def _compiled_keys_declared(self):
+        no_duplicates([c.key for c in self.compiled], "compiled keys")
+        declared = self.config_schema.get("properties") or {}
+        missing = [c.key for c in self.compiled if c.key not in declared]
+        if missing:
+            raise ValueError(f"compiled {', '.join(missing)}: not a key config_schema declares "
+                             f"through properties (it declares "
+                             f"{', '.join(sorted(declared)) or 'nothing'})")
         return self
 
 

@@ -269,6 +269,35 @@ def _dropin_lines(before: str, after: str) -> list:
     return out
 
 
+def config_cards(plan: dict, s) -> list:
+    """Each app's start-time config as the plan stages it (C2760), in load order: ``[{"app",
+    "version", "path", "sha", "text", "notes", "state"}]``, *text* the staged JSON laid out to
+    read and masked by Mercury's redaction on the way out (the compile refuses a config holding
+    a secret, so nothing should mask), *state* ``new`` (the controller's record holds none for
+    the app), ``changed`` or ``same`` against the config the record last sent, *s* the apply
+    script (its APPS_ROOT and CONFIG_SUFFIX: where the file goes)."""
+    import json
+
+    from modules import redact
+
+    staged = plan.get("configs") or {}
+    before = plan.get("record_configs") or {}
+    notes = plan.get("config_notes") or {}
+    out = []
+    for a in (plan.get("request") or {}).get("apps") or []:
+        text = staged.get(a["name"])
+        if text is None:
+            continue
+        shown = json.dumps(json.loads(text), indent=2, sort_keys=True)
+        was = before.get(a["name"])
+        out.append({"app": a["name"], "version": a["version"],
+                    "path": f"{s.APPS_ROOT}/{a['name']}/{a['version']}{s.CONFIG_SUFFIX}",
+                    "sha": a.get("config_sha256", ""), "text": redact.redact_text(shown),
+                    "notes": list(notes.get(a["name"]) or []),
+                    "state": "new" if was is None else "same" if was == text else "changed"})
+    return out
+
+
 def plan_card(plan: dict, redeploy: bool = False) -> dict:
     """The plan card, its refusals, or the plan that changes nothing (artboards C and D)."""
     from modules.apps import channel, deploy_op, post_check
@@ -294,6 +323,10 @@ def plan_card(plan: dict, redeploy: bool = False) -> dict:
                      "config": bool(a.get("config_sha256"))})
     new_files = [{"app": a["name"], "version": a["version"], "files": files.get(a["name"])}
                  for a in req["apps"] if a["name"] in changed]
+    configs = config_cards(plan, s)
+    config_state = {c["app"]: c["state"] for c in configs}
+    for r in rows:
+        r["config_state"] = config_state.get(r["name"], "")
     conf = plan.get("conformance") or {}
     rb = plan.get("rollback") or {}
     names = {sw.get("dpid"): sw.get("name") for sw in plan.get("switches") or []}
@@ -318,7 +351,7 @@ def plan_card(plan: dict, redeploy: bool = False) -> dict:
         "folder": {"owner": folder.get("owner", ""), "group": folder.get("group", ""),
                    "mode": folder.get("mode", "")},
         "apps_root": s.APPS_ROOT, "account": s.DEPLOY_USER, "read_at": plan.get("read_at"),
-        "rows": rows, "new_files": new_files,
+        "rows": rows, "new_files": new_files, "configs": configs,
         "file_count": sum(len(v or []) for v in files.values()), "folder_count": len(files),
         "conformance": {"offered": ", ".join(conf.get("offered") or []),
                         "hello": (conf.get("offered") or ["?"])[-1],

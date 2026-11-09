@@ -57,7 +57,7 @@ from modules.jobs import runner
 SDK = "mercury_app"
 EGRESS = "egress"
 #: The SDK's published names (held to the stub's `__all__` by tests/test_app_allowlist.py).
-SDK_NAMES = frozenset({"EgressRefused", "NotDeployed", "egress"})
+SDK_NAMES = frozenset({"EgressRefused", "NotDeployed", "egress", "start_config"})
 #: The app SDK's testing module: what an app's tests take `covers`, `refused` and the fixtures
 #: they call from, written for the controller's Python (C2644: `modules.jobs`' need pydantic
 #: and Mercury's Python, and an app's tests run in the container harness on the controller's).
@@ -116,7 +116,8 @@ IMPORTS = {
     "ryu.contrib": _refused("libraries Ryu vendors, network clients among them: " + NETWORK),
     "ryu.cmd": _refused("Ryu's command lines start managers and processes: " + PROCESS),
     "ryu.utils": _refused("it loads modules and files by name: " + INTERPRETER),
-    SDK: Rule(True, "the app SDK: mercury_app.egress, the app's one way to the network"),
+    SDK: Rule(True, "the app SDK: mercury_app.egress, the app's one way to the network, and "
+                    "mercury_app.start_config, the start-time config Mercury staged for it"),
     # The standard library's data modules.
     "base64": Rule(True, "encodes and decodes bytes as text"),
     "collections": Rule(True, "containers (deque, OrderedDict, Counter; collections.abc)",

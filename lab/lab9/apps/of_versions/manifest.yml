@@ -1,0 +1,24 @@
+# of_versions 1.0.0 (C2670): the controller's OpenFlow version pin, the network's code (Lab 9's),
+# held to Mercury's app contract (modules/apps/manifest.py) and loaded first. Ryu offers the
+# intersection of its apps' versions (C2593), so this app's 1.0 and 1.3 keep the controller's
+# hello at 1.3, which every lab switch's platform profile accepts (C2598).
+name: of_versions
+version: 1.0.0
+summary: Pins the controller's OpenFlow versions to 1.0 and 1.3, so no switch refuses its hello.
+controllers:
+  ryu: ">=4.34"
+openflow_versions: ["1.0", "1.3"]
+requires: []
+# It takes no config: the pin is the code's, the one thing the app does.
+config_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+rest:
+  prefix: /of_versions
+  endpoints:
+    - path: /health
+      methods: [GET]
+      summary: The pin is in force, and each connected switch's negotiated version.
+tests:
+  - tests/test_of_versions_logic.py

@@ -1,0 +1,59 @@
+# switch_quirks 1.0.0 (C2670, C2760): each switch's pipeline specifics, the network's code (Lab
+# 9's), held to Mercury's app contract (modules/apps/manifest.py) and loaded second, after
+# of_versions. Its tables are compiled by Mercury from each switch's platform profile into its
+# start-time config (`compiled`), so the app never branches on a vendor.
+name: switch_quirks
+version: 1.0.0
+summary: Sets each switch's pipeline flows (miss to the punt table, LLDP to the controller) from its compiled tables.
+controllers:
+  ryu: ">=4.34"
+openflow_versions: ["1.0", "1.3"]
+requires: [of_versions]
+config_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+  $defs:
+    table:
+      type: integer
+      minimum: 0
+      maximum: 254
+  properties:
+    switches:
+      description: Each switch's tables, by datapath id in decimal, compiled by Mercury from its platform profile.
+      type: object
+      additionalProperties: false
+      patternProperties:
+        "^[0-9]+$":
+          type: object
+          additionalProperties: false
+          required: [forward_table, punt_table, meter_table]
+          properties:
+            forward_table:
+              description: Where a host's forwarding flow goes (the ProCurve's 100, hardware).
+              $ref: "#/$defs/table"
+            punt_table:
+              description: Where the miss, ARP and LLDP go to the controller (the ProCurve's 200).
+              $ref: "#/$defs/table"
+            meter_table:
+              description: Where a meter instruction is taken (the ProCurve's 100).
+              $ref: "#/$defs/table"
+      default: {}
+rest:
+  prefix: /switch_quirks
+  endpoints:
+    - path: /health
+      methods: [GET]
+      summary: The config is in force and every connected switch is served and reconciled.
+    - path: /tables
+      methods: [GET]
+      summary: Each switch's forward, punt and meter tables, as the config names them.
+owns_flows:
+  cookie_prefix: "0x5351000000000000"
+  cookie_mask: "0xffff000000000000"
+  classes: []
+compiled:
+  - key: switches
+    per_switch: [forward_table, punt_table, meter_table]
+tests:
+  - tests/test_quirks_logic.py

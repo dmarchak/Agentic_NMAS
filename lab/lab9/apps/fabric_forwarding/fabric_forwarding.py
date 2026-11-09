@@ -25,9 +25,14 @@ the team's, in `fabric_paths`; this module is the wiring:
   plane; `fabric_logic`'s docstring, "Loop safety");
 - **errors**: each switch's last refusals are kept and shown by `/health`.
 
-**The config** arrives by H's policy push, `PUT /fabric_forwarding/config` (the manifest's
-`config_schema`; `fabric_logic.parse_config` refuses a field by name). Until it arrives no
-switch is served and `/health` says so: the tables are the network's, never guessed.
+**The config** is read AT LOAD from the start-time file Mercury's deploy compiled and staged
+beside this version (`mercury_app.start_config`, decision K9; its tables from each switch's
+platform profile, the manifest's `compiled`; C2729, C2760), so after the deploy's restart the
+app serves without a push; `PUT /fabric_forwarding/config` (H's policy push) can replace it
+while it runs. Either is held to the manifest's `config_schema` (`fabric_logic.parse_config`
+refuses a field by name). While no config is in force no switch is served and `/health` says
+why (the SDK not importable, the file absent, unreadable or refused): the tables are the
+network's, never guessed.
 
 **REST** (under `/fabric_forwarding`): `GET /health`, `GET` and `PUT /config`, `GET /state`
 (the switches, links, edge ports, hosts and counters, for the harness's acceptance and for
@@ -49,8 +54,14 @@ from ryu.topology import event as topo_event
 
 import fabric_logic as logic
 
+try:
+    import mercury_app
+    HAVE_SDK = True
+except ImportError:                     # the SDK is not deployed beside the app: /health says so
+    HAVE_SDK = False
+
 NAME = "fabric_forwarding"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 PREFIX = "/" + NAME
 #: How often the settle timer looks (it acts only through an event, on the app's own thread).
 TICK_S = 0.25
@@ -90,6 +101,17 @@ class FabricForwarding(app_manager.RyuApp):
                          "relay_refused_not_edge": 0, "delivered": 0, "flows_added": 0,
                          "flows_removed": 0, "recomputes": 0, "reroutes": 0}
         kwargs["wsgi"].register(FabricRest, {"fabric_app": self})
+        # The start-time config, read once at load (C2729): no switch has connected yet.
+        answer = mercury_app.start_config(NAME, VERSION) if HAVE_SDK else None
+        config, self.start_error = logic.from_start_config(answer)
+        self.start = {"read": config is not None, "error": self.start_error,
+                      "path": (answer or {}).get("path", ""),
+                      "sha256": (answer or {}).get("sha256", "")}
+        if config is not None:
+            self._take_config(config, "its start-time config %s" % self.start["path"])
+        else:
+            self.logger.warning("%s: %s; no switch is served until a config is pushed", NAME,
+                                self.start_error)
         hub.spawn(self._settle_timer)
 
     # ── the config ──────────────────────────────────────────────────────────────────────────
@@ -98,17 +120,20 @@ class FabricForwarding(app_manager.RyuApp):
         config, problems = logic.parse_config(data)
         if config is None:
             return problems
+        self._take_config(config, "a push")
+        return []
+
+    def _take_config(self, config, where):
         self.config = config
         self.relay = logic.Recent(config["dedup_s"])
-        self.logger.info("%s: config set: %d switches named, default tables %s", NAME,
-                         len(config["switches"]), config["default_tables"])
+        self.logger.info("%s: config set from %s: %d switches named, default tables %s", NAME,
+                         where, len(config["switches"]), config["default_tables"])
         # Every switch is read again and reconciled as its flows arrive, never before: a flow
         # sent ahead of a read already asked for would be missing from that read, and sent
         # twice.
         for dpid in sorted(self.datapaths):
             self.read_done.discard(dpid)
             self._read(self.datapaths[dpid])
-        return []
 
     def served(self):
         return sorted(d for d in self.datapaths if logic.tables_for(self.config, d) is not None)
@@ -423,14 +448,15 @@ class FabricForwarding(app_manager.RyuApp):
         unserved = sorted(d for d in self.datapaths if d not in served)
         problems = list(self.problems)
         if self.config is None:
-            problems.insert(0, "waiting for its config (PUT %s/config): no switch is served"
-                            % PREFIX)
+            problems.insert(0, "%s, and none was pushed (PUT %s/config): no switch is served"
+                            % (self.start_error, PREFIX))
         problems += ["switch %d is connected and the config names no tables for it: not "
                      "served" % d for d in unserved]
         problems += ["switch %d refused: %s" % (d, ", ".join(e)) for d, e in
                      sorted(self.errors.items()) if e]
         return {"ok": not problems, "app": NAME, "version": VERSION,
-                "configured": self.config is not None, "switches": len(self.datapaths),
+                "configured": self.config is not None, "start_config": dict(self.start),
+                "switches": len(self.datapaths),
                 "served": len(served), "links": len(self.links), "hosts": len(self.hosts),
                 "held_until_settled": self.held, "problems": problems,
                 "counters": dict(self.counters)}

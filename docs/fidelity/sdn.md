@@ -38,8 +38,12 @@ allows the kind (`preview_confirm.control_gate`: "a person's page is byte for by
 was"), and a verified person may both, so nothing drawn moves for a person; a service sees the
 three drawn disabled with the reveal's reason, as before with the confirm's. Compared by reading
 the diff against `control_gate`, with no new shot.
+Hashed again 2026-11-08 for C2760 (decision 8, D8-A 4): `_sdn_app_deploy.html`'s plan card
+draws each app's compiled start-time config after the files (the region row "C: each app's
+start-time config" below) and marks a changed or new config in the set's Files cell; nothing
+else moves. Compared by reading the template against artboard C, with no new shot.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html
-Templates sha256: `5866d4f6789c06fe1bb9ff3bbaef9e7470cf35899b09b25cb48c7bfae306a0a4`
+Templates sha256: `f996aa466fd13f7e0c4e915154739eecc3d43b8d1b0f9b17acf050be75d38c92`
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the
@@ -70,6 +74,7 @@ tests/test_sdn_apps_v2.py and the v2 walk's provider (tests/v2_context.py `_sdn_
 | B: versions and the one action | radio per version, Draft disabled with its reason, pins, On ctl-1, "Preview deploying 1.3.0…" disabled for the running version with its reason on hover, Compare, Open the review | the same, but no Compare and no Open the review | **deviation** (log: P6 B: no Compare and no Open the review) |
 | B: what the version declares | controllers, OpenFlow, requires, REST, owns flows, egress, the compiled config | the same; Config says no start-time config is compiled yet | **later** (C2760, the config compiler) |
 | C: the target, the set, the files | as drawn | the same, from the plan | **same** |
+| C: each app's start-time config (C2760) | not drawn: the set's Files column says "its config file"; B's Config line names the compiled tables and links "the compiled config" | after the files, per app with a config: "<app> <version>'s start-time config, staged to /opt/ryu-apps/<app>/<version>.config.json" with a chip (new, changed, or the same as now against the record's last), the sha256 in the request, each switch's tables and the profile they were placed from, and the JSON masked; the Files cell adds "(changed)" or "(new)". Compared by reading the template against artboard C, not shot (tests/test_app_compile.py renders it) | **deviation** (log: D8-A 4: the plan draws each app's compiled start-time config) |
 | C: conformance | per switch: profile entry, switch speaks, refuses a hello above, common, verdict | per switch: common, refuses a hello above, verdict | **later** (C2710, F6: conformance's rows carry neither the profile entry nor the switch's own versions) |
 | C: the drop-in, before and after | the render with the removed lines struck and the new ones marked | the same, the lines diffed | **same** |
 | C: the restart and what must come back | bounds with their placeholder chips; expected switches, links and apps with a From column and Back when; what already fails | the same, without the From column | **deviation** (log: P6 C: the expected table without its From column) |

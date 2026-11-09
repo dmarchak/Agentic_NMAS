@@ -36,8 +36,9 @@ expects. It refuses, each refusal naming the comparison and both operands:
 - an expected switch with no DPID, an expected link that is not a pair of switch ports, or a
   recorded previous request the script would refuse (a rollback target that could not run).
 
-**An app's start-time config (decision K9; C2707)** is compiled by Mercury (not built here: the
-plan takes it per app) and staged as its own file beside the version's folder,
+**An app's start-time config (decision K9; C2707)** is compiled by Mercury (not here: the plan
+takes it per app, compiled by `modules/apps/app_config.compile_set`, which the caller,
+`deploy_op.build`, runs first; C2760) and staged as its own file beside the version's folder,
 ``/opt/ryu-apps/<app>/<version>.config.json`` (the script's `config_path`), so the Published
 folder's hash stays the reviewed code's; its sha256 rides in the request as ``config_sha256``,
 and the script checks it before it writes the drop-in. Runtime policy (dns_blacklist's verdict

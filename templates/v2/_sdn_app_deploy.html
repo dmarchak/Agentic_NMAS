@@ -39,7 +39,7 @@
     <thead><tr><th scope="col">#</th><th scope="col">App</th><th scope="col">Version</th><th scope="col">Pinned (commit · content hash)</th><th scope="col">Files</th></tr></thead>
     <tbody>
     {%- for r in d.rows %}
-    <tr{% if r.changed %} class="apps-changed"{% endif %}><td>{{ r.n }}</td><td>{{ r.name }}</td><td>{% if r.changed and r.from %}<strong>{{ r.from }} → {{ r.version }}</strong>{% elif r.changed %}<strong>{{ r.version }}</strong> added{% else %}{{ r.version }}{% endif %}</td><td class="mono small">{% if r.commit %}{{ r.commit }} · {% endif %}sha256:{{ r.sha[:4] }}…{{ r.sha[-4:] }}</td><td>{{ r.files }} · {{ 'a new folder' if r.changed else 'the same bytes as now' }}{% if r.config %}, its config file{% endif %}</td></tr>
+    <tr{% if r.changed %} class="apps-changed"{% endif %}><td>{{ r.n }}</td><td>{{ r.name }}</td><td>{% if r.changed and r.from %}<strong>{{ r.from }} → {{ r.version }}</strong>{% elif r.changed %}<strong>{{ r.version }}</strong> added{% else %}{{ r.version }}{% endif %}</td><td class="mono small">{% if r.commit %}{{ r.commit }} · {% endif %}sha256:{{ r.sha[:4] }}…{{ r.sha[-4:] }}</td><td>{{ r.files }} · {{ 'a new folder' if r.changed else 'the same bytes as now' }}{% if r.config %}, its config file{% if r.config_state == 'changed' %} (changed){% elif r.config_state == 'new' %} (new){% endif %}{% endif %}</td></tr>
     {%- endfor %}
     <tr><td>{{ d.rows | length + 1 }}, {{ d.rows | length + 2 }}</td><td colspan="4" class="muted">Ryu's own <span class="mono">ryu.app.ofctl_rest</span> and <span class="mono">ryu.app.rest_topology</span> (Mercury's reads), always last</td></tr>
     </tbody>
@@ -52,6 +52,11 @@
   </table></div>
   {%- endfor %}
   <p class="muted small">From git's blobs at each pinned commit, never a working tree; each folder's hash recomputed from what was staged equals its Published pin. {{ d.file_count }} file{{ 's' if d.file_count != 1 }} in {{ d.folder_count }} folder{{ 's' if d.folder_count != 1 }} in all.</p>
+  {%- for c in d.configs %}
+  <h4>{{ c.app }} {{ c.version }}'s start-time config, staged to <span class="mono">{{ c.path }}</span> {{ badge(c.state if c.state != 'same' else 'the same as now', 'warn' if c.state == 'changed' else 'ok') }}</h4>
+  <p class="small muted">Compiled by {{ brand.short }} before this plan; its sha256 <span class="mono">{{ c.sha[:4] }}…{{ c.sha[-4:] }}</span> is in the request, checked by the apply script before the restart, and read by the app at load.{% for n in c.notes %} {{ n }}.{% endfor %}</p>
+  <pre class="mono apps-dropin">{{ c.text }}</pre>
+  {%- endfor %}
 </section>
 <section class="apps-sec" aria-label="Conformance and the drop-in">
   <div class="sdn-ctl-hd"><h4>Conformance: every expected switch can connect</h4>{{ badge(d.conformance.checked | length ~ ' of ' ~ d.conformance.count, 'ok') }}</div>

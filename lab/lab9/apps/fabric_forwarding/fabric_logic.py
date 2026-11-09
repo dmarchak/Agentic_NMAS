@@ -140,6 +140,29 @@ def parse_config(data):
     return out, []
 
 
+#: What the app says when the app SDK is not on its import path (C2729).
+NO_SDK = ("the app SDK mercury_app is not importable on this controller, so the start-time "
+          "config Mercury staged cannot be read")
+
+
+def from_start_config(answer):
+    """`(config, why)`: the app's config from *answer*, what `mercury_app.start_config` gave at
+    load (None when the SDK could not be imported), as `parse_config` keeps it, with why ""; or
+    None and why in words: the SDK absent, the file absent or unreadable (the SDK's own words),
+    or a config `parse_config` refuses (each field it named). The app's /health names *why*
+    until a config is in force, so a missing file is never an ok (C2729)."""
+    if answer is None:
+        return None, NO_SDK
+    if not answer.get("ok"):
+        return None, "its start-time config was not read: %s" % (answer.get("error") or
+                                                                 "no reason was given")
+    config, problems = parse_config(answer.get("config"))
+    if config is None:
+        return None, "its start-time config %s is refused: %s" % (answer.get("path") or "",
+                                                                  "; ".join(problems))
+    return config, ""
+
+
 def tables_for(config, dpid):
     """`(forward, punt)` for *dpid*, or None when the config names none (the switch is not
     served)."""

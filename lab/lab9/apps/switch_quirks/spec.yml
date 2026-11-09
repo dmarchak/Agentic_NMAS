@@ -1,0 +1,27 @@
+kind: app
+name: switch_quirks
+summary: Sets each switch's pipeline flows (miss to the punt table, LLDP to the controller) from its compiled tables.
+permission: write
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  dpid: dpid
+outputs:
+  flows: table
+examples:
+  - name: the ProCurve's hardware table misses to its software table and LLDP reaches the controller
+    given: the ProCurve's tables as Mercury compiles them from its measured pipeline (forward 100, punt 200, meter 100)
+    when: the flows it should hold are computed
+    then: table 100's miss goes on to table 200, LLDP goes to the controller in table 200, and nothing is written in table 0
+    fixture: ryu_recorded
+  - name: a switch on table 0 for every role gets no flow
+    given: an Open vSwitch and an Arista as Mercury compiles them (their profiles record no tables, so table 0 for every role)
+    when: the flows they should hold are computed
+    then: there are none, so Ryu's own table 0 LLDP flow serves them
+    fixture: ryu_recorded
+  - name: reconcile changes only the app's own flows
+    given: the ProCurve holding a stale flow of the app's, missing one, and another owner's flow on the other key the app wants
+    when: the switch reconnects and is reconciled
+    then: the stale one is removed, the other owner's flow is named as a conflict and left, and nothing already right is sent again
+    fixture: ryu_recorded

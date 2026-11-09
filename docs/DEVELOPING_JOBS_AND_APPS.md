@@ -254,6 +254,7 @@ malformed field is refused by name. The contract fixture is the `dns_blacklist` 
 | `rest` | `prefix` and `endpoints`, each a `path` and its `methods`; `/health` answering GET is required; `/validate`, if offered, answers POST. Mercury's post-check reads `GET <prefix>/health` on the controller's REST port, and the app answers a 200 with a JSON object whose `ok` is `true` or `false`, listing in `problems` why when it is false; any other answer is read as unreadable, never as healthy |
 | `owns_flows` | optional: `cookie_prefix` and `cookie_mask` (64-bit hex), and the protected `classes` it owns |
 | `egress` | optional: every network destination the app reaches, each a unique `name`, the `from_config` key whose value is its address (dotted, such as `verdict_service.url`: a string key `config_schema` declares through `properties`) and its `purpose`; none means the app reaches no destination of its own |
+| `compiled` | optional: what Mercury compiles into the app's start-time config, each a unique top-level `key` the `config_schema` declares and its `per_switch` table roles (`forward_table`, `punt_table`, `meter_table`), placed from each expected switch's platform profile and keyed by its DPID in decimal (`modules/apps/app_config.py`) |
 | `tests` | optional: its unit tests, as paths relative to the app's folder: a `test_*.py` file at its root or in `tests/` |
 
 The manifest file itself:
@@ -286,6 +287,23 @@ The manifest file itself:
 - **`overrides`:** `allow` and `block`, lists of domains (`*.` for every name under one).
 
 On a real network, Mercury compiles the config. The app never holds an address of its own.
+
+**The compile step and the start-time config** (C2760, C2729; decision K9). The controller app
+deploy's plan compiles each chosen app's config before it is previewed
+(`compile_set` in `modules/apps/app_config.py`): the network's own config, if any, then each key the
+manifest declares under `compiled`, then the schema's defaults, validated against
+`config_schema`. A table role is the first table, by id, of the switch's platform profile that
+takes the flows the role carries (`modules/sdn/placement.py`): `forward_table` a host's IPv4 and
+IPv6 forwarding flows, `punt_table` the table miss, ARP and LLDP to the controller,
+`meter_table` a flow through a meter. On the ProCurve's measured pipeline (C2601) that is 100,
+200 and 100; a profile that records no tables (the Aristas, Open vSwitch) gives table 0 for
+every role, and the preview says so. A network config that sets a compiled key is refused.
+The config is staged as `/opt/ryu-apps/<app>/<version>.config.json`, its sha256 in the request
+and the plan's hash, drawn masked in the preview beside what each switch's tables came from,
+and checked by the apply script before the restart. The app reads it once, at load, with
+`mercury_app.start_config(NAME, VERSION)`, which answers `{"ok", "error", "config", "path",
+"sha256"}` and raises nothing: an absent, unreadable or malformed file is `ok` false with
+`error` saying which, and the app's `/health` names it while no config is in force, never ok.
 
 ### An app's allowlist
 
@@ -324,8 +342,11 @@ On a real network, Mercury compiles the config. The app never holds an address o
 - **The controller's Python, as measured:** every file is held to the version the network's
   controller runs apps on (below).
 
-The app SDK's contract is `modules/apps/sdk/mercury_app/` (a stub: the container harness and
-the controller deploy the working package beside the app). The allowlist is the check a person
+The app SDK's contract is `modules/apps/sdk/mercury_app/`: `start_config` is its working call
+(a local file, the start-time config); `egress` is a stub until the working package lands
+(C2645). Neither the controller's deploy nor the container harness puts the SDK on a
+controller app's import path yet (C2852), so an app imports it guarded and its `/health` says
+when it is absent (lab/lab9/apps/fabric_forwarding/fabric_forwarding.py). The allowlist is the check a person
 can read; the controller's container and its network policy are the boundary.
 
 ### The controller's Python

@@ -1,0 +1,22 @@
+kind: app
+name: of_versions
+summary: Pins the controller's OpenFlow versions to 1.0 and 1.3, so no switch refuses its hello.
+permission: read
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  dpid: dpid
+outputs:
+  versions: table
+examples:
+  - name: every switch the bring-up recorded negotiates a version the pin offers
+    given: the five switches Ryu recorded at the bring-up (2026-11-06), each having negotiated OpenFlow 1.3
+    when: the app's health is read
+    then: it is ok, offers 1.0 and 1.3, and names each switch's version as 1.3
+    fixture: ryu_recorded
+  - name: a switch outside the pin is named
+    given: the recorded switches, one of them reported on OpenFlow 1.4
+    when: the app's health is read
+    then: it is not ok, and its one problem names that switch, 1.4 and the pin
+    fixture: ryu_recorded

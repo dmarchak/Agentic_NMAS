@@ -2570,6 +2570,14 @@ def _sdn_apps(client, _lab, _mp):
         assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
         form = {"list": "Lab", "controller": "ctl", "set": "of_versions=1.0.0"}
         assert client.post("/v2/sdn/apps/preview", data=dict(form, set="nope")).status_code == 400
+        # A preview whose app compiles its start-time config (C2760): its config and the
+        # basis of each switch's tables drawn.
+        from tests.test_app_compile import HP, OVS, CompiledSources
+
+        mp.setattr(deploy_op, "SOURCES", CompiledSources(Path(root) / "compiled", [HP, OVS]))
+        assert "start-time config, staged to" in client.post(
+            "/v2/sdn/apps/preview", data=dict(form, set="quirky=1.0.0")).get_data(as_text=True)
+        mp.setattr(deploy_op, "SOURCES", src)
         html = client.post("/v2/sdn/apps/preview", data=form).get_data(as_text=True)
         fields = {m.group(1): unescape(m.group(2)) for m in re.finditer(
             r'<input type="hidden" name="([a-z]+)" value="([^"]*)"', html)}

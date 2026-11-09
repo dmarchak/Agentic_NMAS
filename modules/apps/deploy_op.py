@@ -17,6 +17,13 @@ person's: the preview's and the confirm's sources are made for the actor (`for_a
 `Sources.send` is the transport over the deploy account's plain session
 (`modules/apps/transport.send`).
 
+**The compile step (C2760).** Before the plan, each chosen app's start-time config is compiled
+(`modules/apps/app_config.compile_set`: what its manifest declares under `compiled`, from the
+expected switches' platform profiles, over the network's own config), so the plan stages it,
+its sha256 rides in the request and the plan's hash, and the preview draws it with what each
+switch's tables were placed from (``config_notes``). A config that cannot be compiled refuses
+the preview, naming the app, the switch and why.
+
 **The set.** Mercury's record of the controller's set (`deploy_receipts.record`, K2) is what
 runs; a person chooses a version on an app's page, and the set previewed is the record with that
 one change (`chosen_set`). The record's request is the plan's *previous* (the rollback target).
@@ -336,7 +343,7 @@ def build(network: str, controller_name: str, chosen: dict, *, root: str,
     ``set``, ``record_set``, ``change``, ``record`` (K2's state), ``dev`` and ``refusals``
     gathered before the plan where a source could not answer."""
     from modules import controller_deploy_receipts as deploy_receipts
-    from modules.apps import channel
+    from modules.apps import app_config, channel
 
     src = src or sources()
     base = {"ok": False, "network": network, "controller": controller_name,
@@ -367,6 +374,12 @@ def build(network: str, controller_name: str, chosen: dict, *, root: str,
     items, why = stage_set(registered, chosen, root)
     if why:
         return dict(base, refusals=why)
+    # The compile step (C2760): each app's start-time config from its manifest's `compiled`
+    # and the expected switches' platform profiles, in place on the items, so the plan stages
+    # it and its sha256 rides in the request and the plan's hash.
+    config_notes, why = app_config.compile_set(items, exp.get("switches") or [])
+    if why:
+        return dict(base, refusals=why, config_notes=config_notes)
     observed = src.observe(network, ctl, apps=health_prefixes(
         i["manifest"] for i in items)) if observe else None
     got = channel.plan(network=network, controller=controller_name, unit=ctl["unit"],
@@ -380,6 +393,7 @@ def build(network: str, controller_name: str, chosen: dict, *, root: str,
     out["switches"] = [{"name": s.get("name"), "dpid": s.get("dpid")}
                        for s in exp.get("switches") or []]
     out["manifests"] = {i["manifest"].name: i["manifest"] for i in items}
+    out["config_notes"] = config_notes
     if got.get("ok"):
         out["parts"] = parts(got)
         out["nothing"] = nothing_changes(got)

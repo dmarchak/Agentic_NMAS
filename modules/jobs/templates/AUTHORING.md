@@ -159,7 +159,7 @@ Python). No `open`, `exec`, `eval` or `getattr`, as for a job.
 | `json` | JSON text to and from plain data (its load and dump take an open file, which an app has none of) | its private (`_`) names |
 | `logging` | the app's log lines (RyuApp's self.logger is a logging.Logger) | `FileHandler`: it writes a file: log through the controller's logger; `basicConfig`: it can open a file and replaces the controller's handlers; `config`: logging.config opens files and listens on a socket; `handlers`: logging.handlers writes files and sends to sockets |
 | `math` | arithmetic | its private (`_`) names |
-| `mercury_app` | the app SDK: mercury_app.egress, the app's one way to the network | its private (`_`) names |
+| `mercury_app` | the app SDK: mercury_app.egress, the app's one way to the network, and mercury_app.start_config, the start-time config Mercury staged for it | its private (`_`) names |
 | `re` | regular expressions | its private (`_`) names |
 | `ryu` and its submodules | the controller framework the app runs in | its private (`_`) names |
 | `ryu.lib.hub` | Ryu's green threads: spawn, sleep, Event, Queue | `StreamClient`: it opens a connection or a listening socket of its own; `StreamServer`: it opens a connection or a listening socket of its own; `WSGIServer`: it opens a connection or a listening socket of its own; `connect`: it opens a connection or a listening socket of its own; `listen`: it opens a connection or a listening socket of its own |

@@ -185,3 +185,17 @@ def test_the_config_refuses_each_field_by_name_and_serves_only_what_it_names():
     words = " | ".join(problems)
     for part in ("'other'", "switches: 'x'", "switches.4.forward_table", "settle_s"):
         assert part in words, part
+
+
+def test_the_start_time_config_is_taken_at_load_and_one_not_read_is_named():
+    config, why = L.from_start_config({"ok": True, "path": "/a/0.2.0.config.json", "config": {
+        "switches": {str(PROCURVE): {"forward_table": 100, "punt_table": 200}}}})
+    assert why == "" and L.tables_for(config, PROCURVE) == (100, 200)
+    config, why = L.from_start_config({"ok": False, "error": "no start-time config at /a"})
+    assert config is None
+    assert why == "its start-time config was not read: no start-time config at /a"
+    assert L.from_start_config(None) == (None, L.NO_SDK)
+    config, why = L.from_start_config({"ok": True, "path": "/a",
+                                       "config": {"switches": {"x": {}}}})
+    assert config is None
+    assert why.startswith("its start-time config /a is refused: switches: 'x'")

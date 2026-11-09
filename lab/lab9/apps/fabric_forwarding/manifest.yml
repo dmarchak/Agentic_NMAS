@@ -3,7 +3,9 @@
 # (modules/apps/manifest.py). Its path choice, fabric_paths.shortest_path, is the team's to
 # replace; tests/test_fabric_paths.py is the contract a replacement passes.
 name: fabric_forwarding
-version: 0.1.0
+# 0.2.0 (C2729): the config is read at load from the start-time file Mercury compiles and
+# stages (mercury_app.start_config), so the app serves after the deploy's restart.
+version: 0.2.0
 summary: Forwards between hosts on shortest paths, rerouting on link down, loop-safe on a ring.
 controllers:
   ryu: ">=4.34"
@@ -63,7 +65,7 @@ rest:
       summary: The app is loaded, configured, and serves every connected switch.
     - path: /config
       methods: [GET, PUT]
-      summary: The app's config, pushed by Mercury's policy push.
+      summary: The app's config, read at load from its start-time file; a push replaces it.
     - path: /state
       methods: [GET]
       summary: The switches, links, edge ports, hosts and counters the app holds.
@@ -71,6 +73,11 @@ owns_flows:
   cookie_prefix: "0x4646000000000000"
   cookie_mask: "0xffff000000000000"
   classes: []
+# Mercury compiles each expected switch's forward and punt tables from its platform profile
+# into `switches` (modules/apps/app_config.py; the ProCurve's 100 and 200, table 0 elsewhere).
+compiled:
+  - key: switches
+    per_switch: [forward_table, punt_table]
 tests:
   - tests/test_fabric_paths.py
   - tests/test_fabric_logic.py

@@ -13,7 +13,9 @@ back and, if they don't, puts the set before back. You start it on [SDN › Apps
 1. `plan`: Mercury reads the controller host (its unit's User and command line, the app
    folder's owner and mode, its drop-in), stages each app's folder from git's blobs at its
    pinned commit into a folder of its own and checks its hash against the Published pin,
-   checks conformance for every expected switch, and renders the drop-in the apply script will
+   compiles each app's start-time config from what its manifest declares (each expected
+   switch's tables, placed from its platform profile), checks conformance for every expected
+   switch, and renders the drop-in the apply script will
    write. A refusal names what it compared, and nothing is staged on the controller. The
    preview removes what it staged here before it answers.
 2. `confirm`: you confirm as yourself, a verified person; the button names the work ("Deploy
@@ -65,6 +67,11 @@ app's page) open the plan in place. Everything you confirm is in one card:
 - **The set, in load order**: each app with its version, its pin (commit and content hash) and
   its files; the app that changes marked, and its files listed. Ryu's own `ofctl_rest` and
   `rest_topology` always load last.
+- **Each app's start-time config**, when it has one: where it is staged, whether it is new,
+  changed or the same as the controller's record, its hash (in the request, so the confirm
+  binds it), each switch's tables and the platform profile they were placed from (table 0 where
+  the profile records no tables), and the config itself, masked. The app reads it once, at
+  load, so it serves after the restart without anything pushed to it.
 - **Conformance**: the OpenFlow versions the controller offers (the ones every loaded app
   shares) and each expected switch's.
 - **The drop-in, before and after**, the lines that leave struck through and the new ones
@@ -79,8 +86,9 @@ A plan that is refused draws each refusal in place of the confirm, naming what i
 both operands: the unit running as root over a folder the deploy account may write (C2), a
 folder it cannot stage into, a User or command line that cannot be read, a requirement missing
 from the set, a version that is not Published or whose staged hash is not its pin, a switch that
-cannot connect, a config that holds a secret, or Mercury's record of the set that cannot be
-read.
+cannot connect, a config that holds a secret, a config that cannot be compiled (a switch no
+platform profile covers, a table no role fits, or a value the app's schema refuses, each named),
+or Mercury's record of the set that cannot be read.
 
 ## Where each fact comes from {#sources}
 
