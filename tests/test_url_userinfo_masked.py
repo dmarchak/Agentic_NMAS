@@ -105,6 +105,9 @@ ENTRY_POINTS = {
         __import__("modules.ai.read_log", fromlist=["_masked"])._masked(
             {"incident": "i-1", "note": PLANTED,
              "reads": [{"command": "show version", "error": PLANTED}]})),
+    # An app's test run's output and errors, masked before the answer keeps them (C2854).
+    "modules/apps/test_run.py:_mask": lambda: __import__(
+        "modules.apps.test_run", fromlist=["_mask"])._mask(PLANTED),
     # A controller app deploy's receipt, every string masked on the way in (P6, C2677).
     "modules/controller_deploy_receipts.py:masked": lambda: __import__("json").dumps(
         __import__("modules.controller_deploy_receipts", fromlist=["masked"]).masked(

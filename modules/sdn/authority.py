@@ -119,6 +119,10 @@ NOT_DIRECT = {
     # Decision 8's export writer (C2777): it commits a record, never a device's configuration.
     "sdn_v2.export_confirm": "commits the network's NSOT export (read from NetBox) to its "
                              "configuration repository; no device is configured",
+    # C2854's Publish: it keeps a review with an app version's record, never a device's change.
+    "sdn_v2.apps_publish_confirm": "publishes an app version (its review kept with the "
+                                   "version's record in Mercury's copy of the code repository); "
+                                   "no device or controller is configured",
 }
 
 

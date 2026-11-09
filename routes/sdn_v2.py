@@ -630,6 +630,94 @@ def apps_confirm():
     return _app_card(sdn_apps_page.run_card(job), 202)
 
 
+# Board app-publish (A to D), self-signed under the Phase 7 mode (C2854 P 1): a Draft's Run its
+# tests, and Review and publish…'s preview and confirm, each drawn in the app page's slot.
+
+def _publish_card(p: dict, status: int = 200):
+    return _strict(render_template("v2/_sdn_app_publish.html", p=p)), status
+
+
+def _publish_form():
+    """``(network, app, version, refusal)`` from a Run its tests', a preview's or a confirm's
+    form."""
+    from routes.list_param import submitted_list
+
+    name, refusal = submitted_list(request)
+    app = (request.form.get("app") or "").strip()
+    version = (request.form.get("version") or "").strip()
+    if not refusal and not (app and version):
+        refusal = "the form names no app version"
+    return name, app, version, refusal
+
+
+@bp.route("/apps/version/test", methods=["POST"])
+def apps_version_test():
+    """Run its tests: the version's own tests in the container harness on the network's
+    controller Python, from its pinned blobs, the run kept with its record by its hash. Changes
+    no device and nothing on the controller."""
+    from modules import identity
+    from modules.apps import publish_op
+
+    network, app, version, refused = _publish_form()
+    if refused:
+        return _publish_card({"state": "refused", "network": network, "error": refused}, 400)
+    actor = identity.request_actor()
+    got = publish_op.run_tests(network, app, version, actor=actor,
+                               actor_verified=identity.actor_verification(actor))
+    # What the card draws: the record keeps how the person was verified; the card names them.
+    if got.get("entry"):
+        got["entry"] = {k: v for k, v in got["entry"].items() if k != "actor_verified"}
+    return _publish_card({"state": "tested", "network": network, "name": app,
+                          "version": version, **got}, 200 if got["ok"] else 409)
+
+
+@bp.route("/apps/version/publish/preview", methods=["POST"])
+@no_store
+def apps_publish_preview():
+    """Review and publish…: what Publish would record for this person, bound to a hash.
+    Writes nothing."""
+    from modules import identity
+    from modules.apps import publish_op
+
+    network, app, version, refused = _publish_form()
+    if refused:
+        return _publish_card({"state": "refused", "network": network, "error": refused}, 400)
+    p = publish_op.preview(network, app, version, viewer=identity.request_actor())
+    if not p["ok"]:
+        return _publish_card({"state": "refused", "network": network, "error": p["error"]},
+                             409)
+    # What the card draws: a Draft has no publication, and the record keeps how the run's
+    # person was verified.
+    p.pop("publication", None)
+    if p.get("test"):
+        p["test"] = {k: v for k, v in p["test"].items() if k != "actor_verified"}
+    return _publish_card(dict(p, state="preview"))
+
+
+@bp.route("/apps/version/publish/confirm", methods=["POST"])
+def apps_publish_confirm():
+    """Publish the previewed version as the verified person, bound to the preview's hash, with
+    the reason typed: checked again inside the record's lock and kept with the version's
+    record."""
+    from modules import identity
+    from modules.apps import publish_op
+
+    network, app, version, refused = _publish_form()
+    confirmed = (request.form.get("hash") or "").strip()
+    if not refused and len(confirmed) != 64:
+        refused = "the form carries no preview hash, so what you confirmed cannot be told"
+    if refused:
+        return _publish_card({"state": "refused", "network": network, "error": refused}, 400)
+    actor = identity.request_actor()
+    done = publish_op.apply(network, app, version, confirmed, actor=actor,
+                            actor_verified=identity.actor_verification(actor),
+                            reason=request.form.get("reason") or "")
+    outcome = done.pop("outcome")
+    done.pop("reviewer_verified", None)
+    return _publish_card(dict(done, state=outcome, network=network, name=app,
+                              version=version), 200 if outcome == "published" else 409)
+
+
 @bp.route("/apps/run/<job>", methods=["GET"])
 def apps_run(job):
     """A confirm's card by its job, read again on `controller_deploy`: its steps while it

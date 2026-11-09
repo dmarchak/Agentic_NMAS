@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.5.10, pytest-6.1.2, py-1.11.0, pluggy-0.13.1
+rootdir: /app, configfile: ../dev/null
+collected 2 items
+
+tests/test_case.py .F                                                    [100%]
+
+=================================== FAILURES ===================================
+___________________________________ test_two ___________________________________
+
+    def test_two():
+        got = 'snmp-server community Leaky-Comm-4471 RO'
+>       assert got == 'snmp-server community x RO'
+E       AssertionError: assert 'snmp-server ...-Comm-4471 RO' == 'snmp-server community x RO'
+E         - snmp-server community x RO
+E         ?                       ^
+E         + snmp-server community Leaky-Comm-4471 RO
+E         ?                       ^^^^^^^^^^^^^^^
+
+tests/test_case.py:7: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_case.py::test_two - AssertionError: assert 'snmp-server ......
+========================= 1 failed, 1 passed in 0.01s ==========================

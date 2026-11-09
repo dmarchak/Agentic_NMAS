@@ -198,7 +198,9 @@ def app_page(network: str, ctl: dict, registered: dict, app: str, chosen: str = 
                      "reviewed_at": e.get("reviewed_at", ""),
                      "commit": (e.get("commit") or e.get("rev") or "")[:7],
                      "sha": v.content_sha256, "running": v.version == running,
-                     "ran_until": until, "deployable": v.state == "published"})
+                     "ran_until": until, "deployable": v.state == "published",
+                     # C2854: the newest test run at this hash, and the publication's own words.
+                     "test": e.get("test"), "self_review": bool(v.self_review)})
     pick = chosen or running or next((r["version"] for r in rows if r["deployable"]), "")
     entry = next((e for e in entries if e["version"].version == pick), None)
     m = entry["manifest"] if entry else None

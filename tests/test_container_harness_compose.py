@@ -233,3 +233,193 @@ def test_the_harness_checks_are_not_collected_by_the_suite():
     assert ini["pytest"]["python_files"].strip() == "test_*.py"
     assert sorted(f for f in os.listdir(HERE) if f.endswith(".py")) == [
         "harness_checks.py", "record_answers.py"]
+
+
+# ───────────────────────────────────────────────────────────── an app's test run (C2854)
+#
+# The app's own code runs in its test container (modules/apps/test_run.py), started by
+# `docker run`, not by this compose file, so its conditions are held on the command it builds:
+# the compose file's, and closer (no network at all where the harness's services share one
+# internal network).
+
+def run_problems(argv: list) -> list:
+    """Every condition the test run's `docker run` argv *argv* breaks, in words."""
+    out = []
+
+    def values(flag):
+        return [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == flag]
+
+    image_at = next((i for i, a in enumerate(argv) if a.startswith("mercury-harness-apptest:")),
+                    len(argv))
+    opts = argv[:image_at]
+    other_network = [a for a in opts if a == "--net" or a.startswith(("--network=", "--net="))]
+    if values("--network") != ["none"] or other_network:
+        out.append(f"network: {values('--network')}, not none alone")
+    for flag in ("-p", "--publish", "-P", "--publish-all", "--add-host", "--dns", "-v",
+                 "--volume", "--volumes-from", "--device", "--cap-add", "--ipc", "--pid",
+                 "--uts", "--userns", "--cgroupns", "--privileged", "--privileged=true"):
+        if flag in opts or any(a.startswith(flag + "=") and a != "--privileged=false"
+                               for a in opts):
+            out.append(f"{flag} is given")
+    if "--privileged=false" not in opts:
+        out.append("--privileged=false is not given")
+    if values("--cap-drop") != ["ALL"]:
+        out.append(f"capabilities dropped {values('--cap-drop')}, not ALL")
+    if values("--security-opt") != ["no-new-privileges:true"]:
+        out.append(f"security options {values('--security-opt')}, not no-new-privileges:true")
+    if "--read-only" not in opts:
+        out.append("the root filesystem is writable (no --read-only)")
+    users = values("--user")
+    if len(users) != 1 or users[0].split(":")[0] in ("0", "root", ""):
+        out.append(f"user {users}, not one unprivileged uid")
+    if values("--tmpfs") != ["/tmp:size=16m"]:
+        out.append(f"tmpfs {values('--tmpfs')}, not /tmp alone")
+    mounts = values("--mount")
+    if [m.split(",")[2] for m in mounts] != ["dst=/app", "dst=/opt/mercury-sdk"] or \
+            any(not m.startswith("type=bind,") or not m.endswith(",readonly") for m in mounts):
+        out.append(f"mounts {mounts}, not the app's folder and the SDK, each read-only")
+    if "--rm" not in opts or values("--pull") != ["never"]:
+        out.append("not a fresh container removed after (--rm, --pull never)")
+    after = argv[image_at + 1:]
+    if after[:4] != ["-B", "-m", "pytest", "-p"] or "no:cacheprovider" not in after or \
+            "--" not in after:
+        out.append(f"pytest's command {after[:6]} keeps a cache or bytecode")
+    return out
+
+
+def _run_argv(tmp_path):
+    from modules.apps import test_run
+
+    folder = tmp_path / "app"
+    (folder / "tests").mkdir(parents=True)
+    (folder / "tests" / "test_one.py").write_text("def test_one():\n    assert True\n")
+    return test_run.docker_command(str(folder), "3.5", ["tests/test_one.py"],
+                                   "mercury-apptest-0123456789ab")
+
+
+def test_the_test_run_holds_every_condition(tmp_path):
+    assert run_problems(_run_argv(tmp_path)) == []
+
+
+#: The flags of the test run's command that take no value (the rest take one).
+_BARE = ("--rm", "--read-only", "--privileged=false")
+
+
+def _without(argv, flag):
+    i = argv.index(flag)
+    return argv[:i] + argv[i + (1 if flag in _BARE else 2):]
+
+
+def _with(argv, *extra):
+    return argv[:3] + list(extra) + argv[3:]
+
+
+@pytest.mark.parametrize("plant, words", [
+    (lambda a: _without(a, "--network"), "network: [], not none alone"),
+    (lambda a: _with(a, "--network", "harness"), "network: ['harness', 'none']"),
+    (lambda a: _with(a, "--network=host"), "network:"),
+    (lambda a: _with(a, "-p", "127.0.0.1:8080:8080"), "-p is given"),
+    (lambda a: _with(a, "-v", "/:/host"), "-v is given"),
+    (lambda a: _with(a, "--device", "/dev/net/tun"), "--device is given"),
+    (lambda a: _with(a, "--cap-add", "NET_ADMIN"), "--cap-add is given"),
+    (lambda a: _with(a, "--privileged"), "--privileged is given"),
+    (lambda a: _without(a, "--privileged=false"), "--privileged=false is not given"),
+    (lambda a: _without(a, "--cap-drop"), "capabilities dropped [], not ALL"),
+    (lambda a: _without(a, "--security-opt"), "security options [], not no-new-privileges"),
+    (lambda a: _without(a, "--read-only"), "the root filesystem is writable"),
+    (lambda a: _without(a, "--user"), "user [], not one unprivileged uid"),
+    (lambda a: [("0:0" if x == "10001:10001" else x) for x in a], "user ['0:0']"),
+    (lambda a: [x.replace(",readonly", "") for x in a], "mounts"),
+    (lambda a: [x.replace("dst=/opt/mercury-sdk", "dst=/srv") for x in a], "mounts"),
+    (lambda a: _without(a, "--tmpfs"), "tmpfs [], not /tmp alone"),
+    (lambda a: _without(a, "--rm"), "not a fresh container"),
+    (lambda a: [x for x in a if x != "no:cacheprovider"], "pytest's command"),
+])
+def test_each_test_run_condition_is_found_missing_in_a_planted_command(tmp_path, plant, words):
+    argv = plant(list(_run_argv(tmp_path)))
+    assert any(p.startswith(words) for p in run_problems(argv)), run_problems(argv)
+
+
+def test_the_app_test_image_is_the_controllers_with_pytest_pinned_and_no_default_python():
+    docker = _read("apptest", "Dockerfile")
+    assert re.findall(r"^ARG PYTHON.*$", docker, re.M) == ["ARG PYTHON", "ARG PYTHON"]
+    assert re.findall(r"^FROM .*$", docker, re.M) == ["FROM mercury-harness-ryu:4.34-py${PYTHON}"]
+    installs = re.findall(r"pip install[^\n]*", docker)
+    assert installs == ["pip install --no-cache-dir -c /etc/harness/constraints.txt pytest \\"]
+    assert re.findall(r"^USER .*$", docker, re.M) == ["USER root", "USER 10001"]
+    assert not re.search(r"apt-get|curl|wget|EXPOSE|VOLUME", docker)
+
+
+@pytest.mark.parametrize("version, pytest_pin, measured", [
+    ("3.5", "6.1.2", {"attrs": "22.1.0", "importlib-metadata": "2.1.3", "iniconfig": "1.1.1",
+                      "packaging": "20.9", "pathlib2": "2.3.7.post1", "pluggy": "0.13.1",
+                      "py": "1.11.0", "pyparsing": "2.4.7", "toml": "0.10.2", "zipp": "1.2.0",
+                      "six": "1.17.0"}),
+    ("3.9", "8.4.2", {"exceptiongroup": "1.3.1", "iniconfig": "2.1.0", "packaging": "26.3",
+                      "pluggy": "1.6.0", "Pygments": "2.21.0", "tomli": "2.5.0",
+                      "typing_extensions": "4.16.0"}),
+])
+def test_each_measured_version_pins_pytest_and_everything_it_resolved(version, pytest_pin,
+                                                                      measured):
+    """Every distribution pip installed beside pytest is pinned (measured 2026-11-09 by `pip
+    freeze` before and after, the constraints file's comment), so the image's pytest is the
+    one measured, never what an index serves later."""
+    pins = dict(line.split("==") for line in _lines(_read("ryu", f"constraints-{version}.txt")))
+    assert pins["pytest"] == pytest_pin
+    assert {name: pins.get(name) for name in measured} == measured
+
+
+def test_check_runs_the_app_test_run_after_the_harness_is_down(tmp_path):
+    import types
+
+    harness = _script()
+    order = []
+    harness.up = lambda args: order.append("up")
+    harness.compose_env = lambda python, apps: {}
+    harness.compose = lambda env, *a: order.append("checks") or 0
+    harness.down = lambda: order.append("down")
+    harness.app_test_selfcheck = lambda python: order.append(("app", python)) or []
+    args = types.SimpleNamespace(python="3.9", apps=str(tmp_path), pytest=[])
+    assert harness.check(args) == 0
+    assert order == ["up", "checks", "down", ("app", "3.9")]
+
+
+def _verdict(ok, failed=0, error=""):
+    return {"ok": ok, "passed": 4, "failed": failed, "error": error, "seconds": 0.5,
+            "python_seen": "3.5", "content_sha256": "ab" * 32, "output": ""}
+
+
+def test_the_self_check_passes_only_when_the_worked_app_passes_and_its_broken_copy_fails():
+    harness = _script()
+    seen = []
+
+    def answers(*verdicts):
+        it = iter(verdicts)
+
+        def test_app(folder, python):
+            with open(os.path.join(folder, "test_app.py"), encoding="utf-8") as fh:
+                seen.append((os.path.basename(folder), harness.WORKED_ASSERT in fh.read()))
+            return next(it)
+        return test_app
+
+    harness.test_app = answers(_verdict(True), _verdict(False, 1, "pytest exited 1"))
+    [line] = harness.app_test_selfcheck("3.5")
+    assert line.startswith("app test run: the worked app passed 4 on Python 3.5")
+    assert seen == [("dns_overrides", True), ("dns_overrides", False)], "the copy is broken"
+    harness.test_app = answers(_verdict(False, 0, "no test ran"))
+    with pytest.raises(harness.Stop, match="the worked app's tests did not pass on Python 3.5: "
+                                           "no test ran"):
+        harness.app_test_selfcheck("3.5")
+    harness.test_app = answers(_verdict(True), _verdict(True))
+    with pytest.raises(harness.Stop, match="with one assert broken did not fail one test"):
+        harness.app_test_selfcheck("3.5")
+
+
+def test_the_test_command_needs_a_python_and_an_app():
+    harness = _script()
+    with pytest.raises(SystemExit):
+        harness.parse(["test", "--app", "x"])
+    with pytest.raises(SystemExit):
+        harness.parse(["test", "--python", "3.5"])
+    args = harness.parse(["test", "--python", "3.5", "--app", "x"])
+    assert (args.command, args.python, args.app) == ("test", "3.5", "x")

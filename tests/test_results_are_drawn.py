@@ -283,6 +283,11 @@ PAGE_RECORD = {
     # C2777 (board nsot-export, artboard F): the export's commit in place of its card (the
     # export's hash and the one before, the commit, what changed), read again on the card at
     # rest and on History's commits.
+    # C2854 (board app-publish, artboard D): the publication in place of its card (who, when,
+    # the hash, self-review), read again on the app's Versions row.
+    "sdn_v2.apps_publish_confirm": ("templates/v2/_sdn_app_publish.html",
+                                    ("p.state == 'published'", "p.reviewer", "p.content_sha256"),
+                                    "sdn_v2.apps"),
     "sdn_v2.export_confirm": ("templates/v2/_sdn_export.html",
                               ("x.state_card == 'committed'", "x.commit", "x.changes"),
                               "v2.history_page"),

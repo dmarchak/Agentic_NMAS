@@ -28,3 +28,16 @@ stevedore==5.5.0
 tinyrpc==1.1.7
 urllib3==2.6.3
 WebOb==1.8.11
+# The app test image (tests/containers/apptest/Dockerfile; C2854): pytest 8.4.2, what pip chose
+# for `pytest` unpinned on Python 3.9 (pytest 9 needs 3.10), and what it resolved beside it,
+# measured 2026-11-09 by installing it under the pins above in mercury-harness-ryu:4.34-py3.9
+# and diffing `pip freeze` before and after. `python -m pytest --version` answered 8.4.2, and
+# lab/lab9/apps/of_versions' tests ran under it (`scripts/nmas-harness test`).
+exceptiongroup==1.3.1
+iniconfig==2.1.0
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==8.4.2
+tomli==2.5.0
+typing_extensions==4.16.0

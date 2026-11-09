@@ -291,6 +291,10 @@ STAGES = {
     # commit is the record, and the next export corrects a wrong one.
     "sdn_v2.export_confirm": Stages(
         "sdn_v2.export_preview", "hash", NO_DEVICE, FORWARD, "modules.nsot.export.write"),
+    # C2854 (board app-publish): a version published, bound to its folder's hash, its test run
+    # and the review policy; kept with the version's record, corrected forward by a new version.
+    "sdn_v2.apps_publish_confirm": Stages(
+        "sdn_v2.apps_publish_preview", "hash", NO_DEVICE, FORWARD, "modules.coderepo.publish"),
     # C718: Decline… and Undo decline…, one device's intent only.
     "v2.decline_confirm": Stages(
         "v2.decline_card", "hash", NO_DEVICE,
@@ -526,9 +530,13 @@ HISTORY = {
     # device's.
     "settings_v2.code_repo_save": NOT_A_DEVICE,
     "settings_v2.code_repo_fetch": NOT_A_DEVICE,
+    "settings_v2.code_review_save": NOT_A_DEVICE,
     # C2777: the network's NSOT export, one commit in its repository (History › Commits), never
     # one device's record.
     "sdn_v2.export_confirm": NOT_A_DEVICE,
+    # C2854: a version's test run and its publication, kept with its record in the copy's record.
+    "sdn_v2.apps_version_test": NOT_A_DEVICE,
+    "sdn_v2.apps_publish_confirm": NOT_A_DEVICE,
     # Heal to intent's policy (board H, H1 and H9): each kept in a settings record with who,
     # when and why (the network's, or the installation's for the kill switch); none is one
     # device's record.

@@ -1212,6 +1212,24 @@ def code_repo_save(list_name):
         "after_words": coderepo.setting_words(out["after"])})
 
 
+@bp.route("/network/<list_name>/code-review", methods=["POST"])
+def code_review_save(list_name):
+    """Who may publish the network's app versions (C2854; board app-publish E), set as the
+    verified person, refused when it moved since the card drew it, recorded in the network's
+    settings record; the card drawn again with the answer."""
+    from modules import coderepo, identity
+
+    try:
+        out = coderepo.set_review(list_name, request.form.get("review") or "",
+                                  actor=identity.request_actor(), actor_verified=_verified(),
+                                  loaded=request.form.get("loaded_review"))
+    except coderepo.Refused as exc:
+        return _code_repo(list_name, 409, refused=str(exc))
+    return _code_repo(list_name, saved={
+        "unchanged": out["unchanged"],
+        "review_words": coderepo.REVIEW_CHOICES.get(out["after"], out["after"])})
+
+
 @bp.route("/network/<list_name>/code-repository/fetch", methods=["POST"])
 def code_repo_fetch(list_name):
     """Fetch now: the network's code repository fetched into Mercury's read-only copy and what

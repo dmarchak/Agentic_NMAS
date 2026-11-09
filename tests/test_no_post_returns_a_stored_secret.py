@@ -75,6 +75,10 @@ def _bodies(v):
                                   "the network's devices are not NetBox's, or NetBox is not "
                                   "reachable from the test: refused naming why, nothing "
                                   "written"),
+        # C2854: an app version's Review and publish… (a read of its record).
+        "sdn_v2.apps_publish_preview": (400, ("form", {"list": LIST}),
+                                        "the form names no app version: refused before anything "
+                                        "is read"),
         # P6's SDN › Apps preview left this population at C2765: it reads the controller host
         # through the reads engine, so it is gated as a read (a person), not as not_device.
         "device_v2.reload_start": (400, ("form", {}),

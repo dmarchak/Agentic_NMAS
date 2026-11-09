@@ -71,8 +71,15 @@ were integrated on main together).
 | X: the registry's notices | code-repository E: No app version can be listed (the registry's own words) and the folders not registered, each with Open the code repository's card | the same | **same** |
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html
-Templates sha256: `51d2180eb5e7d0dd38bc8ca5d371def5a54f533fffb4b0f0183e800d9a41f624`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html
+Templates sha256: `3335260fc1f3d0be28248bba24d7f7d52847dfa283cb4c94d7f49396bccae9fc`
+Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
+"C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
+publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)
+draws the run's answers, the preview with its one confirm, and Publish's answers. Compared by
+reading the templates against the board's artboards, with no new shot; tests/test_app_publish.py
+and tests/v2_context.py draw each state (the templates then hashed
+`51d2180eb5e7d0dd38bc8ca5d371def5a54f533fffb4b0f0183e800d9a41f624`).
 Hashed again 2026-11-09 for C2776 (the export's end hosts): `_sdn_export.html`'s kind names
 gain "End hosts", so the preview's changes table and the result's Changed line name the new
 kind; nothing else moves. Compared by reading the template against docs/boards/nsot-export.html,

@@ -457,6 +457,14 @@ What the standard library lacks before each version, from Python's documentation
      reviewed.
 3. **Retired:** kept for audit.
 
+**Publishing an app, in Mercury (C2854, minimal):** on SDN › Apps › the app, a Draft's row
+offers **Run its tests**, which runs the manifest's `tests` in the container harness on the
+network's controller Python, and **Review and publish…**, which needs a passing run at that
+exact hash and a reason. Who may publish is the network's choice, on its Code repository card:
+someone other than the author (the default), or the author too, recorded as self-review. The
+gate's mutation, survivors, reconcile and `@covers` checks are not part of Publish yet (C2728).
+The manual's page is docs/manual/how-it-works/app-publish.md.
+
 **The content hash is the folder as git holds it,** `content_hash(repo, path, rev="HEAD")`.
 - **What it covers:** each tracked file's path, git mode and blob id at that revision.
 - **What can't move it:** running your tests (their `__pycache__`), an untracked file, or an

@@ -13,6 +13,20 @@ one internal network (tests/containers/compose.yml, which holds the operator's c
     scripts/nmas-harness record --python 3.5 --out FILE    up, the controller's raw REST
                                                            answers per bridge to FILE, then down
     scripts/nmas-harness down                              stop and remove the containers
+    scripts/nmas-harness test --python 3.5 --app FOLDER    an app's listed tests (its
+                                                           manifest's `tests:`) in a fresh
+                                                           container on that Python; prints
+                                                           the verdict as JSON, exit 0 only
+                                                           when it passed
+
+**An app's test run (C2854; `test`)** builds the controller image and the app test image
+(tests/containers/apptest/Dockerfile: that image with pytest at the version measured for the
+Python, pinned in its constraints file) and runs `modules/apps/test_run.run` over the folder:
+no network, every capability dropped, a read-only root, the folder and the app SDK read-only
+(that module's docstring holds the rest). `check` runs it too, after the harness's checks, on
+the worked app (tests/fixtures/apps/dns_overrides), which must pass, and on a copy of it with
+one assert broken, which must fail: the suite cannot start a container (its children are
+confined), so this is where the run itself is shown able to pass and to fail.
 
 **The Python is the network's recorded controller interpreter, never a constant** (C2643,
 C2651): `--python` is required and has no default. Each version the harness builds has a
@@ -55,6 +69,11 @@ adopt(__name__)
 
 HERE = os.path.join(ROOT, "tests", "containers")
 COMPOSE = os.path.join(HERE, "compose.yml")
+APPTEST = os.path.join(HERE, "apptest")
+#: The app `check` runs the test run on: the worked app, whose listed tests pass.
+WORKED_APP = os.path.join(ROOT, "tests", "fixtures", "apps", "dns_overrides")
+#: The one assert the self-check breaks in its copy of the worked app (test_app.py).
+WORKED_ASSERT = 'assert decide(BOTH, "blocked.example.invalid") == "block"'
 BRIDGES = os.path.join(HERE, "ovs", "bridges.conf")
 DEFAULT_APPS = os.path.join(HERE, "ryu", "apps")
 PROJECT = "mercury-harness"
@@ -254,10 +273,81 @@ def check(args) -> int:
     try:
         up(args)
         env = compose_env(args.python, os.path.abspath(args.apps or DEFAULT_APPS))
-        return compose(env, "--profile", "check", "run", "--rm", "runner",
-                       "tests/containers/harness_checks.py", *args.pytest)
+        checks = compose(env, "--profile", "check", "run", "--rm", "runner",
+                         "tests/containers/harness_checks.py", *args.pytest)
     finally:
         down()
+    for line in app_test_selfcheck(args.python):
+        say(line)
+    return checks
+
+
+# ───────────────────────────────────────────────────────────── an app's test run (C2854)
+
+def build_test_image(python: str) -> str:
+    """The controller image, then the app test image on it, for *python*: the image's name."""
+    from modules.apps import test_run
+
+    python = check_python(python)
+    run(["docker", "compose", "-f", COMPOSE, "-p", PROJECT, "build", "ryu"],
+        env=compose_env(python, DEFAULT_APPS))
+    image = test_run.image(python)
+    run(["docker", "build", "--build-arg", f"PYTHON={python}", "-t", image, APPTEST])
+    return image
+
+
+def test_app(folder: str, python: str) -> dict:
+    """The app at *folder*'s listed tests on *python*: `test_run.run`'s answer."""
+    from modules.apps import test_run
+    from modules.apps.manifest import load_manifest
+    from modules.jobs.base import ContractError
+
+    if not os.path.isdir(folder):
+        raise Stop(f"--app {folder} is not a folder")
+    try:
+        tests = list(load_manifest(folder).tests)
+    except ContractError as exc:
+        raise Stop(f"the app's manifest is refused: {exc}") from None
+    build_test_image(python)
+    return test_run.run(folder, python, tests=tests, timeout_s=test_run.BOUND_S)
+
+
+def app_test_selfcheck(python: str) -> list:
+    """The worked app's tests must pass on *python*, and a copy of it with one assert broken
+    must fail, naming the test; Stop naming whichever did not."""
+    import shutil
+    import tempfile
+
+    passed = test_app(WORKED_APP, python)
+    if not passed["ok"]:
+        raise Stop(f"the worked app's tests did not pass on Python {python}: "
+                   f"{passed['error']}\n{passed['output']}")
+    with tempfile.TemporaryDirectory(prefix="nmas-harness-app-") as scratch:
+        copy = os.path.join(scratch, "dns_overrides")
+        shutil.copytree(WORKED_APP, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        os.chmod(copy, 0o755)
+        path = os.path.join(copy, "test_app.py")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        if text.count(WORKED_ASSERT) != 1:
+            raise Stop(f"the worked app's test_app.py no longer holds {WORKED_ASSERT!r} once")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text.replace(WORKED_ASSERT, WORKED_ASSERT.replace('"block"', '"allow"')))
+        broken = test_app(copy, python)
+    if broken["ok"] or broken["failed"] != 1:
+        raise Stop(f"a copy of the worked app with one assert broken did not fail one test on "
+                   f"Python {python}: ok {broken['ok']}, failed {broken['failed']}, "
+                   f"{broken['error']}")
+    return [f"app test run: the worked app passed {passed['passed']} on Python "
+            f"{passed['python_seen']} in {passed['seconds']} s ({passed['content_sha256'][:12]}); "
+            f"with one assert broken it failed {broken['failed']} in {broken['seconds']} s "
+            f"({broken['error']})"]
+
+
+def test(args) -> int:
+    verdict = test_app(os.path.abspath(args.app), args.python)
+    print(json.dumps(verdict, indent=2))
+    return 0 if verdict["ok"] else 1
 
 
 def record(args) -> int:
@@ -299,6 +389,10 @@ def parse(argv=None):
                            help="arguments after -- go to pytest in the runner")
         if name == "record":
             p.add_argument("--out", required=True, help="the fixture file to write")
+    p = sub.add_parser("test")
+    p.add_argument("--python", required=True,
+                   help="the network's controller Python, major.minor (no default)")
+    p.add_argument("--app", required=True, help="the app's folder (its manifest lists the tests)")
     sub.add_parser("down")
     args = parser.parse_args(argv)
     if args.command == "check":
@@ -320,6 +414,8 @@ def main(argv=None) -> int:
             return check(args)
         if args.command == "record":
             return record(args)
+        if args.command == "test":
+            return test(args)
         return down(args)
     except Stop as stop:
         say(str(stop))

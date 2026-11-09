@@ -94,7 +94,12 @@ Templates sha256 before: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad1115
 | CR: Saved | D: Saved in green, saying to press Fetch now | the same words, drawn muted | **deviation** (log: D8-R 4) |
 | CR: phone width | F: fields stacked, Save and Fetch now below | the card's set-field layout, as every Settings card at phone width; not shot | **later** (C2858: the card's board shot at 390) |
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html, templates/v2/_code_repo.html
-Templates sha256: `67b76a9c938bdef6614f9cb59c49d1b33f76cc8a2b237246993522d907f81323`
+Templates sha256: `1bf350fb0a9a4befd3826cc9ecaf1e9b5a07facc0f187bdee8e08eb457a667ac`
+Hashed again 2026-11-09 for C2854 (board app-publish E, self-signed, docs/STANDING_APPROVAL_LOG.md
+"C2854 P 1"): the Code repository card gains Who may publish, its own form with its Save under
+the location's, and Saved's words for it; nothing else on the card moves. Compared by reading
+`_code_repo.html` against artboard E, with no new shot (the templates then hashed
+`67b76a9c938bdef6614f9cb59c49d1b33f76cc8a2b237246993522d907f81323`).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

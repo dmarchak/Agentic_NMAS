@@ -1998,6 +1998,41 @@ class TestControllerAppDeployCards(_Cards):
         return html
 
 
+class TestAppPublishCards(_Cards):
+    """SDN › Apps › an app's Review and publish… (C2854; board app-publish) on
+    tests/test_app_publish.py's world (the real registry and routes; the harness's test run
+    faked at its seam): the confirm drawn from the real preview after a passing run. Blocked:
+    no test run at the version's hash, so the confirm is drawn disabled with its reason."""
+    from tests import test_app_publish as _ap, test_coderepo as _cr
+    lab, code, world = hosted(_cr.lab), hosted(_cr.code), hosted(_ap.world)
+
+    CASES = {
+        "publish": ("_sdn_app_publish.html", "Publish {{ p.version }}", r"Publish 1\.0\.0",
+                    "data: its tests have not been run at this hash"),
+    }
+
+    @staticmethod
+    def _preview():
+        import app as A
+        from tests.test_app_publish import _form
+        return _text(A.app.test_client().post("/v2/sdn/apps/version/publish/preview",
+                                              data=_form()))
+
+    def drawn_publish(self, request):
+        from tests.test_app_publish import _tested
+        request.getfixturevalue("world")
+        _tested()
+        html = self._preview()
+        assert "Publish of_versions 1.0.0" in html, "floor: the preview is drawn"
+        return html
+
+    def blocked_publish(self, request, monkeypatch):
+        request.getfixturevalue("world")
+        html = self._preview()
+        assert "its tests have not been run at this hash" in html, "floor: the reason is drawn"
+        return html
+
+
 class TestNsotExportCards(_Cards):
     """SDN › Apps' NSOT export card (C2777; board nsot-export) on tests/test_nsot_export_op.py's
     world (the real routes and operation; NetBox's GETs served by a fake client): the preview's
@@ -2097,9 +2132,10 @@ class TestThePopulation:
         <controller>, the Redeploy the same set and restart <controller>… of a plan that
         changes nothing, and an unknown result's Preview a rollback…; 80 until three of those
         four, the previews, became reveals, C2765, 2026-11-08: they read the controller host as
-        the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08)."""
+        the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08; 78 until an app
+        version's Publish <version>, C2854, 2026-11-09)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 78, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 79, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

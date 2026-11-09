@@ -1633,6 +1633,31 @@ def nsot_export():
     ])
 
 
+def app_publish():
+    return svg(470, (
+        "Publishing an app version: Run its tests stages the version from Mercury's copy at its "
+        "commit and runs its own tests in the container harness on the network's controller "
+        "Python, keeping the run with the version by its hash; Review and publish shows its "
+        "pin, author, test run and who may publish under the network's policy, bound to a "
+        "hash; you confirm with a reason; the folder is read again from its blobs and the "
+        "test run checked at that hash; the publication is kept with the version's record, "
+        "and the version can then be deployed. No device and no controller is contacted."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE CONTAINER HARNESS"),
+        person(14, 44, 186, 30, "You press Run its tests"), num(14, 44, 1),
+        repo(14, 86, 186, 40, "Mercury's copy", "its blobs at the commit"),
+        store(232, 86, 156, 40, "Its own tests", "the controller's Python"),
+        arrow("read", 202, 106, 228, 106),
+        store(14, 140, 186, 36, "The version's record", "the run, by its hash"), num(14, 140, 2),
+        person(14, 190, 186, 30, "Review and publish…"), num(14, 190, 3),
+        band(198, 166, "The confirm"),
+        doc("box", 14, 260, 186, 34, "Read again", "its hash and its test run"),
+        num(14, 260, 4),
+        store(14, 304, 186, 36, "The version's record", "Published, by you"), num(14, 304, 5),
+        t(14, 372, "SDN › Apps can deploy it now.", "sm"),
+        nosend(310, 420, ("no device", "no controller")),
+    ])
+
+
 def code_repository():
     return svg(470, (
         "A network's code repository: you set where its jobs and apps live, a local path or an "
@@ -2041,6 +2066,7 @@ DIAGRAMS = {
     "sdn-flows": sdn_flows,
     "controller-app-deploy": controller_app_deploy,
     "nsot-export": nsot_export,
+    "app-publish": app_publish,
     "code-repository": code_repository,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,

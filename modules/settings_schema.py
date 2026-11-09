@@ -652,6 +652,11 @@ DEFAULTS: dict = {
     # (`set_location`), from the network's Code repository card.
     "code_repository": "",
     "code_repository_branch": "",
+    # Who may publish one of the network's versions (C2854): "another_person", the default and
+    # the behaviour before, or "self_recorded", its author too, recorded as self-review. A
+    # network says it, since Mercury resolves no roles to count its reviewers (9.I). Written
+    # only by `modules/coderepo.py` (`set_review`), from the Code repository card.
+    "code_review": "another_person",
     # SDN detection thresholds (PHASE8_PLAN 17.1 S6, `modules/sdn/detect.py`), per network, the
     # slice's defaults as S6 was asked for (2026-10-26): a scan is 20 distinct destination ports
     # from one source in 60 s (where flows are L4); a flood, a port receiving 5x its baseline
@@ -1190,6 +1195,7 @@ SCHEMA: dict = {
         "network_stage": {"enum": ["", "lab", "pilot", "production"]},
         "code_repository": {"type": "string", "maxLength": 500},
         "code_repository_branch": {"type": "string", "maxLength": 100},
+        "code_review": {"enum": ["another_person", "self_recorded"]},
         "sdn_scan_ports": {"type": "integer", "minimum": 2, "maximum": 65535},
         "sdn_scan_window_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
         "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},

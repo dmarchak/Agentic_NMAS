@@ -65,7 +65,8 @@ SCOPES: dict = {
     # network's code repository, its location and branch together. Each network's own, never
     # inherited from Default (`OWN_ONLY`): another network's apps must never be registered for
     # this network's controller. Drawn and set on its own Code repository card (`CARDLESS`).
-    **_group(NETWORK, "code_repository", "code_repository", "code_repository_branch"),
+    **_group(NETWORK, "code_repository", "code_repository", "code_repository_branch",
+             "code_review"),
     # PHASE8_PLAN 17.1 S6: the SDN detection rules' thresholds, one network's together (a
     # scan's ports and window, its fallback rate, a flood's factor and window). Drawn on SDN ›
     # Responses (17.5, board 3), not on a generic card (`CARDLESS`).

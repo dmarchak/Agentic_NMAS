@@ -1,0 +1,39 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- SDN › Apps › an app: Run its tests' answer, and Review and publish…'s preview and answers
+    (board docs/boards/app-publish.html, artboards B to D, self-signed under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md "C2854 P 1"), drawn in the app page's slot. From
+    modules/apps/publish_op.py. -#}
+<section class="card apps-publish" aria-label="Publish" data-holds-live>
+{%- if p.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ p.error }}.{% if p.moved %} Look at it again: Review and publish… on the version's row.{% endif %}</p></div>
+{%- elif p.state == 'tested' %}
+  {%- set r = p.run or {} %}
+  {%- if p.ok %}
+  <div class="notice notice-ok" role="status">{{ icon('tick', 16) }}<p><strong>{{ r.passed }} passed</strong>{% if r.skipped %}, {{ r.skipped }} skipped{% endif %} on Python {{ r.python }} in the container harness, at <span class="mono">sha256:{{ (r.content_sha256 or '')[:4] }}…{{ (r.content_sha256 or '')[-4:] }}</span>. Kept with {{ p.name }} {{ p.version }}'s record as run <span class="mono">{{ p.entry.id }}</span>.</p></div>
+  {%- elif r and r.passed is not none and r.failed is not none %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Its tests did not pass</strong>: {{ r.passed }} passed, {{ r.failed }} failed, {{ r.errors }} errors{% if r.skipped %}, {{ r.skipped }} skipped (a skip is not a pass){% endif %} on Python {{ r.python }}{% if r.content_sha256 %} at <span class="mono">sha256:{{ r.content_sha256[:4] }}…{{ r.content_sha256[-4:] }}</span>{% endif %}.{% if p.entry %} Kept as run <span class="mono">{{ p.entry.id }}</span>.{% endif %} A new commit, fetched, is a new pin to test.</p></div>
+  {%- if r.output %}<details open><summary>The output's last lines</summary><pre class="mono small apps-dropin">{{ r.output }}</pre></details>{% endif %}
+  {%- else %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run</strong>: {{ p.error }}.</p></div>
+  {%- endif %}
+{%- elif p.state == 'preview' %}
+  <div class="sdn-ctl-hd"><h3>Publish {{ p.name }} {{ p.version }}</h3>{{ badge('Draft', 'warn') }}{{ how('app-publish', 'publish') }}</div>
+  <dl class="sdn-kv">
+    <dt>Pinned</dt><dd class="mono small">{% if p.commit %}commit {{ p.commit[:7] }} · {% endif %}sha256:{{ p.sha256[:4] }}…{{ p.sha256[-4:] }} <span class="faint">(read again from Mercury's copy at the confirm)</span></dd>
+    <dt>Author</dt><dd>{{ p.author }} <span class="faint">(the commit's author, from git)</span></dd>
+    <dt>Its tests</dt><dd>{% if p.test %}{{ badge('passed' if p.test.ok else 'failed', 'ok' if p.test.ok else 'danger') }} {{ p.test.passed }} passed{% if not p.test.ok %}, {{ p.test.failed }} failed, {{ p.test.errors }} errors{% endif %} on Python {{ p.test.python }}, {{ stamp(p.test.at) }}, run <span class="mono">{{ p.test.id }}</span>, by {{ p.test.by }}{% else %}not run at this hash{% endif %}{% if p.tests %} <span class="faint">({{ p.tests | join(', ') }})</span>{% endif %}</dd>
+    <dt>Who may publish</dt><dd>{{ p.policy_words }} <span class="faint">({{ p.network }}'s policy, on its Code repository card)</span></dd>
+    <dt>You</dt><dd>{{ p.reviewer }}: {% if p.may %}you may publish it{% if p.self_review %}, recorded as self-review{% endif %}{% else %}you may not yet{% endif %}</dd>
+    <dt>Not checked yet</dt><dd class="muted">the gate's mutation, survivors, reconcile and @covers checks (after Nov 30; C2728)</dd>
+  </dl>
+  <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_publish_confirm') }}" hx-target="closest .apps-publish" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ p.network }}"><input type="hidden" name="app" value="{{ p.name }}"><input type="hidden" name="version" value="{{ p.version }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    <label class="set-field"><span class="set-label">Why it is ready</span><input type="text" name="reason" maxlength="500" required placeholder="what you reviewed" autocomplete="off"></label>
+    <span class="op-act"><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="app-publish"{% if not p.may %} disabled aria-disabled="true" title="{{ p.why }}" data-refused="Not available: {{ p.why }}"{% else %}{{ gate('approve') }}{% endif %}><span class="op-idle">Publish {{ p.version }}</span><span class="op-busy">Publishing…</span></button>{{ how('app-publish', 'publish', compact=True, op='publishing a version') }}</span>
+    <span class="faint small">Bound to <span class="mono">{{ p.hash[:4] }}…{{ p.hash[-4:] }}</span>: the folder's hash, the test run and the policy</span>
+  </form>
+  {%- if not p.may %}<p class="small muted">{{ p.why }}.{% if 'policy' in p.why %} <a href="{{ url_for('settings_v2.network', list_name=p.network, tab='network') }}#code-repo-card">Open the Code repository's card</a>{% endif %}</p>{% endif %}
+{%- elif p.state == 'published' %}
+  <div class="notice notice-ok" role="status">{{ icon('tick', 16) }}<p><strong>Published {{ p.name }} {{ p.version }}</strong> at <span class="mono">sha256:{{ p.content_sha256[:4] }}…{{ p.content_sha256[-4:] }}</span>, reviewed by {{ p.reviewer }}, {{ stamp(p.at) }}{% if p.self_review %} (self-review: {{ p.network }}'s policy){% endif %}, on test run <span class="mono">{{ p.test_id }}</span>: "{{ p.reason }}". It can now be chosen and deployed on this page.</p></div>
+{%- endif %}
+</section>

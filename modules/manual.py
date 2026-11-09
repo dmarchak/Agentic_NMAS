@@ -99,6 +99,8 @@ PAGES = (
     ("controller-app-deploy", "Deploy apps to an SDN controller", H,
      "how-it-works/controller-app-deploy.md"),
     ("nsot-export", "Commit a network's NSOT export", H, "how-it-works/nsot-export.md"),
+    ("app-publish", "Publish an app version: run its tests, and review it", H,
+     "how-it-works/app-publish.md"),
     ("code-repository", "A network's code repository: set it, and fetch it", H,
      "how-it-works/code-repository.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
@@ -240,6 +242,8 @@ OPERATIONS = {
     "nsot-export": ("modules.nsot.export_op", "STEPS"),
     # The SDN design revision 7, 11c.2 and 11c.3 (board code-repository): a fetch.
     "code-repository": ("modules.coderepo", "STEPS"),
+    # C2854 (board app-publish): a version's publication.
+    "app-publish": ("modules.apps.publish_op", "STEPS"),
     # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
     "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),

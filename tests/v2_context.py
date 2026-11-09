@@ -2676,6 +2676,41 @@ def _nsot_export_and_code_repo(client, _lab, _mp):
             .get_data(as_text=True)
         assert client.get("/v2/settings/network/Lab?tab=network").status_code == 200
         assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        # C2854 (board app-publish): Run its tests (failing, then passing; the harness faked at
+        # its seam), a refused preview, the preview, its confirm, and Who may publish.
+        from modules.apps import channel, publish_op, test_run
+        passing = {"ok": False}
+
+        def fake_run(folder, python, *, tests, timeout_s, runner=None):
+            sha = channel.script().folder_hash(folder)
+            return {"ok": passing["ok"], "passed": 1, "failed": 0 if passing["ok"] else 1,
+                    "errors": 0, "skipped": 0, "python": python, "content_sha256": sha,
+                    "output": "1 failed" if not passing["ok"] else "1 passed", "error": ""}
+        mp.setattr(test_run, "run", fake_run)
+        mp.setattr(publish_op, "_python", lambda network: ("3.5", "recorded"))
+        with open(os.path.join(code, "apps", "of_versions", "manifest.yml"), "a") as fh:
+            fh.write("tests:\n  - tests/test_x.py\n")
+        for args in (("add", "-A"), ("commit", "-q", "-m", "b")):
+            subprocess.run(["git", "-C", code, *args], check=True, capture_output=True, env=env)
+        client.post("/v2/settings/network/Lab/code-repository/fetch")
+        form = {"list": "Lab", "app": "of_versions", "version": "1.0.0"}
+        assert client.post("/v2/sdn/apps/version/test", data=form).status_code == 409
+        passing["ok"] = True
+        assert client.post("/v2/sdn/apps/version/test", data=form).status_code == 200
+        assert client.post("/v2/sdn/apps/version/publish/preview",
+                           data=dict(form, version="9.9.9")).status_code == 409
+        html = client.post("/v2/sdn/apps/version/publish/preview", data=form).get_data(
+            as_text=True)
+        hash_ = re.search(r'name="hash" value="([0-9a-f]{64})"', html).group(1)
+        assert client.post("/v2/sdn/apps/version/publish/confirm",
+                           data=dict(form, hash=hash_, reason="read it")).status_code == 200
+        assert client.post("/v2/settings/network/Lab/code-review",
+                           data={"review": "self_recorded", "loaded_review": "another_person"}
+                           ).status_code == 200
+        assert client.get("/v2/settings/network/Lab?tab=network").status_code == 200
+        assert client.post("/v2/settings/network/Lab/code-review",
+                           data={"review": "another_person", "loaded_review": "self_recorded"}
+                           ).status_code == 200
         assert client.post("/v2/settings/network/Lab/code-repository",
                            data={"location": "", "branch": "", "loaded": f"{code}\n"}
                            ).status_code == 200

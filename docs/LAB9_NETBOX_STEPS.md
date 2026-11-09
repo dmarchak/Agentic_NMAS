@@ -121,7 +121,7 @@ device tagged `mercury-end-host`. The NSOT export reads every device with that t
 network's sites as a **host**, never as a managed device: Mercury neither logs in to it nor
 polls or protects it. The trace (A4), DHCP (A3), the DNS app (A2) and the intent checks (B2)
 read each host's MAC, addresses and switch port from it. Steps 8.1 and 8.2 are made once; steps
-8.3 to 8.6 are made for each host.
+8.3 to 8.7 are made for each host.
 
 1. **Customization › Tags › Add.** Name `mercury-end-host`, slug `mercury-end-host` (check that
    it reads exactly that), any colour. **Create**.

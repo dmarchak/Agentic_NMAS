@@ -58,6 +58,18 @@ log = logging.getLogger(__name__)
 
 LOCATION_KEY = "code_repository"
 BRANCH_KEY = "code_repository_branch"
+#: Who may publish one of the network's versions (C2854; `lifecycle.publish`'s single-user
+#: policy): someone other than its author (the default), or its author too, recorded as
+#: self-review, for a network one person runs. Mercury resolves no roles yet (9.I), so it
+#: cannot measure how many people review a network's code: the network says.
+REVIEW_KEY = "code_review"
+REVIEW_CHOICES = {
+    "another_person": "someone other than its author",
+    "self_recorded": "its author too, recorded as self-review (one person runs this network)",
+}
+DEFAULT_REVIEW = "another_person"
+#: The test runs kept per version (each a plain run of the version's own tests, C2854).
+TESTS_KEPT = 10
 #: Mercury's copy, in the network's folder (`copy_dir`).
 COPY = "code_repo"
 #: The record of fetches and registered versions, beside the copy.
@@ -234,6 +246,58 @@ def set_location(network: str, loc: str, branch: str, *, actor: str, actor_verif
                         "after": after, "actor": actor, "actor_verified": actor_verified})
     log.info("code repository: %s set %s's to %s", actor, network, setting_words(after))
     return {"ok": True, "before": before, "after": after, "unchanged": False}
+
+
+def review_policy(network: str) -> dict:
+    """*network*'s review policy: ``{"state" ("ok", "unreadable"), "value", "words",
+    "error"}``; unset is the default, someone other than the author."""
+    from modules import list_settings as L
+
+    try:
+        value, _o = L.resolve(network, REVIEW_KEY)
+    except L.ListSettingsUnreadable as exc:
+        return {"state": "unreadable", "value": "", "words": "",
+                "error": f"{network}'s settings can't be read ({exc})"}
+    value = str(value or "").strip() or DEFAULT_REVIEW
+    if value not in REVIEW_CHOICES:
+        return {"state": "unreadable", "value": value, "words": "",
+                "error": (f"{network}'s review policy is {value!r}, not one of "
+                          f"{', '.join(REVIEW_CHOICES)}")}
+    return {"state": "ok", "value": value, "words": REVIEW_CHOICES[value], "error": ""}
+
+
+def set_review(network: str, value: str, *, actor: str, actor_verified: str,
+               loaded: str = None) -> dict:
+    """Set who may publish *network*'s versions, as *actor*, a verified person, refused when it
+    moved since the card drew it (*loaded*). Recorded in the network's settings record with the
+    value before and after. ``{"ok", "before", "after", "unchanged"}``; raises `Refused`."""
+    from modules import list_settings as L
+
+    if not actor or actor_verified in ("", "none"):
+        raise Refused("a network's review policy is set by a verified person")
+    value = (value or "").strip()
+    if value not in REVIEW_CHOICES:
+        raise Refused(f"not saved: who may publish is one of {', '.join(REVIEW_CHOICES)}, not "
+                      f"{value[:40]!r}")
+    with _lock(network):
+        held = review_policy(network)
+        if held["state"] == "unreadable" and held["error"].startswith(f"{network}'s settings"):
+            raise Refused(f"{held['error']}: nothing was saved")
+        before = held["value"]
+        if loaded is not None and loaded.strip() != before:
+            raise Refused(f"{network}'s review policy moved since the card drew it (drawn: "
+                          f"{loaded.strip()}; now: {before}): nothing was saved; look at it "
+                          "again")
+        if before == value:
+            return {"ok": True, "before": before, "after": value, "unchanged": True}
+        got = L.write(network, {REVIEW_KEY: value}, actor=actor)
+        if not got.get("ok"):
+            raise Refused(f"not saved: {got.get('error') or 'the setting was not written'}")
+    L._record(network, {"kind": "code_review", "group": LOCATION_KEY,           # noqa: SLF001
+                        "written": [REVIEW_KEY], "before": before, "after": value,
+                        "actor": actor, "actor_verified": actor_verified})
+    log.info("code repository: %s set %s's review policy to %s", actor, network, value)
+    return {"ok": True, "before": before, "after": value, "unchanged": False}
 
 
 def setting_words(pair: str) -> str:
@@ -527,7 +591,7 @@ def registered(network: str) -> dict:
     "commit", "fetched_at"}, "problems", "error"}``, each entry ``{"version":
     lifecycle.Version, "manifest", "repo", "path", "rev", "commit", "reviewed_at",
     "registered_at", "location"}``. Reads only."""
-    from modules.jobs.lifecycle import DRAFT, Version
+    from modules.jobs.lifecycle import DRAFT, PUBLISHED, Version
 
     loc = location(network)
     out = {"apps": [], "repo": {}, "problems": []}
@@ -575,19 +639,155 @@ def registered(network: str) -> dict:
                             f"{str(row.get('content_sha256'))[:12]}, and its blobs at "
                             f"{commit[:12]} hash to {digest[:12]}")
             continue
+        # Published (C2854) only at the hash the review was of: a publication of another pin is
+        # not this version's, so it stands as a Draft.
+        pub = row.get("publication") or {}
+        published = pub.get("content_sha256") == digest and bool(pub.get("reviewer"))
         try:
             version = Version(kind="app", name=name, version=row.get("version", ""),
-                              author=row.get("author") or "unknown", state=DRAFT,
-                              content_sha256=digest)
+                              author=row.get("author") or "unknown",
+                              state=PUBLISHED if published else DRAFT, content_sha256=digest,
+                              reviewer=pub.get("reviewer", "") if published else "",
+                              self_review=bool(pub.get("self_review")) if published else False)
         except ValueError as exc:
             problems.append(f"{name} {row.get('version')}: {exc}"[:300])
             continue
         apps.setdefault(name, []).append({
             "version": version, "manifest": manifest, "repo": dest, "path": path,
-            "rev": commit, "commit": commit, "reviewed_at": "",
+            "rev": commit, "commit": commit,
+            "reviewed_at": pub.get("at", "") if published else "",
+            "publication": dict(pub) if published else None,
+            "test": last_test(row, digest),
             "registered_at": row.get("registered_at", ""), "location": loc["location"]})
     return dict(out, state="ok", error="", repo=repo, problems=problems,
                 apps=[{"name": n, "versions": apps[n]} for n in sorted(apps)])
+
+
+def _version_row(rec: dict, loc: str, name: str, version: str):
+    return next((v for v in rec.get("versions") or [] if (v.get("location"), v.get("name"),
+                 v.get("version")) == (loc, name, version)), None)
+
+
+def last_test(row: dict, sha256: str):
+    """The newest recorded test run of *row*'s version at *sha256*, or None."""
+    runs = [t for t in (row or {}).get("tests") or [] if t.get("content_sha256") == sha256]
+    return runs[-1] if runs else None
+
+
+def version_record(network: str, name: str, version: str) -> dict:
+    """``{"state" ("ok", "absent", "unreadable"), "row", "commit", "path", "digest", "error"}``:
+    the registered version's record row and its folder's hash read again from the copy's blobs
+    at its commit. Reads only."""
+    loc = location(network)
+    if loc["state"] != "ok":
+        return {"state": "unreadable", "row": None, "error": loc["error"]}
+    got = read_record(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "row": None, "error": got["error"]}
+    row = _version_row(got["record"], loc["location"], name, version)
+    if row is None:
+        return {"state": "absent", "row": None,
+                "error": f"{name} {version} is not registered for {loc['location']}"}
+    _m, digest, why = _blob_read(copy_dir(network), row.get("commit", ""), row.get("path", ""))
+    if why:
+        return {"state": "unreadable", "row": row, "error": f"{name} {version}: {why}"}
+    return {"state": "ok", "row": row, "commit": row.get("commit", ""),
+            "path": row.get("path", ""), "digest": digest, "error": ""}
+
+
+def record_test(network: str, name: str, version: str, run: dict, *, actor: str,
+                actor_verified: str) -> dict:
+    """Keep *run* (`modules/apps/test_run.run`'s answer) with the version's record, as *actor*,
+    its id the entry's; the newest `TESTS_KEPT`. Raises `Refused` when the version is not
+    registered or its run was over another hash than its registered one."""
+    import uuid
+
+    with _lock(network):
+        got = read_record(network)
+        if got["state"] == "unreadable":
+            raise Refused(f"{got['error']}: the test run was not recorded")
+        rec = got["record"]
+        loc = location(network)
+        row = _version_row(rec, loc["location"], name, version)
+        if row is None:
+            raise Refused(f"{name} {version} is not registered: the test run was not recorded")
+        if run.get("content_sha256") != row.get("content_sha256"):
+            raise Refused(f"the run was over {str(run.get('content_sha256'))[:12]}, and {name} "
+                          f"{version} is registered at {str(row.get('content_sha256'))[:12]}: "
+                          "not recorded")
+        entry = {"id": uuid.uuid4().hex[:12], "at": _now(), "by": actor,
+                 "actor_verified": actor_verified,
+                 **{k: run.get(k) for k in ("ok", "passed", "failed", "errors", "python",
+                                            "content_sha256", "output", "error")}}
+        row["tests"] = ((row.get("tests") or []) + [entry])[-TESTS_KEPT:]
+        _write_record(network, rec)
+    _announce(network)
+    return entry
+
+
+def publish(network: str, name: str, version: str, *, content_sha256: str, test_id: str,
+            reviewer: str, reviewer_verified: str, reason: str) -> dict:
+    """Publish *name* *version* (P4's Publish, minimal: C2854), as *reviewer*, a verified person,
+    for *reason*. Refused, naming both operands: a version not registered, a folder whose hash
+    read again from its blobs is not *content_sha256* (the one previewed), a test run *test_id*
+    that is not this version's at that hash or did not pass, and `lifecycle.publish`'s own
+    problems (only a Draft; the reviewer someone other than the author unless the network's
+    review policy is `self_recorded`). The publication is kept with the version's record; a
+    fetch that moves the folder's hash replaces the row, so the new pin is a Draft again."""
+    from modules.jobs.lifecycle import DRAFT, LifecycleError, Version
+    from modules.jobs.lifecycle import publish as lifecycle_publish
+
+    if not reviewer or reviewer_verified in ("", "none"):
+        raise Refused("a version is published by a verified person")
+    if not (reason or "").strip():
+        raise Refused("a publication says why: type the review's reason")
+    policy = review_policy(network)
+    if policy["state"] != "ok":
+        raise Refused(f"{policy['error']}: nothing was published")
+    with _lock(network):
+        got = read_record(network)
+        if got["state"] == "unreadable":
+            raise Refused(f"{got['error']}: nothing was published")
+        rec = got["record"]
+        loc = location(network)
+        row = _version_row(rec, loc["location"], name, version)
+        if row is None:
+            raise Refused(f"{name} {version} is not registered for {loc['location']}")
+        _m, digest, why = _blob_read(copy_dir(network), row.get("commit", ""),
+                                     row.get("path", ""))
+        if why:
+            raise Refused(f"{name} {version}: {why}")
+        if digest != content_sha256:
+            raise Refused(f"{name} {version}'s folder hashes {digest[:12]} now, and the review "
+                          f"was of {str(content_sha256)[:12]}: nothing was published")
+        test = next((t for t in row.get("tests") or [] if t.get("id") == test_id), None)
+        if test is None or test.get("content_sha256") != digest:
+            raise Refused(f"no test run {test_id or '(none)'} of {name} {version} at "
+                          f"{digest[:12]} is recorded: run its tests first")
+        if test.get("ok") is not True:
+            raise Refused(f"its test run {test_id} did not pass ({test.get('failed')} failed, "
+                          f"{test.get('errors')} errors): nothing was published")
+        draft = Version(kind="app", name=name, version=version,
+                        author=row.get("author") or "unknown", state=DRAFT,
+                        content_sha256=digest)
+        if (row.get("publication") or {}).get("content_sha256") == digest:
+            raise Refused(f"{name} {version} is already Published at {digest[:12]}")
+        try:
+            done = lifecycle_publish(draft, digest, reviewer=reviewer, harness_passed=True,
+                                     single_user=policy["value"] == "self_recorded")
+        except LifecycleError as exc:
+            raise Refused("; ".join(exc.problems) if getattr(exc, "problems", None)
+                          else str(exc)) from exc
+        row["publication"] = {"content_sha256": digest, "reviewer": reviewer,
+                              "reviewer_verified": reviewer_verified,
+                              "self_review": done.self_review, "at": _now(),
+                              "reason": reason.strip()[:500], "test_id": test_id,
+                              "policy": policy["value"]}
+        _write_record(network, rec)
+    log.info("code repository: %s published %s %s on %s at %s", reviewer, name, version,
+             network, digest[:12])
+    _announce(network)
+    return dict(row["publication"], name=name, version=version)
 
 
 def _drawn(row: dict) -> dict:
@@ -610,4 +810,5 @@ def card(network: str) -> dict:
             "last": _drawn(_last(rec, ok_only=False)), "last_ok": _drawn(_last(rec, True)),
             "registered_state": reg["state"], "registered_error": reg.get("error", ""),
             "apps": len(reg["apps"]), "versions": sum(len(a["versions"]) for a in reg["apps"]),
-            "problems": reg.get("problems") or [], "timeout": FETCH_TIMEOUT}
+            "problems": reg.get("problems") or [], "timeout": FETCH_TIMEOUT,
+            "review": review_policy(network), "review_choices": REVIEW_CHOICES}

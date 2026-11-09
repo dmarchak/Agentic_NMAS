@@ -12,7 +12,7 @@
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
   {%- endif %}
   {%- if saved is defined and saved %}
-  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p>{% if saved.unchanged %}<strong>Nothing changed:</strong> the setting already was this.{% else %}<strong>Saved</strong>: {{ r.network }}'s code repository is {{ saved.after_words }} (was {{ saved.before_words }}).{% if r.location %} Press Fetch now to register what it holds.{% endif %}{% endif %}</p></div>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p>{% if saved.unchanged %}<strong>Nothing changed:</strong> the setting already was this.{% elif saved.review_words %}<strong>Saved</strong>: {{ r.network }}'s versions are published by {{ saved.review_words }}.{% else %}<strong>Saved</strong>: {{ r.network }}'s code repository is {{ saved.after_words }} (was {{ saved.before_words }}).{% if r.location %} Press Fetch now to register what it holds.{% endif %}{% endif %}</p></div>
   {%- endif %}
   {%- if fetched is defined and fetched %}
   {%- if fetched.ok %}
@@ -37,6 +37,11 @@
     <label class="set-field"><span class="set-label">Location</span><input type="text" name="location" value="{{ typed.location if typed is defined and typed else r.location }}" placeholder="/srv/code/{{ r.network | lower }}.git or https://…" autocomplete="off" spellcheck="false" maxlength="500"><span class="faint small">A local path (starting /, or file://) or an https:// URL with no user name or password in it</span></label>
     <label class="set-field"><span class="set-label">Branch</span><input type="text" name="branch" value="{{ typed.branch if typed is defined and typed else r.branch }}" placeholder="its default branch" autocomplete="off" spellcheck="false" maxlength="100"><span class="faint small">Empty: the repository's default branch</span></label>
     <span class="op-act"><button type="submit" class="btn" data-op="code-repository" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('code-repository', 'the-setting', compact=True, op='setting the code repository') }}</span>
+  </form>
+  <form class="set-form code-review-form" method="post" action="{{ url_for('settings_v2.code_review_save', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.code_review_save', list_name=list_name) }}" hx-target="#code-repo-card" hx-swap="outerHTML">
+    <input type="hidden" name="loaded_review" value="{{ r.review.value }}">
+    <label class="set-field"><span class="set-label">Who may publish</span><select name="review"{% if r.review.state != 'ok' %} disabled{% endif %}>{% for value, words in r.review_choices.items() %}<option value="{{ value }}"{% if value == r.review.value %} selected{% endif %}>{{ words }}</option>{% endfor %}</select><span class="faint small">{% if r.review.state != 'ok' %}{{ r.review.error }}{% else %}Mercury resolves no roles yet, so {{ r.network }} says how many people review its code{% endif %}</span></label>
+    <span class="op-act"><button type="submit" class="btn" data-op="app-publish" hx-disabled-elt="this"{% if r.review.state != 'ok' %} disabled aria-disabled="true" title="{{ r.review.error }}" data-refused="Not available: {{ r.review.error }}"{% else %}{{ gate('configure') }}{% endif %}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('app-publish', 'who-may-publish', compact=True, op='setting who may publish') }}</span>
   </form>
   {%- if r.location %}
   <dl class="sdn-kv code-repo-facts">

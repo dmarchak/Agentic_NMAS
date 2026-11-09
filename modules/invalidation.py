@@ -334,6 +334,7 @@ DECLARED = {
     # fills Mercury's copy and registers the app versions SDN › Apps lists.
     "settings_v2.code_repo_save": ("settings", "code_repo"),
     "settings_v2.code_repo_fetch": ("code_repo",),
+    "settings_v2.code_review_save": ("settings", "code_repo"),
     # Heal to intent (board H, H1 and H9; routes/heal_v2.py): the policy, who is told and the
     # kill switch are settings.
     "heal_v2.policy_confirm": ("settings",),
@@ -528,6 +529,9 @@ DECLARED = {
     # the network's NSOT export, which SDN › Apps and every deploy read, and publishes it.
     "sdn_v2.export_preview": Nothing("reads a network's records from NetBox and draws its NSOT export's preview in its card; the confirm commits"),
     "sdn_v2.export_confirm": ("nsot_export", "remote"),
+    "sdn_v2.apps_version_test": ("code_repo",),
+    "sdn_v2.apps_publish_preview": Nothing("reads a registered app version's record and draws what Publish would record; the confirm publishes"),
+    "sdn_v2.apps_publish_confirm": ("code_repo",),
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),
