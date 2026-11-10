@@ -537,7 +537,10 @@ def test_the_routes_are_the_apps_and_gated_as_declared():
              if r.endpoint.startswith("heal_proposal_v2.")}
     assert set(rules) == {"heal_proposal_v2.proposal", "heal_proposal_v2.approve",
                           "heal_proposal_v2.decline", "heal_proposal_v2.lift",
-                          "heal_proposal_v2.mark"}
+                          "heal_proposal_v2.mark", "heal_proposal_v2.change_record_md"}
+    # C2773: the change record's download is a read, GET only, and so in no gate's table.
+    assert rules["heal_proposal_v2.change_record_md"].methods - {"HEAD", "OPTIONS"} == {"GET"}
+    assert "heal_proposal_v2.change_record_md" not in GATES
     assert GATES["heal_proposal_v2.approve"].kind == "confirm"
     assert GATES["heal_proposal_v2.decline"].kind == "configure"
     assert GATES["heal_proposal_v2.lift"].kind == "configure"

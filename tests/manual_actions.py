@@ -375,6 +375,10 @@ NOT_AN_OPERATION = {
                                               "clipboard, writing nothing"),
     ("_change_record.html", "Download (.md)"): ("saves the drafted change record as text, read "
                                                 "from its call, a read"),
+    # C2773 (board H, artboards C and K): a self-healing incident's change record, as text.
+    ("_timeline.html", "Download the change record (.md)"): (
+        "saves a self-healing incident's change record as text, masked, read from the step "
+        "log, a read"),
 }
 
 

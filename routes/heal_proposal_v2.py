@@ -23,12 +23,16 @@ kept outside any form so Enter submits nothing (C2472) and sent by the button's
 a reason of three words or more, the halt in force by its id), answered with the card again,
 lifted or refused naming both operands.
 
+**Download the change record (.md)** (artboards C and K, C2773): History's heal row links
+`change_record_md`, a read of the incident's change record as the step log keeps it.
+
 The routes' declarations live in their tables (`route_gates.GATES`, `invalidation.DECLARED`,
 `operation_stages.STAGES` and `HISTORY`), placed there by H9 with the card; `gates()`,
 `invalidates()`, `stages()` and `history()` are views of those tables.
 """
 
 import logging
+import re
 
 from flask import Blueprint, jsonify, render_template, request
 
@@ -250,3 +254,47 @@ def decline(list_name, decision_id):
     if _htmx():
         return _card(list_name, decision_id, declined=out)
     return _answer(out)
+
+
+@bp.route("/network/<list_name>/heal/incident/<incident_id>/change-record.md", methods=["GET"])
+def change_record_md(list_name, incident_id):
+    """A heal's change record as text (C2773; board H, artboards C and K, "Download the change
+    record (.md)"): the markdown `modules/heal/change_record.py` made and the step log keeps in
+    the incident's ``act`` row (``records.change_record``), masked as stored and again on the
+    way out, for a heal to intent and for an action (H23) alike. History's heal row draws the
+    link when the record was made (`history_sources.heal`, ``heal_record``). A read of the
+    step log: it writes nothing, creates no network and calls no model. An unknown network or
+    incident, or an incident with no record (a dry run, a refusal before its program), is a
+    404 naming which and why; a step log that cannot be read is a 503 saying so."""
+    from flask import Response
+
+    from modules.heal import steplog
+    from modules.nsot import listref
+    from modules.redact import redact_text
+    from routes.v2 import _HEAL_INCIDENT
+
+    def said(words, code):
+        return Response(f"Not available: {words}.\n", status=code, mimetype="text/plain")
+
+    net, iid = list_name[:80], incident_id[:40]
+    if not listref.exists(net):
+        return said(f"{net!r} is no network Mercury holds", 404)
+    if not _HEAL_INCIDENT.match(iid):
+        return said(f"{iid!r} is no self-healing incident id (hi- and 12 hex digits)", 404)
+    try:
+        e = steplog.incident(net, iid)
+    except RuntimeError as exc:
+        return said(str(exc), 503)
+    if not e:
+        return said(f"{net}'s self-healing step log holds no incident {iid}", 404)
+    cr = (e.get("records") or {}).get("change_record") or {}
+    if cr.get("state") != "made" or not cr.get("markdown"):
+        why = redact_text(cr.get("words") or (
+            "a dry run sends nothing, so it has no change record" if e.get("mode") == "dry_run"
+            else "its step log records no change record for it"))
+        return said(f"incident {iid} on {net} has no change record: {why}", 404)
+    host = re.sub(r"[^A-Za-z0-9._-]", "_", e.get("device") or "device")
+    resp = Response(redact_text(cr["markdown"]), mimetype="text/markdown")
+    resp.headers["Content-Disposition"] = (
+        f'attachment; filename="change-record-{host}-{iid}.md"')
+    return resp

@@ -12,8 +12,11 @@ reason and its fingerprint, and AUTO's expiry when the policy read names it. The
 asked: this is a record of what Mercury did, never a draft of what it might.
 
 **Kept in the step log** (the ``act`` row's ``records.change_record``: its markdown, masked),
-so it is downloadable from the incident as .md (H9's History step log draws the link) and
-H8's analysis of a can't-fix never needs it. Made for every heal whose program was computed
+so it is downloadable from the incident as .md: History's heal row, opened, draws **Download
+the change record (.md)** when the record was made (`history_sources.heal`'s ``heal_record``),
+and `routes/heal_proposal_v2.py`'s `change_record_md` serves it, masked, at
+``/v2/network/<network>/heal/incident/<incident>/change-record.md`` (C2773); the same for an
+action's record (`build_action`, H23). H8's analysis of a can't-fix never needs it. Made for every heal whose program was computed
 at apply; a heal refused before that has no program, and says so.
 """
 

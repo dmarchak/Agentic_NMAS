@@ -2122,8 +2122,9 @@ def heal(ctx):
     heal, proposed, can't fix, held, halted, interrupted) with the mode on it ("dry run" is
     never read as AUTO), opening to every step Mercury took, the program (masked) and its hash,
     and the records: the golden commit (its own row, linked by its sha), the deploy receipt
-    (its own row, naming the decision), the golden re-check, the change record and the NetBox
-    journal entry. The network's own store: a device's History draws its device's rows. Every
+    (its own row, naming the decision), the golden re-check, the change record (its
+    markdown downloadable from the row when it was made, C2773) and the NetBox journal entry.
+    The network's own store: a device's History draws its device's rows. Every
     text masked again on the way out."""
     from modules.heal import said, steplog
     from modules.redact import redact_text
@@ -2194,6 +2195,11 @@ def heal(ctx):
         # "Details for the record" (`_timeline.html`); the cause drawn above it, facts first,
         # its times in the viewer's zone (C2823).
         events[-1]["record_closed"] = True
+        # C2773 (board H, artboards C and K): "Download the change record (.md)", for a heal to
+        # intent and an action alike, only when its record was made (a dry run or a refusal
+        # before its program has none, C2442); `heal_proposal_v2.change_record_md` serves it.
+        if cr.get("state") == "made" and cr.get("markdown") and e["incident"]:
+            events[-1]["heal_record"] = {"list": ctx["ref"].name, "incident": e["incident"]}
         if plain and e.get("cause"):
             events[-1]["heal_cause"] = said.drawn(steplog.masked(e["cause"]))
         # Board H artboard C's dry-run record: "Was this the right fix?" Right / Wrong… (H9,

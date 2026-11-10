@@ -89,7 +89,7 @@
           {%- if e.read_of.first %}<a href="{{ url_for('v2.history_page', call=e.read_of.first) }}">Open pass 1's call, which asked for it</a>{% endif %}
           {%- if e.read_of.second %} · <a href="{{ url_for('v2.history_page', call=e.read_of.second) }}">Open pass 2's call, which carried it</a>{% endif %}
           {%- if e.read_of.run %} · <a href="{{ url_for('reads_v2.show_commands_result', run_id=e.read_of.run, list=e.read_of.list) }}">Open the read on History › Reads</a>{% endif %}</p>{% endif %}
-        {%- if others or e.sha or e.call or e.intent_commit %}<p class="small tl-links">
+        {%- if others or e.sha or e.call or e.intent_commit or e.heal_record %}<p class="small tl-links">
           {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha or e.produced %} · {% endif %}{% endfor %}
           {#- A change drafted in words (feature 7, part 2): the AI call that drafted it, from the commit's AI-Call trailer. -#}
           {%- if e.from_call %}<a href="{{ url_for('v2.history_page', call=e.from_call) }}">Open the AI call that drafted it</a> · {% endif %}
@@ -104,7 +104,9 @@
           {%- if e.sha %}<span id="diff-{{ e.id }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=e.sha) }}" hx-target="#diff-{{ e.id }}" hx-swap="innerHTML">Show the change</button></span>{% endif %}
           {#- One device's golden version, revealed in place to a person and recorded (2026-10-10). -#}
           {%- set one = here or (e.devices[0] if e.devices | length == 1 and e.devices[0] != '*' else '') %}
-          {%- if e.kind == 'golden' and e.sha and one %} · <span id="rv-{{ e.id }}"><button type="button" class="btn btn-small" data-op="history" hx-post="{{ url_for('device_v2.golden_reveal', name=one) }}" hx-vals='{{ {"ref": e.sha} | tojson }}' hx-target="#rv-{{ e.id }}" hx-swap="innerHTML" hx-disabled-elt="this" title="A reveal: a verified person, recorded"{{ gate('reveal') }}><span class="op-idle">Reveal {{ one }}'s version…</span><span class="op-busy">Revealing…</span></button>{{ how('history', 'reveal', compact=True, op='a reveal') }}</span>{% endif %}</p>{% endif %}
+          {%- if e.kind == 'golden' and e.sha and one %} · <span id="rv-{{ e.id }}"><button type="button" class="btn btn-small" data-op="history" hx-post="{{ url_for('device_v2.golden_reveal', name=one) }}" hx-vals='{{ {"ref": e.sha} | tojson }}' hx-target="#rv-{{ e.id }}" hx-swap="innerHTML" hx-disabled-elt="this" title="A reveal: a verified person, recorded"{{ gate('reveal') }}><span class="op-idle">Reveal {{ one }}'s version…</span><span class="op-busy">Revealing…</span></button>{{ how('history', 'reveal', compact=True, op='a reveal') }}</span>{% endif %}
+          {#- A self-healing incident's change record (board H, artboards C and K; C2773): drawn only when it was made. -#}
+          {%- if e.heal_record %}{% if others or e.sha or e.call or e.intent_commit %} · {% endif %}<a class="btn btn-small" href="{{ url_for('heal_proposal_v2.change_record_md', list_name=e.heal_record.list, incident_id=e.heal_record.incident) }}" download title="Mercury's change record for incident {{ e.heal_record.incident }}, masked: deterministic, no AI call">Download the change record (.md)</a>{% endif %}</p>{% endif %}
       </div>
     </details>
     {%- endfor %}

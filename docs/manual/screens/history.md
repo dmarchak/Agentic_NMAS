@@ -88,6 +88,10 @@ Open a line for the full record underneath. It shows:
   the answer** on that call. **Open pass 1's call**, **Open pass 2's call** and **Open the read
   on History › Reads** open the two calls and the read itself. A **Show commands** row of such a
   read says whom each device signed in as;
+- for a **self-healing** incident that changed a device (a heal back to intent, or an action
+  such as a bounce), **Download the change record (.md)** saves Mercury's change record for it,
+  masked, as a Markdown file ([How self-healing works](heal#records)); a dry run
+  and a heal refused before its program have none, and draw no link;
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 

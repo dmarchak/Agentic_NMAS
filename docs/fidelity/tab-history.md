@@ -20,7 +20,14 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `55da93d6206537a2c77c6b99ad084f64e10c6955d498bf77139f21d1999f39bb`
+Templates sha256: `cb6b6a2f9c5896acdd040474fa33560425c04a23bcfeb333f3592598defc3a7c`
+
+Compared again 2026-11-09 (C2773), by the template diff: the regions and verdicts are
+history.md's of the same date (one template, `_timeline.html`, draws both): a self-healing row
+whose change record was made draws **Download the change record (.md)** in its links line,
+opened; **deviation** (log: Board H built: Download the change record (.md) in the opened History
+heal row's links line). No other region of this tab moved. Templates sha256 before:
+`55da93d6206537a2c77c6b99ad084f64e10c6955d498bf77139f21d1999f39bb`.
 
 Compared again 2026-11-09 (C2817, C2809, C2823; the operator's templates, "right as drawn",
 2026-11-09), by the template diff against mock 1's and mock 2's History lines (no new shot:

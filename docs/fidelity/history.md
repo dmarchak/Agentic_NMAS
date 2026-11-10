@@ -32,7 +32,17 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `49d92b598bb7934177e176c424e7927e463e8e7d05cf128f9b226bddee39acfc`
+Templates sha256: `ddabe41c00ad0c438e4f147d6e3664bcfad706e6fdf63edf870d27f780e1766b`
+
+Compared again 2026-11-09 (C2773), against board H's artboards C and K, by the template diff (no
+new shot: tests/test_heal_change_record_download.py draws the row through the real templates):
+a self-healing row, opened, whose change record was made draws **Download the change record
+(.md)** (a small button-styled link, `download`, its provenance on hover) in the row's links line
+after **Show the change**, for a heal to intent and an action alike; a dry run and a heal refused
+before its program draw none. The board's words, **same**; its place, the incident card's head,
+**deviation** (log: Board H built: Download the change record (.md) in the opened History heal
+row's links line). No other region moved. Templates sha256 before:
+`49d92b598bb7934177e176c424e7927e463e8e7d05cf128f9b226bddee39acfc`.
 
 Compared again 2026-11-09 (C2817, C2809, C2823), by the template diff: the regions and verdicts
 are tab-history.md's of the same date (one template, `_timeline.html`, draws both): a

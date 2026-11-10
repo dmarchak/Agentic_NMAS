@@ -177,7 +177,13 @@ until you open it, holds every step and its result, the incident and decision id
 (masked) and its hash, the policy, and the records the incident wrote: the deploy receipt, the
 golden commit (`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the
 change record and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
-item. The network's team is told as its Self-healing tab chooses ([Notifications](notifications)).
+item.
+
+**Download the change record (.md)**, beside **Show the change** on the opened row, saves the
+incident's change record as a Markdown file named for the device and the incident, masked as
+Mercury keeps it, for a heal and an action alike. It is a read of the step log: it sends
+nothing and asks no model. A dry run has no change record, since nothing was sent, and neither
+has a heal refused before its program was computed, so their rows draw no link. The network's team is told as its Self-healing tab chooses ([Notifications](notifications)).
 
 An **action** (a bounce, a clear, a dampening change) is named as one on its row: its line names
 the port or the neighbour and how it ended ("edge1 GigabitEthernet4 bounced, still flapping",
@@ -191,7 +197,8 @@ The row is on the far end's History too, so the device across the link shows the
 took its port down. Each act keeps a **change record** written by Mercury's code with no AI call,
 in the same sections as a heal's: what was acted on and why, the program, the risk by its stated
 rule, the verify, the rollback and what the act did of it, the window with its far end, who
-allowed it (the policy, or the person who approved it), and its status.
+allowed it (the policy, or the person who approved it), and its status. Its row downloads it as
+a heal's does.
 
 ## Dry run: Right or Wrong {#mark}
 
