@@ -2711,8 +2711,30 @@ def _nsot_export_and_code_repo(client, _lab, _mp):
         assert client.post("/v2/settings/network/Lab/code-review",
                            data={"review": "another_person", "loaded_review": "self_recorded"}
                            ).status_code == 200
+        # The operator's decision of 2026-11-10 (board authoring-from-words F): Add an app as a
+        # Draft… on a bare copy of the code repository (a push lands only where no branch is
+        # checked out): at rest, the picker, a refused preview (the folder is there), the
+        # preview, its confirm (added and registered), a stale confirm refused.
+        from tests.test_draft_write import draft, hidden, upload
+        bare = os.path.join(root, "code.git")
+        subprocess.run(["git", "clone", "-q", "--bare", code, bare], check=True,
+                       capture_output=True, env=env)
         assert client.post("/v2/settings/network/Lab/code-repository",
-                           data={"location": "", "branch": "", "loaded": f"{code}\n"}
+                           data={"location": bare, "branch": "main", "loaded": f"{code}\n"}
+                           ).status_code == 200
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        assert client.get("/v2/sdn/apps/draft?list=Lab&open=form").status_code == 200
+        assert client.get("/v2/sdn/apps/draft?list=Lab").status_code == 200
+        mp.setattr("tests.test_draft_write.NET", "Lab")
+        assert upload(client, draft("of_versions", "2.0.0"), "of_versions").status_code == 409
+        f = hidden(upload(client).get_data(as_text=True))
+        draft_form = {"list": "Lab", "name": "dhcp_watch", "hash": f["hash"][0],
+                      "base": f["base"][0], "files_sha": f["files_sha"][0], "path": f["path"],
+                      "content": f["content"]}
+        assert client.post("/v2/sdn/apps/draft/confirm", data=draft_form).status_code == 200
+        assert client.post("/v2/sdn/apps/draft/confirm", data=draft_form).status_code == 409
+        assert client.post("/v2/settings/network/Lab/code-repository",
+                           data={"location": "", "branch": "", "loaded": f"{bare}\nmain"}
                            ).status_code == 200
     finally:
         mp.undo()

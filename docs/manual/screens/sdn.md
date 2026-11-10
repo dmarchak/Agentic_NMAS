@@ -186,6 +186,15 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   reads NetBox now and opens the preview in the card's place: the export's hash beside the
   committed one and what changes, by kind; **Commit the export** commits it as you, bound to
   that hash. Step by step: [Commit a network's NSOT export](nsot-export).
+- **Add an app as a Draft…** comes next: choose an app's folder (its `manifest.yml` at its
+  top, the folder's name the app's), and Mercury previews the one commit that adds it as
+  `apps/<name>/` to the network's code repository: the branch's commit it goes on top of, each
+  file with its size and hash, the message and you as its author. **Add <name> as a Draft**
+  commits and pushes it as you, bound to that preview, then fetches the repository, so the new
+  version is listed as a Draft with **Run its tests** and **Review and publish…**. It only ever
+  adds a new folder, and only to a code repository at a local path: an https location, or a
+  folder already in the repository, is refused naming why. Step by step: [Add an app to the code
+  repository as a Draft](draft-write).
 - **No app version can be listed** says why (no code repository set, not fetched yet, or the
   setting changed since the last fetch), with **Open the code repository's card**, where its
   location is set and **Fetch now** registers each app folder at the fetched commit (see

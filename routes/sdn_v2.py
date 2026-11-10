@@ -718,6 +718,93 @@ def apps_publish_confirm():
                               version=version), 200 if outcome == "published" else 409)
 
 
+# Board authoring-from-words (D and F), self-signed under the Phase 7 mode ("I-2 W 2"; the
+# operator's decision of 2026-11-10): Add an app as a Draft…, Mercury's one write path to a
+# code repository (modules/apps/draft_write.py), drawn in its card's place on SDN › Apps.
+
+def _draft_card(d: dict, status: int = 200):
+    return _strict(render_template("v2/_sdn_app_draft.html", d=d)), status
+
+
+def _draft_refused(network: str, words: str, status: int, moved: bool = False):
+    return _draft_card({"state": "refused", "network": network, "error": words,
+                        "moved": moved}, status)
+
+
+@bp.route("/apps/draft", methods=["GET"])
+def apps_draft_card():
+    """The control at rest (Cancel, Close), or its folder picker (``?open=form``): the code
+    repository's setting read, nothing else. A read."""
+    from modules.apps import draft_write
+
+    want = "form" if request.args.get("open") == "form" else "rest"
+    return _draft_card(draft_write.control(_list_name(), want))
+
+
+@bp.route("/apps/draft/preview", methods=["POST"])
+@no_store
+def apps_draft_preview():
+    """Preview adding the chosen folder as a Draft: each file with its path in the folder (the
+    multipart filename static/js/nmas_draft.js sends), the top folder's name the app's; the
+    exact commit read from the repository now and its hash. Writes nothing."""
+    from modules import identity
+    from modules.apps import draft_write
+    from routes.list_param import submitted_list
+
+    network, refused = submitted_list(request)
+    if refused:
+        return _draft_refused(network, refused, 400)
+    uploads = request.files.getlist("file")
+    if draft_write.too_many(len(uploads)):
+        return _draft_refused(network, draft_write.too_many(len(uploads)), 400)
+    # Each read to one byte past a file's cap at most, so an oversized file is refused by its
+    # cap without being held whole.
+    name, files, why = draft_write.files_from_upload(
+        [(f.filename, f.read(draft_write.MAX_FILE_BYTES + 1)) for f in uploads])
+    if why:
+        return _draft_refused(network, why, 400)
+    actor = identity.request_actor()
+    p = draft_write.preview(network, name, files, actor=actor,
+                            actor_verified=identity.actor_verification(actor))
+    if not p["ok"]:
+        return _draft_refused(network, p["error"], 409)
+    # What the card draws: where git reads from, the verification and the caps stay here.
+    for key in ("ok", "error", "source", "author_verified", "caps"):
+        p.pop(key, None)
+    return _draft_card(dict(p, state="preview"))
+
+
+@bp.route("/apps/draft/confirm", methods=["POST"])
+def apps_draft_confirm():
+    """Add the previewed Draft as the verified person, bound to the preview's hash: the program
+    made again inside the copy's lock, the commit built in a throwaway repository and pushed
+    fast-forward only, recorded, then fetched so it registers as a Draft."""
+    from modules import identity
+    from modules.apps import draft_write
+    from routes.list_param import submitted_list
+
+    network, refused = submitted_list(request)
+    confirmed = (request.form.get("hash") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    if not refused and len(confirmed) != 64:
+        refused = "the form carries no preview hash, so what you confirmed cannot be told"
+    files, why = draft_write.files_from_form(request.form.getlist("path"),
+                                             request.form.getlist("content"))
+    if refused or why:
+        return _draft_refused(network, refused or why, 400)
+    actor = identity.request_actor()
+    done = draft_write.apply(network, name, files, confirmed, actor=actor,
+                             actor_verified=identity.actor_verification(actor),
+                             then_base=request.form.get("base"),
+                             then_files=request.form.get("files_sha"))
+    if done["outcome"] != "added":
+        return _draft_refused(network, done["error"], 409, moved=done.get("moved", False))
+    # What the card draws: the fetch's own words are in the record; the card says registered.
+    for key in ("outcome", "error", "moved", "fetch"):
+        done.pop(key, None)
+    return _draft_card(dict(done, state="added"))
+
+
 @bp.route("/apps/run/<job>", methods=["GET"])
 def apps_run(job):
     """A confirm's card by its job, read again on `controller_deploy`: its steps while it

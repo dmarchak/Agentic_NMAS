@@ -2033,6 +2033,41 @@ class TestAppPublishCards(_Cards):
         return html
 
 
+class TestAppDraftCards(_Cards):
+    """SDN › Apps, Add an app as a Draft… (the operator's decision of 2026-11-10; board
+    authoring-from-words F) on tests/test_draft_write.py's world (a real bare code repository
+    and the real routes): the confirm drawn from the real preview of an uploaded folder.
+    Blocked: the folder is already in the repository, so the preview is a refusal with no
+    confirm."""
+    from tests import test_coderepo as _cr, test_draft_write as _dw
+    lab, code, bare, world = hosted(_cr.lab), hosted(_cr.code), hosted(_dw.bare), \
+        hosted(_dw.world)
+
+    CASES = {
+        "add": ("_sdn_app_draft.html", "Add {{ d.name }} as a Draft", r"Add dhcp_watch as a Draft",
+                "data: apps/of_versions/ is already in the code repository"),
+    }
+
+    @staticmethod
+    def _preview(files=None, top="dhcp_watch"):
+        import app as A
+        from tests.test_draft_write import upload
+        return _text(upload(A.app.test_client(), files, top))
+
+    def drawn_add(self, request):
+        request.getfixturevalue("world")
+        html = self._preview()
+        assert "Add dhcp_watch 0.1.0 as a Draft" in html, "floor: the preview is drawn"
+        return html
+
+    def blocked_add(self, request, monkeypatch):
+        from tests.test_draft_write import draft
+        request.getfixturevalue("world")
+        html = self._preview(draft("of_versions", "2.0.0"), "of_versions")
+        assert "apps/of_versions/ already exists" in html, "floor: the refusal is drawn"
+        return html
+
+
 class TestNsotExportCards(_Cards):
     """SDN › Apps' NSOT export card (C2777; board nsot-export) on tests/test_nsot_export_op.py's
     world (the real routes and operation; NetBox's GETs served by a fake client): the preview's
@@ -2133,9 +2168,10 @@ class TestThePopulation:
         changes nothing, and an unknown result's Preview a rollback…; 80 until three of those
         four, the previews, became reveals, C2765, 2026-11-08: they read the controller host as
         the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08; 78 until an app
-        version's Publish <version>, C2854, 2026-11-09)."""
+        version's Publish <version>, C2854, 2026-11-09; 79 until SDN › Apps' Add <name> as a
+        Draft, the operator's decision of 2026-11-10)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 79, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 80, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

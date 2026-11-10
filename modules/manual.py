@@ -105,6 +105,8 @@ PAGES = (
      "how-it-works/app-publish.md"),
     ("code-repository", "A network's code repository: set it, and fetch it", H,
      "how-it-works/code-repository.md"),
+    ("draft-write", "Add an app to the code repository as a Draft", H,
+     "how-it-works/draft-write.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -248,6 +250,8 @@ OPERATIONS = {
     "code-repository": ("modules.coderepo", "STEPS"),
     # C2854 (board app-publish): a version's publication.
     "app-publish": ("modules.apps.publish_op", "STEPS"),
+    # The operator's decision of 2026-11-10 (board authoring-from-words F): a Draft added.
+    "draft-write": ("modules.apps.draft_write", "STEPS"),
     # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
     "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),

@@ -472,6 +472,80 @@ class TestInitMarksTheKitAndOpensOnLab9:
         assert len(self._records(data)) == 1
 
 
+class TestLab9sCodeRepository:
+    """The operator's decision of 2026-11-10 (Drafts reach the code repository only through
+    Mercury's Add an app as a Draft…): `kit init` and `kit repin` make lab9's code repository,
+    bare and empty on main, under KIT_HOME when it is absent, never replacing one; the
+    settings init sets lab9's `code_repository` to it through Mercury's per-network write when
+    lab9 has none, recorded, and never sets who may publish (`code_review`), the operator's
+    choice. Run as the kit runs them."""
+
+    KIT = os.path.join(ROOT, "lab", "sdn-laptop", "kit")
+
+    def _ensure(self, home):
+        return subprocess.run(["bash", self.KIT, "ensure-code-repo"], capture_output=True,
+                              text=True, env=dict(os.environ, KIT_HOME=str(home)))
+
+    def _init(self, data, home):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), "init"],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, NMAS_DATA_DIR=str(data), KIT_HOME=str(home)))
+
+    def _setting(self, data):
+        path = data / "lists" / "lab9" / "settings.json"
+        return json.loads(path.read_text()).get("values", {}) if path.exists() else {}
+
+    def _records(self, data):
+        path = data / "lists" / "lab9" / "settings_record.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()
+                if '"code_repository"' in line] if path.exists() else []
+
+    def test_the_kit_makes_it_bare_and_empty_once(self, tmp_path):
+        repo = tmp_path / "code" / "lab9.git"
+        r = self._ensure(tmp_path)
+        assert r.returncode == 0 and "made (bare, empty, branch main)" in r.stdout, r.stderr
+        git = ["git", "-C", str(repo)]
+        assert subprocess.run(git + ["rev-parse", "--is-bare-repository"], capture_output=True,
+                              text=True).stdout.strip() == "true"
+        assert subprocess.run(git + ["symbolic-ref", "HEAD"], capture_output=True,
+                              text=True).stdout.strip() == "refs/heads/main"
+        (repo / "kept").write_text("a Draft added since\n")
+        r = self._ensure(tmp_path)
+        assert r.returncode == 0 and "kept" in r.stdout and (repo / "kept").exists()
+
+    def test_init_and_repin_make_it_before_the_settings_init(self):
+        src = open(self.KIT, encoding="utf-8").read()
+        for start, end in (("cmd_init() {", "ensure_code_repo() {"),
+                           ("cmd_after_repin() {", "cmd_check() {")):
+            body = src[src.index(start):src.index(end)]
+            assert body.index("ensure_code_repo") < body.index("kit_settings.py\" init")
+
+    def test_init_sets_lab9s_to_it_recorded_and_never_who_may_publish(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        assert self._ensure(tmp_path).returncode == 0
+        r = self._init(data, tmp_path)
+        assert r.returncode == 0, r.stderr
+        repo = str(tmp_path / "code" / "lab9.git")
+        assert f"code repository: lab9's set to {repo}, branch main (recorded)" in r.stdout
+        s = self._setting(data)
+        assert s["code_repository"] == repo and s["code_repository_branch"] == "main"
+        assert "code_review" not in s, "who may publish is the operator's"
+        (rec,) = self._records(data)
+        assert rec["after"] == f"{repo}\nmain" and rec["actor"] == "lab kit (scripts: lab/sdn-laptop)"
+        r = self._init(data, tmp_path)
+        assert "code repository: lab9's is set before: kept" in r.stdout
+        assert len(self._records(data)) == 1
+
+    def test_with_no_repository_init_sets_nothing(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._init(data, tmp_path)
+        assert r.returncode == 0 and "(kit init makes it): not set" in r.stdout, r.stderr
+        assert "code_repository" not in self._setting(data) and self._records(data) == []
+
+
 #: The operator's own values, planted before init or repin runs again: each must survive.
 OPERATOR = {"netbox_url": "http://[::1]:8101", "netbox_auth_scheme": "Token",
             "heal_mode": "dry_run"}

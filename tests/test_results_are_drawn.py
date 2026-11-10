@@ -288,6 +288,12 @@ PAGE_RECORD = {
     "sdn_v2.apps_publish_confirm": ("templates/v2/_sdn_app_publish.html",
                                     ("p.state == 'published'", "p.reviewer", "p.content_sha256"),
                                     "sdn_v2.apps"),
+    # The operator's decision of 2026-11-10 (board authoring-from-words D and F): the Draft's
+    # commit in place of its card (the commit, the base, the folder, whether it registered),
+    # read again on SDN › Apps as the new app's Draft row.
+    "sdn_v2.apps_draft_confirm": ("templates/v2/_sdn_app_draft.html",
+                                  ("d.state == 'added'", "d.commit", "d.registered"),
+                                  "sdn_v2.apps"),
     "sdn_v2.export_confirm": ("templates/v2/_sdn_export.html",
                               ("x.state_card == 'committed'", "x.commit", "x.changes"),
                               "v2.history_page"),

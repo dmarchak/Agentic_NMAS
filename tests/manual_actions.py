@@ -117,6 +117,15 @@ NOT_AN_OPERATION = {
                                    "committed export; nothing is committed",
     ("_sdn_export.html", "Cancel"): "leaves the preview by drawing the card at rest again; "
                                     "nothing is committed",
+    # The operator's decision of 2026-11-10 (board authoring-from-words F), SDN › Apps' Add an
+    # app as a Draft…: links that draw the card again or navigate.
+    ("_sdn_app_draft.html", "btn"): ("Cancel or Close (one macro): draws the control at rest "
+                                     "again, a read of the setting; nothing is added"),
+    ("_sdn_app_draft.html", "Open 's page"): ("opens the new app's page on SDN › Apps, where "
+                                              "its Draft row offers Run its tests, a read"),
+    ("_sdn_app_draft.html", "Open the Code repository's card"): (
+        "opens Settings › the network › Network at the Code repository card, where Fetch now "
+        "is, a read"),
     # P6, SDN › Apps (board controller-app-deploy): links that navigate or save a record.
     ("_sdn_app_deploy.html", "Back to Apps"): "opens SDN › Apps again, a read; nothing is sent",
     ("_sdn_app_deploy.html", "Cancel"): "leaves the plan by opening SDN › Apps again; nothing "

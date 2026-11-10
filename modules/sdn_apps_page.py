@@ -227,7 +227,7 @@ def app_page(network: str, ctl: dict, registered: dict, app: str, chosen: str = 
 
 def apps_view(network: str, args=None) -> dict:
     """The Apps tab's region: ``g`` for `v2/_sdn_apps.html`."""
-    from modules.apps import deploy_op
+    from modules.apps import deploy_op, draft_write
     from modules.nsot import export_op
 
     args = args or {}
@@ -243,6 +243,8 @@ def apps_view(network: str, args=None) -> dict:
                     "fetched_at": repo.get("fetched_at", "")},
            # Board nsot-export, artboards A and B: the committed export, from its history.
            "export": dict(export_op.last(network), state_card="rest"),
+           # Board authoring-from-words F: Add an app as a Draft… at rest (the setting only).
+           "draft": draft_write.control(network),
            "controllers": [], "app": None, "receipt": None}
     if listed.get("state") != "ok":
         return out

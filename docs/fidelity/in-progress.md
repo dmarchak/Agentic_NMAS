@@ -41,8 +41,13 @@ Compared again 2026-10-28 ~11:2x UTC, for base.html alone: the AI chip's mark re
 `ai-chip-mark` (the same rules; `ai-mark` is the AI control mark's, and the two had collided)
 and its details given `data-keep="ai-spend"` (C472's rule). The shots taken again
 (in-progress-*, ai-chip-*), nothing in In progress moved.
+Hashed again 2026-11-10 for base.html alone: one more deferred script, `js/nmas_draft.js` (SDN
+› Apps' Add an app as a Draft…, which sends a chosen folder's files with their paths), loaded
+after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In progress moves;
+compared by reading the diff, with no new shot (the templates then hashed
+`41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4`
+Templates sha256: `91825ece62deac298aab68538f922efbd1804a937f050db1604671b3cbf75cef`
 
 **Compared again 2026-11-03 ~01:3x UTC, P7's top bar measured** (test_v2_layout_in_a_browser's
 top bar at 320 to 1280 px, every item at its widest): with the word, Assistant ran the bar 64 px

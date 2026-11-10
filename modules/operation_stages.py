@@ -295,6 +295,13 @@ STAGES = {
     # and the review policy; kept with the version's record, corrected forward by a new version.
     "sdn_v2.apps_publish_confirm": Stages(
         "sdn_v2.apps_publish_preview", "hash", NO_DEVICE, FORWARD, "modules.coderepo.publish"),
+    # The operator's decision of 2026-11-10 (board authoring-from-words D and F): a new app
+    # folder added to the code repository as a Draft, bound to the previewed commit's hash;
+    # verified by the fetch that registers it; the write kept in the code repository's record.
+    "sdn_v2.apps_draft_confirm": Stages(
+        "sdn_v2.apps_draft_preview", "hash", "modules.apps.draft_write._register",
+        "n/a: none: a new folder only, the push is fast-forward only; nothing to undo on a "
+        "refusal", "modules.apps.draft_write._record"),
     # C718: Decline… and Undo decline…, one device's intent only.
     "v2.decline_confirm": Stages(
         "v2.decline_card", "hash", NO_DEVICE,
@@ -537,6 +544,9 @@ HISTORY = {
     # C2854: a version's test run and its publication, kept with its record in the copy's record.
     "sdn_v2.apps_version_test": NOT_A_DEVICE,
     "sdn_v2.apps_publish_confirm": NOT_A_DEVICE,
+    # The operator's decision of 2026-11-10: a Draft added, kept in the code repository's
+    # record (who, when, the base, the commit, each file's hash), never one device's.
+    "sdn_v2.apps_draft_confirm": NOT_A_DEVICE,
     # Heal to intent's policy (board H, H1 and H9): each kept in a settings record with who,
     # when and why (the network's, or the installation's for the kill switch); none is one
     # device's record.

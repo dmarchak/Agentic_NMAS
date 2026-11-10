@@ -71,8 +71,8 @@ were integrated on main together).
 | X: the registry's notices | code-repository E: No app version can be listed (the registry's own words) and the folders not registered, each with Open the code repository's card | the same | **same** |
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html
-Templates sha256: `94c428ab196518687ff4258e4c5f6b8109a94c9096d27a844efafc018ed3904d`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html
+Templates sha256: `d5029510ce1c9ce2095a4056a92cfec6258ca1927d0231b91fe3079febb97ef8`
 Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
 publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)
@@ -96,6 +96,23 @@ it; the board draws it beside the search, and the trace is compared in docs/fide
 "The SDN trace (board D, sdn-trace.html)". Nothing else moves. Compared by reading the template
 against artboard A, with no new shot (the templates then hashed
 `3335260fc1f3d0be28248bba24d7f7d52847dfa283cb4c94d7f49396bccae9fc`, after C2854's Publish).
+Hashed again 2026-11-10 for the operator's decision of 2026-11-10 (board authoring-from-words,
+artboards D and F, revised and self-signed, docs/STANDING_APPROVAL_LOG.md "I-2 W 2"):
+`_sdn_apps.html` includes, under the NSOT export card, `_sdn_app_draft.html` (new, in the
+compared list): Add an app as a Draft… at rest with its (i) and where it adds to (or drawn
+disabled, its reason beside it, for an https location or none set); the folder picker with
+Preview adding it and Cancel; the preview (To, On top of, The folder, Files with each path,
+bytes and sha256, The commit, Author, Then) with Add <name> as a Draft and Cancel and the hash
+it is bound to; a refusal with Choose the folder again and Close; the result, registered (Open
+<name>'s page) or not yet (Open the Code repository's card), with Close. Compared by reading
+the template against artboards D and F, region by region, with no new shot (the board-shot
+harness shoots pages, and the card's states are drawn by a click; tests/test_draft_write.py
+and tests/v2_context.py draw each). Every region is the same but two: F draws the picker's
+button as "Choose folder…" with the folder's name beside it, and the built card draws the
+browser's own file input, whose words are the browser's (the board's note says so: same); D's
+preview lists files with " · " between path, bytes and hash, and the built card draws them as a
+table, as the Apps tab's tables are (a deviation of layout only, no control or field moves;
+log: I-2 W 3). Nothing else on the tab moves.
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

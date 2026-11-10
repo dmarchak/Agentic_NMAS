@@ -6,8 +6,9 @@ never the checkout's. Prints names and states, never a value that could be a sec
     kit_settings.py init                  the installation's settings that are missing
                                           (installation_kind laptop_kit among them; a stored
                                           one is kept), the lab9 network if missing, made the
-                                          installation's current one if none was set; run
-                                          again by `kit repin`
+                                          installation's current one if none was set, and
+                                          lab9's code repository (the kit's bare one) if
+                                          none is set; run again by `kit repin`
     kit_settings.py exception-on UNTIL [--reveal]
                                           the identity exception, recorded in History;
                                           --reveal opens reveal too, for the S1 sitting only
@@ -128,6 +129,7 @@ def init() -> None:
     else:
         network_admin.create(NETWORK, pv["fingerprint"], ACTOR, VERIFIED)
         print(f"network {NETWORK}: created, no git remote")
+    code_repository()
     if current:
         print(f"network {NETWORK}: the installation's current network is {current}, set "
               "before: kept")
@@ -140,6 +142,45 @@ def init() -> None:
                  f"{got.get('record_error')}")
     print(f"network {NETWORK}: the installation's current network"
           + (" (recorded in History)" if got.get("changed") else " already"))
+
+
+def code_repository() -> None:
+    """lab9's code repository: the kit's own bare repository, ``$KIT_HOME/code/lab9.git`` on
+    branch main, which `kit init` makes empty (the operator's decision of 2026-11-10: Drafts
+    are added through Mercury, SDN › Apps' Add an app as a Draft…, never committed by hand).
+    Set through Mercury's per-network settings write only when lab9 has none (a location set
+    before is kept), and recorded in lab9's settings record as the Code repository card's Save
+    records it. Who may publish (`code_review`) is never set here: that choice is the
+    operator's, on the card."""
+    from modules import coderepo
+    from modules import list_settings as L
+
+    home = os.environ.get("KIT_HOME") or os.path.dirname(DATA)
+    path = os.path.join(home, "code", f"{NETWORK}.git")
+    held = coderepo.location(NETWORK)
+    if held["location"]:
+        print(f"code repository: {NETWORK}'s is set before: kept")
+        return
+    if held["state"] == "unreadable":
+        sys.exit(f"kit_settings: {held['error']}: the code repository is not set")
+    if not os.path.isfile(os.path.join(path, "HEAD")):
+        print(f"code repository: no repository at {path} (kit init makes it): not set")
+        return
+    if not coderepo.parse_location(path)["ok"]:
+        sys.exit(f"kit_settings: {coderepo.parse_location(path)['error']}")
+    got = L.write(NETWORK, {coderepo.LOCATION_KEY: path, coderepo.BRANCH_KEY: "main"},
+                  actor=ACTOR)
+    if not got.get("ok"):
+        sys.exit(f"kit_settings: the code repository was refused: {got.get('error')}")
+    rec = L._record(NETWORK, {"kind": "code_repository", "group": coderepo.LOCATION_KEY,
+                              "written": [coderepo.LOCATION_KEY, coderepo.BRANCH_KEY],
+                              "before": "\n", "after": f"{path}\nmain", "actor": ACTOR,
+                              "actor_verified": VERIFIED})
+    if not rec.get("recorded"):
+        sys.exit(f"kit_settings: the code repository was set and NOT recorded: "
+                 f"{rec.get('record_error')}")
+    print(f"code repository: {NETWORK}'s set to {path}, branch main (recorded); who may "
+          "publish is the operator's, on its card")
 
 
 def _gates() -> dict:

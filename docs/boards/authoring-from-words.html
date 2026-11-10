@@ -7,10 +7,15 @@
 <!-- Board for authoring an app or a job from plain words (I-1 jobs, I-2 apps; the operator's
      replan of 2026-11-09, item 5: "the authoring-from-words board line (board only)"): A, the
      form on SDN › Apps; B, the draft and the gate's read-only checks; C, its tests in the
-     container harness; D, the download and what follows; E, refusals. Drawn by the agent under
-     the Phase 7 operating mode, which counts it as signed off (one line in
-     docs/STANDING_APPROVAL_LOG.md, "I-2 W 1"). Nothing of it is built. Self-contained: no
-     external fonts or scripts. Example names and documentation values only. -->
+     container harness; D, adding it to the code repository as a Draft; E, refusals; F, SDN ›
+     Apps' Add an app as a Draft… for a folder a person uploads. Drawn by the agent under the
+     Phase 7 operating mode, which counts it as signed off (docs/STANDING_APPROVAL_LOG.md,
+     "I-2 W 1"; revised for the operator's decision of 2026-11-10, "I-2 W 2": "build a write
+     path that can ONLY create Drafts in the code repository (preview, confirm, recorded);
+     Publish stays the gate"). A to E are not built; F and D's write path are
+     (modules/apps/draft_write.py, templates/v2/_sdn_app_draft.html), and the AI draft of A to
+     C will hand its files to the same write path. Self-contained: no external fonts or
+     scripts. Example names and documentation values only. -->
 <style>
 :root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
 --accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
@@ -49,7 +54,7 @@ ul.tight{margin:0;padding-left:18px;font-size:13px}
 
 <div class="boardhead">
 <h1>An app or a job from your words (I-1, I-2): board for sign-off</h1>
-<div>Five artboards at 1440. You describe the app or job in plain words; Mercury's assistant drafts its spec card (summary and examples), its manifest, its code and its tests, as one recorded AI call (a person's, capped, on the network's AI pin); Mercury then runs the gate's read-only checks on the draft and, when you ask, its own tests in the container harness. Nothing is written to the code repository: Mercury has no write path to it (the code repository's design), so you take the draft as a folder and commit it there; Fetch now registers it as a Draft, and Publish follows (board app-publish). Yellow dashed notes are annotations; every other link and control is one the built screen has. Example names and documentation values only.</div>
+<div>Six artboards at 1440. You describe the app or job in plain words; Mercury's assistant drafts its spec card (summary and examples), its manifest, its code and its tests, as one recorded AI call (a person's, capped, on the network's AI pin); Mercury then runs the gate's read-only checks on the draft and, when you ask, its own tests in the container harness. Then Mercury adds it to the network's code repository as a Draft through its one write path there, which can ONLY add a new app folder: the exact commit previewed, confirmed by its hash as you, pushed fast-forward only, recorded and fetched, so it registers as a Draft (D). The same write path takes a folder you upload on SDN › Apps (F). Publish stays the gate: a person's review and a passing test run at the version's hash (board app-publish). Yellow dashed notes are annotations; every other link and control is one the built screen has. Example names and documentation values only.</div>
 </div>
 
 <!-- ============================================================ A -->
@@ -86,7 +91,7 @@ ul.tight{margin:0;padding-left:18px;font-size:13px}
 </div>
 <details open><summary class="small">watch_logic.py</summary><pre class="mono small">def busy(ports, limit=20):
     return sorted(p for p, n in ports.items() if n &gt; limit)</pre></details>
-<div><button class="btn">Run its tests</button> <button class="btn primary">Download the draft</button> <button class="btn">Draft it again…</button> <span class="how">i</span></div>
+<div><button class="btn">Run its tests</button> <button class="btn primary">Add it to the code repository as a Draft…</button> <button class="btn">Draft it again…</button> <span class="how">i</span></div>
 <div class="callout">Each file opens in place; the AI call's record (History › AI calls) and its Right/Wrong marks are under the draft, as under every AI answer.</div>
 </div>
 </main></div>
@@ -97,16 +102,36 @@ ul.tight{margin:0;padding-left:18px;font-size:13px}
 <nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
 <main>
 <div class="notice ok"><b>4 passed</b> on Python 3.5 in the container harness, at the draft's hash sha256:7c1e…a2f0. A draft's run is not kept as a version's: Publish asks for a run of the registered version.</div>
-<div class="notice bad"><b>Its tests did not pass</b>: 3 passed, 1 failed. <details open><summary>The output's last lines</summary><pre class="mono small">FAILED tests/test_watch_logic.py::test_a_port_that_goes_quiet_again</pre></details> Draft it again… with what failed added to your words, or change the files after you download them.</div>
+<div class="notice bad"><b>Its tests did not pass</b>: 3 passed, 1 failed. <details open><summary>The output's last lines</summary><pre class="mono small">FAILED tests/test_watch_logic.py::test_a_port_that_goes_quiet_again</pre></details> Draft it again… with what failed added to your words, before it is added to the code repository: once its folder is there, Mercury never changes it (this write path adds new app folders only).</div>
 </main></div>
 
 <!-- ============================================================ D -->
-<div class="artlabel"><strong>D · Download the draft: what you do next</strong>.</div>
+<div class="artlabel"><strong>D · Add it to the code repository as a Draft</strong>: the preview of the one commit, its confirm, and the result, in the draft's place. The same card as F's, fed the draft's files.</div>
 <div class="art">
 <nav class="side"><div class="brand">Mercury</div><a href="#" class="on">SDN</a></nav>
 <main>
-<div class="notice ok"><b>Downloaded dhcp_watch-0.1.0.tar</b> (5 files). Put it at <span class="mono">apps/dhcp_watch/</span> in example-net's code repository and commit it; then <a href="#">Fetch now</a> on the Code repository card registers it as a Draft, and its row on SDN › Apps offers Run its tests and Review and publish….</div>
-<div class="callout">Decision for the operator (recorded with this board): Mercury writes nothing to the code repository today. The alternative, Mercury committing the draft to a branch of it, is a new write path needing a credential the code repository's design does not give Mercury. The board draws the download.</div>
+<div class="card">
+<div class="head"><h2 class="grow">Add dhcp_watch 0.1.0 as a Draft</h2><span class="chip warn">a new folder</span><span class="how">i</span></div>
+<div class="kv">
+<div>To</div><div><span class="mono">/srv/code/example-net.git</span>, branch main</div>
+<div>On top of</div><div>commit <span class="mono">4b2c1d0</span> <span class="faint">(the branch's commit, read now; pushed fast-forward only)</span></div>
+<div>The folder</div><div><span class="mono">apps/dhcp_watch/</span> <span class="faint">(not at that commit: a new app folder, nothing else changes)</span></div>
+<div>Files</div><div>5 files, 3,174 bytes<br><span class="mono small">apps/dhcp_watch/manifest.yml · 612 · 9f3a…11c0<br>apps/dhcp_watch/spec.yml · 701 · 2b7e…90ad<br>apps/dhcp_watch/dhcp_watch.py · 1,104 · c41d…7e02<br>apps/dhcp_watch/watch_logic.py · 288 · 51aa…e3f9<br>apps/dhcp_watch/tests/test_watch_logic.py · 469 · 0d6c…44b1</span></div>
+<div>The commit</div><div><pre class="mono small">Add dhcp_watch 0.1.0 as a Draft
+
+5 files under apps/dhcp_watch/, added through Mercury's Add an app as a Draft (…)
+
+Source: draft-write
+Actor: operator@example.org
+Actor-Verified: access</pre></div>
+<div>Author</div><div>operator@example.org <span class="faint">(you, verified: the commit's author and committer)</span></div>
+<div>Then</div><div>Mercury fetches the repository, so dhcp_watch 0.1.0 registers as a Draft; its row offers Run its tests and Review and publish…</div>
+</div>
+<div><button class="btn primary">Add dhcp_watch as a Draft</button> <span class="how">i</span> <a class="btn" href="#">Cancel</a> <span class="faint small">Bound to 7c1e…a2f0: the base commit, the files, the message and you</span></div>
+</div>
+<div class="notice ok"><b>Committed e81f2a9</b> on main of <span class="mono">/srv/code/example-net.git</span>, on top of 4b2c1d0: <span class="mono">apps/dhcp_watch/</span>, 5 files, as operator@example.org. Fetched and registered as a Draft: open its page to Run its tests, then Review and publish…. <a class="btn primary" href="#">Open dhcp_watch's page</a> <a class="btn" href="#">Close</a> <span class="how">i</span></div>
+<div class="notice warn"><b>Committed e81f2a9</b> on main … It is not registered yet: the fetch after it failed: git fetch of /srv/code/example-net.git (refs/heads/main) failed: … Fetch now on the Code repository card registers it. <a class="btn primary" href="#">Open the Code repository's card</a> <a class="btn" href="#">Close</a> <span class="how">i</span></div>
+<div class="callout">The operator's decision of 2026-11-10: "build a write path that can ONLY create Drafts in the code repository (preview, confirm, recorded); Publish stays the gate (review + passing run at that hash). My rule is that everything goes through Mercury, so I don't commit drafts by hand." The commit is built in a throwaway repository (never Mercury's copy, never a working tree), checked to add only the folder's files, pushed with no force, kept in the code repository's record (who, when, base, commit, each file's hash), then fetched. A Draft is a new folder only; a folder already there is refused (E, F).</div>
 </main></div>
 
 <!-- ============================================================ E -->
@@ -117,6 +142,34 @@ ul.tight{margin:0;padding-left:18px;font-size:13px}
 <div class="notice bad"><b>Not drafted</b>: the code repository already holds apps/dhcp_watch/ (registered at 4b2c1d0): choose another name, or change that app in the repository.</div>
 <div class="notice bad"><b>Not drafted</b>: hosted AI is off until it is allowed on Settings › Installation › AI (hosted).</div>
 <div class="notice warn"><b>The draft fails the gate's static check</b>: watch_logic.py line 4 imports socket; an app reaches the network only by mercury_app.egress. Draft it again… says what to avoid.</div>
+<div class="notice bad"><b>Not added</b>: the base commit moved since the preview (previewed 4b2c1d0a9e31, now 6f0e2b1c77d4 on main): nothing was added; look at it again. <a class="btn primary" href="#">Choose the folder again</a> <a class="btn" href="#">Close</a></div>
+</main></div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · SDN › Apps, Add an app as a Draft… (a folder)</strong>: the control at rest under the NSOT export card, its folder picker, the preview (D's card, from the folder's files), the result (D's), and two refusals.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#">Devices</a><a href="#" class="on">SDN</a><a href="#">Settings</a></nav>
+<main>
+<div class="small muted">SDN › Apps</div>
+<h1 class="page">Apps <span class="how">i</span></h1>
+<div class="card"><div class="head"><h2 class="grow">NSOT export</h2><span class="chip ok">committed</span></div><div class="faint small">(the NSOT export card, as built)</div></div>
+<h3>At rest</h3>
+<div class="card"><div><a class="btn" href="#">Add an app as a Draft…</a> <span class="how">i</span> <span class="faint small">to <span class="mono">/srv/code/example-net.git</span>, branch main</span></div></div>
+<h3>The picker</h3>
+<div class="card">
+<div class="head"><h2 class="grow">Add an app as a Draft</h2><span class="how">i</span></div>
+<p class="small">Choose the app's folder: its <span class="mono">manifest.yml</span> at its top, and the folder's name the app's. Mercury previews the one commit that adds it as <span class="mono">apps/&lt;name&gt;/</span> to <span class="mono">/srv/code/example-net.git</span>, branch main; nothing is written until you confirm. A Draft is a new folder only; Publish stays a person's review and a passing test run.</p>
+<div class="form"><div>The app's folder</div><div><button class="btn">Choose folder…</button> <span class="faint small">dhcp_watch (5 files)</span></div></div>
+<div><button class="btn primary">Preview adding it</button> <span class="how">i</span> <a class="btn" href="#">Cancel</a></div>
+<p class="faint small">At most 64 files, 128 KiB a file and 256 KiB in all, each UTF-8 text.</p>
+<div class="callout">The picker is the browser's own folder chooser (<span class="mono">webkitdirectory</span>); its button's words are the browser's. Mercury's script sends each file with its path inside the folder; the folder's name is the app's. The preview opens in the card's place: D's card, the same rows and the same confirm, Add dhcp_watch as a Draft.</div>
+</div>
+<h3>The result</h3>
+<div class="notice ok"><b>dhcp_watch 0.1.0 added as a Draft</b> <span class="chip ok">registered</span> · Committed e81f2a9 on main, on top of 4b2c1d0: apps/dhcp_watch/, 5 files, as operator@example.org. Fetched and registered as a Draft. <a class="btn primary" href="#">Open dhcp_watch's page</a> <a class="btn" href="#">Close</a> <span class="how">i</span></div>
+<h3>Refusals, in the card's place</h3>
+<div class="notice bad"><b>Not added</b>: apps/of_versions/ already exists at 4b2c1d0a9e31 on main (a tree): a Draft is a new app folder only, never a change to one already there; choose another name, or change that app in the repository. <a class="btn" href="#">Choose the folder again</a> <a class="btn" href="#">Close</a> <span class="how">i</span></div>
+<div class="card"><div><button class="btn" disabled>Add an app as a Draft…</button> <span class="how">i</span> <span class="faint small">https://code.example.org/example-net.git is an https location, and Mercury adds a Draft only to a local path: a push over https needs a push credential Mercury does not hold</span></div></div>
+<div class="callout">An https location is refused before a folder is chosen: the control at rest is drawn disabled with the reason beside it (and on its hover), and the preview and the confirm refuse it again in the same words, should either be asked.</div>
 </main></div>
 
 </body>

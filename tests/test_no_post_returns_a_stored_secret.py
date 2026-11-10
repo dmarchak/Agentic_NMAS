@@ -79,6 +79,10 @@ def _bodies(v):
         "sdn_v2.apps_publish_preview": (400, ("form", {"list": LIST}),
                                         "the form names no app version: refused before anything "
                                         "is read"),
+        # The operator's decision of 2026-11-10: Add an app as a Draft…'s preview.
+        "sdn_v2.apps_draft_preview": (400, ("form", {"list": LIST}),
+                                      "no folder was chosen: refused before the repository is "
+                                      "read"),
         # P6's SDN › Apps preview left this population at C2765: it reads the controller host
         # through the reads engine, so it is gated as a read (a person), not as not_device.
         "device_v2.reload_start": (400, ("form", {}),

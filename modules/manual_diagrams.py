@@ -1712,6 +1712,37 @@ def code_repository():
     ])
 
 
+def draft_write():
+    return svg(470, (
+        "Adding an app as a Draft: you choose the app's folder; the preview checks every file "
+        "and reads the branch's commit from the code repository now, into a throwaway "
+        "repository removed again, and shows the exact commit and its hash; you confirm, bound "
+        "to that hash; the program is made again and refused if the base commit or the files "
+        "moved; the commit is built in a throwaway repository and pushed fast-forward only; the "
+        "write is recorded, then the repository is fetched so the new folder registers as a "
+        "Draft. Nothing already in the repository is changed, and no device or controller is "
+        "contacted."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE CODE REPOSITORY"),
+        person(14, 44, 186, 30, "You choose the app's folder"), num(14, 44, 1),
+        doc("box", 14, 84, 186, 36, "The preview", "the commit and its hash"), num(14, 84, 2),
+        repo(232, 84, 156, 44, "Its branch", "read now, fast-forward only"),
+        arrow("read", 230, 102, 204, 102),
+        person(14, 132, 186, 30, "You confirm, bound to its hash"), num(14, 132, 3),
+        band(198, 166, "The confirm"),
+        doc("box", 14, 178, 186, 34, "Made again", "a moved base or files: refused"),
+        num(14, 178, 4),
+        repo(14, 222, 186, 40, "A throwaway repository", "one commit; removed after"),
+        num(14, 222, 5),
+        arrow("rec", 202, 242, 228, 242),
+        repo(232, 222, 156, 44, "apps/<name>/", "a new folder only"),
+        store(14, 276, 186, 36, "The code repository's record", "who, when, the commit"),
+        num(14, 276, 6),
+        doc("box", 14, 322, 186, 34, "Fetched", "registered as a Draft"), num(14, 322, 7),
+        t(14, 380, "Publish stays a review and a passing run.", "sm"),
+        nosend(310, 420, ("no device", "no controller")),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -2098,6 +2129,7 @@ DIAGRAMS = {
     "nsot-export": nsot_export,
     "app-publish": app_publish,
     "code-repository": code_repository,
+    "draft-write": draft_write,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

@@ -6,7 +6,10 @@ goldens and intent. Mercury never shares a repository, a copy or a reader betwee
 set where the code repository is, and fetch it, on its card: Settings › the network › Network ›
 **Code repository**. What a fetch registers is listed on [SDN › Apps](sdn#apps).
 
-How code gets into the repository is yours: Mercury reads it and never writes to it.
+A fetch only reads the repository. Mercury writes to it in one way only: **Add an app as a
+Draft…** on SDN › Apps adds a new app folder as one commit, previewed and confirmed by you, and
+only to a repository at a local path ([Add an app to the code repository as a
+Draft](draft-write)). Every other change to the repository is yours.
 
 ![A network's code repository: you set where its jobs and apps live, a local path or an https URL and a branch; Fetch now fetches that branch into Mercury's own read-only copy, with only git's file and https transports, no prompt and no hooks, bounded; each apps folder at the fetched commit is registered as a Draft, pinned by the location, the commit and its content hash, read from git's blobs and never a working tree; the fetch is recorded, a failed one with why, and SDN › Apps lists what is registered. Nothing is written to the repository, and the configuration repository is never read.](diagrams/code-repository.svg)
 

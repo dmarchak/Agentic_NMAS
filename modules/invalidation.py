@@ -532,6 +532,10 @@ DECLARED = {
     "sdn_v2.apps_version_test": ("code_repo",),
     "sdn_v2.apps_publish_preview": Nothing("reads a registered app version's record and draws what Publish would record; the confirm publishes"),
     "sdn_v2.apps_publish_confirm": ("code_repo",),
+    # The operator's decision of 2026-11-10: a Draft added to the code repository, recorded in
+    # its record and fetched, so the card and SDN › Apps read again.
+    "sdn_v2.apps_draft_preview": Nothing("checks an uploaded folder and reads the code repository's branch now, drawing the commit Add would make; the confirm adds it"),
+    "sdn_v2.apps_draft_confirm": ("code_repo",),
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),

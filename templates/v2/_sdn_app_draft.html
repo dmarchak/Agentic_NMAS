@@ -1,0 +1,79 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- SDN › Apps, Add an app as a Draft… (the operator's decision of 2026-11-10; board
+    docs/boards/authoring-from-words.html, artboards D and F, self-signed under the Phase 7
+    mode, docs/STANDING_APPROVAL_LOG.md "I-2 W 2"): at rest, the control (`rest`); the folder
+    picker (`form`); the preview of the one commit, drawn in the card's place (`preview`); a
+    refusal (`refused`); the result (`added`). modules/apps/draft_write.py builds `d`; the
+    picker's files are sent with their paths by static/js/nmas_draft.js. `data-holds-live`
+    while a form, a preview or an answer is open, so a live redraw never takes it away. -#}
+{%- set net = d.network -%}
+{%- set back = url_for('sdn_v2.apps', list=net) -%}
+{%- set rest_get = url_for('sdn_v2.apps_draft_card', list=net) -%}
+{%- set form_get = url_for('sdn_v2.apps_draft_card', list=net, open='form') -%}
+{%- macro short(sha) %}<span class="mono" title="{{ sha }}">{{ sha[:7] }}</span>{% endmacro -%}
+{%- macro cancel(words='Cancel') %}<a class="btn" href="{{ back }}" hx-get="{{ rest_get }}" hx-target="closest .apps-draft" hx-swap="outerHTML">{{ words }}</a>{% endmacro -%}
+
+{%- if d.state == 'rest' %}
+<section class="card apps-draft apps-draft-rest" id="apps-draft" aria-label="Add an app as a Draft">
+  <div class="apps-acts">
+    {%- if d.may %}
+    <a class="btn" href="{{ back }}" hx-get="{{ form_get }}" hx-target="closest .apps-draft" hx-swap="outerHTML" data-op="draft-write" title="Choose an app's folder; Mercury previews the one commit that adds it to {{ net }}'s code repository">Add an app as a Draft…</a>{{ how('draft-write') }}
+    {%- else %}
+    <button class="btn" type="button" disabled aria-disabled="true" data-op="draft-write" title="{{ d.why }}" data-refused="Not available: {{ d.why }}">Add an app as a Draft…</button>{{ how('draft-write') }}
+    {%- endif %}
+    <span class="faint small">{% if d.location %}to <span class="mono">{{ d.location }}</span>{% if d.branch %}, branch {{ d.branch }}{% endif %}{% else %}{{ d.why }}{% endif %}</span>
+  </div>
+</section>
+
+{%- elif d.state == 'form' %}
+<section class="card sdn-op apps-draft" id="apps-draft" data-holds-live="draft" aria-labelledby="h-apps-draft">
+  <div class="sdn-ctl-hd"><h2 id="h-apps-draft">Add an app as a Draft</h2>{{ how('draft-write') }}</div>
+  <p class="small">Choose the app's folder: its <span class="mono">manifest.yml</span> at its top, and the folder's name the app's. Mercury previews the one commit that adds it as <span class="mono">apps/&lt;name&gt;/</span> to <span class="mono">{{ d.location }}</span>{% if d.branch %}, branch {{ d.branch }}{% else %}, its default branch{% endif %}; nothing is written until you confirm. A Draft is a new folder only; Publish stays a person's review and a passing test run.</p>
+  <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_draft_preview') }}" hx-encoding="multipart/form-data" hx-target="closest .apps-draft" hx-swap="outerHTML" data-draft-folder>
+    <input type="hidden" name="list" value="{{ net }}">
+    <label class="set-field"><span class="set-label">The app's folder</span><input type="file" name="file" webkitdirectory multiple required></label>
+    <span class="op-act"><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="draft-write" title="Reads the repository now and shows the commit; nothing is written until you confirm"><span class="op-idle">Preview adding it</span><span class="op-busy">Reading the repository…</span></button>{{ how('draft-write', 'preview', compact=True, op='adding a Draft') }}</span>
+    {{ cancel() }}
+  </form>
+  <p class="faint small">At most {{ d.caps.files }} files, {{ (d.caps.file_bytes / 1024) | int }} KiB a file and {{ (d.caps.total_bytes / 1024) | int }} KiB in all, each UTF-8 text.</p>
+</section>
+
+{%- elif d.state == 'preview' %}
+<section class="card sdn-op apps-draft" id="apps-draft" data-holds-live="review" aria-labelledby="h-apps-draft">
+  <div class="sdn-ctl-hd"><h2 id="h-apps-draft">Add {{ d.name }} {{ d.version }} as a Draft</h2>{{ badge('a new folder', 'warn') }}{{ how('draft-write', 'preview') }}</div>
+  <dl class="sdn-kv">
+    <dt>To</dt><dd><span class="mono">{{ d.location }}</span>, branch {{ d.branch }}{% if d.branch_from == 'default' %} <span class="faint">(its default branch: the setting names none)</span>{% endif %}</dd>
+    <dt>On top of</dt><dd>{% if d.base %}commit {{ short(d.base) }} <span class="faint">(the branch's commit, read now; pushed fast-forward only)</span>{% else %}nothing: the repository is empty, so this is its first commit{% endif %}</dd>
+    <dt>The folder</dt><dd><span class="mono">{{ d.folder }}</span> <span class="faint">(not at that commit: a new app folder, nothing else changes)</span></dd>
+    <dt>Files</dt><dd>{{ d.files | length }} file{{ 's' if d.files | length != 1 }}, {{ d.total }} bytes
+      <div class="table-wrap"><table class="table apps-draft-files">
+        <thead><tr><th scope="col">Path</th><th scope="col">Bytes</th><th scope="col">sha256</th></tr></thead>
+        <tbody>{% for f in d.files %}<tr><td class="mono small" data-l="Path">{{ f.path }}</td><td data-l="Bytes">{{ f.size }}</td><td class="mono small" data-l="sha256" title="{{ f.sha256 }}">{{ f.sha256[:4] }}…{{ f.sha256[-4:] }}</td></tr>{% endfor %}</tbody>
+      </table></div></dd>
+    <dt>The commit</dt><dd><pre class="mono small apps-dropin">{{ d.message }}</pre></dd>
+    <dt>Author</dt><dd>{{ d.author }} <span class="faint">(you, verified: the commit's author and committer)</span></dd>
+    <dt>Then</dt><dd>Mercury fetches the repository, so {{ d.name }} {{ d.version }} registers as a Draft; its row offers Run its tests and Review and publish…</dd>
+  </dl>
+  <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_draft_confirm') }}" hx-target="closest .apps-draft" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="name" value="{{ d.name }}"><input type="hidden" name="hash" value="{{ d.hash }}"><input type="hidden" name="base" value="{{ d.base }}"><input type="hidden" name="files_sha" value="{{ d.files_sha }}">
+    {%- for f in d.carried %}<input type="hidden" name="path" value="{{ f.rel }}"><input type="hidden" name="content" value="{{ f.b64 }}">{% endfor %}
+    <span class="op-act"><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="draft-write"{{ gate('approve') }}><span class="op-idle">Add {{ d.name }} as a Draft</span><span class="op-busy">Committing and pushing…</span></button>{{ how('draft-write', 'confirm', compact=True, op='adding a Draft') }}</span>
+    {{ cancel() }}
+    <span class="faint small">Bound to <span class="mono">{{ d.hash[:4] }}…{{ d.hash[-4:] }}</span>: the base commit, the files, the message and you</span>
+  </form>
+</section>
+
+{%- elif d.state == 'refused' %}
+<section class="card sdn-op apps-draft" id="apps-draft" data-holds-live="answer" aria-labelledby="h-apps-draft">
+  <div class="sdn-ctl-hd"><h2 id="h-apps-draft">Add an app as a Draft</h2>{{ badge('not added', 'danger') }}</div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not added:</strong> {{ d.error }}.</p></div>
+  <div class="apps-acts"><a class="btn{{ ' btn-primary' if d.moved }}" href="{{ back }}" hx-get="{{ form_get }}" hx-target="closest .apps-draft" hx-swap="outerHTML">Choose the folder again</a>{{ cancel('Close') }}{{ how('draft-write', 'refusals') }}</div>
+</section>
+
+{%- elif d.state == 'added' %}
+<section class="card sdn-op apps-draft" id="apps-draft" data-holds-live="answer" aria-labelledby="h-apps-draft">
+  <div class="sdn-ctl-hd"><h2 id="h-apps-draft">{{ d.name }} {{ d.version }} added as a Draft</h2>{{ badge('registered' if d.registered else 'not registered yet', 'ok' if d.registered else 'warn') }}</div>
+  <div class="notice notice-{{ 'ok' if d.registered else 'warn' }}" role="status">{{ icon('tick' if d.registered else 'info', 16) }}<p><strong>Committed {{ short(d.commit) }}</strong> on {{ d.branch }} of <span class="mono">{{ d.location }}</span>{% if d.base %}, on top of {{ short(d.base) }}{% else %}, its first commit{% endif %}: <span class="mono">{{ d.folder }}</span>, {{ d.files | length }} file{{ 's' if d.files | length != 1 }}, as {{ d.by }}. {% if d.registered %}Fetched and registered as a Draft{% if d.fetched_past %} (the fetch found a newer commit on top){% endif %}: open its page to Run its tests, then Review and publish….{% else %}It is not registered yet: {{ d.register_error }}. Fetch now on the Code repository card registers it.{% endif %}</p></div>
+  <div class="apps-acts">{% if d.registered %}<a class="btn btn-primary" href="{{ url_for('sdn_v2.apps', list=net, app=d.name) }}">Open {{ d.name }}'s page</a>{% else %}<a class="btn btn-primary" href="{{ url_for('settings_v2.network', list_name=net, tab='network') }}#code-repo-card">Open the Code repository's card</a>{% endif %}{{ cancel('Close') }}{{ how('draft-write', 'register') }}</div>
+</section>
+{%- endif %}

@@ -18,6 +18,7 @@ A separate Mercury installation on the laptop:
 | Mercury's data | `~/nmas-sdn-lab/data/` (`NMAS_DATA_DIR`): its own settings, credential key and credentials | nothing is read from or written to the checkout's `data/` |
 | NetBox | Docker Compose, `lab/sdn-laptop/compose.yml`, project `nmas-sdn-lab-netbox`, on 127.0.0.1:8001 | its own volumes; its internal secrets generated owner-only in `~/nmas-sdn-lab/netbox/secrets.env`, never printed |
 | The network list | `lab9`, created by `kit init` | no git remote: `kit check` refuses one |
+| lab9's code repository | `~/nmas-sdn-lab/code/lab9.git`, bare and empty on branch `main`, made by `kit init` (and `kit repin`) when absent, and set as lab9's code repository when lab9 has none | apps reach it only through Mercury: SDN › Apps, **Add an app as a Draft…** (the operator's decision of 2026-11-10); who may publish is left to you, on the Code repository card |
 | The run | `~/nmas-sdn-lab/run/` (pid, log, the exception's expiry) | Mercury on 127.0.0.1:5080 only |
 
 `~/nmas-sdn-lab` is `KIT_HOME`; set `KIT_HOME` to move it.
@@ -85,7 +86,9 @@ token and auth scheme, the heal mode, anything stored) is kept. init says which 
 and which it kept, by name, never by value. lab9 is created only when missing, and made current
 only when no current network was set: a History record of one, or a registry naming a network
 other than the first run's Default. kit.env is written only by `kit init` when absent; repin
-changes its `PIN_SHA` alone.
+changes its `PIN_SHA` alone. lab9's code repository is set only when lab9 has none, recorded in
+its settings record as the card's Save records it; a location set before is kept, and the
+repository itself is never replaced, so the Drafts added to it stay.
 
 **Every step after the move is the new commit's (C2569).** The kit script is run from the
 worktree repin moves, and bash has already read the old commit's repin by then, so after the
