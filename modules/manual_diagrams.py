@@ -1459,8 +1459,9 @@ def history_export():
         "call the ledger recorded in the range, one row each, with a total per UTC day and per "
         "feature, the dollars the ledger's summed by day; the false-positive and failure log "
         "reads each network's SDN responses and flow operations, every analysis's planted-issue "
-        "sheet, its record of evaluation runs (the false-positive runs and the analyst "
-        "evaluations), the ledger's evaluation calls and the answers said wrong; every text is "
+        "sheet, its record of evaluation runs (the false-positive runs, the analyst evaluations "
+        "and the classification case recordings), the ledger's evaluation calls and the answers "
+        "said wrong; every text is "
         "masked on the way out, and the file, CSV or JSON, opens with its range, network, when "
         "and who. Nothing is written."), [
         lanes(20, 504, right="THE RECORDS"),

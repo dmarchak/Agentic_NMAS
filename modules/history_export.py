@@ -26,13 +26,16 @@ from each source in `FAILURE_SOURCES`:
   false-positive run (B3, `scripts/nmas-sdn-false-positives`, C2946) found on traffic a person
   declared normal, and each B4 evaluation run (`scripts/nmas-sdn-b4-eval`, C2943) that missed
   its case's planted issue, kept a false-positive finding, or answered a benign case as a
-  threat, per technique;
+  threat, per technique; and each run of each classify_threat case a recording
+  (`scripts/nmas-sdn-cases`, C2954) found a miss in, with the case file's expectation and what
+  was got;
 - each AI answer a person said was wrong (Was this right? No, `ai.feedback`), with its review.
-The other evaluation scripts' per-case misses (``nmas-sdn-cases`` and the other ``*-cases``
-scripts) are written only to their own report (``--out``), never to a store Mercury reads, so
-they are not here; each file says so (`NOT_RECORDED`). The sdn_classify normal-traffic runs'
-false positives are complete from the ledger: each call keeps its collection as its subject and
-its answer's ``threat_detected``, which is the run's own definition of one.
+The other evaluation scripts' per-case misses (``nmas-intent-cases``, ``nmas-heal-cases``,
+``nmas-nl-cases``, ``nmas-assistant-cases``) are written only to their own report (``--out``),
+never to a store Mercury reads, so they are not here; each file says so (`NOT_RECORDED`). The
+sdn_classify normal-traffic runs' false positives are complete from the ledger: each call keeps
+its collection as its subject and its answer's ``threat_detected``, which is the run's own
+definition of one.
 
 **Bounded:** a range is at most `MAX_DAYS` whole UTC days, refused naming its length; a file
 lists at most `MAX_ROWS` rows and says how many it left out, its totals still every row's.
@@ -90,6 +93,8 @@ KINDS = (
      "analyst evaluation false positives"),
     ("eval_benign_threat", "benign case an analyst evaluation answered as a threat",
      "benign cases analyst evaluations answered as a threat"),
+    ("eval_case_missed", "classification case a recording missed",
+     "classification cases recordings missed"),
     ("answer_wrong", "AI answer said wrong", "AI answers said wrong"),
 )
 KIND_WORDS = {k: one for k, one, _many in KINDS}
@@ -100,10 +105,11 @@ B4_TECHNIQUES = {"baseline": "without tools", "tools": "with the trace tool"}
 #: failure carrying one is a protected-flow refusal.
 PROTECTED_MARKS = ("C2379", "C2022")
 #: What no store Mercury reads holds, said in each failure file and on the page.
-NOT_RECORDED = ("the per-case misses of nmas-sdn-cases and the other *-cases scripts "
-                "(intent, heal, words, assistant) are written only to each script's own --out "
-                "report, so they are not here; attach that report beside this file. B3's "
-                "false-positive runs and B4's analyst evaluations are here")
+NOT_RECORDED = ("the per-case misses of nmas-intent-cases, nmas-heal-cases, nmas-nl-cases and "
+                "nmas-assistant-cases are written only to each script's own --out report, so "
+                "they are not here; attach that report beside this file. B3's false-positive "
+                "runs, B4's analyst evaluations and nmas-sdn-cases' classification misses are "
+                "here")
 
 #: The export's steps, as the manual's How it works page names them.
 STEPS = (
@@ -118,8 +124,9 @@ STEPS = (
                  "planted issues each analysis in the range missed, and its record of SDN "
                  "evaluation runs (each false positive a normal-traffic run found, each analyst "
                  "evaluation run that missed, kept a false positive or answered a benign case "
-                 "as a threat); from the ledger, evaluation false positives; and AI answers a "
-                 "person said were wrong, with their review"),
+                 "as a threat, each classification case a recording missed); from the ledger, "
+                 "evaluation false positives; and AI answers a person said were wrong, with "
+                 "their review"),
     ("mask", "every text a row carries masked on the way out, as History masks what it draws"),
     ("file", f"CSV or JSON, its first lines the log, its range, its network, when it was made "
              f"and by whom; at most {MAX_ROWS} rows, the rest counted; nothing is written"),
@@ -592,10 +599,78 @@ def _b4_rows(network: str, row: dict) -> list:
     return out
 
 
+def _one_of(values) -> str:
+    values = [str(v) for v in (values if isinstance(values, (list, tuple)) else [values])]
+    return " or ".join(values) if values else "none"
+
+
+def _case_expectation(expect: dict) -> str:
+    """A classify_threat case's expectation (its case file's ``expect``) in words: whether a
+    threat is found, its kind, severity and action, the source or flow it acts on, and the
+    evidence a citation must come from; ``any_of``'s alternatives each whole, joined by or."""
+    expect = expect or {}
+    if expect.get("any_of"):
+        return " or ".join(f"({_case_expectation(alt)})" for alt in expect["any_of"])
+    parts = [f"threat_detected {expect.get('threat_detected')}",
+             f"threat_type {_one_of(expect.get('threat_type') or [])}",
+             f"severity {_one_of(expect.get('severity') or [])}",
+             f"action {_one_of(expect.get('action_id') or [])}"]
+    if expect.get("source"):
+        parts.append(f"source {expect['source']}")
+    if expect.get("flow"):
+        parts.append(f"flow {expect['flow']}")
+    cites = list(expect.get("cites_any") or [])
+    if cites:
+        parts.append(f"citing one of the {len(cites)} evidence ids the detection rests on "
+                     f"({', '.join(cites[:2])}{', ...' if len(cites) > 2 else ''})")
+    return "; ".join(parts)
+
+
+def _case_got(row: dict) -> str:
+    """What a missed case's run got, in words: the outcome, and an answer's threat, kind,
+    severity, action, source or flow, its citations and its reasoning."""
+    outcome = row.get("outcome") or "?"
+    if outcome != "answer":
+        detail = row.get("detail") or ""
+        return outcome + (f" ({detail})" if detail else "")
+    a, params = row.get("answer") or {}, row.get("params") or {}
+    parts = [f"threat_detected {a.get('threat_detected')}", f"threat_type {a.get('threat_type')}",
+             f"severity {a.get('severity')}", f"action {row.get('action')}"]
+    if params.get("source"):
+        parts.append(f"source {params['source']}")
+    flow = (a.get("parameters") or {}).get("flow")
+    if flow:
+        parts.append(f"flow {flow}")
+    refs = list(a.get("evidence_refs") or [])
+    parts.append(f"citing {', '.join(refs[:3])}{', ...' if len(refs) > 3 else ''}"
+                 if refs else "citing nothing")
+    if a.get("reasoning"):
+        parts.append(f"reasoning: {a['reasoning']}")
+    return "; ".join(parts)
+
+
+def _sdn_case_row(network: str, row: dict) -> dict:
+    """One run of one classify_threat case a recording missed (`scripts/nmas-sdn-cases`'
+    `keep`, C2954): its case, the case file's expectation, what was got, the judge's misses,
+    the run's id and who, linking its call where it made one."""
+    stem = str(row.get("case_file") or "").rsplit("/", 1)[-1].rsplit(".", 1)[0] or "?"
+    batch = f", batch {row['batch_id']}" if row.get("batch_id") else ""
+    return _failure(row.get("at"), "eval_case_missed", network,
+                    f"case {row.get('case')} ({stem}), run {row.get('n')}",
+                    reason="; ".join(row.get("misses") or []),
+                    who=f"run {row.get('run_id')} ({row.get('actor')})",
+                    outcome=f"counted as a miss in the recording's report ({row.get('prompt')}"
+                            f"{batch})",
+                    case=row.get("case") or "", expected=_case_expectation(row.get("expect")),
+                    got=_case_got(row), link=history_call_link(row.get("call_id") or ""),
+                    source="sdn_evaluations")
+
+
 def _from_evaluation_runs(network: str, rng: dict, ctx: dict) -> dict:
     """The network's record of SDN evaluation runs (modules/sdn/evaluations.py): each false
-    positive a normal-traffic run found (B3, C2946), and each B4 run that missed, kept a false
-    positive or answered a benign case as a threat (C2943)."""
+    positive a normal-traffic run found (B3, C2946), each B4 run that missed, kept a false
+    positive or answered a benign case as a threat (C2943), and each run of each
+    classify_threat case a recording missed (C2954)."""
     from modules.sdn import evaluations
 
     got = evaluations.read(network)
@@ -622,6 +697,8 @@ def _from_evaluation_runs(network: str, rng: dict, ctx: dict) -> dict:
                                 source="sdn_evaluations"))
         elif r.get("script") == evaluations.B4_EVAL and r.get("kind") == "case_run":
             out += _b4_rows(network, r)
+        elif r.get("script") == evaluations.SDN_CASES and r.get("kind") == "case_missed":
+            out.append(_sdn_case_row(network, r))
     return {"rows": out, "errors": []}
 
 

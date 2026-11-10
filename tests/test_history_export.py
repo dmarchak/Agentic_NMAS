@@ -9,7 +9,9 @@ operations by the real `flow_ops.apply` over `tests/test_sdn_flow_ops.py`'s fake
 the switch ignored, so Verify fails; a write the controller refused); a planted issue missed by a
 real analysis (and every analysis in a range, B1's and the trace tool's, C2945); B3's
 false-positive run kept by the real `false_positives.keep` over RC-TCP (C2946) and B4's wrong
-runs by the real `b4_eval.run` with two plain-function arms (C2943); an answer said wrong by
+runs by the real `b4_eval.run` with two plain-function arms (C2943); a classify_threat case
+recording's misses by `scripts/nmas-sdn-cases`' real `record` and `keep` with a fake classifier
+(C2954); an answer said wrong by
 `feedback.say` and its review.
 
 - **Calls:** every call in the range, one row each, oldest first, with its trigger (a person, a
@@ -467,6 +469,95 @@ def test_a_false_positive_run_and_b4_s_wrong_runs_are_rows_in_the_csv_and_the_js
     assert X.failures(X.EVERY, YESTERDAY, TODAY)["rows"] == got["rows"]
 
 
+CASE_V6_CALL = "ai-00000000000000a1"
+
+
+def _case_recording(monkeypatch, report_dir, network, secret=""):
+    """A classify_threat case recording (`scripts/nmas-sdn-cases`' real `record` over
+    recorded.json, one run, a fake classifier), its misses kept in *network*'s record by the
+    script's own `keep` (C2954): case 1 answered with an IPv6 source for its IPv4 one (its
+    reasoning naming both, and *secret*), case 8's normal traffic answered as a threat with no
+    call made; every other case as it allows."""
+    from modules.sdn import evaluations
+    from tests.test_sdn_classify_cases import DIR, ROOT, _good, _planted, _script, load
+
+    by_n = {c["n"]: c for c in load("recorded")["cases"]}
+
+    def answer(n, _asked):
+        got = _good(by_n[n])
+        if n == 1:
+            got = dict(got, params={"source": "2001:db8::66"}, call_id=CASE_V6_CALL,
+                       classification=dict(got["classification"], reasoning=(
+                           f"h1 192.0.2.1 reached h3 from 2001:db8::66 {secret}").strip()))
+        if n == 8:
+            got = dict(got, action="drop_source", params={"source": "192.0.2.9"}, call_id="",
+                       classification=dict(got["classification"], threat_detected=True,
+                                           threat_type="port_scan", severity="medium"))
+        return got
+    _planted(monkeypatch, answer)
+    out = os.path.join(str(report_dir), "sdn-cases-report.json")
+    assert _script().record(ROOT, network, "evaluation:cases-export", out,
+                            os.path.join(DIR, "recorded.json"), 1) == 0
+    return {r["case_n"]: r for r in evaluations.read(network)["rows"]
+            if r.get("script") == evaluations.SDN_CASES}
+
+
+def test_each_missed_classification_case_is_a_row_in_the_csv_and_the_json(world,  # noqa: F811
+                                                                           monkeypatch,
+                                                                           tmp_path):
+    """C2954: each run of each case a recording missed, one row with its case, the case file's
+    expectation, what was got, the judge's misses, the run's id and who, and its call's link
+    where it made one; in both files, IPv4 and IPv6 whole; another network's log empty."""
+    kept = _case_recording(monkeypatch, tmp_path, NET)
+    assert sorted(kept) == [1, 8], "the state: two missed runs kept"
+    got = X.failures(NET, YESTERDAY, TODAY)
+    assert got["errors"] == []
+    rows = [r for r in got["rows"] if r["kind"] == "eval_case_missed"]
+    assert [r["case"] for r in rows] == ["scan-1-s1", "normal-1"]
+    v6, normal = rows
+    run_id = kept[1]["run_id"]
+    assert v6["what"] == "case scan-1-s1 (recorded), run 1"
+    assert v6["who"] == f"run {run_id} (evaluation:cases-export)"
+    assert v6["at"] == kept[1]["at"] and v6["source"] == "sdn_evaluations"
+    assert v6["reason"] == "source '2001:db8::66', expected 192.0.2.1"
+    assert v6["expected"].startswith(
+        "threat_detected True; threat_type port_scan; severity medium or high; action "
+        "rate_limit_source or drop_source; source 192.0.2.1; citing one of the 50 evidence ids")
+    assert "source 2001:db8::66" in v6["got"]
+    assert v6["got"].endswith("reasoning: h1 192.0.2.1 reached h3 from 2001:db8::66")
+    assert v6["record"] == f"/v2/history?call={CASE_V6_CALL}&since="
+    assert normal["record"] == "", "no call, no link"
+    assert normal["expected"].startswith("threat_detected False")
+    assert "threat_detected True" in normal["got"] and "source 192.0.2.9" in normal["got"]
+    assert "2 classification cases recordings missed" in X.failures_words(got)
+    csv_rows = _rows(X.download("failures", "csv", NET, YESTERDAY, TODAY, by=PERSON,
+                                default=NET)["body"])
+    head = csv_rows.index(list(X.FAILURE_COLUMNS))
+    listed = [dict(zip(X.FAILURE_COLUMNS, r)) for r in csv_rows[head + 1:]]
+    assert [r for r in listed if r["kind"] == "eval_case_missed"] == [
+        {k: str(r[k]) for k in X.FAILURE_COLUMNS} for r in rows]
+    doc = json.loads(X.download("failures", "json", NET, YESTERDAY, TODAY, by=PERSON,
+                                default=NET)["body"])
+    assert [r for r in doc["rows"] if r["kind"] == "eval_case_missed"] == rows
+    assert doc["counts"]["eval_case_missed"] == 2
+    assert X.failures("Branch", YESTERDAY, TODAY)["rows"] == [], "another network's rows"
+    assert [r for r in X.failures(X.EVERY, YESTERDAY, TODAY)["rows"]
+            if r["kind"] == "eval_case_missed"] == rows
+
+
+def test_the_failure_files_no_longer_say_nmas_sdn_cases_is_not_recorded(world):  # noqa: F811
+    """C2954: Not recorded names only the four case scripts still outside the record, in both
+    files and on the view."""
+    assert "nmas-sdn-cases" not in X.NOT_RECORDED.split(". ")[0]
+    for name in ("nmas-intent-cases", "nmas-heal-cases", "nmas-nl-cases",
+                 "nmas-assistant-cases"):
+        assert name in X.NOT_RECORDED.split(". ")[0], name
+    doc = json.loads(X.download("failures", "json", NET, YESTERDAY, TODAY, by=PERSON,
+                                default=NET)["body"])
+    assert doc["not_recorded"] == X.NOT_RECORDED
+    assert X.view(NET, YESTERDAY, TODAY, default=NET)["not_recorded"] == X.NOT_RECORDED
+
+
 def test_a_store_that_cannot_be_read_is_said_never_a_shorter_log(world):  # noqa: F811
     from modules.config import list_data_path
 
@@ -576,6 +667,28 @@ def test_a_secret_planted_in_the_evaluation_runs_and_a_planted_issue_never_leave
             assert URL_SECRET not in body, (kind, fmt)
     assert "<redacted:url_userinfo>@example.invalid" in X.download(
         "failures", "csv", NET, YESTERDAY, TODAY, by=PERSON, default=NET)["body"]
+
+
+def test_a_secret_planted_in_a_case_recording_s_answer_never_leaves(world, monkeypatch,  # noqa: F811
+                                                                    tmp_path):
+    """C2954: a URL secret in a missed case's got-text (its answer's reasoning) is in no file of
+    the four, its row still listed, masked, with the IPv4 and IPv6 hosts beside it whole."""
+    from modules.sdn import evaluations
+
+    kept = _case_recording(monkeypatch, tmp_path, NET, secret=PLANTED)
+    assert URL_SECRET in json.dumps(kept[1]), "the premise: the record holds it as kept"
+    assert URL_SECRET in json.dumps(evaluations.read(NET)["rows"])
+    row = next(r for r in X.failures(NET, YESTERDAY, TODAY)["rows"]
+               if r["kind"] == "eval_case_missed" and r["case"] == "scan-1-s1")
+    assert "<redacted:url_userinfo>@example.invalid" in row["got"]
+    assert "h1 192.0.2.1 reached h3 from 2001:db8::66" in row["got"]
+    for kind in ("calls", "failures"):
+        for fmt in ("csv", "json"):
+            body = X.download(kind, fmt, X.EVERY, YESTERDAY, TODAY, by=PERSON,
+                              default=NET)["body"]
+            assert URL_SECRET not in body, (kind, fmt)
+    assert "<redacted:url_userinfo>@example.invalid" in X.download(
+        "failures", "json", NET, YESTERDAY, TODAY, by=PERSON, default=NET)["body"]
 
 
 def test_each_file_opens_with_its_log_range_network_and_who_made_it(world):  # noqa: F811
@@ -714,3 +827,27 @@ def test_the_page_and_every_download_write_nothing(page):
         for fmt in ("csv", "json"):
             assert page["client"].get(f"/v2/history/export/{kind}/{fmt}?{q}").status_code == 200
     assert _tree(page["root"]) == before
+
+
+def test_the_page_and_every_download_write_nothing_with_a_case_recording_kept(page,
+                                                                             monkeypatch):
+    """C2954: with a classify_threat recording's misses in Lab's record, the page and the four
+    downloads write nothing; the page draws the misses and names only the four case scripts
+    still outside the record."""
+    from modules.config import list_data_path
+    from modules.sdn import evaluations
+
+    kept = _case_recording(monkeypatch, page["root"], "Lab")
+    assert sorted(kept) == [1, 8]
+    path = os.path.join(list_data_path("Lab"), evaluations.FILE)
+    assert path.startswith(page["root"])
+    before = _tree(page["root"])
+    q = f"network=Lab&start={YESTERDAY}&end={TODAY}"
+    _r, html = _get(page, f"/v2/history?tab=export&{q}")
+    assert "2 classification cases recordings missed" in html
+    assert "nmas-intent-cases, nmas-heal-cases, nmas-nl-cases and nmas-assistant-cases" in html
+    for kind in ("calls", "failures"):
+        for fmt in ("csv", "json"):
+            assert page["client"].get(f"/v2/history/export/{kind}/{fmt}?{q}").status_code == 200
+    assert _tree(page["root"]) == before
+    assert len(evaluations.read("Lab")["rows"]) == 2

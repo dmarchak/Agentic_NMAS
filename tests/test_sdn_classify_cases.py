@@ -288,7 +288,11 @@ def _good(c):
                                "parameters": {"flow": e.get("flow") or ""}}}
 
 
-def test_the_recorder_reports_reliability_apart_from_consistency(monkeypatch, tmp_path):
+def test_the_recorder_reports_reliability_apart_from_consistency(monkeypatch, tmp_path,
+                                                                  networks):  # noqa: F811
+    # C2954: a recording keeps its misses in the network's record, so the store is the test's.
+    from modules.sdn import evaluations
+
     mod = _script()
     data = load("recorded")
     by_n = {c["n"]: c for c in data["cases"]}
@@ -310,6 +314,7 @@ def test_the_recorder_reports_reliability_apart_from_consistency(monkeypatch, tm
     assert rec["consistency"] == {"consistent": 11, "cases": 12}
     assert rec["report"][0]["passed"] == 1 and rec["report"][0]["reliable"] is False
     assert rec["usd_per_call"] == 0.001 and rec["actor"] == "evaluation:test-run"
+    assert [(r["case_n"], r["n"]) for r in evaluations.read("default")["rows"]] == [(1, 2)]
 
 
 def test_a_recording_asks_with_the_prompt_named_and_says_which(monkeypatch, tmp_path):
@@ -382,6 +387,121 @@ def test_a_stale_expectation_stops_the_recording_before_any_call(monkeypatch, tm
     out = tmp_path / "a.json"
     assert mod.record(ROOT, "default", "evaluation:a", str(out), str(path), 5) == 5
     assert asked == [] and not out.exists()
+
+
+# ── each recording's misses kept in its network's record (C2954) ─────────────────────────────
+
+def _for_default(tmp_path, network="default"):
+    """recorded.json with one edit: the network it names, the test store's Default in place of
+    the lab's sdn_lab (a recording refuses a case file for another network)."""
+    data = load("recorded")
+    data["network"] = network
+    path = tmp_path / "recorded-default.json"
+    path.write_text(json.dumps(data))
+    return str(path)
+
+
+def _one_v6_miss(by_n):
+    """Case 1 answered on run 2 with an IPv6 source for its IPv4 one, case 8 (normal traffic)
+    answered as a threat in every run; every other case as it allows."""
+    def answer(n, asked):
+        got = _good(by_n[n])
+        if n == 1 and asked > len(by_n):
+            got = dict(got, params={"source": "2001:db8::66"}, call_id="ai-00000000000000a1")
+        if n == 8:
+            got = dict(got, action="drop_source", params={"source": "192.0.2.9"},
+                       call_id="ai-00000000000000a8",
+                       classification=dict(got["classification"], threat_detected=True,
+                                           threat_type="port_scan", severity="medium"))
+        return got
+    return answer
+
+
+def test_a_recording_keeps_each_missed_run_in_its_network_s_record(networks, monkeypatch,  # noqa: F811
+                                                                   tmp_path, capsys):
+    """C2954: each run of each case the judge missed, one row each in the network's record of
+    evaluation runs (one write, one run id), with the case file's expectation, what was got,
+    the judge's misses and the call; the --out report as it was; another network's record
+    untouched."""
+    from modules.sdn import evaluations
+
+    monkeypatch.chdir(ROOT)
+    mod = _script()
+    data = load("recorded")
+    by_n = {c["n"]: c for c in data["cases"]}
+    asked = _planted(monkeypatch, _one_v6_miss(by_n))
+    out = tmp_path / "rec.json"
+    assert mod.main(["--network", "Default", "--cases", _for_default(tmp_path), "--runs", "2",
+                     "--actor", "evaluation:keep-1", "--out", str(out)]) == 0
+    assert len(asked) == 24
+    rec = json.loads(out.read_text())
+    assert set(rec) == {"model", "prompt", "case_file", "actor", "runs", "spent_usd",
+                        "reliability", "consistency", "usd_per_call", "usd_per_success",
+                        "report", "recordings"}, "the --out report as it was"
+    kept = evaluations.read("Default")
+    assert kept["state"] == "ok"
+    rows = kept["rows"]
+    assert [(r["case_n"], r["n"]) for r in rows] == [(1, 2), (8, 1), (8, 2)]
+    assert {r["run_id"] for r in rows} == {rows[0]["run_id"]} and \
+        rows[0]["run_id"].startswith("sc-")
+    assert {(r["script"], r["kind"], r["actor"], r["run"], r["network"]) for r in rows} == {
+        ("nmas-sdn-cases", "case_missed", "evaluation:keep-1", "keep-1", "Default")}
+    one = rows[0]
+    assert one["case"] == "scan-1-s1" and one["expect"] == by_n[1]["expect"]
+    # The report's own misses, kept as the judge said them; the IPv6 source whole.
+    assert one["misses"] == rec["recordings"]["1"][1]["misses"] == [
+        "source '2001:db8::66', expected 192.0.2.1"]
+    assert one["params"] == {"source": "2001:db8::66"} and one["call_id"] == "ai-00000000000000a1"
+    assert rows[1]["expect"] == by_n[8]["expect"] and rows[1]["answer"]["threat_detected"] is True
+    said = capsys.readouterr().out
+    assert f"3 missed run(s) kept in Default's record of evaluation runs as {one['run_id']}" \
+        in said
+    assert evaluations.read("Branch")["state"] == "absent"
+
+
+@pytest.mark.parametrize("argv,network", [
+    (["--network", "Default"], "Default"),
+    (["--list", "default"], "Default"),
+    (["--network", "default", "--list", "Default"], "Default"),
+    ([], "Default")], ids=["network", "list", "both-one", "the-case-file-s"])
+def test_a_recording_is_kept_under_network_else_list_else_the_case_file_s(
+        networks, monkeypatch, tmp_path, argv, network):  # noqa: F811
+    from modules.sdn import evaluations
+
+    monkeypatch.chdir(ROOT)
+    data = load("recorded")
+    asked = _planted(monkeypatch, _one_v6_miss({c["n"]: c for c in data["cases"]}))
+    assert _script().main(argv + ["--cases", _for_default(tmp_path), "--out",
+                                  str(tmp_path / "r.json")]) == 0
+    assert {a for _k, a, _t in asked} and len(asked) == 12
+    assert [(r["case_n"], r["network"]) for r in evaluations.read(network)["rows"]] == [
+        (8, network)]
+    assert evaluations.read("Branch")["state"] == "absent"
+
+
+@pytest.mark.parametrize("argv,file_network,words", [
+    (["--network", "Nowhere"], "default", "'Nowhere'"),
+    (["--network", "Default", "--list", "Branch"], "", "one network per recording"),
+    ([], "nowhere", "'nowhere'")], ids=["unknown", "two-networks", "the-case-file-s-unknown"])
+def test_a_network_mercury_does_not_have_is_refused_with_nothing_asked_or_written(
+        networks, monkeypatch, tmp_path, capsys, argv, file_network, words):  # noqa: F811
+    from modules.sdn import evaluations
+
+    monkeypatch.chdir(ROOT)
+    asked = _planted(monkeypatch, lambda k, n: {"ok": True})
+    path = _for_default(tmp_path, file_network)
+    out = tmp_path / "r.json"
+    before = sorted(p.name for p in (networks / "lists").glob("**/*")) \
+        if (networks / "lists").exists() else []
+    assert _script().main(argv + ["--cases", path, "--out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert words in err and "nothing was asked" in err
+    assert asked == [] and not out.exists()
+    for name in ("Default", "Branch"):
+        assert evaluations.read(name)["state"] == "absent"
+    after = sorted(p.name for p in (networks / "lists").glob("**/*")) \
+        if (networks / "lists").exists() else []
+    assert after == before
 
 
 # ── a key cell listing whole alternatives (`any_of`) ───────────────────────────────────────────
@@ -549,3 +669,30 @@ def test_the_batch_recorder_reports_as_the_recorder_does(world, monkeypatch, tmp
     assert mod.record_batch(ROOT, "Default", "evaluation:b", str(tmp_path / "b.json"),
                             str(stale), 2) == 5
     assert len(fake.created) == 1
+
+
+def test_a_batched_recording_keeps_its_misses_with_the_batch_s_id(world, monkeypatch,  # noqa: F811
+                                                                 tmp_path):
+    """C2954: `--batch`'s misses kept in the network's record as a call's are, each naming
+    the batch and its call."""
+    from modules.ai import gateway
+    from modules.sdn import evaluations
+    mod = _script()
+    data = load("recorded")
+    by_n = {c["n"]: c for c in data["cases"]}
+
+    def answer(cid):
+        a = allowed_answer(by_n[_case_of(cid)])
+        return dict(a, action_id="remove_flow") if cid.startswith("c1-") and \
+            cid.endswith("-r1") else a
+    fake = _fake_batches(answer)
+    monkeypatch.setattr(gateway, "_Batches", lambda: fake)
+    out = tmp_path / "batch.json"
+    assert mod.record_batch(ROOT, "Default", "evaluation:batch-keep", str(out),
+                            os.path.join(DIR, "recorded.json"), 2) == 0
+    rows = evaluations.read("Default")["rows"]
+    # remove_flow for a scan: the check refuses it, so the run's outcome is the check's.
+    assert [(r["case_n"], r["n"], r["outcome"], r["batch_id"]) for r in rows] == [
+        (1, 2, "refused by the check", "msgbatch_0test")]
+    assert rows[0]["call_id"] in {r["id"] for r in calls.read()["rows"]}
+    assert rows[0]["misses"] == json.loads(out.read_text())["recordings"]["1"][1]["misses"]

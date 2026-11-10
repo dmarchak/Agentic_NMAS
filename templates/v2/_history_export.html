@@ -38,7 +38,7 @@
   </section>
   <section class="card" aria-label="False positives and failures">
     <div class="card-head"><h2>False positives and failures</h2></div>
-    <p class="muted small">Every SDN detection dismissed (with its reason and who), classification refused or not passing the check, Verify failure, rollback (with what it achieved), protected-flow refusal, evaluation false positive, planted issue each analysis missed, detection on normal traffic in a false-positive run, analyst evaluation miss or false positive, and AI answer said wrong. One row each, with its record's link.</p>
+    <p class="muted small">Every SDN detection dismissed (with its reason and who), classification refused or not passing the check, Verify failure, rollback (with what it achieved), protected-flow refusal, evaluation false positive, planted issue each analysis missed, detection on normal traffic in a false-positive run, analyst evaluation miss or false positive, classification case a recording missed, and AI answer said wrong. One row each, with its record's link.</p>
     <dl class="facts"><div><dt>In the range</dt><dd>{{ x.failures or 'none' }}</dd></div>
       <div><dt>By kind</dt><dd>{% for words, n in x.fail_counts %}{{ n }} {{ words }}{{ ' · ' if not loop.last }}{% endfor %}</dd></div>
       <div><dt>Not recorded</dt><dd>{{ x.not_recorded }}.</dd></div></dl>

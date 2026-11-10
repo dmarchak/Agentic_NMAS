@@ -6,7 +6,7 @@ failure log**, where the AI layer was wrong or the network's automation failed, 
 done about it. Each is a CSV or a JSON file for one network or every network, over whole UTC
 days. The export reads; it writes nothing, and it asks no device, controller or model anything.
 
-![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, every analysis's planted-issue sheet, its record of evaluation runs (the false-positive runs and the analyst evaluations), the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
+![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, every analysis's planted-issue sheet, its record of evaluation runs (the false-positive runs, the analyst evaluations and the classification case recordings), the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
 
 ## The steps
 
@@ -31,7 +31,9 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
      measurement against its threshold, its evidence, its run and what Mercury does with it;
      and every analyst evaluation run (`nmas-sdn-b4-eval`) that missed its case's planted
      issue, kept a false-positive finding, or answered a benign case as a threat, per
-     technique and run, linking its call;
+     technique and run, linking its call; and every run of every classification case a
+     recording (`nmas-sdn-cases`) missed, with its case, the case file's expectation, what was
+     got, the judge's misses and the recording's run, linking its call where it made one;
    - from the ledger: every evaluation call that found a threat in a collection no rule fired
      on, a false positive by the evaluation's own definition;
    - from Was this right?: every AI answer a person said was wrong, and its review.
@@ -69,18 +71,22 @@ older calls too, download **Every network**.
 
 ## Where the evaluation runs are kept
 
-`nmas-sdn-false-positives` and `nmas-sdn-b4-eval` each keep what they found wrong in the
-network's own record of evaluation runs as they run, beside their own `--out` files, which
+`nmas-sdn-false-positives`, `nmas-sdn-b4-eval` and `nmas-sdn-cases` each keep what they found
+wrong in the network's own record of evaluation runs, beside their own `--out` files, which
 are unchanged. A false-positive run is kept under the network its series names, or the
 network `--network` or `--list` names; a run whose network Mercury does not have is refused
-before anything is judged. The normal-traffic classification runs (`nmas-sdn-classify-normal`)
+before anything is judged. A classification case recording keeps its missed runs in one write
+once its report is written, under the network `--network` names, else `--list`, else its case
+file's own; it classifies on that same network, and a network Mercury does not have, a case
+file for another network, or a `--network` and `--list` naming two networks is refused before
+anything is asked. The normal-traffic classification runs (`nmas-sdn-classify-normal`)
 need no record of their own: each call keeps its collection and its answer in the ledger, and
 a threat found there is the run's own definition of a false positive. A record that cannot be
 read is said on the card and in the file, never a shorter log.
 
 ## What is not in the failure log
 
-The other case scripts' per-case misses (`nmas-sdn-cases`, and the intent, heal, words and
-assistant case scripts) are written only to their own report files, never to a record Mercury
+The per-case misses of the other four case scripts (`nmas-intent-cases`, `nmas-heal-cases`,
+`nmas-nl-cases` and `nmas-assistant-cases`) are written only to their own report files, never to a record Mercury
 reads, so the failure log cannot hold them; the card and each file say so. Attach that report
 beside the file.

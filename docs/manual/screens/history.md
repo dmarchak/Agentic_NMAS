@@ -544,12 +544,14 @@ is read.
   analysis's call; each detection a false-positive run (`nmas-sdn-false-positives`) found on
   traffic declared normal, with its rule, evidence and run; each analyst evaluation run
   (`nmas-sdn-b4-eval`) that missed its case's planted issue, kept a false-positive finding or
-  answered a benign case as a threat, per technique, linking its call; and each AI answer a
-  person said was wrong, with its review. One row each, with its record's link. The line
-  counts each kind, and names the most given dismissal reason. The other case scripts'
-  per-case misses (`nmas-sdn-cases` and the rest) are written only to their own reports,
-  never to a record Mercury reads, so they are not in this log, and the card and the file
-  say so.
+  answered a benign case as a threat, per technique, linking its call; each run of each
+  classification case a recording (`nmas-sdn-cases`) missed, with the case file's
+  expectation, what was got, the judge's misses and the run, linking its call where it made
+  one; and each AI answer a person said was wrong, with its review. One row each, with its
+  record's link. The line counts each kind, and names the most given dismissal reason. The
+  per-case misses of the other four case scripts (`nmas-intent-cases`, `nmas-heal-cases`,
+  `nmas-nl-cases` and `nmas-assistant-cases`) are written only to their own reports, never
+  to a record Mercury reads, so they are not in this log, and the card and the file say so.
 
 Both files open with the log, the range, the network, when they were made and who made them.
 Amounts are the ledger's own cost per call, summed by UTC day from the rows read now, never

@@ -15,7 +15,11 @@ rows are appended in one write under one lock, so a reader sees a run whole. Eac
   its rule, evidence, measurement and what Mercury does with it;
 - ``nmas-sdn-b4-eval`` (B4, modules/sdn/b4_eval.py `run`): a ``case_run`` row for each run of
   each case and technique that missed the case's planted issue, kept a false-positive finding,
-  or answered a benign case as a threat.
+  or answered a benign case as a threat;
+- ``nmas-sdn-cases`` (classify_threat's case recordings, C2954; the script's `keep`): a
+  ``case_missed`` row for each run of each case the judge (`cases.sdn_classify_misses`) found a
+  miss in, with the case file's expectation, what was got, the judge's misses and the call, all
+  of one recording under its run's id.
 
 Nothing here is masked at rest, as the network's other SDN records are not; the export masks
 every text on the way out.
@@ -29,6 +33,7 @@ FILE = "sdn_evaluations.jsonl"
 #: The scripts whose runs are kept here, each the ``script`` its rows name.
 FALSE_POSITIVES = "nmas-sdn-false-positives"
 B4_EVAL = "nmas-sdn-b4-eval"
+SDN_CASES = "nmas-sdn-cases"
 
 
 def _path(network: str) -> str:
