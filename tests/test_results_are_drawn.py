@@ -273,6 +273,15 @@ PAGE_RECORD = {
     "sdn_v2.reapply_confirm": ("templates/v2/_sdn_op.html",
                                ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
                                "v2.history_page"),
+    # C2904 (board lab9-sdn B): DHCP steering's result in place of its card (the outcome, each
+    # switch's checks, what was put back), each switch's run read again on History (the
+    # network's flow intent, `history_sources.sdn_operations`).
+    "sdn_dhcp_v2.confirm": ("templates/v2/_sdn_dhcp.html",
+                            ("s.outcome == 'verified'", "w.checks", "s.rollback"),
+                            "v2.history_page"),
+    "sdn_dhcp_v2.remove_confirm": ("templates/v2/_sdn_dhcp.html",
+                                   ("s.outcome == 'verified'", "w.checks", "s.rollback"),
+                                   "v2.history_page"),
     # P6 (board controller-app-deploy, artboards F to H): the controller app deploy's result in
     # place of its card (the outcome, the post-check, the rollback's, the receipt), read again
     # on History (`history_sources.controller_deploys`).

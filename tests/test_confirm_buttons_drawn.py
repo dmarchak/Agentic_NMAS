@@ -2124,6 +2124,62 @@ class TestAppDraftCards(_Cards):
         return html
 
 
+class TestDhcpSteeringCards(_Cards):
+    """SDN › Apps' DHCP steering card (C2904; board lab9-sdn B) on tests/test_dhcp_steer_v2.py's
+    world (the Lab 9 export with its router and hosts, five switches on a fake Ryu through a
+    saved connection, the real routes): each confirm drawn from its real preview. Blocked: the
+    export holds no Service ``dhcp`` (steer); nothing is recorded (remove)."""
+    from tests import test_dhcp_steer as _ds, test_dhcp_steer_v2 as _dv
+    from tests import test_sdn_connections as _sc
+    networks, netbox_list = hosted(_sc.networks), hosted(_ds.netbox_list)
+    lab, ui = hosted(_ds.lab), hosted(_dv.ui)
+
+    CASES = {
+        "steer": ("_sdn_dhcp.html", "Steer DHCP on {{ n_sw }} switch(es)",
+                  r"Steer DHCP on 5 switch\(es\)", "data: the export holds no Service dhcp"),
+        "remove": ("_sdn_dhcp.html", "Remove {{ s.flows }} steering flow(s)"
+                   "{% if s.closing %} and close {{ s.closing | length }} record{{ 's' if "
+                   "s.closing | length != 1 }}{% endif %}",
+                   r"Remove 9 steering flow\(s\)", "data: no steering flow is recorded"),
+    }
+
+    @staticmethod
+    def _steer(ui):
+        from tests.test_dhcp_steer_v2 import confirm_form
+        html = _text(ui.client.post("/v2/sdn/dhcp/preview", data={"list": "Default",
+                                                                  "scope": "all"}))
+        return html, confirm_form
+
+    def drawn_steer(self, request):
+        html, _form = self._steer(request.getfixturevalue("ui"))
+        assert "Steer DHCP on 5 switches: 9 requests" in html, "floor: the preview is drawn"
+        return html
+
+    def blocked_steer(self, request, monkeypatch):
+        from tests.test_dhcp_steer import export_of, lab9_dhcp_records
+        ui = request.getfixturevalue("ui")
+        records = lab9_dhcp_records()
+        records["services"] = [s for s in records["services"] if s["name"] != "dhcp"]
+        ui.held["doc"] = export_of(records)
+        html, _form = self._steer(ui)
+        assert "holds no NetBox Service named" in html, "floor: the refusal is drawn"
+        return html
+
+    def drawn_remove(self, request):
+        ui = request.getfixturevalue("ui")
+        html, form = self._steer(ui)
+        assert ui.client.post("/v2/sdn/dhcp/confirm", data=form(html)).status_code == 200
+        html = _text(ui.client.post("/v2/sdn/dhcp/remove/preview", data={"list": "Default"}))
+        assert "Remove DHCP steering: 9 flows on 5 switches" in html, "floor: the preview"
+        return html
+
+    def blocked_remove(self, request, monkeypatch):
+        ui = request.getfixturevalue("ui")
+        html = _text(ui.client.post("/v2/sdn/dhcp/remove/preview", data={"list": "Default"}))
+        assert "no DHCP steering flow recorded" in html, "floor: the refusal is drawn"
+        return html
+
+
 class TestNsotExportCards(_Cards):
     """SDN › Apps' NSOT export card (C2777; board nsot-export) on tests/test_nsot_export_op.py's
     world (the real routes and operation; NetBox's GETs served by a fake client): the preview's
@@ -2226,9 +2282,10 @@ class TestThePopulation:
         the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08; 78 until an app
         version's Publish <version>, C2854, 2026-11-09; 79 until SDN › Apps' Add <name> as a
         Draft, the operator's decision of 2026-11-10; 80 until SDN › Switches' Configure N
-        switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10)."""
+        switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10; 82 until SDN ›
+        Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 82, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 84, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

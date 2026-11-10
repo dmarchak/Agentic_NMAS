@@ -109,6 +109,7 @@ PAGES = (
      "how-it-works/code-repository.md"),
     ("draft-write", "Add an app to the code repository as a Draft", H,
      "how-it-works/draft-write.md"),
+    ("dhcp-steering", "Steer DHCP to the network's server", H, "how-it-works/dhcp-steering.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
     ("openflow-config", "Configure a switch's OpenFlow from NetBox", H,
@@ -251,6 +252,8 @@ OPERATIONS = {
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     # Lab 9 Objective 2 (C2902): a switch's OpenFlow configuration from the NSOT export.
     "openflow-config": ("modules.sdn.openflow_config", "CLI_STEPS"),
+    # C2904 (board lab9-sdn B): DHCP steering, compiled from the NSOT, one plan per switch.
+    "dhcp-steering": ("modules.sdn.dhcp_steer", "STEPS"),
     # P6 (board controller-app-deploy): a controller's apps deployed as one operation.
     "controller-app-deploy": ("modules.apps.deploy_op", "STEPS"),
     # C2777 (board nsot-export): a network's NSOT export committed as one operation.

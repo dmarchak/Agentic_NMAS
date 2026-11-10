@@ -3583,6 +3583,102 @@ def _sdn_switches(client, _lab, _mp):
         mp.undo()
 
 
+def _dhcp_steering(client, _lab, _mp):
+    """SDN › Apps' DHCP steering card (C2904; board lab9-sdn B) on Lab, with tests/
+    test_dhcp_steer.py's Lab 9 export (its router, Service dhcp and two end hosts) and five
+    switches on a fake Ryu through one saved connection: at rest, Edit settings…, a chosen
+    switch's preview and confirm, every switch's (the chosen one's flows kept), a preview with
+    nothing to send, one with no protected class owned (its warning), a confirm whose last
+    switch does not take its flows (rolled back, the others put back), Remove steering… with a
+    flow already gone, and the refusals. Its patches are undone and the connection removed
+    before the next provider."""
+    import json
+
+    import pytest
+    from werkzeug.datastructures import MultiDict
+
+    from modules.nsot import export as X
+    from modules.sdn import connections as C
+    from modules.sdn import drivers
+    from tests.sdn_fakes import FakeRyu
+    from tests.test_dhcp_steer import BASE, DPIDS, export_of, lab9_dhcp_records
+    from tests.test_dhcp_steer_v2 import confirm_form
+
+    mp = pytest.MonkeyPatch()
+    saved = False
+    try:
+        mp.setattr("modules.inventory.source_config.load",
+                   lambda name: {"source": "netbox", "filters": {}})
+        held = {"doc": export_of()}
+        mp.setattr(X, "read", lambda network, rev="HEAD": {
+            "ok": True, "export": held["doc"], "sha256": held["doc"]["sha256"], "error": ""})
+        miss = {"table_id": 0, "priority": 0, "cookie": 0, "match": {},
+                "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}]}
+        fake = FakeRyu(BASE, flows={d: [dict(miss)] for d in DPIDS.values()},
+                       dpids=sorted(DPIDS.values()))
+        real = drivers.make
+        mp.setattr(drivers, "make", lambda kind, connection, **kw: real(
+            kind, connection, **dict({"session": fake, "sleep": lambda s: None}, **kw)))
+        mp.setattr("modules.sdn.flow_ops.VERIFY_PAUSE", 0)
+        C.save_connection("Lab", {"name": "dhcp-ctl", "kind": "ryu", "url": BASE},
+                          actor="op@example.com")
+        saved = True
+
+        def preview(**form):
+            return client.post("/v2/sdn/dhcp/preview", data=dict({"list": "Lab"}, **form))
+
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        assert client.get("/v2/sdn/dhcp/settings?list=Lab").status_code == 200
+        html = preview(scope="chosen", switch="arista-sw2").get_data(as_text=True)
+        assert client.post("/v2/sdn/dhcp/confirm", data=confirm_form(html)).status_code == 200
+        html = preview(scope="all").get_data(as_text=True)
+        assert client.post("/v2/sdn/dhcp/confirm", data=confirm_form(html)).status_code == 200
+        assert client.get("/v2/sdn/dhcp/card?list=Lab").status_code == 200
+        assert "nothing to send" in preview(scope="all").get_data(as_text=True)
+        # Remove steering…, one flow already gone from its switch (its record closed).
+        fake.table[5] = [f for f in fake.table[5] if not f.get("cookie")]
+        html = client.post("/v2/sdn/dhcp/remove/preview", data={"list": "Lab"}).get_data(
+            as_text=True)
+        assert client.post("/v2/sdn/dhcp/remove/confirm",
+                           data=confirm_form(html)).status_code == 200
+        # No protected class owned by the feature: the preview's warning.
+        records = lab9_dhcp_records()
+        for d in records["devices"]:
+            if d["name"] == "rtr":
+                d["config_context"] = {}
+        held["doc"] = export_of(records)
+        assert "no protected class" in preview(scope="all").get_data(as_text=True)
+        held["doc"] = export_of()
+        # The last switch (ovs1) answers 200 and keeps nothing: rolled back, the rest put back.
+        html = preview(scope="all").get_data(as_text=True)
+        answer = fake._answer
+
+        def keeps_nothing(method, path, body):
+            if method == "POST" and json.loads(body).get("dpid") == 3:
+                fake.writes.append((path, body))
+                from tests.sdn_fakes import Response
+                return Response(200, "", "text/html")
+            return answer(method, path, body)
+
+        mp.setattr(fake, "_answer", keeps_nothing)
+        assert client.post("/v2/sdn/dhcp/confirm", data=confirm_form(html)).status_code == 200
+        mp.setattr(fake, "_answer", answer)
+        # A confirm bound to another hash, and the refusals.
+        stale = MultiDict([(k, "0" * 64 if k == "hash" else v)
+                           for k, v in confirm_form(html).items(multi=True)])
+        assert client.post("/v2/sdn/dhcp/confirm", data=stale).status_code == 409
+        records = lab9_dhcp_records()
+        records["services"] = [s for s in records["services"] if s["name"] != "dhcp"]
+        held["doc"] = export_of(records)
+        assert client.get("/v2/sdn/apps?list=Lab").status_code == 200
+        assert preview(scope="all").status_code == 409
+        assert client.post("/v2/sdn/dhcp/remove/preview", data={"list": "Lab"}).status_code == 409
+    finally:
+        if saved:
+            C.remove_connection("Lab", "dhcp-ctl", actor="op@example.com")
+        mp.undo()
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -3597,7 +3693,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
-                   _nsot_export_and_code_repo, _heal_and_notify,
+                   _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _deploy,

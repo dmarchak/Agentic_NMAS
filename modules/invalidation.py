@@ -523,6 +523,9 @@ DECLARED = {
     "heal_v2.resume_preview": Nothing("previews resuming self-healing; writes nothing"),
     "sdn_v2.controller_test": Nothing("tests a saved SDN controller and answers on its card; the card's state stays the reader's"),
     "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
+    "sdn_dhcp_v2.preview": Nothing("previews DHCP steering in its card; the confirm sends"),
+    "sdn_dhcp_v2.remove_preview": Nothing("previews removing DHCP steering in its card; the "
+                                          "confirm sends"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),
     "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends"),
     # C2765: its host reads are a reads-engine run, recorded (History › Reads).
@@ -549,6 +552,9 @@ DECLARED = {
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),
+    # C2904 (board lab9-sdn B): DHCP steering's flows and their records, read by SDN's region.
+    "sdn_dhcp_v2.confirm": ("sdn",),
+    "sdn_dhcp_v2.remove_confirm": ("sdn",),
     # P6: the confirm starts the job, which announces each step and its end itself
     # (ANNOUNCERS controller-deploy); the In progress chip reads again as the job starts.
     "sdn_v2.apps_confirm": ("controller_deploy", "in_progress"),

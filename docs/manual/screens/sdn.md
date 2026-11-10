@@ -204,6 +204,18 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   adds a new folder, and only to a code repository at a local path: an https location, or a
   folder already in the repository, is refused naming why. Step by step: [Add an app to the code
   repository as a Draft](draft-write).
+- **DHCP steering** (on a network whose devices are NetBox's) names the DHCP server as the
+  committed NSOT export holds it (the router carrying the NetBox Service `dhcp`, its address,
+  its MAC and the switch port it is on, and whether the NSOT's protected dhcp classes name this
+  feature as their owner), what the flows do (each host's DHCP broadcast unicast to the
+  server's MAC from the edge port it enters, a server reply dropped on every port but the
+  server's), that **DHCPv6 (UDP 546 and 547) is not steered: it floods as before**, and the
+  requests steered and replies dropped, counted from the SDN reader's last read of the flows.
+  **Edit settings…** chooses every edge switch or some; **Preview steering…** compiles the
+  flows and reads each switch's table, listing every request with its REST body; **Steer DHCP
+  on <N> switch(es)** sends them as you, bound to that preview. **Remove steering…** previews
+  removing exactly the flows it recorded, and **Remove <N> steering flow(s)** removes them. Step by
+  step: [Steer DHCP to the network's server](dhcp-steering).
 - **No app version can be listed** says why (no code repository set, not fetched yet, or the
   setting changed since the last fetch), with **Open the code repository's card**, where its
   location is set and **Fetch now** registers each app folder at the fetched commit (see

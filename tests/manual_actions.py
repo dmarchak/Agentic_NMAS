@@ -119,6 +119,11 @@ NOT_AN_OPERATION = {
                                    "committed export; nothing is committed",
     ("_sdn_export.html", "Cancel"): "leaves the preview by drawing the card at rest again; "
                                     "nothing is committed",
+    # C2904 (board lab9-sdn B), SDN › Apps' DHCP steering: links that draw the card again.
+    ("_sdn_dhcp.html", "btn"): ("Close or Cancel (one macro): draws the card at rest again, a "
+                                "read of the export and the flow intent; nothing is sent"),
+    ("_sdn_dhcp.html", "Edit settings…"): ("draws the choice of edge switches in the card's "
+                                           "place, a read; its Preview… is the operation"),
     # The operator's decision of 2026-11-10 (board authoring-from-words F), SDN › Apps' Add an
     # app as a Draft…: links that draw the card again or navigate.
     ("_sdn_app_draft.html", "btn"): ("Cancel or Close (one macro): draws the control at rest "

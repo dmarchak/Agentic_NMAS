@@ -113,6 +113,11 @@ NOT_DIRECT = {
                                "authority's own path",
     "sdn_v2.reapply_confirm": "puts a lost response back through the switch's controller, the "
                               "authority's own path (C2018)",
+    # C2904: DHCP steering goes through the controller, by the same flow-operation core.
+    "sdn_dhcp_v2.confirm": "steers DHCP through the switches' controller, the authority's own "
+                           "path (C2904)",
+    "sdn_dhcp_v2.remove_confirm": "removes DHCP steering through the switches' controller, the "
+                                  "authority's own path (C2904)",
     "sdn_v2.watch_propose": "makes a watched stream a response awaiting a person (C2313) and "
                             "sends nothing; the response is sent by sdn_v2.response_confirm, "
                             "through the switch's controller",

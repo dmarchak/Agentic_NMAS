@@ -1,0 +1,146 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- SDN › Apps, the DHCP steering card (Lab 9 Objective 4, C2904; board docs/boards/lab9-sdn.html
+    artboard B, self-signed 2026-11-10 under the Phase 7 mode): at rest, the server, what each
+    flow does, IPv6 named as not covered, and the counters from the SDN reader's stored flows;
+    Edit settings… (the edge switches), the preview of steering or of its removal, a refusal
+    and the result, each drawn in the card's place. modules/sdn/dhcp_steer.py builds `s`.
+    `data-holds-live` while a form, a preview or an answer is open: a live redraw of the SDN
+    region is held and said (C2001), so an announcement never takes a preview away. -#}
+{%- set net = s.network -%}
+{%- set back = url_for('sdn_v2.apps', list=net) if net else '' -%}
+{%- set back_get = url_for('sdn_dhcp_v2.card', list=net) if net else '' -%}
+{%- macro close(words='Close') %}<a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#dhcp-steering" hx-swap="outerHTML">{{ words }}</a>{% endmacro -%}
+{%- macro short(sha) %}<span class="mono" title="sha256:{{ sha }}">sha256:{{ sha[:4] }}…{{ sha[-4:] }}</span>{% endmacro -%}
+{%- macro server_line(v) -%}
+{%- if v %}{{ v.device }}, {{ v.address }}, MAC <span class="mono">{{ v.mac }}</span> on {{ v.switch }} port {{ v.port_no }} ({{ v.switch_interface }}; NetBox Service <span class="mono">dhcp</span>, {{ s.protected or 'protected by the NSOT' }}){% else %}not known{% endif -%}
+{%- endmacro -%}
+{%- macro preview_form(words='Preview steering…', primary=False) -%}
+<form class="apps-act dhcp-act" hx-post="{{ url_for('sdn_dhcp_v2.preview') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="scope" value="all">
+  <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Compiles the flows from the committed NSOT export and reads each switch's table now; nothing is sent until you confirm"><span class="op-idle">{{ words }}</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'preview', compact=True, op='steering') }}
+</form>
+{%- endmacro -%}
+
+{%- if s.state_card == 'rest' %}
+<section class="card sdn-dhcp" id="dhcp-steering" aria-labelledby="h-dhcp-steering">
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">DHCP steering</h2>{% if s.error %}{{ badge("can't compile", 'danger') }}{% elif s.steered_switches %}{{ badge('on ' ~ s.steered_switches ~ ' switch' ~ ('es' if s.steered_switches != 1 else ''), 'ok') }}{% else %}{{ badge('not steered', 'muted') }}{% endif %}</div>
+  {%- if s.error %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Steering can't be compiled from the NSOT:</strong> {{ s.error }}.</p></div>
+  {%- endif %}
+  <dl class="sdn-kv">
+    <dt>DHCP server</dt><dd>{{ server_line(s.server) }}</dd>
+    <dt>Client requests</dt><dd>broadcasts on edge ports{% if s.edge_switches %} ({{ s.hosts }} host{{ 's' if s.hosts != 1 }} on {{ s.edge_switches | join(', ') }}){% endif %} unicast to the server's MAC on its port; never flooded</dd>
+    <dt>Server replies</dt><dd>dropped on every port but the server's (the trusted-port rule)</dd>
+    <dt>IPv6</dt><dd>{{ badge('not covered', 'warn') }} {{ s.ipv6 }}</dd>
+    {%- set c = s.counts %}
+    <dt>Counted</dt><dd>{% if not c or c.state == 'none' %}no steering flow is recorded{% elif c.state == 'unread' %}<span class="faint">not read: {{ c.why }}</span>{% else %}{{ c.requests }} request{{ 's' if c.requests != 1 }} steered · {{ c.replies_dropped }} repl{{ 'ies' if c.replies_dropped != 1 else 'y' }} dropped from another port, since each flow was installed{% if c.read_at %} (read {{ stamp(c.read_at) }}){% endif %}{% if c.unread_flows %} · <span class="faint">{{ c.unread_flows }} recorded flow{{ 's' if c.unread_flows != 1 }} not in the read</span>{% endif %}{% endif %}</dd>
+  </dl>
+  <div class="apps-acts">
+    <a class="btn" href="{{ back }}" hx-get="{{ url_for('sdn_dhcp_v2.settings', list=net) }}" hx-target="#dhcp-steering" hx-swap="outerHTML">Edit settings…</a>
+    {{ preview_form(primary=not s.steered_switches) }}
+    <form class="apps-act dhcp-act" hx-post="{{ url_for('sdn_dhcp_v2.remove_preview') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ net }}">
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="dhcp-steering"{% if not s.steered_switches %} disabled aria-disabled="true" title="No steering flow is recorded" data-refused="Not available: no steering flow is recorded"{% else %} title="Reads each switch's table now and shows exactly the flows that would be removed; nothing is sent until you confirm"{% endif %}><span class="op-idle">Remove steering…</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'remove', compact=True, op='removing steering') }}
+    </form>
+    {{ how('dhcp-steering') }}
+  </div>
+</section>
+
+{%- elif s.state_card == 'settings' %}
+<section class="card sdn-op sdn-dhcp" id="dhcp-steering" data-holds-live="review" aria-labelledby="h-dhcp-steering">
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">DHCP steering · settings</h2></div>
+  <form class="dhcp-settings" hx-post="{{ url_for('sdn_dhcp_v2.preview') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ net }}">
+    <p class="small">The server is read from the NSOT, never typed here: {{ server_line(s.server) }}.</p>
+    <fieldset class="field"><legend>Steer on</legend>
+      <label><input type="radio" name="scope" value="all" checked> Every edge switch{% if s.edge_switches %} ({{ s.edge_switches | join(', ') }}){% endif %}</label>
+      <label><input type="radio" name="scope" value="chosen"> Chosen switches:</label>
+      {%- for sw in s.edge_switches %}
+      <label class="dhcp-switch"><input type="checkbox" name="switch" value="{{ sw }}"> {{ sw }}</label>
+      {%- else %}<span class="hint">No edge switch is known: {{ s.error or 'the export names no end host' }}.</span>{% endfor %}
+      <span class="hint">An edge switch is one with an end host (a NetBox device tagged mercury-end-host) cabled to it. The switches on the way to the server are steered whichever you choose.</span>
+    </fieldset>
+    <div class="apps-acts"><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Compiles the flows for this choice and reads each switch's table now; nothing is sent until you confirm"><span class="op-idle">Preview…</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'settings') }}{{ close('Cancel') }}</div>
+  </form>
+</section>
+
+{%- elif s.state_card == 'preview' %}
+<section class="card sdn-op sdn-dhcp" id="dhcp-steering" data-holds-live="review" aria-labelledby="h-dhcp-steering">
+  {%- set remove = s.kind == 'remove' %}
+  {%- set n_sw = s.switch_count %}
+  {%- if not s.switch_count and not s.closing %}
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">DHCP steering is as compiled: nothing to send</h2>{{ badge('unchanged', 'muted') }}</div>
+  <p class="small">Each of the {{ s.unchanged }} steering flow{{ 's' if s.unchanged != 1 }} the NSOT asks for is on its switch as recorded, so no request is offered.</p>
+  <div class="apps-acts">{{ close() }}{{ how('dhcp-steering', 'nothing') }}</div>
+  {%- else %}
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">{% if remove %}Remove DHCP steering: {{ s.flows }} flow{{ 's' if s.flows != 1 }} on {{ n_sw }} switch{{ 'es' if n_sw != 1 }}{% else %}Steer DHCP on {{ n_sw }} switch{{ 'es' if n_sw != 1 }}: {{ s.rows | length }} request{{ 's' if s.rows | length != 1 }}{% endif %}</h2>{{ badge('preview', 'warn') }}</div>
+  <dl class="sdn-kv">
+    {%- if not remove %}<dt>DHCP server</dt><dd>{{ server_line(s.server) }}</dd>
+    <dt>From</dt><dd>the committed NSOT export {{ short(s.export_sha256) }}; {{ s.hosts }} end host{{ 's' if s.hosts != 1 }} on {{ s.chosen | join(', ') }}{% if s.unchanged %}; {{ s.unchanged }} flow{{ 's' if s.unchanged != 1 }} already as compiled, kept{% endif %}</dd>{% endif %}
+    <dt>Written as</dt><dd><span class="mono">feature:dhcp-unicast</span>, the owner the NSOT's protected dhcp classes name; through the controller connection <span class="mono">{{ s.connection }}</span>, one plan per switch{% if not remove %}, the server's switch first{% endif %}</dd>
+    {%- if remove %}<dt>What survives</dt><dd>the NSOT export and the NetBox Service are untouched; each flow's record is withdrawn, so History keeps who removed it and when</dd>{% endif %}
+    {%- if s.closing %}<dt>Records closed</dt><dd>{{ s.closing | length }} recorded flow{{ 's' if s.closing | length != 1 }} no longer on {{ 'its switch' if s.closing | length == 1 else 'their switches' }}: {% for r in s.closing %}<span class="mono">{{ r.cookie_hex or r.cookie }}</span> on switch {{ r.dpid }}{{ ', ' if not loop.last }}{% endfor %}; nothing is sent for {{ 'it' if s.closing | length == 1 else 'them' }}</dd>{% endif %}
+    <dt>IPv6</dt><dd>{{ badge('not covered', 'warn') }} {{ s.ipv6 }}</dd>
+  </dl>
+  {%- for w in s.warnings %}<p class="apps-refusal small" role="status">{{ icon('info', 15) }}<span>{{ w }}</span></p>{% endfor %}
+  {%- if s.rows %}
+  <div class="table-wrap"><table class="table dhcp-flows">
+    <thead><tr><th scope="col">Switch</th><th scope="col">{{ 'Removes' if remove else 'Flow' }}</th><th scope="col">Priority</th><th scope="col">REST</th></tr></thead>
+    <tbody>
+    {%- for r in s.rows %}
+    <tr><td data-l="Switch">{{ r.switch }}</td><td data-l="Flow"><strong>{{ r.role_words }}</strong>{% if r.do == 'remove' and not remove %} (replaced){% endif %}<div class="small mono">{{ r.words }}</div></td><td data-l="Priority">{{ r.priority }}</td><td data-l="REST"><details data-keep="dhcp-body-{{ r.switch }}-{{ loop.index }}"><summary class="small mono">{{ r.method }} {{ r.path }}</summary><pre class="small mono">{{ r.body }}</pre></details></td></tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- endif %}
+  {%- set plan_line %}<p class="small muted">Plan <span class="mono" title="sha256:{{ s.hash }}">sha256:{{ s.hash[:12] }}</span>: the confirm makes it again from the NSOT and the switches' tables, and sends nothing if it moved.</p>{% endset %}
+  {%- if remove %}
+  <form class="apps-act dhcp-confirm" hx-post="{{ url_for('sdn_dhcp_v2.remove_confirm') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="hash" value="{{ s.hash }}">
+    {{ plan_line }}
+    <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Removes exactly these flows as you, each switch held, verified and rolled back on failure"{{ gate('confirm') }}><span class="op-idle">Remove {{ s.flows }} steering flow(s){% if s.closing %} and close {{ s.closing | length }} record{{ 's' if s.closing | length != 1 }}{% endif %}</span><span class="op-busy">Removing…</span></button>{{ how('dhcp-steering', 'confirm') }}
+    {{ close('Cancel') }}
+  </form>
+  {%- else %}
+  <form class="apps-act dhcp-confirm" hx-post="{{ url_for('sdn_dhcp_v2.confirm') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="hash" value="{{ s.hash }}"><input type="hidden" name="scope" value="{{ s.scope or 'all' }}">
+    {%- if (s.scope or 'all') != 'all' %}{% for sw in s.chosen %}<input type="hidden" name="switch" value="{{ sw }}">{% endfor %}{% endif %}
+    {%- for k, v in s.cookies.items() %}<input type="hidden" name="cookie" value="{{ k }}={{ v }}">{% endfor %}
+    {{ plan_line }}
+    <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Sends exactly these requests as you, each switch held, verified and rolled back on failure"{{ gate('confirm') }}><span class="op-idle">Steer DHCP on {{ n_sw }} switch(es)</span><span class="op-busy">Steering…</span></button>{{ how('dhcp-steering', 'confirm') }}
+    {{ close('Cancel') }}
+  </form>
+  {%- endif %}
+  {%- endif %}
+</section>
+
+{%- elif s.state_card == 'refused' %}
+<section class="card sdn-op sdn-dhcp" id="dhcp-steering" data-holds-live="review" aria-labelledby="h-dhcp-steering">
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">Can't steer DHCP on {{ net or 'the network' }}</h2>{{ badge('Refused', 'danger') }}</div>
+  <p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ s.error }}.</span></p>
+  <div class="apps-acts">{% if net %}{{ close() }}{% endif %}{{ how('dhcp-steering', 'refusals') }}</div>
+</section>
+
+{%- else %}
+{#- the result: verified, rolled back, or refused at the confirm -#}
+<section class="card sdn-op sdn-dhcp" id="dhcp-steering" data-holds-live="review" aria-labelledby="h-dhcp-steering">
+  {%- set tone = {'verified': 'ok', 'rolled_back': 'warn', 'rollback_failed': 'danger', 'refused': 'danger'}[s.outcome] %}
+  {%- set words = {'verified': 'Verified', 'rolled_back': 'Rolled back', 'rollback_failed': 'Rollback failed', 'refused': 'Refused'}[s.outcome] %}
+  <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">{% if s.outcome == 'verified' %}{{ 'Removed DHCP steering' if s.kind == 'remove' else 'DHCP steering applied' }}{% elif s.outcome == 'refused' %}Nothing was sent{% else %}DHCP steering was not applied{% endif %}</h2>{{ badge(words, tone) }}</div>
+  {%- if s.error %}<p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ s.error }}.</span></p>{% endif %}
+  {%- if s.switches %}
+  <div class="table-wrap"><table class="table dhcp-result">
+    <thead><tr><th scope="col">Switch</th><th scope="col">Outcome</th><th scope="col">Checks</th></tr></thead>
+    <tbody>
+    {%- for w in s.switches %}
+    <tr><td data-l="Switch">{{ w.name or ('switch ' ~ w.dpid) }}</td><td data-l="Outcome">{{ badge(w.outcome | replace('_', ' '), {'verified': 'ok', 'rolled_back': 'warn'}.get(w.outcome, 'danger')) }}{% if w.error %}<div class="small">{{ w.error }}</div>{% endif %}</td><td data-l="Checks" class="small">{% for c in w.checks if c.state == 'pass' %}{% if loop.first %}{{ loop.length }} read back as sent{% endif %}{% endfor %}{% for c in w.checks if c.state == 'fail' %}{{ '; ' if loop.first }}{{ c.words }}{% endfor %} <span class="mono faint">{{ w.id }}</span></td></tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- endif %}
+  {%- if s.rollback %}<p class="small">Put back: {% for r in s.rollback %}{{ r.name or ('switch ' ~ r.dpid) }} {{ r.outcome | replace('_', ' ') }}{% if r.error %} ({{ r.error }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {%- if s.closed %}<p class="small">{{ s.closed | length }} stale record{{ 's' if s.closed | length != 1 }} closed.</p>{% endif %}
+  <p class="small muted">Testing a lease from a host is yours: docs/LAB9_DHCP_TEST.md. Each switch's operation is on <a href="{{ url_for('v2.history_page', kind='sdn') }}">History</a>.</p>
+  <div class="apps-acts">{{ close() }}{{ how('dhcp-steering', 'result') }}</div>
+</section>
+{%- endif %}

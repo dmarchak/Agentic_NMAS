@@ -217,6 +217,15 @@ def _sdn_connection(network: str, mp) -> None:
     conn = {"name": "walk-ctl", "kind": "ryu", "url": BASE_URL}
     mp.setattr(C, "_stored", lambda net: [dict(conn)] if net == network else real(net))
     assert C.connections(network)["state"] == "ok", C.connections(network)
+    # SDN › Apps' DHCP steering card (C2904) draws only on a network whose devices are
+    # NetBox's (it reads the NSOT export); the walk's lab is a CSV inventory, so its card is
+    # drawn as on a NetBox network, the real card's code over the lab's missing export (its
+    # "can't compile" state), without moving the whole lab's inventory to NetBox.
+    from modules import sdn_apps_page
+    from modules.sdn import dhcp_steer
+
+    mp.setattr(sdn_apps_page, "_dhcp_card",
+               lambda net: dhcp_steer.view(dhcp_steer.card(net)))
 
 
 def _loop_run(network: str, mp, folder: str) -> None:

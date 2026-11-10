@@ -1,0 +1,284 @@
+{
+  "_edit": "One edit: the controller target's address (the ryu container's, which Docker assigns on the harness's internal network each run) is written <ryu>. Everything else is as OVS, Ryu and Mercury's driver answered.",
+  "controller_connection":"target              : \"tcp:<ryu>:6653\"\nconnection_mode     : []\n\ntarget              : \"tcp:<ryu>:6653\"\nconnection_mode     : []\n",
+  "datapath_ports": "netdev@ovs-netdev: hit:0 missed:0\n  br3:\n    br3 65534/103: (dummy-internal)\n    s3-eth1 1/3: (dummy)\n    s3-eth2 2/none: (patch: peer=s4-eth2)\n  br4:\n    br4 65534/104: (dummy-internal)\n    s4-eth1 1/4: (dummy)\n    s4-eth2 2/none: (patch: peer=s3-eth2)\n    s4-eth3 3/1: (dummy)\n",
+  "ovs": "ovs-vsctl (Open vSwitch) 3.3.9\nDB Schema 8.5.1",
+  "recorded_at": "2026-11-10T04:04:09Z",
+  "requests": [
+    {
+      "dpid": 4,
+      "request": {
+        "body": "{\"actions\": [{\"port\": 1, \"type\": \"OUTPUT\"}], \"cookie\": 5567856514313486337, \"dpid\": 4, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_dst\": \"00:00:5e:00:53:01\", \"eth_type\": 2048, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "transit"
+    },
+    {
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [{\"field\": \"eth_dst\", \"type\": \"SET_FIELD\", \"value\": \"00:00:5e:00:53:01\"}, {\"port\": 2, \"type\": \"OUTPUT\"}], \"cookie\": 5567856514313486338, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_dst\": \"ff:ff:ff:ff:ff:ff\", \"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "request"
+    },
+    {
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [], \"cookie\": 5567856514313486339, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 68, \"udp_src\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "reply_drop"
+    },
+    {
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [], \"cookie\": 5567856514313486340, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"198.51.100.0/24\", \"udp_dst\": 68, \"udp_src\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "reply_drop"
+    }
+  ],
+  "ryu": "Ryu 4.34 on Python 3.5.10 (mercury-harness-ryu:4.34-py3.5)",
+  "sent": [
+    {
+      "answer": {
+        "error": "",
+        "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+        "ok": true,
+        "sent": true,
+        "status": 200
+      },
+      "dpid": 4,
+      "request": {
+        "body": "{\"actions\": [{\"port\": 1, \"type\": \"OUTPUT\"}], \"cookie\": 5567856514313486337, \"dpid\": 4, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_dst\": \"00:00:5e:00:53:01\", \"eth_type\": 2048, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "transit"
+    },
+    {
+      "answer": {
+        "error": "",
+        "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+        "ok": true,
+        "sent": true,
+        "status": 200
+      },
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [{\"field\": \"eth_dst\", \"type\": \"SET_FIELD\", \"value\": \"00:00:5e:00:53:01\"}, {\"port\": 2, \"type\": \"OUTPUT\"}], \"cookie\": 5567856514313486338, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_dst\": \"ff:ff:ff:ff:ff:ff\", \"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "request"
+    },
+    {
+      "answer": {
+        "error": "",
+        "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+        "ok": true,
+        "sent": true,
+        "status": 200
+      },
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [], \"cookie\": 5567856514313486339, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"255.255.255.255\", \"udp_dst\": 68, \"udp_src\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "reply_drop"
+    },
+    {
+      "answer": {
+        "error": "",
+        "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+        "ok": true,
+        "sent": true,
+        "status": 200
+      },
+      "dpid": 3,
+      "request": {
+        "body": "{\"actions\": [], \"cookie\": 5567856514313486340, \"dpid\": 3, \"hard_timeout\": 0, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"in_port\": 1, \"ip_proto\": 17, \"ipv4_dst\": \"198.51.100.0/24\", \"udp_dst\": 68, \"udp_src\": 67}, \"priority\": 300, \"table_id\": 0}",
+        "method": "POST",
+        "path": "/stats/flowentry/add"
+      },
+      "role": "reply_drop"
+    }
+  ],
+  "tables": {
+    "3": [
+      {
+        "actions": [
+          {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+          }
+        ],
+        "byte_count": 120,
+        "cookie": 0,
+        "dpid": 3,
+        "duration_sec": 21,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_dst": "01:80:c2:00:00:0e",
+          "eth_type": 35020
+        },
+        "packet_count": 2,
+        "priority": 65535,
+        "table_id": 0
+      },
+      {
+        "actions": [
+          {
+            "field": "eth_dst",
+            "type": "SET_FIELD",
+            "value": "00:00:5e:00:53:01"
+          },
+          {
+            "port": 2,
+            "type": "OUTPUT"
+          }
+        ],
+        "byte_count": 0,
+        "cookie": 5567856514313486338,
+        "dpid": 3,
+        "duration_sec": 0,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_dst": "ff:ff:ff:ff:ff:ff",
+          "eth_type": 2048,
+          "in_port": 1,
+          "ip_proto": 17,
+          "ipv4_dst": "255.255.255.255",
+          "udp_dst": 67
+        },
+        "packet_count": 0,
+        "priority": 300,
+        "table_id": 0
+      },
+      {
+        "actions": [],
+        "byte_count": 0,
+        "cookie": 5567856514313486339,
+        "dpid": 3,
+        "duration_sec": 0,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_type": 2048,
+          "in_port": 1,
+          "ip_proto": 17,
+          "ipv4_dst": "255.255.255.255",
+          "udp_dst": 68,
+          "udp_src": 67
+        },
+        "packet_count": 0,
+        "priority": 300,
+        "table_id": 0
+      },
+      {
+        "actions": [],
+        "byte_count": 0,
+        "cookie": 5567856514313486340,
+        "dpid": 3,
+        "duration_sec": 0,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_type": 2048,
+          "in_port": 1,
+          "ip_proto": 17,
+          "ipv4_dst": "198.51.100.0/255.255.255.0",
+          "udp_dst": 68,
+          "udp_src": 67
+        },
+        "packet_count": 0,
+        "priority": 300,
+        "table_id": 0
+      }
+    ],
+    "4": [
+      {
+        "actions": [
+          {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+          }
+        ],
+        "byte_count": 120,
+        "cookie": 0,
+        "dpid": 4,
+        "duration_sec": 21,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_dst": "01:80:c2:00:00:0e",
+          "eth_type": 35020
+        },
+        "packet_count": 2,
+        "priority": 65535,
+        "table_id": 0
+      },
+      {
+        "actions": [
+          {
+            "port": 1,
+            "type": "OUTPUT"
+          }
+        ],
+        "byte_count": 0,
+        "cookie": 5567856514313486337,
+        "dpid": 4,
+        "duration_sec": 0,
+        "hard_timeout": 0,
+        "idle_timeout": 0,
+        "match": {
+          "eth_dst": "00:00:5e:00:53:01",
+          "eth_type": 2048,
+          "ip_proto": 17,
+          "ipv4_dst": "255.255.255.255",
+          "udp_dst": 67
+        },
+        "packet_count": 0,
+        "priority": 300,
+        "table_id": 0
+      }
+    ]
+  },
+  "traces": [
+    {
+      "bridge": "br3",
+      "flow": "udp,in_port=1,dl_src=aa:bb:cc:00:00:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=0.0.0.0,nw_dst=255.255.255.255,udp_src=68,udp_dst=67",
+      "name": "request",
+      "output": "Flow: udp,in_port=1,vlan_tci=0x0000,dl_src=aa:bb:cc:00:00:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=0.0.0.0,nw_dst=255.255.255.255,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=68,tp_dst=67\n\nbridge(\"br3\")\n-------------\n 0. udp,in_port=1,dl_dst=ff:ff:ff:ff:ff:ff,nw_dst=255.255.255.255,tp_dst=67, priority 300, cookie 0x4d45000000000002\n    set_field:00:00:5e:00:53:01->eth_dst\n    output:2\n\nbridge(\"br4\")\n-------------\n 0. udp,dl_dst=00:00:5e:00:53:01,nw_dst=255.255.255.255,tp_dst=67, priority 300, cookie 0x4d45000000000001\n    output:1\n\nFinal flow: udp,in_port=1,vlan_tci=0x0000,dl_src=aa:bb:cc:00:00:01,dl_dst=00:00:5e:00:53:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=68,tp_dst=67\nMegaflow: recirc_id=0,eth,udp,in_port=1,dl_src=aa:bb:cc:00:00:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=0.0.0.0/1,nw_dst=255.255.255.255,nw_frag=no,tp_dst=67\nDatapath actions: set(eth(dst=00:00:5e:00:53:01)),4\n",
+      "what": "a DHCPDISCOVER broadcast entering the edge port (br3 port 1, h1's)"
+    },
+    {
+      "bridge": "br3",
+      "flow": "udp,in_port=1,dl_src=aa:bb:cc:00:00:66,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=198.51.100.66,nw_dst=255.255.255.255,udp_src=67,udp_dst=68",
+      "name": "reply_broadcast_from_edge",
+      "output": "Flow: udp,in_port=1,vlan_tci=0x0000,dl_src=aa:bb:cc:00:00:66,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=198.51.100.66,nw_dst=255.255.255.255,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=67,tp_dst=68\n\nbridge(\"br3\")\n-------------\n 0. udp,in_port=1,nw_dst=255.255.255.255,tp_src=67,tp_dst=68, priority 300, cookie 0x4d45000000000003\n    drop\n     -> outputting DHCP packet to local port for in-band control\n\nFinal flow: unchanged\nMegaflow: recirc_id=0,eth,udp,in_port=1,dl_src=aa:bb:cc:00:00:66,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=192.0.0.0/2,nw_dst=255.255.255.255,nw_frag=no,tp_src=67,tp_dst=68\nDatapath actions: 103\n",
+      "what": "a broadcast server reply (OFFER) arriving on the edge port, not the server's"
+    },
+    {
+      "bridge": "br3",
+      "flow": "udp,in_port=1,dl_src=aa:bb:cc:00:00:66,dl_dst=aa:bb:cc:00:00:01,nw_src=198.51.100.66,nw_dst=198.51.100.101,udp_src=67,udp_dst=68",
+      "name": "reply_unicast_from_edge",
+      "output": "Flow: udp,in_port=1,vlan_tci=0x0000,dl_src=aa:bb:cc:00:00:66,dl_dst=aa:bb:cc:00:00:01,nw_src=198.51.100.66,nw_dst=198.51.100.101,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=67,tp_dst=68\n\nbridge(\"br3\")\n-------------\n 0. udp,in_port=1,nw_dst=198.51.100.0/24,tp_src=67,tp_dst=68, priority 300, cookie 0x4d45000000000004\n    drop\n     -> outputting DHCP packet to local port for in-band control\n\nFinal flow: unchanged\nMegaflow: recirc_id=0,eth,udp,in_port=1,dl_src=aa:bb:cc:00:00:66,dl_dst=aa:bb:cc:00:00:01,nw_src=192.0.0.0/2,nw_dst=198.51.100.0/24,nw_frag=no,tp_src=67,tp_dst=68\nDatapath actions: 103\n",
+      "what": "a unicast server reply to a client's offered address, arriving on the edge port"
+    },
+    {
+      "bridge": "br4",
+      "flow": "udp,in_port=1,dl_src=00:00:5e:00:53:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=198.51.100.1,nw_dst=255.255.255.255,udp_src=67,udp_dst=68",
+      "name": "reply_from_server_port",
+      "output": "Flow: udp,in_port=1,vlan_tci=0x0000,dl_src=00:00:5e:00:53:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=198.51.100.1,nw_dst=255.255.255.255,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=67,tp_dst=68\n\nbridge(\"br4\")\n-------------\n 0. No match.\n    drop\n     -> outputting DHCP packet to local port for in-band control\n\nFinal flow: unchanged\nMegaflow: recirc_id=0,eth,udp,in_port=1,dl_src=00:00:5e:00:53:01,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=192.0.0.0/2,nw_dst=255.255.255.255,nw_frag=no,tp_src=67,tp_dst=68\nDatapath actions: 104\n",
+      "what": "the server's own reply on its port (br4 port 1): no steering flow touches it"
+    }
+  ]
+}

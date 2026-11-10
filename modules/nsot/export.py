@@ -10,8 +10,9 @@ the objects a network's features read, each projected to its declared fields (`_
 - ``devices`` by name: id, status, role, platform, site, device type, primary and OOB addresses,
   custom fields, tags and the RENDERED config context;
 - ``interfaces`` by device then name: type, enabled, ``mgmt_only``, mode, untagged and tagged
-  VLANs, parent, LAG and bridge, tags, custom fields (``openflow_port`` among them) and
-  addresses;
+  VLANs, parent, LAG and bridge, tags, custom fields (``openflow_port`` among them),
+  addresses, and its ``mac`` only where NetBox records one (C2904; an interface with none
+  carries no key, so an export from before the key reads the same);
 - ``vlans`` by site then VID; ``prefixes`` by prefix; ``services`` by parent then name; and
   ``cables`` by their two ends;
 - ``hosts`` by name (C2776, 2026-11-09): every device tagged ``mercury-end-host`` (`HOST_TAG`)
@@ -118,6 +119,17 @@ def _device(d: dict) -> dict:
 
 def _interface(i: dict, device_names: dict) -> dict:
     device = i.get("device") or {}
+    out = _interface_fields(i, device, device_names)
+    # The interface's MAC (C2904: DHCP steering rewrites a request to the server's MAC), kept
+    # only where NetBox records one, so an export of interfaces with none is byte-identical to
+    # one made before the key (expand, then contract; `dhcp_steer` refuses a missing one).
+    mac = _mac(i)
+    if mac:
+        out["mac"] = mac
+    return out
+
+
+def _interface_fields(i: dict, device: dict, device_names: dict) -> dict:
     return {"device": _name(device) or device_names.get(device.get("id"), ""),
             "name": _name(i), "type": _slug(i.get("type")), "enabled": bool(i.get("enabled")),
             "mgmt_only": bool(i.get("mgmt_only")), "mode": _slug(i.get("mode")),

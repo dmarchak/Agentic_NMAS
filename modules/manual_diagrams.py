@@ -1637,6 +1637,40 @@ def sdn_flows():
     ])
 
 
+def dhcp_steering():
+    return svg(560, (
+        "DHCP steering: the flows are compiled from the committed NSOT export alone (the DHCP "
+        "server from its NetBox Service dhcp, its MAC and switch port; each end host's edge "
+        "port; the paths between switches from the cables); each switch's table is read "
+        "through the controller and one plan per switch renders every request and its REST "
+        "body; you confirm, bound to their hash; the preview is made again and a moved hash "
+        "sends nothing; each switch, the server's first, is held, sent its requests and read "
+        "back; a failure rolls that switch back and puts back the switches already changed; "
+        "each flow is recorded with its owner, feature:dhcp-unicast. DHCPv6 is not steered."), [
+        lanes(20, 554, right="THE CONTROLLER"),
+        repo(14, 40, 186, 40, "The NSOT export", "server, hosts, cables"), num(14, 40, 1),
+        doc("box", 14, 92, 186, 36, "The compiled flows", "per edge port, per path"),
+        num(14, 92, 2),
+        device(262, 92, 118, 60, "Each switch", "its table read", top=True),
+        arrow("read", 260, 118, 204, 118),
+        doc("box", 14, 140, 186, 36, "One plan per switch", "every REST body; the hash"),
+        num(14, 140, 3),
+        person(14, 190, 186, 30, "You confirm, bound to their hash"), num(14, 190, 4),
+        band(236, 170, "The apply · each switch held"),
+        device(262, 256, 118, 140, "The controller", "and its switches", top=True),
+        *rows([
+            (270, None, 5, "Made again", "a moved hash sends nothing"),
+            (312, None, 6, "Sent, server's switch first", "exactly the rendered body"),
+            (354, "read", 7, "Verified", "each table read back"),
+        ]),
+        t(14, 402, "A failure puts back what landed.", "sm"),
+        store(14, 420, 186, 40, "The flow intent", "each flow's owner, the run"),
+        num(14, 420, 8),
+        t(14, 484, "DHCPv6 is not steered: it floods.", "sm"),
+        t(14, 508, "A lease from a host is yours to test.", "sm"),
+    ])
+
+
 def controller_app_deploy():
     return svg(560, (
         "A controller app deploy: the plan reads the controller host's unit, its app folder "
@@ -2193,6 +2227,7 @@ DIAGRAMS = {
     "heal": heal,
     "notifications": notifications,
     "sdn-flows": sdn_flows,
+    "dhcp-steering": dhcp_steering,
     "controller-app-deploy": controller_app_deploy,
     "nsot-export": nsot_export,
     "openflow-config": openflow_config,

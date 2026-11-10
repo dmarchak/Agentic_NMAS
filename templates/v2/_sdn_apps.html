@@ -16,6 +16,8 @@
 {%- with x=g.export %}{% include "v2/_sdn_export.html" %}{% endwith %}
 {#- Board authoring-from-words F: Add an app as a Draft…, opened in its card's place. -#}
 {%- with d=g.draft %}{% include "v2/_sdn_app_draft.html" %}{% endwith %}
+{#- Board lab9-sdn B (C2904): DHCP steering, its preview and result drawn in its card's place. -#}
+{%- if g.dhcp %}{% with s=g.dhcp %}{% include "v2/_sdn_dhcp.html" %}{% endwith %}{% endif %}
 {%- set code_repo_url = url_for('settings_v2.network', list_name=g.network, tab='network') ~ '#code-repo-card' -%}
 {%- if g.state == 'not_wired' or g.state == 'unreadable' %}
 <div class="notice notice-{{ 'warn' if g.state == 'not_wired' else 'danger' }} apps-none" role="status">{{ icon('info', 16) }}<p><strong>{{ g.network }}'s controller hosts can't be listed:</strong> {{ g.error }}. Nothing is drawn as known.</p></div>

@@ -225,6 +225,24 @@ def app_page(network: str, ctl: dict, registered: dict, app: str, chosen: str = 
             "registered": bool(entries)}
 
 
+def _dhcp_card(network: str):
+    """The DHCP steering card at rest, or None where the network has no NSOT export to read
+    (it is NetBox's view of a network; a network whose devices are not NetBox's has none)."""
+    from modules.inventory import source_config
+    from modules.sdn import dhcp_steer
+
+    try:
+        if (source_config.load(network) or {}).get("source") != source_config.SOURCE_NETBOX:
+            return None
+        return dhcp_steer.view(dhcp_steer.card(network))
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("sdn apps: the DHCP steering card for %s failed (%s)", network,
+                  type(exc).__name__)
+        return {"network": network, "state_card": "rest", "server": None, "counts": None,
+                "edge_switches": [], "hosts": 0, "steered_switches": 0, "protected": "",
+                "error": f"the card could not be read ({type(exc).__name__})"}
+
+
 def apps_view(network: str, args=None) -> dict:
     """The Apps tab's region: ``g`` for `v2/_sdn_apps.html`."""
     from modules.apps import deploy_op, draft_write
@@ -245,6 +263,8 @@ def apps_view(network: str, args=None) -> dict:
            "export": dict(export_op.last(network), state_card="rest"),
            # Board authoring-from-words F: Add an app as a Draft… at rest (the setting only).
            "draft": draft_write.control(network),
+           # Board lab9-sdn B (C2904): DHCP steering at rest, from the export and the store.
+           "dhcp": _dhcp_card(network),
            "controllers": [], "app": None, "receipt": None}
     if listed.get("state") != "ok":
         return out

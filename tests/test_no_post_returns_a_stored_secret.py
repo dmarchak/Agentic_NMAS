@@ -89,6 +89,13 @@ def _bodies(v):
         "sdn_v2.apps_publish_preview": (400, ("form", {"list": LIST}),
                                         "the form names no app version: refused before anything "
                                         "is read"),
+        # C2904: SDN › Apps' DHCP steering previews (board lab9-sdn B).
+        "sdn_dhcp_v2.preview": (409, ("form", {"list": LIST, "scope": "all"}),
+                                "the network has no committed NSOT export to compile from: "
+                                "refused naming why, no switch read"),
+        "sdn_dhcp_v2.remove_preview": (409, ("form", {"list": LIST}),
+                                       "the network has no controller connection to name: "
+                                       "refused naming why, nothing read"),
         # The operator's decision of 2026-11-10: Add an app as a Draft…'s preview.
         "sdn_v2.apps_draft_preview": (400, ("form", {"list": LIST}),
                                       "no folder was chosen: refused before the repository is "

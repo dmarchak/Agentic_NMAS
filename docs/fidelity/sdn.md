@@ -43,6 +43,27 @@ draws each app's compiled start-time config after the files (the region row "C: 
 start-time config" below) and marks a changed or new config in the set's Files cell; nothing
 else moves. Compared by reading the template against artboard C, with no new shot (the
 templates then hashed `f996aa466fd13f7e0c4e915154739eecc3d43b8d1b0f9b17acf050be75d38c92`).
+**Compared 2026-11-10 ~04:3x UTC for C2904 (Lab 9 Objective 4): SDN › Apps' DHCP steering
+card**, beside docs/boards/lab9-sdn.html artboard B's DHCP steering card (self-signed
+2026-11-10, docs/STANDING_APPROVAL_LOG.md, "Board lab9-sdn B"), **by reading the template
+against the artboard, region by region, with no new shot** (the board-shot harness has no case
+for the card's states yet; tests/test_dhcp_steer_v2.py and tests/v2_context.py `_dhcp_steering`
+draw each). `_sdn_apps.html` changed only to include `_sdn_dhcp.html` (new, in the compared list
+below) under the Add an app as a Draft control, for a network whose devices are NetBox's.
+The regions whose names begin "D:".
+
+| Region | Board B | Built | Verdict |
+|---|---|---|---|
+| D: the card's place | B: a card of its own on SDN › Apps (beside the DNS card, now superseded) | a card of its own, under Add an app as a Draft… and above the controllers | **same** |
+| D: the head | B: DHCP steering, the chip "on 5 switches" | the same; "not steered" when nothing is recorded, "can't compile" when the NSOT refuses | **same** |
+| D: the server | B: router, address, MAC on switch port n (NetBox Service dhcp, protected) | the same, with the switch's interface name, and "protected: the NSOT's dhcp classes name feature:dhcp-unicast", or NOT protected with why | **deviation** (log: C2904 B 3) |
+| D: client requests, server replies | B: the two lines | the same, the requests line naming the hosts and edge switches | **deviation** (log: C2904 B 3) |
+| D: IPv6 | B: not covered, DHCPv6 (UDP 546 and 547) is not steered: it floods as before | the same | **same** |
+| D: the counts | B: Last hour, requests steered and replies dropped | Counted, the same two numbers since each flow was installed, with the read's time | **deviation** (log: C2904 B 1) |
+| D: the actions | B: Edit settings…, Preview steering…, Remove steering…, How does this work? | the same, each preview busy on itself, a compact (i) beside each preview; Remove steering… disabled, its reason on hover, when nothing is recorded | **same** |
+| D: settings, the preview, a refusal, the result | no artboard for DHCP (the DNS card's settings and preview are drawn) | drawn after the DNS card's: Steer on every edge switch or chosen ones with Preview…; the preview's rows (switch, what, priority, REST body) with Steer DHCP on <N> switch(es); Remove <N> steering flow(s); a refusal with Close; the result per switch | **deviation** (log: C2904 B 2) |
+| D: phone width | no artboard | the tables stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
+
 **Compared 2026-11-08 ~19:0x UTC for C2777 (the operator's decision 8): SDN › Apps' NSOT export
 card**, beside docs/boards/nsot-export.html (drawn and counted as signed off under the Phase 7
 mode, docs/STANDING_APPROVAL_LOG.md "D8-R 2"), and the Apps tab's two registry notices beside
@@ -93,8 +114,8 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: states the board does not draw | not drawn | no collection yet, collecting, past its bound, couldn't collect, couldn't analyse, a newer snapshot than the answer, the sheet unreadable: each said in place | **deviation** (log: Board lab9-sdn I built, 6) |
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html
-Templates sha256: `f10cbf0812a7b5a52dbdc794ca7ae28c4851b5b30212e3f8c2a67d833281d801`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html
+Templates sha256: `ed2efe67e329b44e454d2ca838bb8739de5d6c3a4b2e83fc1d561e83af82d94b`
 Hashed again 2026-11-10 for Lab 9 B1 (board lab9-sdn I, the "I:" regions above):
 `_sdn_analyse.html` (new, in the compared list) draws Analyse this network, its findings and the
 planted-issue sheet; `_sdn_view.html` only includes it on Flows.
@@ -104,6 +125,10 @@ Controllers and Flows (its own record, docs/fidelity/sdn-switches.md). The tabs'
 otherwise as compared: the same classes, order and current tab; no other region moved. The
 same day's Add an app as a Draft (`_sdn_app_draft.html`, board authoring-from-words F) is in the
 list too. The three were merged and hashed together.
+Hashed again 2026-11-10 for C2904 (board lab9-sdn B's DHCP steering card, its regions "D:"
+above): `_sdn_apps.html` includes `_sdn_dhcp.html` (new, in the compared list); nothing else on
+the tab moves (the templates before it hashed `d5029510ce1c9ce2095a4056a92cfec6258ca1927d0231b91fe3079febb97ef8`).
+Merged with B1's and Objective 2's changes the same day and hashed with them, over the union.
 Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
 publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)

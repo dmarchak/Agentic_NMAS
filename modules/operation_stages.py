@@ -208,6 +208,16 @@ STAGES = {
     "sdn_v2.response_confirm": Stages(
         "sdn_v2.response_preview", "hash", "modules.sdn.flow_ops.verify_installed",
         "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
+    # DHCP steering (C2904; board lab9-sdn B): the preview made again from the export, the
+    # tables and the carried cookies and its hash compared; then one plan per switch through
+    # the same core, holding each switch, verified by reading its table back, rolled back on
+    # failure (and the switches already changed put back by `dhcp_steer._inverse`), recorded.
+    "sdn_dhcp_v2.confirm": Stages(
+        "sdn_dhcp_v2.preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.dhcp_steer._inverse", "modules.sdn.flow_intent.record_operation"),
+    "sdn_dhcp_v2.remove_confirm": Stages(
+        "sdn_dhcp_v2.remove_preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.dhcp_steer._inverse", "modules.sdn.flow_intent.record_operation"),
     # A lost response put back (C2018): the same core, its ask held to the records again.
     "sdn_v2.reapply_confirm": Stages(
         "sdn_v2.reapply_preview", "hash", "modules.sdn.flow_ops.verify_installed",
@@ -594,6 +604,9 @@ HISTORY = {
     "sdn_v2.apps_confirm": ("controller_deploys",),
     "sdn_v2.response_confirm": ("sdn_operations",),
     "sdn_v2.reapply_confirm": ("sdn_operations",),
+    # C2904: each switch's operation of a steering or its removal, as every flow operation's.
+    "sdn_dhcp_v2.confirm": ("sdn_operations",),
+    "sdn_dhcp_v2.remove_confirm": ("sdn_operations",),
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
     "sdn_v2.watch_propose": "n/a: a person's proposal is kept with the network's SDN responses "
