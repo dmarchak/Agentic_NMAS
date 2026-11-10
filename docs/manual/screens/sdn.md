@@ -521,6 +521,17 @@ The card closes by itself once the controller lists the link again and both its 
 up. **Dismiss with this reason** closes it sooner; the link stays on the Alerts tab until it
 returns.
 
+**Needs attention has a row for each link down whose reroute is not verified**, so a failed
+link reaches you when you are not on this tab. The row names the network, both ends (each
+switch by its DPID and the port) and since when the link is down. It is amber while the reroute
+is not verified yet, is being verified, or cannot be told, and red once a verify found it not
+rerouted. Its action opens the link's card here, where you press **Verify the reroute**. A link
+whose reroute is verified is not a row: it is down, and the fabric works around it. The row
+clears when the reroute is verified, when the loop's next pass finds the link listed and both
+its ports up, or when you dismiss the card. While the loop is stopped nothing judges the link,
+so a link that came back stays a row until the loop runs again or you dismiss its card. If the
+network's link-failure cards cannot be read, Needs attention says so in a row of its own.
+
 ## What each switch can do {#capabilities}
 
 The matrix is read from each switch's own answers through its controller, never from its

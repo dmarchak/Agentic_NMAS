@@ -339,6 +339,11 @@ ROW_KINDS = {
                                  "answered is not being mitigated",
                                  "re-apply it on SDN › Flows (a preview, then your confirm), "
                                  "or let it expire"),
+    # C2935 (Lab 9 B3, board F): a link the topology held is down, its reroute not verified.
+    ("sdn_links", "down"): ("a link the SDN topology held is down and its reroute is not "
+                            "verified, so the hosts it carried may not reach each other",
+                            "open its card on SDN › Responses and verify the reroute, or "
+                            "dismiss it with a reason"),
     # C906: nothing was sent; every session to it is refused until a person reviews the key.
     ("host_keys", "changed"): ("a device answered with an SSH host key Mercury does not hold",
                                "re-key it on its page if it was rebuilt, or find what answers "
@@ -593,6 +598,11 @@ CLEARS = {
                                  "response would have expired anyway, or a newer response "
                                  "answers the same threat on that switch (its detection fired "
                                  "again and was answered as new)"),
+    ("sdn_links", "down"): (("resolves",), "its reroute is verified (Verify the reroute on SDN › "
+                            "Responses, or AUTO's verify, reads every host pair delivered "
+                            "around the link), or the loop's next pass finds the link listed "
+                            "and both its ports up and closes its card, or a person dismisses "
+                            "the card with a reason"),
     ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
                                         "Credentials › Profiles) finishes without a failure, "
                                         "or the failed device's rotation is committed (its "
@@ -4208,6 +4218,103 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
                                      f"read for {', '.join(unjudged)}" if unjudged else "")))
 
 
+#: A link-failure card's latest verify outcome in a row's words (`link_failure.OUTCOMES`);
+#: ``rerouted`` is never a row (the link is down and the fabric works around it).
+SDN_LINK_STATES = {None: "its reroute not verified yet",
+                   "pending": "its reroute being verified (the stored read is from before the "
+                              "failure or still lists the link)",
+                   "not_rerouted": "its reroute verified as NOT done",
+                   "cannot_tell": "whether it was rerouted cannot be told",
+                   "no_pairs": "no host pair to verify its reroute by"}
+
+
+def sdn_links_source(found=None, now: float = None) -> dict:
+    """Each network's open link-failure card (Lab 9 B3, board F; `link_failure.open_rows`,
+    C2935) whose reroute is not verified: one row per link, naming the network, both ends (each
+    switch by its DPID and the port, as the card's title does), since when it is down, the
+    card's mode and its latest verify's words; DANGER when that verify found the reroute not
+    done, else WARNING. Its action is the card on SDN › Responses, where Verify the reroute is.
+    A card whose latest verify is ``rerouted`` is not a row: the link is down and the fabric
+    works around it. It clears when the reroute is verified, when the loop's pass finds the link
+    listed and up again (`link_failure.step` closes the card as restored), or when a person
+    dismisses the card. A network whose store cannot be read is a row of its own, never
+    silence. One small file read per network (the store the loop writes), never a controller.
+    *found* is ``{network: open_rows answer}`` (tests)."""
+    from modules.nsot import listref
+    from modules.sdn import link_failure as LF
+
+    started = time.time() if now is None else now
+    label = "SDN link failures"
+    try:
+        reads = found if found is not None else {n: LF.open_rows(n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("sdn_links", label, read_at=started, took_ms=0,
+                             error=f"the link-failure cards could not be read: "
+                                   f"{type(exc).__name__}")
+    rows, unread, rerouted, cards = [], [], 0, 0
+    for network, got in sorted(reads.items()):
+        if (got or {}).get("state") == "unreadable":
+            unread.append(network)
+            rows.append(row(
+                source="sdn_links", kind="unreadable", key=f"{network}:store",
+                level="unknown",
+                what=f"{network}'s SDN link-failure cards cannot be read",
+                cause=(f"{got.get('error') or LF.STORE_FILE + ': unreadable'}; whether a link "
+                       f"on {network} is down with its reroute not verified is not known, and "
+                       "SDN › Responses cannot draw its link cards"),
+                action={"label": (f"Repair {network}'s {LF.STORE_FILE} (in the network's "
+                                  "folder); nothing here can rewrite it"), "known": False},
+                operands={"network": network, "store": LF.STORE_FILE}))
+            continue
+        for r in (got or {}).get("rows") or []:
+            cards += 1
+            v = r.get("verify") or {}
+            outcome = v.get("outcome")
+            if outcome == "rerouted":
+                rerouted += 1
+                continue
+            d = r.get("detection") or {}
+            link = d.get("link") or {}
+            ends = link.get("ends") or []
+            words = LF.link_words(ends) if ends else (d.get("dpid_hex") or "a link")
+            down_at = link.get("since") or d.get("at") or r.get("at")
+            since = _ts(down_at) or _ts(r.get("at"))
+            state = SDN_LINK_STATES.get(outcome, f"its reroute's verify answered {outcome!r}")
+            mode = ("AUTO: Mercury verifies it at each pass for "
+                    f"{LF.VERIFY_WINDOW_S} s, then leaves it to a person"
+                    if r.get("mode") == "auto" else "HITL: it awaits a person's Verify")
+            last = (f"; the latest verify ({v.get('actor') or 'unknown'}, {v.get('at')}): "
+                    f"{v.get('words')}" if v else "")
+            rows.append(row(
+                source="sdn_links", kind="down", key=f"{network}:{r.get('id')}",
+                level="danger" if outcome == "not_rerouted" else "warning", since=since,
+                what=(f"SDN link {words} on {network} is down since {down_at or '?'}, "
+                      f"{state}"),
+                cause=(f"Card {r.get('id')}, opened {r.get('at')} ({d.get('connection') or '?'}): "
+                       f"{d.get('words') or 'a link the topology held is down'}; {mode}"
+                       f"{last}. The hosts the link carried reach each other only if the "
+                       "forwarding app rerouted them; Mercury sends nothing for a link down. "
+                       "The card closes when the loop's next pass finds the link listed and "
+                       "both its ports up (while the loop is stopped nothing judges it)"),
+                operands={"network": network, "card": r.get("id") or "",
+                          "connection": d.get("connection") or "",
+                          "link": link.get("key") or "", "how": link.get("how") or "",
+                          "ends": [LF.end_words(e) for e in ends], "since": down_at or "",
+                          "mode": r.get("mode") or "", "outcome": outcome or ""},
+                action={"label": (f"Open the link's card on {network}'s SDN › Responses and "
+                                  "press Verify the reroute, or dismiss it with a reason"),
+                        "href": ("/v2/sdn/responses?" + urlencode({"list": network})
+                                 + f"#sdn-l-{r.get('id')}")}))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    down = sum(1 for x in rows if x["kind"] == "down")
+    return source_result("sdn_links", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"{len(reads)} network(s)' link-failure cards: {cards} open, "
+                                  f"{down} down with the reroute not verified, {rerouted} "
+                                  "down and verified rerouted (working, so not a row)"
+                                  + (f"; unreadable for {', '.join(unread)}" if unread
+                                     else "")))
+
+
 def sdn_controllers_source(found=None, now: float = None) -> dict:
     """Each network whose SDN controller does not answer the SDN reader (C1869's row, carried
     into C1999): one DANGER row per network, naming each controller not answering (its name,
@@ -6810,7 +6917,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            netbox_lag_source, console_ztp_source, intent_format_source,
            ai_spend_source, ai_withheld_source, sdn_loop_source, sdn_responses_source,
            sdn_mitigation_source, sdn_controllers_source, notify_source, heal_source,
-           controller_python_source, controller_deploy_source)
+           controller_python_source, controller_deploy_source, sdn_links_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -6872,6 +6979,9 @@ SOURCE_KEYS = {
     "sdn_responses_source": ("sdn", "settings"),
     # The SDN reader announces sdn at each read, and a re-apply's confirm invalidates it (C2018).
     "sdn_mitigation_source": ("sdn",),
+    # C2935: a pass that opens, verifies or restores a link card announces sdn (loop.run_pass),
+    # and Verify the reroute and Dismiss invalidate it (sdn_v2.link_verify, link_dismiss).
+    "sdn_links_source": ("sdn",),
     # The SDN reader announces sdn at each read; a connection changed in Settings wakes it
     # (reader_wakes), so its read, then its announcement, moves the row (C1999, C1869's row).
     "sdn_controllers_source": ("sdn",),
