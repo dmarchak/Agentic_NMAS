@@ -194,6 +194,25 @@ History, fails, against a backlog that only shrinks), and rule 6 by a browser te
 (scroll, an open disclosure, typed text and the layout kept across a refresh); the rest is the
 review's.
 
+## Every fix through Mercury
+
+**A standing design rule (the operator, 2026-11-10), beside "Human-facing means human-readable".**
+Every fix must be possible through Mercury, in code; no solution may require the CLI.
+- A test list, runbook, diagnosis, Needs attention row or manual page whose fix says "at the
+  console" (or any device CLI step) names a missing Mercury operation. That operation is
+  registered as a row the turn the step is found, and the text says so beside the step.
+- A device's console stays break-glass for a person; it is never the only way to a fix.
+- Reading is no exception: a read a fix needs goes through Mercury's read-only paths
+  ("No terminal steps", CLAUDE.md).
+
+**Cost:** a register row per console step found, and the operation it names built before the
+step leaves the text. **Prevents:** fixes that only someone with a device's CLI can make, and
+that leave no preview, confirm or record (r7's lost telemetry streams, 2026-11-08 to 11-10: the
+known recovery was a console sequence, C2838).
+
+**The test, beside the industry need:** a fix a person is told to make is a Mercury operation,
+or its step names the register row for the operation still missing.
+
 ## AI-assisted actions
 
 The Actions menu distinguishes two kinds:

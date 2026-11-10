@@ -52,7 +52,7 @@ The result names one state, with its one next step:
 - **rotated, persistence unverified**: the device's save or its read-back did not prove the new credential (the result names the stage). Do not reload the device. The remedy is the device's own save again: **Persist**, on the result and on Needs attention (or `nmas-persist-native` on the host);
 - **rotated, not recorded**: the device holds a password the tool did not record. The staged copy is kept and is the only copy, and Needs attention raises a row for it. The interface has no control that settles it yet: the row names the host command that does (`nmas-rotation-recover`), which asks the device which password it accepts and records or clears the staged copy accordingly;
 - **reverted**: the device is unchanged, and the result says why the verify failed;
-- **revert failed**: the device refused the old password after the revert; recover it on its console with the break-glass record;
+- **revert failed**: the device refused the old password after the revert; recover it on its console with the break-glass record (no Mercury operation recovers it yet; that gap is register row C2966);
 - **reverted, proof inconclusive**: the old line was sent back and the proof could not run locally; check the device directly;
 - **failed before any change**: nothing was sent; read the refusal, fix it, and preview again.
 

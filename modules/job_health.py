@@ -890,7 +890,8 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
         elif state == cr.NEITHER_ACCEPTED:
             st, detail = ("neither_accepted",
                           f"at {at} the device refused BOTH the staged credential and the "
-                          "recorded one: it may be locked out; recover on the console")
+                          "recorded one: it may be locked out; recover on the console (no "
+                          "Mercury operation recovers it yet: C2966)")
             act = {"label": "Recover the device on its console, with the break-glass record"}
         elif state == cr.RECOVERY_INCONCLUSIVE:
             st, detail = "unknown", (f"a recovery at {at} could not settle it; the staged "
@@ -907,7 +908,8 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
         elif state == cr.REVERT_FAILED:
             st, detail = "revert_failed", (f"the new credential did not verify and the "
                                            f"revert failed at {at}: the device may be "
-                                           "locked out; recover on the console")
+                                           "locked out; recover on the console (no Mercury "
+                                           "operation recovers it yet: C2966)")
             act = {"label": "Recover the device on its console, with the break-glass record"}
         else:
             st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
