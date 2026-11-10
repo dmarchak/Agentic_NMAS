@@ -254,6 +254,39 @@ class TestKinds:
         assert "S3cretKey" not in json.dumps([K.masked_unit(u) for u in got["units"]])
 
 
+class TestTheTierDecidesWithoutAPerson:
+    """`decide._tier` (C2900: mutation-nightly #72's five survivors, the operator's "review and
+    kill its survivors ... because _tier decides what Mercury does without a person"): the tier
+    each unit's kind takes, read where a Tier 2 incident becomes a proposal or a can't-fix."""
+
+    def test_each_kind_takes_its_table_tier_and_an_unknown_kind_the_strictest(self):
+        assert all(DC._tier(k) == t for k, t in K.TIER.items())
+        # A kind the table does not hold is Tier 4, never Tier 2 or below: an unknown kind is
+        # never fixed or proposed without a person (kills `TIER.get(kind, None)`, `(kind, )`
+        # and `(kind, 5)`).
+        assert DC._tier("a_kind_no_table_holds") == 4
+        assert max(K.TIER.values()) == 4, "4 is the strictest tier there is"
+
+    def test_a_tier_2_kind_the_policy_does_not_propose_is_a_can_t_fix_naming_it(self):
+        # A router-id changed: a fix that takes effect only through a process reset (Tier 2).
+        c = classify(changed((" router-id 192.0.2.6\n", " router-id 192.0.2.7\n")))
+        assert (c["tier"], c["kind"]) == (2, "process_reset")
+        outcome, words = DC._outcome({"mode": "auto"}, c, [], [])
+        assert outcome == "cant_fix", words
+        assert K.KIND_WORDS["process_reset"] in words, "the kind not proposed is named"
+        # Proposed by the policy, the same incident is a proposal: a person decides by hash.
+        outcome, _words = DC._outcome({"mode": "auto"}, c, [], ["process_reset"])
+        assert outcome == "propose"
+
+    def test_a_kind_the_table_does_not_hold_is_not_counted_a_missing_tier_2_kind(self):
+        c = classify(changed((" router-id 192.0.2.6\n", " router-id 192.0.2.7\n")))
+        c = dict(c, units=[dict(u, kind="a_kind_no_table_holds") for u in c["units"]])
+        outcome, _words = DC._outcome({"mode": "auto"}, c, [], [])
+        assert outcome == "propose", ("an unknown kind is Tier 4 by `_tier`, so it is not a "
+                                      "Tier 2 kind missing from the policy here; the incident's "
+                                      "own tier (2, from the classifier) decides")
+
+
 # ── The decision, through decide_one with its sources faked ────────────────────────────────
 
 class Fake:

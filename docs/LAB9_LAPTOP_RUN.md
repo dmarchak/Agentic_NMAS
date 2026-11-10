@@ -101,7 +101,7 @@ repin a second time to the same commit and the new commit's steps run.
 | The SDN loop in human-in-the-loop mode | a new network is not marked `lab`, and AUTO runs only on a network marked lab (`modules/sdn/modes.py` `AUTO_STAGE`); the loop's mode is HITL until a person turns AUTO on | "SDN AUTO impossible", "SDN loop in HITL" |
 | Background AI off | `ai_background` empty (the default) | "background AI off" |
 | Read-only onboarding first | section 5: the switches enter read-only, and nothing is written to them | the discovery captures |
-| Identity: option (c), the gate-off settings, for the sitting only (the operator, 2026-11-05; C2520) | `kit start` turns off the gates for configure, confirm and approve; reveal, publish_remote and break_glass stay on | "reveal, publish and break-glass gated"; History |
+| Identity: option (c), the gate-off settings, for the sitting only (the operator, 2026-11-05; C2520) | `kit start` turns off the gates for configure, confirm and approve; reveal, publish_remote and break_glass stay on. **`kit start --reveal`** opens reveal too, for the S1 sitting only (C2897, the operator's approval of 2026-11-10): Show commands' reads run through Mercury there; it is refused after `REVEAL_UNTIL` (2026-11-11 07:00 UTC, `lab/sdn-laptop/kit_settings.py`), and the kit's stop, run by the exception's expiry timer, closes reveal with the rest | "publish and break-glass gated" and "reveal gated (or open for the sitting … C2897)"; History |
 | Host and Origin checks | `allowed_host_names` 127.0.0.1, localhost and ::1; `require_same_origin_writes` on (`modules/request_origin.py`) | "Host check on", "same-origin writes on" |
 
 **The identity exception and its expiry:**

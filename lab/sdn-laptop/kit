@@ -5,7 +5,8 @@
 #   kit init SHA       the kit folder, the worktree at SHA, NetBox's secrets, images, settings
 #   kit repin SHA      the worktree moved to SHA (a fix on lab9-live), Mercury stopped first;
 #                      then the settings init again, adding only what is missing
-#   kit start          the check, the identity exception, NetBox, Mercury (loopback only)
+#   kit start [--reveal]  the check, the identity exception, NetBox, Mercury (loopback only);
+#                      --reveal opens reveal too, for the S1 sitting only (C2897)
 #   kit stop           the identity gates restored (recorded), Mercury and NetBox stopped
 #   kit status         what runs, the pinned sha, the last identity exception
 #   kit preflight      one PASS/FAIL line per check (kit_preflight.sh)
@@ -172,7 +173,10 @@ cmd_start() {
   guard_on
   in_wt "$PY" "$HERE/kit_settings.py" last-exception
   local until; until=$(date -u -d "+$EXCEPTION_HOURS hours" +%Y-%m-%dT%H:%MZ)
-  in_wt "$PY" "$HERE/kit_settings.py" exception-on "$until"
+  # C2897: `kit start --reveal` opens reveal too, for the S1 sitting only (kit_settings.py
+  # refuses it after REVEAL_UNTIL); the stop, run by the expiry timer below, closes it.
+  in_wt "$PY" "$HERE/kit_settings.py" exception-on "$until" ${REVEAL:+--reveal} \
+    || die "the identity exception was not started (above)"
   echo "$until" > "$RUN/exception-until"
   # The expiry is enforced, not only written: a user timer runs the kit's stop at it.
   systemctl --user stop nmas-sdn-kit-expiry.timer >/dev/null 2>&1 || true
@@ -273,7 +277,7 @@ case "${1:-}" in
   ensure-pepper) cmd_ensure_pepper ;;
   netbox-writes-on) shift; load; [ $# -gt 0 ] || die 'usage: kit netbox-writes-on "<reason>"'
     in_wt "$PY" "$HERE/kit_settings.py" netbox-writes-on "$@" ;;
-  start) cmd_start ;;
+  start) REVEAL=""; [ "${2:-}" = "--reveal" ] && REVEAL=1; cmd_start ;;
   stop) cmd_stop ;;
   status) cmd_status ;;
   preflight) cmd_preflight ;;

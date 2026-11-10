@@ -322,6 +322,62 @@ class TestNetBoxsV2TokenPepper:
         assert "NetBox can save a v2 token" in pre
 
 
+class TestRevealForTheS1SittingOnly:
+    """C2897 (the operator's approval of 2026-11-10: the kit's identity exception widened to
+    reveal "scoped to the S1 sitting only, expiring automatically after it"): `exception-on
+    UNTIL --reveal` opens reveal too, recorded, and is refused after REVEAL_UNTIL; the stop's
+    `exception-off` closes reveal whatever opened it; safety passes an open reveal only before
+    the cap. KIT_NOW stands in for the clock."""
+
+    BEFORE, AFTER = "2026-11-10T15:00Z", "2026-11-11T08:00Z"
+
+    def _run(self, data, now, *args):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), *args],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, NMAS_DATA_DIR=str(data), KIT_NOW=now))
+
+    def _gates(self, data):
+        s = json.loads((data / "user_settings.json").read_text())
+        return {a: s.get(f"require_identity_for_{a}", True)
+                for a in ("configure", "confirm", "approve", "reveal")}
+
+    def test_reveal_opens_with_the_exception_and_the_stop_closes_it(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._run(data, self.BEFORE, "exception-on", "2026-11-11T05:00Z", "--reveal")
+        assert r.returncode == 0, r.stderr
+        assert "reveal open too, C2897" in r.stdout
+        assert self._gates(data) == {"configure": False, "confirm": False, "approve": False,
+                                     "reveal": False}
+        safety = self._run(data, self.BEFORE, "safety")
+        assert "PASS reveal gated (or open for the sitting" in safety.stdout
+        r = self._run(data, self.BEFORE, "exception-off", "the kit's stop")
+        assert r.returncode == 0, r.stderr
+        assert all(self._gates(data).values()), "the stop closes reveal too"
+
+    def test_without_reveal_it_stays_gated(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        assert self._run(data, self.BEFORE, "exception-on", "2026-11-11T05:00Z").returncode == 0
+        assert self._gates(data)["reveal"] is True
+
+    def test_after_the_cap_reveal_is_refused_and_nothing_is_written(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._run(data, self.AFTER, "exception-on", "2026-11-12T05:00Z", "--reveal")
+        assert r.returncode != 0 and "--reveal refused" in (r.stdout + r.stderr)
+        assert not (data / "user_settings.json").exists() or self._gates(data)["reveal"] is True
+
+    def test_an_open_reveal_after_the_cap_fails_the_safety_check(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        assert self._run(data, self.BEFORE, "exception-on", "2026-11-11T05:00Z",
+                         "--reveal").returncode == 0
+        safety = self._run(data, self.AFTER, "safety")
+        assert "FAIL reveal gated (or open for the sitting" in safety.stdout
+
+
 class TestNetBoxWritesOnForAFreshKit:
     """C2548's bridge (2026-11-05): a fresh install cannot turn NetBox writes on through Mercury
     (an import's confirm turns them on, and an import is not offered for a network with no

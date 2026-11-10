@@ -8,7 +8,10 @@ never the checkout's. Prints names and states, never a value that could be a sec
                                           one is kept), the lab9 network if missing, made the
                                           installation's current one if none was set; run
                                           again by `kit repin`
-    kit_settings.py exception-on UNTIL    the identity exception, recorded in History
+    kit_settings.py exception-on UNTIL [--reveal]
+                                          the identity exception, recorded in History;
+                                          --reveal opens reveal too, for the S1 sitting only
+                                          (C2897, refused after REVEAL_UNTIL)
     kit_settings.py exception-off WHY     the gates restored, recorded in History
     kit_settings.py netbox-writes-on WHY  NetBox's master write switch on, recorded (C2548)
     kit_settings.py last-exception        the newest exception record, one line
@@ -32,6 +35,25 @@ VERIFIED = "none"
 NETWORK = "lab9"
 OPENED = ("configure", "confirm", "approve")
 KEPT_ON = ("reveal", "publish_remote", "break_glass")
+#: C2897 (the operator's approval of 2026-11-10, "scoped to the S1 sitting only, expiring
+#: automatically after it"): `exception-on UNTIL --reveal` also opens the reveal gate, so Show
+#: commands' reads run through Mercury at the sitting; it is refused after REVEAL_UNTIL, and the
+#: kit's stop (run by the exception's own expiry timer) closes it with the rest.
+REVEAL_SITTING = "S1 (Tue 2026-11-10)"
+REVEAL_UNTIL = "2026-11-11T07:00Z"
+
+
+def _reveal_allowed(now=None) -> bool:
+    import datetime as dt
+
+    # KIT_NOW (ISO, UTC) stands in for the clock in tests/test_lab_sdn_laptop_kit.py, so the
+    # cap is tested on both sides of it whatever the date the suite runs on.
+    given = os.environ.get("KIT_NOW", "")
+    if now is None and given:
+        now = dt.datetime.strptime(given, "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc)
+    now = now or dt.datetime.now(dt.timezone.utc)
+    cap = dt.datetime.strptime(REVEAL_UNTIL, "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc)
+    return now < cap
 PORT = os.environ.get("MERCURY_PORT", "5080")
 NETBOX = f"http://127.0.0.1:{os.environ.get('NETBOX_PORT', '8001')}"
 INSTALLATION = {
@@ -131,7 +153,7 @@ def _record(kind: str, before: dict, after: dict, reason: str) -> None:
 
     changes = [{"key": f"require_identity_for_{a}", "label": f"Require identity for {a}",
                 "kind": "bool", "old": before[a], "new": after[a]}
-               for a in OPENED if before[a] != after[a]]
+               for a in OPENED + ("reveal",) if before[a] != after[a]]
     got = IS._record({"kind": kind, "actor": ACTOR, "actor_verified": VERIFIED,
                       "changes": changes, "fields": [c["key"] for c in changes],
                       "reason": reason})
@@ -139,20 +161,29 @@ def _record(kind: str, before: dict, after: dict, reason: str) -> None:
         sys.exit(f"kit_settings: the change was made and NOT recorded: {got.get('record_error')}")
 
 
-def exception_on(until: str) -> None:
+def exception_on(until: str, reveal: bool = False) -> None:
+    if reveal and not _reveal_allowed():
+        sys.exit(f"kit_settings: --reveal refused: C2897 opened reveal for the sitting "
+                 f"{REVEAL_SITTING} only, until {REVEAL_UNTIL}, and that time has passed; the "
+                 "exception was not started")
     before = _gates()
-    _write({f"require_identity_for_{a}": False for a in OPENED})
+    opened = OPENED + (("reveal",) if reveal else ())
+    _write({f"require_identity_for_{a}": False for a in opened})
+    kept = ("publish_remote and break_glass stay gated; reveal is open too, for the sitting "
+            f"{REVEAL_SITTING} only (C2897), until {REVEAL_UNTIL} at the latest"
+            if reveal else "reveal, publish_remote and break_glass stay gated")
     _record("identity_exception_on", before, _gates(),
-            f"the final SDN lab's hardware sitting, option (c) (C2520): configure, confirm and "
-            f"approve need no verified identity on this install until {until} or the kit's "
-            f"stop, whichever is first; Host and Origin checks on; reveal, publish_remote and "
-            f"break_glass stay gated")
-    print(f"identity exception: ON until {until} (recorded in History)")
+            f"the final SDN lab's hardware sitting, option (c) (C2520): "
+            f"{', '.join(opened)} need no verified identity on this install until {until} or "
+            f"the kit's stop, whichever is first; Host and Origin checks on; {kept}")
+    print(f"identity exception: ON until {until}"
+          + (" (reveal open too, C2897)" if reveal else "") + " (recorded in History)")
 
 
 def exception_off(why: str) -> None:
     before = _gates()
-    _write({f"require_identity_for_{a}": True for a in OPENED})
+    # Reveal too, whether or not this exception opened it (C2897): the stop closes everything.
+    _write({f"require_identity_for_{a}": True for a in OPENED + ("reveal",)})
     _record("identity_exception_off", before, _gates(), f"restored: {why}")
     print("identity exception: OFF, the gates restored (recorded in History)")
 
@@ -214,8 +245,13 @@ def safety() -> int:
         ("records on files", not get_setting("records_db_host", ""), "records_db_host"),
         ("same-origin writes on", bool(get_setting("require_same_origin_writes", False)), ""),
         ("Host check on", bool(get_setting("allowed_host_names", "")), ""),
-        ("reveal, publish and break-glass gated",
-         all(_gates()[a] for a in KEPT_ON), ", ".join(a for a in KEPT_ON if not _gates()[a])),
+        ("publish and break-glass gated",
+         all(_gates()[a] for a in ("publish_remote", "break_glass")),
+         ", ".join(a for a in ("publish_remote", "break_glass") if not _gates()[a])),
+        # C2897: reveal is gated, or open for the S1 sitting before its cap; never after.
+        ("reveal gated (or open for the sitting " + REVEAL_SITTING + " until " + REVEAL_UNTIL
+         + ", C2897)", _gates()["reveal"] or _reveal_allowed(),
+         "" if _gates()["reveal"] else "open"),
     ]
     fails = 0
     for name, ok, detail in lines:
@@ -229,7 +265,7 @@ if __name__ == "__main__":
     if cmd == "init":
         init()
     elif cmd == "exception-on" and args:
-        exception_on(args[0])
+        exception_on(args[0], reveal="--reveal" in args[1:])
     elif cmd == "exception-off" and args:
         exception_off(" ".join(args))
     elif cmd == "netbox-writes-on" and args:
