@@ -1,0 +1,50 @@
+{%- from "v2/_macros.html" import icon, info, how -%}
+{#- History › Export (Lab 9 B5; board H of docs/boards/lab9-sdn.html, self-signed 2026-11-10,
+    compared in docs/fidelity/history-export.md): the network and the whole UTC days, then the
+    two logs, each its line of counts and its two downloads (modules/history_export.py). Redrawn
+    in place when the record of AI calls, the SDN records or the answers said wrong change. -#}
+{%- set q = {'network': x.network, 'start': x.first_day, 'end': x.last_day} -%}
+<p class="tab-help">{{ info('history', 'export', 'About the export') }}</p>
+<form class="dev-filters" method="get" action="{{ url_for('v2.history_page') }}">
+  <input type="hidden" name="tab" value="export">
+  <label class="hist-filter"><span class="muted small">Network</span>
+    <select name="network">
+      {%- for n in x.names %}<option value="{{ n }}"{% if n == x.network %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      <option value="*"{% if x.network == '*' %} selected{% endif %}>Every network</option>
+    </select></label>
+  <label class="hist-filter"><span class="muted small">From (UTC)</span>
+    <input type="date" name="start" value="{{ x.first_day }}" aria-label="The first whole UTC day"></label>
+  <label class="hist-filter"><span class="muted small">To (UTC)</span>
+    <input type="date" name="end" value="{{ x.last_day }}" aria-label="The last whole UTC day"></label>
+  <button type="submit" class="btn">Show</button>
+</form>
+<section id="hist-export" hx-disinherit="*" hx-get="{{ url_for('v2.history_page', tab='export', **q) }}" hx-select="#hist-export" hx-trigger="nmas:ai_calls from:body, nmas:sdn from:body, nmas:ai_feedback from:body" hx-swap="outerHTML">
+{%- if x.error %}
+<div class="notice notice-warn" role="alert">{{ icon('warn') }}<p>Not shown: {{ x.error }}. Nothing was read; at most {{ x.max_days }} whole UTC days.</p></div>
+{%- else %}
+{%- if x.errors %}
+<div class="notice notice-warn">{{ icon('warn') }}<p>Could not read: {{ x.errors | join('; ') }}. The logs below leave out what it holds, and each file says so.</p></div>
+{%- endif %}
+{%- if x.empty %}
+<p class="cov-head">{{ icon('info') }} Nothing in the range: no AI call, and no false positive or failure, on {{ 'every network' if x.network == '*' else x.network }} from {{ x.first_day }} to {{ x.last_day }} (UTC). The files still download, saying so.</p>
+{%- endif %}
+<div class="hist-export-cols">
+  <section class="card" aria-label="AI calls and cost">
+    <div class="card-head"><h2>AI calls and cost</h2><span class="card-head-how">{{ how('history-export', op='the export') }}</span></div>
+    <p class="muted small">Every call in the range: when, feature, trigger (person or background, with who or which job), model, prompt version, tokens in and out, cache, dollars, latency, verdict (ok, refused by validation, a gate's refusal), and the call's History link. A total row per day and per feature.</p>
+    <dl class="facts"><div><dt>In the range</dt><dd>{{ x.calls }}</dd></div>
+      {%- if x.unattributed %}<div><dt>Not on {{ x.network }}</dt><dd>{{ x.unattributed }} call{{ '' if x.unattributed == 1 else 's' }} in the range name no network (a person's or an evaluation's): they are in Every network's log.</dd></div>{% endif %}</dl>
+    <div class="hist-export-actions"><a class="btn btn-primary" href="{{ url_for('v2.history_export_download', kind='calls', fmt='csv', **q) }}" download>Download CSV</a><a class="btn" href="{{ url_for('v2.history_export_download', kind='calls', fmt='json', **q) }}" download>Download JSON</a></div>
+  </section>
+  <section class="card" aria-label="False positives and failures">
+    <div class="card-head"><h2>False positives and failures</h2></div>
+    <p class="muted small">Every SDN detection dismissed (with its reason and who), classification refused or not passing the check, Verify failure, rollback (with what it achieved), protected-flow refusal, evaluation false positive, planted issue missed, and AI answer said wrong. One row each, with its record's link.</p>
+    <dl class="facts"><div><dt>In the range</dt><dd>{{ x.failures or 'none' }}</dd></div>
+      <div><dt>By kind</dt><dd>{% for words, n in x.fail_counts %}{{ n }} {{ words }}{{ ' · ' if not loop.last }}{% endfor %}</dd></div>
+      <div><dt>Not recorded</dt><dd>{{ x.not_recorded }}.</dd></div></dl>
+    <div class="hist-export-actions"><a class="btn btn-primary" href="{{ url_for('v2.history_export_download', kind='failures', fmt='csv', **q) }}" download>Download CSV</a><a class="btn" href="{{ url_for('v2.history_export_download', kind='failures', fmt='json', **q) }}" download>Download JSON</a></div>
+  </section>
+</div>
+<p class="muted small">Both files carry their range, network, the time they were made and who made them in their first lines; amounts are the ledger's, summed by UTC day, never carried forward. {{ x.days }} whole UTC day{{ '' if x.days == 1 else 's' }}, at most {{ x.max_days }}.</p>
+{%- endif %}
+</section>

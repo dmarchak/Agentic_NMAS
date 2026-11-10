@@ -92,6 +92,7 @@ PAGES = (
      "how-it-works/sdn-trace.md"),
     ("sdn-analyse", "Analyse this network: what is abnormal in an SDN fabric", H,
      "how-it-works/sdn-analyse.md"),
+    ("history-export", "History › Export: the two logs", H, "how-it-works/history-export.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
@@ -230,6 +231,7 @@ OPERATIONS = {
     "sdn-trace": ("modules.sdn_trace_page", "STEPS"),
     # Lab 9 B1 (board I of docs/boards/lab9-sdn.html): Analyse this network on SDN › Flows.
     "sdn-analyse": ("modules.sdn.analyst", "STEPS"),
+    "history-export": ("modules.history_export", "STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),

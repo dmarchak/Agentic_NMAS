@@ -1452,6 +1452,43 @@ def sdn_analyse():
     ])
 
 
+def history_export():
+    return svg(470, (
+        "History's Export: a person chooses the network and the whole UTC days, at most 31, and "
+        "a longer range is refused with nothing read; the call and cost log reads every AI "
+        "call the ledger recorded in the range, one row each, with a total per UTC day and per "
+        "feature, the dollars the ledger's summed by day; the false-positive and failure log "
+        "reads each network's SDN responses and flow operations, the planted-issue sheet, the "
+        "ledger's evaluation calls and the answers said wrong; every text is masked on the way "
+        "out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing "
+        "is written."), [
+        lanes(20, 464, right="THE RECORDS"),
+        person(14, 40, 186, 30, "You choose network and days"), num(14, 40, 1),
+        t(14, 88, "past 31 days: refused, nothing read", "sm"),
+        store(250, 40, 130, 40, "The AI call ledger", "every call, its cost"),
+        store(250, 150, 130, 40, "SDN records", "responses, operations"),
+        store(250, 206, 130, 40, "The planted sheet", "the latest analysis"),
+        store(250, 262, 130, 40, "Answers said wrong", "and each review"),
+        band(104, 70, "The call and cost log"),
+        doc("box", 14, 128, 186, 36, "A row per call", "totals by UTC day, feature"),
+        num(14, 128, 2),
+        arrow("read", 248, 60, 202, 146, via=(224, 120)),
+        band(184, 136, "The failure log"),
+        doc("box", 14, 208, 186, 40, "A row per failure", "with its record's link"),
+        num(14, 208, 3),
+        arrow("read", 248, 170, 202, 222),
+        arrow("read", 248, 226, 202, 230),
+        arrow("read", 248, 282, 202, 238),
+        t(14, 266, "dismissed, refused, rolled back,", "sm"),
+        t(14, 280, "missed, said wrong", "sm"),
+        doc("box", 14, 340, 186, 36, "Masked on the way out", "as History masks"),
+        num(14, 340, 4),
+        doc("box", 14, 392, 186, 40, "CSV or JSON", "range, network, when, who"),
+        num(14, 392, 5),
+        t(14, 456, "Nothing is written.", "sm"),
+    ])
+
+
 def diagnose():
     return svg(500, (
         "Diagnose: a person picks the runbook and its target from intent, and the card lists "
@@ -2257,6 +2294,7 @@ DIAGRAMS = {
     "path-trace": path_trace,
     "sdn-trace": sdn_trace,
     "sdn-analyse": sdn_analyse,
+    "history-export": history_export,
     "diagnose": diagnose,
     "privileged": privileged,
     "heal-proposal": heal_proposal,

@@ -1,0 +1,64 @@
+# History › Export: the two logs
+
+History › Export downloads two logs of what Mercury already records, for a report such as a
+lab's: **the call and cost log**, every AI call and what it cost, and **the false-positive and
+failure log**, where the AI layer was wrong or the network's automation failed, and what was
+done about it. Each is a CSV or a JSON file for one network or every network, over whole UTC
+days. The export reads; it writes nothing, and it asks no device, controller or model anything.
+
+![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, the planted-issue sheet, the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
+
+## The steps
+
+1. `range`: you choose the **Network** (one, or **Every network**) and the whole UTC days
+   **From** and **To**, both included, at most 31. A longer range is refused, naming its
+   length, and so are a From after its To and a network no one has: nothing is read.
+2. `calls`: every AI call the ledger recorded in the range (the record History's AI calls
+   draw), one row each, oldest first, then a total per UTC day and per feature. The dollars
+   are the ledger's own cost per call, summed by UTC day from the rows read now, never carried
+   forward from an earlier total; the provider bills.
+3. `failures`: each source's rows, one row each with its record's link:
+   - from each network's own records: every SDN detection a person dismissed (the reason and
+     who), every AI classification the check refused (its call), every response AUTO decided
+     on and could not send (a protected-flow refusal named as one), and every flow operation
+     whose Verify failed or whose request the controller refused, with what its rollback
+     achieved;
+   - from the ledger: every evaluation call that found a threat in a collection no rule fired
+     on, a false positive by the evaluation's own definition;
+   - from SDN › Flows' planted-issue sheet: every planted issue the latest analysis missed;
+   - from Was this right?: every AI answer a person said was wrong, and its review.
+4. `mask`: every text a row carries is masked on the way out, as History masks what it draws.
+5. `file`: CSV or JSON. Its first lines name the log, the range, the network, when it was made
+   and who made it; then the summary, what could not be read, and how many rows it left out
+   past its 10000. Nothing is written.
+
+## The call and cost log's columns
+
+| Column | What it holds |
+|---|---|
+| `at`, `day` | when the call was recorded, and its UTC day |
+| `call` | the call's id |
+| `feature` | the task: Explain, Ask in words, the SDN classifier, the analyst… |
+| `trigger`, `by` | person (who pressed), background (the job, its feature and finding) or evaluation (its run) |
+| `network` | the network the call names, when it names one |
+| `about` | what the call was about, in History's words |
+| `model`, `prompt` | the model, and the prompt with its version |
+| `tokens_in`, `tokens_out`, `cache_write`, `cache_read` | the provider's counts |
+| `usd`, `latency_s` | the ledger's cost, and the seconds the provider took |
+| `verdict`, `outcome` | the gateway's verdict, and what it means: ok, refused by validation, refused at a cap, refused by a gate, failed, joined another's call |
+| `detail`, `then` | why, and what became of the answer |
+| `link` | the call's row on History |
+
+Then the totals by UTC day and by feature: calls, dollars, each outcome, the tokens.
+
+## Which network a call belongs to
+
+A background job's call names its network. A person's press and an evaluation's call name
+none in the ledger, so one network's log counts them under its line and lists them in **Every
+network**'s log. For a lab's report, download **Every network**.
+
+## What is not in the failure log
+
+An evaluation script's per-case misses (`nmas-sdn-cases` and the other case scripts) are
+written only to its own report file, never to a record Mercury reads, so the failure log
+cannot hold them; the card and each file say so. Attach that report beside the file.

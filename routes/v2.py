@@ -293,7 +293,10 @@ def about():
 
 #: Board D's tabs, and Query between Timeline and Baselines (C667: History › Query, boards A to
 #: C on the canvas page "History, Query").
-HISTORY_TABS = (("timeline", "Timeline"), ("query", "Query"), ("baselines", "Baselines"))
+HISTORY_TABS = (("timeline", "Timeline"), ("query", "Query"), ("baselines", "Baselines"),
+                # Lab 9 B5 (board H of docs/boards/lab9-sdn.html): the call and cost log and
+                # the false-positive and failure log, downloaded (modules/history_export.py).
+                ("export", "Export"))
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
 
@@ -496,6 +499,11 @@ def _history_ctx(request) -> dict:
         good = (got.get("doc") or {}).get("last_good") or {}
         ctx["b"] = (((good.get("value") or {}).get("lists") or {}).get(ref.name) or {})
         ctx["b_at"] = good.get("value_at")
+    elif tab == "export":
+        from modules import history_export
+        ctx["x"] = history_export.view(request.args.get("network") or "",
+                                       request.args.get("start") or "",
+                                       request.args.get("end") or "", default=ref.name)
     return ctx
 
 
@@ -622,6 +630,31 @@ def history_page():
     its baselines and authorisations, with the remote's state at the top."""
     from flask import request
     return _page("v2/history.html", active_nav="history", **_history_ctx(request))
+
+
+@bp.route("/history/export/<kind>/<fmt>", methods=["GET"])
+def history_export_download(kind, fmt):
+    """History › Export's downloads (Lab 9 B5, board H of docs/boards/lab9-sdn.html): the call
+    and cost log (``calls``) or the false-positive and failure log (``failures``), as ``csv`` or
+    ``json``, for the network and the whole UTC days the address names (`network`, `start`,
+    `end`; modules/history_export.py). A read: nothing is written. Each part a path segment of
+    its own, so every page's link resolves to it. A refusal (a range past 31 days, a network no
+    one has) answers 400 naming it."""
+    from flask import Response
+
+    from modules import history_export, identity
+    from modules.nsot import listref
+
+    got = history_export.download(kind, fmt, request.args.get("network") or "",
+                                  request.args.get("start") or "",
+                                  request.args.get("end") or "",
+                                  by=identity.viewer().actor, default=listref.active().name)
+    if not got["ok"]:
+        return Response(f"Nothing to download: {got['error']}.\n", status=400,
+                        mimetype="text/plain", headers={"Cache-Control": "no-store"})
+    return Response(got["body"], mimetype=got["mime"], headers={
+        "Content-Disposition": f'attachment; filename="{got["filename"]}"',
+        "Cache-Control": "no-store"})
 
 
 @bp.route("/history/query/syslog", methods=["GET"])

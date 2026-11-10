@@ -98,7 +98,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_heal.html": "heal-policy.md", "_notify.html": "notifications.md",
               # Board H, artboards D and E (H9, C2448): a self-healing proposal's row on Needs
               # attention and its card, with Approve and Decline.
-              "_heal_proposal.html": "heal-proposal.md"}
+              "_heal_proposal.html": "heal-proposal.md",
+              # History › Export (Lab 9 B5; board lab9-sdn H, self-signed under the Phase 7
+              # mode 2026-11-10): History's Export tab, its two logs and their downloads.
+              "_history_export.html": "history-export.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -431,6 +431,14 @@ def resolve(network: str, response_id: str, how: str, *, actor: str, why: str = 
     return row
 
 
+def responses_record(network: str) -> dict:
+    """Every row of *network*'s pending responses, oldest first, as kept (``proposed``,
+    ``watching``, each ``classified``, ``seen``, ``inactive``, ``active``, ``dismissed`` and
+    the rest): ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``. A read: History ›
+    Export's failure log reads the dismissals and the refused classifications here."""
+    return _read(network, PENDING_FILE)
+
+
 #: The kinds that close a response: a person's, or (an older record's) ``cleared``.
 CLOSED = ("confirmed", "dismissed", "cleared")
 

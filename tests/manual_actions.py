@@ -114,6 +114,14 @@ NOT_AN_OPERATION = {
                                        "log the Responses tab draws (C1971)",
     ("_sdn_analyse.html", "Download the sheet"): "saves the planted-issue sheet as Markdown, a "
                                                  "read of the sheet SDN › Flows draws (Lab 9 B1)",
+    # Lab 9 B5, History › Export (board lab9-sdn H): reads of the records History draws.
+    ("_history_export.html", "Show"): "draws the two logs' counts for the network and days "
+                                      "chosen, a read of the records History draws",
+    ("_history_export.html", "Download CSV"): "saves one log for the range as CSV, a read of "
+                                              "the records History draws; nothing is written",
+    ("_history_export.html", "Download JSON"): "saves one log for the range as JSON, a read "
+                                               "of the records History draws; nothing is "
+                                               "written",
     # C2777, SDN › Apps' NSOT export card (board nsot-export): links that draw the card again.
     ("_sdn_export.html", "Close"): "draws the NSOT export card at rest again, a read of the "
                                    "committed export; nothing is committed",

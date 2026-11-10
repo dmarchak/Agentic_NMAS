@@ -57,7 +57,11 @@ SIGNED_OFF = {
                                    "history_sources.timeline) across every device and the fleet's "
                                    "own records, filtered by device, person, kind and time, "
                                    "Commits a kind; Baselines and Authorisations keep their tabs. "
-                                   "Before it: NSOT_GUI_BRIEF 3.4, signed off 2026-10-02"),
+                                   "Before it: NSOT_GUI_BRIEF 3.4, signed off 2026-10-02. Its "
+                                   "Export tab (Lab 9 B5): docs/boards/lab9-sdn.html artboard "
+                                   "H, self-signed under the Phase 7 mode 2026-11-10 "
+                                   "(docs/STANDING_APPROVAL_LOG.md, 'Board lab9-sdn H'); "
+                                   "compared, docs/fidelity/history-export.md"),
     "credentials.html": ("2026-10-03", "board 7, the break-glass record on Source of truth > "
                                        "Credentials (its placement signed off 2026-10-03, the card "
                                        "the same night's revision): the record's state, the export "

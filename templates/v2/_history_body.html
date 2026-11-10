@@ -93,6 +93,8 @@
 {% include "v2/_history_ask_metrics.html" %}
 {%- elif tab == 'query' %}
 {% include "v2/_history_query.html" %}
+{%- elif tab == 'export' %}
+{% include "v2/_history_export.html" %}
 {%- elif tab == 'baselines' %}
 <p class="tab-help">{{ info('history', 'baselines', 'About baselines') }}</p>
 <section class="card" id="hist-baselines" hx-disinherit="*" hx-get="{{ url_for('v2.history_page', tab='baselines') }}" hx-select="#hist-baselines" hx-trigger="nmas:baselines from:body" hx-swap="outerHTML">

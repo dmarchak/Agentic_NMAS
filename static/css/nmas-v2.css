@@ -974,6 +974,11 @@ a.pack-cite { color: var(--accent); margin-right: 2px; }
 .hist-remote-failed { margin: 2px 0 0; padding-left: 18px; }
 .hist-remote-failed li { margin: 2px 0; overflow-wrap: anywhere; }
 .hist-filter { display: flex; flex-direction: column; gap: 2px; }
+/* History › Export (Lab 9 B5, board lab9-sdn H): the two logs side by side, one column on a
+   phone; each card's downloads in a row. */
+.hist-export-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; margin: 0 0 12px; }
+.hist-export-cols > .card { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.hist-export-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* 7.5's identity line under the filters: the count in ink, the kinds as badges. */
 .hist-identity { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .hist-identity-ok { color: var(--ok); }

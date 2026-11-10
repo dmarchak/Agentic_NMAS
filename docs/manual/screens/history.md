@@ -1,8 +1,9 @@
 # History
 
-What happened to the network and its devices, and when, in three tabs: **Timeline**, one
+What happened to the network and its devices, and when, in four tabs: **Timeline**, one
 timeline of everything the tool records; **Query**, questions asked of the network's history;
-and **Baselines**, the network's baselines. The remote's state is at the top.
+**Baselines**, the network's baselines; and **Export**, the call and cost log and the
+false-positive and failure log, downloaded for a report. The remote's state is at the top.
 
 ## The remote {#remote}
 
@@ -514,4 +515,41 @@ with the reason otherwise), restores the rest, one device at a time, each
 verified and rolled back alone, its configuration and its intent from the baseline; the batch
 is drawn below as it runs. Like every restore it is merge-only: a line the device gained since
 the baseline is not removed. See [Restore and re-apply a baseline](restore).
+
+## Export {#export}
+
+Two logs of what History already records, downloaded for a report, each as **Download CSV**
+or **Download JSON**. Choose the **Network** (one, or **Every network**) and the whole UTC
+days **From** and **To** (the last 7 days by default, at most 31), then **Show**. A longer
+range, a From after its To, or a network no one has is said in place of the logs, and nothing
+is read.
+
+- **AI calls and cost:** every AI call in the range, one row each: when, the feature, what
+  started it (a person's press with who, a background job with its job, an evaluation with
+  its run), the model, the prompt and its version, the tokens in and out, the cache's write
+  and read, the dollars, the latency, the verdict and what it means (ok, refused by
+  validation, refused at a cap, refused by a gate, failed, or a press that joined another's
+  call), and the call's History link. Then a total per UTC day and per feature. The line
+  under the heading counts the range: calls, dollars, and each kind of refusal. One
+  network's log holds the calls that name it (a background job's); a person's or an
+  evaluation's call names no network, so it is counted under the line, and listed in
+  **Every network**'s log.
+- **False positives and failures:** each SDN detection dismissed, with its reason and who;
+  each AI classification the check refused; each response AUTO decided on and could not
+  send, a protected-flow refusal named as one; each flow operation whose Verify failed or
+  whose request the controller refused, with what its rollback achieved; each evaluation call
+  that found a threat in traffic no rule fired on; each planted issue the latest analysis
+  missed; and each AI answer a person said was wrong, with its review. One row each, with
+  its record's link. The line counts each kind, and names the most given dismissal reason.
+  An evaluation script's per-case misses are written only to its own report, never to a
+  record Mercury reads, so they are not in this log, and the card and the file say so.
+
+Both files open with the log, the range, the network, when they were made and who made them.
+Amounts are the ledger's own cost per call, summed by UTC day from the rows read now, never
+carried forward. Every text is masked as History masks what it draws. A file lists at most
+10000 rows and says how many it left out; its totals count every row. A range with nothing
+in it says so, and its files still download, saying none. A record that cannot be read is
+said on the card and in the file, never a shorter log. The cards redraw when an AI call, an
+SDN record or an answer said wrong is recorded. Nothing is written. See
+[History › Export: the two logs](history-export).
 

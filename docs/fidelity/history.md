@@ -32,7 +32,13 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `ddabe41c00ad0c438e4f147d6e3664bcfad706e6fdf63edf870d27f780e1766b`
+Templates sha256: `60731557c955c921ab33af47b25fe04cbc045737f5ef508178c4711cb660dc55`
+
+Compared again 2026-11-10 (Lab 9 B5, board lab9-sdn H), by the template diff: History's tabs
+gain a fourth, **Export**, after Baselines, and `_history_body.html` draws its body
+(`_history_export.html`, compared in docs/fidelity/history-export.md); board D draws three tabs:
+**deviation** (log: Board lab9-sdn H built, 1). No other region moved. Templates sha256 before:
+`ddabe41c00ad0c438e4f147d6e3664bcfad706e6fdf63edf870d27f780e1766b`.
 
 Compared again 2026-11-09 (C2773), against board H's artboards C and K, by the template diff (no
 new shot: tests/test_heal_change_record_download.py draws the row through the real templates):

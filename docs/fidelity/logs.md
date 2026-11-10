@@ -17,7 +17,10 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `a1c0c8448fc3c0adf67b4df0c828bc19f516a9b7a639bcee835fea73966dbbe0`
+Templates sha256: `525374eae31677bfc480c89199b4e6bb9a28b3b8460ba70d50f8248ec0f6b01d`
+(2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
+tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
+`a1c0c8448fc3c0adf67b4df0c828bc19f516a9b7a639bcee835fea73966dbbe0`.)
 (2026-11-08 ~20:5x UTC, C2810: each device row of `_logs_view.html` and its opened lines' row
 carry `data-key`, their stable keys, which the live merge matches rows by; nothing drawn moves.
 Hashed again by reading the diff, with no new shot. Before:

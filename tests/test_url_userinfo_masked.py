@@ -172,6 +172,12 @@ ENTRY_POINTS = {
     # Needs attention's record (C1192): what a row says, and an acknowledgement's why, at rest.
     "modules/attention_record.py:_masked": lambda: __import__(
         "modules.attention_record", fromlist=["x"])._masked(PLANTED),
+    # History › Export's rows on the way out (Lab 9 B5): every text a call's or a failure's
+    # row carries, the value and the whole row.
+    "modules/history_export.py:_masked": lambda: __import__(
+        "modules.history_export", fromlist=["x"])._masked(PLANTED),
+    "modules/history_export.py:_masked_row": lambda: repr(__import__(
+        "modules.history_export", fromlist=["x"])._masked_row({"detail": PLANTED, "n": 1})),
     "modules/netbox_guard.py:_redact": lambda: __import__(
         "modules.netbox_guard", fromlist=["x"])._redact(PLANTED),
     "modules/netbox_guard.py:_redact_leaves": lambda: repr(__import__(
