@@ -109,6 +109,8 @@ TYPED_PARTS = {
     "explain": (),                    # an evidence pack: Mercury's own data
     "sdn_explain": (),                # the same, an SDN detection's pack (the replan, 2026-11-09)
     "sdn_classify": (),               # a detection's pack: Mercury's own data
+    "sdn_analyse": (),                # a network's collected snapshot: Mercury's own data (the
+                                      # planted issues a person typed are never sent: Lab 9 B1)
     "heal_analysis": (),              # a heal incident's pack and its step log: Mercury's own
                                       # data (its configuration said only by kind)
     "change_record": (),              # a deploy preview's shape: Mercury's own data (the

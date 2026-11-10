@@ -432,6 +432,12 @@ FIELDS = {
         "args.receipt": "a receipt's id Mercury drew on SDN › Apps",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
+    # Lab 9 B1 (board I): Analyse this network sends the snapshot's facts and nothing typed;
+    # the planted-issue sheet a person types is read by other routes, never this one.
+    "sdn_analyse_v2.ask": {
+        "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
+        "request.<passed to submitted_list>": "the network's name (routes.list_param)",
+        "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "sdn_v2.loop_set": {
         "form.run": "start or stop",
         "form.interval": "the loop's interval in seconds",

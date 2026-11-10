@@ -411,6 +411,10 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
                             "switches": counts["switches"]}
     # Something wrong first, then by controller and switch.
     out["switches"].sort(key=lambda x: (not x["wrong"], x["controller"], x["dpid_hex"] or ""))
+    # Board I of docs/boards/lab9-sdn.html (Lab 9 B1): Analyse this network, from the analyst's
+    # small files (its latest snapshot, analysis and planted issues), never a controller.
+    from modules.sdn import analyst
+    out["analyse"] = analyst.view(network, now=now)
     return out
 
 

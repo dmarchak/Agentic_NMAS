@@ -1419,6 +1419,39 @@ def sdn_trace():
     ])
 
 
+def sdn_analyse():
+    return svg(520, (
+        "Analyse this network: Collect now runs a read job, never a page view, that reads every "
+        "switch's flows, its port counters twice and its port descriptions, and the "
+        "controller's links, through the controller's driver; the collection is kept as a "
+        "snapshot under its own id, each fact with its evidence id, masked and sealed; Analyse "
+        "sends that snapshot's facts and nothing else in one recorded, capped call through the "
+        "AI gateway, while the topology class is allowed; the answer is parsed strictly and "
+        "each finding's evidence held to the snapshot, a finding citing nothing it holds "
+        "dropped and counted; each planted issue is marked found or missed by the evidence its "
+        "findings cite. Nothing is sent to a switch."), [
+        lanes(20, 514, right="THE CONTROLLER"),
+        person(14, 40, 186, 30, "You press Collect now"), num(14, 40, 1),
+        svc(250, 84, 130, 50, "Its REST API", "flows, ports, links"),
+        *rows([(100, "read", None, "A read job", "the counters twice, 5 s apart"),
+               (130, None, None, "one at a time", "bounded, announced")]),
+        store(14, 160, 186, 40, "The snapshot", "its own id, masked, sealed"), num(14, 160, 2),
+        t(14, 216, "kept, so it can be analysed again", "sm"),
+        band(232, 128, "The call · a person's press"),
+        svc(250, 262, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 280, 248, 280),
+        doc("box", 14, 262, 186, 36, "The snapshot's facts", "each with its evidence id"),
+        num(14, 262, 3),
+        t(14, 316, "no planted issue is sent", "sm"),
+        t(14, 340, "the topology class off: nothing sent", "sm"),
+        doc("box", 14, 376, 186, 40, "Checked in code", "every id held to the snapshot"),
+        num(14, 376, 4),
+        t(14, 432, "citing nothing it holds: dropped, counted", "sm"),
+        doc("box", 14, 446, 186, 36, "Found or missed", "each planted issue"), num(14, 446, 5),
+        t(14, 506, "Nothing is sent to a switch.", "sm"),
+    ])
+
+
 def diagnose():
     return svg(500, (
         "Diagnose: a person picks the runbook and its target from intent, and the card lists "
@@ -2153,6 +2186,7 @@ DIAGRAMS = {
     "intent-in-words": intent_in_words,
     "path-trace": path_trace,
     "sdn-trace": sdn_trace,
+    "sdn-analyse": sdn_analyse,
     "diagnose": diagnose,
     "privileged": privileged,
     "heal-proposal": heal_proposal,

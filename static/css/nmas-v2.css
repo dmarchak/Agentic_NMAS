@@ -3057,3 +3057,29 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   .apps-table td[data-l]::before, .apps-versions td[data-l]::before { content: attr(data-l);
     display: inline-block; min-width: 96px; color: var(--ink-3); font-size: 12px; }
 }
+/* Board I of docs/boards/lab9-sdn.html (Lab 9 B1): SDN › Flows' Analyse this network, its
+   findings beside the planted-issue sheet, stacked at phone width. */
+.sdn-analyse { display: flex; flex-direction: column; gap: 10px; }
+.sdn-an-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sdn-an-bar form { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.sdn-an-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.sdn-an-cols > .card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sdn-an-tbl td { vertical-align: top; overflow-wrap: anywhere; }
+.sdn-an-why { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0; }
+.sdn-an-why input[type=text] { font: inherit; font-size: 13px; padding: 4px 8px; min-width: 0; flex: 1;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.sdn-an-acts { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.sdn-an-form { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; }
+.sdn-an-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.sdn-an-form input, .sdn-an-form textarea { font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+@media (max-width: 900px) {
+  .sdn-an-cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .sdn-an-tbl thead { display: none; }
+  .sdn-an-tbl tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .sdn-an-tbl td { display: block; border-bottom: none; padding: 2px 0; }
+  .sdn-an-tbl td[data-l]::before { content: attr(data-l); display: inline-block; min-width: 76px;
+    color: var(--ink-3); font-family: var(--sans); font-size: 12px; }
+}

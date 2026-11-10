@@ -547,7 +547,7 @@ def test_every_pin_file_is_exactly_its_keys_and_every_task_has_one(tmp_path):
     edit to the file. A file with a key missing or added is refused at load, naming it."""
     assert sorted(profiles.TASKS) == ["assistant", "change_record", "connection_check", "explain",
                                       "heal_analysis", "intent_patch", "nl_query",
-                                      "sdn_classify", "sdn_explain"]
+                                      "sdn_analyse", "sdn_classify", "sdn_explain"]
     for name, pin in profiles.TASKS.items():
         assert sorted(pin) == sorted(profiles.PIN_KEYS), name
         assert pin["temperature"] is None or pin["temperature"] in \

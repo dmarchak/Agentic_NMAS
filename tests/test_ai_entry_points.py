@@ -203,6 +203,9 @@ HEAL_PAGES = {"heal_analysis": ["/v2/attention/heal-analysis/Lab/hi-000000000000
 #: Drawn on an SDN detection's pack card (the replan's item 4: its own task, Haiku):
 #: `test_an_sdn_pack_s_card_calls_no_model`'s, on tests/test_ai_sdn_explain.py's pack.
 SDN_EXPLAIN_PAGES = {"sdn_explain": ["/v2/monitoring/alerts/pack/ep-" + "5d" * 10]}
+#: Drawn on SDN › Flows (Lab 9 B1, board I): `test_sdn_flows_analyse_calls_no_model`'s.
+SDN_ANALYSE_PAGES = {"sdn_analyse": ["/v2/sdn/flows?list=Default",
+                                     "/v2/sdn/view?tab=flows&list=Default"]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -253,7 +256,8 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
     assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
-        HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) == set(controls.CONTROLS), \
+        HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) | set(
+        SDN_ANALYSE_PAGES) == set(controls.CONTROLS), \
         "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
@@ -311,6 +315,34 @@ def test_the_deploy_preview_calls_no_model(monkeypatch, tmp_path):
     lab = deploy_world(monkeypatch, tmp_path)
     seen = _count_ai(monkeypatch)
     assert _load_each(lab["client"], DEPLOY_PAGES) == set(DEPLOY_PAGES)
+    assert seen == {"asked": [], "sends": []}
+
+
+def test_sdn_flows_analyse_calls_no_model(tmp_path, monkeypatch):
+    """SDN › Flows with a collected snapshot (Lab 9 B1, board I), hosted AI allowed and a key
+    set: drawing Analyse this network, loaded, redrawn and refreshed, asks no model."""
+    import app as APP
+    from modules.ai import calls
+    from modules.settings_schema import write_settings
+    from tests.test_sdn_analyst import NET, collect
+    from tests.test_sdn_connections import make_networks
+    from modules.sdn import analyst
+    from modules.sdn import connections as SC
+    from tests.fixtures.sdn.ryu_recorded import BASE_URL
+
+    make_networks(tmp_path, monkeypatch)
+    assert write_settings({"ai_hosted": {"by": "operator@example.com",
+                                         "at": "2026-11-09T00:00:00Z",
+                                         "reason": "the lab's proof of concept"}})["ok"]
+    assert SC.save_connection(NET, {"name": "ctl-1", "kind": "ryu", "url": BASE_URL},
+                              actor="op@example.com")["ok"]
+    monkeypatch.setattr(gateway, "_api_key", lambda: "sk-planted-entry-points-0123456789")
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
+    monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
+    got, _session = collect(links=True)
+    analyst.save_snapshot(NET, analyst.build_snapshot(NET, got, by="operator@example.com"))
+    seen = _count_ai(monkeypatch)
+    assert _load_each(APP.app.test_client(), SDN_ANALYSE_PAGES) == set(SDN_ANALYSE_PAGES)
     assert seen == {"asked": [], "sends": []}
 
 

@@ -3084,6 +3084,62 @@ def _sdn_trace(client, _lab, _mp):
                 fh.write(before)
 
 
+def _sdn_analyse(client, _lab, _mp):
+    """SDN › Flows' Analyse this network (Lab 9 B1, board I): Lab's connection over the lab's
+    recorded Ryu (tests/test_sdn_analyst.py's `LabRyu`), a snapshot collected and kept, two
+    planted issues, then an analysis whose answer (the gateway's, planted at its call) keeps one
+    finding, drops one citing nothing, and leaves one planted issue found and one missed; the
+    page and the region drawn. Its patches undone, its folder and the connection removed."""
+    import json
+    import shutil
+
+    import pytest
+
+    from modules.ai import gateway, triggers
+    from modules.sdn import analyst as AN
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import connections as C
+    from tests.ai_person import pressed_by
+    from tests.fixtures.sdn.ryu_recorded import BASE_URL
+    from tests.test_sdn_analyst import OVS3, LabRyu
+
+    mp = pytest.MonkeyPatch()
+    try:
+        assert C.save_connection("Lab", {"name": "lab-analyse", "kind": "ryu", "url": BASE_URL},
+                                 actor="v2-context")["ok"]
+        session = LabRyu()
+        got = CL.collect_threat_data(
+            "Lab", 1.0, sleep=lambda s: None, links=True,
+            driver=lambda net, name: C.driver_for(net, name, session=session))
+        snap = AN.build_snapshot("Lab", got, by="v2-context")
+        AN.save_snapshot("Lab", snap)
+        port = f"port:lab-analyse:{OVS3}:3"
+        assert AN.add_planted("Lab", "OVS 3's port 3 pulled", port, actor="v2-context")["ok"]
+        assert AN.add_planted("Lab", "A stale drop", f"drop:lab-analyse:{OVS3}:*",
+                              why="its count is zero", actor="v2-context")["ok"]
+        output = AN.NetworkAnalysis.model_validate_json(json.dumps({"findings": [
+            {"severity": "high", "finding": "Port 3 on 0000000000000003 is down",
+             "why": "The switch reports LINK_DOWN.", "evidence": [port, "port:made:up"]},
+            {"severity": "low", "finding": "A claim citing nothing", "why": "w",
+             "evidence": []}]}))
+        mp.setattr(gateway, "ask", lambda *a, **k: {"ok": True, "output": output,
+                                                    "call_id": "c-v2-context-analyse",
+                                                    "cost_usd": 0.0021})
+        with pressed_by("v2-context@example.com"):
+            r = AN.analyse("Lab", snap["id"], actor="v2-context@example.com",
+                           trigger=triggers.person("v2-context@example.com"))
+        assert r["ok"] and r["dropped"] == 1
+        html = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+        assert "Port 3 on 0000000000000003 is down" in html and "missed" in html
+        region = client.post("/v2/sdn/analyse/planted", data={
+            "list": "Lab", "name": "", "evidence": "nothing"}, headers={"HX-Request": "true"})
+        assert region.status_code == 422 and "Couldn't add" in region.get_data(as_text=True)
+    finally:
+        mp.undo()
+        shutil.rmtree(AN._dir("Lab"), ignore_errors=True)
+        client.post("/v2/settings/network/Lab/sdn/lab-analyse/remove")
+
+
 def _sdn_evidence(client, _lab, _mp):
     """An SDN detection's evidence on Monitoring › Alerts (C1867): Lab's connection over Ryu
     4.34's capture (tests/test_sdn_v2.py's `Captured`), the SDN reader run, and the detection
@@ -3543,7 +3599,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _heal_and_notify,
                    _heal_proposal,
-                   _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches,
+                   _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
                    _change_record,

@@ -115,6 +115,17 @@ CONTROLS = {
         "screen": "SDN › Responses, a response awaiting a person",
         "beside": "the response's Preview, its hard timeout and Dismiss with this reason",
     },
+    # Lab 9 B1 (board I of docs/boards/lab9-sdn.html): Analyse this network, one recorded,
+    # capped call over the network's latest collected snapshot (modules/sdn/analyst.py).
+    "sdn_analyse": {
+        "task": "sdn_analyse",
+        "words": "Analyse this network (SDN)",
+        "endpoints": ("sdn_analyse_v2.ask",),
+        "template": "v2/_sdn_analyse.html",
+        "screen": "SDN › Flows, Analyse this network (board I)",
+        "beside": "the collection's Collect now, the planted-issue sheet and its download, and "
+                  "the flow tables below",
+    },
     # Board H, H8: a background feature, never a press. No screen draws a control for it yet
     # (section 12's Analyse again, a person's press behind its cost confirm, is not built):
     # Needs attention's can't-fix row and the notice draw what it kept.

@@ -580,6 +580,16 @@ HISTORY = {
     # a template's confirmation a commit, History's commits.
     "sdn_switches_v2.configure_confirm": ("sdn_operations",),
     "sdn_switches_v2.template_confirm": TEMPLATE,
+    # Lab 9 B1 (C2903): Analyse this network changes no device; its collection reads, its
+    # answer is an AI call, its planted issues are the network's evaluation sheet.
+    "sdn_analyse_v2.collect": "n/a: a read job; its snapshot is kept with the network's "
+                              "analyst record (modules/sdn/analyst.py), never a device's",
+    "sdn_analyse_v2.ask": "n/a: one AI call, kept in the fleet's ai_calls record with its "
+                          "findings in the network's analyst record; no device changes",
+    "sdn_analyse_v2.planted_add": "n/a: a planted issue is kept on the network's evaluation "
+                                  "sheet (modules/sdn/analyst.py), never a device's record",
+    "sdn_analyse_v2.planted_why": "n/a: a person's note on the network's evaluation sheet, "
+                                  "never a device's record",
     # P6: the controller host's deploys, one receipt each (modules/controller_deploy_receipts.py).
     "sdn_v2.apps_confirm": ("controller_deploys",),
     "sdn_v2.response_confirm": ("sdn_operations",),

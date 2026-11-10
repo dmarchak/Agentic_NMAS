@@ -1,0 +1,86 @@
+# Analyse this network: what is abnormal in an SDN fabric
+
+SDN › Flows' **Analyse this network** asks an AI model what is abnormal in one collection of the
+network's live state: every switch's flow table and drop rules, its ports' rates and drops, and
+whether each port and link is up. Every finding names the evidence it rests on, and Mercury
+checks each one against the collection before it is shown. **Planted issues** compare what the
+model found with problems you planted yourself, for an evaluation such as a lab's. Nothing is
+sent to a switch: the analysis reads, and it changes nothing on the network.
+
+![Analyse this network: Collect now runs a read job, never a page view, that reads every switch's flows, its port counters twice and its port descriptions, and the controller's links, through the controller's driver; the collection is kept as a snapshot under its own id, each fact with its evidence id, masked and sealed; Analyse sends that snapshot's facts and nothing else in one recorded, capped call through the AI gateway, while the topology class is allowed; the answer is parsed strictly and each finding's evidence held to the snapshot, a finding citing nothing it holds dropped and counted; each planted issue is marked found or missed by the evidence its findings cite. Nothing is sent to a switch.](diagrams/sdn-analyse.svg)
+
+## The steps
+
+1. `collect`: **Collect now** starts a read job on the network's controllers, through each
+   connection's controller driver: every switch's flows, its port counters twice 5 seconds
+   apart (so each port's rates are per second), its port descriptions, and the links the
+   controller discovered. A port is down when the switch reports its LINK_DOWN state, never by
+   its LIVE bit, which some switches leave clear on a working port. One collection runs at a
+   time on a network: a second is refused, naming who started the first and until when, and
+   never queued. It is bounded by the interval and the connections' timeouts; when it ends the
+   page redraws. Opening the page never reads a controller.
+2. `snapshot`: the collection is kept as a snapshot under its own id (`snap-` and 16 hex
+   digits), each fact with its **evidence id**, masked as everything Mercury sends a model is,
+   and sealed by its hash, so the same snapshot can be analysed again. A link an earlier
+   snapshot discovered and this one does not is kept as **not discovered now**, with when it was
+   last seen: a controller forgets a link once its discovery packets stop, which is exactly
+   what a failed link looks like.
+3. `egress`: flows and port rates are the topology class. They are sent only while that class is
+   allowed for the network (Settings › AI), and never for a network carrying a classification
+   marking; otherwise nothing is sent and the card says why.
+4. `ask`: one recorded, capped AI call through the AI gateway, as the person who pressed
+   **Analyse this network**, on its own task (Haiku 5.5, the smallest model). It sends the
+   snapshot's facts, one to a line, and nothing else: no planted issue's name, evidence or note
+   ever reaches it. There is no retry and no second call: one press, one call.
+5. `check`: the answer is parsed against a strict schema (a severity from info, low, medium,
+   high and critical; the finding; why; the evidence ids). An answer that is not that shape is
+   refused, named, and nothing of it is used. Then each finding's evidence ids are held to the
+   snapshot's: an id the snapshot does not hold is removed, and a finding left citing nothing
+   it holds is **dropped**. The card says how many were dropped and why. Long text is shortened
+   and said so; at most 20 findings are kept.
+6. `compare`: each planted issue is **found** when a kept finding cites evidence it names, else
+   **missed**. **Why** is your note, saved on the row.
+
+## The evidence ids
+
+| Id | What its line holds |
+|---|---|
+| `port:<controller>:<switch>:<port>` | the port as its switch describes it: link up or down, administratively up or down, its name and speed |
+| `rate:<controller>:<switch>:<port>` | its packet and byte rates over the interval, its drops in it, and its load against its speed |
+| `flow:<controller>:<switch>:t<table>:p<priority>:<match digest>` | a flow that forwards or changes traffic: its match, actions, counts, age, timeouts and cookie |
+| `drop:<controller>:<switch>:t<table>:p<priority>:<match digest>` | a flow with no actions, which drops what it matches |
+| `link:<controller>:<switch>:<port>-<switch>:<port>` | a link between two switch ports: up, discovered with an end down, or not discovered now |
+
+A switch is its datapath ID in 16 hex digits. A flow's id is the same from one collection to the
+next while its table, priority and match stay the same; an address never appears in an id, so a
+flow matching an IPv4 or an IPv6 host is cited alike. A switch with many flows sends its 60
+busiest by packets and every drop flow, the rest counted, and the facts say so.
+
+## Collect now {#collect}
+
+**Collect now** is the one read of the network's switches this screen makes, and the only one:
+the line beside **Analyse this network** names how many switches the latest snapshot holds, when
+it was collected, the model, and about what a call costs (by an over-estimate of its size; the
+AI mark's hover names the call's cap). **Analyse this network** asks about exactly the snapshot
+that line names. While no snapshot is kept, it is off and says so. A newer snapshot than the
+latest answer's is said above the findings.
+
+## Planted issues {#planted}
+
+**Add a planted issue…** takes a name for the problem you planted, the evidence it should be
+found by, and optionally why. Evidence is one or more evidence ids, as the findings cite them,
+or patterns with `*` (`port:ctl-1:0000000000000003:*` is every port of that switch). For a
+failed redundant link, name its `link:` id and its two `port:` ids. The sheet never reaches the
+model.
+
+After each analysis every row says **found** (hover: which findings cited its evidence) or
+**missed**. Type why in the row's **Why** and **Save**: what made it findable, or what the
+collection could not show. **Download the sheet** gives the sheet as Markdown (or **as CSV**),
+its first lines naming the network, the analysis, its snapshot, its call and model, and who
+downloaded it when: the table for a lab document, and the record of false positives and misses.
+
+## Was this right?
+
+Under the findings, **Was this right?** records your verdict on the answer, as under every AI
+answer ([Was this right?](ai-feedback)). **The call** opens the call's record in History: its
+request, its answer, its cost and what became of it (how many findings were shown and dropped).

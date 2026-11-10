@@ -109,6 +109,15 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   flows match only Ethernet fields and the switch port (L2), or IP addresses and no transport
   port (L3), cannot show a port scan as distinct destination ports; a port's high packet rate
   there is **High packet rate**, at lower confidence, watched and never called a scan.
+- **Analyse this network**, above the filter (an AI control): one recorded, capped AI call that
+  reports what is abnormal in the network's latest collected snapshot, each finding with its
+  severity, why and the evidence ids it cites, checked against the snapshot before it is shown
+  (a finding citing nothing the snapshot holds is dropped, and the card says how many were).
+  Beside it, the snapshot's size and time, the model and about what a call costs, and
+  **Collect now**, which reads the switches again as a job. **Planted issues** is the sheet
+  that compares the findings with problems you planted, each **found** or **missed** with your
+  why; **Download the sheet** gives it as Markdown or CSV. How it works: [Analyse this
+  network](sdn-analyse).
 - **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
   tables layer chosen and its form open: the trace has one home ([A flow-table
   trace](sdn-trace)).

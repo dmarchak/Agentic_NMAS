@@ -203,6 +203,22 @@ def seed(lab: dict, mp, folder: str) -> None:
     _loop_run("Lab", mp, folder)
 
 
+def _sdn_connection(network: str, mp) -> None:
+    """A controller connection on *network*, as Settings › SDN controllers stores one, so SDN
+    › Flows draws its regions as on a network with a controller (Lab 9 B1's Analyse this
+    network among them). The walk's own patch of the stored list, never a write: the store's
+    guard refuses a test that creates a network's folder there (as `_loop_run` says). Nothing
+    is read from it: no reader runs in the walk, so every SDN tab draws "not read yet". The
+    interface walk's alone (`pages`): tests/v2_context.py's providers save their own."""
+    from modules.sdn import connections as C
+    from tests.fixtures.sdn.ryu_recorded import BASE_URL
+
+    real = C._stored
+    conn = {"name": "walk-ctl", "kind": "ryu", "url": BASE_URL}
+    mp.setattr(C, "_stored", lambda net: [dict(conn)] if net == network else real(net))
+    assert C.connections(network)["state"] == "ok", C.connections(network)
+
+
 def _loop_run(network: str, mp, folder: str) -> None:
     """One run of the SDN loop in *network*'s log, as `start` and a pass write it, so SDN ›
     Responses draws its log panel with the run picker and Download log (C1971). The log is
@@ -240,6 +256,7 @@ def pages() -> dict:
 
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
                 seed(lab, mp, tmp)
+                _sdn_connection("Lab", mp)
                 v2 = _walk(lab["client"])
                 todays = _todays(A, mp, lab["client"])
     finally:

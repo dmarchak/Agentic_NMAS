@@ -1,0 +1,100 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- SDN › Flows: Analyse this network (Lab 9 B1, C2903; board I of docs/boards/lab9-sdn.html,
+    self-signed 2026-11-10). *an* is `analyst.view(network)`: the network's latest collected
+    snapshot and its estimate, a collection running, the latest analysis (its findings checked
+    against the snapshot in code) and the planted issues marked against it; read from the
+    network's small files, never a controller. *said* is a press's answer (Collect now, Analyse,
+    a planted issue's add or why), drawn in place. Included by _sdn_view.html on Flows, and
+    drawn alone by routes/sdn_analyse_v2.py after each press. -#}
+{%- set c = ai_control('sdn_analyse') %}
+{%- set s = an.snapshot %}
+{%- set x = an.result %}
+{%- set said = said or {} %}
+{%- set sev_kind = {'critical': 'danger', 'high': 'danger', 'medium': 'warn', 'low': 'muted', 'info': 'muted'} %}
+<section id="sdn-analyse" class="sdn-analyse" aria-label="Analyse this network" data-network="{{ an.network }}">
+<div class="sdn-an-bar">
+  <form class="op-act" hx-post="{{ url_for('sdn_analyse_v2.ask') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ an.network }}">
+    <input type="hidden" name="snapshot" value="{{ s.id or '' }}">
+    {{ ai.mark(c) }} <button class="btn" type="submit" id="sdn-analyse-ask" data-op="sdn-analyse" hx-disabled-elt="this"{% if not s.id %} disabled aria-disabled="true"{% else %}{{ ai.attrs(c, 'configure') }}{% endif %} title="One recorded AI call ({{ c.model_words }}), capped; it reads the snapshot named beside it, and nothing else, and sends nothing to a switch"><span class="op-idle">Analyse this network</span><span class="op-busy">Analysing…</span></button>{{ how('sdn-analyse', op='Analyse this network') }}
+  </form>
+  <span class="muted small sdn-an-line">{% if s.id %}<span title="snapshot {{ s.id }}, collected by {{ s.by }}; {{ s.links }} link{{ 's' if s.links != 1 }} ({{ s.links_down }} not up), {{ s.ports_down }} port{{ 's' if s.ports_down != 1 }} down{% if s.unread %}, {{ s.unread }} part{{ 's' if s.unread != 1 }} not read{% endif %}">{{ s.switches }} switch{{ 'es' if s.switches != 1 }}, collected {{ stamp(s.collected_at) }}</span>{% if s.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %} · {{ an.model_words }} · <span title="{{ s.estimate.tokens }} input tokens by the fallback over-estimate, and an allowance for the answer; the call is capped at ${{ '%.4f' | format(c.per_call) }}">about ${{ '%.4f' | format(s.estimate.usd) }}</span>{% else %}No collection yet: Collect now reads the network's switches first.{% endif %}</span>
+  <form class="op-act" hx-post="{{ url_for('sdn_analyse_v2.collect') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ an.network }}">
+    <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{% if an.running and not an.running.stale %} disabled aria-disabled="true"{% else %}{{ gate('configure') }}{% endif %} title="Reads every switch's flows, port counters twice, port descriptions and the controller's links now, as a job, and keeps them as a snapshot; sends nothing to a switch">{% if an.running and not an.running.stale %}Collecting…{% else %}<span class="op-idle">Collect now</span><span class="op-busy">Starting…</span>{% endif %}</button>{{ how('sdn-analyse', 'collect', compact=True, op='Collect now') }}
+  </form>
+</div>
+{{ ai.reason(c) }}
+{%- if an.running and not an.running.stale %}
+<p class="small muted" role="status">Collecting since {{ stamp(an.running.at) }}, started by {{ an.running.by }}; this redraws when it is kept (at the latest {{ an.running.until }}).</p>
+{%- elif an.running.stale %}
+<p class="small notice notice-warn" role="status">A collection started by {{ an.running.by }} {{ stamp(an.running.at) }} did not finish within its bound, so it is not counted as running: Collect now starts another.</p>
+{%- endif %}
+{%- if said.collect and not said.collect.ok %}
+<p class="small notice notice-warn" role="alert">Couldn't collect: {{ said.collect.error }}.</p>
+{%- endif %}
+{%- if an.collect_failed %}
+<p class="small notice notice-warn" role="status">The last collection, started by {{ an.collect_failed.by }} {{ stamp(an.collect_failed.at) }}, kept nothing: {{ an.collect_failed.error }}.{% if s.id %} The snapshot above is the last one kept.{% endif %}</p>
+{%- endif %}
+{%- if said.ask and not said.ask.ok %}
+<p class="small notice notice-warn" role="alert">Couldn't analyse: {{ said.ask.detail or said.ask.error }}. Nothing of an answer is used.</p>
+{%- endif %}
+<div class="sdn-an-cols">
+<section class="card sdn-an-findings" aria-labelledby="sdn-an-f">
+  {%- if x and x.ok %}
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">{{ x.findings | length }} finding{{ 's' if x.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(x.at) }} by {{ x.model }} for {{ x.actor }} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a></span></div>
+  {%- if an.stale %}<p class="small notice notice-muted" role="status">This answer is about the snapshot of {{ stamp(x.collected_at) }} ({{ x.snapshot_id }}); a newer one is collected: Analyse this network asks about it.</p>{% endif %}
+  {%- if x.findings %}
+  <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
+  {%- for f in x.findings %}
+    <tr><td data-l="Finding">{{ badge(f.severity, sev_kind.get(f.severity, 'muted')) }} {{ f.finding }}</td><td data-l="Why">{{ f.why }}</td><td data-l="Evidence" class="mono small">{{ f.evidence | join(' · ') }}{% if f.removed %}<br><span class="faint" title="{{ f.removed | join(', ') }}">{{ f.removed | length }} id{{ 's' if f.removed | length != 1 }} the collection does not hold, removed</span>{% endif %}</td></tr>
+  {%- endfor %}
+  </tbody></table></div>
+  {%- else %}
+  <p class="muted">Nothing abnormal was reported in this snapshot.</p>
+  {%- endif %}
+  <p class="muted small">Each claim cites evidence the collection holds; a claim citing nothing it holds is dropped by the check: {% if x.dropped %}<span title="{% for k, n in (x.dropped_by or {}).items() if n %}{{ k | replace('_', ' ') }}: {{ n }}{{ '; ' if not loop.last }}{% endfor %}">{{ x.dropped }}</span> {{ 'was' if x.dropped == 1 else 'were' }} ({{ x.dropped_words }}){% else %}none was{% endif %}{% if x.removed_ids %}, and {{ x.removed_ids }} cited id{{ 's' if x.removed_ids != 1 }} the collection does not hold {{ 'was' if x.removed_ids == 1 else 'were' }} removed{% endif %}{% if x.capped %}; {{ x.capped }} text{{ 's' if x.capped != 1 }} past its length shortened with …{% endif %}.</p>
+  {%- with fb=ai_feedback(x.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+  {%- elif x %}
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">No findings</h2><span class="faint small">asked {{ stamp(x.at) }} by {{ x.actor }}{% if x.call_id %} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a>{% endif %}</span></div>
+  <p class="small notice notice-warn" role="status">Couldn't analyse the snapshot {{ x.snapshot_id }}: {{ x.detail or x.error }}. Nothing of an answer is used{% if x.findings %} ({{ x.findings | length }}){% endif %}{% if x.dropped %}, {{ x.dropped }} dropped{% endif %}{% if x.dropped_words %} ({{ x.dropped_words }}){% endif %}{% if x.removed_ids %}; {{ x.removed_ids }} ids removed{% endif %}; {{ x.model }}, collected {{ x.collected_at }}.</p>
+  {%- else %}
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">Findings</h2></div>
+  <p class="muted">Not analysed yet: Analyse this network asks about the latest snapshot.</p>
+  {%- endif %}
+</section>
+<section class="card sdn-an-planted" aria-labelledby="sdn-an-p">
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-p">Planted issues (an evaluation sheet)</h2>{% if an.planted %}<span class="faint small">{{ an.found }} found · {{ an.missed }} missed</span>{% endif %}</div>
+  {%- if an.planted_state == 'unreadable' %}
+  <p class="small notice notice-danger" role="alert">The planted issues cannot be read ({{ an.planted_error }}); none is drawn as found or missed.</p>
+  {%- elif an.planted %}
+  <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Planted</th><th>Found</th><th>Why</th></tr></thead><tbody>
+  {%- for p in an.planted %}
+    <tr id="sdn-pl-{{ p.id }}"><td data-l="Planted">{{ p.name }}<br><span class="faint small mono" title="added by {{ p.by }} {{ p.at }}">{{ p.evidence | join(' ') }}</span></td>
+      <td data-l="Found">{% if p.found == 'found' %}{{ badge('found', 'ok', title=p.by | join('; ')) }}{% elif p.found == 'missed' %}{{ badge('missed', 'danger') }}{% if p.in_collection == false %} <span class="faint small">its evidence is not in the snapshot</span>{% endif %}{% else %}{{ badge('not analysed', 'muted') }}{% endif %}</td>
+      <td data-l="Why"><form class="op-act sdn-an-why" hx-post="{{ url_for('sdn_analyse_v2.planted_why', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="list" value="{{ an.network }}"><label class="sr-only" for="sdn-why-{{ p.id }}">Why it was {{ p.found }}</label><input id="sdn-why-{{ p.id }}" name="why" type="text" maxlength="600" value="{{ p.why }}" placeholder="why it was found or missed"{% if p.why_by %} title="saved by {{ p.why_by }} {{ p.why_at }}"{% endif %}> <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('sdn-analyse', 'planted', compact=True, op='Save a why') }}</form>
+        {%- if said.why and said.why.pid == p.id and not said.why.ok %}<p class="small notice notice-warn" role="alert">Couldn't save: {{ said.why.error }}.</p>{% endif %}</td></tr>
+  {%- endfor %}
+  </tbody></table></div>
+  {%- else %}
+  <p class="muted">No issue planted yet. Add each one you plant, with the evidence it should be found by; the sheet then says whether each analysis found it.</p>
+  {%- endif %}
+  <div class="sdn-an-acts">
+    <details class="sdn-an-add" data-keep="sdn-an-add"{% if said.planted and not said.planted.ok %} open{% endif %}>
+      <summary class="btn btn-small">Add a planted issue…</summary>
+      <form class="op-act sdn-an-form" hx-post="{{ url_for('sdn_analyse_v2.planted_add') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="list" value="{{ an.network }}">
+        <label>Name <input name="name" type="text" maxlength="120" required placeholder="Redundant link between two switches failed"></label>
+        <label>Evidence it should be found by <textarea name="evidence" rows="2" required placeholder="link:ctl-1:0000000000000003:3-0000000000000004:3 port:ctl-1:0000000000000003:3"></textarea><span class="faint small">Evidence ids as the findings cite them (port:, rate:, flow:, drop:, link:), or a pattern with *; never sent to the model.</span></label>
+        <label>Why <input name="why" type="text" maxlength="600" placeholder="optional: how it was planted"></label>
+        <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add</span><span class="op-busy">Adding…</span></button>{{ how('sdn-analyse', 'planted', compact=True, op='Add a planted issue') }}
+        {%- if said.planted and not said.planted.ok %}<p class="small notice notice-warn" role="alert">Couldn't add: {{ said.planted.error }}.</p>{% endif %}
+      </form>
+    </details>
+    <a class="btn btn-small" href="{{ url_for('sdn_analyse_v2.sheet', fmt='md', list=an.network) }}" download title="The sheet as Markdown, its first lines naming the network, the analysis, its snapshot and call">Download the sheet</a>
+    <a class="small" href="{{ url_for('sdn_analyse_v2.sheet', fmt='csv', list=an.network) }}" download title="The same sheet as CSV">as CSV</a>
+  </div>
+</section>
+</div>
+</section>

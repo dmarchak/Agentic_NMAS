@@ -71,14 +71,39 @@ were integrated on main together).
 | X: the registry's notices | code-repository E: No app version can be listed (the registry's own words) and the folders not registered, each with Open the code repository's card | the same | **same** |
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html
-Templates sha256: `2be1dcca70c54bf8cb1c854fc300a977f85076c3a05dba42f861aa19c2ccec1e`
+**Compared 2026-11-10 ~03:3x UTC for Lab 9 B1 (C2903): SDN › Flows' Analyse this network**,
+beside docs/boards/lab9-sdn.html artboard I (self-signed 2026-11-10 under the Phase 7 mode),
+**by reading the template against the artboard, with no new shot**: tests/test_board_shots.py
+has no case for the region yet. Its states are held by tests/test_sdn_analyst.py and the v2
+walk's `_sdn_analyse` provider, which draw each. `_sdn_view.html` changed only to include
+`_sdn_analyse.html` (new, in the compared list) above Flows' filter. The regions whose names
+begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a94c9096d27a844efafc018ed3904d`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| I: the row's place | I: under the tabs, above the two cards | under the summary and granularity notes, above the filter: the same row, the cards under it | **same** |
+| I: Analyse this network | I: an AI-marked button | the AI mark (its hover the task, model and cap), the button busy on itself ("Analysing…"), disabled with the reason in place while hosted AI cannot answer, off while no snapshot is kept, with How does this work? | **same** |
+| I: the collection's line | I: "5 switches, collected 14:05 UTC · Haiku 5.5 · about $0.003" | the same shape from the latest snapshot (its id, who collected it, links not up, ports down and parts not read on hover), "partly read" when it was | **same** |
+| I: Collect now | not drawn | Collect now, busy on itself, with its (i); "Collecting since …" while the job runs | **deviation** (log: Board lab9-sdn I built (Lab 9 B1), 1) |
+| I: Trace a packet…, Add a flow… | I: in the row | Trace a packet… beside the filter, Add flow… on each switch, as Flows draws them | **deviation** (log: Board lab9-sdn I built, 2) |
+| I: the findings card's head | I: "3 findings", "answered 14:05 UTC · the call · Was this right? Yes No" | the count; answered when, by which model, for whom, "the call" to History; Was this right? the shared control under the note | **deviation** (log: Board lab9-sdn I built, 4) |
+| I: the findings table | I: Finding (a severity chip and the finding), Why, Evidence as ids | the same columns; ids the collection's own, an id the snapshot does not hold said as removed | **deviation** (log: Board lab9-sdn I built, 3) |
+| I: the check's note | I: "a claim citing nothing is dropped by the check, and the answer says how many were" | the same words with the count and what each dropped one did, and the removed ids and shortened texts counted | **deviation** (log: Board lab9-sdn I built, 7) |
+| I: the planted sheet | I: Planted, Found (found or missed), Why; Add a planted issue…, Download the sheet | the same columns; each issue's evidence under its name; Why a field with Save; Add a planted issue… opening its form in place; Download the sheet (Markdown) and "as CSV" | **deviation** (log: Board lab9-sdn I built, 5) |
+| I: states the board does not draw | not drawn | no collection yet, collecting, past its bound, couldn't collect, couldn't analyse, a newer snapshot than the answer, the sheet unreadable: each said in place | **deviation** (log: Board lab9-sdn I built, 6) |
+| I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
+
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html
+Templates sha256: `f10cbf0812a7b5a52dbdc794ca7ae28c4851b5b30212e3f8c2a67d833281d801`
+Hashed again 2026-11-10 for Lab 9 B1 (board lab9-sdn I, the "I:" regions above):
+`_sdn_analyse.html` (new, in the compared list) draws Analyse this network, its findings and the
+planted-issue sheet; `_sdn_view.html` only includes it on Flows.
 Hashed again 2026-11-10 for Lab 9 Objective 2 (C2902; board lab9-sdn A): the SDN tabs moved into
 their own partial, `_sdn_tabs.html`, which every tab's region draws, and gained Switches between
 Controllers and Flows (its own record, docs/fidelity/sdn-switches.md). The tabs' row is
 otherwise as compared: the same classes, order and current tab; no other region moved. The
 same day's Add an app as a Draft (`_sdn_app_draft.html`, board authoring-from-words F) is in the
-list too: both merged, hashed together.
+list too. The three were merged and hashed together.
 Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
 publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)

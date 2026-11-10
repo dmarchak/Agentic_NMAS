@@ -90,6 +90,8 @@ PAGES = (
     ("path-trace", "A path trace: the path packets take", H, "how-it-works/path-trace.md"),
     ("sdn-trace", "A flow-table trace: a packet through an SDN fabric", H,
      "how-it-works/sdn-trace.md"),
+    ("sdn-analyse", "Analyse this network: what is abnormal in an SDN fabric", H,
+     "how-it-works/sdn-analyse.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
@@ -222,6 +224,8 @@ OPERATIONS = {
     "path-trace": ("modules.path_trace", "STEPS"),
     # Board D of docs/boards/sdn-trace.html (C2578): Path… on the Flow tables layer.
     "sdn-trace": ("modules.sdn_trace_page", "STEPS"),
+    # Lab 9 B1 (board I of docs/boards/lab9-sdn.html): Analyse this network on SDN › Flows.
+    "sdn-analyse": ("modules.sdn.analyst", "STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),

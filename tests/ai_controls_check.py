@@ -39,6 +39,8 @@ MARKUP = {
     "intent_in_words": {"button": r'<button\b[^>]*\bdata-op="intent-in-words"[^>]*>',
                         "input": r'<input\b[^>]*\bid="iw-words"[^>]*>'},
     "sdn_classify": {"button": r'<button\b[^>]*\bid="sdn-classify-[^"]*"[^>]*>', "input": None},
+    # Lab 9 B1 (board I): SDN › Flows' Analyse this network.
+    "sdn_analyse": {"button": r'<button\b[^>]*\bid="sdn-analyse-ask"[^>]*>', "input": None},
     "change_record": {"button": r'<button\b[^>]*\bdata-op="change-record"[^>]*>', "input": None},
     # The toolbar assistant (card P7, stage 1): its panel, drawn the first time it opens on a
     # page (routes/assistant_v2.panel).

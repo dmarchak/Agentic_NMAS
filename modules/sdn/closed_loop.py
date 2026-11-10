@@ -87,6 +87,14 @@ clock and never sleeps. The interval is from `MIN_INTERVAL` to `MAX_INTERVAL` se
 For a connection with N switches it makes 1 + 3N controller calls: the switch list, then per
 switch one flow read and two port reads. The reads across switches (and connections) run at
 once (`fanout.read_each`), and the wait is one, for the whole network, between the two rounds.
+
+**Link status** (*links* True; the analyst's collection, Lab 9 B1, `modules/sdn/analyst.py`;
+C2903): also each switch's port descriptions (`port_desc`: each port's link up or down from
+the state's LINK_DOWN bit, never LIVE, C2602) in the first round, kept as the switch's
+``port_desc`` (``port_desc_error`` when it fails, which makes the switch partial), and each
+connection's discovered links (`links`, the topology REST's), kept as the connection's
+``links`` (``links_error`` when they fail, said and never read as no links). 1 + 1 + 4N calls
+then. The loop and the SDN reader leave it off, so their reads are as before.
 """
 
 import hashlib
@@ -208,12 +216,13 @@ def _driver(network: str, name: str) -> dict:
 
 def collect_threat_data(network: str, interval: float = DEFAULT_INTERVAL, *,
                         sleep=time.sleep, clock=time.monotonic, now=time.time,
-                        driver=None) -> dict:
+                        driver=None, links: bool = False) -> dict:
     """Every controller connection of *network*: its switches' flows, port rates over two
     samples *interval* seconds apart, active flows, drop flows and coverage; each failure said
     where it happened. *sleep*, *clock* and *now* (the wall clock the answer is stamped with)
     are injectable; *driver* is ``driver(network, name) -> driver_for's answer`` (a test's
-    fakes). See the module's docstring for the shape and the call count."""
+    fakes). *links* adds link status (each switch's port descriptions and each connection's
+    discovered links). See the module's docstring for the shape and the call count."""
     from modules import fanout
 
     calls = {"n": 0}
@@ -254,6 +263,11 @@ def collect_threat_data(network: str, interval: float = DEFAULT_INTERVAL, *,
         if not listed_switches.get("ok"):
             entry["error"] = f"the switch list could not be read: {listed_switches.get('error')}"
             return entry, drv, []
+        if links:
+            found = counted(drv.links)
+            entry.update(links=found.get("links") or [] if found.get("ok") else [],
+                         links_error="" if found.get("ok") else
+                         (found.get("error") or "no answer"))
         return entry, drv, [s["dpid"] for s in listed_switches.get("switches") or []]
 
     opened = _each(fanout, open_one, listed["connections"], "sdn-open",
@@ -265,11 +279,15 @@ def collect_threat_data(network: str, interval: float = DEFAULT_INTERVAL, *,
         _entry, drv, dpid = pair
         flows = counted(drv.flows, dpid)
         ports = counted(drv.port_stats, dpid)
-        return flows, ports, clock()
+        at = clock()
+        if links:
+            return flows, ports, at, counted(drv.port_desc, dpid)
+        return flows, ports, at
 
     round_one = _each(fanout, first, pairs, "sdn-sample-1",
                       lambda _pair, words: ({"ok": False, "error": words},
-                                            {"ok": False, "error": words}, None))
+                                            {"ok": False, "error": words}, None)
+                      + (({"ok": False, "error": words},) if links else ()))
     # 3. One wait for the whole network, then the second port read.
     if pairs:
         sleep(interval)
@@ -322,12 +340,18 @@ def _entry(conn: dict) -> dict:
 def _switch(dpid: int, one: tuple, two: tuple, interval: float, connection: str = "") -> dict:
     from modules.sdn.drivers.base import dpid_hex
 
-    flows_got, first_ports, t1 = one
+    flows_got, first_ports, t1 = one[:3]
     second_ports, t2 = two
     row = {"dpid": dpid, "dpid_hex": dpid_hex(dpid), "state": "ok", "error": "",
            "flows": [], "active_flows": None, "drop_flows": [], "coverage": None,
            "ports": [], "sample": {"interval_s": interval, "elapsed_s": None}}
     errors = []
+    if len(one) > 3:                              # link status asked (`links`)
+        desc = one[3]
+        row["port_desc"] = list(desc.get("ports") or []) if desc.get("ok") else []
+        row["port_desc_error"] = "" if desc.get("ok") else (desc.get("error") or "no answer")
+        if row["port_desc_error"]:
+            errors.append(f"port descriptions: {row['port_desc_error']}")
     flows_ok = bool(flows_got.get("ok"))
     if flows_ok:
         flows = [dict(f, id=flow_ref(connection, dpid, f)) for f in flows_got.get("flows") or []]

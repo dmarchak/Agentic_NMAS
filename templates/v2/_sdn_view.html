@@ -100,6 +100,8 @@
 {%- if g.intent_error %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The network's flow intent could not be read ({{ g.intent_error }}), so no flow is called Mercury's or unauthorised: each is drawn as not classified.</p></div>
 {%- endif %}
+{#- Board I of docs/boards/lab9-sdn.html (Lab 9 B1): Analyse this network. #}
+{%- with an = g.analyse, said = {} %}{% include "v2/_sdn_analyse.html" %}{% endwith %}
 <form class="sdn-find" method="get" action="{{ url_for('sdn_v2.flows') }}" hx-get="{{ url_for('sdn_v2.region') }}" hx-target="#sdn" hx-swap="outerHTML">
   <input type="hidden" name="tab" value="flows">
   <label for="sdn-q" class="sr-only">Filter</label>

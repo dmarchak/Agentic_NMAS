@@ -163,6 +163,8 @@ ANNOUNCERS = {
     "nsot-export": ("nsot_export",),
     # modules/coderepo.py: a fetch of a network's code repository (its copy, its registry).
     "code-repo": ("code_repo",),
+    # modules/sdn/analyst.py (Lab 9 B1): a collection's end, its snapshot kept (or its failure).
+    "sdn-analyst": ("sdn",),
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
     "scheduled-rotation": ("rotation", "credentials"),  # modules/nsot/scheduled_rotation.py (C724)
@@ -561,6 +563,13 @@ DECLARED = {
     # PHASE8_PLAN 17.1 S7: a person's Classify is one recorded AI call, and its answer is kept
     # with the response awaiting them (its proposed action can change).
     "sdn_v2.response_classify": ("ai_calls", "sdn"),
+    # Lab 9 B1 (board I): SDN › Flows' Analyse this network. Collect now starts the read job
+    # (which announces sdn when its snapshot is kept); Analyse is one recorded AI call, its
+    # analysis kept as the network's latest; the planted-issue sheet is the network's own.
+    "sdn_analyse_v2.collect": ("sdn",),
+    "sdn_analyse_v2.ask": ("ai_calls", "sdn"),
+    "sdn_analyse_v2.planted_add": ("sdn",),
+    "sdn_analyse_v2.planted_why": ("sdn",),
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
     "settings_v2.install_test": ("ai_calls",),
     "v2.monitoring_alert_explain": ("ai_calls",),

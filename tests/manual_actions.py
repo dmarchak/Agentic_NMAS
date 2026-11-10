@@ -112,6 +112,8 @@ NOT_AN_OPERATION = {
                                   "current (C2003): a read",
     ("_sdn_log.html", "Download log"): "saves one run of the loop's log as text, a read of the "
                                        "log the Responses tab draws (C1971)",
+    ("_sdn_analyse.html", "Download the sheet"): "saves the planted-issue sheet as Markdown, a "
+                                                 "read of the sheet SDN › Flows draws (Lab 9 B1)",
     # C2777, SDN › Apps' NSOT export card (board nsot-export): links that draw the card again.
     ("_sdn_export.html", "Close"): "draws the NSOT export card at rest again, a read of the "
                                    "committed export; nothing is committed",

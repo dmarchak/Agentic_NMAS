@@ -1,0 +1,14 @@
+{
+  "words": "Analyse this network (SDN › Flows): what is abnormal in one collection",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 40000,
+  "max_tokens": 4096,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "Lab 9 B1's ground rule: economy-tier models. Haiku 5.5, the smallest model, as the other SDN tasks (pins/sdn_classify.json, pins/sdn_explain.json; the operator's replan of 2026-11-09, item 4: \"the SDN network's AI uses Haiku\"). Not measured yet: B1's planted issues are its first cases.",
+    "max_prompt_tokens": "The collection is sent whole but bounded in code (modules/sdn/analyst.py: at most FLOWS_PER_SWITCH flows a switch, the busiest by packets, every drop flow, every port, rate and link; the rest counted): five switches of the lab's fabric at that bound are about 25,000 tokens by the gateway's fallback over-estimate (1.8 characters a token). 40,000 leaves room for more switches and is under Haiku 5.5's long tier (100,000), so every call is billed at its base rates. A larger collection is refused by the gateway, naming its size, and nothing is sent.",
+    "max_tokens": "Provisional, not measured: at most analyst.MAX_FINDINGS findings, each a sentence, a short why and its ids, is about 3,000 tokens; 4,096 leaves room. The first measurement sets it to about 2.5x the largest output (C1757's rule).",
+    "thinking": "Off, as sdn_classify's: one pass over a stated collection, its reasoning each finding's why. A measurement may ask adaptive for one run (gateway.ask's thinking) before this is settled."
+  }
+}
