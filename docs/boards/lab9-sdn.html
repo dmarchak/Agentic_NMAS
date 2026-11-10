@@ -122,10 +122,27 @@ tr.grp td{background:var(--surface-2);font-weight:600}
 </tbody></table>
 </section>
 <p class="callout">A switch's management stays direct (Mercury configures its OpenFlow section) while its flows are the controller's: the split authority of the gap board, 2.1. "Configure from NetBox…" opens the preview below for the switches selected or every one that differs. The OpenFlow version is what intent says, never a default: of-eos-1 runs 1.0 because NetBox says so.</p>
+<section class="card" aria-label="Templates">
+<div class="row" style="justify-content:space-between"><h2>OpenFlow templates on campus-sdn</h2><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<table><thead><tr><th>Template</th><th>Switches</th><th>Status</th><th></th></tr></thead><tbody>
+<tr><td class="mono">ovs</td><td>ovs-1, ovs-2</td><td><span class="chip ok">confirmed</span> by operator@example.com 2026-11-12 13:20 UTC, against the capture <span class="mono">ovs-1 2026-11-12 13:05</span> (sha256:4c1d…)</td><td></td></tr>
+<tr><td class="mono">arista_eos</td><td>of-eos-1, of-eos-2</td><td><span class="chip ok">confirmed</span> by operator@example.com 2026-11-12 13:31 UTC, against <span class="mono">of-eos-1 2026-11-12 13:10</span></td><td></td></tr>
+<tr><td class="mono">aruba_os_switch</td><td>of-hp-1</td><td><span class="chip ok">confirmed</span> by operator@example.com 2026-11-12 13:40 UTC, against <span class="mono">of-hp-1 2026-11-12 13:14</span></td><td></td></tr>
+<tr><td class="mono">hp_comware</td><td class="muted">none on this network</td><td><span class="chip warn">draft</span>: nothing is sent on it until it is confirmed</td><td><a class="btn sm" href="#" aria-disabled="true">Confirm against a capture…</a> <span class="faint" style="font-size:12px">no capture of a Comware switch on campus-sdn: run its show running-config on Show commands first</span></td></tr>
+</tbody></table>
+<div class="card" style="margin-top:8px" aria-label="Confirm a template">
+<h3>Confirm aruba_os_switch against a capture <span class="faint" style="font-size:12px">(as it was before 13:40)</span></h3>
+<div class="row"><span>Capture</span><select><option>of-hp-1 · 2026-11-12 13:14 UTC · K.16.02 · sha256:9ab0…</option></select></div>
+<div class="cols"><pre class="mono">the template's 9 lines, each with its citation and why</pre><pre class="mono">the capture's OpenFlow and VLAN sections, masked</pre></div>
+<p class="muted" style="margin:0;font-size:13px">You judge that the template's syntax fits this release. Recorded in campus-sdn's repository as you (<span class="mono">openflow_confirmations/aruba_os_switch.yml</span>: the capture, its hash and the template's hash); a changed template is a draft again.</p>
+<div class="row"><a class="btn primary" href="#">Confirm aruba_os_switch</a><a class="btn" href="#">Cancel</a></div>
+</div>
+</section>
+<p class="callout">Added 2026-11-10 (self-signed, Phase 7 mode): the templates card. A template is a draft on a network until a verified person confirms it against a saved capture (docs/LAB9_OPENFLOW.md section 3); "Configure from NetBox…" previews a switch on a draft template as "not sent: its template is a draft" and sends nothing to it. The values come from the committed NSOT export, and the plan's hash includes the export's (C2777).</p>
 <div class="cols">
 <section class="card" aria-label="The preview">
 <h2>Configure OpenFlow on 2 switches</h2>
-<p class="muted" style="margin:0;font-size:13px">From NetBox and intent. Each switch's exact program, masked, then confirm by hash. Merge-only: nothing outside the OpenFlow section is sent.</p>
+<p class="muted" style="margin:0;font-size:13px">From the committed NSOT export at <span class="mono">e41a09c</span> (<a href="#">Export from NetBox…</a> on SDN › Apps if NetBox has moved). Each switch's exact program, masked, then confirm by hash. Merge-only: nothing outside the OpenFlow section is sent.</p>
 <h3>of-hp-1 · ArubaOS-Switch</h3>
 <pre class="mono">openflow
  controller-id 1 ip 192.0.2.50 port 6653

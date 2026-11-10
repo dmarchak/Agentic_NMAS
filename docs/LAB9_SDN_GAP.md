@@ -576,7 +576,15 @@ estimate: ~/Documents/nmas-reports/2026-11-04-b4-read-set-and-evaluation-design.
    ports), and the OVS version.
 5. **The controller server:** its OS and Python version (Ryu 4.34 needs 3.9, or a container).
 6. **The external JSON verdict service:** its URL, its request and answer shape, whether a key
-   is needed (typed by the operator), and its rate limit.
+   is needed (typed by the operator), and its rate limit. **Answered 2026-11-10** (the agent's
+   recommended option, docs/STANDING_APPROVAL_LOG.md): Cloudflare's malware-filtering resolver
+   over DNS-over-HTTPS JSON, `GET https://security.cloudflare-dns.com/dns-query?name=<domain>&type=A`
+   with `accept: application/dns-json`. **Bad:** the answer `0.0.0.0` with `Comment`
+   `["EDE(16): Censored"]` (Extended DNS Error 16). **Good:** any other answer. No key.
+   - Measured from the laptop on 2026-11-10: the documented test domain
+     `malware.testcategory.com` answered bad, and `example.com` good.
+   - Its rate limit is not published, so it is unmeasured. The app caches each verdict for its
+     answer's TTL.
 7. **The redundant link:** which link the lab designates, and between which switches.
 8. **Hardware time:** the days the operator is at the hardware, because fixtures and every
    measurement in section 3 wait on them.
