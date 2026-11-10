@@ -8,22 +8,36 @@ One home for adding a Draft, whatever the files came from: a folder a person upl
 Apps, Add an app as a Draft…), or an AI draft from words later (board authoring-from-words).
 Both hand it an app's name and ``files``, ``{path inside the app's folder: bytes}``.
 
-**What it can do, and nothing else:** add ONE new folder, ``apps/<name>/``, as ONE commit on
-top of the branch's commit, pushed fast-forward only. A folder already there at that commit is
-refused, so nothing registered or published is ever changed or overwritten; nothing outside
-the folder is in the commit (checked against the commit itself before it is pushed). Every file
-is committed as a regular file (mode 100644), so no link and nothing executable can be made.
+**What it can do, and nothing else:** ONE commit on top of the branch's commit, pushed
+fast-forward only, that either adds a NEW folder, ``apps/<name>/`` (kind ``app``), or replaces
+the files of a folder already there with a NEW VERSION of that app (kind ``version``, C2905:
+an app fixed after a lab test reaches the repository through Mercury too). A new version is
+allowed only when the folder at the base commit is exactly a version Mercury registered for the
+app at that location (its content hash, `lifecycle.content_hash`, equal to a registered one's:
+no change made outside Mercury is overwritten), the files differ from it, and the new
+manifest's version is above every version registered for the app (`version_key`: three
+numbers, major then minor then patch, semver's precedence for versions with no pre-release
+part, which `modules.jobs.base.VERSION` admits none of). Nothing outside the folder is in the
+commit (checked against the commit itself before it is pushed). Every file is committed as a
+regular file (mode 100644), so no link and nothing executable can be made. Every version
+already registered stays pinned by its own commit and hash: a new version is a new commit, so
+nothing registered or published changes (the registry reads each version's blobs at its
+commit).
 
 **The preview** (`preview`): the exact program, written nowhere: the location and branch, the
 base commit read now (``git ls-remote``; none when the branch does not exist yet in an empty
-repository), the folder, each file's path, size and sha256, the commit message and its author
-(the verified person), and the hash over all of it (`plan_hash`) the confirm binds.
+repository), the folder, whether it is a new app or a new version and the version it
+supersedes, each file's path, size and sha256 and what changes (added, changed, removed or
+unchanged, with the base's sha256), the commit message and its author (the verified person),
+and the hash over all of it (`plan_hash`) the confirm binds.
 
 **Refused, naming the comparison and both operands:** a location that is not a local path (an
 https location needs a push credential Mercury does not hold); a folder already at the base
-commit; a name that is not an app folder's (`coderepo.APP_FOLDER`); no ``manifest.yml``, or one
-naming another app; a path that is absolute, holds ``..`` or a name outside `PART`, or lies
-outside the folder; more than `MAX_FILES` files, a file over `MAX_FILE_BYTES` or a folder over
+commit when Mercury has registered no version of that app there, or when its content is no
+registered version's; files the same as the base's; a version not above every registered one; a
+name that is not an app folder's (`coderepo.APP_FOLDER`); no ``manifest.yml``, or one naming
+another app; a path that is absolute, holds ``..`` or a name outside `PART`, or lies outside the
+folder; more than `MAX_FILES` files, a file over `MAX_FILE_BYTES` or a folder over
 `MAX_TOTAL_BYTES`; a file that is not UTF-8 text; an empty branch setting on a repository with
 no default branch yet (the card where the branch is set is named).
 
@@ -31,18 +45,20 @@ no default branch yet (the card where the branch is set is named).
 refused when its hash is not the one confirmed, naming what moved (the base commit, the files,
 or the rest); the commit built in a throwaway repository under the network's folder in
 Mercury's data (``tempfile``; never Mercury's copy, never a working tree of the operator's), by
-git's plumbing on a temporary index (read-tree of the base, update-index of each blob,
-write-tree, commit-tree with the person as author and committer and the ``Actor:`` and
-``Actor-Verified:`` trailers Mercury's commits carry); pushed as ``<commit>:refs/heads/<branch>``
+git's plumbing on a temporary index (read-tree of the base, update-index removing each file a
+new version drops and adding each blob, write-tree, commit-tree with the person as author and
+committer and the ``Actor:`` and ``Actor-Verified:`` trailers Mercury's commits carry); pushed as ``<commit>:refs/heads/<branch>``
 with no force, so git itself refuses anything but a fast-forward; in the copy's git environment
 (`coderepo._git`: no hooks, no credential helper or prompt, only the file and https
 transports); the throwaway removed whatever happened; the write recorded in the code
 repository's record (``drafts``: who, when, the location, branch, base, new commit, folder and
-each file's hash, a failure with why); then `coderepo.fetch`, so the folder registers as a
+each file's hash, whether a new app or a new version, the version it supersedes and each file
+added, changed or removed, a failure with why); then `coderepo.fetch`, so the folder registers as a
 Draft in the same operation (its verify), and the code repository's keys announced.
 
-**Rollback:** none, and none is needed: the commit adds a new folder only and is pushed
-fast-forward only; a refusal at any step changes nothing in the repository.
+**Rollback:** none, and none is needed: the commit adds a new folder, or a new version's files
+in a folder whose earlier version stays at its own commit, and is pushed fast-forward only; a
+refusal at any step changes nothing in the repository.
 
 No address is parsed or drawn here: the location is `coderepo.location`'s (its own IPv4 and
 IPv6 cases are tests/test_coderepo.py's), and only a local path is written to.
@@ -359,20 +375,149 @@ def _folder_at(tmp: str, base: str, name: str) -> str:
     return kind
 
 
-def _message(name: str, version: str, checked: list, actor: str, actor_verified: str) -> str:
+def _message(name: str, version: str, checked: list, actor: str, actor_verified: str,
+             supersedes: dict = None, counts: dict = None) -> str:
+    trailers = f"Source: {SOURCE}\nActor: {actor}\nActor-Verified: {actor_verified}\n"
+    if not supersedes:
+        return (f"Add {name} {version} as a Draft\n\n"
+                f"{len(checked)} files under apps/{name}/, added through Mercury's Add an app as "
+                "a Draft (a new folder only; Publish is a person's review and a passing test run "
+                "at its hash).\n\n" + trailers)
+    c = counts or {}
     return (f"Add {name} {version} as a Draft\n\n"
-            f"{len(checked)} files under apps/{name}/, added through Mercury's Add an app as a "
-            "Draft (a new folder only; Publish is a person's review and a passing test run at "
-            "its hash).\n\n"
-            f"Source: {SOURCE}\nActor: {actor}\nActor-Verified: {actor_verified}\n")
+            f"{len(checked)} files under apps/{name}/, a new version of {name} "
+            f"{supersedes['version']} (registered at {supersedes['commit'][:12]}, hash "
+            f"{supersedes['content_sha256'][:12]}), added through Mercury's Add an app as a "
+            f"Draft: {c.get('added', 0)} added, {c.get('changed', 0)} changed, "
+            f"{c.get('removed', 0)} removed. {name} {supersedes['version']} stays at its own "
+            "commit; Publish is a person's review and a passing test run at its hash.\n\n"
+            + trailers)
+
+
+def version_key(version: str) -> tuple:
+    """A manifest's version as the numbers it is compared by. `modules.jobs.base.VERSION` holds
+    every version to three dot-separated numbers with no pre-release or build part, so this is
+    semver's precedence for them: major, then minor, then patch, each as a number (1.10.0 is
+    above 1.9.0). Raises `Refused` for anything else."""
+    from modules.jobs.base import VERSION
+
+    if not isinstance(version, str) or not VERSION.match(version):
+        raise Refused(f"{str(version)[:40]!r} is not a version (three dot-separated numbers), "
+                      "so it cannot be compared")
+    return tuple(int(p) for p in version.split("."))
+
+
+def changes_fingerprint(changes: list) -> str:
+    """sha256 over each change, in order: what the commit does to each path."""
+    h = hashlib.sha256()
+    for c in changes:
+        h.update(f"{c['path']}\0{c['change']}\0{c['sha256']}\0{c['was_sha256']}\0"
+                 f"{c['was_mode']}\0".encode())
+    return h.hexdigest()
 
 
 def plan_hash(program: dict) -> str:
     """What the confirm binds: every field of the program, in a fixed order."""
     body = json.dumps({k: program[k] for k in (
-        "network", "location", "branch", "base", "folder", "message", "author", "files_sha")},
-        sort_keys=True)
+        "network", "location", "branch", "base", "folder", "message", "author", "files_sha",
+        "kind", "supersedes", "highest", "changes_sha")}, sort_keys=True)
     return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _base_files(tmp: str, base: str, folder: str) -> dict:
+    """``{rel: {"mode", "size", "sha256"}}``: each file git holds under *folder* at *base*, read
+    from its blob (the content hash at the base was computed first, so none is a link or a
+    submodule)."""
+    proc = _run(tmp, "ls-tree", "-r", "-z", "--full-tree", base, "--", folder, text=False,
+                what=f"reading {folder} at {_short(base)}")
+    out = {}
+    for raw in (proc.stdout or b"").split(b"\0"):
+        if not raw:
+            continue
+        head, _, name = raw.partition(b"\t")
+        mode, _kind, obj = head.decode("ascii").split()
+        path = name.decode("utf-8", "surrogateescape")
+        data = _run(tmp, "cat-file", "blob", obj, text=False,
+                    what=f"reading {path} at {_short(base)}").stdout
+        out[path[len(folder):]] = {"mode": mode, "size": len(data),
+                                   "sha256": hashlib.sha256(data).hexdigest()}
+    return out
+
+
+def _changes(checked: list, was: dict, folder: str) -> list:
+    """Every path the commit names, sorted: each new file ``added``, ``changed`` (another
+    sha256, or a mode other than a regular file's) or ``unchanged``, and each base file the new
+    version drops ``removed``; with the base's sha256 and mode beside it."""
+    out = []
+    new = {f["rel"]: f for f in checked}
+    for rel in sorted(set(new) | set(was)):
+        f, w = new.get(rel), was.get(rel)
+        if f is None:
+            change = "removed"
+        elif w is None:
+            change = "added"
+        elif w["sha256"] != f["sha256"] or w["mode"] != "100644":
+            change = "changed"
+        else:
+            change = "unchanged"
+        out.append({"rel": rel, "path": f"{folder}{rel}", "change": change,
+                    "size": f["size"] if f else None, "sha256": f["sha256"] if f else "",
+                    "was_size": w["size"] if w else None, "was_sha256": w["sha256"] if w else "",
+                    "was_mode": w["mode"] if w else ""})
+    return out
+
+
+def _new_version(network: str, name: str, checked: list, tmp: str, loc: dict, at: dict,
+                 folder: str) -> dict:
+    """A folder already at the base: ``{"supersedes", "highest", "changes"}`` when it is a new
+    version Mercury may add (C2905), or raises `Refused` naming the comparison."""
+    from modules import coderepo
+    from modules.jobs.lifecycle import LifecycleError, content_hash
+
+    base, where = at["base"], f"{folder} already exists at {_short(at['base'])} on {at['branch']}"
+    card = coderepo._card(network)                            # noqa: SLF001 (its words)
+    got = coderepo.read_record(network)
+    if got["state"] == "unreadable":
+        raise Refused(f"{where}, and which versions of {name} Mercury registered can't be told: "
+                      f"{got['error']}")
+    rows = [v for v in got["record"].get("versions") or []
+            if (v.get("location"), v.get("name")) == (loc["location"], name)]
+    if not rows:
+        raise Refused(f"{where} (a tree): a Draft is a new app folder only, never a change to one "
+                      "already there, unless it is a new version of an app Mercury registered, "
+                      f"and Mercury has registered no version of {name} for {loc['location']}: "
+                      f"Fetch now on {card} to register it, then add the new version, or "
+                      "choose another name")
+    try:
+        digest = content_hash(tmp, folder.rstrip("/"), base)
+    except LifecycleError as exc:
+        raise Refused(f"{where}, and its content can't be hashed: {exc}"[:600]) from exc
+    match = next((v for v in rows if v.get("content_sha256") == digest), None)
+    if match is None:
+        held = ", ".join(f"{v.get('version')} {str(v.get('content_sha256'))[:12]}"
+                         for v in sorted(rows, key=lambda v: str(v.get("version"))))
+        raise Refused(f"{folder} at {_short(base)} hashes {digest[:12]}, and no version of {name} "
+                      f"Mercury registered for {loc['location']} has that content ({held}): it "
+                      "was changed outside Mercury since, and a new version would overwrite "
+                      f"that change; Fetch now on {card} to register what is there, then add "
+                      "the new version on top of it")
+    changes = _changes(checked, _base_files(tmp, base, folder), folder)
+    if all(c["change"] == "unchanged" for c in changes):
+        raise Refused(f"the {len(checked)} files are {name} {match.get('version')}'s at "
+                      f"{_short(base)}, file for file (the same paths, sha256 and mode): nothing "
+                      "changed, so there is no new version to add")
+    highest = max((str(v.get("version")) for v in rows), key=version_key)
+    new = checked[0]["version"]
+    if version_key(new) <= version_key(highest):
+        raise Refused(f"{name} {new} is not above {highest}, the highest version of {name} "
+                      f"registered for {loc['location']} (versions compare as three numbers, "
+                      "major then minor then patch): a new version's manifest names a higher one, "
+                      "and every registered version stays at its own commit")
+    return {"supersedes": {"version": str(match.get("version")),
+                           "commit": str(match.get("commit") or ""), "content_sha256": digest,
+                           "published": bool((match.get("publication") or {}).get("reviewer"))
+                           and (match.get("publication") or {}).get("content_sha256") == digest},
+            "highest": highest, "changes": changes}
 
 
 def _program(network: str, name: str, files: dict, tmp: str, *, actor: str,
@@ -392,21 +537,32 @@ def _program(network: str, name: str, files: dict, tmp: str, *, actor: str,
                       "folder there yourself, then Fetch now")
     at = _base(tmp, network, loc)
     folder = f"{coderepo.APPS}/{name}/"
+    was = {"supersedes": None, "highest": "",
+           "changes": _changes(checked, {}, folder)}
     if at["base"]:
         kind = _folder_at(tmp, at["base"], name)
-        if kind:
+        if kind == "tree":
+            was = _new_version(network, name, checked, tmp, loc, at, folder)
+        elif kind:
             raise Refused(f"{folder} already exists at {_short(at['base'])} on {at['branch']} "
                           f"(a {kind}): a Draft is a new app folder only, never a change to "
                           "one already there; choose another name, or change that app in the "
                           "repository")
     version = checked[0]["version"]
+    counts = {k: sum(1 for c in was["changes"] if c["change"] == k)
+              for k in ("added", "changed", "removed", "unchanged")}
     program = {"ok": True, "error": "", "network": network, "name": name, "version": version,
                "location": loc["location"], "source": loc["source"], "branch": at["branch"],
                "branch_from": at["branch_from"], "base": at["base"], "folder": folder,
+               "kind": "version" if was["supersedes"] else "app",
+               "supersedes": was["supersedes"], "highest": was["highest"],
+               "changes": was["changes"], "counts": counts,
+               "changes_sha": changes_fingerprint(was["changes"]),
                "files": [{k: f[k] for k in ("rel", "path", "size", "sha256")} for f in checked],
                "total": sum(f["size"] for f in checked),
                "files_sha": files_fingerprint(checked),
-               "message": _message(name, version, checked, actor, actor_verified),
+               "message": _message(name, version, checked, actor, actor_verified,
+                                   was["supersedes"], counts),
                "author": actor, "author_verified": actor_verified,
                "caps": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES,
                         "total_bytes": MAX_TOTAL_BYTES}}
@@ -417,9 +573,11 @@ def _program(network: str, name: str, files: dict, tmp: str, *, actor: str,
 
 def preview(network: str, name: str, files: dict, *, actor: str, actor_verified: str) -> dict:
     """The exact program (see the module's docstring): ``{"ok", "error", "network", "name",
-    "version", "location", "branch", "branch_from", "base", "folder", "files", "total",
-    "files_sha", "message", "author", "hash", "carried"}``. Writes nothing to the repository,
-    the copy or its record; its throwaway is removed."""
+    "version", "location", "branch", "branch_from", "base", "folder", "kind" ("app" or
+    "version"), "supersedes" (None, or the registered version's ``{"version", "commit",
+    "content_sha256", "published"}``), "highest", "changes", "counts", "changes_sha", "files",
+    "total", "files_sha", "message", "author", "hash", "carried"}``. Writes nothing to the
+    repository, the copy or its record; its throwaway is removed."""
     try:
         with _throwaway(network) as tmp:
             program = _program(network, name, files, tmp, actor=actor,
@@ -459,13 +617,19 @@ def _author_env(actor: str) -> dict:
 
 def build(tmp: str, program: dict) -> str:
     """The commit, built in *tmp* on a temporary index from the base's tree and the program's
-    blobs; checked to add exactly the program's files under its folder. Returns its sha."""
+    blobs; checked to add exactly the program's files under its folder (a new app), or to make
+    exactly the program's changes there (a new version: each added, changed or removed file and
+    nothing else). Returns its sha."""
     checked = program["_checked"]
     index = {"GIT_INDEX_FILE": os.path.join(tmp, "draft-index")}
     if program["base"]:
         _run(tmp, "read-tree", BASE_REF, what="reading the base's tree", extra_env=index)
     else:
         _run(tmp, "read-tree", "--empty", what="starting an empty tree", extra_env=index)
+    for c in program["changes"]:
+        if c["change"] == "removed":
+            _run(tmp, "update-index", "--force-remove", "--", c["path"],
+                 what=f"removing {c['path']}", extra_env=index)
     for f in checked:
         blob = _run(tmp, "hash-object", "-w", "--stdin", what=f"storing {f['path']}",
                     text=False, input=f["data"]).stdout.decode("ascii").strip()
@@ -476,6 +640,14 @@ def build(tmp: str, program: dict) -> str:
     commit = _run(tmp, "commit-tree", "--no-gpg-sign", tree, *parent, "-F", "-",
                   what="making the commit", input=program["message"],
                   extra_env=dict(index, **_author_env(program["author"]))).stdout.strip()
+    if program["kind"] == "version":
+        made = changed_paths(tmp, program["base"], commit)
+        want = sorted((STATUS[c["change"]], c["path"]) for c in program["changes"]
+                      if c["change"] in STATUS)
+        if made != want:
+            raise Refused(f"the commit built changes {len(made)} paths and the program names "
+                          f"{len(want)} ({_first_apart(made, want)}): nothing was pushed")
+        return commit
     added = added_paths(tmp, program["base"], commit)
     want = sorted(f["path"] for f in checked)
     if added != want:
@@ -498,6 +670,32 @@ def added_paths(repo: str, base: str, commit: str) -> list:
                           "nothing was pushed")
         out.append(path)
     return sorted(out)
+
+
+#: git's name-status letter for each change a new version's commit makes.
+STATUS = {"added": "A", "changed": "M", "removed": "D"}
+
+
+def changed_paths(repo: str, base: str, commit: str) -> list:
+    """``[(status, path)]``, sorted: every path *commit* changes against *base*, as git's
+    name-status letter, renames read as a removal and an addition."""
+    proc = _run(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", "--no-renames",
+                base, commit, what="reading what the commit changes")
+    out = []
+    for line in proc.stdout.splitlines():
+        status, _, path = line.partition("\t")
+        out.append((status, path))
+    return sorted(out)
+
+
+def _first_apart(made: list, want: list) -> str:
+    extra = sorted(set(made) - set(want))
+    missing = sorted(set(want) - set(made))
+    if extra:
+        return f"it makes {extra[0][0]} {extra[0][1]}, which the program does not name"
+    if missing:
+        return f"the program names {missing[0][0]} {missing[0][1]}, which it does not make"
+    return "the same paths, in another order"
 
 
 def push(tmp: str, program: dict, commit: str) -> None:
@@ -530,8 +728,8 @@ def _moved(program: dict, then_base, then_files, confirmed: str) -> str:
         return (f"the files changed since the preview (previewed {_short(then_files)}, now "
                 f"{_short(program['files_sha'])})")
     return (f"what Add would commit moved since the preview (confirmed "
-            f"{_short(confirmed)}, now {_short(program['hash'])}: the location, the branch or "
-            "who confirms it)")
+            f"{_short(confirmed)}, now {_short(program['hash'])}: the location, the branch, "
+            "the version it supersedes or who confirms it)")
 
 
 def _record(network: str, rec: dict, row: dict) -> None:
@@ -568,7 +766,13 @@ def apply(network: str, name: str, files: dict, confirmed: str, *, actor: str,
                 row.update(location=program["location"], branch=program["branch"],
                            base=program["base"], folder=program["folder"],
                            files=[{k: f[k] for k in ("path", "size", "sha256")}
-                                  for f in program["files"]])
+                                  for f in program["files"]],
+                           kind=program["kind"], version=program["version"],
+                           supersedes=program["supersedes"],
+                           changes=[{k: c[k] for k in ("path", "change", "sha256",
+                                                       "was_sha256")}
+                                    for c in program["changes"]
+                                    if c["change"] != "unchanged"])
                 if program["hash"] != (confirmed or ""):
                     return dict(out, moved=True, error=(
                         _moved(program, then_base, then_files, confirmed)
@@ -595,7 +799,8 @@ def apply(network: str, name: str, files: dict, confirmed: str, *, actor: str,
              row["location"], row["commit"][:12])
     out.update(outcome="added", commit=row["commit"], base=row["base"], branch=row["branch"],
                folder=row["folder"], files=row["files"], location=row["location"],
-               version=program["version"], at=row["at"], by=actor)
+               version=program["version"], at=row["at"], by=actor, kind=program["kind"],
+               supersedes=program["supersedes"], counts=program["counts"])
     out.update(_register(network, name, program["version"], row["commit"], actor=actor,
                          actor_verified=actor_verified))
     return out

@@ -115,7 +115,22 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html
-Templates sha256: `17a52e36fb7785a992a914131be3bada01f94e17de4893b6aa3aff14a21fef1b`
+Templates sha256: `2f04bc7755272743d6149044ee5b905463ea183a60169dd82537578ca40f2c47`
+Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
+docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
+of a registered app (the badge "a new version", The folder as the registered version's content
+hash, Supersedes with its commit, Published chip and the highest registered, Files with its
+counts and the Change and Was columns, removed files drawn as rows), the hash's line naming the
+version it supersedes, and the result's sentence naming the superseded version and its counts;
+the picker's paragraph and the control's hover say a folder Mercury registered is a new
+version. A new app's preview is as compared before (its table iterates the same rows, each
+added, with no Change or Was column). Compared by reading the template against artboard G,
+region by region, with no new shot (the card's states are drawn by a click;
+tests/test_draft_write.py and tests/v2_context.py draw each): the same, but the board's message
+is shortened with an ellipsis where the built one is whole (same: the board says so by the
+ellipsis). Nothing else on the tab moves (the templates then hashed
+`f10cbf0812a7b5a52dbdc794ca7ae28c4851b5b30212e3f8c2a67d833281d801` before it). Merged with
+the day's DHCP steering and B2 changes and hashed with them over the union.
 Hashed again 2026-11-10 for Lab 9 B1 (board lab9-sdn I, the "I:" regions above):
 `_sdn_analyse.html` (new, in the compared list) draws Analyse this network, its findings and the
 planted-issue sheet; `_sdn_view.html` only includes it on Flows.

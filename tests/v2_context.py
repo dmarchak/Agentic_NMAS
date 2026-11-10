@@ -2733,6 +2733,13 @@ def _nsot_export_and_code_repo(client, _lab, _mp):
                       "content": f["content"]}
         assert client.post("/v2/sdn/apps/draft/confirm", data=draft_form).status_code == 200
         assert client.post("/v2/sdn/apps/draft/confirm", data=draft_form).status_code == 409
+        # C2905 (board authoring-from-words G): a new version of the Draft just registered, a
+        # file changed, one added and one removed: its preview and its confirm.
+        from tests.test_draft_write import fixed
+        f = hidden(upload(client, fixed()).get_data(as_text=True))
+        assert client.post("/v2/sdn/apps/draft/confirm", data=dict(
+            draft_form, hash=f["hash"][0], base=f["base"][0], files_sha=f["files_sha"][0],
+            path=f["path"], content=f["content"])).status_code == 200
         assert client.post("/v2/settings/network/Lab/code-repository",
                            data={"location": "", "branch": "", "loaded": f"{bare}\nmain"}
                            ).status_code == 200

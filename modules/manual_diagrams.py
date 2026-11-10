@@ -1855,9 +1855,10 @@ def draft_write():
         "repository removed again, and shows the exact commit and its hash; you confirm, bound "
         "to that hash; the program is made again and refused if the base commit or the files "
         "moved; the commit is built in a throwaway repository and pushed fast-forward only; the "
-        "write is recorded, then the repository is fetched so the new folder registers as a "
-        "Draft. Nothing already in the repository is changed, and no device or controller is "
-        "contacted."), [
+        "write is recorded, then the repository is fetched so the new folder or version "
+        "registers as a Draft. A new version replaces only its folder's files, and only when "
+        "that folder is a version the tool registered; every registered version stays at its "
+        "own commit, and no device or controller is contacted."), [
         lanes(20, 464, left="IN THE TOOL", right="THE CODE REPOSITORY"),
         person(14, 44, 186, 30, "You choose the app's folder"), num(14, 44, 1),
         doc("box", 14, 84, 186, 36, "The preview", "the commit and its hash"), num(14, 84, 2),
@@ -1870,7 +1871,7 @@ def draft_write():
         repo(14, 222, 186, 40, "A throwaway repository", "one commit; removed after"),
         num(14, 222, 5),
         arrow("rec", 202, 242, 228, 242),
-        repo(232, 222, 156, 44, "apps/<name>/", "a new folder only"),
+        repo(232, 222, 156, 44, "apps/<name>/", "a new app or version"),
         store(14, 276, 186, 36, "The code repository's record", "who, when, the commit"),
         num(14, 276, 6),
         doc("box", 14, 322, 186, 34, "Fetched", "registered as a Draft"), num(14, 322, 7),

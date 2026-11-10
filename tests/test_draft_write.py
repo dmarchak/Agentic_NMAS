@@ -19,6 +19,14 @@ and Default's Mercury data under tmp_path.
   the person; a base that moved since the preview, or files that changed, are refused naming
   which; a non-fast-forward is refused by git and reported; the fetch registers the Draft; the
   write is recorded; the throwaway repository is removed every time.
+- **A new version of a registered app** (C2905): the commit replaces exactly the folder's files
+  (a removed file deleted, nothing outside the folder moved); refused, naming both operands,
+  when the folder is no registered version's content (changed outside Mercury), its version is
+  not above every registered one (three numbers, `version_key`), its manifest names another
+  app, nothing changed, the folder was never registered, or the base moved; the fetch registers
+  the new Draft beside the old; the write is recorded with the version it supersedes and each
+  change; a Published version's record, state, commit and hash are unchanged and it stages from
+  its commit as before; the route's preview and confirm, end to end.
 - **The routes:** a caller with no verified identity is refused before anything is read; the
   folder's relative paths come through the multipart filenames; the preview, its confirm and the
   answer are drawn in the card's place, and the code repository's keys are announced.
@@ -470,6 +478,231 @@ def test_a_caller_with_no_verified_identity_is_refused(world):
     r = A.app.test_client().post("/v2/sdn/apps/draft/confirm", data={"list": NET})
     assert r.status_code == 403 and (r.get_json() or {}).get("requires_identity") is True
     assert head(world) == base
+
+
+# ── a new version of a registered app (C2905) ────────────────────────────────────────────────
+
+WATCH = b"LIMIT = 20\n"
+
+
+def fixed(version="0.2.0", **extra):
+    """dhcp_watch fixed after a test: its logic changed, a helper added, its old test removed."""
+    files = draft(version=version, **{"dhcp_watch.py": LOGIC + b"# fixed\n",
+                                      "watch_logic.py": WATCH, "tests/test_watch.py": None})
+    files.update(extra)
+    return {k: v for k, v in files.items() if v is not None}
+
+
+@pytest.fixture
+def first(world):
+    """dhcp_watch 0.1.0 added through the write path, so Mercury registered it."""
+    done = add(preview())
+    assert done["outcome"] == "added" and done["registered"], done
+    return done
+
+
+def changes_of(p):
+    return {c["path"]: c["change"] for c in p["changes"]}
+
+
+FIXED_CHANGES = {"apps/dhcp_watch/dhcp_watch.py": "changed",
+                 "apps/dhcp_watch/manifest.yml": "changed",
+                 "apps/dhcp_watch/tests/test_watch.py": "removed",
+                 "apps/dhcp_watch/watch_logic.py": "added"}
+
+
+def test_a_new_version_replaces_only_the_folder_removing_a_deleted_file(world, first):
+    base = head(world)
+    p = preview(fixed())
+    assert p["ok"], p["error"]
+    assert (p["kind"], p["highest"], p["folder"]) == ("version", "0.1.0", "apps/dhcp_watch/")
+    digest = R.version_record(NET, NAME, "0.1.0")["digest"]
+    assert p["supersedes"] == {"version": "0.1.0", "commit": first["commit"],
+                               "content_sha256": digest, "published": False}
+    assert changes_of(p) == FIXED_CHANGES
+    by = {c["path"]: c for c in p["changes"]}
+    gone = by["apps/dhcp_watch/tests/test_watch.py"]
+    assert (gone["sha256"], gone["was_sha256"]) == ("", hashlib.sha256(TEST).hexdigest())
+    new_file = by["apps/dhcp_watch/watch_logic.py"]
+    assert (new_file["sha256"], new_file["was_sha256"]) == (hashlib.sha256(WATCH).hexdigest(), "")
+    assert p["counts"] == {"added": 1, "changed": 2, "removed": 1, "unchanged": 0}
+    assert "a new version of dhcp_watch 0.1.0" in p["message"]
+    done = add(p, files=fixed())
+    assert done["outcome"] == "added", done["error"]
+    new = head(world)
+    assert new == done["commit"] and git(world, "rev-parse", f"{new}^") == base
+    status = git(world, "diff-tree", "-r", "--no-commit-id", "--name-status", base, new)
+    assert sorted(status.splitlines()) == ["A\tapps/dhcp_watch/watch_logic.py",
+                                           "D\tapps/dhcp_watch/tests/test_watch.py",
+                                           "M\tapps/dhcp_watch/dhcp_watch.py",
+                                           "M\tapps/dhcp_watch/manifest.yml"]
+
+    def outside(commit):
+        return [ln for ln in git(world, "ls-tree", "-r", commit).splitlines()
+                if "\tapps/dhcp_watch/" not in ln]
+    assert outside(new) == outside(base), "nothing outside the folder moves"
+    assert git(world, "ls-tree", "-r", "--name-only", new, "--", "apps/dhcp_watch/").split() \
+        == sorted(f"apps/dhcp_watch/{rel}" for rel in fixed())
+    assert (done["kind"], done["counts"]["removed"]) == ("version", 1) and leftovers() == []
+
+
+@pytest.mark.parametrize("case", ["changed outside", "the same version", "a lower version",
+                                  "another app's name", "nothing changed"])
+def test_each_new_version_refusal_names_its_comparison(world, first, tmp_path, case):
+    good = preview(fixed())
+    assert good["ok"] and good["kind"] == "version", good.get("error")   # floor: the planted case
+    digest = R.version_record(NET, NAME, "0.1.0")["digest"]
+    files = fixed()
+    if case == "changed outside":
+        other = push_other(world, tmp_path, "apps/dhcp_watch/dhcp_watch.py")
+        words = [f"apps/dhcp_watch/ at {other[:12]} hashes ",
+                 f"and no version of dhcp_watch Mercury registered for {world} has that content "
+                 f"(0.1.0 {digest[:12]}): it was changed outside Mercury since, and a new "
+                 "version would overwrite that change"]
+    elif case == "the same version":
+        files = fixed("0.1.0")
+        words = [f"dhcp_watch 0.1.0 is not above 0.1.0, the highest version of dhcp_watch "
+                 f"registered for {world}"]
+    elif case == "a lower version":
+        files = fixed("0.0.9")
+        words = ["dhcp_watch 0.0.9 is not above 0.1.0", "major then minor then patch"]
+    elif case == "another app's name":
+        files = fixed(**{"manifest.yml": manifest("other", "0.2.0").encode()})
+        words = ["dhcp_watch/manifest.yml names the app 'other', and its folder is 'dhcp_watch'"]
+    else:
+        files = draft()
+        words = [f"the 3 files are dhcp_watch 0.1.0's at {head(world)[:12]}, file for file",
+                 "nothing changed, so there is no new version to add"]
+    before = (head(world), R.read_record(NET)["record"])
+    p = preview(files)
+    assert p["ok"] is False and all(w in p["error"] for w in words), p["error"]
+    assert (head(world), R.read_record(NET)["record"]) == before and leftovers() == []
+
+
+@pytest.mark.parametrize("field, other", [
+    ("kind", "app"), ("highest", "0.0.1"), ("changes_sha", "0" * 64),
+    ("supersedes", {"version": "0.0.1", "commit": "", "content_sha256": "", "published": False})])
+def test_the_hash_binds_what_a_new_version_supersedes_and_changes(world, first, field, other):
+    p = preview(fixed())
+    assert p["ok"] and p["kind"] == "version", p.get("error")
+    assert D.plan_hash(p) == p["hash"]
+    assert D.plan_hash(dict(p, **{field: other})) != p["hash"]
+
+
+def test_a_folder_mercury_never_registered_is_refused_naming_the_fetch(world):
+    """of_versions is in the repository, but nothing was fetched, so no version of it is
+    registered: a new version is refused, naming Fetch now."""
+    p = preview(draft("of_versions", "2.0.0"), name="of_versions")
+    assert p["ok"] is False
+    assert (f"and Mercury has registered no version of of_versions for {world}: Fetch now on "
+            "Settings › Default › Network › Code repository to register it") in p["error"]
+
+
+def test_versions_compare_as_three_numbers():
+    assert D.version_key("1.10.0") > D.version_key("1.9.0") > D.version_key("1.8.12")
+    assert D.version_key("2.0.0") > D.version_key("1.99.99")
+    with pytest.raises(D.Refused, match="'1.0' is not a version"):
+        D.version_key("1.0")
+
+
+def test_a_base_moved_since_a_new_versions_preview_is_refused(world, first, tmp_path):
+    p = preview(fixed())
+    assert p["ok"], p["error"]
+    other = push_other(world, tmp_path)
+    done = add(p, files=fixed())
+    assert done["outcome"] == "refused" and done["moved"] is True
+    assert (f"the base commit moved since the preview (previewed {p['base'][:12]}, now "
+            f"{other[:12]} on main)") in done["error"]
+    assert head(world) == other and leftovers() == []
+
+
+def test_the_fetch_registers_the_new_version_as_a_draft_beside_the_old(world, first):
+    from modules.jobs.lifecycle import DRAFT
+
+    p = preview(fixed())
+    assert p["ok"], p["error"]
+    done = add(p, files=fixed())
+    assert done["registered"] is True and done["register_error"] == "", done
+    (app,) = [a for a in R.registered(NET)["apps"] if a["name"] == NAME]
+    got = {e["version"].version: (e["commit"], e["version"].state) for e in app["versions"]}
+    assert got == {"0.1.0": (first["commit"], DRAFT), "0.2.0": (done["commit"], DRAFT)}
+
+
+def test_a_new_versions_write_is_recorded(world, first):
+    p = preview(fixed())
+    assert p["ok"], p["error"]
+    done = add(p, files=fixed())
+    row = R.read_record(NET)["record"]["drafts"][-1]
+    assert (row["ok"], row["kind"], row["version"], row["commit"]) == \
+        (True, "version", "0.2.0", done["commit"])
+    assert row["supersedes"] == p["supersedes"] and row["base"] == p["base"]
+    assert {c["path"]: c["change"] for c in row["changes"]} == FIXED_CHANGES
+    assert row["files"] == [{k: f[k] for k in ("path", "size", "sha256")} for f in p["files"]]
+
+
+def test_a_published_version_is_unchanged_and_still_deploys_from_its_commit(world, tmp_path):
+    """of_versions 1.0.0, fetched, tested and Published; then 1.1.0 added through Mercury. The
+    published version's record row is byte for byte what it was, the registry reads it
+    Published at its own commit and hash, and it stages from there as before; 1.1.0 is a
+    Draft, which stages nothing."""
+    from modules.apps import channel
+    from modules.jobs.lifecycle import DRAFT, PUBLISHED
+
+    R.fetch(NET, actor=ACTOR, actor_verified=VERIFIED)
+    old = R.version_record(NET, "of_versions", "1.0.0")
+    run = R.record_test(NET, "of_versions", "1.0.0", {
+        "ok": True, "passed": 1, "failed": 0, "errors": 0, "python": "3.5",
+        "content_sha256": old["digest"], "output": "", "error": ""},
+        actor=ACTOR, actor_verified=VERIFIED)
+    R.publish(NET, "of_versions", "1.0.0", content_sha256=old["digest"], test_id=run["id"],
+              reviewer=ACTOR, reviewer_verified=VERIFIED, reason="read it")
+    before = json.dumps(R.version_record(NET, "of_versions", "1.0.0")["row"], sort_keys=True)
+    files = {"manifest.yml": manifest("of_versions", "1.1.0").encode(),
+             "of_versions.py": b"x = 2\n"}
+    p = D.preview(NET, "of_versions", files, actor=ACTOR, actor_verified=VERIFIED)
+    assert p["ok"], p["error"]
+    assert p["supersedes"] == {"version": "1.0.0", "commit": old["commit"],
+                               "content_sha256": old["digest"], "published": True}
+    done = D.apply(NET, "of_versions", files, p["hash"], actor=ACTOR, actor_verified=VERIFIED,
+                   then_base=p["base"], then_files=p["files_sha"])
+    assert done["outcome"] == "added" and done["registered"], done
+    assert json.dumps(R.version_record(NET, "of_versions", "1.0.0")["row"], sort_keys=True) \
+        == before, "the published version's record is untouched"
+    (app,) = [a for a in R.registered(NET)["apps"] if a["name"] == "of_versions"]
+    entries = {e["version"].version: e for e in app["versions"]}
+    pub, new = entries["1.0.0"], entries["1.1.0"]
+    assert (pub["version"].state, pub["commit"], pub["version"].content_sha256) == \
+        (PUBLISHED, old["commit"], old["digest"])
+    assert (new["version"].state, new["commit"]) == (DRAFT, done["commit"])
+    staged = channel.stage_published(pub["version"], pub["repo"], pub["path"], pub["rev"],
+                                     str(tmp_path / "staged"))
+    assert staged["ok"] and staged["staged"]["sha256"] == old["digest"]
+    assert (tmp_path / "staged" / "of_versions.py").read_text() == "x = 1\n"
+    assert channel.stage_published(new["version"], new["repo"], new["path"], new["rev"],
+                                   str(tmp_path / "staged-new"))["ok"] is False
+
+
+def test_the_route_previews_and_confirms_a_new_version(client, world, first):
+    r = upload(client, fixed())
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 200 and "a new version" in html and "Supersedes" in html, html
+    assert "0.2.0 is above 0.1.0, the highest version registered" in html
+    assert "1 added, 2 changed, 1 removed, 0 unchanged" in html
+    assert "apps/dhcp_watch/tests/test_watch.py" in html, "the removed file is drawn"
+    f = hidden(r.get_data(as_text=True))
+    assert f["path"] == sorted(fixed()) and f["name"] == [NAME]
+    form = {"list": NET, "name": NAME, "hash": f["hash"][0], "base": f["base"][0],
+            "files_sha": f["files_sha"][0], "path": f["path"], "content": f["content"]}
+    r = client.post("/v2/sdn/apps/draft/confirm", data=form)
+    done = unescape(r.get_data(as_text=True))
+    assert r.status_code == 200 and "dhcp_watch 0.2.0 added as a Draft" in done, done
+    assert "a new version of dhcp_watch 0.1.0 (1 added, 2 changed, 1 removed; 0.1.0 stays at " \
+        "its commit" in done
+    assert git(world, "ls-tree", "-r", "--name-only", "main", "--", "apps/dhcp_watch/").split() \
+        == sorted(f"apps/dhcp_watch/{rel}" for rel in fixed())
+    row = R.read_record(NET)["record"]["drafts"][-1]
+    assert (row["ok"], row["kind"], row["by"]) == (True, "version", "test-person@example.invalid")
+    assert (R.ANNOUNCE_KEYS, R.ANNOUNCER) in client.heard
 
 
 # ── the picker's script ──────────────────────────────────────────────────────────────────────

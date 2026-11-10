@@ -718,9 +718,10 @@ def apps_publish_confirm():
                               version=version), 200 if outcome == "published" else 409)
 
 
-# Board authoring-from-words (D and F), self-signed under the Phase 7 mode ("I-2 W 2"; the
-# operator's decision of 2026-11-10): Add an app as a Draft…, Mercury's one write path to a
-# code repository (modules/apps/draft_write.py), drawn in its card's place on SDN › Apps.
+# Board authoring-from-words (D and F, and G for a new version, C2905), self-signed under the
+# Phase 7 mode ("I-2 W 2", "C2905 W 1"; the operator's decision of 2026-11-10): Add an app as
+# a Draft…, Mercury's one write path to a code repository (modules/apps/draft_write.py), a new
+# app or a new version of a registered one, drawn in its card's place on SDN › Apps.
 
 def _draft_card(d: dict, status: int = 200):
     return _strict(render_template("v2/_sdn_app_draft.html", d=d)), status
@@ -745,8 +746,9 @@ def apps_draft_card():
 @no_store
 def apps_draft_preview():
     """Preview adding the chosen folder as a Draft: each file with its path in the folder (the
-    multipart filename static/js/nmas_draft.js sends), the top folder's name the app's; the
-    exact commit read from the repository now and its hash. Writes nothing."""
+    multipart filename static/js/nmas_draft.js sends), the top folder's name the app's; a new
+    app, or a new version when the folder holds a version Mercury registered; the exact commit
+    read from the repository now and its hash. Writes nothing."""
     from modules import identity
     from modules.apps import draft_write
     from routes.list_param import submitted_list
@@ -768,8 +770,9 @@ def apps_draft_preview():
                             actor_verified=identity.actor_verification(actor))
     if not p["ok"]:
         return _draft_refused(network, p["error"], 409)
-    # What the card draws: where git reads from, the verification and the caps stay here.
-    for key in ("ok", "error", "source", "author_verified", "caps"):
+    # What the card draws: where git reads from, the verification, the caps and the changes'
+    # fingerprint (under the hash the card draws) stay here.
+    for key in ("ok", "error", "source", "author_verified", "caps", "changes_sha"):
         p.pop(key, None)
     return _draft_card(dict(p, state="preview"))
 

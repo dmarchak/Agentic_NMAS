@@ -19,11 +19,14 @@ objects. It is fetched only on a person's request (`fetch`), bounded by `FETCH_T
 git's transports limited to ``file`` and ``https`` (``GIT_ALLOW_PROTOCOL``), no credential
 prompt or helper, and no hooks. Mercury never commits to its copy. Its one write path to the
 repository it copies is `modules/apps/draft_write.py` (the operator's decision of 2026-11-10:
-"a write path that can ONLY create Drafts"): a NEW ``apps/<name>/`` folder, previewed as its
-exact program and confirmed by hash as a verified person, pushed to a local-path location as one
-fast-forward commit built in a throwaway repository (never this copy, never a working tree),
-recorded here (``drafts``) and fetched, so it registers as a Draft. It never changes a folder
-already there; Publish stays the gate. Every other change to the repository is the operator's.
+"a write path that can ONLY create Drafts"): a NEW ``apps/<name>/`` folder, or a NEW VERSION of
+an app registered here whose folder is exactly a registered version's content (C2905),
+previewed as its exact program and confirmed by hash as a verified person, pushed to a
+local-path location as one fast-forward commit built in a throwaway repository (never this
+copy, never a working tree), recorded here (``drafts``) and fetched, so it registers as a
+Draft. It never overwrites a change made outside Mercury, and every registered version stays
+at its own commit; Publish stays the gate. Every other change to the repository is the
+operator's.
 
 **Registration** (the last step of `fetch`): each ``apps/<name>/`` folder at the fetched commit
 is recorded as a Draft version, keyed by the repository's location, the commit and the folder's
