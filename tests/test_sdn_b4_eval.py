@@ -15,6 +15,10 @@ provider a fake `send` scripted by what each request asks.
 - **The measures**, exactly, on a scripted provider: findings, misses, false positives, benign
   runs answered as a threat, cases reliable, McNemar, the calls, and the cost from the record.
 - **It spends only with --yes-spend**, and the script hands both arms in.
+- **The lab hardware's snapshots** (C2965, ``--snapshots``): B1's own snapshots and sheet,
+  copied; each sealed snapshot a case with the issues standing at its collection, a clean one
+  benign, a broken seal skipped and said; scored issue by issue by B1's rule; the estimate
+  counts them; neither the network's folder nor the copy is written.
 """
 import importlib.machinery
 import importlib.util
@@ -28,7 +32,8 @@ from modules.ai import calls, profiles
 from modules.ai import sdn_analyst_tools as AT
 from modules.sdn import analyst as AN
 from modules.sdn import b4_eval as EV
-from tests.test_sdn_analyst import NET, world  # noqa: F401 (the fixture)
+from tests.ai_person import PERSON
+from tests.test_sdn_analyst import NET, OVS3, collect, world  # noqa: F401 (the fixture)
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -264,3 +269,197 @@ def test_the_script_hands_both_arms_and_refuses_without_yes_spend(networks, tmp_
     from modules.sdn import analyst
     assert seen["arms"] == {"baseline": analyst.ask_snapshot, "tools": AT.ask_snapshot}
     assert seen["root"] == ROOT and "--yes-spend" not in seen["argv"]
+
+
+# ── the lab hardware's snapshots (C2965) ──────────────────────────────────────────────────────
+#
+# B1's own path end to end: the recorded Ryu (tests/fixtures/lab9_captures/2026-11-06, read
+# through `tests.test_sdn_analyst.collect`) collected, built and kept by the analyst's own
+# `build_snapshot` and `save_snapshot`, the collection's time the one edit between snapshots;
+# the sheet kept by `add_planted` and `remove_planted`; the network's folder then copied, as the
+# operator copies it off the host, and the copy given to --snapshots.
+
+T0 = 1_794_000_000                       # the recorded collection's own time
+PORT3 = f"port:ctl-1:{OVS3}:3"            # the capture's LINK_DOWN port
+DROPS = f"drop:ctl-1:{OVS3}:*"
+RATE2 = f"rate:ctl-1:{OVS3}:2"
+
+
+def _iso(epoch):
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _tree(folder):
+    """Every file under *folder* with its bytes, to show nothing was written."""
+    out = {}
+    for base, _dirs, files in os.walk(folder):
+        for name in files:
+            path = os.path.join(base, name)
+            out[os.path.relpath(path, folder)] = open(path, "rb").read()
+    return out
+
+
+@pytest.fixture
+def lab(world, tmp_path):  # noqa: F811
+    """Five snapshots of the recorded collection, an hour apart (S0 before anything was planted,
+    S1 to S3, S4 whose seal the copy breaks), three planted issues (A before S1, C before S1 and
+    removed between S1 and S2, B between S1 and S2), and the network's folder copied."""
+    import shutil
+    import types as T
+
+    got, _s = collect(links=True)
+    snaps = []
+    for hour in range(-1, 4):
+        snap = AN.build_snapshot(NET, dict(got, collected_at=_iso(T0 + 3600 * hour)),
+                                 by=PERSON)
+        AN.save_snapshot(NET, snap)
+        snaps.append(snap)
+    s0, s1, s2, s3, s4 = snaps
+    a = AN.add_planted(NET, "OVS 3's port 3 pulled", PORT3, actor=PERSON, now=T0 - 600)
+    c = AN.add_planted(NET, "Port 2 flooded", RATE2, actor=PERSON, now=T0 - 300)
+    assert AN.remove_planted(NET, c["issue"]["id"], actor=PERSON, now=T0 + 1000)["ok"]
+    b = AN.add_planted(NET, "A stale drop", DROPS, actor=PERSON, now=T0 + 1800)
+    assert a["ok"] and b["ok"] and c["ok"]
+    copy = tmp_path / "copy" / "sdn_analyst"
+    shutil.copytree(AN._dir(NET), copy)
+    path = copy / "snapshots" / f"{s4['id']}.json"
+    kept = json.loads(path.read_text(encoding="utf-8"))
+    kept["switches"][0]["name"] = "edited"
+    path.write_text(json.dumps(kept), encoding="utf-8")
+    return T.SimpleNamespace(s0=s0, s1=s1, s2=s2, s3=s3, s4=s4, copy=str(copy),
+                             store=AN._dir(NET), world=world)
+
+
+def test_each_sealed_snapshot_is_a_hardware_case_with_the_issues_standing_at_its_collection(lab):
+    got = EV.load_hardware(lab.copy, NET, clean=[lab.s3["id"]])
+    assert got["error"] == ""
+    assert [(c["key"], c["role"], EV.kind_of(c)) for c in got["cases"]] == [
+        (lab.s1["id"], "hardware", "threat"), (lab.s2["id"], "hardware", "threat"),
+        (lab.s3["id"], "hardware", "benign")], "in the order they were collected"
+    s1, s2, s3 = got["cases"]
+    assert [i["name"] for i in EV.case_issues(s1)] == ["OVS 3's port 3 pulled"], \
+        "C, removed (a correction) after S1 was collected, is not S1's; B planted after S1 neither"
+    assert [i["name"] for i in EV.case_issues(s2)] == ["OVS 3's port 3 pulled", "A stale drop"], \
+        "C is not S2's"
+    assert all(i["name"] != "Port 2 flooded" for c in got["cases"] for i in EV.case_issues(c))
+    assert [i["evidence"] for i in EV.case_issues(s2)] == [[PORT3], [DROPS]]
+    assert EV.case_issues(s3) == [] and s3["clean"] and s3["sheet_issues"] == 2
+    assert EV.expected_severities(s3) == {"none", "low"}
+    assert EV.case_snapshot(s1, NET) == lab.s1 and AN.intact(EV.case_snapshot(s1, NET))
+    assert {x["id"]: x["why"] for x in got["skipped"]} == {
+        lab.s0["id"]: f"no planted issue stood on the sheet at its collection "
+                      f"({_iso(T0 - 3600)}) and --clean does not name it",
+        lab.s4["id"]: f"the snapshot {lab.s4['id']} changed since it was kept (its hash does "
+                      "not match), so it is not analysed"}
+    other = EV.load_hardware(lab.copy, "Branch", clean=[])
+    assert other["cases"] == [] and len(other["skipped"]) == 5
+    assert all("of the network 'Default', not" in x["why"] for x in other["skipped"]
+               if x["id"] != lab.s4["id"])
+    assert EV.load_hardware(lab.copy, NET, clean=["snap-0000000000000000"])["error"] == (
+        f"--clean names snap-0000000000000000, which {lab.copy}/snapshots/ does not hold")
+
+
+def test_a_hardware_run_on_fake_arms_scores_each_issue_by_b1_s_rule(lab):
+    """The baseline cites A only (S1's one issue found, S2 misses B) and calls the clean S3's
+    port 3 a medium threat; the technique cites every standing issue and answers S3 with
+    nothing. The removed C's evidence cited on S1 is a false positive: C is no issue."""
+    from modules.sdn import evaluations
+
+    clean = lab.s3["id"]
+
+    def finding_of(evidence, severity):
+        return {"severity": severity, "finding": f"about {evidence}", "why": "w",
+                "evidence": [evidence]}
+
+    def baseline(network, snap, **kw):
+        return {"ok": True, "call_id": "", "findings": [
+            finding_of(PORT3, "medium" if snap["id"] == clean else "high")]}
+
+    def tools(network, snap, **kw):
+        (drop,) = [i for i in AN.evidence_ids(snap) if i.startswith("drop:")]
+        found = [finding_of(PORT3, "high"), finding_of(drop, "high")]
+        if snap["id"] == lab.s1["id"]:
+            found.append(finding_of(RATE2, "medium"))
+        return {"ok": True, "calls": [], "findings": [] if snap["id"] == clean else found}
+
+    before = _tree(lab.store), _tree(lab.copy)
+    picked = EV.load_hardware(lab.copy, NET, clean=[clean])["cases"]
+    actor = "evaluation:b4-hardware"
+    results = EV.run(picked, {"baseline": baseline, "tools": tools}, runs=1, network=NET,
+                     actor=actor, trigger={}, now=lambda: float(T0 + 20000))
+    rows = {c["key"]: c for c in results["cases"]}
+    one = rows[lab.s1["id"]]["runs"]
+    assert (one["baseline"][0]["missed"], one["baseline"][0]["missed_issues"],
+            one["baseline"][0]["correct"]) == (False, [], True)
+    assert (one["tools"][0]["found"], one["tools"][0]["correct"],
+            one["tools"][0]["judged"]) == (True, True, ["planted", "real", "false_positive"])
+    two = rows[lab.s2["id"]]["runs"]
+    assert two["baseline"][0]["missed_issues"] == ["A stale drop"] and two["tools"][0]["correct"]
+    three = rows[clean]["runs"]
+    assert three["baseline"][0]["threat_answered"] and not three["baseline"][0]["correct"]
+    assert three["tools"][0]["correct"] and not three["tools"][0]["threat_answered"]
+    s = EV.summary(results)["roles"]["hardware"]
+    b, t = s["techniques"]["baseline"], s["techniques"]["tools"]
+    assert (s["cases"], b["reliable"], t["reliable"]) == (3, 1, 3)
+    assert (b["misses"], t["misses"], b["benign_threat_runs"], t["benign_threat_runs"],
+            b["false_positives"], t["false_positives"]) == (1, 0, 1, 0, 0, 1)
+    assert EV.summary(results)["pass_rule"]["improves"] is None, "the blind role alone decides"
+    kept = evaluations.read(NET)["rows"]
+    assert [(r["case"], r["role"], r["technique"], r["missed_issues"], r["issue"],
+             r["false_positives"], r["threat_answered"]) for r in kept] == [
+        (lab.s1["id"], "hardware", "tools", [], [PORT3], 1, False),
+        (lab.s2["id"], "hardware", "baseline", ["A stale drop"], [DROPS], 0, False),
+        (clean, "hardware", "baseline", [], [], 0, True)]
+    assert (_tree(lab.store), _tree(lab.copy)) == before, "neither folder is written"
+
+
+def test_the_estimate_counts_the_hardware_cases_and_a_run_reports_them(lab, tmp_path):
+    from modules.ai import sdn_analyst_tools as AT2
+
+    said = []
+    argv = ["--list", NET, "--runs", "1", "--roles", "hardware", "--snapshots", lab.copy,
+            "--clean", lab.s3["id"], "--out", str(tmp_path / "out")]
+    assert EV.main(argv, arms={}, root=ROOT, out=said.append) == 2
+    usd = sum(AN.estimate(s)["usd"] + AT2.estimate(s)["usd"] for s in (lab.s1, lab.s2, lab.s3))
+    assert (f"nmas-sdn-b4-eval: skipped the snapshot {lab.s4['id']}: the snapshot "
+            in "\n".join(said))
+    assert any(w.startswith(f"nmas-sdn-b4-eval: skipped the snapshot {lab.s0['id']}: no planted")
+               for w in said)
+    assert (f"nmas-sdn-b4-eval: 3 cases (3 of them the lab hardware's snapshots) x 1 runs x 2 "
+            f"techniques: at most 9 calls, about ${round(usd, 4):.4f}") in "\n".join(said)
+    assert "refused: nothing was asked or spent" in said[-1]
+
+    def arm(network, snap, **kw):
+        return {"ok": True, "call_id": "", "calls": [], "findings": []}
+    said.clear()
+    assert EV.main(argv + ["--yes-spend", "--actor", "evaluation:b4-hw"],
+                   arms={"baseline": arm, "tools": arm}, root=ROOT, out=said.append) == 0
+    md = open(tmp_path / "out" / "b4-eval-b4-hw.md", encoding="utf-8").read()
+    data = json.load(open(tmp_path / "out" / "b4-eval-b4-hw.json", encoding="utf-8"))
+    assert "## hardware (not blind)" in md and "- Cases: 0 from 19.13's files" in md
+    assert f"- Hardware: 3 snapshots kept on the lab's switches, from {lab.copy} (1 named " \
+           f"clean); skipped 2" in md
+    assert data["summary"]["hardware"]["clean_with_issues"] == [
+        {"id": lab.s3["id"], "standing": 2}], "A and B are still on the sheet at S3"
+    assert (f"; {lab.s3['id']} named clean, with 2 issues standing on the sheet: scored "
+            "benign\n") in md, "A and B are still on the sheet when S3 was collected"
+    assert f"| {lab.s3['id']} | hardware | benign | 1 of 1 | 1 of 1 |" in md
+    assert f"| {lab.s1['id']} | hardware | threat | 0 of 1 | 0 of 1 |" in md
+    assert data["meta"]["estimate"]["hardware"] == 3
+    assert [x["id"] for x in data["summary"]["hardware"]["skipped"]] == sorted(
+        [lab.s0["id"], lab.s4["id"]])
+
+
+@pytest.mark.parametrize("extra, words", [
+    (["--roles", "hardware"], "--roles names hardware, and no --snapshots folder is given"),
+    (["--snapshots", ROOT + "/data/x"], "is inside the checkout; copy the network's"),
+    (["--snapshots", "/tmp/elsewhere", "--roles", "recorded"], "leaves out hardware"),
+    (["--clean", "snap-0000000000000000"], "--clean names snapshots, and no --snapshots"),
+    (["--roles", "recorded,hardwear"], "--roles names hardwear, not one of"),
+])
+def test_a_hardware_run_out_of_shape_is_refused(networks, extra, words):  # noqa: F811
+    said = []
+    got = EV.main(["--list", NET, "--out", "/tmp/elsewhere"] + extra, arms={}, root=ROOT,
+                  out=said.append)
+    assert got == 2 and words in said[-1]

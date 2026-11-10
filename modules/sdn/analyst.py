@@ -617,18 +617,28 @@ def save_snapshot(network: str, snap: dict) -> None:
 
 def snapshot(network: str, snap_id: str) -> dict:
     """``{"ok", "error", "snapshot"}``: a kept snapshot by its id, its seal checked."""
+    return snapshot_in(_dir(network), network, snap_id)
+
+
+def snapshot_in(folder: str, network: str, snap_id: str) -> dict:
+    """`snapshot`'s read from *folder*: the network's own analyst folder, or a copy of one (B4's
+    ``--snapshots``, read and never written). Its id, its seal and its network checked."""
     if not _ID.match(str(snap_id or "")) or not str(snap_id).startswith("snap-"):
         return {"ok": False, "error": f"{snap_id!r} is not a snapshot id", "snapshot": None}
-    got, err = _read_json(os.path.join(_dir(network), "snapshots", f"{snap_id}.json"))
+    got, err = _read_json(os.path.join(folder, "snapshots", f"{snap_id}.json"))
     if err:
         return {"ok": False, "error": f"the snapshot {snap_id} cannot be read ({err})",
                 "snapshot": None}
     if got is None:
         return {"ok": False, "error": f"no snapshot {snap_id} is kept for {network}",
                 "snapshot": None}
-    if not intact(got) or got.get("network") != network or got.get("id") != snap_id:
+    if not isinstance(got, dict) or not intact(got):
         return {"ok": False, "error": f"the snapshot {snap_id} changed since it was kept (its "
                 "hash does not match), so it is not analysed", "snapshot": None}
+    if got.get("network") != network or got.get("id") != snap_id:
+        return {"ok": False, "error": f"the snapshot kept as {snap_id} is {got.get('id')!r} of "
+                f"the network {got.get('network')!r}, not {snap_id} of {network!r}, so it is "
+                "not analysed", "snapshot": None}
     return {"ok": True, "error": "", "snapshot": got}
 
 
@@ -786,7 +796,11 @@ def _planted_doc(network: str) -> tuple:
     """The store itself: ``(every issue kept, removed ones too; its history; error)``. A store
     written before C2913 holds no history: its adds and whys are on each issue (``by``, ``at``,
     ``why_by``, ``why_at``), read as before."""
-    got, err = _read_json(_planted_path(network))
+    return _planted_doc_at(_planted_path(network))
+
+
+def _planted_doc_at(path: str) -> tuple:
+    got, err = _read_json(path)
     if err:
         return None, [], err
     if got is None:
@@ -798,7 +812,13 @@ def planted(network: str) -> dict:
     """``{"state": "ok"|"absent"|"unreadable", "issues", "removed", "history", "error"}``:
     *issues* the planted issues on the sheet now, *removed* those a person removed (kept, with
     who and when), *history* every change to the sheet, oldest first (C2913)."""
-    every, history, err = _planted_doc(network)
+    return planted_in(_dir(network))
+
+
+def planted_in(folder: str) -> dict:
+    """`planted`'s read from *folder*'s ``planted.json``: the network's own analyst folder, or a
+    copy of one (B4's ``--snapshots``, read and never written)."""
+    every, history, err = _planted_doc_at(os.path.join(folder, "planted.json"))
     if err:
         return {"state": "unreadable", "issues": [], "removed": [], "history": [], "error": err}
     if every is None:

@@ -29,6 +29,23 @@ through the analyst's own `build_snapshot`, with these edits, the same for every
 counters); a benign case has none. A case whose alternatives disagree is ``either``, reported
 and kept out of the pass rule.
 
+**The lab hardware's snapshots** (`load_hardware`, the role ``hardware``; C2965): a copy of a
+network's analyst folder (``sdn_analyst/``, `analyst.snapshot_in` and `analyst.planted_in`; read,
+never written), each snapshot kept there by SDN › Flows' Collect now on the lab's switches a
+case as it was sealed, unedited. A snapshot whose seal fails, that another network collected or
+whose collection time cannot be read is skipped, each said with why, never dropped unsaid. Its
+planted issues are the sheet's standing at its collection (`standing`: planted at or before it;
+an issue a person removed is a correction, as in B1 (C2913), and stands for no snapshot,
+whenever it was removed), each found by B1's own rule (`analyst.marks`: a kept finding citing
+an id the issue names), and every one must be found for the run to be correct, at any
+severity (the sheet names none). A snapshot the person names clean (``--clean``: every planted
+issue restored, the sheet left as it is) is a benign case, with the benign cases' own
+severities (``none``, ``low``): a finding of medium or above answers it as a threat, as for
+19.13's; one with issues still standing on the sheet is said so in the report and its JSON
+(``clean_with_issues``), and scored benign. A snapshot neither clean nor holding a planted
+issue is skipped, said. The role is reported beside the others; the pass
+rule stays 19.13's, on the blind role alone.
+
 **The measures** (`score_run`, `summary`, 19.13's), per technique, the difference and its
 uncertainty: correct (a threat case's issue found by a kept finding at a severity its
 expectation names; a benign case answered with no finding above its expected severities), each
@@ -70,6 +87,12 @@ DEFAULT_RUNS = 10
 BOOTSTRAP = 2000
 SEED = 1913
 TECHNIQUES = ("baseline", "tools")
+#: 19.13's fixture roles, and the lab hardware's snapshots (C2965).
+FIXTURE_ROLES = ("recorded", "held_out", "blind")
+HARDWARE = "hardware"
+ROLES = FIXTURE_ROLES + (HARDWARE,)
+#: A clean hardware snapshot's expected severities: 19.13's benign cases' own.
+BENIGN_SEVERITIES = ("none", "low")
 WORDS = {"baseline": "without tools (B1, sdn_analyse)",
          "tools": "with the trace tool (B4, sdn_analyse_tools)"}
 
@@ -88,6 +111,84 @@ def load_cases(root: str, roles=None, keys=None) -> list:
             if keys and c.get("key") not in keys:
                 continue
             out.append(dict(c, role=role, file=rel))
+    return out
+
+
+def standing(sheet: dict, at: str) -> list:
+    """The planted issues on *sheet* (`analyst.planted_in`'s) standing at *at*, a snapshot's
+    collection time: each on the sheet now and planted at or before it (not
+    `analyst.planted_after` it), oldest first. An issue a person removed is a correction (B1's
+    meaning, C2913: planted by mistake) and stands for no snapshot, whenever it was removed;
+    a restored network is said by ``--clean``, never by removing its issues."""
+    from modules.sdn import analyst as AN
+
+    when = {"ok": True, "at": at}
+    out = []
+    for issue in sheet.get("issues") or []:         # the sheet's *removed* never read
+        if AN.planted_after(issue, when):
+            continue
+        out.append(issue)
+    return sorted(out, key=lambda i: (str(i.get("at") or ""), str(i.get("id") or "")))
+
+
+def load_hardware(folder: str, network: str, clean=(), keys=None) -> dict:
+    """The lab hardware's snapshots in *folder* (a copy of *network*'s ``sdn_analyst/``), each
+    a case of the role `HARDWARE`: ``{"cases", "skipped": [{"id", "why"}], "error"}``. Read
+    only. A snapshot whose seal fails (`analyst.snapshot_in`), whose collection time cannot be
+    read, or that is neither named in *clean* nor holds a standing planted issue (`standing`)
+    is skipped, said; *keys* (snapshot ids) narrows the cases. *error* when the folder holds no
+    ``snapshots/``, its sheet cannot be read, or *clean* names a snapshot it does not hold."""
+    from modules.sdn import analyst as AN
+
+    out = {"cases": [], "skipped": [], "error": ""}
+    folder = os.path.abspath(folder)
+    kept = os.path.join(folder, "snapshots")
+    if not os.path.isdir(kept):
+        out["error"] = (f"{folder} holds no snapshots/ folder: give a copy of a network's "
+                        "sdn_analyst/ folder")
+        return out
+    sheet = AN.planted_in(folder)
+    if sheet["state"] == "unreadable":
+        out["error"] = f"the planted issues in {folder} cannot be read ({sheet['error']})"
+        return out
+    clean = set(clean or ())
+    seen = set()
+    for name in sorted(os.listdir(kept)):
+        sid = name[:-len(".json")] if name.endswith(".json") else name
+        seen.add(sid)
+        if keys and sid not in keys:
+            continue
+        got = AN.snapshot_in(folder, network, sid) if name.endswith(".json") else {
+            "ok": False, "error": f"{name} is not a snapshot's file (<id>.json)"}
+        if not got["ok"]:
+            out["skipped"].append({"id": sid, "why": got["error"]})
+            continue
+        snap = got["snapshot"]
+        at = snap.get("collected_at") or ""
+        if AN._epoch(at) is None:                                    # noqa: SLF001
+            out["skipped"].append({"id": sid, "why": f"its collection time {at!r} cannot be "
+                                   "read, so its planted issues cannot be told"})
+            continue
+        issues = standing(sheet, at)
+        if sid not in clean and not issues:
+            out["skipped"].append({"id": sid, "why": f"no planted issue stood on the sheet at "
+                                   f"its collection ({at}) and --clean does not name it"})
+            continue
+        benign = sid in clean
+        out["cases"].append({
+            "key": sid, "role": HARDWARE, "file": folder, "snapshot": snap,
+            "collected_at": at, "clean": benign,
+            "issues": [] if benign else [dict(i) for i in issues],
+            "sheet_issues": len(issues),
+            "name": ("clean: every planted issue restored" if benign
+                     else "; ".join(str(i.get("name")) for i in issues)),
+            "expect": ({"threat_detected": False, "severity": list(BENIGN_SEVERITIES)} if benign
+                       else {"threat_detected": True, "severity": list(AN.SEVERITIES)})})
+    unknown = sorted(clean - seen)
+    if unknown:
+        out["error"] = (f"--clean names {', '.join(unknown)}, which {folder}/snapshots/ does not "
+                        "hold")
+    out["cases"].sort(key=lambda c: (AN._epoch(c["collected_at"]), c["key"]))  # noqa: SLF001
     return out
 
 
@@ -133,9 +234,11 @@ def _hosts(conn: str, dpid: int) -> list:
 
 def case_snapshot(case: dict, network: str) -> dict:
     """The case's fixed snapshot (the module's edits 1 to 5), built and sealed by the analyst's
-    own `build_snapshot`."""
+    own `build_snapshot`. A hardware case's is its kept snapshot, as it was sealed."""
     from modules.sdn import analyst as AN
 
+    if case.get("role") == HARDWARE:
+        return case["snapshot"]
     section = case.get("section") or {}
     pieces = section.get("pieces") or []
     det = next((p for p in pieces if p.get("kind") == "detection"), {})
@@ -188,7 +291,10 @@ def case_snapshot(case: dict, network: str) -> dict:
 
 
 def case_issues(case: dict) -> list:
-    """The case's planted issue (a threat case's), found by its expectation's ``cites_any``."""
+    """The case's planted issue (a threat case's), found by its expectation's ``cites_any``; a
+    hardware case's, the sheet's issues standing at its collection (`load_hardware`)."""
+    if case.get("role") == HARDWARE:
+        return [] if kind_of(case) != "threat" else list(case.get("issues") or [])
     if kind_of(case) != "threat":
         return []
     ids = []
@@ -210,8 +316,9 @@ def expected_severities(case: dict) -> set:
 
 def score_run(case: dict, snap: dict, result: dict) -> dict:
     """One run of one technique on one case: ``{"ok", "error", "findings", "found",
-    "found_at_severity", "missed", "false_positives", "real", "notes", "threat_answered",
-    "correct", "judged"}``."""
+    "found_at_severity", "missed", "missed_issues", "false_positives", "real", "notes",
+    "threat_answered", "correct", "judged"}``. *found* when every planted issue is found by
+    B1's own rule (`analyst.marks`); *missed_issues* names those that were not."""
     from modules.ai import sdn_analyst_tools as AT
     from modules.sdn import analyst as AN
 
@@ -225,17 +332,24 @@ def score_run(case: dict, snap: dict, result: dict) -> dict:
     hits = [f for f in findings if any(AN._matches(p, e)                     # noqa: SLF001
                                        for i in issues for p in i["evidence"]
                                        for e in f.get("evidence") or [])]
-    found = bool(hits)
+    # B1's rule, issue by issue; the run's answer is read whenever it was made (never "planted
+    # after": a case's issues are those standing when its snapshot was collected).
+    marked = AN.marks(issues, {"ok": True, "findings": findings})
+    missed = [m for m in marked if m["found"] != "found"]
+    missed_issues = [m.get("name") for m in missed]
+    found = bool(issues) and not missed
     at_severity = any(f.get("severity") in allowed for f in hits)
     threat = any(SEVERITY_RANK.get(f.get("severity"), 0) > top
                  and SEVERITY_RANK.get(f.get("severity"), 0) >= SEVERITY_RANK["medium"]
                  for f in findings)
     ok = bool((result or {}).get("ok"))
-    correct = ok and (at_severity if kind == "threat" else
+    correct = ok and (found and at_severity if kind == "threat" else
                       not threat if kind == "benign" else None)
     return {"ok": ok, "error": (result or {}).get("error") or "",
             "findings": len(findings), "found": found, "found_at_severity": at_severity,
             "missed": kind == "threat" and not found,
+            "missed_issues": missed_issues if kind == "threat" else [],
+            "missed_ids": [m.get("id") for m in missed] if kind == "threat" else [],
             "false_positives": judged.count("false_positive"), "real": judged.count("real"),
             "notes": judged.count("note"), "threat_answered": kind == "benign" and threat,
             "correct": correct, "judged": judged}
@@ -254,6 +368,8 @@ def wrong_row(case: dict, snap: dict, result: dict, scored: dict, *, network: st
         return {}
     findings = (result or {}).get("findings") or [] if (result or {}).get("ok") else []
     issues = case_issues(case)
+    # The evidence of the issues missed (a hardware case may hold several), else of them all.
+    named = [i for i in issues if i.get("id") in (scored.get("missed_ids") or [])] or issues
     return {"script": evaluations.B4_EVAL, "kind": "case_run",
             "run": actor.split(":", 1)[1] if ":" in actor else actor, "actor": actor,
             "network": network, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at)),
@@ -263,7 +379,8 @@ def wrong_row(case: dict, snap: dict, result: dict, scored: dict, *, network: st
             "error": scored["error"], "missed": scored["missed"],
             "false_positives": scored["false_positives"],
             "threat_answered": scored["threat_answered"],
-            "issue": issues[0]["evidence"] if issues else [],
+            "issue": [p for i in named for p in i["evidence"]],
+            "missed_issues": list(scored.get("missed_issues") or []),
             "severities": sorted(expected_severities(case)),
             "findings": [{"severity": f.get("severity"), "finding": f.get("finding"),
                           "why": f.get("why"), "evidence": list(f.get("evidence") or []),
@@ -294,6 +411,9 @@ def run(cases: list, arms: dict, *, runs: int, network: str, actor: str, trigger
         row = {"key": case.get("key"), "name": case.get("name"), "role": case.get("role"),
                "file": case.get("file"), "kind": kind_of(case), "snapshot": snap["id"],
                "issues": len(case_issues(case)), "runs": {t: [] for t in TECHNIQUES}}
+        if case.get("role") == HARDWARE:
+            row.update(collected_at=case.get("collected_at"), clean=bool(case.get("clean")),
+                       planted=[i.get("name") for i in case_issues(case)])
         out["cases"].append(row)
         for n in range(1, runs + 1):
             for technique in TECHNIQUES:
@@ -412,10 +532,10 @@ def _role_summary(cases: list) -> dict:
 
 
 def summary(results: dict) -> dict:
-    """The measures by role (recorded, held_out, blind) and over all, and the pass rule's
-    verdict on the blind role (19.13), with its power said."""
+    """The measures by role (recorded, held_out, blind, hardware) and over all, and the pass
+    rule's verdict on the blind role alone (19.13), with its power said."""
     roles = {}
-    for role in ("recorded", "held_out", "blind"):
+    for role in ROLES:
         cases = [c for c in results.get("cases") or [] if c["role"] == role]
         if cases:
             roles[role] = _role_summary(cases)
@@ -439,7 +559,8 @@ def summary(results: dict) -> dict:
                              + f"; with {blind['cases']} blind cases one case is about "
                              f"{round(100 / max(1, blind['cases']))} points, so the power is low")}
     return {"roles": roles, "all": every, "pass_rule": verdict,
-            "not_converted": NOT_CONVERTED, "stopped": results.get("stopped") or ""}
+            "not_converted": NOT_CONVERTED, "stopped": results.get("stopped") or "",
+            "hardware": results.get("hardware") or {}}
 
 
 def report_markdown(results: dict, meta: dict) -> str:
@@ -451,9 +572,21 @@ def report_markdown(results: dict, meta: dict) -> str:
              f"- Baseline: {WORDS['baseline']}, prompt {meta.get('baseline_prompt')}; technique: "
              f"{WORDS['tools']}, prompts {meta.get('tools_prompts')}; model "
              f"{meta.get('model')}",
-             f"- Cases: {len(results.get('cases') or [])} from 19.13's files; not converted: "
+             f"- Cases: {sum(c['role'] != HARDWARE for c in results.get('cases') or [])} from "
+             "19.13's files; not converted: "
              + "; ".join(f"{k} ({v})" for k, v in NOT_CONVERTED.items()),
              f"- Pass rule (frozen, 19.13): {s['pass_rule']['words']}"]
+    hw = s["hardware"]
+    if hw:
+        cases = [c for c in results.get("cases") or [] if c["role"] == HARDWARE]
+        lines.append(f"- Hardware: {len(cases)} snapshots kept on the lab's switches, from "
+                     f"{hw.get('folder')} ({sum(1 for c in cases if c.get('clean'))} named clean); "
+                     f"skipped {len(hw.get('skipped') or [])}"
+                     + "".join(f"; {x['id']}: {x['why']}" for x in hw.get("skipped") or [])
+                     + "".join(f"; {x['id']} named clean, with {x['standing']} "
+                               f"{'issue' if x['standing'] == 1 else 'issues'} standing on the "
+                               "sheet: scored benign"
+                               for x in hw.get("clean_with_issues") or []))
     if s["stopped"]:
         lines.append(f"- **Stopped:** {s['stopped']}")
     for role, r in list(s["roles"].items()) + [("all (not one measure: blind decides)", s["all"])]:
@@ -496,7 +629,8 @@ def report_markdown(results: dict, meta: dict) -> str:
 
 def estimate(cases: list, network: str, runs: int) -> dict:
     """What a run would spend, before it does, by each arm's own estimate of each case's
-    snapshot: ``{"calls", "usd", "cases"}`` (the trace tool counted at its two calls)."""
+    snapshot: ``{"calls", "usd", "cases", "hardware"}`` (the trace tool counted at its two
+    calls; *hardware* how many of the cases are the lab hardware's snapshots)."""
     from modules.ai import sdn_analyst_tools as AT
     from modules.sdn import analyst as AN
 
@@ -505,15 +639,18 @@ def estimate(cases: list, network: str, runs: int) -> dict:
         snap = case_snapshot(case, network)
         usd += runs * (AN.estimate(snap)["usd"] + AT.estimate(snap)["usd"])
         calls += runs * (1 + 2)
-    return {"calls": calls, "usd": round(usd, 4), "cases": len(cases)}
+    return {"calls": calls, "usd": round(usd, 4), "cases": len(cases),
+            "hardware": sum(1 for c in cases if c.get("role") == HARDWARE)}
 
 
 def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monotonic,
          out=print) -> int:
     """The script's body (`scripts/nmas-sdn-b4-eval` hands in the two arms): refuses without
     ``--yes-spend`` (printing what the run would spend), an ``--out`` inside the checkout, a
-    person's address as the actor, or a network the gateway cannot name. Exit 0 when the run
-    finished, 3 when a refusal stopped it, 2 when nothing was asked."""
+    person's address as the actor, or a network the gateway cannot name; a ``--snapshots``
+    folder inside the checkout, the role ``hardware`` without one or one without it, and
+    ``--clean`` without ``--snapshots`` or naming a snapshot the folder does not hold. Exit 0
+    when the run finished, 3 when a refusal stopped it, 2 when nothing was asked."""
     import argparse
 
     from modules.ai import calls, cases as AIC, profiles, triggers
@@ -521,32 +658,75 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     ap = argparse.ArgumentParser(prog="nmas-sdn-b4-eval", description=__doc__.splitlines()[0])
     ap.add_argument("--list", required=True, help="the network whose AI settings apply")
     ap.add_argument("--runs", type=int, default=DEFAULT_RUNS)
-    ap.add_argument("--roles", default="recorded,held_out,blind")
-    ap.add_argument("--cases", default="", help="case keys, comma-separated (default: every)")
+    ap.add_argument("--roles", default=None,
+                    help="comma-separated, of " + ", ".join(ROLES) + " (default: "
+                         + ",".join(FIXTURE_ROLES) + ", and hardware with --snapshots)")
+    ap.add_argument("--cases", default="",
+                    help="case keys or snapshot ids, comma-separated (default: every)")
+    ap.add_argument("--snapshots", default="",
+                    help="a copy of the network's sdn_analyst/ folder, outside the checkout, "
+                         "read only: each sealed snapshot a hardware case")
+    ap.add_argument("--clean", default="",
+                    help="snapshot ids, comma-separated, kept with every planted issue "
+                         "restored: each a benign hardware case")
     ap.add_argument("--out", required=True, help="a folder outside the checkout")
     ap.add_argument("--actor", default="")
     ap.add_argument("--yes-spend", action="store_true",
                     help="spend: without it, the run says what it would spend and stops")
     args = ap.parse_args(argv)
-    if os.path.realpath(args.out).startswith(os.path.realpath(root) + os.sep):
+    inside = os.path.realpath(root) + os.sep
+    if os.path.realpath(args.out).startswith(inside):
         out(f"nmas-sdn-b4-eval: --out {args.out} is inside the checkout; write it elsewhere")
+        return 2
+    if args.snapshots and os.path.realpath(args.snapshots).startswith(inside):
+        out(f"nmas-sdn-b4-eval: --snapshots {args.snapshots} is inside the checkout; copy the "
+            "network's sdn_analyst/ folder elsewhere")
         return 2
     if not 1 <= args.runs <= 50:
         out(f"nmas-sdn-b4-eval: --runs is 1 to 50, not {args.runs}")
+        return 2
+    roles = ([r for r in args.roles.split(",") if r] if args.roles is not None
+             else list(FIXTURE_ROLES) + ([HARDWARE] if args.snapshots else []))
+    clean = [k for k in args.clean.split(",") if k]
+    shape = (f"--roles names {', '.join(sorted(set(roles) - set(ROLES)))}, not one of "
+             f"{', '.join(ROLES)}" if set(roles) - set(ROLES) else
+             "--roles names hardware, and no --snapshots folder is given"
+             if HARDWARE in roles and not args.snapshots else
+             f"--snapshots {args.snapshots} is given, and --roles ({','.join(roles)}) leaves out "
+             "hardware" if args.snapshots and HARDWARE not in roles else
+             "--clean names snapshots, and no --snapshots folder is given"
+             if clean and not args.snapshots else "")
+    if shape:
+        out(f"nmas-sdn-b4-eval: {shape}")
         return 2
     actor, refusal = AIC.evaluation_actor(args.actor, "sdn-b4-eval", now)
     network, why = AIC.run_network(args.list) if not refusal else ("", "")
     if refusal or why:
         out(f"nmas-sdn-b4-eval: {refusal or why}")
         return 2
-    roles = [r for r in args.roles.split(",") if r]
     keys = [k for k in args.cases.split(",") if k]
-    picked = load_cases(root, roles, keys or None)
+    fixture = [r for r in roles if r in FIXTURE_ROLES]
+    picked = load_cases(root, fixture, keys or None) if fixture else []
+    hardware = {}
+    if HARDWARE in roles:
+        hw = load_hardware(args.snapshots, network, clean, keys or None)
+        if hw["error"]:
+            out(f"nmas-sdn-b4-eval: {hw['error']}; nothing was asked")
+            return 2
+        for x in hw["skipped"]:
+            out(f"nmas-sdn-b4-eval: skipped the snapshot {x['id']}: {x['why']}")
+        picked += hw["cases"]
+        hardware = {"folder": os.path.abspath(args.snapshots), "clean": clean,
+                    "skipped": hw["skipped"],
+                    "clean_with_issues": [{"id": c["key"], "standing": c["sheet_issues"]}
+                                          for c in hw["cases"]
+                                          if c["clean"] and c["sheet_issues"]]}
     if not picked:
         out("nmas-sdn-b4-eval: no case matches --roles and --cases")
         return 2
     est = estimate(picked, network, args.runs)
-    out(f"nmas-sdn-b4-eval: {est['cases']} cases x {args.runs} runs x 2 techniques: at most "
+    out(f"nmas-sdn-b4-eval: {est['cases']} cases ({est['hardware']} of them the lab hardware's "
+        f"snapshots) x {args.runs} runs x 2 techniques: at most "
         f"{est['calls']} calls, about ${est['usd']:.4f} by the over-estimate (the tool arm at "
         "its two calls), on " + profiles.task("sdn_analyse")["model"])
     if not args.yes_spend:
@@ -556,6 +736,8 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     trig = triggers.evaluation(actor)
     results = run(picked, arms, runs=args.runs, network=network, actor=actor, trigger=trig,
                   send=send, clock=clock, say=lambda w: out(f"nmas-sdn-b4-eval: {w}"))
+    if hardware:
+        results["hardware"] = hardware
     recorded_cost(results, calls.read().get("rows") or [])
     meta = {"actor": actor, "network": network,
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if now is None

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Lab 9 B4's evaluation: the SDN analyst without tools against the analyst with the trace tool,
-on 19.13's fixed snapshots (docs/HEAL_TO_INTENT.md 19.13; modules/sdn/b4_eval.py).
+on 19.13's fixed snapshots and the lab hardware's kept ones (docs/HEAL_TO_INTENT.md 19.13;
+modules/sdn/b4_eval.py).
 
     # on the host, the deployed copy run as a file (it adopts the app's interpreter): first
     # what it would spend, asking nothing
@@ -9,6 +10,22 @@ on 19.13's fixed snapshots (docs/HEAL_TO_INTENT.md 19.13; modules/sdn/b4_eval.py
     # then the run, a person's explicit decision to spend
     nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
         --out /tmp/b4-eval --yes-spend
+
+**The lab hardware's snapshots** (C2965): ``--snapshots <folder>`` names a copy of the
+network's ``sdn_analyst/`` folder (its ``snapshots/`` and ``planted.json``, as SDN › Flows'
+Collect now and the planted-issue sheet kept them on the lab's switches), outside the checkout
+and only read; ``--clean <id,id>`` names the snapshots kept with every planted issue restored
+(the sheet left as it is). Each snapshot whose seal holds is a case of the role ``hardware``,
+its planted issues the sheet's planted at or before its collection, each found by B1's own
+rule. An issue removed from the sheet is a correction (B1's meaning, C2913) and counts for no
+snapshot, whenever it was removed. A clean one is benign; one with issues still standing on the
+sheet is said so in the report and scored benign. A snapshot whose seal fails, or that holds no
+standing issue and is not named clean, is skipped and said. ``--roles hardware`` runs them
+alone; with --snapshots and no --roles, they run beside 19.13's roles. 19.13's pass rule stays
+on the blind role alone.
+
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
+        --roles hardware --snapshots /tmp/b4-snapshots --clean snap-<id> --out /tmp/b4-eval
 
 **It spends only with --yes-spend.** Without it, it prints the cases, the most calls and about
 what they cost (each arm's own over-estimate of each snapshot), and stops with nothing asked
@@ -26,9 +43,10 @@ class off, hosted AI off, a cap) stops the run there (exit 3).
 ``b4-eval-<run>.json`` for B5's cost log, each technique's findings, misses, false positives,
 benign runs answered as a threat, cases reliable with McNemar's exact test and a bootstrap
 interval, calls, the recorded cost and the time to an answer, by role (recorded, held out,
-blind), and 19.13's pass rule on the blind role. Each run that missed, kept a false positive
-or answered a benign case as a threat is also kept in the network's record of evaluation runs
-(C2943, modules/sdn/evaluations.py), where History › Export's failure log lists it.
+blind, hardware), and 19.13's pass rule on the blind role. Each run that missed, kept a false
+positive or answered a benign case as a threat is also kept in the network's record of
+evaluation runs (C2943, modules/sdn/evaluations.py), where History › Export's failure log lists
+it.
 """
 import os
 import sys

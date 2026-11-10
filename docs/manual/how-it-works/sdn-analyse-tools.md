@@ -71,6 +71,18 @@ asked for, and the line says so: **Collect now** keeps a snapshot that holds one
 number of runs each, and writes a report. It spends only with `--yes-spend`, and says first what
 it would spend.
 
+Besides the recorded cases, it can run on snapshots that **Collect now** kept on the lab's
+switches: `--snapshots` names a copy of the network's analyst folder, which it only reads, and
+`--clean` names the snapshots kept with every planted issue restored; leave the sheet as it is
+when you restore them. Each snapshot whose seal holds is a case. Its planted issues are the ones
+planted on the sheet by the time it was collected, each found by the same rule as the sheet's.
+An issue you removed from the sheet was a mistake, so it counts for no snapshot. A clean
+snapshot answered with a finding of medium or above counts as a benign one answered as a
+threat; if the sheet still holds issues for it, the report says so. A snapshot whose seal fails, or that holds no
+planted issue and is not named clean, is skipped, and the run says why. These cases are
+reported as their own role; whether the trace tool improves results is still judged on the
+blind cases alone.
+
 ## Was this right?
 
 Under the findings, **Was this right?** records your verdict on the answer
