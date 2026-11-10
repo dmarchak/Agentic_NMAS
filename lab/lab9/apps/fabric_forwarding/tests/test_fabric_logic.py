@@ -77,6 +77,18 @@ def test_a_link_down_reroutes_round_the_ring_and_nothing_loops():
     assert L.forwarding_loop(hops, S4) is None
 
 
+def test_a_packet_in_another_apps_flow_raised_is_left_to_that_app():
+    """dns_blacklist's DNS steering sends queries to the controller under its own cookie; the
+    fabric forwarding them too would race the blacklist's answer (Lab 9 Objective 3)."""
+    assert L.handles_packet_in(L.cookie(L.MISS)) is True
+    assert L.handles_packet_in(L.cookie(L.ARP)) is True
+    dns_blacklist = 0x444E000000000001          # another owner's prefix in the high 16 bits
+    assert L.handles_packet_in(dns_blacklist) is False
+    assert L.handles_packet_in(0xFFFFFFFFFFFFFFFF) is False   # sent by no flow entry
+    assert L.handles_packet_in(0) is False
+    assert L.handles_packet_in(None) is False and L.handles_packet_in(True) is False
+
+
 def test_the_procurve_gets_its_own_tables_and_a_goto_for_the_hardware_tables_miss():
     flows, _ = L.desired_flows(CONFIG, graph(), HOSTS)
     keys = sorted(flows[PROCURVE])

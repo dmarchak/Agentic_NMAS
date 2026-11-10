@@ -5,7 +5,9 @@
 name: fabric_forwarding
 # 0.2.0 (C2729): the config is read at load from the start-time file Mercury compiles and
 # stages (mercury_app.start_config), so the app serves after the deploy's restart.
-version: 0.2.0
+# 0.3.0 (Lab 9 Objective 3): a packet-in another app's flow raised (dns_blacklist's DNS
+# steering) is left to that app, never forwarded too (fabric_logic.handles_packet_in).
+version: 0.3.0
 summary: Forwards between hosts on shortest paths, rerouting on link down, loop-safe on a ring.
 controllers:
   ryu: ">=4.34"

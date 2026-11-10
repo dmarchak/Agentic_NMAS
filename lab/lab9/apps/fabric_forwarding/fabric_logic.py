@@ -65,6 +65,18 @@ def is_ours(value):
     return (value & COOKIE_MASK) == COOKIE_PREFIX
 
 
+def handles_packet_in(cookie_value):
+    """Whether a packet-in is this app's to handle: only one its OWN flow sent (its punt
+    table's miss or ARP flow), never one another app's flow raised. dns_blacklist's steering
+    flows send DNS to the controller under their own cookie, and forwarding those queries too
+    would race the blacklist's answer (Lab 9 Objective 3). OpenFlow 1.3 puts the cookie of the
+    entry that sent the packet in the packet-in (all ones when no entry did, which is no one's);
+    a packet-in with no cookie at all is not handled."""
+    if not isinstance(cookie_value, int) or isinstance(cookie_value, bool):
+        return False
+    return is_ours(cookie_value)
+
+
 def kind_of(value):
     return value & ~COOKIE_MASK if is_ours(value) else None
 

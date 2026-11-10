@@ -1,0 +1,83 @@
+# How dns_blacklist meets Lab 9 Objective 3 (docs/LAB9_SDN_GAP.md A3; the handout: "Force DNS
+# traffic from any device to the controller ... the good/bad decision must come from an
+# external check ... initiated from the controller, not from the end hosts").
+#
+# THE STEERING. On each switch's connect the app installs, in the forward table (the one the
+# host flows are in, compiled by Mercury from the platform profile), at priority 1000, one flow
+# per edge port and family: in_port, IPv4 or IPv6, UDP destination port 53, to the controller.
+# So every host's query, to whatever server it names, reaches the controller first. Nothing
+# else is matched: DHCP (67, 68), management, TCP and every reply take their normal path. The
+# app owns the protected classes dns and dns-ipv6 (the NetBox config context names
+# app:dns_blacklist as their owner), so these are the only UDP 53 flows Mercury lets through.
+#
+# THE EXTERNAL CHECK, FROM THE CONTROLLER. For a name with no cached verdict, the app asks
+# Cloudflare's malware-filtering resolver over DNS-over-HTTPS JSON (GET
+# https://security.cloudflare-dns.com/dns-query?name=<name>&type=A), through
+# mercury_app.egress, the app's one way to the network, from the controller's own process on
+# a green thread; no host ever asks it. Why this service (chosen and measured 2026-11-10,
+# docs/STANDING_APPROVAL_LOG.md): it answers JSON for one HTTPS GET; it needs no key, so no
+# secret reaches the repository or the config; it has a documented test domain,
+# malware.testcategory.com, which makes the bad outcome repeatable; and its verdict is precise
+# (0.0.0.0 with Extended DNS Error 16, Censored). Google Safe Browsing (a key, non-commercial
+# terms) and URLhaus (a key, malware URLs only, no fixed test host) were weighed and not chosen.
+#
+# ALLOWED: RE-INJECTED, NOT SENT TO A RESOLVER. An allowed query is sent back unchanged into
+# the tables of the switch it came in on (packet-out from the controller, output TABLE). Why:
+# it then takes exactly the path every other packet takes (fabric_forwarding's flows, with
+# their reroute on a link failure), to the server the host asked, and the reply (UDP source
+# port 53, which no steering flow matches) comes back on the normal path; the app needs to
+# know nothing of where the resolver is. Matching in_port is what keeps a re-injected query
+# (in_port CONTROLLER) from meeting its steering flow again. For a switch that takes no
+# packet-out to its own tables, `upstream` names the port the resolver is reached through.
+#
+# BLOCKED: answered with the block page's address when `block_page` is set (the bonus: an A
+# or AAAA reply, NODATA for other types, out of the port the query came in on), else dropped.
+#
+# FAIL MODE: open by default (DNS is a protected flow every host must reach); /health says so
+# while the service does not answer. Each lookup is bounded by verdict_service.timeout_s (2 s).
+#
+# HOW BOTH OUTCOMES ARE TESTED AND DEMONSTRATED. Tested here on the two measured answers
+# (tests/), on Python 3.5 and 3.9 in the container harness. Demonstrated at the lab
+# (TESTING.md): a host asks for malware.testcategory.com (blocked: the block page's address,
+# or no answer) and for example.com (allowed: its real addresses), and the app's /health and
+# /state show each decision and its source.
+#
+# The card's `fixture` field takes ryu_recorded or netbox_export only; the verdict examples'
+# data are the two measured answers, in the tests themselves.
+kind: app
+name: dns_blacklist
+summary: Steers DNS queries to the controller and blocks each name the verdict service calls bad.
+permission: write
+scope:
+  object_types: [dcim.device]
+  roles: [openflow-switch]
+inputs:
+  dpid: dpid
+outputs:
+  decisions: table
+examples:
+  - name: a bad site is blocked, over IPv4 and IPv6
+    given: Cloudflare's measured answer for malware.testcategory.com (0.0.0.0 with EDE(16) Censored), and a block page at 192.0.2.80 and 2001:db8::80
+    when: a host asks for malware.testcategory.com over IPv4 (type A) and over IPv6 (type AAAA)
+    then: the verdict is bad, and each query is answered with the block page's A or AAAA record, a reply a real DNS parser reads; with no block page set, it is dropped
+    fixture: ryu_recorded
+  - name: a good site is allowed
+    given: the verdict service's answer for example.com, its addresses with no Comment
+    when: a host asks for example.com
+    then: the verdict is good, and the query is forwarded unchanged, in either fail mode
+    fixture: ryu_recorded
+  - name: no verdict follows the fail mode
+    given: a verdict service that times out, answers 503, or answers something that is not a DNS JSON answer
+    when: a host asks for a name with no cached verdict
+    then: the verdict is unknown, naming why; fail open forwards the query, fail closed blocks it; a lookup past its bound is decided unknown and a late answer waits for nobody
+    fixture: ryu_recorded
+  - name: a verdict is cached for the lesser of its TTL and the cap
+    given: a cap of 90 s, the good answer's TTL of 120 s and the bad answer's 60 s
+    when: each name is asked again
+    then: the good verdict is kept for 90 s and the bad for 60 s; an answer with no TTL takes the cap, a TTL of 0 is not kept, and an unknown is held 5 s
+    fixture: ryu_recorded
+  - name: only DNS is steered, on edge ports
+    given: a switch with ports 1, 2 and 5 up, port 2 an end of a link to another switch
+    when: its steering flows are computed and reconciled against what it holds
+    then: UDP 53 goes to the controller from ports 1 and 5, for IPv4 and IPv6, and nothing matches DHCP or the link port; only the missing flow is added and only the app's own stale flow removed
+    fixture: ryu_recorded

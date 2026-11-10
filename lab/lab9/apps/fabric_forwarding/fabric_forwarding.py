@@ -61,7 +61,7 @@ except ImportError:                     # the SDK is not deployed beside the app
     HAVE_SDK = False
 
 NAME = "fabric_forwarding"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PREFIX = "/" + NAME
 #: How often the settle timer looks (it acts only through an event, on the app's own thread).
 TICK_S = 0.25
@@ -97,7 +97,8 @@ class FabricForwarding(app_manager.RyuApp):
         self.last_topology_change = time.time()
         self.held = 0                   # changes and removals waiting for the topology to settle
         self.relay = logic.Recent(logic.DEFAULTS["dedup_s"])
-        self.counters = {"packet_in": 0, "relayed": 0, "relay_dropped_repeat": 0,
+        self.counters = {"packet_in": 0, "packet_in_others": 0, "relayed": 0,
+                         "relay_dropped_repeat": 0,
                          "relay_refused_not_edge": 0, "delivered": 0, "flows_added": 0,
                          "flows_removed": 0, "recomputes": 0, "reroutes": 0}
         kwargs["wsgi"].register(FabricRest, {"fabric_app": self})
@@ -382,6 +383,9 @@ class FabricForwarding(app_manager.RyuApp):
     def _packet_in(self, ev):
         msg = ev.msg
         dp = msg.datapath
+        if not logic.handles_packet_in(msg.cookie):     # OpenFlow 1.3's packet-in carries it
+            self.counters["packet_in_others"] += 1
+            return
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
         if eth is None or eth.ethertype == logic.ETH_LLDP:

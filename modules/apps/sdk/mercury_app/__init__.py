@@ -18,7 +18,7 @@ UTF-8 or not a JSON object, or a name or version not of the apply script's shape
 app's `/health` can say so and never answer ok without its config. A file never holds a
 secret: Mercury refuses one before it is staged (`modules/apps/channel.config_secret_refusal`).
 
-**`egress(destination, method="GET", path="", body=None, timeout=None)`** is the app's one way
+**`egress(destination, method="GET", path="", body=None, timeout=None, accept="application/json")`** is the app's one way
 to the network (C2645). *destination* is a name its `manifest.yml` declares under `egress`,
 written as a string literal in the call (`mercury app check` refuses any other call, naming
 it); the address is the one the network's config carries at that entry's `from_config` key,
@@ -31,8 +31,8 @@ the only ones it may reach. It answers `{"ok": bool, "error": str, "status": int
 says why (a 2xx is ok; anything else, a redirect included, is not: a redirect is never
 followed, so a destination cannot send the app elsewhere). `EgressRefused` is raised, naming
 why, for a destination the app's config does not carry, a caller that is not a staged app, a
-method outside `METHODS`, a path out of shape, a timeout outside (0, `MAX_TIMEOUT_S`] or a
-body that is not JSON. No proxy from the environment is used, and an answer larger than
+method outside `METHODS`, a path out of shape, a timeout outside (0, `MAX_TIMEOUT_S`], an
+accept that is not one JSON media type (`ACCEPT`) or a body that is not JSON. No proxy from the environment is used, and an answer larger than
 `MAX_BYTES` is not ok. `NotDeployed` is kept for apps written against the stub; nothing raises
 it now.
 """
@@ -46,6 +46,10 @@ import sys
 __all__ = ["EgressRefused", "NotDeployed", "egress", "start_config"]
 
 METHODS = ("GET", "POST", "PUT", "DELETE")
+#: An egress call's Accept header: one JSON media type (``application/json``, the default;
+#: ``application/dns-json``; ``application/problem+json``), never a list or another type, so
+#: an app sets no header beyond what a JSON API needs to answer.
+ACCEPT = re.compile(r"^application/(?:[a-z0-9][a-z0-9.+-]{0,40})?json$")
 #: Where the controller's apps are staged, and the start-time config's suffix and size bound:
 #: the apply script's (deploy/controller/mercury-ryu-apply APPS_ROOT, CONFIG_SUFFIX,
 #: MAX_BYTES), held equal by tests/test_app_start_config.py.
@@ -128,8 +132,12 @@ def _answer_body(raw, content_type):
     return text
 
 
-def egress(destination, method="GET", path="", body=None, timeout=None):
-    """A request to the declared *destination* (see the module's docstring)."""
+def egress(destination, method="GET", path="", body=None, timeout=None,
+           accept="application/json"):
+    """A request to the declared *destination* (see the module's docstring). *accept* is the
+    one JSON media type the request's Accept header names (`ACCEPT`'s shape): a DNS-over-HTTPS
+    JSON API answers only ``application/dns-json`` (Cloudflare's resolver answered 405 to
+    ``application/json`` and 200 to ``application/dns-json``, measured 2026-11-10)."""
     import socket
     import urllib.error
     import urllib.request
@@ -159,7 +167,10 @@ def egress(destination, method="GET", path="", body=None, timeout=None):
             or not 0 < timeout <= MAX_TIMEOUT_S:
         _refuse("the timeout %r is not a number of seconds in (0, %s]" % (timeout,
                                                                         MAX_TIMEOUT_S))
-    data, headers = None, {"Accept": "application/json"}
+    if not isinstance(accept, str) or not ACCEPT.match(accept):
+        _refuse("the accept %r is not one JSON media type of the shape %s" % (accept,
+                                                                            ACCEPT.pattern))
+    data, headers = None, {"Accept": accept}
     if body is not None:
         try:
             data = json.dumps(body, sort_keys=True).encode("utf-8")

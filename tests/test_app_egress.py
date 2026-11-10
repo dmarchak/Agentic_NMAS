@@ -80,6 +80,7 @@ def test_a_network_config_setting_the_reserved_key_is_refused():
 
 class Recorder(http.server.BaseHTTPRequestHandler):
     seen = []
+    accepts = []
 
     def log_message(self, *args):
         pass
@@ -87,6 +88,7 @@ class Recorder(http.server.BaseHTTPRequestHandler):
     def _answer(self):
         length = int(self.headers.get("Content-Length") or 0)
         Recorder.seen.append((self.command, self.path, self.rfile.read(length)))
+        Recorder.accepts.append(self.headers.get("Accept"))
         if self.path.startswith("/v1/moved"):
             self.send_response(302)
             self.send_header("Location", "/v1/elsewhere")
@@ -129,6 +131,7 @@ def staged(request, tmp_path, monkeypatch):
     server's address, and a `call` that is the app's own code calling egress."""
     server = _serve(request.param)
     Recorder.seen = []
+    Recorder.accepts = []
     host = f"[{request.param}]" if ":" in request.param else request.param
     url = f"http://{host}:{server.server_address[1]}/v1"
     root = tmp_path / "opt" / "ryu-apps"
@@ -153,6 +156,16 @@ def test_a_declared_destination_is_reached_at_its_compiled_address(staged):
     got = staged.call("verdict_service", "POST", "/verdict", {"domain": "example.invalid"}, 2)
     assert got == {"ok": True, "status": 200, "body": {"verdict": "allow"}, "error": ""}
     assert Recorder.seen == [("POST", "/v1/verdict", b'{"domain": "example.invalid"}')]
+
+
+def test_the_accept_header_is_json_by_default_and_the_one_media_type_the_app_names(staged):
+    """A DNS-over-HTTPS JSON API answers only application/dns-json (Cloudflare's resolver:
+    405 to application/json, 200 to application/dns-json, measured 2026-11-10), so the app
+    names the one JSON media type its destination speaks."""
+    assert staged.call("verdict_service", "GET", "/verdict")["ok"] is True
+    assert staged.call("verdict_service", "GET", "/verdict",
+                       accept="application/dns-json")["ok"] is True
+    assert Recorder.accepts == ["application/json", "application/dns-json"]
 
 
 def test_the_app_reads_its_config_without_the_reserved_key(staged):
@@ -199,7 +212,9 @@ def test_an_answer_larger_than_the_bound_is_not_ok(staged):
     ({"path": "relative"}, "is not an absolute path"),
     ({"timeout": 11}, "the timeout 11 is not a number of seconds in (0, 10.0]"),
     ({"timeout": 0}, "the timeout 0 is not"),
-    ({"body": {"x": object()}}, "the body is not JSON")])
+    ({"body": {"x": object()}}, "the body is not JSON"),
+    ({"accept": "text/html"}, "the accept 'text/html' is not one JSON media type"),
+    ({"accept": "application/json, text/html"}, "is not one JSON media type")])
 def test_a_call_out_of_shape_is_refused_and_nothing_is_sent(staged, kw, words):
     with pytest.raises(mercury_app.EgressRefused) as exc:
         staged.call("verdict_service", **kw)
