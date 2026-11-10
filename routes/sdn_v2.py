@@ -21,8 +21,8 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("sdn_v2", __name__, url_prefix="/v2/sdn")
 
-TABS = (("controllers", "Controllers"), ("flows", "Flows"), ("apps", "Apps"),
-        ("responses", "Responses"))
+TABS = (("controllers", "Controllers"), ("switches", "Switches"), ("flows", "Flows"),
+        ("apps", "Apps"), ("responses", "Responses"))
 
 
 def _list_name() -> str:

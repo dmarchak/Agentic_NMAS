@@ -1,0 +1,38 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- SDN › Switches, the templates card's confirm (board lab9-sdn artboard A, "Confirm
+    <template> against a capture"): the template's lines, each with its citation and why,
+    beside the capture's masked text; the confirm commits openflow_confirmations/<template>.yml
+    as the verified person, bound to both hashes. Drawn in #of-template-op. -#}
+{%- set net = d.network -%}
+{%- macro close(words='Close') -%}<a class="btn" href="{{ url_for('sdn_switches_v2.page', list=net) }}" hx-get="{{ url_for('sdn_switches_v2.slot', card='template') }}" hx-target="#of-template-op" hx-swap="outerHTML">{{ words }}</a>{%- endmacro -%}
+{%- if d.state_card == 'preview' %}
+<div class="card sdn-op of-op" id="of-template-op" data-holds-live="review" aria-label="Confirm a template">
+  <h3>Confirm {{ d.template }} against a capture {{ badge(d.status.status, 'warn' if d.status.status != 'confirmed' else 'ok') }}</h3>
+  <dl class="sdn-kv">
+    <dt>Capture</dt><dd><span class="mono">{{ d.capture.name }}</span>: {{ d.capture.device }}'s {{ d.capture.command }}, {{ stamp(d.capture.at) }} ({{ d.capture.driver }}) <span class="mono" title="sha256:{{ d.capture.sha256 }}">sha256:{{ d.capture.sha256[:8] }}…</span></dd>
+    <dt>Template</dt><dd><span class="mono">{{ d.template }}</span> ({{ d.family }}), {{ d.lines | length }} lines <span class="mono" title="sha256:{{ d.template_sha256 }}">sha256:{{ d.template_sha256[:8] }}…</span></dd>
+  </dl>
+  <div class="of-cols">
+    <ol class="of-lines mono small">{% for line in d.lines %}<li><pre>{{ line.text }}</pre><span class="faint">{{ line.why }} · cites {{ line.cite | join(', ') }}{% if line.when %} · when {{ line.when if line.when is string else line.when | join(' and ') }}{% endif %}</span></li>{% endfor %}</ol>
+    <pre class="mono small of-capture">{{ d.capture.text if d.capture.text else "the capture's answer is archived: read it again" }}</pre>
+  </div>
+  <p class="muted small">You judge that the template's syntax fits this release. Recorded in {{ net }}'s repository as you (<span class="mono">openflow_confirmations/{{ d.template }}.yml</span>: the capture, its hash and the template's hash); a changed template is a draft again.</p>
+  <form class="sdn-op-confirm" hx-post="{{ url_for('sdn_switches_v2.template_confirm') }}" hx-target="#of-template-op" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="template" value="{{ d.template }}"><input type="hidden" name="capture" value="{{ d.capture.name }}"><input type="hidden" name="template_sha256" value="{{ d.template_sha256 }}"><input type="hidden" name="capture_sha256" value="{{ d.capture.sha256 }}">
+    <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="openflow-config" title="Commits the confirmation as you, if neither the template nor the capture moved"{{ gate('approve') }}><span class="op-idle">Confirm {{ d.template }}</span><span class="op-busy">Committing…</span></button>{{ how('openflow-config', 'templates') }}
+    {{ close('Cancel') }}
+  </form>
+</div>
+{%- elif d.state_card == 'confirmed' %}
+<div class="card sdn-op of-op" id="of-template-op" data-holds-live="review" aria-label="Template confirmed">
+  <h3>Confirmed {{ d.template }} on {{ net }} {{ badge('confirmed', 'ok') }}</h3>
+  <p class="small">Committed as {{ d.actor }} (<span class="mono">{{ d.path }}</span>{% if d.commit %}, commit <span class="mono">{{ d.commit[:7] }}</span>{% endif %}) against <span class="mono">{{ d.capture }}</span>. Configure from NetBox… now sends it to {{ d.template }}'s switches. <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></p>
+  <div class="apps-acts">{{ close() }}</div>
+</div>
+{%- else %}
+<div class="card sdn-op of-op" id="of-template-op" data-holds-live="review" aria-label="Not confirmed">
+  <h3>Not confirmed{% if d.template %}: {{ d.template }}{% endif %} {{ badge('Refused', 'danger') }}</h3>
+  <p class="apps-refusal" role="alert">{{ icon('warn', 15) }}<span>{{ d.error }}.</span></p>
+  <div class="apps-acts">{% if net %}{{ close() }}{% endif %}</div>
+</div>
+{%- endif %}

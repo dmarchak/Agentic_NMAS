@@ -529,6 +529,14 @@ DECLARED = {
     # the network's NSOT export, which SDN › Apps and every deploy read, and publishes it.
     "sdn_v2.export_preview": Nothing("reads a network's records from NetBox and draws its NSOT export's preview in its card; the confirm commits"),
     "sdn_v2.export_confirm": ("nsot_export", "remote"),
+    # Lab 9 Objective 2 (C2902): SDN › Switches. The previews read and write nothing; a
+    # template's confirmation is a commit (published); a configuration changes the switches and
+    # records the run, so SDN's regions read again.
+    "sdn_switches_v2.configure_preview": Nothing("reads the chosen switches and draws each one's OpenFlow program in its card; the confirm sends"),
+    "sdn_switches_v2.template_preview": Nothing("reads a template and a saved capture and draws them in the templates card; the confirm commits"),
+    "sdn_switches_v2.verify": Nothing("asks the SDN reader to read now; the reader's own announcement (sdn) redraws the tab when it has"),
+    "sdn_switches_v2.template_confirm": ("sdn", "remote"),
+    "sdn_switches_v2.configure_confirm": ("sdn",),
     "sdn_v2.apps_version_test": ("code_repo",),
     "sdn_v2.apps_publish_preview": Nothing("reads a registered app version's record and draws what Publish would record; the confirm publishes"),
     "sdn_v2.apps_publish_confirm": ("code_repo",),

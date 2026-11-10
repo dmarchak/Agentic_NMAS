@@ -3420,6 +3420,113 @@ def _heal_proposal(client, _lab, _mp):
         mp.undo()
 
 
+def _sdn_switches(client, _lab, _mp):
+    """SDN › Switches (board lab9-sdn artboard A; Lab 9 Objective 2, C2902) on Lab: the lab's
+    NSOT export (tests/fixtures/nsot_export/lab9_records.json, built by `export.build`) as Lab's
+    committed one, the SDN reader's switch list holding one Arista, OVS's datapath 3 and one
+    datapath no switch carries, a verified and a rolled-back configuration recorded, and an
+    Arista capture to confirm against: the tab and its region (every group, the unknown
+    datapath, a template's captures), the templates card's preview and a refused one, the
+    configure preview (a switch planned, one on a draft template) and its result (one verified,
+    one rolled back) and a refused confirm, the empty slot and Verify now's answer. The plans
+    and applies are the operation's answers as recorded (`openflow_config.plan` and `apply`
+    replaced: no switch is reached here; tests/test_openflow_vendor.py runs them for real)."""
+    import pytest
+
+    from modules.nsot import export as X
+    from modules.sdn import openflow_config as OC
+    from tests.test_openflow_golden import _records, fake_netbox
+
+    mp = pytest.MonkeyPatch()
+    try:
+        records = _records()
+        get, _calls = fake_netbox(records)
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("modules.inventory.source_config.load",
+                      lambda name: {"source": "netbox", "filters": {"role": "openflow-switch"}})
+            built = X.build("Lab", get=get, version=lambda: records["netbox_version"])
+        doc = X.parse(built["bytes"])
+        sha = doc["sha256"]
+        mp.setattr("modules.nsot.export.read", lambda network, rev="HEAD": {
+            "ok": True, "export": doc, "sha256": sha, "error": ""})
+        mp.setattr("modules.nsot.export.last_commit", lambda network: {
+            "commit": "a1b2c3d4e5", "at": "2026-11-10T02:00:00Z", "actor": "op@example.com"})
+        mp.setattr("modules.sdn_page.stored", lambda network: {
+            "state": "ok", "value_at": "2026-11-10T03:00:00Z", "failed": "",
+            "value": {"controllers": [{"name": "lab-controller", "switches": [
+                {"dpid": d} for d in (2214744208935, 3, 999)]}]}})
+        rows = [{"kind": "operation", "id": "ofcfg-1", "at": "2026-11-10T02:10:00Z",
+                 "actor": "op@example.com", "outcome": "verified", "export_sha256": sha,
+                 "dpid_hex": "00000203a90ab627", "verify": {"checks": [
+                     {"name": "x", "state": "pass", "words": "reads as the program sets it"}]},
+                 "response": {"kind": "openflow_config", "device": "arista-sw1"}},
+                {"kind": "operation", "id": "ofcfg-2", "at": "2026-11-10T02:12:00Z",
+                 "actor": "op@example.com", "outcome": "rolled_back", "export_sha256": "f" * 64,
+                 "error": "Verify failed", "verify": {"checks": []},
+                 "response": {"kind": "openflow_config", "device": "procurve-sw"}}]
+        mp.setattr("modules.sdn.flow_intent.operations",
+                   lambda network: {"state": "ok", "rows": rows, "error": ""})
+        capture = {"name": "arista-sw1/show_running-config/20261110T020000Z",
+                   "device": "arista-sw1", "driver": "arista_eos", "family": "Arista EOS",
+                   "command": "show running-config", "run": "20261110T020000Z",
+                   "at": "2026-11-10T02:00:00Z", "sha256": "9ab0" * 16, "cut": False,
+                   "archived": False, "text": "openflow\n   no shutdown\n"}
+        mp.setattr("modules.discovery.captures",
+                   lambda network, device="", limit=200: {"captures": [capture],
+                                                          "unreadable": []})
+        mp.setattr("modules.discovery.capture", lambda network, name: dict(capture))
+        base = "/v2/sdn/switches"
+        page = client.get(f"{base}?list=Lab").get_data(as_text=True)
+        assert 'data-state="differs"' in page and "00000000000003e7" in page
+        assert client.get(f"{base}/view?list=Lab&q=arista").status_code == 200
+        assert "Confirm arista_eos against" in client.post(f"{base}/template/preview", data={
+            "list": "Lab", "template": "arista_eos", "capture": capture["name"]}).get_data(
+                as_text=True)
+        assert client.post(f"{base}/template/preview", data={
+            "list": "Lab", "template": "nosuch", "capture": capture["name"]}).status_code == 409
+
+        def planned(network, device, **kw):
+            confirmed = device == "arista-sw1"
+            return {"ok": True, "device": device, "template": "arista_eos",
+                    "family": "Arista EOS", "program": ["openflow", "   no shutdown"],
+                    "lines": [], "undo": ["no openflow"], "hash": "a" * 64,
+                    "export_sha256": sha, "different": ["enabled: wanted True"],
+                    "unchanged": False, "defaults": ["openflow.fail_mode secure"],
+                    "excluded": ["Management1 is the management interface (mgmt_only): "
+                                 "excluded from OpenFlow"], "version": "4.17.0F",
+                    "values": {}, "status": {"status": "confirmed" if confirmed else "draft",
+                                             "why": "" if confirmed else "Lab has not "
+                                                                        "confirmed it"}}
+        mp.setattr(OC, "plan", planned)
+        preview = client.post(f"{base}/configure/preview", data={
+            "list": "Lab", "device": ["arista-sw1", "arista-sw2"]}).get_data(as_text=True)
+        assert "Configure OpenFlow on 1 switch" in preview and "Not sent" in preview
+
+        def applied(network, device, h, **kw):
+            ok = device == "arista-sw1"
+            return {"outcome": "verified" if ok else "rolled_back", "id": f"ofcfg-{device}",
+                    "error": "" if ok else "Verify failed: not in the switch list",
+                    "sent": [{"lines": 2}], "saved": False, "save_words": OC.NOT_SAVED,
+                    "verify": {"checks": [{"name": "x", "state": "pass" if ok else "fail",
+                                           "words": "the read-back"}]},
+                    "rollback": {} if ok else {"ran": True, "ok": True,
+                                               "words": "reads as it did before"},
+                    "record": {"ok": True}}
+        mp.setattr(OC, "apply", applied)
+        from modules import sdn_switches_page as SP
+        pairs = [("arista-sw1", "a" * 64), ("procurve-sw", "b" * 64)]
+        done = client.post(f"{base}/configure/confirm", data={
+            "list": "Lab", "hash": SP.batch_hash([{"device": d, "hash": h} for d, h in pairs]),
+            "plan": [f"{d}={h}" for d, h in pairs]}).get_data(as_text=True)
+        assert "Configured 1 of 2" in done
+        assert client.post(f"{base}/configure/confirm", data={
+            "list": "Lab", "hash": "0" * 64, "plan": ["arista-sw1=" + "a" * 64]}).status_code == 409
+        assert client.get(f"{base}/slot?card=template").status_code == 200
+        assert client.post(f"{base}/verify", data={"list": "Lab"}).status_code == 409
+    finally:
+        mp.undo()
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -3436,7 +3543,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _heal_and_notify,
                    _heal_proposal,
-                   _sdn_no_topology, _sdn_evidence, _sdn_trace,
+                   _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
                    _change_record,

@@ -1,0 +1,5 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- SDN › Switches' Verify now, answered beside it: the SDN reader asked to read again now, or
+    why it was not. The tab redraws when the reader announces. -#}
+{%- if started %}<span class="of-verify-answer">{{ icon('info', 14) }} {{ words | capitalize }}; this tab redraws when the reader has.</span>
+{%- else %}<span class="of-verify-answer" role="alert">{{ icon('warn', 14) }} Couldn't read now: {{ words }}.</span>{% endif %}

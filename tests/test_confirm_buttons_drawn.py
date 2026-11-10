@@ -1787,6 +1787,62 @@ class TestSdnFlowsCards(_Cards):
         return self._lost(request)
 
 
+# ── SDN › Switches (Lab 9 Objective 2, C2902; board lab9-sdn artboard A) ──────────────────────
+
+class TestSdnSwitchesCards(_Cards):
+    """SDN › Switches on tests/test_sdn_switches_v2.py's lab (the lab's NSOT export committed,
+    the Arista answered by its masked capture through the real session guard): Configure from
+    NetBox…'s preview of a switch on a confirmed template, and Confirm against a capture…'s
+    preview; blocked: a verified service, whom `may` refuses, draws each disabled, and a switch on
+    a draft template is previewed as not sent, with no Configure."""
+    from tests import test_openflow_vendor as _ov, test_sdn_switches_v2 as _sw
+    netmiko_fake, net, tab = hosted(_ov.netmiko_fake), hosted(_ov.net), hosted(_sw.tab)
+
+    CASES = {
+        "configure": ("_sdn_of_config.html",
+                      "Configure {{ d.plans | length }} switch{{ 'es' if d.plans | length != 1 }}",
+                      r"Configure 1 switch", "viewer"),
+        "template": ("_sdn_of_template.html", "Confirm {{ d.template }}", r"Confirm arista_eos",
+                     "viewer"),
+    }
+
+    def _configure(self, request, confirmed=True):
+        from tests import test_openflow_vendor as ov
+        tab = request.getfixturevalue("tab")
+        if confirmed:
+            ov._confirm(request.getfixturevalue("monkeypatch"), "arista-sw1", "arista_eos")
+        ov.SwitchConn.at["192.0.2.2"] = ov.Switch("arista-sw1.txt", running="hostname x\n")
+        html = _text(tab["client"].post("/v2/sdn/switches/configure/preview",
+                                        data={"list": ov.LIST, "device": "arista-sw1"}))
+        assert "arista-sw1 · Arista EOS" in html or "Not sent" in html, "floor: the preview"
+        return html
+
+    def drawn_configure(self, request):
+        return self._configure(request)
+
+    def blocked_configure(self, request, monkeypatch):
+        html = self._configure(request, confirmed=False)
+        assert "is a draft" in html, "floor: the switch on a draft template, not sent"
+        return html
+
+    def _template(self, request):
+        from tests import test_openflow_vendor as ov
+        from tests.test_sdn_switches_v2 import TestTheTemplatesCard
+        tab = request.getfixturevalue("tab")
+        name = TestTheTemplatesCard()._capture(request.getfixturevalue("monkeypatch"))
+        html = _text(tab["client"].post("/v2/sdn/switches/template/preview", data={
+            "list": ov.LIST, "template": "arista_eos", "capture": name}))
+        assert "Confirm arista_eos against a capture" in html, "floor: the template's preview"
+        return html
+
+    def drawn_template(self, request):
+        return self._template(request)
+
+    def blocked_template(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._template(request)
+
+
 # ── Board H's Self-healing tab (H9): resuming the kill switch ─────────────────────────────────
 
 class TestHealCards(_Cards):
@@ -2169,9 +2225,10 @@ class TestThePopulation:
         four, the previews, became reveals, C2765, 2026-11-08: they read the controller host as
         the person; 77 until SDN › Apps' Commit the export, C2777, 2026-11-08; 78 until an app
         version's Publish <version>, C2854, 2026-11-09; 79 until SDN › Apps' Add <name> as a
-        Draft, the operator's decision of 2026-11-10)."""
+        Draft, the operator's decision of 2026-11-10; 80 until SDN › Switches' Configure N
+        switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 80, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 82, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

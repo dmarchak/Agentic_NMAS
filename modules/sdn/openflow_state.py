@@ -21,6 +21,13 @@ revision 6, section 3 A, "The dry run compares parsed models"; T1, T2).
   ``ofport``, or requested, from the program's ``ofport_request``), and from a program only,
   ``protocols`` and ``datapath_id`` (`ovs-vsctl show` prints neither).
 
+**The undo's forms read too** (`modules/sdn/openflow_cli.py`): EOS's ``no openflow``, ``no
+controller``, ``no bind interface`` and ``lldp transmit``/``lldp receive``; ArubaOS-Switch's ``no
+openflow controller-id``, ``no openflow instance`` (whole, or its member VLAN or controller id)
+and a port untagged in a VLAN leaving the VLAN it was untagged in (a port is untagged in one VLAN
+only). So the configuration as it would be after a program and its undo parses as the switch
+would hold it, and a plan checks its undo before anything is sent.
+
 **Compared** by `differences(want, have)`: every value the wanted model holds, against the
 switch's (a wanted mapping that is empty where the switch's is not differs: no instance or
 controller rendered where the switch has one); a value the state read does not carry is listed apart as unread, never as equal or as
@@ -100,18 +107,29 @@ def eos(text: str) -> dict:
                     iface = words[1]          # a kind OpenFlow never binds (Vlan100, Loopback0)
             elif words == ["openflow"]:
                 seen = True
+            elif words == ["no", "openflow"]:
+                # The whole block removed (an undo's form): the defaults again.
+                model.update(controllers=[], bind_mode="interface", bound=[], enabled=False)
+                seen, block = False, None
             continue
         words = line.split()
         if block == "interface" and iface:
             if words in (["no", "lldp", "transmit"], ["no", "lldp", "receive"]):
                 lldp.setdefault(iface, set()).add(words[2])
+            elif words in (["lldp", "transmit"], ["lldp", "receive"]):
+                lldp.setdefault(iface, set()).discard(words[1])
         elif block == "openflow":
             if words[0] == "controller" and len(words) == 2:
                 model["controllers"].append(words[1])
+            elif words[:2] == ["no", "controller"] and len(words) == 3:
+                model["controllers"] = [c for c in model["controllers"] if c != words[2]]
             elif words[:2] == ["bind", "mode"] and len(words) == 3:
                 model["bind_mode"] = words[2]
             elif words[:2] == ["bind", "interface"] and len(words) == 3:
                 model["bound"] += expand_eos(words[2])
+            elif words[:3] == ["no", "bind", "interface"] and len(words) == 4:
+                gone = set(expand_eos(words[3]))
+                model["bound"] = [b for b in model["bound"] if b not in gone]
             elif words == ["no", "shutdown"]:
                 model["enabled"] = True
             elif words == ["shutdown"]:
@@ -163,7 +181,19 @@ def aruba_os_switch(text: str) -> dict:
     lldp = set()
     for s in _aos_statements(text):
         w = s.split()
-        if w[:2] == ["openflow", "controller-id"] and len(w) >= 9 and w[3] == "ip":
+        if w[:3] == ["no", "openflow", "controller-id"] and len(w) == 4:
+            # An undo's forms: `no <the line>` removes what the line made.
+            model["controllers"].pop(w[3], None)
+        elif w[:3] == ["no", "openflow", "instance"] and len(w) == 4:
+            model["instances"].pop(w[3], None)
+        elif w[:3] == ["no", "openflow", "instance"] and len(w) >= 6:
+            inst = model["instances"].get(w[3])
+            if inst is not None and w[4:6] == ["member", "vlan"] and len(w) == 7:
+                gone = set(expand_numbers(w[6]))
+                inst["member_vlans"] = [v for v in inst["member_vlans"] if v not in gone]
+            elif inst is not None and w[4] == "controller-id" and len(w) == 6:
+                inst["controller_ids"] = [c for c in inst["controller_ids"] if c != w[5]]
+        elif w[:2] == ["openflow", "controller-id"] and len(w) >= 9 and w[3] == "ip":
             model["controllers"][w[2]] = {"address": w[4], "port": w[6],
                                           "interface_vlan": w[-1]}
         elif w[:2] == ["openflow", "instance"] and len(w) >= 4:
@@ -195,7 +225,13 @@ def aruba_os_switch(text: str) -> dict:
             vid = w[1]
             have = set(model["untagged"].get(vid, []))
             if w[2] == "untagged":
-                have |= set(expand_numbers(w[3]))
+                ports = set(expand_numbers(w[3]))
+                have |= ports
+                # A port is untagged in one VLAN only: untagging it here takes it out of the
+                # VLAN it was untagged in (an undo's `vlan 1 untagged 2` moves it back).
+                for other, members in model["untagged"].items():
+                    if other != vid:
+                        model["untagged"][other] = [p for p in members if p not in ports]
             elif w[3] == "untagged" and len(w) == 5:
                 have -= set(expand_numbers(w[4]))
             model["untagged"][vid] = sorted(have, key=int)
@@ -367,13 +403,16 @@ def bind_changed(want: dict, have: dict) -> bool:
         or (want.get("bind_mode") != have.get("bind_mode"))
 
 
-def render_against(name: str, values: dict, have: dict, selected=None) -> dict:
+def render_against(name: str, values: dict, have: dict, selected=None, first=None) -> dict:
     """Template *name* rendered for a switch whose parsed state is *have*: the ``state.``
     values derived from it (``state.bind_changed``, `bind_changed`), then the program's model
     compared with it. ``{"ok", "error", "rendered", "want", "different", "unread"}``. Sends and
-    reads nothing: *have* is a model the caller parsed (`parse`)."""
+    reads nothing: *have* is a model the caller parsed (`parse`). *first* is the caller's own
+    render of the same values (`openflow_templates.render`, which asks B), passed so the
+    planner asks B itself and nothing renders twice."""
     from modules.sdn import openflow_templates as T
-    first = T.render(name, values, selected=selected)
+    if first is None:
+        first = T.render(name, values, selected=selected)
     out = {"ok": False, "error": first["error"], "rendered": first, "want": {},
            "different": [], "unread": []}
     if not first["ok"]:

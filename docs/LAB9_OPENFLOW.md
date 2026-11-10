@@ -9,8 +9,10 @@ builds the hardware and its base setup by hand (A1). Mercury's part starts after
 to end on the servers' Open vSwitch before the vendor templates are added to it. OVS's checkpoint
 is 2026-11-12.
 
-The vendor templates are **drafts**. No driver can send them yet: each vendor is a discovery
-driver, which refuses every write (docs/LAB9_DISCOVERY.md).
+The vendor templates are **drafts** until a network confirms them (section 3). Arista EOS and
+ArubaOS-Switch have a vendor driver (section 4b): their discovery session carries one
+configuration set, the OpenFlow lines, while the switch is held, and nothing else
+(docs/LAB9_DISCOVERY.md). Comware and AOS-CX have none, and refuse every write.
 
 ## 1. The values, from NetBox
 
@@ -75,10 +77,14 @@ lab only the controller forwards.
 - a datapath id, 16 hex digits and not all zero;
 - an OpenFlow port number, 1 to 65279, and no number given to two ports of one switch.
 
-**From NetBox, or from the network's NSOT export.** `openflow_values.from_export` reads the same
-values from the committed export (`modules/nsot/export.py`: deterministic JSON in the network's
-repository at `nsot/export.json`, hashed, committed as the person who exported it), so a plan can
-read NetBox's state offline and name the export's hash.
+**A plan reads them from the network's committed NSOT export** (C2777).
+`openflow_values.from_export` reads the same values from the committed export
+(`modules/nsot/export.py`: deterministic JSON in the network's repository at `nsot/export.json`,
+hashed, committed as the person who exported it), and the OpenFlow configuration's plan reads
+nothing else (`openflow_config.values_from_export`): NetBox's state offline, the export's
+SHA-256 inside the plan's hash, so an export committed after the preview refuses the confirm,
+naming both hashes. A network with no committed export is refused, naming the NSOT export card
+on SDN › Apps (Export from NetBox…). `openflow_values.read` (NetBox live) stays for reads.
 
 ## 2. The templates
 
@@ -133,22 +139,22 @@ deploys through intent.
   template's SHA-256. If the template changes, it is a draft again.
 - **Only a confirmed template is ever sent.** `openflow_templates.push_refusal` is the one
   rule, and every path that sends a template's lines asks it first:
-  - today that is the OVS operation;
-  - a vendor driver will have to ask it too, when one exists;
-  - the discovery drivers refuse every write at the session as well.
+  - the OVS operation (`ovs_config.apply`);
+  - the vendor operation (`openflow_config.apply`, section 4b);
+  - the discovery sessions refuse every other write as well, held or not.
 - **Confirming is a decision, not labour.** The person reads the capture and judges that the
   template's syntax fits the device's release.
 
 ## 4. Open vSwitch end to end (`modules/sdn/ovs_config.py`)
 
-1. **Values** are read from NetBox (section 1).
+1. **Values** are read from the committed NSOT export (section 1).
 2. **Render:** the `ovs` template, one transaction.
 3. **Read before:** the bridge as it is now, by OVS's reads only. From that comes the **undo**,
    one transaction that puts back exactly what this one changes. If the bridge did not exist,
    the undo deletes it. A setting Mercury could not put back is refused here, before anything is
    sent (a `ptcp:` or `unix:` controller target, say).
-4. **Hash:** over the program, the undo and the before. The preview shows all three, with each
-   value and where it came from, and the template's status.
+4. **Hash:** over the program, the undo, the before and the NSOT export's SHA-256. The preview
+   shows all of them, with each value and where it came from, and the template's status.
 5. **Apply:**
    - refused unless the template is confirmed;
    - planned again, and refused, naming both hashes, if anything moved;
@@ -183,15 +189,65 @@ needs:
 - the custom field `openflow_instance` (the bridge);
 - its OpenFlow interfaces tagged `openflow`, each with its `openflow_port`.
 
+## 4b. Arista EOS and ArubaOS-Switch (`modules/sdn/openflow_config.py`, `openflow_cli.py`)
+
+One operation for every switch with an OpenFlow template: `openflow_config.plan` and `apply`
+choose the template by the switch's driver, and hand an Open vSwitch server to section 4. A CLI
+template with a vendor driver (`arista_eos`, `aruba_os_switch`) runs these stages
+(`openflow_config.CLI_STEPS`):
+
+1. **Values** from the committed NSOT export (section 1); a refusal reads nothing from the switch.
+2. **Read before:** `show version` (its OS version selects the platform profile's entry) and
+   `show running-config`, both on the capture list, parsed into the template's OpenFlow model
+   (`openflow_state`). Only the parsed model is kept, never the configuration's text.
+3. **Render** against that model (`render_against`, which decides the EOS agent's restart).
+   A program that would leave the switch still differing from intent is refused, naming what
+   would remain: the templates add, and remove nothing the switch holds beyond NetBox's values
+   (a second controller on an Arista, say).
+4. **Undo:** the vendor driver's lines that put back exactly what the program changes, in the
+   template's forms and their `no` forms (EOS: `no openflow` for a switch that had none, else
+   `no controller`, `no bind interface` and the restart; ArubaOS-Switch: the instance and
+   controller removed or put back, `lldp admin-status <port> tx_rx`, each port untagged again in
+   the VLAN it was in). Checked by parsing the configuration as it would be after the program
+   and the undo: it must read as it does now, or nothing is sent.
+5. **Hash:** over the switch, the template, the program, the undo, the parsed before and the
+   export's SHA-256.
+6. **Apply:** refused unless the template is confirmed (section 3); planned again and the hash
+   compared; the switch held while the lines go in one configuration set.
+7. **Verify:** the running configuration read back, its OpenFlow layer the program's; then the
+   switch's datapath id (NetBox's `openflow_datapath_id` when given, else its own `show
+   openflow` or `show openflow instance <name>`) in the controller's switch list, read as
+   section 4 reads it.
+8. **Rollback** on a refused line or a failed check: the undo sent, the configuration read
+   again, and whether its OpenFlow layer reads as before said.
+9. **Record:** the run in the SDN operation record, as section 4's.
+
+**No save.** Whether the OpenFlow configuration writes the startup configuration is undecided
+(no decision names it), so no `write memory` is sent, and every result says the running
+configuration holds the change until the switch reloads.
+
+**What the session may carry** (`openflow_cli.SHAPES`, asked by
+`discovery.held_config_refusal` inside `connection._guard_writes`): one configuration set, only
+while the switch is held, every line one of its template's shapes, each argument one token of
+its shape and the controller an IPv4 address. A save, a `configure` of the caller's own, or any
+other line stays refused, held or not.
+
+**IPv6:** both vendor templates take an IPv4 controller only (their vendor documents), so an IPv6
+`openflow` Service address is refused at the render, naming it. A switch managed over IPv6 is
+read and configured over its IPv6 session.
+
 ## 5. What tomorrow's sitting can use, and what it cannot
 
 - **It can:**
   - read every switch and server with its capture list, including each vendor's ZTP status
     (docs/LAB9_DISCOVERY.md); OVS servers are read through `ovs_linux`;
   - keep the answers as named captures, the input to the confirm step.
+- **On SDN › Switches** (board lab9-sdn A, built 2026-11-10): see every switch marked for
+  OpenFlow with what the controller lists and what Mercury last configured; confirm a template
+  against a capture (Confirm against a capture…); preview, confirm and apply the configuration
+  (Configure from NetBox…, Preview the fix…); ask the controllers again (Verify now). The manual's
+  "Configure a switch's OpenFlow from NetBox" names each step.
 - **It cannot yet:**
-  - **preview, confirm or apply from a screen.** The operation and the confirm step exist as
-    code with their tests. Their controls are new controls, so each needs a board first (the
-    Phase 7 mode), and the board is still to be drawn, before OVS's checkpoint on 2026-11-12.
-    There is no terminal route around it;
-  - send a vendor template: there is no driver for any vendor.
+  - send a Comware or AOS-CX template: they have no vendor driver (section 4b covers Arista EOS
+    and ArubaOS-Switch);
+  - save the configuration to startup (section 4b: undecided).

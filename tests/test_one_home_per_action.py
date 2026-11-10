@@ -70,6 +70,9 @@ CONFIG_TASKS = {
     # cannot target it; phase 2 sends the confirmed profile program itself.
     ("modules/nsot/onboard.py", "send_profile_program"): ("config", "monitoring profile at onboarding"),
     ("scripts/nmas-removal-probe", "main"): ("config", "removal probe"),
+    # Lab 9 Objective 2 (C2902): a vendor switch's OpenFlow lines and their undo, both in the
+    # one operation's apply (its session carries only its template's shapes, held).
+    ("modules/sdn/openflow_config.py", "_cli_apply"): ("config", "OpenFlow configuration"),
 }
 
 #: Measured 2026-09-27 (section 6a's retroactive pass). Each effect with more

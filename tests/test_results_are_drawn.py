@@ -297,6 +297,16 @@ PAGE_RECORD = {
     "sdn_v2.export_confirm": ("templates/v2/_sdn_export.html",
                               ("x.state_card == 'committed'", "x.commit", "x.changes"),
                               "v2.history_page"),
+    # Lab 9 Objective 2 (C2902; board lab9-sdn artboard A): the result per switch in place of
+    # the preview (sent, each verify check, the outcome and the rollback's words), read again on
+    # History's SDN records; a template's confirmation in place of its card (the path and the
+    # commit), read again on the templates card and History's commits.
+    "sdn_switches_v2.configure_confirm": ("templates/v2/_sdn_of_config.html",
+                                          ("d.state_card == 'result'", "r.outcome", "c.words",
+                                           "r.rollback.words"), "v2.history_page"),
+    "sdn_switches_v2.template_confirm": ("templates/v2/_sdn_of_template.html",
+                                         ("d.state_card == 'confirmed'", "d.path", "d.commit"),
+                                         "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

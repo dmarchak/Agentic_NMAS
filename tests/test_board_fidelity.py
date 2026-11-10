@@ -48,6 +48,8 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            # from local board shots and read beside W4's captures (2026-10-18); About waits on
            # the operator's screenshot (docs/walks/P7-27.md, step 12).
            "save.html": "save.md", "pending.html": "pending.md",
+           # Lab 9 Objective 2 (C2902): SDN › Switches, board lab9-sdn artboard A.
+           "sdn_switches.html": "sdn-switches.md",
            "retired.html": "retired.md",
            # About, from the operator's screenshot in the P7-27 walk (2026-10-18, step 12).
            "about.html": "about.md",

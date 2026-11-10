@@ -75,6 +75,16 @@ def _bodies(v):
                                   "the network's devices are not NetBox's, or NetBox is not "
                                   "reachable from the test: refused naming why, nothing "
                                   "written"),
+        # Lab 9 Objective 2 (C2902): SDN › Switches' previews and Verify now.
+        "sdn_switches_v2.configure_preview": (409, ("form", {"list": LIST}),
+                                              "no switch is chosen and none in the network's "
+                                              "committed export differs: refused, nothing read"),
+        "sdn_switches_v2.template_preview": (409, ("form", {"list": LIST}),
+                                             "the form names no template: refused naming the "
+                                             "templates, nothing read"),
+        "sdn_switches_v2.verify": (409, ("form", {"list": LIST}),
+                                   "the reader jobs do not run in the test's process: refused "
+                                   "saying so, nothing read"),
         # C2854: an app version's Review and publish… (a read of its record).
         "sdn_v2.apps_publish_preview": (400, ("form", {"list": LIST}),
                                         "the form names no app version: refused before anything "

@@ -119,6 +119,19 @@ NOT_DIRECT = {
     # Decision 8's export writer (C2777): it commits a record, never a device's configuration.
     "sdn_v2.export_confirm": "commits the network's NSOT export (read from NetBox) to its "
                              "configuration repository; no device is configured",
+    # Lab 9 Objective 2 (C2902; board lab9-sdn A's split authority: a switch's management
+    # stays direct, its flows are the controller's).
+    "sdn_switches_v2.template_confirm": "commits an OpenFlow template's confirmation against a "
+                                        "saved capture (openflow_confirmations/<template>.yml); "
+                                        "no device is configured",
+    "sdn_switches_v2.configure_confirm": "configures each switch's OpenFlow agent (its "
+                                         "controller, version and bound ports: the management "
+                                         "plane) through the OpenFlow configuration operation, "
+                                         "which holds the switch and sends only its confirmed "
+                                         "template's line shapes, never a flow; this check, "
+                                         "which refuses a controller-managed device's direct "
+                                         "configuration, would refuse every switch the "
+                                         "operation exists to connect to its controller",
     # The operator's decision of 2026-11-10: a new app folder committed to the code repository.
     "sdn_v2.apps_draft_confirm": "adds a new app folder to the network's code repository as a "
                                  "Draft (one fast-forward commit, recorded and fetched); no "

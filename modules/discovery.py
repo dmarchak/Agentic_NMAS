@@ -34,6 +34,12 @@ either: its reads and its one write each run under `sudo -n` (`modules/sdn/ovs.p
 ONE write, while the server is held: the OpenFlow configuration's `ovs-vsctl` transaction
 (``held_write``; `modules/sdn/ovs_config.py`). Nothing else is ever sent to it.
 
+**Arista EOS and ArubaOS-Switch (`arista_eos`, `hp_procurve` and its aliases)** carry ONE
+configuration set, while the switch is held: the OpenFlow configuration's lines
+(``held_config``; `modules/sdn/openflow_config.py`, Lab 9 Objective 2), every line one of its
+template's shapes (`modules/sdn/openflow_cli.py`, `held_config_refusal`). Any other line, a save,
+a commit or a `config_mode` of the caller's own stays refused, held or not.
+
 **`display` is a read only on a Comware session (C2530).** It is on no other list, and the
 read-only allowlist (`readonly_commands`) has no `display` verb. A command that is on a capture
 list and that the allowlist refuses (`foreign_refusal`) is refused on every session that is not
@@ -113,13 +119,21 @@ def is_python_read(command) -> bool:
             and bool(_FOLDER.match(parts[2])) and parts[3] == "bin" and parts[4] in _PYTHON_BIN)
 
 #: driver -> the family in words, its capture list, the command its platform-map Test asks,
-#: why netmiko's `enable()` for it is never sent (``no_enable``), and the one write its
-#: session may carry while the device is held (``held_write``).
+#: why netmiko's `enable()` for it is never sent (``no_enable``), the one write its session
+#: may carry while the device is held (``held_write``), and the one configuration set it may
+#: carry while held (``held_config``: the OpenFlow configuration's lines, each one of its
+#: template's shapes, `held_config_refusal`; Lab 9 Objective 2).
+_OPENFLOW_LINES = ("the OpenFlow configuration's lines (modules/sdn/openflow_config.py), each "
+                   "one of its template's shapes (modules/sdn/openflow_cli.py)")
 DRIVERS = {
-    "arista_eos":     {"family": "Arista EOS", "commands": _ARISTA},
-    "hp_procurve":    {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
-    "aruba_osswitch": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
-    "aruba_procurve": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE},
+    "arista_eos":     {"family": "Arista EOS", "commands": _ARISTA,
+                       "held_config": _OPENFLOW_LINES},
+    "hp_procurve":    {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "held_config": _OPENFLOW_LINES},
+    "aruba_osswitch": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "held_config": _OPENFLOW_LINES},
+    "aruba_procurve": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "held_config": _OPENFLOW_LINES},
     "aruba_os":       {"family": "Aruba (netmiko's ArubaOS driver; AOS-CX's list)",
                        "commands": _AOSCX},
     "hp_comware":     {"family": "HP Comware", "commands": _COMWARE,
@@ -266,6 +280,24 @@ def held_write_refusal(device_type, command) -> str:
                                          command=APPLY_COMMAND)
     from modules.sdn import ovs
     return ovs.write_refusal(command)
+
+
+def held_config_refusal(device_type, lines) -> str:
+    """``""`` when *lines* are *device_type*'s one held configuration set (``held_config``: every
+    line one of its OpenFlow template's shapes, `openflow_cli.line_refusal`), else why, naming
+    ``send_config_set()``, the driver and the line. The session sends it only while the device
+    is held (`connection._guard_writes`); no save, no other configuration."""
+    driver = str(device_type or "").strip().lower()
+    if not DRIVERS.get(driver, {}).get("held_config"):
+        return write_refusal(device_type, "send_config_set()") or \
+            "REFUSED: not a discovery driver."
+    from modules.sdn import openflow_cli, openflow_templates
+    why = openflow_cli.line_refusal(openflow_templates.for_driver(driver) or "", lines)
+    if not why:
+        return ""
+    return (f"REFUSED: send_config_set() on a {driver} device ({DRIVERS[driver]['family']}): "
+            f"{why}, and this session carries only {DRIVERS[driver]['held_config']}, while the "
+            "switch is held. Nothing was sent.")
 
 
 def version_command(device_type) -> str:

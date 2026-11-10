@@ -52,8 +52,8 @@ confirmation is committed in that network's repository (`openflow_confirmations/
 naming the capture and the template's SHA-256, so a changed template is a draft again. Only a
 CONFIRMED template is ever sent: `push_refusal` is ``""`` for a confirmed template and names the
 template and its status otherwise, and every path that sends a template's lines asks it first
-(`ovs_config.apply`; a vendor driver, when one exists). The discovery drivers refuse every write
-at the session as well (`connection._guard_writes`).
+(`ovs_config.apply`; `openflow_config.apply` for the vendor drivers). The discovery sessions
+refuse every other write as well (`connection._guard_writes`).
 """
 
 import hashlib
@@ -520,10 +520,13 @@ def push_refusal(network: str, name: str) -> str:
             "of one of its devices first. Nothing was sent.")
 
 
-def confirm(network: str, name: str, capture_name: str, actor: str, actor_verified: str) -> dict:
+def confirm(network: str, name: str, capture_name: str, actor: str, actor_verified: str,
+            template_sha256: str = None, capture_sha256: str = None) -> dict:
     """A verified person confirms template *name* on *network* against *capture_name* (one of
     `discovery.captures`, of a device whose driver the template is for): committed as that
-    person. ``{"ok", "error", "path", "commit"}``."""
+    person. ``{"ok", "error", "path", "commit"}``. *template_sha256* and *capture_sha256*, when
+    given, are what the person read (SDN › Switches' preview): a template or capture that is
+    not that one now is refused, naming both, and nothing is committed."""
     import time
     import yaml
     from modules import discovery
@@ -541,6 +544,13 @@ def confirm(network: str, name: str, capture_name: str, actor: str, actor_verifi
                                        f"{', '.join(t.get('drivers') or [])}")}
     if cap.get("archived"):
         return {"ok": False, "error": f"the capture {capture_name!r} is archived: read it again"}
+    for what, given, now in (("template", template_sha256, sha256(name)),
+                             ("capture", capture_sha256, cap.get("sha256", ""))):
+        if given is not None and given != now:
+            return {"ok": False, "moved": True,
+                    "error": (f"the {what} you read hashed {str(given)[:12] or 'none'}, and it "
+                              f"hashes {str(now)[:12] or 'none'} now: nothing was committed; "
+                              "read it again")}
     rel = f"{DIR}/{name}.yml"
     doc = {"template": name, "template_sha256": sha256(name), "capture": capture_name,
            "capture_sha256": cap.get("sha256", ""), "device": cap["device"],

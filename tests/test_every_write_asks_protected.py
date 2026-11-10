@@ -46,6 +46,11 @@ GUARDED = {
     # through `openflow_templates.render`, which asks `protected.ports_refusal` (C2588, C2589).
     ("modules/sdn/ovs_config.py", "apply"): ("plan",
                                              ("modules/sdn/openflow_templates.py", "render")),
+    # A vendor switch's OpenFlow configuration (Lab 9 Objective 2, C2902): `_cli_apply` plans
+    # again through `_cli_plan`, which renders through `openflow_templates.render` (B's
+    # `protected.ports_refusal`) before the differences are computed.
+    ("modules/sdn/openflow_config.py", "_cli_apply"): (
+        "_cli_plan", ("modules/sdn/openflow_templates.py", "render")),
 }
 
 #: Sends that can change no protected kind (no interface, VLAN, prefix, address or flow), each

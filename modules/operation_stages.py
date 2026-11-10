@@ -291,6 +291,16 @@ STAGES = {
     # commit is the record, and the next export corrects a wrong one.
     "sdn_v2.export_confirm": Stages(
         "sdn_v2.export_preview", "hash", NO_DEVICE, FORWARD, "modules.nsot.export.write"),
+    # Lab 9 Objective 2 (C2902; board lab9-sdn artboard A): the OpenFlow configuration, each
+    # switch planned again and its hash compared; verified on the switch and in the
+    # controller's switch list; its undo sent and the switch read again on failure; recorded in
+    # the network's SDN operation record. A template's confirmation is a commit.
+    "sdn_switches_v2.configure_confirm": Stages(
+        "sdn_switches_v2.configure_preview", "hash", "modules.sdn.openflow_config.seen_by_controller",
+        "modules.sdn.openflow_config.roll_back_read", "modules.sdn.openflow_config.record"),
+    "sdn_switches_v2.template_confirm": Stages(
+        "sdn_switches_v2.template_preview", "template_sha256", NO_DEVICE, FORWARD,
+        "modules.sdn.openflow_templates.confirm"),
     # C2854 (board app-publish): a version published, bound to its folder's hash, its test run
     # and the review policy; kept with the version's record, corrected forward by a new version.
     "sdn_v2.apps_publish_confirm": Stages(
@@ -566,6 +576,10 @@ HISTORY = {
     "settings_v2.sdn_saved_test": NOT_A_DEVICE,
     "sdn_v2.controller_test": NOT_A_DEVICE,
     "sdn_v2.flow_confirm": ("sdn_operations",),
+    # Lab 9 Objective 2 (C2902): each switch's OpenFlow configuration, one SDN operation record;
+    # a template's confirmation a commit, History's commits.
+    "sdn_switches_v2.configure_confirm": ("sdn_operations",),
+    "sdn_switches_v2.template_confirm": TEMPLATE,
     # P6: the controller host's deploys, one receipt each (modules/controller_deploy_receipts.py).
     "sdn_v2.apps_confirm": ("controller_deploys",),
     "sdn_v2.response_confirm": ("sdn_operations",),

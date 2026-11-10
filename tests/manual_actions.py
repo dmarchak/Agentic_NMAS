@@ -128,6 +128,18 @@ NOT_AN_OPERATION = {
         "is, a read"),
     # P6, SDN › Apps (board controller-app-deploy): links that navigate or save a record.
     ("_sdn_app_deploy.html", "Back to Apps"): "opens SDN › Apps again, a read; nothing is sent",
+    # SDN › Switches (Lab 9 Objective 2, C2902; board lab9-sdn artboard A).
+    ("_sdn_switches.html", "Reload"): "loads SDN › Switches again (a link to its own page, the "
+                                      "stale note's), a read",
+    ("_sdn_switches.html", "Search"): "narrows the switches to a name, DPID or address and the "
+                                      "state and platform chosen, a read",
+    ("_sdn_of_config.html", "btn btn-small"): "Cancel or Back to Switches: draws the card's slot "
+                                              "empty again, a read; nothing is sent",
+    ("_sdn_of_config.html", "Export from NetBox…"): "opens SDN › Apps' NSOT export card, where "
+                                                    "the export operation has its own link",
+    ("_sdn_of_config.html", "Open the record"): "opens History's SDN records, a read",
+    ("_sdn_of_template.html", "btn"): "Cancel or Close: draws the templates card's slot empty "
+                                      "again, a read; nothing is committed",
     ("_sdn_app_deploy.html", "Cancel"): "leaves the plan by opening SDN › Apps again; nothing "
                                         "is sent",
     ("_sdn_app_deploy.html", "Preview again"): "opens SDN › Apps, where a deploy is previewed "

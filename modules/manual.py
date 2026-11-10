@@ -109,6 +109,8 @@ PAGES = (
      "how-it-works/draft-write.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
+    ("openflow-config", "Configure a switch's OpenFlow from NetBox", H,
+     "how-it-works/openflow-config.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("records-database", "The records database: save, test, replace its password", H,
@@ -138,6 +140,7 @@ PAGES = (
     ("monitoring", "Monitoring", "Screens", "screens/monitoring.md"),
     ("topology", "Topology", "Screens", "screens/topology.md"),
     ("sdn", "SDN", "Screens", "screens/sdn.md"),
+    ("sdn-switches", "SDN › Switches", "Screens", "screens/sdn-switches.md"),
     ("show-commands-screen", "Show commands", "Screens", "screens/show-commands.md"),
     ("logs", "Logs", "Screens", "screens/logs.md"),
     ("dhcp", "DHCP", "Screens", "screens/dhcp.md"),
@@ -242,6 +245,8 @@ OPERATIONS = {
     # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
     "heal-proposal": ("modules.heal.propose", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
+    # Lab 9 Objective 2 (C2902): a switch's OpenFlow configuration from the NSOT export.
+    "openflow-config": ("modules.sdn.openflow_config", "CLI_STEPS"),
     # P6 (board controller-app-deploy): a controller's apps deployed as one operation.
     "controller-app-deploy": ("modules.apps.deploy_op", "STEPS"),
     # C2777 (board nsot-export): a network's NSOT export committed as one operation.

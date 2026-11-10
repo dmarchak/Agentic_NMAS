@@ -1,0 +1,9 @@
+{#- The SDN page's tabs (routes/sdn_v2.TABS), one nav for every tab's region: _sdn_view.html's
+    (Controllers, Flows, Apps, Responses) and _sdn_switches.html's (Switches, board lab9-sdn
+    artboard A). `current` is the tab drawn. -#}
+{%- set tab_urls = {'controllers': url_for('sdn_v2.page'), 'switches': url_for('sdn_switches_v2.page'), 'flows': url_for('sdn_v2.flows'), 'apps': url_for('sdn_v2.apps'), 'responses': url_for('sdn_v2.responses')} -%}
+<nav class="tabs sdn-tabs" aria-label="SDN">
+  {%- for key, label in tabs %}
+  <a class="tab{% if current == key %} on{% endif %}" href="{{ tab_urls.get(key, url_for('sdn_v2.page')) }}"{% if current == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
+</nav>

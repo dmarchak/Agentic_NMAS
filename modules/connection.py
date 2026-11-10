@@ -715,7 +715,10 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
 
     A session opened with a discovery driver (`modules/discovery.py`, a platform Mercury has
     no driver for) carries only its capture list's commands and no config, save or commit
-    call, held or not: a positive allowlist, `DiscoveryOnly` naming the driver. Every other
+    call, held or not: a positive allowlist, `DiscoveryOnly` naming the driver. The one
+    exception is a driver's ``held_config``: Arista EOS's and ArubaOS-Switch's OpenFlow
+    configuration set, every line one of its template's shapes, only while held
+    (`discovery.held_config_refusal`). Every other
     session refuses, held or not, a command only a capture list allows (`foreign_refusal`:
     Comware's `display` never reaches an IOS device, C2530)."""
     from modules import discovery
@@ -740,11 +743,38 @@ def _guard_writes(conn, ip: str, device_type: str = "") -> None:
                 return original(*args, **kwargs)
             return guarded
 
-        held_write = discovery.DRIVERS[str(device_type).strip().lower()].get("held_write")
+        def config_held(original, config_mode):
+            # The driver's one configuration set (``held_config``: the OpenFlow configuration's
+            # lines, each one of its template's shapes), sent only while this thread holds the
+            # device. netmiko's send_config_set enters and leaves configuration mode itself:
+            # that call is the set's own, allowed for its duration and refused otherwise.
+            def guarded(*args, **kwargs):
+                lines = args[0] if args else kwargs.get("config_commands")
+                why = discovery.held_config_refusal(device_type, lines)
+                if not why and not device_ops.may_write(ip):
+                    why = (f"REFUSED: send_config_set() on a {device_type} device: its "
+                           "configuration set is sent only while the switch is held. Nothing "
+                           "was sent.")
+                if why:
+                    raise DiscoveryOnly(f"{ip}: {why}")
+                refusing = conn.config_mode
+                conn.config_mode = config_mode
+                try:
+                    return original(*args, **kwargs)
+                finally:
+                    conn.config_mode = refusing
+            return guarded
+
+        entry = discovery.DRIVERS[str(device_type).strip().lower()]
+        held_write = entry.get("held_write")
+        own_config_mode = getattr(conn, "config_mode", None)
+        own_config_set = getattr(conn, "send_config_set", None)
 
         for name in _WRITE_METHODS + _MULTILINE_METHODS:
             if callable(getattr(conn, name, None)):
                 setattr(conn, name, only_reads(name, getattr(conn, name)))
+        if entry.get("held_config") and callable(own_config_set) and callable(own_config_mode):
+            conn.send_config_set = config_held(own_config_set, own_config_mode)
         for name in _COMMAND_METHODS:
             original = getattr(conn, name, None)
             if callable(original):

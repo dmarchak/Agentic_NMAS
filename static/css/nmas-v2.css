@@ -2662,6 +2662,27 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-kv dt { color: var(--ink-2); }
 .sdn-kv dd { margin: 0; overflow-wrap: anywhere; }
 .sdn-kv .mono, .sdn-ft .mono { font-size: 12.5px; }
+/* SDN › Switches (board lab9-sdn A; Lab 9 Objective 2): the bar, the switch rows, the cards. */
+.of-sum .tone-ok { color: var(--ok); }
+.of-sum .tone-warn { color: var(--warn); }
+.of-sum .tone-danger { color: var(--danger); }
+.of-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.of-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.of-filter input[type="search"] { width: min(300px, 100%); }
+.of-ipv6 { margin: 0; }
+.of-grp th { text-align: left; font-weight: 600; background: var(--surface-2); }
+.of-detail summary { cursor: pointer; display: flex; flex-direction: column; }
+.of-detail .sdn-kv { margin-top: 8px; grid-template-columns: 120px minmax(0, 1fr); }
+.of-op { display: flex; flex-direction: column; gap: 10px; }
+.of-program, .of-capture { margin: 0; overflow-x: auto; white-space: pre; }
+.of-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.of-lines { margin: 0; padding-left: 20px; }
+.of-lines pre { margin: 0; white-space: pre-wrap; }
+.of-confirm-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+@media (max-width: 720px) {
+  .of-cols { grid-template-columns: minmax(0, 1fr); }
+  .of-detail .sdn-kv { grid-template-columns: minmax(0, 1fr); }
+}
 .sdn-chip { font-size: 12px; padding: 1px 8px; margin: 0 2px 2px 0; }
 .sdn-answer:empty { display: none; }
 .sdn-ans { margin: 0; display: inline-flex; gap: 6px; align-items: flex-start; font-size: 13px; }

@@ -12,11 +12,7 @@
     <p class="sub">{% if g.tab == 'flows' %}Each switch's flow table, Mercury's expected flows beside what is installed.{% elif g.tab == 'responses' %}Threats detected on the network's switches, and what Mercury does about them.{% elif g.tab == 'apps' %}The apps the network's controller runs, deployed by Mercury from the network's code repository. Each deploy restarts the controller.{% else %}The network's SDN controllers, as Mercury last read them. Their switches' flows are on Flows; detection and responses on Responses.{% endif %}</p>
   </div>
 </div>
-<nav class="tabs sdn-tabs" aria-label="SDN">
-  {%- for key, label in tabs %}
-  <a class="tab{% if g.tab == key %} on{% endif %}" href="{{ url_for('sdn_v2.flows') if key == 'flows' else (url_for('sdn_v2.responses') if key == 'responses' else (url_for('sdn_v2.apps') if key == 'apps' else url_for('sdn_v2.page'))) }}"{% if g.tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
-  {%- endfor %}
-</nav>
+{% with current = g.tab %}{% include "v2/_sdn_tabs.html" %}{% endwith %}
 {#- C2003: never a frozen page shown as current. Hidden while the region is live; past
     data-stale-at (drawn + the SDN reader's page promise, modules/sdn_page.redraw_promise) with
     no redraw, or while the live channel is down, static/js/nmas_v2.js (`staleNote`, on the

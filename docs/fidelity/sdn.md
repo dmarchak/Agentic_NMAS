@@ -71,8 +71,14 @@ were integrated on main together).
 | X: the registry's notices | code-repository E: No app version can be listed (the registry's own words) and the folders not registered, each with Open the code repository's card | the same | **same** |
 | X: phone width | G: the table stacked, the confirm at the card's foot | the table's cells stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html
-Templates sha256: `d5029510ce1c9ce2095a4056a92cfec6258ca1927d0231b91fe3079febb97ef8`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html
+Templates sha256: `2be1dcca70c54bf8cb1c854fc300a977f85076c3a05dba42f861aa19c2ccec1e`
+Hashed again 2026-11-10 for Lab 9 Objective 2 (C2902; board lab9-sdn A): the SDN tabs moved into
+their own partial, `_sdn_tabs.html`, which every tab's region draws, and gained Switches between
+Controllers and Flows (its own record, docs/fidelity/sdn-switches.md). The tabs' row is
+otherwise as compared: the same classes, order and current tab; no other region moved. The
+same day's Add an app as a Draft (`_sdn_app_draft.html`, board authoring-from-words F) is in the
+list too: both merged, hashed together.
 Hashed again 2026-11-09 for C2854 (board app-publish A to D, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): an app's Versions row draws a Draft's test state with Run its tests and Review and
 publish…, and a Published one's self-review; `_sdn_app_publish.html` (new, in the compared list)

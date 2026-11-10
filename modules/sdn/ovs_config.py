@@ -3,15 +3,18 @@ section 2; the operator's decision 7, 2026-11-05: OVS first).
 
 One operation, its stages in order (`STEPS`):
 
-1. **values**: the server's OpenFlow values from NetBox (`openflow_values.read`); a missing or
-   ill-shaped value refuses, named, with nothing read from the server.
+1. **values**: the server's OpenFlow values from the network's committed NSOT export
+   (`openflow_config.values_from_export`, C2777): NetBox's state as committed, offline, its
+   SHA-256 in the plan's hash; no committed export refuses, naming the NSOT export card on SDN ›
+   Apps. A missing or ill-shaped value refuses, named, with nothing read from the server.
 2. **render**: the `ovs` template (`openflow_templates.render`), one `sudo -n ovs-vsctl`
    transaction.
 3. **read before**: the bridge as it is now, by the OVS reads only (`modules/sdn/ovs.py`): the
    bridges, and for this bridge its controller targets, fail mode, protocols, datapath-id
    override and ports. From it the **undo**, one transaction putting back exactly what this one
    changes (the bridge deleted if it did not exist).
-4. **hash** (`plan_hash`) over the network, the server, the program, the undo and the before.
+4. **hash** (`openflow_config.plan_hash`) over the network, the server, the template, the
+   program, the undo, the before and the NSOT export's SHA-256.
    The preview draws the program, the undo, the values with where each came from, and the
    template's status.
 5. **apply** (`apply`): refused unless the template is CONFIRMED on this network
@@ -19,33 +22,33 @@ One operation, its stages in order (`STEPS`):
    NetBox value is refused, naming both hashes; nothing is sent); the server **held**
    (`device_ops.hold`, across processes) while the transaction is sent.
 6. **verify**: the bridge read back (controller target, protocols, fail mode, ports, datapath id
-   override), then the **controller's switch list** (`ControllerDriver.switches`, the Mercury
-   connection named by the config context's ``openflow.connection``, or the network's only
-   one) read up to `VERIFY_READS` times `VERIFY_PAUSE` apart until the bridge's datapath id is
-   in it.
+   override), then the **controller's switch list** (`openflow_config.seen_by_controller`,
+   shared with the vendor switches': `ControllerDriver.switches` of the Mercury connection named
+   by the config context's ``openflow.connection``, or the network's only one, read up to
+   `VERIFY_READS` times `VERIFY_PAUSE` apart until the bridge's datapath id is in it).
 7. **rollback**: on a failed send or a failed check, the undo is sent and the bridge read again.
 8. **record**: the operation's whole run in the network's SDN operation record
-   (`flow_intent.record_operation`, ``response.kind`` ``openflow_config``), which History reads.
+   (`openflow_config.record`, ``response.kind`` ``openflow_config``), which History reads.
 
 No save: OVSDB persists by itself (ovs-vsctl(8)). Nothing here writes a flow: the controller
 does that (LAB9_SDN_GAP, the one controller path).
 """
 
-import hashlib
 import json
 import logging
 import re
 import secrets
 import time
 
+from modules.sdn import openflow_config
+#: The controller's switch list read after the send (`openflow_config.seen_by_controller`).
+from modules.sdn.openflow_config import VERIFY_PAUSE, VERIFY_READS  # noqa: F401
+
 log = logging.getLogger(__name__)
 
 TEMPLATE = "ovs"
 STEPS = ("values", "render", "read before", "hash", "hold", "send", "verify", "rollback",
          "record")
-#: The controller's switch list read after the send: a bridge connects within seconds.
-VERIFY_READS = 6
-VERIFY_PAUSE = 2.0
 
 
 class Refused(ValueError):
@@ -150,12 +153,6 @@ def undo_of(bridge: str, before: dict, values: dict) -> str:
     return "sudo -n ovs-vsctl " + " -- ".join(parts)
 
 
-def plan_hash(network: str, device: str, program: list, undo: str, before: dict) -> str:
-    body = json.dumps({"network": network, "device": device, "program": program, "undo": undo,
-                       "before": before}, sort_keys=True)
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
 def _inventory(network: str, device: str):
     from modules.device import load_saved_devices
     from modules.nsot import listref
@@ -167,8 +164,9 @@ def _inventory(network: str, device: str):
 
 def plan(network: str, device: str, *, values=None, session=None) -> dict:
     """The operation for *device*, planned with no write: ``{"ok", "error", "at", "values",
-    "defaults", "where", "status", "lines", "program", "undo", "before", "hash"}``. *values*
-    (tests) replaces the NetBox read; *session* (tests) `connection.with_temp_connection`."""
+    "defaults", "where", "status", "lines", "program", "undo", "before", "hash",
+    "export_sha256"}``. *values* (tests) replaces the committed NSOT export's read; *session*
+    (tests) `connection.with_temp_connection`."""
     from modules.sdn import openflow_templates as T
     from modules.sdn import openflow_values as V
     from modules.sdn import ovs
@@ -177,7 +175,8 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
            "template": TEMPLATE, "values": {}, "defaults": [], "where": V.WHERE,
            "status": T.status(network, TEMPLATE), "lines": [], "program": [], "undo": "",
            "before": None, "hash": "", "citations": T.load(TEMPLATE)["citations"],
-           "excluded": []}
+           "excluded": [], "export_sha256": "", "family": "Open vSwitch", "steps": STEPS,
+           "unchanged": False}
     dev = _inventory(network, device)
     if dev is None:
         out["error"] = f"{device} is not a device of {network}"
@@ -187,12 +186,14 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
                         "vSwitch server's is ovs_linux (Settings › Installation › Platforms "
                         "and roles)")
         return out
-    got = values if values is not None else V.read(device)
+    got = values if values is not None else openflow_config.values_from_export(network, device)
     out["values"], out["defaults"] = dict(got.get("values") or {}), list(got.get("defaults") or [])
     # The server's management interface, never a bridge port, said by name in the preview.
     out["excluded"] = list(out["values"].get("excluded") or [])
+    # C2777: the export the values were read from, in the hash.
+    out["export_sha256"] = str(out["values"].get("nsot.export_sha256") or "")
     if not got.get("ok"):
-        out["error"] = got.get("error") or "the NetBox values could not be read"
+        out["error"] = got.get("error") or "the NSOT export's values could not be read"
         return out
     v = out["values"]
     if v.get("openflow.transport") != "tcp":
@@ -243,18 +244,17 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
                         f"on a rollback ({json.dumps(before, sort_keys=True)[:200]}): {why}")
         return out
     out["at"] = "hash"
-    out["hash"] = plan_hash(network, device, out["program"], out["undo"], before)
+    out["hash"] = openflow_config.plan_hash(network, device, TEMPLATE, out["program"],
+                                            out["undo"], before, out["export_sha256"])
     out["ok"] = True
     return out
 
 
 def _connection_name(network: str, values: dict, given: str = "") -> str:
-    from modules.sdn import connections
-    name, why = connections.choose(network, given or values.get("openflow.connection", ""),
-                                   purpose="the one to verify against")
-    if why:
-        raise Refused(why)
-    return name
+    try:
+        return openflow_config.connection_name(network, values, given)
+    except openflow_config.Refused as exc:
+        raise Refused(str(exc)) from exc
 
 
 def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
@@ -294,34 +294,9 @@ def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
         out["checks"].append({"name": "the controller's switch list", "state": "not_reached",
                               "words": "not read: the bridge did not read back as rendered"})
         return out
-    try:
-        dpid = int(after["datapath_id"], 16)
-    except (TypeError, ValueError):
-        out["checks"].append({"name": "the controller's switch list", "state": "fail",
-                              "words": f"the bridge's datapath id {after['datapath_id']!r} "
-                                       "is not hex"})
-        return out
-    seen, last = False, ""
-    for i in range(VERIFY_READS):
-        got = drv.switches()
-        if got.get("ok"):
-            dpids = [s.get("dpid") for s in got.get("switches") or []]
-            seen = dpid in dpids
-            last = f"{len(dpids)} switch(es)"
-        else:
-            last = f"unreadable: {got.get('error')}"
-        if seen:
-            break
-        if i < VERIFY_READS - 1:
-            sleep(VERIFY_PAUSE)
-    out["checks"].append({"name": "the controller's switch list", "state": "pass" if seen
-                          else "fail",
-                          "words": (f"datapath {after['datapath_id']} is in the controller's "
-                                    f"switch list ({last})" if seen else
-                                    f"datapath {after['datapath_id']} is not in the "
-                                    f"controller's switch list after {VERIFY_READS} reads "
-                                    f"{VERIFY_PAUSE:g} s apart ({last})")})
-    out["ok"] = seen
+    out["checks"].append(openflow_config.seen_by_controller(drv, after["datapath_id"],
+                                                            sleep=sleep))
+    out["ok"] = out["checks"][-1]["state"] == "pass"
     return out
 
 
@@ -437,7 +412,6 @@ def _iso(t: float) -> str:
 
 
 def _record(network, p, out, *, actor, actor_verified, connection, started, ended) -> dict:
-    from modules.sdn import flow_intent
     status = p["status"]
     row = {"id": out["id"], "at": _iso(ended), "started": _iso(started), "ended": _iso(ended),
            "connection": connection, "dpid_hex": out["verify"].get("dpid") or "",
@@ -445,11 +419,8 @@ def _record(network, p, out, *, actor, actor_verified, connection, started, ende
            "requests": p["program"], "undo": p["undo"], "before": p["before"],
            "sent": out["sent"], "verify": out["verify"], "rollback": out["rollback"],
            "outcome": out["outcome"], "error": out["error"], "mode": "hitl",
+           "export_sha256": p.get("export_sha256", ""),
            "response": {"kind": "openflow_config", "device": p["device"], "template": TEMPLATE,
                         "template_capture": status.get("capture", "")},
            "actor": actor, "actor_verified": actor_verified}
-    try:
-        flow_intent.record_operation(network, row)
-    except Exception as exc:                          # noqa: BLE001 (said, never raised)
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    return {"ok": True, "error": ""}
+    return openflow_config.record(network, row)

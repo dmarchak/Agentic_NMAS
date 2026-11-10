@@ -1662,6 +1662,40 @@ def nsot_export():
     ])
 
 
+def openflow_config():
+    return svg(520, (
+        "Configuring a switch's OpenFlow from NetBox: the values are read from the network's "
+        "committed NSOT export; the switch's version and running configuration are read, "
+        "parsed, and the template rendered against them, with the undo that puts back exactly "
+        "what the program changes and the hash over both and the export's; you confirm by that "
+        "hash; refused unless the template is confirmed, planned again and the hash compared, "
+        "the switch held while its lines are sent; verified on the switch and in the "
+        "controller's switch list; the undo sent on a failure; recorded. Nothing is saved to "
+        "the startup configuration."), [
+        lanes(20, 514, left="IN THE TOOL", right="THE SWITCH AND ITS CONTROLLER"),
+        repo(14, 44, 186, 40, "The NSOT export", "committed; its hash"), num(14, 44, 1),
+        device(232, 44, 156, 40, "The switch", "show version, running"),
+        doc("box", 14, 96, 186, 36, "Read before", "parsed, never kept as text"),
+        num(14, 96, 2), arrow("read", 230, 66, 202, 112),
+        doc("box", 14, 144, 186, 36, "Render, and its undo", "checked by parsing"),
+        num(14, 144, 3),
+        doc("box", 14, 192, 186, 30, "The hash", "program, undo, export"), num(14, 192, 5),
+        person(14, 236, 186, 30, "You confirm, bound to it"),
+        band(226, 128, "The confirm"),
+        doc("box", 14, 276, 186, 34, "Planned again, held", "a moved hash sends nothing"),
+        num(14, 276, 6), arrow("send", 202, 300, 230, 300),
+        device(232, 280, 156, 40, "The switch", "its OpenFlow lines"),
+        svc(232, 334, 156, 34, "The controller", "its switch list"),
+        doc("box", 14, 330, 186, 34, "Verify", "read back; in the list"), num(14, 330, 8),
+        arrow("read", 230, 350, 202, 348),
+        arrow("undo", 202, 384, 230, 310, via=(220, 380)),
+        t(14, 392, "On a failure: the undo sent, read again.", "sm"), num(14, 378, 9),
+        store(14, 410, 186, 36, "The SDN operation record", "History reads it"),
+        num(14, 410, 10),
+        nosend(310, 460, ("no save", "to startup")),
+    ])
+
+
 def app_publish():
     return svg(470, (
         "Publishing an app version: Run its tests stages the version from Mercury's copy at its "
@@ -2127,6 +2161,7 @@ DIAGRAMS = {
     "sdn-flows": sdn_flows,
     "controller-app-deploy": controller_app_deploy,
     "nsot-export": nsot_export,
+    "openflow-config": openflow_config,
     "app-publish": app_publish,
     "code-repository": code_repository,
     "draft-write": draft_write,

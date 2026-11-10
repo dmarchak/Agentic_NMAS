@@ -1,0 +1,9 @@
+{%- extends "v2/base.html" -%}
+{#- OBSERVE › SDN › Switches (Lab 9 Objective 2; C2902): OpenFlow onboarding, the verify view,
+    drawn to board docs/boards/lab9-sdn.html artboard A (self-signed 2026-11-10 under the
+    Phase 7 mode); compared region by region in docs/fidelity/sdn-switches.md. The view is one
+    region, _sdn_switches.html, redrawn when the SDN reader announces. -#}
+{% block title %}SDN · Switches · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_sdn_switches.html" %}
+{% endblock %}
