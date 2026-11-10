@@ -525,10 +525,13 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     refused. *trigger* is what started the call (`triggers`); a call without one is refused.
     *network* is the network the call is about (a list's folder name; "" for the
     installation's own, the connection check): with the subject, the prompt, the model and
-    the requester's access scope, what makes two presses one request (C1854). *count*
-    replaces the adapter's token count (tests), as *send* its send."""
+    the requester's access scope, what makes two presses one request (C1854), and recorded on
+    the row as ``network`` when named, sent or refused (C2942: History › Export lists a
+    person's call under its network). *count* replaces the adapter's token count (tests), as
+    *send* its send."""
     prep = _prepared(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
-                     context=context, thinking=thinking, subject=subject, count=count)
+                     context=context, thinking=thinking, subject=subject, count=count,
+                     row_extra={"network": network} if network else None)
     if "refused" in prep:
         return prep["refused"]
     row, body, model, key, told = (prep["row"], prep["body"], prep["model"], prep["key"],
@@ -1096,8 +1099,9 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
               clock=None) -> dict:
     """An evaluation round's calls as one batch through the provider's Message Batches API
     (the section's comment above has what it holds to). *requests* are ``[{"custom_id",
-    "feature", "prompt", "schema", "parts", "context"?, "subject"?, "thinking"?}]``, each
-    what `ask` takes for one call; *trigger* an evaluation trigger (`triggers.evaluation`),
+    "feature", "prompt", "schema", "parts", "context"?, "subject"?, "thinking"?,
+    "network"?}]``, each what `ask` takes for one call (a named network recorded on its row,
+    C2942); *trigger* an evaluation trigger (`triggers.evaluation`),
     *actor* its run's; *stop_usd* the evaluation's own stop, the most this batch may cost.
     *provider* replaces the adapter's batch calls (tests: ``create``, ``get``, ``cancel``,
     ``results``), *count* its token count, *sleep* and *clock* the wait's.
@@ -1132,7 +1136,9 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
                          thinking=r.get("thinking"), subject=r.get("subject"), count=count,
                          cache_ttl=BATCH_CACHE_TTL,
                          row_extra={"batch": {"custom_id": cid, "id": "",
-                                              "multiplier": profiles.BATCH_MULTIPLIER}})
+                                              "multiplier": profiles.BATCH_MULTIPLIER},
+                                    **({"network": r["network"]} if r.get("network")
+                                       else {})})
         if "refused" in prep:
             results[cid] = dict(prep["refused"], custom_id=cid)
             continue

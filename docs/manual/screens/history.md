@@ -531,9 +531,10 @@ is read.
   validation, refused at a cap, refused by a gate, failed, or a press that joined another's
   call), and the call's History link. Then a total per UTC day and per feature. The line
   under the heading counts the range: calls, dollars, and each kind of refusal. One
-  network's log holds the calls that name it (a background job's); a person's or an
-  evaluation's call names no network, so it is counted under the line, and listed in
-  **Every network**'s log.
+  network's log holds the calls that name it, a person's, a background job's or an
+  evaluation's, sent or refused. A call that names no network (the installation's own, such
+  as the connection check, or one recorded before 2026-11-10) is counted under the line and
+  listed in **Every network**'s log.
 - **False positives and failures:** each SDN detection dismissed, with its reason and who;
   each AI classification the check refused; each response AUTO decided on and could not
   send, a protected-flow refusal named as one; each flow operation whose Verify failed or

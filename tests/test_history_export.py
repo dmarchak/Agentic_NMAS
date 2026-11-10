@@ -113,7 +113,8 @@ def test_every_call_is_a_row_with_its_trigger_outcome_and_link(world):  # noqa: 
     a = by[ok["call_id"]]
     assert (a["trigger"], a["by"], a["feature"], a["model"], a["prompt"]) == (
         "person", PERSON, "sdn_analyse", "claude-haiku-5-5", "sdn_analyse.v1")
-    assert a["network"] == "" and a["outcome"] == "ok" and a["usd"] > 0
+    # C2942: a person's call records the network it names, so it is listed under it.
+    assert a["network"] == "default" and a["outcome"] == "ok" and a["usd"] > 0
     assert a["then"].startswith("shown: 1 findings")
     assert by[bad["call_id"]]["outcome"] == "refused by validation"
     assert by[bad["call_id"]]["verdict"] == "schema" and by[bad["call_id"]]["tokens_in"] == 6000
@@ -136,11 +137,14 @@ def test_every_call_is_a_row_with_its_trigger_outcome_and_link(world):  # noqa: 
 
 def test_one_network_s_log_holds_its_calls_and_counts_the_rest(world):  # noqa: F811
     bg = _background_call(TODAY)
-    _background_call(TODAY, network="branch")
-    _analyst_calls(world)
+    branch = _background_call(TODAY, network="branch")
+    ok, bad, capped = _analyst_calls(world)
     got = X.calls(NET, YESTERDAY, TODAY)
-    assert [r["call"] for r in got["rows"]] == [bg["id"]]
-    assert got["unattributed"] == 3, "the three person calls name no network"
+    # C2942: the person's three calls name Default, answered or refused, so they are its own.
+    assert sorted(r["call"] for r in got["rows"]) == sorted(
+        [bg["id"], ok["call_id"], bad["call_id"], capped["call_id"]])
+    assert [r["call"] for r in X.calls("Branch", YESTERDAY, TODAY)["rows"]] == [branch["id"]]
+    assert X.calls(X.EVERY, YESTERDAY, TODAY)["unattributed"] == 0
     assert len(calls.read()["rows"]) == 5
 
 
@@ -296,7 +300,9 @@ def test_a_planted_miss_an_evaluation_false_positive_and_an_answer_said_wrong(wo
     assert w["outcome"].startswith(f"dismissed by {PERSON} at ")
     assert w["outcome"].endswith(": the drop was planted after the collection ran")
     assert w["record"] == f"/v2/history?call={ok['call_id']}&since="
-    assert [r["kind"] for r in X.failures(NET, YESTERDAY, TODAY)["rows"]] == ["planted_missed"]
+    # C2942: the answer said wrong was a person's call naming Default, so it is Default's too.
+    assert [r["kind"] for r in X.failures(NET, YESTERDAY, TODAY)["rows"]] == [
+        "planted_missed", "answer_wrong"]
     assert len(feedback.read()["rows"]) == 2
 
 

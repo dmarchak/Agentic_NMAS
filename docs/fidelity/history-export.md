@@ -11,7 +11,11 @@ Lab; Every network; a range past 31 days; an empty range), beside the board's HT
 1440, 1280 and 390 is the next step of this record.
 
 Templates compared: templates/v2/_history_export.html, templates/v2/_history_body.html
-Templates sha256: `daa17700f3fc3bd4dccd6ea305b2e643de0eaded33c0c44023311dfc45bf43a2`
+Templates sha256: `5d749512e94bb78826dfe8e6f093978cf9008dbbc4c566bf0cd57b0130fcea0b`
+
+Compared again 2026-11-10 (C2942): only the "Not on <network>" line's words changed (a call
+naming no network is now the installation's own, or one recorded before 2026-11-10). It is the
+same line in the same place, and every region's verdict below is unchanged.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

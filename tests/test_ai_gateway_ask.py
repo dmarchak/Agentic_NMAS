@@ -480,6 +480,29 @@ def test_the_subject_is_written_with_the_call_sent_or_refused(world):
     assert _row()["subject"] == subject and _row()["verdict"] == "ai_off"
 
 
+def test_the_network_a_call_names_is_written_with_it_sent_or_refused(world):
+    """C2942: a person's call names the network it is about, and its row records it, answered
+    or refused before anything was sent, so History › Export lists it under that network; a
+    call naming none records no network (the installation's own)."""
+    send, _ = _sending(_answer('{"echo": "w"}'))
+
+    def ask(network):
+        with pressed_by(ACTOR):
+            return gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                               actor=ACTOR, trigger=triggers.person(ACTOR), send=send,
+                               today="2026-10-25", network=network)
+
+    assert ask("lab9")["ok"]
+    assert _row()["network"] == "lab9" and _row()["verdict"] == "ok"
+    open(calls._path(), "w").close()
+    world.settings.pop("ai_hosted")
+    assert ask("lab9")["error"] == "ai_off"
+    assert _row()["network"] == "lab9" and _row()["verdict"] == "ai_off"
+    open(calls._path(), "w").close()
+    ask("")
+    assert "network" not in _row()
+
+
 def test_every_model_s_thinking_off_is_its_documented_form():
     """Haiku 5.5 takes `disabled`; Sonnet 5.5 refuses it and takes `between_tools` (the
     claude-api reference, read 2026-10-25); no task pins a thinking its model cannot take."""

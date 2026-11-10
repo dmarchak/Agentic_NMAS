@@ -189,6 +189,17 @@ def test_an_evaluation_trigger_is_taken_and_its_run_recorded(world):
     assert row["actor"] == RUN and fake.keys == [KEY]
 
 
+def test_a_requests_network_is_recorded_on_its_row(world):
+    """C2942: an evaluation's request naming its network records it on its row, so History ›
+    Export lists the call under that network; a request naming none records none."""
+    reqs = _requests("a", "b")
+    reqs[0]["network"] = "lab9"
+    got = _batch(reqs, FakeBatches())
+    assert got["ok"] is True, got
+    by_id = {r["batch"]["custom_id"]: r for r in _rows()}
+    assert by_id["r0"]["network"] == "lab9" and "network" not in by_id["r1"]
+
+
 def test_no_route_reaches_the_batch_path(monkeypatch):
     """Never a live feature: the routes' scan, seeded at `ask_batch`, finds no route; a route
     planted to call it is found (the scan can fail)."""

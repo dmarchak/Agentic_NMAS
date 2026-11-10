@@ -4029,3 +4029,44 @@ in CI's interpreter, confined; each worktree was removed after its run.
 **The result: 4 mutants and the canary, all killed.** Not mutated: `redact.redact_text` and
 `known_secret_values` themselves, unchanged here and checked with their own tier entries. Not
 done here: the five items already stored are masked in place by a host step after the deploy.
+
+## 2026-11-10: the network a call names, recorded on its row (C2942, Lab 9 B5), by hand
+
+**What changed in the tier:** the AI gateway (`modules/ai/gateway.py`). Before, `ask` took a
+call's *network* for the press's identity (C1854) and never recorded it. `ask_batch` never took
+one at all. So a person's or an evaluation's call row named no network, and History › Export
+(B5's API call and cost log) counted the call under Every network without being able to list it
+under its own.
+
+Now:
+- `ask` passes ``{"network": network}`` as `_prepared`'s `row_extra` when one is named;
+  `_prepared` already writes `row_extra` on the row before anything is recorded, so a refused
+  call carries it too;
+- `ask_batch` does the same for a request's optional ``network``.
+
+The danger the hand check guards:
+- the network dropped again;
+- an empty network recorded as ``""``, turning an installation call into a network's;
+- the batch path's network dropped, or recorded when none was named.
+
+Nothing about what is sent, masked, capped or refused changes: the row gains one key.
+
+**The method:** each mutant is one exact replacement of a changed line, required to match once,
+applied in a `scripts/nmas-control` throwaway worktree over 7f4658c8 with the change uncommitted
+(`scratchpad/c2942_mut.py`). The tests are tests/test_ai_gateway_ask.py's,
+tests/test_ai_batch.py's and tests/test_history_export.py's, run with no `-x`, confined, two
+workers; each worktree was removed after its run.
+- **Runs:** 2026-11-10 08:18:13 to 08:19:37 UTC (mutants 1 to 4); the canary 08:19:46 to
+  08:20:06 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `_prepared` raises before its row | killed (84 failed) | every gateway, batch and export test that asks |
+| 1 `ask`'s network not recorded (`row_extra=None`) | killed (4 failed) | `test_the_network_a_call_names_is_written_with_it_sent_or_refused` and three tests/test_history_export.py tests (a person's call under its network) |
+| 2 `ask` records the network always, `""` included | killed (18 failed) | `test_the_network_a_call_names_is_written_with_it_sent_or_refused` and the exact-row tests (`test_an_answer_is_returned_and_recorded_whole`, the refusals' rows) |
+| 3 a batched request's network not recorded | killed | `test_a_requests_network_is_recorded_on_its_row` |
+| 4 a batched request records a network when none is named | killed | `test_a_requests_network_is_recorded_on_its_row` |
+
+**The result: 4 mutants and the canary, all killed.** Not mutated: `_prepared`'s writing of
+`row_extra` and `calls.record`, unchanged here (the batch's `row_extra` is held by its own
+tests).

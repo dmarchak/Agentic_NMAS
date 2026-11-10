@@ -213,8 +213,8 @@ def _slug(name: str) -> str:
 
 def call_network(row: dict) -> str:
     """The network a call's row names, as its folder name, or "": the row's own ``network``
-    when it carries one, else a background trigger's. A person's or an evaluation's call
-    records none (the gateway takes it for the press's identity and does not keep it)."""
+    when it carries one (the gateway records the network a call names, sent or refused,
+    C2942), else a background trigger's; a call that names none is the installation's own."""
     named = row.get("network") or (row.get("trigger") or {}).get("network") or ""
     return _slug(str(named)) if named else ""
 
@@ -696,8 +696,8 @@ def header(kind: str, got: dict, *, by: str, now: float = None) -> list:
         lines.append(("in the range", calls_words(got["summary"])))
         if got["unattributed"]:
             lines.append(("not in this network's log", f"{got['unattributed']} calls in the "
-                          "range name no network (a person's or an evaluation's): they are in "
-                          "Every network's log"))
+                          "range name no network (the installation's own, or recorded before "
+                          "2026-11-10): they are in Every network's log"))
     else:
         lines.append(("in the range", failures_words(got) or "nothing"))
         lines.append(("not recorded", NOT_RECORDED))

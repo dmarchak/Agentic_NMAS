@@ -33,7 +33,7 @@
     <div class="card-head"><h2>AI calls and cost</h2><span class="card-head-how">{{ how('history-export', op='the export') }}</span></div>
     <p class="muted small">Every call in the range: when, feature, trigger (person or background, with who or which job), model, prompt version, tokens in and out, cache, dollars, latency, verdict (ok, refused by validation, a gate's refusal), and the call's History link. A total row per day and per feature.</p>
     <dl class="facts"><div><dt>In the range</dt><dd>{{ x.calls }}</dd></div>
-      {%- if x.unattributed %}<div><dt>Not on {{ x.network }}</dt><dd>{{ x.unattributed }} call{{ '' if x.unattributed == 1 else 's' }} in the range name no network (a person's or an evaluation's): they are in Every network's log.</dd></div>{% endif %}</dl>
+      {%- if x.unattributed %}<div><dt>Not on {{ x.network }}</dt><dd>{{ x.unattributed }} call{{ '' if x.unattributed == 1 else 's' }} in the range name no network (the installation's own, or recorded before 2026-11-10): they are in Every network's log.</dd></div>{% endif %}</dl>
     <div class="hist-export-actions"><a class="btn btn-primary" href="{{ url_for('v2.history_export_download', kind='calls', fmt='csv', **q) }}" download>Download CSV</a><a class="btn" href="{{ url_for('v2.history_export_download', kind='calls', fmt='json', **q) }}" download>Download JSON</a></div>
   </section>
   <section class="card" aria-label="False positives and failures">
