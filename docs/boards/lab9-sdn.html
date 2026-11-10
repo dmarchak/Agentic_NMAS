@@ -173,7 +173,7 @@ exit</pre>
 </div>
 
 <!-- ============================================================ B -->
-<div class="artlabel"><strong>B · SDN › Apps: DNS filtering and DHCP steering</strong>: each app is flows Mercury installs and keeps as intent, steering to a service the network declares. The DNS filter is a separate service (lab tooling, like Kea is to DHCP); Mercury owns the steering, the settings and the filter's health.</div>
+<div class="artlabel"><strong>B · SDN › Apps: DNS filtering and DHCP steering</strong>: each app is flows Mercury installs and keeps as intent, steering to a service the network declares. The DNS filter is a separate service (lab tooling, like Kea is to DHCP); Mercury owns the steering, the settings and the filter's health. <em>Revised 2026-11-10 (self-signed, Phase 7 mode): the <b>DHCP steering</b> card is signed as drawn, its server read from a NetBox Service <span class="mono">dhcp</span> on the router and its flows written through the one flow path as <span class="mono">feature:dhcp-unicast</span>. The <b>DNS filtering</b> card is superseded: DNS is Obj 3's controller app (packet-in, its verdict service reached through the app's manifest-declared egress), deployed and drawn as an app on SDN › Apps.</em></div>
 <div class="art">
 <nav class="side" aria-label="Main">
 <div class="brand">Mercury</div>
@@ -501,7 +501,7 @@ exit</pre>
 </div>
 
 <!-- ============================================================ I -->
-<div class="artlabel"><strong>I · SDN › Flows: Analyse this network</strong>: a person-triggered analyst over the live collection (flows, port rates, drop rules, link status), every finding citing the evidence it read; a planted-issue sheet compares what it found with what was planted.</div>
+<div class="artlabel"><strong>I · SDN › Flows: Analyse this network</strong>: a person-triggered analyst over the live collection (flows, port rates, drop rules, link status), every finding citing the evidence it read; a planted-issue sheet compares what it found with what was planted. <em>Self-signed 2026-11-10 (Phase 7 mode) for Lab 9 B1: one recorded AI call as the person who pressed, on the network's pin (economy tier), over the collection; every finding's evidence ids checked in code against what the collection holds (a claim citing nothing it holds is dropped and counted); link status from each switch's port description (LINK_DOWN), not from the topology read's presence. The planted issues are typed by a person and never sent to the model.</em></div>
 <div class="art">
 <nav class="side" aria-label="Main">
 <div class="brand">Mercury</div>
