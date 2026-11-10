@@ -96,6 +96,13 @@ def _bodies(v):
         "sdn_dhcp_v2.remove_preview": (409, ("form", {"list": LIST}),
                                        "the network has no controller connection to name: "
                                        "refused naming why, nothing read"),
+        # Lab 9 B2 (board lab9-sdn E): SDN › Policies' check again and Preview the flows….
+        "sdn_policies_v2.check": (400, ("form", {"list": LIST}),
+                                  "the form carries no drafted policy: refused before any "
+                                  "check or read"),
+        "sdn_policies_v2.preview": (400, ("form", {"list": LIST}),
+                                    "the form carries no checked policy: refused before any "
+                                    "switch is read"),
         # The operator's decision of 2026-11-10: Add an app as a Draft…'s preview.
         "sdn_v2.apps_draft_preview": (400, ("form", {"list": LIST}),
                                       "no folder was chosen: refused before the repository is "

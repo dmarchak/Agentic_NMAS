@@ -458,6 +458,14 @@ FIELDS = {
         "form.<named at run time>": "a secret's own fields, kept in the secrets store; the "
                                     "connection check it runs sends Mercury's word"},
     "settings_v2.install_test": {},
+    # Lab 9 B2 (board lab9-sdn E): SDN › Policies' Draft the policy; the person's answer to
+    # Mercury's own question (which host a word means) continues the same sentence.
+    "sdn_policies_v2.draft": {
+        "form.words": TYPED("sdn_policy", "sentence"),
+        "form.word": TYPED("sdn_policy", "sentence"),
+        "form.pick": "a candidate Mercury offered (a NetBox host's name, or a tag)",
+        "request.<passed to submitted_list>": "the network's name (routes.list_param)",
+        "request.<passed to named_list>": "the network's name (routes.list_param)"},
 }
 
 _REQUEST = {"form", "args", "values", "files", "json", "data", "cookies", "headers"}

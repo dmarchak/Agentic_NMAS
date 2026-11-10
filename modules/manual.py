@@ -112,6 +112,8 @@ PAGES = (
     ("dhcp-steering", "Steer DHCP to the network's server", H, "how-it-works/dhcp-steering.md"),
     ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
      "how-it-works/sdn-flows.md"),
+    ("sdn-policy", "An SDN policy in words: the intent controller", H,
+     "how-it-works/sdn-policy.md"),
     ("openflow-config", "Configure a switch's OpenFlow from NetBox", H,
      "how-it-works/openflow-config.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
@@ -144,6 +146,7 @@ PAGES = (
     ("topology", "Topology", "Screens", "screens/topology.md"),
     ("sdn", "SDN", "Screens", "screens/sdn.md"),
     ("sdn-switches", "SDN › Switches", "Screens", "screens/sdn-switches.md"),
+    ("sdn-policies", "SDN › Policies", "Screens", "screens/sdn-policies.md"),
     ("show-commands-screen", "Show commands", "Screens", "screens/show-commands.md"),
     ("logs", "Logs", "Screens", "screens/logs.md"),
     ("dhcp", "DHCP", "Screens", "screens/dhcp.md"),
@@ -250,6 +253,8 @@ OPERATIONS = {
     # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
     "heal-proposal": ("modules.heal.propose", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
+    # Lab 9 Objective B2 (board lab9-sdn E): a policy in words, the intent controller.
+    "sdn-policy": ("modules.sdn.policy_intent", "STEPS"),
     # Lab 9 Objective 2 (C2902): a switch's OpenFlow configuration from the NSOT export.
     "openflow-config": ("modules.sdn.openflow_config", "CLI_STEPS"),
     # C2904 (board lab9-sdn B): DHCP steering, compiled from the NSOT, one plan per switch.

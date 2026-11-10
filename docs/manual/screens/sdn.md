@@ -2,7 +2,8 @@
 
 A network's SDN controllers and the flow tables of the switches they manage, under OBSERVE.
 The sidebar's SDN opens it for the network you are on (`/v2/sdn?list=<network>`). Its tabs are
-**Controllers**, **Flows**, **Apps** (the apps each controller runs, deployed by Mercury) and
+**Controllers**, **Flows**, **Apps** (the apps each controller runs, deployed by Mercury),
+**Policies** (a policy in words, checked and confirmed: [SDN › Policies](sdn-policies)) and
 **Responses** (what awaits you, HITL or AUTO, the loop and the detection rules).
 
 The connections are the network's own, set in Settings › Integrations' SDN controllers card

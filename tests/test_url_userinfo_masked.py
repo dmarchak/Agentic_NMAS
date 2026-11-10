@@ -84,6 +84,9 @@ def _sdn_driver_scrub() -> str:
 #: Every masking entry point, called through its own shape, with the planted URL.
 ENTRY_POINTS = {
     "modules/sdn/drivers/base.py:_scrub": _sdn_driver_scrub,
+    # Lab 9 B2: SDN › Policies' words and refusals, masked as redact_text masks.
+    "modules/sdn/policy_intent.py:_masked": lambda: (
+        __import__("modules.sdn.policy_intent", fromlist=["_masked"])._masked(PLANTED)),
     # C1693's keyed-hash comparison masks each line as redact_text does, keeping the values.
     "modules/secret_compare.py:masked_values": lambda: (
         __import__("modules.secret_compare", fromlist=["masked_values"]).masked_values(PLANTED)[0]),

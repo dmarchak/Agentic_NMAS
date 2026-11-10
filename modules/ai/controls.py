@@ -126,6 +126,18 @@ CONTROLS = {
         "beside": "the collection's Collect now, the planted-issue sheet and its download, and "
                   "the flow tables below",
     },
+    # Lab 9 Objective B2 (board lab9-sdn E): the intent controller's words box. Its answer is
+    # checked in code before any flow is shown; Mercury's own question back (which host a word
+    # means) continues the same draft with the same mark.
+    "sdn_policy": {
+        "task": "sdn_policy",
+        "words": "Draft an SDN policy from words",
+        "endpoints": ("sdn_policies_v2.draft",),
+        "template": "v2/_sdn_policies.html",
+        "also": ("v2/_sdn_policy_answer.html",),
+        "screen": "SDN › Policies, Describe a policy",
+        "beside": "SDN › Flows' Add on a switch, a flow typed by hand through the same core",
+    },
     # Board H, H8: a background feature, never a press. No screen draws a control for it yet
     # (section 12's Analyse again, a person's press behind its cost confirm, is not built):
     # Needs attention's can't-fix row and the notice draw what it kept.

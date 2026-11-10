@@ -3679,6 +3679,118 @@ def _dhcp_steering(client, _lab, _mp):
         mp.undo()
 
 
+def _sdn_policies(client, _lab, _mp):
+    """SDN › Policies (board lab9-sdn artboard E; Lab 9 Objective B2) on Lab: the Lab 9 world of
+    tests/test_sdn_policy_intent.py (its NetBox export with end hosts and the protected DNS and
+    DHCP Services, Ryu's captured topology, FakeRyu behind the real Ryu driver), hosted AI
+    allowed and the adapter answering each draft as planted: Mercury's question (its buttons),
+    an unknown host, an impossible rate limit (its offers) and its Drop instead…, the model's
+    question back, a checked policy, its preview and its Send's result, a refused preview, and
+    the tab with the committed policy listed. Its patches and stores are undone after."""
+    import json
+    import shutil
+    import tempfile
+
+    import pytest
+
+    from modules import config, settings_schema
+    from modules.ai import anthropic_adapter, calls, gateway
+    from modules.nsot import export as X
+    from modules.sdn import flow_intent
+    from modules.sdn import policy_intent as PI
+    from modules.sdn.drivers.base import Connection
+    from modules.sdn.drivers.ryu import RyuDriver, host_from_ryu, link_from_ryu
+    from tests.sdn_fakes import Clock
+    from tests.test_openflow_golden import fake_netbox
+    from tests.test_sdn_policy_intent import (BASE, CONN, Fabric, _ryu_capture, _table_miss,
+                                              answer, lab9_records, rule)
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-policies-")
+    store = os.path.join(config.list_data_path("Lab"), flow_intent.FILE_NAME)
+    had_store = os.path.exists(store)
+    try:
+        records = lab9_records()
+        mp.setattr("modules.inventory.source_config.load",
+                   lambda name: {"source": "netbox", "filters": {"role": "openflow-switch"}})
+        get, _calls = fake_netbox(records)
+        built = X.build("Lab", get=get, version=lambda: records["netbox_version"])
+        doc = X.parse(built["bytes"])
+        mp.setattr(X, "read", lambda network, rev="HEAD": {
+            "ok": True, "export": doc, "sha256": doc["sha256"], "error": ""})
+        cap = _ryu_capture()
+        learned = host_from_ryu({"mac": "02:00:00:00:00:40", "ipv4": ["198.51.100.40"],
+                                 "ipv6": [], "port": {"dpid": "0000029625637b84",
+                                                      "port_no": "00000011",
+                                                      "hw_addr": "02:90:d3:08:55:b3",
+                                                      "name": "Ethernet17"}})
+        mp.setattr(PI, "_stored_topology", lambda network: {
+            "state": "read", "why": "", "controllers": [{
+                "name": CONN, "state": "read",
+                "switches": [{"dpid": d} for d in cap["switches"]],
+                "links": [link_from_ryu(e) for e in cap["links"]], "hosts": [learned]}]})
+        fake = Fabric(BASE, flows={d: _table_miss() for d in cap["switches"]},
+                      dpids=cap["switches"])
+        mp.setattr("modules.sdn.flow_ops._driver", lambda network, name, driver=None: {
+            "ok": True, "error": "", "connection": {"name": name, "own_cookies": [0]},
+            "driver": RyuDriver(Connection(BASE), session=fake, clock=Clock(),
+                                sleep=lambda s: None)})
+        mp.setattr("modules.sdn.flow_ops.COUNTER_INTERVAL", 0)
+        allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-11-09T05:00:00Z",
+                                 "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
+        real_get = settings_schema.get_setting
+        mp.setattr(settings_schema, "get_setting",
+                   lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
+        mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
+        mp.setattr("modules.ai.controls._key_set", lambda: True)
+        mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+        planted = {"answer": None}
+        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+            status=200, body={"content": [{"type": "text",
+                                           "text": json.dumps(planted["answer"])}],
+                              "stop_reason": "end_turn",
+                              "usage": {"input_tokens": 900, "output_tokens": 120}},
+            attempts=1, latency_s=0.3))
+        base = "/v2/sdn/policies"
+
+        def draft(words, **extra):
+            return client.post(f"{base}/draft", data=dict({"list": "Lab", "words": words},
+                                                          **extra)).get_data(as_text=True)
+
+        def hidden(html):
+            import re
+            from html import unescape
+            return {m.group(1): unescape(m.group(2)) for m in re.finditer(
+                r'<input type="hidden" name="([a-z_]+)" value="([^"]*)"', html)}
+        assert "Describe a policy" in client.get(f"{base}?list=Lab").get_data(as_text=True)
+        assert "Which db?" in draft("block h1 from the db on tcp 5432")
+        assert "Unknown host" in draft("block h9 from web-1 on tcp 80")
+        planted["answer"] = answer(rule("rate_limit", "h2", "web-1", rate=1000))
+        impossible = draft("rate-limit h2 to web-1 to 1 Mbit/s")
+        assert "Drop instead" in impossible
+        assert "made a drop instead" in client.post(f"{base}/check", data=dict(
+            hidden(impossible), instead_kind="block")).get_data(as_text=True)
+        planted["answer"] = answer(outcome="ask", question="Which way should the traffic go?")
+        assert "One question first" in draft("only h1 and web-1 on tcp 80")
+        planted["answer"] = answer(rule("block", "h2", "tag:web", "tcp", 443, duration=3600))
+        checked = draft("Block h2 from reaching the web servers on TCP 443 for an hour")
+        card = client.post(f"{base}/preview", data=hidden(checked)).get_data(as_text=True)
+        assert "Send 2 requests to" in card
+        done = client.post(f"{base}/confirm", data=hidden(card)).get_data(as_text=True)
+        assert "Done, verified" in done, done[:400]
+        assert client.post(f"{base}/preview", data={
+            "list": "Lab", "policy": json.dumps({"rules": [
+                rule("block", "h1", "any", "udp")]})}).status_code == 409
+        page = client.get(f"{base}?list=Lab").get_data(as_text=True)
+        assert "block h2 to the hosts tagged web" in page
+        assert client.get(f"{base}/view?list=Lab").status_code == 200
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+        if not had_store and os.path.exists(store):
+            os.remove(store)
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -3696,6 +3808,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
+                   _sdn_policies,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
                    _change_record,

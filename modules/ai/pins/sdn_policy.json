@@ -1,0 +1,14 @@
+{
+  "words": "Draft an SDN policy from words (SDN › Policies)",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 6000,
+  "max_tokens": 1500,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "The operator's replan of 2026-11-09, item 4: \"the SDN network's AI uses Haiku\" (the economy tier, as sdn_explain and sdn_classify). The model only states the sentence as a closed, flat policy over names Mercury resolved in code; every check that decides anything is code (modules/sdn/policy_intent.py). Not measured yet: no recorded cases exist for this task.",
+    "max_prompt_tokens": "Provisional, not measured: the prompt (about 700 tokens), the rule vocabulary (about 150), a sentence of at most 300 characters and one line per resolved name (a sentence names a handful; a tag of 50 hosts is one line). 6,000 holds a request about four times the largest expected, and is far under Haiku 5.5's long tier (100,000). The first recorded cases set it to about 2.5x the largest measured (C1757's rule).",
+    "max_tokens": "Provisional, not measured: an answer is at most four flat rules of seven short fields, a question or a reason, a few hundred tokens. The first measurement sets it to about 2.5x the largest output (C1757's rule).",
+    "thinking": "Off: restating one sentence as a closed structure over given names; nothing is judged by the model that code does not check after it."
+  }
+}

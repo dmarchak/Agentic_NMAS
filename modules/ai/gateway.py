@@ -111,6 +111,9 @@ TYPED_PARTS = {
     "sdn_classify": (),               # a detection's pack: Mercury's own data
     "sdn_analyse": (),                # a network's collected snapshot: Mercury's own data (the
                                       # planted issues a person typed are never sent: Lab 9 B1)
+    "sdn_policy": ("sentence",),      # SDN › Policies (Lab 9 B2): the policy as typed, its
+                                      # quoted text held back as placeholders (policy_intent);
+                                      # the names part is Mercury's own (NetBox's names)
     "heal_analysis": (),              # a heal incident's pack and its step log: Mercury's own
                                       # data (its configuration said only by kind)
     "change_record": (),              # a deploy preview's shape: Mercury's own data (the

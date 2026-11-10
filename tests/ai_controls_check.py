@@ -42,6 +42,9 @@ MARKUP = {
     # Lab 9 B1 (board I): SDN › Flows' Analyse this network.
     "sdn_analyse": {"button": r'<button\b[^>]*\bid="sdn-analyse-ask"[^>]*>', "input": None},
     "change_record": {"button": r'<button\b[^>]*\bdata-op="change-record"[^>]*>', "input": None},
+    # SDN › Policies (Lab 9 B2): Describe a policy's words box and Draft the policy.
+    "sdn_policy": {"button": r'<button\b[^>]*\bdata-op="sdn-policy"[^>]*>',
+                   "input": r'<textarea\b[^>]*\bid="pol-words"[^>]*>'},
     # The toolbar assistant (card P7, stage 1): its panel, drawn the first time it opens on a
     # page (routes/assistant_v2.panel).
     "assistant": {"button": r'<button\b[^>]*\bdata-op="assistant"[^>]*>',

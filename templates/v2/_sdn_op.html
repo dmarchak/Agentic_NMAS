@@ -11,7 +11,7 @@
 {%- if d.state == 'refused' %}
 <p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Nothing was sent:</strong> {{ d.error }}.</span></p>
 {%- elif d.state == 'preview' %}
-<div class="sdn-op-hd"><h3>{% if d.kind == 'response' %}{{ d.label }}{% if d.params.source %} from <span class="mono">{{ d.params.source }}</span>{% endif %} on <span class="mono">{{ d.dpid_hex }}</span>{% elif d.kind == 'reapply' %}{{ d.label }} on <span class="mono">{{ d.dpid_hex }}</span>{% else %}Preview: {{ d.count }} request{{ 's' if d.count != 1 }} on <span class="mono">{{ d.dpid_hex }}</span>{% endif %}</h3> <span class="faint small">nothing sent yet</span> {{ how('sdn-flows', compact=True, op='Preview') }}</div>
+<div class="sdn-op-hd"><h3>{% if d.kind == 'response' %}{{ d.label }}{% if d.params.source %} from <span class="mono">{{ d.params.source }}</span>{% endif %} on <span class="mono">{{ d.dpid_hex }}</span>{% elif d.kind in ('reapply', 'policy') %}{{ d.label }} on <span class="mono">{{ d.dpid_hex }}</span>{% else %}Preview: {{ d.count }} request{{ 's' if d.count != 1 }} on <span class="mono">{{ d.dpid_hex }}</span>{% endif %}</h3> <span class="faint small">nothing sent yet</span> {{ how('sdn-flows', compact=True, op='Preview') }}</div>
 {%- if d.kind == 'reapply' %}
 <p class="small"><strong>Lost:</strong> {{ d.reapply_words }}.</p>
 {%- endif %}
@@ -35,11 +35,12 @@
 {%- endif %}
 <h4 class="sdn-op-h">Verify</h4>
 <ul class="sdn-op-list">{% for c in d.checks %}<li>{{ c }}</li>{% endfor %}</ul>
-<form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% elif d.kind == 'reapply' %}hx-post="{{ url_for('sdn_v2.reapply_confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+<form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% elif d.kind == 'reapply' %}hx-post="{{ url_for('sdn_v2.reapply_confirm') }}"{% elif d.kind == 'policy' %}hx-post="{{ url_for('sdn_policies_v2.confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ d.network }}">
   <input type="hidden" name="ask" value="{{ d.ask }}">
   <input type="hidden" name="hash" value="{{ d.hash }}">
   {%- if d.kind == 'response' %}<input type="hidden" name="rid" value="{{ d.rid }}"><input type="hidden" name="action" value="{{ d.action }}">{% endif %}
+  {%- if d.kind == 'policy' %}<input type="hidden" name="policy" value="{{ d.policy }}">{% endif %}
   {%- if d.needs_typed %}
   <label class="small">Type <span class="mono">{{ d.needs_typed }}</span> to confirm <input type="text" name="typed" autocomplete="off" required></label>
   {%- endif %}

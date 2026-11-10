@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "Kind": {
+      "enum": [
+        "block",
+        "allow",
+        "rate_limit"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "Outcome": {
+      "description": "What the answer is: the builder's choices; one question back, when the words leave\nthe choice to the person (which device, or per device); or a refusal, saying why.",
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "Protocol": {
+      "enum": [
+        "tcp",
+        "udp",
+        "icmp",
+        "any"
+      ],
+      "title": "Protocol",
+      "type": "string"
+    },
+    "Rule": {
+      "additionalProperties": false,
+      "description": "One rule, flat and closed: every field required (the provider's schema has no union);\na field the kind does not use is 0.",
+      "properties": {
+        "destination": {
+          "title": "Destination",
+          "type": "string"
+        },
+        "duration_s": {
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "port": {
+          "title": "Port",
+          "type": "integer"
+        },
+        "protocol": {
+          "$ref": "#/$defs/Protocol"
+        },
+        "rate_kbps": {
+          "title": "Rate Kbps",
+          "type": "integer"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "destination",
+        "protocol",
+        "port",
+        "rate_kbps",
+        "duration_s"
+      ],
+      "title": "Rule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The policy the sentence states, as rules over the names given; or one question back,\nwhen the words leave a choice to the person; or why it cannot be stated.",
+  "properties": {
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/Rule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "question",
+    "why_not",
+    "rules"
+  ],
+  "title": "PolicyDraft",
+  "type": "object"
+}

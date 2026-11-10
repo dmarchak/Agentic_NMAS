@@ -115,10 +115,13 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html
-Templates sha256: `ed2efe67e329b44e454d2ca838bb8739de5d6c3a4b2e83fc1d561e83af82d94b`
+Templates sha256: `17a52e36fb7785a992a914131be3bada01f94e17de4893b6aa3aff14a21fef1b`
 Hashed again 2026-11-10 for Lab 9 B1 (board lab9-sdn I, the "I:" regions above):
 `_sdn_analyse.html` (new, in the compared list) draws Analyse this network, its findings and the
 planted-issue sheet; `_sdn_view.html` only includes it on Flows.
+Hashed again 2026-11-10 for Lab 9 B2 (board lab9-sdn E): `_sdn_tabs.html` gains the Policies
+tab and `_sdn_op.html` a `policy` kind (its header, its Send target and a carried `policy`
+field); SDN › Policies itself has its own record, docs/fidelity/sdn-policies.md.
 Hashed again 2026-11-10 for Lab 9 Objective 2 (C2902; board lab9-sdn A): the SDN tabs moved into
 their own partial, `_sdn_tabs.html`, which every tab's region draws, and gained Switches between
 Controllers and Flows (its own record, docs/fidelity/sdn-switches.md). The tabs' row is
@@ -169,6 +172,14 @@ browser's own file input, whose words are the browser's (the board's note says s
 preview lists files with " · " between path, bytes and hash, and the built card draws them as a
 table, as the Apps tab's tables are (a deviation of layout only, no control or field moves;
 log: I-2 W 3). Nothing else on the tab moves.
+Hashed again 2026-11-10 for Lab 9 Objective B2 (board lab9-sdn E, self-signed,
+docs/STANDING_APPROVAL_LOG.md "Board lab9-sdn E"): `_sdn_tabs.html` gains Policies between Apps
+and Responses (its own record, docs/fidelity/sdn-policies.md), and `_sdn_op.html` gains a
+policy's kind: its preview headed as a re-apply's is ("Policy <id>: <words> on <DPID>"), its
+Send posting to SDN › Policies' confirm with the policy carried beside the ask. A flow's, a
+response's and a re-apply's card draw exactly as before; no other region moves. Compared by
+reading the templates, with no new shot (the templates before hashed
+`2be1dcca70c54bf8cb1c854fc300a977f85076c3a05dba42f861aa19c2ccec1e`).
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

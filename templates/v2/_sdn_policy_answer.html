@@ -1,0 +1,40 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- A draft's or a check's answer on SDN › Policies (board lab9-sdn, artboard E), drawn in the
+    answer's slot: checked against NetBox and the network, with Preview the flows…; Mercury's
+    question before any call (Which db?), with one button per candidate and Neither; the
+    model's one question back; or a refusal before any flow (unknown, impossible with its
+    offers, contradictory, protected with its narrowing, a conflict, malformed), each naming
+    what it compared. modules/sdn_policies_page.answer_view builds `a`. -#}
+{%- set aic = ai_control('sdn_policy') -%}
+<div class="pol-ans pol-ans-{{ a.state }}" data-kind="{{ a.kind }}">
+{%- if a.typed %}<p class="small faint">You asked: “{{ a.typed }}”{% if a.decided %}; drafted as “{{ a.decided }}”{% endif %}.</p>{% endif %}
+{%- if a.typed_masked %}{{ ai.typed_masked(a.typed_masked) }}{% endif %}
+{%- if a.state == 'checked' %}
+<h3>Checked against NetBox and the network</h3>
+{%- if a.rules %}<p class="small"><strong>The policy:</strong> {{ a.rules | join('; ') }}{% if a.instead.kind %}, <strong>made a drop instead</strong> at your choice{% elif a.instead.place %}, <strong>placed at switch {{ a.instead.place }}</strong> at your choice{% endif %}.</p>{% endif %}
+<div class="table-wrap"><table class="table pol-checks"><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>
+{%- for r in a.rows %}<tr><td>{{ r.check }}</td><td>{{ r.words }}</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="notice notice-ok pol-passed" role="status">{{ icon('check', 16) }}<div><p><strong>Checked.</strong> Nothing has been sent.</p>
+<form class="op-act" hx-post="{{ url_for('sdn_policies_v2.preview') }}" hx-target="#pol-op" hx-swap="innerHTML"><input type="hidden" name="list" value="{{ a.network }}"><input type="hidden" name="policy" value="{{ a.policy }}"><button class="btn btn-small btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-policy" title="Compiles the policy to flows on its switch and reads the switch's table: the exact requests, the effect in words and their hash; nothing is sent until you confirm"><span class="op-idle">Preview the flows…</span><span class="op-busy">Reading…</span></button>{{ how('sdn-policy', 'preview', compact=True, op='Preview the flows') }}</form></div></div>
+{%- elif a.state == 'asked' %}
+<div class="notice notice-warn pol-question" role="status">{{ icon('info', 16) }}<div><p><strong>{{ a.title }}</strong> {{ a.words }} · asked before any AI call; a choice drafts the policy {{ ai.mark(aic) }}</p>
+<form class="pol-pick" hx-post="{{ url_for('sdn_policies_v2.draft') }}" hx-target="#pol-answer" hx-swap="innerHTML"><input type="hidden" name="list" value="{{ a.network }}"><input type="hidden" name="words" value="{{ a.typed }}"><input type="hidden" name="word" value="{{ a.choices.word }}">
+{%- for c in a.choices.candidates %}<button class="btn btn-small" type="submit" name="pick" value="{{ c.key }}" hx-disabled-elt="this" data-op="sdn-policy"{{ ai.attrs(aic, 'configure') }} title="{{ c.label }}: drafts the policy with “{{ a.choices.word }}” read so, one recorded AI call"><span class="op-idle">Draft with {{ c.key }}</span><span class="op-busy">Drafting…</span></button>{{ how('sdn-policy', compact=True) }} {% endfor %}
+<button class="btn btn-small" type="submit" name="pick" value="" hx-disabled-elt="this" data-op="sdn-policy"{{ gate('configure') }} title="Ends the draft; nothing is sent"><span class="op-idle">Neither</span><span class="op-busy">Ending…</span></button>{{ how('sdn-policy', compact=True) }}</form>
+{{- ai.reason(aic) }}</div></div>
+{%- elif a.state == 'question' %}
+<div class="notice notice-warn pol-question" role="status">{{ icon('info', 16) }}<p><strong>{{ a.title }}:</strong> {{ a.words }} Answer it in the policy's words, and draft again; nothing was sent.</p></div>
+{%- else %}
+<div class="notice notice-danger pol-refusal" role="alert">{{ icon('warn', 16) }}<div><p><strong>{{ a.title or 'Refused' }}:</strong> {{ a.words }}. Nothing was sent.</p>
+{%- if a.offers and a.policy %}
+<form class="pol-offers" hx-post="{{ url_for('sdn_policies_v2.check') }}" hx-target="#pol-answer" hx-swap="innerHTML"><input type="hidden" name="list" value="{{ a.network }}"><input type="hidden" name="policy" value="{{ a.policy }}"><span class="small">Offer:</span>
+{%- for o in a.offers %} {% if o.kind %}<button class="btn btn-small" type="submit" name="instead_kind" value="{{ o.kind }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again as a drop; no AI call; nothing is sent"><span class="op-idle">Drop instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% else %}<button class="btn btn-small" type="submit" name="instead_place" value="{{ o.place }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again with its meter on {{ o.name }}, which reports meters; no AI call; nothing is sent"><span class="op-idle">Rate-limit at {{ o.name }} instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% endif %}{% endfor %}</form>
+{%- endif %}</div></div>
+{%- endif %}
+<p class="faint small">{% if a.by == 'mercury' %}Answered by Mercury in code: no AI call was made, nothing was spent.{% elif a.call_id %}One AI call, ${{ a.cost }}: <a href="{{ url_for('v2.history_page', call=a.call_id) }}">the call</a>.{% else %}Checked by Mercury in code, with no AI call.{% endif %}</p>
+{%- if a.call_id and a.by != 'mercury' %}
+{%- with fb=ai_feedback(a.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+{%- endif %}
+</div>

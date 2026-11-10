@@ -282,6 +282,11 @@ PAGE_RECORD = {
     "sdn_dhcp_v2.remove_confirm": ("templates/v2/_sdn_dhcp.html",
                                    ("s.outcome == 'verified'", "w.checks", "s.rollback"),
                                    "v2.history_page"),
+    # Lab 9 B2 (board lab9-sdn E): a policy's Send, the same card's result in place, its run on
+    # History the same way and the policy then listed on SDN › Policies.
+    "sdn_policies_v2.confirm": ("templates/v2/_sdn_op.html",
+                                ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
+                                "v2.history_page"),
     # P6 (board controller-app-deploy, artboards F to H): the controller app deploy's result in
     # place of its card (the outcome, the post-check, the rollback's, the receipt), read again
     # on History (`history_sources.controller_deploys`).

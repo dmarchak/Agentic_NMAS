@@ -118,6 +118,9 @@ NOT_DIRECT = {
                            "path (C2904)",
     "sdn_dhcp_v2.remove_confirm": "removes DHCP steering through the switches' controller, the "
                                   "authority's own path (C2904)",
+    "sdn_policies_v2.confirm": "applies a checked policy's flows through the switch's "
+                               "controller (the flow-operation core), the authority's own path "
+                               "(Lab 9 B2)",
     "sdn_v2.watch_propose": "makes a watched stream a response awaiting a person (C2313) and "
                             "sends nothing; the response is sent by sdn_v2.response_confirm, "
                             "through the switch's controller",

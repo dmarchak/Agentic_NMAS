@@ -89,6 +89,15 @@ SIGNED_OFF = {
                                         "under the Phase 7 mode 2026-11-10 "
                                         "(docs/STANDING_APPROVAL_LOG.md, its 'Board lab9-sdn A' "
                                         "row); compared, docs/fidelity/sdn-switches.md"),
+    "sdn_policies.html": ("2026-11-10", "OBSERVE › SDN › Policies (Lab 9 Objective B2, the "
+                                        "intent controller): docs/boards/lab9-sdn.html "
+                                        "artboard E (Describe a policy, Checked against NetBox "
+                                        "and the network, Questioned or refused before any "
+                                        "flow, Refused by a protected flow), self-signed under "
+                                        "the Phase 7 mode 2026-11-10, its preview SDN › Flows' "
+                                        "card (docs/STANDING_APPROVAL_LOG.md, its 'Board "
+                                        "lab9-sdn E' row); compared, "
+                                        "docs/fidelity/sdn-policies.md"),
     "logs.html": ("2026-10-11", "the sidebar's Logs, a live tail (C675, the operator's design, "
                                 "2026-10-11): board D (LogsTail, canvas v110, page 'History, "
                                 "Query'), drawn under the Phase 7 mode and counted as signed off "

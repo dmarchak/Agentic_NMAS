@@ -190,7 +190,8 @@ ANSWER_TEMPLATES = {"_explain.html": "x.call_id", "_history_ask_words.html": "w.
                     "_intent_words.html": "w.call_id", "_sdn_responses.html": "a.call_id",
                     "_change_record.html": "v.call_id",
                     "_assistant_answer.html": "got.call_id",
-                    "_sdn_analyse.html": "x.call_id"}
+                    "_sdn_analyse.html": "x.call_id",
+                    "_sdn_policy_answer.html": "a.call_id"}
 
 
 @pytest.mark.parametrize("name, var", sorted(ANSWER_TEMPLATES.items()))
@@ -211,9 +212,15 @@ def test_the_answers_templates_are_every_ai_answer():
     # Explain's control is drawn by _explain_ask.html, which the answer card, _explain.html,
     # includes at its foot (board AlertsExplain revised 2026-10-29), and the block above it.
     # The assistant's control is its panel, _assistant_panel.html, whose answer region the
-    # route fills with _assistant_answer.html (card P7, stage 1).
-    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html", "_assistant_answer.html"}) | {
-        "_explain_ask.html", "_assistant_panel.html"}
+    # route fills with _assistant_answer.html (card P7, stage 1). SDN › Policies' control is
+    # the words box, _sdn_policies.html, whose answer the route draws with
+    # _sdn_policy_answer.html (Lab 9 B2, board lab9-sdn E).
+    assert drawn == (set(ANSWER_TEMPLATES) - {"_explain.html", "_assistant_answer.html",
+                                              "_sdn_policy_answer.html"}) | {
+        "_explain_ask.html", "_assistant_panel.html", "_sdn_policies.html"}
+    assert "v2/_sdn_policy_answer.html" in open(os.path.join(ROOT, "routes",
+                                                             "sdn_policies_v2.py"),
+                                                encoding="utf-8").read()
     assert "_explain_ask.html" in open(os.path.join(ROOT, "templates", "v2", "_explain.html"),
                                        encoding="utf-8").read()
     assert 'id="asst-answer"' in open(os.path.join(ROOT, "templates", "v2",

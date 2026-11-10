@@ -1671,6 +1671,41 @@ def dhcp_steering():
     ])
 
 
+def sdn_policy():
+    return svg(560, (
+        "A policy in words on SDN › Policies: quoted text is held back; every name is resolved "
+        "in code against the committed NSOT export and the controller's learned hosts, a word "
+        "naming several hosts asked back and an unknown one refused, with no call; one "
+        "recorded, capped AI call returns a structured policy only; code checks it (names, "
+        "impossible, contradictory within the request and against committed policies, the "
+        "installed flows, the protected flows) before any flow is shown; it is compiled on the "
+        "source's ingress switch and previewed by the flow-operation core; you confirm, bound "
+        "to the requests' hash; every check runs again, the switch is held, each request is "
+        "sent through the controller and the table read back, a failure rolled back; each flow "
+        "is recorded as the policy, and later requests are checked against it."), [
+        lanes(20, 554, right="THE CONTROLLER"),
+        doc("box", 14, 40, 186, 36, "Names, in code", "NetBox and the controller"),
+        num(14, 40, 1),
+        t(14, 92, "asked or refused: no call", "sm"),
+        doc("box", 14, 110, 186, 36, "One AI call", "a structured policy only"), num(14, 110, 2),
+        doc("box", 14, 160, 186, 36, "Every check, in code", "before any flow is shown"),
+        num(14, 160, 3),
+        doc("box", 14, 210, 186, 36, "Compiled and previewed", "the requests and their hash"),
+        num(14, 210, 4),
+        person(14, 260, 186, 30, "You confirm, bound to the hash"), num(14, 260, 5),
+        band(306, 150, "The apply · the switch held"),
+        device(262, 382, 118, 140, "The controller", "and its switch", top=True),
+        *rows([
+            (330, None, 6, "Checked again", "the same requests compiled"),
+            (372, None, 7, "Each request sent", "exactly the rendered body"),
+            (414, "read", 8, "Verified", "the table read back"),
+        ]),
+        t(14, 470, "A failure rolls back what landed.", "sm"),
+        store(14, 486, 186, 40, "The flow intent", "each flow, as the policy"), num(14, 486, 9),
+        t(14, 546, "Later requests are checked against it.", "sm"),
+    ])
+
+
 def controller_app_deploy():
     return svg(560, (
         "A controller app deploy: the plan reads the controller host's unit, its app folder "
@@ -2228,6 +2263,7 @@ DIAGRAMS = {
     "notifications": notifications,
     "sdn-flows": sdn_flows,
     "dhcp-steering": dhcp_steering,
+    "sdn-policy": sdn_policy,
     "controller-app-deploy": controller_app_deploy,
     "nsot-export": nsot_export,
     "openflow-config": openflow_config,

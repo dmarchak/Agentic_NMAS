@@ -138,6 +138,9 @@ NOT_AN_OPERATION = {
     # SDN › Switches (Lab 9 Objective 2, C2902; board lab9-sdn artboard A).
     ("_sdn_switches.html", "Reload"): "loads SDN › Switches again (a link to its own page, the "
                                       "stale note's), a read",
+    # SDN › Policies (Lab 9 Objective B2; board lab9-sdn artboard E).
+    ("_sdn_policies.html", "Reload"): "loads SDN › Policies again (a link to its own page, the "
+                                      "stale note's), a read",
     ("_sdn_switches.html", "Search"): "narrows the switches to a name, DPID or address and the "
                                       "state and platform chosen, a read",
     ("_sdn_of_config.html", "btn btn-small"): "Cancel or Back to Switches: draws the card's slot "

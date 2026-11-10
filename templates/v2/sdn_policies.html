@@ -1,0 +1,9 @@
+{%- extends "v2/base.html" -%}
+{#- OBSERVE › SDN › Policies, the intent controller (Lab 9 Objective B2), drawn to board
+    docs/boards/lab9-sdn.html artboard E (self-signed under the Phase 7 mode); compared region by
+    region in docs/fidelity/sdn-policies.md. The view is one region, _sdn_policies.html, redrawn
+    when the SDN reader or a flow operation announces `sdn`. -#}
+{% block title %}SDN · Policies · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_sdn_policies.html" %}
+{% endblock %}

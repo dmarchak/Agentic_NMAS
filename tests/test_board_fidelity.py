@@ -50,6 +50,8 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "save.html": "save.md", "pending.html": "pending.md",
            # Lab 9 Objective 2 (C2902): SDN › Switches, board lab9-sdn artboard A.
            "sdn_switches.html": "sdn-switches.md",
+           # Lab 9 Objective B2: SDN › Policies, board lab9-sdn artboard E.
+           "sdn_policies.html": "sdn-policies.md",
            "retired.html": "retired.md",
            # About, from the operator's screenshot in the P7-27 walk (2026-10-18, step 12).
            "about.html": "about.md",

@@ -218,6 +218,11 @@ STAGES = {
     "sdn_dhcp_v2.remove_confirm": Stages(
         "sdn_dhcp_v2.remove_preview", "hash", "modules.sdn.flow_ops.verify_installed",
         "modules.sdn.dhcp_steer._inverse", "modules.sdn.flow_intent.record_operation"),
+    # Lab 9 B2 (board lab9-sdn E): a policy through the same core; its confirm checks the
+    # carried policy again and compiles the same requests before the core's hash compare.
+    "sdn_policies_v2.confirm": Stages(
+        "sdn_policies_v2.preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
     # A lost response put back (C2018): the same core, its ask held to the records again.
     "sdn_v2.reapply_confirm": Stages(
         "sdn_v2.reapply_preview", "hash", "modules.sdn.flow_ops.verify_installed",
@@ -607,6 +612,11 @@ HISTORY = {
     # C2904: each switch's operation of a steering or its removal, as every flow operation's.
     "sdn_dhcp_v2.confirm": ("sdn_operations",),
     "sdn_dhcp_v2.remove_confirm": ("sdn_operations",),
+    # Lab 9 B2: a policy's flows are one SDN operation's record; its draft is one AI call.
+    "sdn_policies_v2.confirm": ("sdn_operations",),
+    "sdn_policies_v2.draft": "n/a: one AI call, kept in the fleet's ai_calls record (its "
+                             "subject the network); its draft sends nothing, and its confirm "
+                             "is recorded by sdn_policies_v2.confirm",
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
     "sdn_v2.watch_propose": "n/a: a person's proposal is kept with the network's SDN responses "

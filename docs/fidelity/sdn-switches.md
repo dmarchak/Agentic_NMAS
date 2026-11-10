@@ -13,7 +13,11 @@ card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of
 (the register row the main thread names for it).
 
 Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html
-Templates sha256: `bd1cfd4634b39f267e134881ae3e778ada901e4211b79738268711442b42d32b`
+Templates sha256: `ce67305bca404038213e1ee253f4a7e3c401472529a40d5e7016ab9c9580d738`
+Hashed again 2026-11-10 for Lab 9 Objective B2 (board lab9-sdn E): `_sdn_tabs.html` gains
+Policies between Apps and Responses (docs/fidelity/sdn-policies.md); the tab row is otherwise as
+compared, and no other region moves (the templates before hashed
+`bd1cfd4634b39f267e134881ae3e778ada901e4211b79738268711442b42d32b`).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -21,7 +25,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Page head | "SDN (i)" | "SDN · Switches (i)" and the tab's sub-line, as every SDN tab is built | **deviation** (log: Board lab9-sdn A built, 9) |
-| Tabs | Controllers, Switches (on), Flows, Apps, Protected, Policies, Responses | Controllers, Switches (on), Flows, Apps, Responses, one nav for every SDN tab (`_sdn_tabs.html`) | **later** (Protected and Policies are artboards of their own, not built) |
+| Tabs | Controllers, Switches (on), Flows, Apps, Protected, Policies, Responses | Controllers, Switches (on), Flows, Apps, Policies, Responses, one nav for every SDN tab (`_sdn_tabs.html`) | **later** (Protected is an artboard of its own, not built; Policies built 2026-11-10, docs/fidelity/sdn-policies.md) |
 | Summary | five counts: marked, connected as intended, configured not connected, differs, seen by the controller not in NetBox | the five, toned as drawn, and "not configured" between differs and seen; the export's short hash after | **deviation** (log: Board lab9-sdn A built, 1) |
 | Search and filters | search "name, DPID or address", Every state, Every platform | the same three, the state list the four states, the platform list each template's family; a Search button for a page with no script | **same** |
 | Configure from NetBox… and Verify now | both, then "read 14:02 UTC, 40 s ago" | both, each busy on itself with its (i); the reader's last read as a stamp that ages | **same** |

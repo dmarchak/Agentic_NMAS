@@ -206,6 +206,10 @@ SDN_EXPLAIN_PAGES = {"sdn_explain": ["/v2/monitoring/alerts/pack/ep-" + "5d" * 1
 #: Drawn on SDN › Flows (Lab 9 B1, board I): `test_sdn_flows_analyse_calls_no_model`'s.
 SDN_ANALYSE_PAGES = {"sdn_analyse": ["/v2/sdn/flows?list=Default",
                                      "/v2/sdn/view?tab=flows&list=Default"]}
+#: Drawn on SDN › Policies (Lab 9 B2): tests/test_sdn_policies_v2.py's
+#: `test_the_tab_calls_no_model`, on its Lab 9 world (the NSOT export and the controller).
+SDN_POLICY_PAGES = {"sdn_policy": ["/v2/sdn/policies?list=Default",
+                                   "/v2/sdn/policies/view?list=Default"]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -256,8 +260,8 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
     assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
-        HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) | set(
-        SDN_ANALYSE_PAGES) == set(controls.CONTROLS), \
+        HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) | set(SDN_ANALYSE_PAGES) | set(
+        SDN_POLICY_PAGES) == set(controls.CONTROLS), \
         "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
