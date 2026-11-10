@@ -3078,6 +3078,12 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-an-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .sdn-an-form input, .sdn-an-form textarea { font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+/* Lab 9 B4: Analyse with the trace tool, its own card under the two (board I's alternative). */
+.sdn-an-tools { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sdn-an-tools .sdn-an-bar { margin: 0; }
+.sdn-an-reads { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.sdn-an-reads li { overflow-wrap: anywhere; }
+.sdn-an-tools h3 { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 900px) {
   .sdn-an-cols { grid-template-columns: 1fr; }
 }

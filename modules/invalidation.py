@@ -584,6 +584,9 @@ DECLARED = {
     # analysis kept as the network's latest; the planted-issue sheet is the network's own.
     "sdn_analyse_v2.collect": ("sdn",),
     "sdn_analyse_v2.ask": ("ai_calls", "sdn"),
+    # Lab 9 B4: Analyse with the trace tool, up to two recorded calls and the send log's reads,
+    # its analysis kept beside B1's.
+    "sdn_analyse_v2.ask_tools": ("ai_calls", "sdn"),
     "sdn_analyse_v2.planted_add": ("sdn",),
     "sdn_analyse_v2.planted_why": ("sdn",),
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).

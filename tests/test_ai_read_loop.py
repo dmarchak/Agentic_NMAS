@@ -239,12 +239,14 @@ def test_a_planted_write_operation_is_refused_when_the_family_is_declared(transp
     ({"operations": (RL.Operation("topology", args={}, sends=(("GET", "/a"),)),
                      RL.Operation("topology", args={}, sends=(("GET", "/b"),)))},
      "declares the operation topology twice"),
-    ({"egress_class": "topology"},
-     "its egress class 'topology' is not one a read goes out under (configuration, "
-     "device_state)"),
+    # Lab 9 B4 made topology a class (a kept SDN snapshot's) and seal a transport: the planted
+    # class is one no read goes out under, and each list names every one there is.
+    ({"egress_class": "netflow"},
+     "its egress class 'netflow' is not one a read goes out under (configuration, "
+     "device_state, topology)"),
     ({"limit": 4}, "its limit 4 is not 1 to 3, the most reads a pass may ask for"),
     ({"limit": True}, "its limit True is not 1 to 3, the most reads a pass may ask for"),
-    ({"transport": "snmp"}, "its transport 'snmp' has no read rule (cli, http)"),
+    ({"transport": "snmp"}, "its transport 'snmp' has no read rule (cli, http, seal)"),
     ({"run": "not callable"}, "its run is not callable"),
 ])
 def test_a_family_out_of_shape_is_refused_when_declared(over, said):

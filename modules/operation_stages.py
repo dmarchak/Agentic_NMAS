@@ -603,6 +603,10 @@ HISTORY = {
                               "analyst record (modules/sdn/analyst.py), never a device's",
     "sdn_analyse_v2.ask": "n/a: one AI call, kept in the fleet's ai_calls record with its "
                           "findings in the network's analyst record; no device changes",
+    "sdn_analyse_v2.ask_tools": "n/a: up to two AI calls kept in the fleet's ai_calls record, "
+                                "their reads (answered from the kept snapshot) in the send "
+                                "log, the findings in the network's analyst record; no device "
+                                "changes (Lab 9 B4)",
     "sdn_analyse_v2.planted_add": "n/a: a planted issue is kept on the network's evaluation "
                                   "sheet (modules/sdn/analyst.py), never a device's record",
     "sdn_analyse_v2.planted_why": "n/a: a person's note on the network's evaluation sheet, "

@@ -1,0 +1,72 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- SDN › Flows: Analyse with the trace tool (Lab 9 B4; board I's alternative, its own card under
+    Analyse this network's two). Included by _sdn_analyse.html, with its *an* (`analyst.view`):
+    *an.tools* is `sdn_analyst_tools.view_part` (the latest trace-tool analysis, its estimate on the
+    latest snapshot, that snapshot's hosts, the comparison with B1's answer on the same
+    snapshot), read from the network's small files, never a controller; *said.ask_tools* is the
+    press's answer, drawn in place. -#}
+{%- set ct = ai_control('sdn_analyse_tools') %}
+{%- set s = an.snapshot %}
+{%- set t = an.tools %}
+{%- set y = t.result %}
+{%- set x = an.result %}
+{%- set said = said or {} %}
+{%- set sev_kind = {'critical': 'danger', 'high': 'danger', 'medium': 'warn', 'low': 'muted', 'info': 'muted'} %}
+{%- set verdict_kind = {'run': 'ok', 'refused': 'warn', 'failed': 'danger'} %}
+<section class="card sdn-an-tools" aria-labelledby="sdn-an-t">
+<div class="sdn-an-bar">
+  <form class="op-act" hx-post="{{ url_for('sdn_analyse_v2.ask_tools') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ an.network }}">
+    <input type="hidden" name="snapshot" value="{{ s.id or '' }}">
+    {{ ai.mark(ct) }} <button class="btn" type="submit" id="sdn-analyse-tools-ask" data-op="sdn-analyse-tools"hx-disabled-elt="this"{% if not s.id %} disabled aria-disabled="true"{% else %}{{ ai.attrs(ct, 'configure') }}{% endif %} title="At most two recorded AI calls ({{ t.model_words }}), each capped at ${{ '%.4f' | format(ct.per_call) }}: the model may ask for up to three reads (a packet trace, a switch's flows, its ports, a link's state), each answered from the snapshot Analyse this network names, never read again from the network; sends nothing to a switch"><span class="op-idle">Analyse with the trace tool</span><span class="op-busy">Analysing…</span></button>{{ how('sdn-analyse-tools', op='Analyse with the trace tool') }}
+  </form>
+  <span class="muted small sdn-an-line">{% if s.id %}the same snapshot · {{ t.model_words }} · {% if t.estimate %}<span title="{{ t.estimate.tokens }} input tokens over both calls by the fallback over-estimate, and an allowance for each answer; at most {{ t.estimate.calls }} calls, each capped at ${{ '%.4f' | format(ct.per_call) }}">about ${{ '%.4f' | format(t.estimate.usd) }}, at most {{ t.estimate.calls }} calls</span>{% else %}its estimate is kept with the next collection{% endif %}{% if t.hosts is none %} · this snapshot holds no host table, so no trace can be asked for: Collect now keeps one{% else %} · {{ t.hosts }} host{{ 's' if t.hosts != 1 }} a trace can take{% endif %}{% else %}No collection yet.{% endif %}</span>
+</div>
+{{ ai.reason(ct) }}
+{%- if said.ask_tools and not said.ask_tools.ok %}
+<p class="small notice notice-warn" role="alert">Couldn't analyse with the trace tool: {{ said.ask_tools.detail or said.ask_tools.error }}. Nothing of an answer is used.</p>
+{%- endif %}
+{%- if y and y.ok %}
+<div class="sdn-ctl-hd" data-technique="{{ y.technique }}"><h2 id="sdn-an-t">With the trace tool: {{ y.findings | length }} finding{{ 's' if y.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(y.at) }} by {{ y.model }} for {{ y.actor }} after {{ y.passes }} pass{{ 'es' if y.passes != 1 }}, {{ y.calls | length }} call{{ 's' if y.calls | length != 1 }} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% if an.planted %} · {{ t.found }} found · {{ t.missed }} missed{% endif %}</span></div>
+{%- if t.stale %}<p class="small notice notice-muted" role="status">This answer is about the snapshot of {{ stamp(y.collected_at) }} ({{ y.snapshot_id }}); a newer one is collected: Analyse with the trace tool asks about it.</p>{% endif %}
+{%- if y.findings %}
+<div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
+{%- for f in y.findings %}
+  <tr><td data-l="Finding">{{ badge(f.severity, sev_kind.get(f.severity, 'muted')) }} {{ f.finding }}</td><td data-l="Why">{{ f.why }}</td><td data-l="Evidence" class="mono small">{{ f.evidence | join(' · ') }}{% if f.removed %}<br><span class="faint" title="{{ f.removed | join(', ') }}">{{ f.removed | length }} id{{ 's' if f.removed | length != 1 }} neither the collection nor a read holds, removed</span>{% endif %}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- else %}
+<p class="muted">Nothing abnormal was reported in this snapshot.</p>
+{%- endif %}
+<p class="muted small">Each claim cites evidence the collection holds, or a read that ran; a claim citing neither is dropped by the check: {% if y.dropped %}<span title="{% for k, n in (y.dropped_by or {}).items() if n %}{{ k | replace('_', ' ') }}: {{ n }}{{ '; ' if not loop.last }}{% endfor %}">{{ y.dropped }}</span> {{ 'was' if y.dropped == 1 else 'were' }} ({{ y.dropped_words }}){% else %}none was{% endif %}{% if y.removed_ids %}, and {{ y.removed_ids }} cited id{{ 's' if y.removed_ids != 1 }} neither holds {{ 'was' if y.removed_ids == 1 else 'were' }} removed{% endif %}{% if y.capped %}; {{ y.capped }} text{{ 's' if y.capped != 1 }} past its length shortened with …{% endif %}.</p>
+{%- with fb=ai_feedback(y.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+{%- elif y %}
+<div class="sdn-ctl-hd"><h2 id="sdn-an-t">With the trace tool: no findings</h2><span class="faint small">asked {{ stamp(y.at) }} by {{ y.actor }}{% if y.call_id %} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% endif %}</span></div>
+<p class="small notice notice-warn" role="status">Couldn't analyse the snapshot {{ y.snapshot_id }} with the trace tool: {{ y.detail or y.error }}. Nothing of an answer is used; {{ y.model }}, collected {{ y.collected_at }}.</p>
+{%- else %}
+<div class="sdn-ctl-hd"><h2 id="sdn-an-t">With the trace tool</h2></div>
+<p class="muted">Not analysed yet: Analyse with the trace tool asks about the latest snapshot, the model asking Mercury for reads of it.</p>
+{%- endif %}
+{%- if y %}
+<h3>Tool calls</h3>
+{%- if y.reads %}
+<ol class="sdn-an-reads small">
+{%- for r in y.reads %}
+  <li><span class="mono">{{ r.id }} {{ r.op }}({% for k, v in (r.args or {}).items() %}{{ k }}={{ v }}{{ ', ' if not loop.last }}{% endfor %})</span> {{ badge(r.verdict, verdict_kind.get(r.verdict, 'muted')) }} {% if r.verdict == 'run' %}{{ r.short }}{% if r.cut %} <span class="faint">(cut to 4 KiB)</span>{% endif %}{% else %}{{ r.reason }}{% endif %}{% if r.why %}<br><span class="faint">asked because: {{ r.why }}</span>{% endif %}</li>
+{%- endfor %}
+</ol>
+{%- endif %}
+<p class="faint small">{{ y.words or 'No read was asked for.' }}{% if y.loop %} <span class="mono" title="the send log's id for these reads (History › Reads)">{{ y.loop }}</span>{% endif %}</p>
+{%- endif %}
+{%- set cmp = t.comparison %}
+{%- if cmp %}
+<div class="table-wrap"><table class="table sdn-an-tbl"><caption class="small muted">Both on snapshot {{ cmp.snapshot_id }}, against {{ cmp.planted }} planted issue{{ 's' if cmp.planted != 1 }}</caption><thead><tr><th>Technique</th><th>Findings</th><th>Found</th><th>Missed</th><th title="A finding that cites no planted issue's evidence and no fact Mercury measures as abnormal (a port or link down, a drop flow, a port dropping packets or near its speed), and is not info">False positives</th><th>Calls</th><th>Cost</th></tr></thead><tbody>
+{%- for row in cmp.rows %}
+  <tr><td data-l="Technique">{{ row.name }}</td><td data-l="Findings">{{ row.findings }}{% if row.real or row.notes %} <span class="faint small">({{ row.real }} real, not planted; {{ row.notes }} info)</span>{% endif %}</td><td data-l="Found">{{ row.found }}</td><td data-l="Missed">{{ row.missed }}</td><td data-l="False positives">{{ row.false_positives }}</td><td data-l="Calls">{{ row.calls }}{% if row.reads %} · {{ row.reads }} read{{ 's' if row.reads != 1 }}{% endif %}</td><td data-l="Cost">${{ '%.4f' | format(row.cost_usd) }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- elif x and x.ok and y and y.ok %}
+<p class="muted small">The comparison draws when both answered the same snapshot: Analyse this network answered {{ x.snapshot_id }}, the trace tool {{ y.snapshot_id }}.</p>
+{%- endif %}
+</section>

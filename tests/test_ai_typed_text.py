@@ -438,6 +438,12 @@ FIELDS = {
         "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
+    # Lab 9 B4: Analyse with the trace tool sends the same snapshot's facts, its hosts and the
+    # reads Mercury answered from it; nothing typed.
+    "sdn_analyse_v2.ask_tools": {
+        "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
+        "request.<passed to submitted_list>": "the network's name (routes.list_param)",
+        "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "sdn_v2.loop_set": {
         "form.run": "start or stop",
         "form.interval": "the loop's interval in seconds",

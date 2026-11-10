@@ -1489,6 +1489,40 @@ def history_export():
     ])
 
 
+def sdn_analyse_tools():
+    return svg(520, (
+        "Analyse with the trace tool: the same kept snapshot as Analyse this network, its seal "
+        "checked; a first recorded, capped call through the AI gateway with the snapshot's "
+        "facts and the hosts a trace can take, which answers or asks for up to three reads; "
+        "Mercury checks each read against the closed set and what the snapshot holds, and "
+        "answers the allowed ones from the snapshot alone, the trace walking its flow tables, "
+        "never a live read, each answer masked, cut and logged first; a second call with the "
+        "reads, which cannot ask again, within the loop's total token cap; the final answer "
+        "checked as the first analyst's; then compared with it on the same snapshot. Nothing "
+        "is sent to a switch."), [
+        lanes(20, 514, right="THE AI GATEWAY"),
+        store(14, 40, 186, 40, "The kept snapshot", "its seal checked"), num(14, 40, 1),
+        doc("box", 14, 100, 186, 36, "Pass 1", "the facts and the hosts"), num(14, 100, 2),
+        svc(250, 100, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 118, 248, 118),
+        t(14, 152, "it answers, or asks for up to 3 reads", "sm"),
+        doc("box", 14, 168, 186, 40, "Each read checked", "the closed set, the snapshot"),
+        num(14, 168, 3),
+        t(14, 224, "anything else refused, naming why", "sm"),
+        doc("box", 14, 240, 186, 40, "Answered from the seal", "the trace walks its flows"),
+        num(14, 240, 4),
+        t(14, 296, "never a live read; masked, cut, logged", "sm"),
+        band(312, 96, "Pass 2 · within the loop's total cap"),
+        doc("box", 14, 340, 186, 36, "Pass 2", "the reads; it cannot ask again"), num(14, 340, 5),
+        svc(250, 340, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 358, 248, 358),
+        doc("box", 14, 420, 186, 36, "Checked as the first", "every id held"), num(14, 420, 6),
+        doc("box", 14, 466, 186, 36, "Compared", "found, missed, false positives"),
+        num(14, 466, 7),
+        t(14, 512, "Nothing is sent to a switch.", "sm"),
+    ])
+
+
 def diagnose():
     return svg(500, (
         "Diagnose: a person picks the runbook and its target from intent, and the card lists "
@@ -2295,6 +2329,7 @@ DIAGRAMS = {
     "sdn-trace": sdn_trace,
     "sdn-analyse": sdn_analyse,
     "history-export": history_export,
+    "sdn-analyse-tools": sdn_analyse_tools,
     "diagnose": diagnose,
     "privileged": privileged,
     "heal-proposal": heal_proposal,

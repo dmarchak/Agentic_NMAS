@@ -3185,15 +3185,38 @@ def _sdn_analyse(client, _lab, _mp):
              "why": "The switch reports LINK_DOWN.", "evidence": [port, "port:made:up"]},
             {"severity": "low", "finding": "A claim citing nothing", "why": "w",
              "evidence": []}]}))
-        mp.setattr(gateway, "ask", lambda *a, **k: {"ok": True, "output": output,
-                                                    "call_id": "c-v2-context-analyse",
-                                                    "cost_usd": 0.0021})
+        # Lab 9 B4's trace tool on the same snapshot: pass 1 asks two reads (one the snapshot
+        # holds, one it refuses), pass 2 keeps one finding and drops one citing nothing, so
+        # its card draws its findings, its tool calls with their arguments, its check's note
+        # and the comparison with the answer above.
+        from modules.ai import sdn_analyst_tools as AT
+        first = AT.NetworkAnalysisReads.model_validate_json(json.dumps({"findings": [], "reads": [
+            {"op": "link_state", "args": {"dpid": OVS3, "port": 3}, "why": "is port 3 down",
+             "hypothesis": "the link to the ProCurve failed"},
+            {"op": "switch_flows", "args": {"dpid": "00000000000000ff"}, "why": "a stray switch",
+             "hypothesis": "h"}]}))
+        second = AN.NetworkAnalysis.model_validate_json(json.dumps({"findings": [
+            {"severity": "high", "finding": "Port 3 on 0000000000000003 is down, read again",
+             "why": "The read shows LINK_DOWN.", "evidence": [port, "read:1"]},
+            {"severity": "low", "finding": "A tool claim citing nothing", "why": "w",
+             "evidence": ["flow:made:up"]}]}))
+
+        def answered(feature, prompt, schema, parts, **k):
+            out = first if schema is AT.NetworkAnalysisReads else (
+                second if feature == AT.FEATURE else output)
+            return {"ok": True, "output": out, "call_id": f"c-v2-context-{prompt[0]}-{prompt[1]}",
+                    "cost_usd": 0.0021}
+        mp.setattr(gateway, "ask", answered)
         with pressed_by("v2-context@example.com"):
             r = AN.analyse("Lab", snap["id"], actor="v2-context@example.com",
                            trigger=triggers.person("v2-context@example.com"))
+            t = AT.analyse("Lab", snap["id"], actor="v2-context@example.com",
+                           trigger=triggers.person("v2-context@example.com"))
         assert r["ok"] and r["dropped"] == 1
+        assert t["ok"] and t["passes"] == 2 and t["dropped"] == 1, t
         html = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
         assert "Port 3 on 0000000000000003 is down" in html and "missed" in html
+        assert "read:1 link_state(" in html and "Without tools (B1)" in html
         region = client.post("/v2/sdn/analyse/planted", data={
             "list": "Lab", "name": "", "evidence": "nothing"}, headers={"HX-Request": "true"})
         assert region.status_code == 422 and "Couldn't add" in region.get_data(as_text=True)

@@ -191,7 +191,8 @@ ANSWER_TEMPLATES = {"_explain.html": "x.call_id", "_history_ask_words.html": "w.
                     "_change_record.html": "v.call_id",
                     "_assistant_answer.html": "got.call_id",
                     "_sdn_analyse.html": "x.call_id",
-                    "_sdn_policy_answer.html": "a.call_id"}
+                    "_sdn_policy_answer.html": "a.call_id",
+                    "_sdn_analyse_tools.html": "y.call_id"}
 
 
 @pytest.mark.parametrize("name, var", sorted(ANSWER_TEMPLATES.items()))

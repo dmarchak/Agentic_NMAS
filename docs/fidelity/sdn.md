@@ -114,8 +114,8 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: states the board does not draw | not drawn | no collection yet, collecting, past its bound, couldn't collect, couldn't analyse, a newer snapshot than the answer, the sheet unreadable: each said in place | **deviation** (log: Board lab9-sdn I built, 6) |
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html
-Templates sha256: `6423e18ccdb9aadf7e6431dbce46ea004e31d28be0182a3636b36d3932b5388a`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html
+Templates sha256: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`
 Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
 docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
 of a registered app (the badge "a new version", The folder as the registered version's content
@@ -131,6 +131,17 @@ is shortened with an ellipsis where the built one is whole (same: the board says
 ellipsis). Nothing else on the tab moves (the templates then hashed
 `f10cbf0812a7b5a52dbdc794ca7ae28c4851b5b30212e3f8c2a67d833281d801` before it). Merged with
 the day's DHCP steering and B2 changes and hashed with them over the union.
+| I (B4): Analyse with the trace tool | not drawn | its own card under the two, its press at its head with the AI mark (the task, model and cap on hover), busy on itself, off while no snapshot is kept, How does this work?; "the same snapshot", about what both calls cost, at most two calls, the hosts a trace can take | **deviation** (log: Board lab9-sdn I built for Lab 9 B4, 1) |
+| I (B4): its findings | not drawn | B1's table and check's note, the evidence a read that ran may be cited by (`read:<n>`); Was this right? under it | **same** |
+| I (B4): Tool calls | not drawn | each read in order: its id, operation and arguments, run, refused (its reason) or failed, what it returned in short, why the model asked; the loop's words and the send log's id | **deviation** (log: Board lab9-sdn I built for Lab 9 B4, 2) |
+| I (B4): the comparison | not drawn | on the same snapshot, a row per technique: findings, found, missed, false positives (the code's rule on hover), calls and reads, cost | **deviation** (log: Board lab9-sdn I built for Lab 9 B4, 3) |
+| I (B4): its states | not drawn | no host table, couldn't analyse, an answer about an older snapshot, the second pass not run and why, each in place | **deviation** (log: Board lab9-sdn I built for Lab 9 B4, 4) |
+Hashed again 2026-11-10 ~06:3x UTC for Lab 9 B4 (board lab9-sdn I's trace-tool alternative, the
+"I (B4):" regions above), compared by reading the template against artboard I, with no new
+shot: `_sdn_analyse_tools.html` (new, in the compared list) draws Analyse with the trace tool, its
+findings, its tool calls and the comparison; `_sdn_analyse.html` only includes it under its two
+cards. Its states are held by tests/test_sdn_analyst_tools.py and the v2 walk's `_sdn_analyse`
+provider, which now runs the trace tool too.
 Hashed again 2026-11-10 for Lab 9 B1 (board lab9-sdn I, the "I:" regions above):
 `_sdn_analyse.html` (new, in the compared list) draws Analyse this network, its findings and the
 planted-issue sheet; `_sdn_view.html` only includes it on Flows.

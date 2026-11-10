@@ -6,6 +6,9 @@ its planted-issue sheet (modules/sdn/analyst.py).
   view), one at a time per network; the region redraws when the job announces ``sdn``.
 - **Analyse this network** asks ONE recorded, capped AI call over the network's latest
   snapshot, as the person who pressed it; its answer is checked in code and drawn in place.
+- **Analyse with the trace tool** (Lab 9 B4) asks the same over the same snapshot through the
+  read loop: at most two calls, the model's reads answered from the kept snapshot alone; its
+  answer, its tool calls and the comparison with the first drawn in place.
 - **Add a planted issue…** and a row's **Save** keep the network's planted-issue sheet; **Download
   the sheet** reads it as Markdown or CSV.
 
@@ -67,6 +70,21 @@ def ask():
     got = analyst.analyse(network, (request.form.get("snapshot") or "").strip(), actor=actor,
                           trigger=triggers.person(actor))
     return _region(network, {"ask": got})
+
+
+@bp.route("/ask-tools", methods=["POST"])
+def ask_tools():
+    """Analyse with the trace tool (Lab 9 B4): at most two recorded, capped AI calls over the
+    snapshot the region drew, the model asking for reads Mercury answers from that kept
+    snapshot alone, as the person who pressed it (`sdn_analyst_tools.analyse`)."""
+    from modules import identity
+    from modules.ai import sdn_analyst_tools, triggers
+
+    network = _network()
+    actor = identity.request_actor()
+    got = sdn_analyst_tools.analyse(network, (request.form.get("snapshot") or "").strip(),
+                                actor=actor, trigger=triggers.person(actor))
+    return _region(network, {"ask_tools": got})
 
 
 @bp.route("/planted", methods=["POST"])

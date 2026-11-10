@@ -8,7 +8,8 @@ person planted.
    "Enterprise scale"). `closed_loop.collect_threat_data(network, links=True)` through each
    connection's controller driver (the one controller path, its REST): every switch's flows,
    its port counters twice `COLLECT_INTERVAL` apart, its port descriptions (link up or down
-   from the LINK_DOWN state bit, C2602), and each connection's discovered links. One
+   from the LINK_DOWN state bit, C2602), each connection's discovered links, and the hosts
+   it learned (`_read_hosts`, kept for B4's trace tool and never in the facts sent). One
    collection at a time per network, across processes (`RUNNING`, refused by name, never
    queued), bounded (`collection_bound_s`) and announced (``sdn``) when it ends.
 2. **snapshot** (`build_snapshot`, `save_snapshot`): the collection in the analyst's shape,
@@ -107,8 +108,9 @@ _PLANTED_ID = re.compile(r"^pl-[0-9a-f]{12}$")
 STEPS = (
     ("collect", "a read job (never a page view): every switch's flows, its port counters twice "
                 f"{COLLECT_INTERVAL:g} s apart, its port descriptions (link up or down from the "
-                "LINK_DOWN state) and each connection's discovered links, through the "
-                "controller's driver; one at a time per network, bounded, announced when done"),
+                "LINK_DOWN state), each connection's discovered links and the hosts it learned, "
+                "through the controller's driver; one at a time per network, bounded, announced "
+                "when done"),
     ("snapshot", "the collection kept as a snapshot under its own id, every fact with its "
                  "evidence id, masked and sealed by its hash, so it can be analysed again; a "
                  "link an earlier snapshot discovered and this one does not is kept as not "
@@ -242,6 +244,7 @@ def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = N
 
     names = names or {}
     switches, links, unread = [], {}, []
+    hosts = None
     down = {}
     for c in (collected or {}).get("controllers") or []:
         conn = str(c.get("connection") or "")
@@ -282,8 +285,22 @@ def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = N
                 "drops": [dict(_flow_row(f), id=drop_ref(f["id"])) for f in drops],
                 "ports": ports, "rates": rates,
                 "sample_s": (sw.get("sample") or {}).get("elapsed_s")})
+            if sw.get("partial"):
+                # A table the collection holds only part of (B4's cases: an evidence pack's
+                # pieces), said in the facts and walked by the trace as part of a table.
+                switches[-1]["partial"] = str(sw["partial"])
             if sw.get("state") != "ok":
                 unread.append(f"switch {dhex} on {conn}: {sw.get('error') or 'not read whole'}")
+        if "hosts" in c:
+            hosts = [] if hosts is None else hosts
+            for h in c.get("hosts") or []:
+                hosts.append({"connection": conn, "mac": str(h.get("mac") or "").lower(),
+                              "ipv4": list(h.get("ipv4") or []),
+                              "ipv6": list(h.get("ipv6") or []),
+                              "dpid_hex": h.get("dpid_hex"), "port_no": h.get("port_no"),
+                              "port_name": h.get("port_name") or ""})
+        if c.get("hosts_error"):
+            unread.append(f"controller {conn}'s hosts: {c['hosts_error']}")
         for ln in c.get("links") or []:
             a = (ln["src"]["dpid_hex"], ln["src"]["port_no"])
             b = (ln["dst"]["dpid_hex"], ln["dst"]["port_no"])
@@ -317,6 +334,11 @@ def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = N
             "switches": switches, "links": sorted(links.values(), key=lambda x: x["id"]),
             "unread": unread,
             "subset": any(s["flows_sent"] < s["flows_total"] for s in switches)}
+    if hosts is not None:
+        # The hosts the controller learned (B4's trace tool: where a packet starts and ends),
+        # kept only when the collection read them; never in the facts B1's call sends.
+        snap["hosts"] = sorted(hosts, key=lambda h: (h["connection"], str(h["dpid_hex"]),
+                                                     str(h["port_no"]), h["mac"]))
     snap = redact.egress_payload(snap)
     digest = _digest(snap)
     snap["id"] = "snap-" + digest[:16]
@@ -392,6 +414,9 @@ def facts(snap: dict) -> str:
                      f"{s.get('state')}; {s.get('flows_total', 0)} forwarding flows "
                      f"({s.get('flows_sent', 0)} listed), {len(s.get('drops') or [])} drop "
                      f"flows, flow granularity {s.get('coverage')}")
+        if s.get("partial"):
+            lines.append(f"switch {s['dpid_hex']}: the flows listed are part of its table "
+                         f"({s['partial']}); the rest are not known")
         for p in s.get("ports") or []:
             own = " (the switch's own internal port)" if p["port_no"] == LOCAL else ""
             lines.append(f"{p['id']} link {'up' if p['link_up'] else 'DOWN'}, admin "
@@ -425,15 +450,16 @@ def estimate(snap: dict) -> dict:
 # ───────────────────────────────────────────────────────────────────────────── collect (a job)
 
 def collection_bound_s(network: str) -> float:
-    """How long a collection may run: the interval and six reads in a row at the slowest
+    """How long a collection may run: the interval and seven reads in a row at the slowest
     connection's timeout (the switch list and links, then flows, two port reads and the port
-    description; each round's switches read at once), plus 30 s for the snapshot's write."""
+    description, then the hosts; each round's switches read at once), plus 30 s for the
+    snapshot's write."""
     from modules.sdn import connections
 
     listed = connections.connections(network)
     slowest = max([float(c.get("timeout") or 10) for c in listed.get("connections") or []]
                   or [10.0])
-    return COLLECT_INTERVAL + 6 * slowest + 30
+    return COLLECT_INTERVAL + 7 * slowest + 30
 
 
 def running(network: str, now: float = None) -> dict:
@@ -494,6 +520,7 @@ def collect_job(network: str, *, actor: str, interval: float = COLLECT_INTERVAL,
                             f"{collected.get('error') or collected.get('words') or 'no reason'})")
             _keep_failure(network, out["error"], actor, now())
             return out
+        _read_hosts(network, collected, driver)
         snap = build_snapshot(network, collected, by=actor, previous=latest_snapshot(network),
                               names=_names(network))
         save_snapshot(network, snap)
@@ -511,6 +538,30 @@ def collect_job(network: str, *, actor: str, interval: float = COLLECT_INTERVAL,
             pass
         if announce:
             _announce(network)
+
+
+def _read_hosts(network: str, collected: dict, driver=None) -> None:
+    """Each read controller's learned hosts added to *collected* (``hosts``, or
+    ``hosts_error`` saying why not): one GET a connection through its driver, at once, for B4's
+    trace tool, which walks a packet from one host to another over the kept snapshot."""
+    from modules import fanout
+    from modules.sdn import connections
+
+    make = driver or connections.driver_for
+    entries = [c for c in (collected or {}).get("controllers") or [] if c.get("switches")]
+
+    def one(c):
+        got = make(network, c.get("connection"))
+        if not got.get("ok"):
+            return {"ok": False, "error": got.get("error") or "no driver"}
+        return got["driver"].hosts()
+
+    for c, got in zip(entries, fanout.read_each(one, entries, name="sdn-analyst-hosts")):
+        if isinstance(got, fanout.Failed) or not (got or {}).get("ok"):
+            c["hosts_error"] = (f"the read raised {got}" if isinstance(got, fanout.Failed)
+                                else (got or {}).get("error") or "no answer")
+            continue
+        c["hosts"] = list(got.get("hosts") or [])
 
 
 def _announce(network: str) -> None:
@@ -548,6 +599,9 @@ def save_snapshot(network: str, snap: dict) -> None:
             "ports_down": sum(not p["link_up"] for s in snap["switches"] for p in s["ports"]
                               if p["port_no"] != LOCAL),
             "unread": len(snap["unread"]), "estimate": estimate(snap)}
+        from modules.ai import sdn_analyst_tools
+
+        latest["snapshot_tools"] = sdn_analyst_tools.summary_of(snap)     # B4's trace tool
         _write_json(os.path.join(_dir(network), "latest.json"), latest)
 
 
@@ -638,22 +692,52 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
     Refused before any call: no such snapshot, one changed since kept, the classification
     marking, the topology class off. The gateway's own refusals (its trigger, hosted AI, the
     caps, the prompt's size) and a malformed answer (``schema``) are kept as such."""
-    from modules.ai import calls, egress_classes, gateway, profiles
+    from modules.ai import calls
 
     now = time.time() if now is None else now
     got = snapshot(network, snap_id)
     if not got["ok"]:
         return _refused(network, snap_id, actor, "snapshot", f"{got['error']}; nothing was sent")
-    snap = got["snapshot"]
+    out = ask_snapshot(network, got["snapshot"], actor=actor, trigger=trigger, send=send,
+                       today=today, now=now)
+    links = {"page": "/v2/sdn/flows", "anchor": "sdn-analyse"}
+    if out["ok"]:
+        calls.record_use(out["call_id"], f"shown: {len(out['findings'])} findings, "
+                         f"{out['dropped']} dropped by the check", actor=actor,
+                         detail=out["dropped_words"], links=links)
+    if out.get("refused_before"):
+        out.pop("refused_before")
+        return out
+    out["id"] = "an-" + hashlib.sha256(f"{snap_id}|{out['call_id']}|{now}|{uuid.uuid4()}"
+                                       .encode()).hexdigest()[:16]
+    with _lock(network):
+        _write_json(os.path.join(_dir(network), "analyses", f"{out['id']}.json"), out)
+        latest = _latest(network)
+        latest["analysis"] = out["id"]
+        _write_json(os.path.join(_dir(network), "latest.json"), latest)
+    return out
+
+
+def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=None,
+                 today: str = None, now: float = None) -> dict:
+    """`analyse`'s call and check over *snap* (a sealed snapshot in hand), reading and writing
+    no store: the baseline arm of B4's evaluation (scripts/nmas-sdn-b4-eval), which asks about
+    a case's snapshot without making it the network's. Refused before any call on the
+    classification marking or the topology class off (``refused_before`` set)."""
+    from modules.ai import egress_classes, gateway, profiles
+
+    now = time.time() if now is None else now
+    snap_id = snap.get("id", "")
     marked = egress_classes.classification_marking(network)
     if marked:
         return _refused(network, snap_id, actor, "classified", f"{network} carries the "
                         f"classification marking {marked!r}, which forces AI off; nothing was "
-                        "sent")
+                        "sent", refused_before=True)
     gate = egress_classes.topology_allowed(network)
     if not gate["allowed"]:
         return _refused(network, snap_id, actor, "withheld", "the snapshot's flows and port "
-                        f"rates are the topology class, and {gate['why']}; nothing was sent")
+                        f"rates are the topology class, and {gate['why']}; nothing was sent",
+                        refused_before=True)
     model = profiles.task(FEATURE)["model"]
     asked = gateway.ask(FEATURE, PROMPT, NetworkAnalysis, {"snapshot": facts(snap)},
                         actor=actor, trigger=trigger, send=send, today=today, network=network,
@@ -663,22 +747,11 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
            "call_id": asked.get("call_id", ""), "cost_usd": asked.get("cost_usd", 0.0),
            "model": model, "findings": [], "dropped": 0, "dropped_words": "",
            "removed_ids": 0}
-    links = {"page": "/v2/sdn/flows", "anchor": "sdn-analyse"}
     if not asked["ok"]:
         out.update(error=asked["error"], detail=asked.get("detail", ""))
     else:
         checked = check(asked["output"], evidence_ids(snap))
         out.update(ok=True, **checked)
-        calls.record_use(asked["call_id"], f"shown: {len(checked['findings'])} findings, "
-                         f"{checked['dropped']} dropped by the check", actor=actor,
-                         detail=checked["dropped_words"], links=links)
-    out["id"] = "an-" + hashlib.sha256(f"{snap_id}|{out['call_id']}|{now}|{uuid.uuid4()}"
-                                       .encode()).hexdigest()[:16]
-    with _lock(network):
-        _write_json(os.path.join(_dir(network), "analyses", f"{out['id']}.json"), out)
-        latest = _latest(network)
-        latest["analysis"] = out["id"]
-        _write_json(os.path.join(_dir(network), "latest.json"), latest)
     return out
 
 
@@ -866,12 +939,15 @@ def view(network: str, now: float = None) -> dict:
     write): the latest snapshot's summary and estimate, a collection running, the latest
     analysis and the planted issues marked against it."""
     from modules.ai import profiles
+    from modules.ai import sdn_analyst_tools
 
     latest = _latest(network)
     result = analysis(network, latest.get("analysis") or "")
     snap_sum = latest.get("snapshot") or {}
     issues = planted(network)
     rows = marks(issues["issues"], result)
+    tools = sdn_analyst_tools.view_part(network, latest, snap_sum, result)
+    tool_rows = marks(issues["issues"], tools["result"])
     return {"network": network, "snapshot": snap_sum, "running": running(network, now),
             "collect_failed": latest.get("collect_failed") or {},
             "result": result, "planted": rows, "planted_state": issues["state"],
@@ -879,4 +955,6 @@ def view(network: str, now: float = None) -> dict:
             "found": sum(r["found"] == "found" for r in rows),
             "missed": sum(r["found"] == "missed" for r in rows),
             "model_words": profiles.profile(profiles.task(FEATURE)["model"])["words"],
-            "stale": bool(result and snap_sum and result.get("snapshot_id") != snap_sum.get("id"))}
+            "stale": bool(result and snap_sum and result.get("snapshot_id") != snap_sum.get("id")),
+            "tools": dict(tools, found=sum(r["found"] == "found" for r in tool_rows),
+                          missed=sum(r["found"] == "missed" for r in tool_rows))}

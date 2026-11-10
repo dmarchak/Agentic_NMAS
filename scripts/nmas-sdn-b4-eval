@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Lab 9 B4's evaluation: the SDN analyst without tools against the analyst with the trace tool,
+on 19.13's fixed snapshots (docs/HEAL_TO_INTENT.md 19.13; modules/sdn/b4_eval.py).
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter): first
+    # what it would spend, asking nothing
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
+        --out /tmp/b4-eval
+    # then the run, a person's explicit decision to spend
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
+        --out /tmp/b4-eval --yes-spend
+
+**It spends only with --yes-spend.** Without it, it prints the cases, the most calls and about
+what they cost (each arm's own over-estimate of each snapshot), and stops with nothing asked
+(exit 2). Never run in CI: its tests run it on a fake provider.
+
+**Recorded as an evaluation, never a person** (C1846): the actor is ``evaluation:<run>`` (none
+given is ``evaluation:sdn-b4-eval-<UTC time>``), the trigger the evaluation's, so the spend
+counts against the caps under its run. Each case's snapshot is asked of the baseline
+(`analyst.ask_snapshot`, B1's one call) and the technique (`sdn_analyst_tools.ask_snapshot`, the
+read loop, at most two calls), in turn, --runs times; neither writes the network's analyst
+store, so the network's page is unchanged. A refusal before anything is sent (the topology
+class off, hosted AI off, a cap) stops the run there (exit 3).
+
+**The report** (--out, never inside the checkout): ``b4-eval-<run>.md`` for the lab document and
+``b4-eval-<run>.json`` for B5's cost log, each technique's findings, misses, false positives,
+benign runs answered as a threat, cases reliable with McNemar's exact test and a bootstrap
+interval, calls, the recorded cost and the time to an answer, by role (recorded, held out,
+blind), and 19.13's pass rule on the blind role.
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    from modules.ai import sdn_analyst_tools
+    from modules.sdn import analyst, b4_eval
+
+    os.chdir(ROOT)
+    return b4_eval.main(sys.argv[1:] if argv is None else argv, root=ROOT,
+                        arms={"baseline": analyst.ask_snapshot,
+                              "tools": sdn_analyst_tools.ask_snapshot})
+
+
+if __name__ == "__main__":
+    sys.exit(main())

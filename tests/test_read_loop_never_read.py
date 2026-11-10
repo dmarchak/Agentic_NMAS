@@ -36,7 +36,7 @@ LOG = "modules.ai.read_log"
 STEPLOG = "modules.heal.steplog"
 STEP_NAMES = ("advisories", "record_advisory")
 #: Who may import the loop: its router read family, and the one feature asked through it.
-KNOWN_LOOP = {"modules/ai/router_reads.py", "modules/ai/heal_analysis.py"}
+KNOWN_LOOP = {"modules/ai/router_reads.py", "modules/ai/heal_analysis.py", "modules/ai/sdn_analyst_tools.py"}
 #: Who may import the analysis (its answer, its kept rows): the notifier and the pages.
 KNOWN_ANALYSIS = {"modules/heal_notice.py", "modules/heal_page.py", "modules/attention.py",
                   "routes/v2.py"}

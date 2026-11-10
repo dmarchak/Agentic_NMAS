@@ -29,6 +29,7 @@ from modules.ai import calls, connection, explain, gateway, nl_query, profiles, 
 from modules.ai import intent_words  # noqa: F401,E402 (it registers feature 7's schema)
 from modules.sdn import closed_loop  # noqa: F401,E402 (it registers sdn_classify's schema)
 from modules.sdn import analyst  # noqa: F401,E402 (it registers sdn_analyse's schema)
+from modules.ai import sdn_analyst_tools  # noqa: F401,E402 (it registers sdn_analyse_tools's)
 from modules.ai import change_record  # noqa: F401,E402 (it registers the change record's schema)
 
 KEY = "sk-planted-test-key-0123456789"

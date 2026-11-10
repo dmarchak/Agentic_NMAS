@@ -205,7 +205,10 @@ HEAL_PAGES = {"heal_analysis": ["/v2/attention/heal-analysis/Lab/hi-000000000000
 SDN_EXPLAIN_PAGES = {"sdn_explain": ["/v2/monitoring/alerts/pack/ep-" + "5d" * 10]}
 #: Drawn on SDN › Flows (Lab 9 B1, board I): `test_sdn_flows_analyse_calls_no_model`'s.
 SDN_ANALYSE_PAGES = {"sdn_analyse": ["/v2/sdn/flows?list=Default",
-                                     "/v2/sdn/view?tab=flows&list=Default"]}
+                                     "/v2/sdn/view?tab=flows&list=Default"],
+                     # Lab 9 B4: its alternative, Analyse with the trace tool, on the same region.
+                     "sdn_analyse_tools": ["/v2/sdn/flows?list=Default",
+                                           "/v2/sdn/view?tab=flows&list=Default"]}
 #: Drawn on SDN › Policies (Lab 9 B2): tests/test_sdn_policies_v2.py's
 #: `test_the_tab_calls_no_model`, on its Lab 9 world (the NSOT export and the controller).
 SDN_POLICY_PAGES = {"sdn_policy": ["/v2/sdn/policies?list=Default",

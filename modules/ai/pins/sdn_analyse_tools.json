@@ -1,0 +1,14 @@
+{
+  "words": "Analyse with the trace tool (SDN › Flows): the analyst asking Mercury for reads of one collection",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 48000,
+  "max_tokens": 4096,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "Lab 9 B4's technique against its baseline, B1's sdn_analyse on Haiku 5.5: same model, so the comparison is the technique's alone (docs/HEAL_TO_INTENT.md 19.13: \"Same model, same prompts otherwise\"); economy tier, as every SDN task (the operator's replan of 2026-11-09, item 4).",
+    "max_prompt_tokens": "B1's 40,000 for the collection, and pass 2's three reads at the loop's 4 KiB cut (read_loop.AI_READ_CAP: 12,288 characters, about 6,800 tokens by the gateway's fallback over-estimate) and the host list: 48,000, under Haiku 5.5's long tier (100,000), so every call is billed at its base rates. The loop's whole spend is bounded apart (analyst_tools.TOTAL_TOKEN_CAP, 80,000 over both passes). Provisional, not measured.",
+    "max_tokens": "B1's: at most analyst.MAX_FINDINGS findings and, in pass 1, three read requests of a few lines each; 4,096. The first measurement sets it to about 2.5x the largest output (C1757's rule).",
+    "thinking": "Off, as B1's: the comparison is the reads' alone."
+  }
+}

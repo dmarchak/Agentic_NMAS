@@ -1,0 +1,219 @@
+{
+  "$defs": {
+    "AnalystSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AnalystSeverity",
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "finding": {
+          "title": "Finding",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/AnalystSeverity"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "finding",
+        "why",
+        "evidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "SdnSealedReadArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "dpid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dpid"
+        },
+        "dst": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dst"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        },
+        "proto": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proto"
+        },
+        "src": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Src"
+        }
+      },
+      "title": "SdnSealedReadArgs",
+      "type": "object"
+    },
+    "SdnSealedReadAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/SdnSealedReadArgs"
+        },
+        "hypothesis": {
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/SdnSealedReadOp"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "args",
+        "why",
+        "hypothesis"
+      ],
+      "title": "SdnSealedReadAsk",
+      "type": "object"
+    },
+    "SdnSealedReadOp": {
+      "enum": [
+        "trace",
+        "switch_flows",
+        "port_stats",
+        "link_state"
+      ],
+      "title": "SdnSealedReadOp",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Pass 1: B1's findings, and at most 3 reads asked of Mercury (a fourth is refused).",
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SdnSealedReadAsk"
+      },
+      "title": "Reads",
+      "type": "array"
+    }
+  },
+  "required": [
+    "findings"
+  ],
+  "title": "NetworkAnalysisReads",
+  "type": "object"
+}

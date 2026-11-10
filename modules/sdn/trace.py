@@ -587,8 +587,16 @@ def trace(network: str, source: str, destination: str, *, protocol: str = "icmp"
     "read_why", "source", "destination", "packet", "branches", "more", "dpids"}``; *dpids* the
     delivered branch's switches in order. A refusal is ``ok`` False with *error* naming why.
     Read-only: it asks no controller and writes nothing."""
+    return over(fabric(network, cached=cached, now=now), network, source, destination,
+                protocol=protocol, port=port)
+
+
+def over(fab: dict, network: str, source: str, destination: str, *, protocol: str = "icmp",
+         port=None) -> dict:
+    """`trace`'s answer over a fabric already in `fabric`'s shape: the stored read's
+    (`trace`), or a kept snapshot's (`modules/ai/sdn_analyst_tools.sealed_fabric`, B4's trace
+    tool, which never reads anything live). One walk and one answer for both."""
     try:
-        fab = fabric(network, cached=cached, now=now)
         if fab["state"] != "read":
             raise Refused(f"the controller's topology is not read: {fab['why']}")
         if not fab["controllers"]:

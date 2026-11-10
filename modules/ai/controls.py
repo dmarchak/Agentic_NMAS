@@ -138,6 +138,17 @@ CONTROLS = {
         "screen": "SDN › Policies, Describe a policy",
         "beside": "SDN › Flows' Add on a switch, a flow typed by hand through the same core",
     },
+    # Lab 9 B4 (board I's alternative): Analyse with the trace tool, the same snapshot through
+    # the read loop, at most two recorded, capped calls (modules/ai/sdn_analyst_tools.py).
+    "sdn_analyse_tools": {
+        "task": "sdn_analyse_tools",
+        "words": "Analyse with the trace tool (SDN)",
+        "endpoints": ("sdn_analyse_v2.ask_tools",),
+        "template": "v2/_sdn_analyse_tools.html",
+        "screen": "SDN › Flows, Analyse this network (board I), its trace-tool alternative",
+        "beside": "Analyse this network, the collection's Collect now, the planted-issue sheet "
+                  "and its download, and the flow tables below",
+    },
     # Board H, H8: a background feature, never a press. No screen draws a control for it yet
     # (section 12's Analyse again, a person's press behind its cost confirm, is not built):
     # Needs attention's can't-fix row and the notice draw what it kept.

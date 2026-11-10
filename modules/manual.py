@@ -93,6 +93,8 @@ PAGES = (
     ("sdn-analyse", "Analyse this network: what is abnormal in an SDN fabric", H,
      "how-it-works/sdn-analyse.md"),
     ("history-export", "History › Export: the two logs", H, "how-it-works/history-export.md"),
+    ("sdn-analyse-tools", "Analyse with the trace tool: the analyst asking Mercury for reads", H,
+     "how-it-works/sdn-analyse-tools.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
@@ -232,6 +234,9 @@ OPERATIONS = {
     # Lab 9 B1 (board I of docs/boards/lab9-sdn.html): Analyse this network on SDN › Flows.
     "sdn-analyse": ("modules.sdn.analyst", "STEPS"),
     "history-export": ("modules.history_export", "STEPS"),
+    # Lab 9 B4 (board I's alternative): Analyse with the trace tool, the read loop over the
+    # kept snapshot.
+    "sdn-analyse-tools": ("modules.ai.sdn_analyst_tools", "STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),

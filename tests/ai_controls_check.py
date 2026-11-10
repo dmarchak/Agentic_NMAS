@@ -41,6 +41,9 @@ MARKUP = {
     "sdn_classify": {"button": r'<button\b[^>]*\bid="sdn-classify-[^"]*"[^>]*>', "input": None},
     # Lab 9 B1 (board I): SDN › Flows' Analyse this network.
     "sdn_analyse": {"button": r'<button\b[^>]*\bid="sdn-analyse-ask"[^>]*>', "input": None},
+    # Lab 9 B4: its alternative, Analyse with the trace tool.
+    "sdn_analyse_tools": {"button": r'<button\b[^>]*\bid="sdn-analyse-tools-ask"[^>]*>',
+                          "input": None},
     "change_record": {"button": r'<button\b[^>]*\bdata-op="change-record"[^>]*>', "input": None},
     # SDN › Policies (Lab 9 B2): Describe a policy's words box and Draft the policy.
     "sdn_policy": {"button": r'<button\b[^>]*\bdata-op="sdn-policy"[^>]*>',

@@ -119,6 +119,13 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   that compares the findings with problems you planted, each **found** or **missed** with your
   why; **Download the sheet** gives it as Markdown or CSV. How it works: [Analyse this
   network](sdn-analyse).
+- **Analyse with the trace tool**, its own card under those two (an AI control): the same
+  question about the same snapshot, the model first asking Mercury for up to three reads (a
+  packet trace through the flow tables, a switch's flows, its ports, a link's state), each
+  checked and answered from the snapshot alone, then answering. Under its findings, **Tool
+  calls** lists each read with what it returned; when both have answered the same snapshot, a
+  table compares their findings, found, missed, false positives, calls and cost. How it works:
+  [Analyse with the trace tool](sdn-analyse-tools).
 - **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
   tables layer chosen and its form open: the trace has one home ([A flow-table
   trace](sdn-trace)).
