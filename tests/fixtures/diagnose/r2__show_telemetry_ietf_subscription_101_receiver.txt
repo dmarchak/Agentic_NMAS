@@ -1,0 +1,10 @@
+Telemetry subscription receivers detail:
+
+  Subscription ID: 101
+  Address: 10.255.1.10
+  Port: 57000
+  Protocol: grpc-tcp
+  Profile: 
+  Connection: 984
+  State: Connected
+  Explanation: 

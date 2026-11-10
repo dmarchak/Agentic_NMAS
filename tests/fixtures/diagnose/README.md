@@ -154,9 +154,17 @@ UPDOWN line at all: its lines there are the configuration and rollback timer's o
   step 35, after r6's boot): subscriptions 101 and 102, Configured and Valid. **Edit:** the
   walk's record put one heading line (time, device, command, duration) and a blank line before
   the answer; both are removed, and nothing of the device's answer is edited.
-- **Not captured (C2890):** `show telemetry ietf subscription <id> receiver`, the receiver's
-  state as the device holds it (the operator read r7's as Disconnected, "Connection is not
-  up", in H11 W8, 2026-11-08, and kept no copy). The runbook sends it and does not interpret
-  it.
+- `r2__show_telemetry_ietf_subscription_{101,102}_receiver.txt` and
+  `r7__show_telemetry_ietf_subscription_{101,102}_receiver.txt` (C2890, C2838): `show telemetry
+  ietf subscription <id> receiver` on r2 and r7 (both IOS-XE, C8000v), read through Mercury's
+  reads engine (`modules.nsot.reads.run`, recorded as run
+  20261110T165759372688Z-3f052671b0794d71b8b5bd024461b576) on 2026-11-10 at 16:57:59 UTC.
+  Unedited, the device's trailing spaces after "Profile:" and "Explanation:" kept. r2 was
+  streaming, State Connected on connection 984. r7 was not: Prometheus held no series for its
+  101 or 102 in the day before. Yet r7 reads State Connected on connection 496, the connection id
+  it was given at the operator's hand fix on 2026-11-08 ~20:59 UTC (C2838's amendment). So a
+  device's "Connected" is not a stream, and a re-subscribe that worked shows a new connection
+  id. No capture of the Disconnected state exists yet: the operator read r7's on 2026-11-08 and
+  kept no copy.
 - `collector/`: the collector's side, the kernel's socket tables on Mercury's host
   (`collector/README.md`).

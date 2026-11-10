@@ -213,6 +213,46 @@ known recovery was a console sequence, C2838).
 **The test, beside the industry need:** a fix a person is told to make is a Mercury operation,
 or its step names the register row for the operation still missing.
 
+## The fix-it path
+
+**The target flow for every Needs attention item (the operator, 2026-11-10).** It is the
+yardstick for recurring issues and saved fixes now, and for the ease-of-use review after the labs.
+1. **The notification:** the person sees it in plain words: what, where, and whether it needs
+   them.
+2. **Explain:** they press Explain.
+3. **The proposal:** the AI explains, cites similar past incidents, and proposes a fix in Mercury
+   operations.
+4. **The approval:** they approve the fix. This is approval only; there is no self-healing choice
+   here.
+5. **The run:** Mercury runs the approved operations.
+6. **The verification:** Mercury verifies, and reports back before anything is saved:
+   - a. the device is in the state the fix intended;
+   - b. the original symptom has cleared;
+   - c. no harm: after a settle period (the heal grace), there is no new alert or incident on the
+     device or its blast radius since the change, adjacencies and neighbours are as before, and
+     the outcome checks that apply (reach, untouched, datapath) pass. Anything undecidable is
+     shown as "can't tell".
+
+   Then, on the same screen, the result is in plain words with the choice: "Add this fix to
+   self-healing: apply alone next time / propose to me next time / don't save".
+   - If (a), (b) or (c) failed, no save is offered: go to step 8.
+   - If anything reads "can't tell", "apply alone" is not offered, only "propose to me" or "don't
+     save", with what couldn't be checked.
+7. **The save:** a fix is saved only on the person's choice in step 6. The record keeps the
+   verification it was based on.
+8. **A failed step:** if any step fails, the item says which step, why, what Mercury already
+   undid, and what the person can do next, as a button where one exists. No dead ends, and no
+   "see History".
+
+**Cost:** each Needs attention kind is built and tested against the eight steps, with a browser
+walk per kind's worked example. **Prevents:** a fix that ends with no proof it worked or did no
+harm, a fix saved on a verification nobody saw, and a failure that leaves the person with nowhere
+to go.
+
+**The test, beside the industry need:** an item's path from the notification to fixed is these
+eight steps, its clicks counted, and each step's failure state names the step, why, what was
+undone, and the next action.
+
 ## AI-assisted actions
 
 The Actions menu distinguishes two kinds:
