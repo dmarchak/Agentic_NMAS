@@ -141,6 +141,11 @@ def matches(text: str) -> list:
 
 
 def _norm(text: str) -> str:
+    """Digit runs to ``#`` and whitespace to one space, and an age drawn from the clock read
+    as one: "just now" is "# min ago", so a context does not depend on how long the run took
+    between the lab's records and the render (CI's runner drew "just now" where the laptop
+    drew "# min ago", 33c2cfb1's run #1579)."""
+    text = re.sub(r"\bjust now\b", "# min ago", text, flags=re.I)
     return re.sub(r"\s+", " ", re.sub(r"\d+", "#", text))
 
 
@@ -708,3 +713,11 @@ def test_a_context_says_where_without_the_values_that_move():
     assert got == ("incident_id", "Incident <incident_id> · sent #-#-#T#:#:#Z")
     (got,) = bare("<p>Incident hi-0000aaaa1111 · sent 2027-01-01T00:00:00Z</p>")
     assert got == ("incident_id", "Incident <incident_id> · sent #-#-#T#:#:#Z")
+
+
+def test_a_context_holds_no_age_drawn_from_the_clock():
+    """C2948: the same row drawn seconds or minutes after the lab's records is one context;
+    CI's runner drew "just now" where the laptop drew "# min ago" (run #1579)."""
+    (soon,) = bare("<p>Incident hi-27a9717bbf09 Took 0.4 s just now</p>")
+    (later,) = bare("<p>Incident hi-27a9717bbf09 Took 0.4 s 9 min ago</p>")
+    assert soon == later == ("incident_id", "Incident <incident_id> Took #.# s # min ago")
