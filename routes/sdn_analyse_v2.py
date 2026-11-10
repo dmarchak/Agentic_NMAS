@@ -9,8 +9,10 @@ its planted-issue sheet (modules/sdn/analyst.py).
 - **Analyse with the trace tool** (Lab 9 B4) asks the same over the same snapshot through the
   read loop: at most two calls, the model's reads answered from the kept snapshot alone; its
   answer, its tool calls and the comparison with the first drawn in place.
-- **Add a planted issue…** and a row's **Save** keep the network's planted-issue sheet; **Download
-  the sheet** reads it as Markdown or CSV.
+- **Add a planted issue…** and a row's **Save** keep the network's planted-issue sheet; a row's
+  **Edit…** (Save changes) corrects its name and evidence and its **Remove…** (Remove from the
+  sheet) takes it off, kept marked removed (C2913), each change in the sheet's history;
+  **Download the sheet** reads it as Markdown or CSV.
 
 Nothing here sends anything to a switch. Each press redraws the region (``#sdn-analyse``) in
 place; the SDN page's region carries it on Flows.
@@ -111,6 +113,33 @@ def planted_why(pid):
     got = analyst.set_why(network, pid, request.form.get("why") or "",
                           actor=identity.request_actor())
     return _region(network, {"why": dict(got, pid=pid)}, 200 if got["ok"] else 422)
+
+
+@bp.route("/planted/<pid>/edit", methods=["POST"])
+def planted_edit(pid):
+    """A planted issue's name and evidence corrected (C2913), as the person who pressed Save
+    changes; refused when the issue changed since the form drew it (``rev``)."""
+    from modules import identity
+    from modules.sdn import analyst
+
+    network = _network()
+    got = analyst.edit_planted(network, pid, request.form.get("name") or "",
+                               request.form.get("evidence") or "",
+                               drawn=request.form.get("rev"), actor=identity.request_actor())
+    return _region(network, {"edit": dict(got, pid=pid)}, 200 if got["ok"] else 422)
+
+
+@bp.route("/planted/<pid>/remove", methods=["POST"])
+def planted_remove(pid):
+    """A planted issue taken off the sheet (C2913), as the person who pressed Remove from the
+    sheet: kept in the store marked removed, its change in the sheet's history."""
+    from modules import identity
+    from modules.sdn import analyst
+
+    network = _network()
+    got = analyst.remove_planted(network, pid, drawn=request.form.get("rev"),
+                                 actor=identity.request_actor())
+    return _region(network, {"remove": dict(got, pid=pid)}, 200 if got["ok"] else 422)
 
 
 @bp.route("/sheet/<fmt>", methods=["GET"])

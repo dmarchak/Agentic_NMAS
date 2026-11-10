@@ -343,6 +343,38 @@ def test_every_analysis_s_misses_are_rows_each_linking_its_analysis(world):  # n
          f"/v2/history?call={tools['call_id']}&since=")]
     assert X.failures("Branch", YESTERDAY, TODAY)["rows"] == [], "another network's rows"
     assert len(AN.sheets(NET)["sheets"]) == 3, "the state: three analyses kept"
+    # C2956: the issue planted after the first analysis is on its sheet, marked so, not missed.
+    first_sheet = next(s for s in AN.sheets(NET)["sheets"] if s["analysis"]["id"] == first["id"])
+    assert [(x["name"], x["found"]) for x in first_sheet["rows"]] == [
+        ("A stale drop", "missed"), ("A lost link", AN.PLANTED_AFTER)]
+
+
+def test_a_removed_or_corrected_issue_leaves_the_failure_log_of_every_analysis(world):  # noqa: F811
+    """C2913: a planted issue taken off the sheet is no analysis's miss, and one whose evidence
+    is corrected to what an analysis cited is that analysis's find, in the CSV and the JSON."""
+    from modules.sdn import analyst as AN
+
+    snap = snap_of(world)
+    wrong = AN.add_planted(NET, "A wrong port", f"port:ctl-1:{OVS3}:9", actor=PERSON)["issue"]
+    typo = AN.add_planted(NET, "Port 3 pulled", f"port:ctl-1:{OVS3}:30", actor=PERSON)["issue"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    first, second = analyse(world, snap), analyse(world, snap)
+    assert first["ok"] and second["ok"]
+
+    def missed():
+        return sorted((r["case"], r["outcome"]) for r in X.failures(NET, YESTERDAY, TODAY)["rows"]
+                      if r["kind"] == "planted_missed")
+    assert missed() == sorted((n, f"missed by analysis {a['id']}") for n in
+                              ("A wrong port", "Port 3 pulled") for a in (first, second))
+    assert AN.remove_planted(NET, wrong["id"], actor=PERSON)["ok"]
+    assert AN.edit_planted(NET, typo["id"], "Port 3 pulled", f"port:ctl-1:{OVS3}:3",
+                           actor=PERSON)["ok"]
+    assert missed() == []
+    got = X.download("failures", "csv", NET, YESTERDAY, TODAY, by=PERSON, default=NET)
+    assert got["ok"] and "A wrong port" not in got["body"] and "Port 3 pulled" not in got["body"]
+    got = X.download("failures", "json", NET, YESTERDAY, TODAY, by=PERSON, default=NET)
+    assert [r for r in json.loads(got["body"])["rows"] if r["kind"] == "planted_missed"] == []
+    assert [i["name"] for i in AN.planted(NET)["removed"]] == ["A wrong port"]
 
 
 def _fake_arms(secret=""):

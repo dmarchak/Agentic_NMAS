@@ -589,6 +589,9 @@ DECLARED = {
     "sdn_analyse_v2.ask_tools": ("ai_calls", "sdn"),
     "sdn_analyse_v2.planted_add": ("sdn",),
     "sdn_analyse_v2.planted_why": ("sdn",),
+    # C2913: a planted issue corrected or taken off the sheet, the network's own record.
+    "sdn_analyse_v2.planted_edit": ("sdn",),
+    "sdn_analyse_v2.planted_remove": ("sdn",),
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
     "settings_v2.install_test": ("ai_calls",),
     "v2.monitoring_alert_explain": ("ai_calls",),

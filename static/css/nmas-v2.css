@@ -3078,6 +3078,12 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-an-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .sdn-an-form input, .sdn-an-form textarea { font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+/* C2913 (board I revised): a planted row's Edit… and Remove…, opened in place, and the sheet's
+   history, collapsed. */
+.sdn-an-row-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; margin-top: 4px; }
+.sdn-an-row-act[open] { flex-basis: 100%; border-top: 1px solid var(--line-2); padding-top: 6px; }
+.sdn-an-survives { margin: 0; }
+.sdn-an-changes > summary { cursor: pointer; color: var(--ink-2); }
 /* Lab 9 B4: Analyse with the trace tool, its own card under the two (board I's alternative). */
 .sdn-an-tools { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .sdn-an-tools .sdn-an-bar { margin: 0; }

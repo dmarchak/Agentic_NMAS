@@ -39,7 +39,11 @@ sent to a switch: the analysis reads, and it changes nothing on the network.
    it holds is **dropped**. The card says how many were dropped and why. Long text is shortened
    and said so; at most 20 findings are kept.
 6. `compare`: each planted issue is **found** when a kept finding cites evidence it names, else
-   **missed**. **Why** is your note, saved on the row.
+   **missed**; an issue planted after the analysis was made reads **planted after this
+   analysis**, neither found nor missed, since it was not there to be found. **Why** is your
+   note, saved on the row. A planted issue's name and evidence are corrected with **Edit…**,
+   or it is taken off the sheet with **Remove…**; each change is kept with who made it, when,
+   and what it was.
 
 ## The evidence ids
 
@@ -74,10 +78,34 @@ failed redundant link, name its `link:` id and its two `port:` ids. The sheet ne
 model.
 
 After each analysis every row says **found** (hover: which findings cited its evidence) or
-**missed**. Type why in the row's **Why** and **Save**: what made it findable, or what the
-collection could not show. **Download the sheet** gives the sheet as Markdown (or **as CSV**),
-its first lines naming the network, the analysis, its snapshot, its call and model, and who
-downloaded it when: the table for a lab document, and the record of false positives and misses.
+**missed**. A row planted after the analysis was made says **planted after this analysis**
+(hover: when it was planted and when the analysis was made): it is neither found nor missed,
+and the counts at the card's head leave it out. The downloaded sheet and History › Export's
+failure log read it the same way, so it is never counted as a miss. Type why in the row's
+**Why** and **Save**: what made it findable, or what the collection could not show.
+**Download the sheet** gives the sheet as Markdown (or **as CSV**), its first lines naming the
+network, the analysis, its snapshot, its call and model, how many were found, missed and
+planted after, and who downloaded it when: the table for a lab document, and the record of
+false positives and misses. The Markdown ends with every change to the sheet.
+
+## Correct or remove a planted issue {#correct}
+
+A mistyped evidence id reads as missed, because no finding can cite an id that does not exist.
+**Edit…** on the row opens its name and evidence in place; change them and **Save changes**.
+The issue keeps its place and when it was planted, so every analysis is marked against the
+corrected evidence: an issue an analysis cited by the right id now reads **found** there, on
+the page, in the downloads and in History › Export. Nothing is changed when the name and
+evidence are the ones kept, and the change is refused, naming both, when the issue was changed
+in another tab since the form was drawn.
+
+**Remove…** asks first, and says what survives: the issue leaves the sheet, its found and
+missed counts and History › Export's failure log, but nothing is deleted. Its name, evidence
+and why are kept in the network's planted-issue record, marked removed with who and when.
+**Remove from the sheet** takes it off.
+
+Both are a verified person's, never a service's. Each change is listed, newest first, under
+**Changes to the sheet** (collapsed, under the card): who, when, and what the issue was and is
+(an addition, a why saved, a correction, a removal). The downloaded Markdown lists them all.
 
 ## Was this right?
 

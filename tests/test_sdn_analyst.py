@@ -25,6 +25,7 @@ import csv
 import io
 import json
 import os
+import re
 import types
 from html import unescape
 
@@ -364,6 +365,194 @@ def test_the_sheet_downloads_as_markdown_and_csv(world):
     rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
     assert rows[0] == ["# network", NET] and rows[3][:2] == ["planted", "found"]
     assert rows[4][:2] == ["OVS 3's port | pulled", "found"] and rows[4][4] == "yes"
+
+
+# ── planted issues corrected, removed, and planted after (C2913, C2956) ────────────────────────
+
+def _press(path, **data):
+    import app as APP
+
+    return APP.app.test_client().post(path, data=dict(data, list=NET),
+                                      headers={"HX-Request": "true"})
+
+
+def _store():
+    with open(AN._planted_path(NET), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+@pytest.mark.parametrize("who", ["nobody", "service"])
+@pytest.mark.parametrize("verb", ["edit", "remove"])
+def test_edit_and_remove_are_a_person_s_and_refused_without_one(world, monkeypatch, who, verb):
+    """C2913: the gate refuses an unverified request and a verified service before input, and
+    the store is left byte for byte as it was."""
+    from modules import identity
+
+    pid = AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}:*", actor=PERSON)["issue"]["id"]
+    before = _store()
+    if who == "nobody":
+        ident = identity.Identity(outcome="no_header", reason="no access assertion")
+    else:
+        ident = identity.Identity(actor="service:ci", kind="service", service_id="ci",
+                                  verified=True, outcome="ok", peer="127.0.0.1",
+                                  peer_trusted=True)
+    monkeypatch.setattr(identity, "identify", lambda _request: ident)
+    r = _press(f"/v2/sdn/analyse/planted/{pid}/{verb}", name="Renamed",
+               evidence=f"port:ctl-1:{OVS3}:3")
+    assert r.status_code in (401, 403), r.status_code
+    assert _store() == before
+
+
+def test_an_edit_keeps_who_when_and_before_and_after_in_the_sheet_s_history(world):
+    from tests.conftest import TEST_PERSON
+
+    pid = AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}0:*", actor=PERSON,
+                         now=1_794_000_000.0)["issue"]["id"]
+    issue = AN.planted(NET)["issues"][0]
+    r = _press(f"/v2/sdn/analyse/planted/{pid}/edit", name="A stale drop on OVS 3",
+               evidence=f"drop:ctl-1:{OVS3}:*", rev=AN.rev(issue))
+    assert r.status_code == 200 and "Changes to the sheet (2)" in _html(r)
+    kept = _store()
+    (got,) = kept["issues"]
+    assert (got["id"], got["name"], got["evidence"]) == (pid, "A stale drop on OVS 3",
+                                                         [f"drop:ctl-1:{OVS3}:*"])
+    assert got["edited_by"] == TEST_PERSON and got["edited_at"].endswith("Z")
+    assert got["at"] == "2026-11-06T21:20:00Z", "it keeps when it was planted"
+    add, edit = kept["history"]
+    assert (add["action"], add["by"], add["before"]) == ("add", PERSON, None)
+    assert edit == {"at": got["edited_at"], "by": TEST_PERSON, "action": "edit", "id": pid,
+                    "name": "A stale drop on OVS 3",
+                    "before": {"name": "A stale drop", "evidence": [f"drop:ctl-1:{OVS3}0:*"]},
+                    "after": {"name": "A stale drop on OVS 3",
+                              "evidence": [f"drop:ctl-1:{OVS3}:*"]}}
+    same = _press(f"/v2/sdn/analyse/planted/{pid}/edit", name="A stale drop on OVS 3",
+                  evidence=f"drop:ctl-1:{OVS3}:*")
+    assert same.status_code == 422 and "nothing is changed" in _html(same)
+    bad = _press(f"/v2/sdn/analyse/planted/{pid}/edit", name="x", evidence="198.51.100.250")
+    assert bad.status_code == 422 and "Couldn't save:" in _html(bad)
+    assert len(_store()["history"]) == 2, "a refused edit records nothing"
+
+
+def test_an_edit_made_since_the_form_drew_it_is_refused_naming_both(world):
+    pid = AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}:*", actor=PERSON)["issue"]["id"]
+    drawn = AN.rev(AN.planted(NET)["issues"][0])
+    assert AN.edit_planted(NET, pid, "Another tab's name", f"drop:ctl-1:{OVS3}:*",
+                           actor=PERSON, drawn=drawn)["ok"]
+    now = AN.rev(AN.planted(NET)["issues"][0])
+    for verb in ("edit", "remove"):
+        r = _press(f"/v2/sdn/analyse/planted/{pid}/{verb}", name="Mine",
+                   evidence=f"port:ctl-1:{OVS3}:3", rev=drawn)
+        assert r.status_code == 422 and f"(drawn {drawn}, now {now}:" in _html(r), verb
+    (issue,) = AN.planted(NET)["issues"]
+    assert issue["name"] == "Another tab's name" and not issue.get("removed_at")
+
+
+def test_an_edited_evidence_turns_a_missed_issue_found_by_the_analysis_that_cited_it(world):
+    snap = snap_of(world)
+    pid = AN.add_planted(NET, "OVS 3's port 3 pulled", f"port:ctl-1:{OVS3}:30",
+                         actor=PERSON)["issue"]["id"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    r = analyse(world, snap)
+    assert (AN.view(NET)["found"], AN.view(NET)["missed"]) == (0, 1)
+    edited = _press(f"/v2/sdn/analyse/planted/{pid}/edit", name="OVS 3's port 3 pulled",
+                    evidence=f"port:ctl-1:{OVS3}:3")
+    assert edited.status_code == 200
+    v = AN.view(NET)
+    assert (v["found"], v["missed"]) == (1, 0)
+    assert v["planted"][0]["by"] == ["Link down on 0000000000000003 port 3"]
+    (sheet,) = AN.sheets(NET)["sheets"]
+    assert sheet["analysis"]["id"] == r["id"] and sheet["rows"][0]["found"] == "found"
+
+
+def test_ipv4_and_ipv6_evidence_ids_are_kept_whole_by_an_edit(world):
+    """The IPv4 and the IPv6 flow's ids (an address never in an id) and a typed pattern naming
+    each address, kept whole through the edit, its history, both downloads and the match."""
+    snap = snap_of(world)
+    s3 = next(s for s in snap["switches"] if s["dpid_hex"] == OVS3)
+    v4 = next(f for f in s3["flows"] if "ipv4_dst" in f["match"])["id"]
+    v6 = next(f for f in s3["flows"] if "ipv6_dst" in f["match"])["id"]
+    pid = AN.add_planted(NET, "Traffic to h20", "flow:ctl-9:*", actor=PERSON)["issue"]["id"]
+    world.answer = answer(finding([v6], "low", "IPv6 traffic to 2001:db8::20"),
+                          finding([v4], "low", "IPv4 traffic to 198.51.100.20"))
+    analyse(world, snap)
+    typed = [v4, v6, "flow:ctl-1:*:2001:db8::20*", "flow:ctl-1:*:198.51.100.20*"]
+    got = AN.edit_planted(NET, pid, "Traffic to h20", "\n".join(typed[:2]) + ", " +
+                          " ".join(typed[2:]), actor=PERSON)
+    assert got["ok"], got
+    assert AN.planted(NET)["issues"][0]["evidence"] == typed
+    assert _store()["history"][-1]["after"]["evidence"] == typed
+    (row,) = AN.view(NET)["planted"]
+    assert row["found"] == "found" and row["by"] == ["IPv6 traffic to 2001:db8::20",
+                                                     "IPv4 traffic to 198.51.100.20"]
+    rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
+    assert rows[4][2] == " ".join(typed)
+    assert " ".join(typed) in AN.sheet_markdown(NET, by=PERSON)
+
+
+def test_a_removed_issue_leaves_the_sheet_and_its_counts_and_is_kept_with_its_history(world):
+    from tests.conftest import TEST_PERSON
+
+    snap = snap_of(world)
+    keep = AN.add_planted(NET, "OVS 3's port 3 pulled", f"port:ctl-1:{OVS3}:3",
+                          actor=PERSON)["issue"]["id"]
+    pid = AN.add_planted(NET, "A wrong port", f"port:ctl-1:{OVS3}:9", why="mistyped",
+                         actor=PERSON)["issue"]["id"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    analyse(world, snap)
+    assert (AN.view(NET)["found"], AN.view(NET)["missed"]) == (1, 1)
+    r = _press(f"/v2/sdn/analyse/planted/{pid}/remove",
+               rev=AN.rev(AN.planted(NET)["issues"][1]))
+    assert r.status_code == 200 and "A wrong port" in _html(r)
+    v = AN.view(NET)
+    assert (v["found"], v["missed"], v["removed"]) == (1, 0, 1)
+    assert [p["id"] for p in v["planted"]] == [keep]
+    kept = _store()
+    gone = next(i for i in kept["issues"] if i["id"] == pid)
+    assert gone["removed_by"] == TEST_PERSON and gone["why"] == "mistyped"
+    assert kept["history"][-1] == {
+        "at": gone["removed_at"], "by": TEST_PERSON, "action": "remove", "id": pid,
+        "name": "A wrong port", "after": None,
+        "before": {"name": "A wrong port", "evidence": [f"port:ctl-1:{OVS3}:9"],
+                   "why": "mistyped"}}
+    assert [r["name"] for r in AN.sheets(NET)["sheets"][0]["rows"]] == ["OVS 3's port 3 pulled"]
+    rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
+    assert [x[0] for x in rows[4:]] == ["OVS 3's port 3 pulled"]
+    md = AN.sheet_markdown(NET, by=PERSON)
+    assert "## Changes to the sheet" in md and f"removed “A wrong port” (it was evidence " \
+        f"port:ctl-1:{OVS3}:9;" in md and "- Planted: 1 found · 0 missed" in md
+    again = AN.remove_planted(NET, pid, actor=PERSON)
+    assert not again["ok"] and f"was removed by {TEST_PERSON}" in again["error"]
+    assert not AN.edit_planted(NET, pid, "x", f"port:ctl-1:{OVS3}:3", actor=PERSON)["ok"]
+    assert not AN.set_why(NET, pid, "w", actor=PERSON)["ok"]
+
+
+def test_an_issue_planted_after_the_analysis_reads_so_on_the_page_and_both_downloads(world):
+    """C2956: pressed Add a planted issue after the analysis; neither found nor missed, outside
+    both counts, on the page, the CSV and the Markdown, as History › Export reads it."""
+    import time
+
+    snap = snap_of(world)
+    assert AN.add_planted(NET, "OVS 3's port 3 pulled", f"port:ctl-1:{OVS3}:3", actor=PERSON,
+                          now=time.time() - 600)["ok"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    r = analyse(world, snap, now=time.time() - 300)
+    added = _press("/v2/sdn/analyse/planted", name="A stale drop",
+                   evidence=f"drop:ctl-1:{OVS3}:*", why="")
+    html = _html(added)
+    assert added.status_code == 200 and "1 found · 0 missed · 1 planted after this analysis" in html
+    assert re.search(r'<span class="badge badge-muted" title="planted [^"]+, after the analysis '
+                     rf'of {r["at"]}[^"]*">planted after this analysis</span>', html)
+    v = AN.view(NET)
+    assert [p["found"] for p in v["planted"]] == ["found", AN.PLANTED_AFTER]
+    assert (v["found"], v["missed"], v["after"]) == (1, 0, 1)
+    rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
+    assert [x[:2] for x in rows[4:]] == [["OVS 3's port 3 pulled", "found"],
+                                        ["A stale drop", AN.PLANTED_AFTER]]
+    md = AN.sheet_markdown(NET, by=PERSON)
+    assert "| A stale drop | planted after this analysis |" in md
+    assert "- Planted: 1 found · 0 missed · 1 planted after this analysis" in md
+    (sheet,) = AN.sheets(NET)["sheets"]
+    assert [x["found"] for x in sheet["rows"]] == ["found", AN.PLANTED_AFTER]
 
 
 # ── the call ─────────────────────────────────────────────────────────────────────────────────

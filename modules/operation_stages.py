@@ -611,6 +611,13 @@ HISTORY = {
                                   "sheet (modules/sdn/analyst.py), never a device's record",
     "sdn_analyse_v2.planted_why": "n/a: a person's note on the network's evaluation sheet, "
                                   "never a device's record",
+    # C2913: a planted issue corrected or removed, each change in the sheet's own history.
+    "sdn_analyse_v2.planted_edit": "n/a: a planted issue corrected on the network's evaluation "
+                                   "sheet, its before and after in the sheet's history, never "
+                                   "a device's record",
+    "sdn_analyse_v2.planted_remove": "n/a: a planted issue taken off the network's evaluation "
+                                     "sheet, kept marked removed with its history, never a "
+                                     "device's record",
     # P6: the controller host's deploys, one receipt each (modules/controller_deploy_receipts.py).
     "sdn_v2.apps_confirm": ("controller_deploys",),
     "sdn_v2.response_confirm": ("sdn_operations",),

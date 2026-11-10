@@ -5,7 +5,10 @@
     snapshot and its estimate, a collection running, the latest analysis (its findings checked
     against the snapshot in code) and the planted issues marked against it; read from the
     network's small files, never a controller. *said* is a press's answer (Collect now, Analyse,
-    a planted issue's add or why), drawn in place. Included by _sdn_view.html on Flows, and
+    a planted issue's add, why, edit or removal), drawn in place. Each planted row's Edit… and
+    Remove… (C2913, board I revised 2026-11-10) open in place; an issue planted after the
+    analysis is marked so, neither found nor missed (C2956); Changes to the sheet lists the
+    sheet's history, newest first. Included by _sdn_view.html on Flows, and
     drawn alone by routes/sdn_analyse_v2.py after each press. Lab 9 B4's Analyse with the trace
     tool is its own card under the two (_sdn_analyse_tools.html). -#}
 {%- set c = ai_control('sdn_analyse') %}
@@ -66,18 +69,43 @@
   {%- endif %}
 </section>
 <section class="card sdn-an-planted" aria-labelledby="sdn-an-p">
-  <div class="sdn-ctl-hd"><h2 id="sdn-an-p">Planted issues (an evaluation sheet)</h2>{% if an.planted %}<span class="faint small">{{ an.found }} found · {{ an.missed }} missed</span>{% endif %}</div>
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-p">Planted issues (an evaluation sheet)</h2>{% if an.planted %}<span class="faint small">{{ an.found }} found · {{ an.missed }} missed{% if an.after %} · {{ an.after }} planted after this analysis{% endif %}</span>{% endif %}</div>
   {%- if an.planted_state == 'unreadable' %}
   <p class="small notice notice-danger" role="alert">The planted issues cannot be read ({{ an.planted_error }}); none is drawn as found or missed.</p>
   {%- elif an.planted %}
   <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Planted</th><th>Found</th><th>Why</th></tr></thead><tbody>
   {%- for p in an.planted %}
-    <tr id="sdn-pl-{{ p.id }}"><td data-l="Planted">{{ p.name }}<br><span class="faint small mono" title="added by {{ p.by }} {{ p.at }}">{{ p.evidence | join(' ') }}</span></td>
-      <td data-l="Found">{% if p.found == 'found' %}{{ badge('found', 'ok', title=p.by | join('; ')) }}{% elif p.found == 'missed' %}{{ badge('missed', 'danger') }}{% if p.in_collection == false %} <span class="faint small">its evidence is not in the snapshot</span>{% endif %}{% else %}{{ badge('not analysed', 'muted') }}{% endif %}</td>
+    {%- set edit_failed = said.edit and said.edit.pid == p.id and not said.edit.ok %}
+    {%- set remove_failed = said.remove and said.remove.pid == p.id and not said.remove.ok %}
+    <tr id="sdn-pl-{{ p.id }}"><td data-l="Planted">{{ p.name }}<br><span class="faint small mono" title="added by {{ p.by }} {{ p.at }}{% if p.edited_by %}; corrected by {{ p.edited_by }} {{ p.edited_at }}{% endif %}">{{ p.evidence | join(' ') }}</span>
+      <div class="sdn-an-row-acts">
+      <details class="sdn-an-row-act" data-keep="sdn-pl-edit-{{ p.id }}"{% if edit_failed %} open{% endif %}>
+        <summary class="btn btn-small">Edit…</summary>
+        <form class="op-act sdn-an-form" hx-post="{{ url_for('sdn_analyse_v2.planted_edit', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+          <input type="hidden" name="list" value="{{ an.network }}"><input type="hidden" name="rev" value="{{ p.rev }}">
+          <label>Name <input name="name" type="text" maxlength="120" required value="{{ p.name }}"></label>
+          <label>Evidence it should be found by <textarea name="evidence" rows="2" required>{{ p.evidence | join(' ') }}</textarea><span class="faint small">Ids or * patterns, as when it was added; the change is kept with what it was, who and when.</span></label>
+          <span><button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save changes</span><span class="op-busy">Saving…</span></button>{{ how('sdn-analyse', 'correct', compact=True, op='Edit a planted issue') }}</span>
+          {%- if edit_failed %}<p class="small notice notice-warn" role="alert">Couldn't save: {{ said.edit.error }}.</p>{% endif %}
+        </form>
+      </details>
+      <details class="sdn-an-row-act" data-keep="sdn-pl-remove-{{ p.id }}"{% if remove_failed %} open{% endif %}>
+        <summary class="btn btn-small">Remove…</summary>
+        <form class="op-act sdn-an-form" hx-post="{{ url_for('sdn_analyse_v2.planted_remove', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+          <input type="hidden" name="list" value="{{ an.network }}"><input type="hidden" name="rev" value="{{ p.rev }}">
+          <p class="small sdn-an-survives">Remove “{{ p.name }}” from the sheet? It leaves the found and missed counts and History › Export's failure log. Its name, evidence and why are kept in this network's planted-issue record, listed under Changes to the sheet, and in the downloaded sheet.</p>
+          <span><button class="btn btn-small btn-danger" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove from the sheet</span><span class="op-busy">Removing…</span></button>{{ how('sdn-analyse', 'correct', compact=True, op='Remove a planted issue') }}</span>
+          {%- if remove_failed %}<p class="small notice notice-warn" role="alert">Couldn't remove: {{ said.remove.error }}.</p>{% endif %}
+        </form>
+      </details>
+      </div></td>
+      <td data-l="Found">{% if p.found == 'found' %}{{ badge('found', 'ok', title=p.by | join('; ')) }}{% elif p.found == 'missed' %}{{ badge('missed', 'danger') }}{% if p.in_collection == false %} <span class="faint small">its evidence is not in the snapshot</span>{% endif %}{% elif p.found == 'planted after this analysis' %}{{ badge('planted after this analysis', 'muted', title='planted ' ~ p.at ~ ', after the analysis of ' ~ x.at ~ ': it was not there to be found, so it is neither found nor missed') }}{% else %}{{ badge('not analysed', 'muted') }}{% endif %}</td>
       <td data-l="Why"><form class="op-act sdn-an-why" hx-post="{{ url_for('sdn_analyse_v2.planted_why', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="list" value="{{ an.network }}"><label class="sr-only" for="sdn-why-{{ p.id }}">Why it was {{ p.found }}</label><input id="sdn-why-{{ p.id }}" name="why" type="text" maxlength="600" value="{{ p.why }}" placeholder="why it was found or missed"{% if p.why_by %} title="saved by {{ p.why_by }} {{ p.why_at }}"{% endif %}> <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('sdn-analyse', 'planted', compact=True, op='Save a why') }}</form>
         {%- if said.why and said.why.pid == p.id and not said.why.ok %}<p class="small notice notice-warn" role="alert">Couldn't save: {{ said.why.error }}.</p>{% endif %}</td></tr>
   {%- endfor %}
   </tbody></table></div>
+  {%- elif an.removed %}
+  <p class="muted">No issue is on the sheet: {{ an.removed }} removed, each kept under Changes to the sheet. Add each one you plant, with the evidence it should be found by.</p>
   {%- else %}
   <p class="muted">No issue planted yet. Add each one you plant, with the evidence it should be found by; the sheet then says whether each analysis found it.</p>
   {%- endif %}
@@ -96,6 +124,17 @@
     <a class="btn btn-small" href="{{ url_for('sdn_analyse_v2.sheet', fmt='md', list=an.network) }}" download title="The sheet as Markdown, its first lines naming the network, the analysis, its snapshot and call">Download the sheet</a>
     <a class="small" href="{{ url_for('sdn_analyse_v2.sheet', fmt='csv', list=an.network) }}" download title="The same sheet as CSV">as CSV</a>
   </div>
+  {%- if an.changes %}
+  <details class="sdn-an-changes" data-keep="sdn-an-changes">
+    <summary class="small">Changes to the sheet ({{ an.changes | length }}){% if an.removed %}, {{ an.removed }} removed{% endif %}</summary>
+    <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>
+    {%- for c in an.changes[:20] %}
+      <tr data-action="{{ c.action }}"><td data-l="When">{{ stamp(c.at) }}</td><td data-l="Who">{{ c.by }}</td><td data-l="What">{{ c.words }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+    {%- if an.changes | length > 20 %}<p class="small muted">{{ an.changes | length - 20 }} earlier: every change is in the downloaded sheet.</p>{% endif %}
+  </details>
+  {%- endif %}
 </section>
 </div>
 {%- include "v2/_sdn_analyse_tools.html" %}

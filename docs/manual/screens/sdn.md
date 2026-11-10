@@ -117,7 +117,11 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   Beside it, the snapshot's size and time, the model and about what a call costs, and
   **Collect now**, which reads the switches again as a job. **Planted issues** is the sheet
   that compares the findings with problems you planted, each **found** or **missed** with your
-  why; **Download the sheet** gives it as Markdown or CSV. How it works: [Analyse this
+  why, or **planted after this analysis** (neither, and outside the counts) when it was
+  planted after the analysis was made. Each row's **Edit…** corrects its name and evidence
+  (**Save changes**), and **Remove…** takes it off the sheet (**Remove from the sheet**),
+  keeping its record; **Changes to the sheet** lists who changed what, and when. **Download
+  the sheet** gives it as Markdown or CSV. How it works: [Analyse this
   network](sdn-analyse).
 - **Analyse with the trace tool**, its own card under those two (an AI control): the same
   question about the same snapshot, the model first asking Mercury for up to three reads (a

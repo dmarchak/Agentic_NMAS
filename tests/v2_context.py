@@ -3217,6 +3217,20 @@ def _sdn_analyse(client, _lab, _mp):
         html = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
         assert "Port 3 on 0000000000000003 is down" in html and "missed" in html
         assert "read:1 link_state(" in html and "Without tools (B1)" in html
+        # C2913 and C2956: an issue planted after the analysis, one corrected and one removed,
+        # so the sheet draws its third mark, a corrected row and Changes to the sheet.
+        import time
+        later = time.time() + 2
+        assert AN.add_planted("Lab", "A lost link", f"link:lab-analyse:{OVS3}:*",
+                              actor="v2-context", now=later)["ok"]
+        typo = AN.add_planted("Lab", "A mistyped port", f"port:lab-analyse:{OVS3}:30",
+                              actor="v2-context", now=later)["issue"]["id"]
+        assert AN.edit_planted("Lab", typo, "A mistyped port", f"port:lab-analyse:{OVS3}:31",
+                               actor="v2-context", now=later)["ok"]
+        assert AN.remove_planted("Lab", typo, actor="v2-context", now=later)["ok"]
+        html = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+        assert ">planted after this analysis</span>" in html and "Changes to the sheet (6), 1 " \
+            "removed" in html, "the sheet's third mark and its history"
         region = client.post("/v2/sdn/analyse/planted", data={
             "list": "Lab", "name": "", "evidence": "nothing"}, headers={"HX-Request": "true"})
         assert region.status_code == 422 and "Couldn't add" in region.get_data(as_text=True)

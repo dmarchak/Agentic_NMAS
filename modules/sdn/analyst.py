@@ -34,8 +34,13 @@ person planted.
 6. **compare** (`marks`): each planted issue (a person's name for it and the evidence it should
    be found by, ids or ``*`` patterns over ids) is found when a kept finding cites an id it
    matches, else missed; "not in the collection" when none of its patterns matches anything the
-   snapshot holds. Why is a person's note, editable. The sheet downloads as Markdown or CSV
-   (`sheet_markdown`, `sheet_csv`), for the lab's document and B5's false-positive log.
+   snapshot holds; "planted after this analysis" when it was planted after the analysis was
+   made (`planted_after`, C2956), neither found nor missed and outside both counts, one rule
+   for the page, both downloads and History › Export. Why is a person's note, editable; a
+   planted issue's name and evidence are corrected (`edit_planted`) or it is removed
+   (`remove_planted`, kept marked removed) by a person, each change appended to the sheet's
+   history with who, when, and what it was and is (C2913). The sheet downloads as Markdown or
+   CSV (`sheet_markdown`, `sheet_csv`), for the lab's document and B5's false-positive log.
 
 **Evidence ids** reuse the collection's own where it has one: a flow's
 ``flow:<connection>:<dpid hex>:t<table>:p<priority>:<match digest>`` (`closed_loop.flow_ref`,
@@ -88,6 +93,9 @@ MAX_NAME_CHARS = 120
 MAX_PATTERNS = 10
 MAX_PATTERN_CHARS = 200
 MAX_NOTE_CHARS = 600
+#: A planted issue's mark on an analysis made before it was planted (C2956): neither found
+#: nor missed, and outside both counts (`planted_after`).
+PLANTED_AFTER = "planted after this analysis"
 #: The output a call is estimated at for the page's "about $X" (provisional, not measured:
 #: a few findings; the per-call cap on the mark is the bound).
 OUTPUT_TOKENS_ESTIMATE = 1500
@@ -123,7 +131,9 @@ STEPS = (
               "does not hold is removed, a finding left citing nothing is dropped, each "
               "counted; severity from a fixed set; lengths capped"),
     ("compare", "each planted issue found when a kept finding cites evidence it names, else "
-                "missed; its why a person's note; the sheet downloads as Markdown or CSV"),
+                "missed, and neither when it was planted after the analysis; its why a "
+                "person's note; its name and evidence corrected, or it removed, by a person, "
+                "each change kept with what it was; the sheet downloads as Markdown or CSV"),
 )
 
 
@@ -772,14 +782,46 @@ def _planted_path(network: str) -> str:
     return os.path.join(_dir(network), "planted.json")
 
 
-def planted(network: str) -> dict:
-    """``{"state": "ok"|"absent"|"unreadable", "issues", "error"}``."""
+def _planted_doc(network: str) -> tuple:
+    """The store itself: ``(every issue kept, removed ones too; its history; error)``. A store
+    written before C2913 holds no history: its adds and whys are on each issue (``by``, ``at``,
+    ``why_by``, ``why_at``), read as before."""
     got, err = _read_json(_planted_path(network))
     if err:
-        return {"state": "unreadable", "issues": [], "error": err}
+        return None, [], err
     if got is None:
-        return {"state": "absent", "issues": [], "error": ""}
-    return {"state": "ok", "issues": list(got.get("issues") or []), "error": ""}
+        return None, [], ""
+    return list(got.get("issues") or []), list(got.get("history") or []), ""
+
+
+def planted(network: str) -> dict:
+    """``{"state": "ok"|"absent"|"unreadable", "issues", "removed", "history", "error"}``:
+    *issues* the planted issues on the sheet now, *removed* those a person removed (kept, with
+    who and when), *history* every change to the sheet, oldest first (C2913)."""
+    every, history, err = _planted_doc(network)
+    if err:
+        return {"state": "unreadable", "issues": [], "removed": [], "history": [], "error": err}
+    if every is None:
+        return {"state": "absent", "issues": [], "removed": [], "history": [], "error": ""}
+    return {"state": "ok", "issues": [i for i in every if not i.get("removed_at")],
+            "removed": [i for i in every if i.get("removed_at")], "history": history,
+            "error": ""}
+
+
+def _changed(network: str, every: list, history: list, action: str, issue: dict, actor: str,
+             now: float, before, after) -> None:
+    """Keep *every* issue and the history with one entry more, appended, never rewritten: who,
+    when, what, the issue's id and name, and its fields before and after (None: none)."""
+    entry = {"at": _iso(now), "by": actor, "action": action, "id": issue.get("id"),
+             "name": issue.get("name"), "before": before, "after": after}
+    _write_json(_planted_path(network), {"issues": every, "history": history + [entry]})
+
+
+def rev(issue: dict) -> str:
+    """A planted issue's name and evidence as a short digest: the Edit and Remove forms carry
+    the one they drew, so a change made since in another tab is refused, naming both."""
+    body = json.dumps([issue.get("name"), issue.get("evidence")], separators=(",", ":"))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
 
 
 def _text(value, limit: int, what: str, required: bool = True) -> str:
@@ -824,52 +866,137 @@ def add_planted(network: str, name: str, evidence: str, *, actor: str, why: str 
     except PlantedRefused as exc:
         return {"ok": False, "error": str(exc), "issue": None}
     with _lock(network):
-        got = planted(network)
-        if got["state"] == "unreadable":
+        every, history, err = _planted_doc(network)
+        if err:
             return {"ok": False, "issue": None, "error": f"the planted issues cannot be read "
-                    f"({got['error']}), so none is added"}
-        if len(got["issues"]) >= MAX_PLANTED:
+                    f"({err}), so none is added"}
+        every = every or []
+        if sum(not i.get("removed_at") for i in every) >= MAX_PLANTED:
             return {"ok": False, "issue": None,
                     "error": f"{network} has {MAX_PLANTED} planted issues, the most kept"}
-        _write_json(_planted_path(network), {"issues": got["issues"] + [issue]})
+        _changed(network, every + [issue], history, "add", issue, actor, now, None,
+                 {k: issue[k] for k in ("name", "evidence", "why")})
     return {"ok": True, "error": "", "issue": issue}
 
 
-def set_why(network: str, pid: str, why: str, *, actor: str, now: float = None) -> dict:
-    """A person's note on why a planted issue was found or missed: ``{"ok", "error"}``."""
-    now = time.time() if now is None else now
+def _held(network: str, pid: str, verb: str):
+    """``(every, history, the issue, refusal)`` for a change to planted issue *pid*, under the
+    caller's lock: refused, naming why, when the store cannot be read, the id is not one, or no
+    issue on the sheet has it."""
     if not _PLANTED_ID.match(str(pid or "")):
-        return {"ok": False, "error": f"{pid!r} is not a planted issue's id"}
+        return None, None, None, f"{pid!r} is not a planted issue's id"
+    every, history, err = _planted_doc(network)
+    if err:
+        return None, None, None, f"the planted issues cannot be read ({err}), so none is {verb}"
+    hit = next((i for i in every or [] if i.get("id") == pid), None)
+    if hit is None:
+        return None, None, None, f"no planted issue {pid} on {network}"
+    if hit.get("removed_at"):
+        return None, None, None, (f"the planted issue {hit.get('name')!r} was removed by "
+                                  f"{hit.get('removed_by')} at {hit['removed_at']}, so it is "
+                                  f"not {verb}")
+    return every, history, hit, ""
+
+
+def _moved(hit: dict, drawn: str) -> str:
+    """A refusal when the issue changed since its form drew it (*drawn*, its `rev`; None: not
+    carried), naming both."""
+    if drawn is None or drawn == rev(hit):
+        return ""
+    return (f"the planted issue changed since this form drew it (drawn {drawn}, now {rev(hit)}: "
+            f"{hit.get('name')!r}, evidence {' '.join(hit.get('evidence') or [])}); draw the "
+            "sheet again and change it there")
+
+
+def set_why(network: str, pid: str, why: str, *, actor: str, now: float = None) -> dict:
+    """A person's note on why a planted issue was found or missed: ``{"ok", "error"}``, kept on
+    the issue (``why_by``, ``why_at``) and in the sheet's history with what it was."""
+    now = time.time() if now is None else now
     try:
         note = _text(why, MAX_NOTE_CHARS, "why", required=False)
     except PlantedRefused as exc:
         return {"ok": False, "error": str(exc)}
     with _lock(network):
-        got = planted(network)
-        if got["state"] == "unreadable":
-            return {"ok": False, "error": f"the planted issues cannot be read ({got['error']})"}
-        issues = got["issues"]
-        hit = next((i for i in issues if i.get("id") == pid), None)
-        if hit is None:
-            return {"ok": False, "error": f"no planted issue {pid} on {network}"}
+        every, history, hit, refused = _held(network, pid, "changed")
+        if refused:
+            return {"ok": False, "error": refused}
+        before = {"why": hit.get("why", "")}
         hit.update(why=note, why_by=actor, why_at=_iso(now))
-        _write_json(_planted_path(network), {"issues": issues})
+        _changed(network, every, history, "why", hit, actor, now, before, {"why": note})
     return {"ok": True, "error": ""}
+
+
+def edit_planted(network: str, pid: str, name: str, evidence: str, *, actor: str,
+                 drawn: str = None, now: float = None) -> dict:
+    """Correct a planted issue's name and evidence (C2913): ``{"ok", "error", "issue"}``. The
+    same checks as `add_planted`; refused when nothing changes or the issue changed since the
+    form drew it (*drawn*, its `rev`). Kept with who and when (``edited_by``, ``edited_at``),
+    and in the sheet's history with what it was and what it is. The issue keeps its id and
+    when it was planted, so every analysis's sheet reads the corrected evidence."""
+    now = time.time() if now is None else now
+    try:
+        new = {"name": _text(name, MAX_NAME_CHARS, "the planted issue's name"),
+               "evidence": patterns_of(evidence)}
+    except PlantedRefused as exc:
+        return {"ok": False, "error": str(exc), "issue": None}
+    with _lock(network):
+        every, history, hit, refused = _held(network, pid, "changed")
+        refused = refused or _moved(hit, drawn)
+        if refused:
+            return {"ok": False, "error": refused, "issue": None}
+        before = {"name": hit.get("name"), "evidence": list(hit.get("evidence") or [])}
+        if before == new:
+            return {"ok": False, "issue": None, "error": "the name and evidence are the ones "
+                    "kept, so nothing is changed"}
+        hit.update(new, edited_by=actor, edited_at=_iso(now))
+        _changed(network, every, history, "edit", hit, actor, now, before, new)
+    return {"ok": True, "error": "", "issue": hit}
+
+
+def remove_planted(network: str, pid: str, *, actor: str, drawn: str = None,
+                   now: float = None) -> dict:
+    """Take a planted issue off the sheet (C2913): ``{"ok", "error", "issue"}``. Nothing is
+    deleted: the issue stays in the store marked removed (``removed_by``, ``removed_at``) and
+    the sheet's history keeps what it was; it leaves the page's counts, both downloads' rows
+    and History › Export's failure log (`planted` lists it under *removed*). Refused when the
+    issue changed since the form drew it (*drawn*, its `rev`)."""
+    now = time.time() if now is None else now
+    with _lock(network):
+        every, history, hit, refused = _held(network, pid, "removed")
+        refused = refused or _moved(hit, drawn)
+        if refused:
+            return {"ok": False, "error": refused, "issue": None}
+        before = {k: hit.get(k) for k in ("name", "evidence", "why")}
+        hit.update(removed_by=actor, removed_at=_iso(now))
+        _changed(network, every, history, "remove", hit, actor, now, before, None)
+    return {"ok": True, "error": "", "issue": hit}
 
 
 def _matches(pattern: str, ident: str) -> bool:
     return fnmatch.fnmatchcase(ident, pattern) if "*" in pattern else ident == pattern
 
 
+def planted_after(issue: dict, result: dict) -> bool:
+    """Whether *issue* was planted after the analysis *result* was made, so it was not there to
+    be found (C2956): both times read, the issue's later. The one rule for the page's sheet, its
+    downloads, the trace tool's comparison and History › Export (`marks`, `sheets`)."""
+    made, at = _epoch((result or {}).get("at")), _epoch(issue.get("at"))
+    return made is not None and at is not None and at > made
+
+
 def marks(issues: list, result: dict, ids: set = None) -> list:
     """Each planted issue against an analysis *result* (`analyse`'s): ``found`` when a kept
     finding cites an id one of its patterns matches (``by`` names those findings), else
-    ``missed``; ``in_collection`` False when none of its patterns matches an id the snapshot
-    holds (*ids*; None when the snapshot is not read). No result: ``not analysed``."""
+    ``missed``; `PLANTED_AFTER` when it was planted after the analysis (`planted_after`),
+    neither found nor missed; ``in_collection`` False when none of its patterns matches an id
+    the snapshot holds (*ids*; None when the snapshot is not read). No result: ``not
+    analysed``."""
     out = []
     for issue in issues or []:
         row = dict(issue, found="not analysed", by=[], in_collection=None)
-        if result and result.get("ok"):
+        if result and result.get("ok") and planted_after(issue, result):
+            row["found"] = PLANTED_AFTER
+        elif result and result.get("ok"):
             by = [f["finding"] for f in result.get("findings") or []
                   if any(_matches(p, e) for p in issue.get("evidence") or []
                          for e in f.get("evidence") or [])]
@@ -903,7 +1030,9 @@ def sheets(network: str, from_s: float = None, to_s: float = None) -> dict:
     *from_s* to *to_s* (epochs, *to_s* exclusive; None is unbounded), each with its
     planted-issue sheet (`marks`, the snapshot not read): ``{"state": "ok"|"absent"|
     "unreadable", "error", "sheets": [{"analysis", "rows"}]}``, oldest first. An issue planted
-    after an analysis was made is not on its sheet: it was not there to be found. A read
+    after an analysis was made is marked `PLANTED_AFTER` on its sheet, by `marks` as the page
+    and the downloads mark it (C2956): it was not there to be found, so it is not a miss. An
+    issue a person removed is on no sheet (C2913). A read
     (C2945): History › Export's failure log lists every planted issue each analysis missed. An
     analysis or the planted issues that cannot be read is said in *error*, the rest still
     read, never a shorter list said whole."""
@@ -926,9 +1055,7 @@ def sheets(network: str, from_s: float = None, to_s: float = None) -> dict:
         if at is None or (from_s is not None and at < from_s) or (to_s is not None
                                                                    and at >= to_s):
             continue
-        before = [i for i in issues["issues"]
-                  if _epoch(i.get("at")) is None or _epoch(i.get("at")) <= at]
-        found.append({"analysis": got, "rows": marks(before, got)})
+        found.append({"analysis": got, "rows": marks(issues["issues"], got)})
     found.sort(key=lambda s: (_epoch(s["analysis"].get("at")), s["analysis"].get("id") or ""))
     state = "unreadable" if errors else "ok" if names or issues["state"] == "ok" else "absent"
     return {"state": state, "error": "; ".join(errors), "sheets": found}
@@ -966,6 +1093,7 @@ def sheet_markdown(network: str, *, by: str, now: float = None) -> str:
              f"{result.get('model', '-')})",
              f"- Findings kept: {len(result.get('findings') or [])}; dropped by the check: "
              f"{result.get('dropped', 0)}",
+             f"- Planted: {tally(rows)['words']}",
              f"- Made {_iso(now)} by {_md(by)}", "",
              "| Planted | Found | Evidence | Found by | In the collection | Why |",
              "|---|---|---|---|---|---|"]
@@ -974,7 +1102,55 @@ def sheet_markdown(network: str, *, by: str, now: float = None) -> str:
             r["name"], r["found"], " ".join(r["evidence"]), "; ".join(r["by"]) or "-",
             {True: "yes", False: "no", None: "not read"}[r["in_collection"]],
             r["why"] or "-")) + " |")
+    history = planted(network)["history"]
+    if history:
+        lines += ["", "## Changes to the sheet", "", "| When | Who | What |", "|---|---|---|"]
+        lines += [f"| {_md(c['at'])} | {_md(c['by'])} | {_md(c['words'])} |"
+                  for c in changes(history)]
     return "\n".join(lines) + "\n"
+
+
+def tally(rows: list) -> dict:
+    """A sheet's counts (`marks`' rows): found, missed, and planted after the analysis
+    (C2956), which is neither; ``words`` the line the page and the Markdown draw."""
+    n = {k: sum(r["found"] == v for r in rows)
+         for k, v in (("found", "found"), ("missed", "missed"), ("after", PLANTED_AFTER))}
+    words = f"{n['found']} found · {n['missed']} missed"
+    if n["after"]:
+        words += f" · {n['after']} {PLANTED_AFTER}"
+    return dict(n, words=words)
+
+
+def _quoted(value) -> str:
+    return "“" + str(value or "") + "”"
+
+
+def change_words(entry: dict) -> str:
+    """One entry of the sheet's history in words, with what it was and what it is (C2913)."""
+    before, after = entry.get("before") or {}, entry.get("after") or {}
+    name, action = _quoted(entry.get("name")), entry.get("action")
+    if action == "add":
+        return f"added {name}, evidence {' '.join(after.get('evidence') or [])}"
+    if action == "why":
+        return f"saved why on {name}: {_quoted(before.get('why'))} → {_quoted(after.get('why'))}"
+    if action == "edit":
+        parts = []
+        if before.get("name") != after.get("name"):
+            parts.append(f"name {_quoted(before.get('name'))} → {_quoted(after.get('name'))}")
+        if before.get("evidence") != after.get("evidence"):
+            parts.append(f"evidence {' '.join(before.get('evidence') or [])} → "
+                         f"{' '.join(after.get('evidence') or [])}")
+        return f"edited {name}: " + "; ".join(parts)
+    if action == "remove":
+        return (f"removed {name} (it was evidence {' '.join(before.get('evidence') or [])}; "
+                "kept in the network's planted-issue record)")
+    return f"{action} {name}"
+
+
+def changes(history: list) -> list:
+    """The sheet's history newest first, each ``{"at", "by", "action", "words"}``."""
+    return [{"at": e.get("at"), "by": e.get("by"), "action": e.get("action"),
+             "words": change_words(e)} for e in reversed(history or [])]
 
 
 # ───────────────────────────────────────────────────────────────────────────── the page's view
@@ -990,15 +1166,16 @@ def view(network: str, now: float = None) -> dict:
     result = analysis(network, latest.get("analysis") or "")
     snap_sum = latest.get("snapshot") or {}
     issues = planted(network)
-    rows = marks(issues["issues"], result)
+    rows = [dict(r, rev=rev(r)) for r in marks(issues["issues"], result)]
     tools = sdn_analyst_tools.view_part(network, latest, snap_sum, result)
     tool_rows = marks(issues["issues"], tools["result"])
+    counts = tally(rows)
     return {"network": network, "snapshot": snap_sum, "running": running(network, now),
             "collect_failed": latest.get("collect_failed") or {},
             "result": result, "planted": rows, "planted_state": issues["state"],
             "planted_error": issues["error"],
-            "found": sum(r["found"] == "found" for r in rows),
-            "missed": sum(r["found"] == "missed" for r in rows),
+            "found": counts["found"], "missed": counts["missed"], "after": counts["after"],
+            "changes": changes(issues["history"]), "removed": len(issues["removed"]),
             "model_words": profiles.profile(profiles.task(FEATURE)["model"])["words"],
             "stale": bool(result and snap_sum and result.get("snapshot_id") != snap_sum.get("id")),
             "tools": dict(tools, found=sum(r["found"] == "found" for r in tool_rows),

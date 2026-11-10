@@ -114,8 +114,28 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: states the board does not draw | not drawn | no collection yet, collecting, past its bound, couldn't collect, couldn't analyse, a newer snapshot than the answer, the sheet unreadable: each said in place | **deviation** (log: Board lab9-sdn I built, 6) |
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
+**Compared 2026-11-10 ~10:3x UTC for C2913 and C2956: the planted-issue sheet's Edit…, Remove…,
+Changes to the sheet and "planted after this analysis"**, beside artboard I as revised that day
+(self-signed, docs/STANDING_APPROVAL_LOG.md "Board lab9-sdn I revised for C2913 and C2956"),
+**by reading the template and its rendering against the artboard, region by region, with no new
+shot** (tests/test_board_shots.py has no case for the region yet, C2914). Its states are held by
+tests/test_sdn_analyst.py and the v2 walk's `_sdn_analyse` provider (an issue planted after the
+analysis, one corrected and one removed). `_sdn_analyse.html` changed only in the planted card;
+nothing else on the tab moves. The regions whose names begin "I (C2913):". Templates sha256
+before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| I (C2913): the card's head | I: "2 found · 1 missed · 1 planted after this analysis" | the same counts from `analyst.tally`; "planted after" said only when one is | **same** |
+| I (C2913): a row's Edit… and Remove… | I: two small controls under each issue's evidence | the same, each a `<details>` opening in place under the evidence, kept open across a live redraw (`data-keep`) | **same** |
+| I (C2913): the edit form | I: Name, Evidence it should be found by (with its hint), Save changes, (i) | the same fields filled with what is kept, Save changes busy on itself ("Saving…"), its compact (i) to the manual's Correct or remove section | **same** |
+| I (C2913): the remove confirm | I: a red-bordered box: the question, what leaves and where the record survives, Remove from the sheet, (i) | the same words in a plain paragraph, Remove from the sheet a danger button busy on itself ("Removing…"), its (i) | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 1) |
+| I (C2913): planted after this analysis | I: a muted chip, its hover when it was planted and when the analysis was made | the same badge and hover | **same** |
+| I (C2913): Changes to the sheet | I: "▾ Changes to the sheet (6)", When, Who, What, "3 earlier…" | collapsed, "(6), 1 removed", the newest 20 with the page's stamps, the rest in the downloaded Markdown | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 2) |
+| I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
+
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html
-Templates sha256: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`
+Templates sha256: `71b9a54445635b26f6a9bcd0d4d2d0b6c86cd57a8d5385de1d4cd095f1249159`
 Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
 docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
 of a registered app (the badge "a new version", The folder as the registered version's content
