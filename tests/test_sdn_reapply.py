@@ -162,6 +162,23 @@ def test_a_lost_drop_is_a_row_naming_its_network_switch_response_and_time_left(l
     assert r["clears"]["ways"] == ["resolves", "time"] and r["clears_at"] == F._iso(T + 600)
 
 
+def test_an_unreadable_store_is_its_network_s_row_and_hides_no_other_network_s_lost_row(lab):
+    """C2961: Branch's unreadable reader store is Branch's own row; Default's lost drop is
+    still its row beside it, and the source is read, never its error."""
+    drop()
+    lab.restart()
+    found = dict(read(T + 100), Branch={"state": "unreadable", "why": "bad json"})
+    got = A.sdn_mitigation_source(found=found, now=T + 100)
+    assert got["state"] == "read", "one network's store never makes the source an error"
+    assert sorted((r["kind"], r["id"].split(":")[1]) for r in got["rows"]) == [
+        ("lost", "Default"), ("unreadable", "Branch")]
+    (u,) = [r for r in got["rows"] if r["kind"] == "unreadable"]
+    assert u["id"] == "sdn_mitigation:Branch:store" and u["level"] == "unknown"
+    assert u["cause"].startswith("bad json; whether a response on Branch has lost its flows")
+    assert got["checked"].startswith("1 network(s)' last SDN read: 1 response(s) with a flow")
+    assert got["checked"].endswith("; unreadable for Branch"), got["checked"]
+
+
 def test_installed_is_no_row(lab):
     drop()
     assert rows(T + 100) == []

@@ -98,13 +98,23 @@ def test_it_clears_when_the_incident_is_applied_or_dismissed(networks):  # noqa:
     assert _rows(T0 + 60 * MIN) == [], "an escalated incident dismissed clears as any does"
 
 
-def test_an_unreadable_store_is_the_source_s_error():
-    got = A.sdn_responses_source(found={NET: {"state": "unreadable", "rows": [],
-                                              "error": "sdn_responses.jsonl: bad"}})
-    (r,) = got["rows"]
-    assert (r["source"], r["kind"]) == ("sdn_responses", "unreadable"), "a row of its own"
-    assert ("the responses awaiting could not be read on Default (sdn_responses.jsonl: bad)"
-            in r["what"] + " " + r["cause"]), r
+def test_an_unreadable_store_is_its_network_s_row_and_hides_no_other_network(networks):  # noqa: F811,E501
+    """C2961: Branch's unreadable store is Branch's own row; Default's incident awaiting a
+    person is still its row beside it, and the source is read, never its error."""
+    one = _propose("k1")
+    got = A.sdn_responses_source(found={
+        NET: LP.awaiting(NET),
+        "Branch": {"state": "unreadable", "rows": [], "error": "sdn_responses.jsonl: bad"}},
+        watched={}, now=T0 + MIN)
+    assert got["state"] == "read", "one network's store never makes the source an error"
+    assert sorted((r["kind"], r["id"]) for r in got["rows"]) == [
+        ("awaiting", f"sdn_responses:Default:{one['id']}"),
+        ("unreadable", "sdn_responses:Branch:store")]
+    (u,) = [r for r in got["rows"] if r["kind"] == "unreadable"]
+    assert u["level"] == "unknown"
+    assert u["what"] == "Branch's SDN responses awaiting a person cannot be read"
+    assert u["cause"].startswith("sdn_responses.jsonl: bad; whether an incident on Branch")
+    assert got["checked"].endswith("; unreadable for Branch"), got["checked"]
 
 
 def test_the_source_is_read_by_the_page_and_moved_by_sdn_and_settings():
@@ -255,12 +265,27 @@ def test_a_network_with_no_controller_set_has_no_row(lab):
     assert got["rows"] == [] and got["checked"].startswith("0 SDN controller(s)")
 
 
-def test_an_unreadable_reader_store_is_the_source_s_error():
-    got = A.sdn_controllers_source(found={NET: {"state": "unreadable", "why": "bad json"}},
-                                   now=T0)
-    (r,) = got["rows"]
-    assert (r["source"], r["kind"]) == ("sdn_controllers", "unreadable")
-    assert "the SDN reader's store could not be read for Default (bad json)" in r["cause"]
+def test_an_unreadable_reader_store_is_its_network_s_row_and_hides_no_other_network(lab):
+    """C2961: Branch's unreadable store is Branch's own row; Default's controller, not
+    answering, is still its row beside it, and the source is read, never its error."""
+    from modules import reader_job
+    from modules.readers import sdn_controllers as SDN
+    from tests.test_sdn_v2 import T0 as TV, Down, store_read
+
+    lab["sessions"]["session"] = Down()
+    store_read(clock=lambda: TV + 40)
+    store_read(clock=lambda: TV + 70)
+    got = A.sdn_controllers_source(found={
+        NET: reader_job.read_cached_for(SDN.READER_NAME, NET),
+        "Branch": {"state": "unreadable", "why": "bad json"}}, now=TV + 70)
+    assert got["state"] == "read", "one network's store never makes the source an error"
+    assert sorted((r["kind"], r["id"]) for r in got["rows"]) == [
+        ("not_answering", "sdn_controllers:Default"),
+        ("unreadable", "sdn_controllers:Branch:store")]
+    (u,) = [r for r in got["rows"] if r["kind"] == "unreadable"]
+    assert u["level"] == "unknown" and u["what"] == "Branch's last SDN read cannot be read"
+    assert u["cause"].startswith("bad json; whether Branch's SDN controller answers is not known")
+    assert got["checked"].endswith("; unreadable for Branch"), got["checked"]
 
 
 def test_the_controllers_source_is_read_by_the_page_and_moved_by_sdn():

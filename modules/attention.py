@@ -3935,10 +3935,12 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
     except Exception as exc:                          # noqa: BLE001 (said as the source's error)
         return source_result("sdn_responses", label, read_at=started, took_ms=0,
                              error=f"the responses could not be read: {type(exc).__name__}")
-    rows, unread, escalated = [], [], 0
+    # A network whose store cannot be read is its own row, never the whole source's error
+    # (C2961: one network's unreadable store hid every other network's incidents).
+    rows, unread, escalated = [], {}, 0
     for network, got in sorted(waiting.items()):
         if got.get("state") == "unreadable":
-            unread.append(f"{network} ({got.get('error')})")
+            unread.setdefault(network, got.get("error"))
             continue
         listed = incidents.order(got.get("rows") or [])
         after, after_why = _sdn_escalate_after(network) if listed else (None, "")
@@ -4009,8 +4011,7 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
     rows = _one_row_per_attack(rows, waiting)
     for network, got in sorted(watching.items()):
         if got.get("state") == "unreadable":
-            if not any(u.startswith(f"{network} (") for u in unread):
-                unread.append(f"{network} ({got.get('error')})")
+            unread.setdefault(network, got.get("error"))
             continue
         for r in got.get("rows") or []:
             d = r.get("detection") or {}
@@ -4040,20 +4041,29 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                                   "joins a flood, or dismiss it with a reason"),
                         "href": (f"/v2/sdn/responses?list={network}&incident="
                                  f"{r.get('id')}#sdn-i-{r.get('id')}")}))
+    for network, why in sorted(unread.items()):
+        rows.append(row(
+            source="sdn_responses", kind="unreadable", key=f"{network}:store",
+            level="unknown",
+            what=f"{network}'s SDN responses awaiting a person cannot be read",
+            cause=(f"{why or 'the response store: unreadable'}; whether an incident on "
+                   f"{network} awaits a person, or a high packet rate is watched there, is not "
+                   "known, and SDN › Responses cannot draw its incidents"),
+            action={"label": (f"Repair {network}'s SDN response store (in the network's "
+                              "folder); nothing here can rewrite it"), "known": False},
+            operands={"network": network}))
     took = int((time.time() - started) * 1000)
-    if unread:
-        return source_result("sdn_responses", label, read_at=started, took_ms=took,
-                             rows=rows, error="the responses awaiting could not be read on "
-                                              + "; ".join(unread))
+    watched_n = sum(1 for x in rows if x["kind"] == "watching")
     return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
                          checked=f"{len(waiting)} network(s): "
                                  f"{sum(1 for x in rows if x['kind'] == 'awaiting')} "
                                  f"incident(s) awaiting a person, {escalated} escalated "
                                  f"(unanswered past its network's {SDN_ESCALATE_SETTING}); no "
                                  "on-call integration exists to notify"
-                                 + (f"; {len(rows) - sum(1 for x in rows if x['kind'] == 'awaiting')} "
-                                    "high packet rate(s) watched"
-                                    if any(x["kind"] == "watching" for x in rows) else ""))
+                                 + (f"; {watched_n} high packet rate(s) watched"
+                                    if watched_n else "")
+                                 + (f"; unreadable for {', '.join(sorted(unread))}"
+                                    if unread else ""))
 def controller_deploy_source(found=None, now: float = None) -> dict:
     """Each network's controller whose last controller app deploy (P6; board
     controller-app-deploy, artboard I; `modules/controller_deploy_receipts`) ended leaving what it runs
@@ -4150,7 +4160,19 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
         if state in ("not_applicable", "not_configured"):
             continue
         if state == "unreadable":
-            unreadable.append(f"{network} ({cached.get('why') or 'no reason given'})")
+            # Its own row, never the whole source's error (C2961: one network's unreadable
+            # store hid every other network's lost responses).
+            unreadable.append(network)
+            rows.append(row(
+                source="sdn_mitigation", kind="unreadable", key=f"{network}:store",
+                level="unknown",
+                what=f"{network}'s last SDN read cannot be read",
+                cause=(f"{cached.get('why') or 'no reason given'}; whether a response on "
+                       f"{network} has lost its flows or meter before its hard timeout is not "
+                       "known"),
+                action={"label": (f"Find why the SDN reader's store for {network} cannot be "
+                                  "read: the cause above names what failed"), "known": False},
+                operands={"network": network}))
             continue
         good = (((cached or {}).get("doc") or {}).get("last_good") or {})
         if not good:
@@ -4202,15 +4224,14 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
                                   "confirm (or let it expire)"),
                         "href": "/v2/sdn/flows?" + urlencode({"list": network,
                                                              "q": x["dpid_hex"]})}))
-    if unreadable:
-        return source_result("sdn_mitigation", label, read_at=started, took_ms=0,
-                             error=("the SDN reader's store could not be read for "
-                                    + ", ".join(unreadable)))
     took = int((time.time() - started) * 1000) if now is None else 0
+    lost = sum(1 for x in rows if x["kind"] == "lost")
     return source_result("sdn_mitigation", label, read_at=started, took_ms=took, rows=rows,
                          value_at=oldest, reader=R.READER_NAME,
-                         checked=(f"{read} network(s)' last SDN read: {len(rows)} response(s) "
+                         checked=(f"{read} network(s)' last SDN read: {lost} response(s) "
                                   "with a flow or meter missing before its hard timeout"
+                                  + (f"; unreadable for {', '.join(unreadable)}"
+                                     if unreadable else "")
                                   + (f"; {len(answered)} more missing and answered by a newer "
                                      f"response in force ({', '.join(answered)})"
                                      if answered else "")
@@ -4352,7 +4373,18 @@ def sdn_controllers_source(found=None, now: float = None) -> dict:
         if state in ("not_applicable", "not_configured"):
             continue
         if state == "unreadable":
-            unreadable.append(f"{network} ({cached.get('why') or 'no reason given'})")
+            # Its own row, never the whole source's error (C2961: one network's unreadable
+            # store hid every other network's controller rows).
+            unreadable.append(network)
+            rows.append(row(
+                source="sdn_controllers", kind="unreadable", key=f"{network}:store",
+                level="unknown",
+                what=f"{network}'s last SDN read cannot be read",
+                cause=(f"{cached.get('why') or 'no reason given'}; whether {network}'s SDN "
+                       "controller answers is not known"),
+                action={"label": (f"Find why the SDN reader's store for {network} cannot be "
+                                  "read: the cause above names what failed"), "known": False},
+                operands={"network": network}))
             continue
         good = (((cached or {}).get("doc") or {}).get("last_good") or {})
         if not good:
@@ -4399,17 +4431,15 @@ def sdn_controllers_source(found=None, now: float = None) -> dict:
                               f"moved, correct its connection in {network}'s Settings, "
                               "Integrations tab"),
                     "href": "/v2/sdn?" + urlencode({"list": network})}))
-    if unreadable:
-        return source_result("sdn_controllers", label, read_at=started, took_ms=0,
-                             error=("the SDN reader's store could not be read for "
-                                    + ", ".join(unreadable)))
     took = int((time.time() - started) * 1000) if now is None else 0
     return source_result("sdn_controllers", label, read_at=started, took_ms=took, rows=rows,
                          value_at=oldest, reader=R.READER_NAME,
                          checked=(f"{counted} SDN controller(s) in the last read of each "
                                   f"network with one set: {down_n} not answering"
                                   + (f"; not read yet on {', '.join(never)} (job health's "
-                                     "reader row says why)" if never else "")))
+                                     "reader row says why)" if never else "")
+                                  + (f"; unreadable for {', '.join(unreadable)}"
+                                     if unreadable else "")))
 
 
 def controller_python_source(found=None, now: float = None) -> dict:
