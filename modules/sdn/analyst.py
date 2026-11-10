@@ -889,6 +889,51 @@ def _sheet_rows(network: str) -> tuple:
     return result, rows
 
 
+def _epoch(at) -> float:
+    try:
+        import calendar
+
+        return float(calendar.timegm(time.strptime(str(at)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return None
+
+
+def sheets(network: str, from_s: float = None, to_s: float = None) -> dict:
+    """Every kept analysis of *network* (B1's and the trace tool's, ``analyses/``) made from
+    *from_s* to *to_s* (epochs, *to_s* exclusive; None is unbounded), each with its
+    planted-issue sheet (`marks`, the snapshot not read): ``{"state": "ok"|"absent"|
+    "unreadable", "error", "sheets": [{"analysis", "rows"}]}``, oldest first. An issue planted
+    after an analysis was made is not on its sheet: it was not there to be found. A read
+    (C2945): History › Export's failure log lists every planted issue each analysis missed. An
+    analysis or the planted issues that cannot be read is said in *error*, the rest still
+    read, never a shorter list said whole."""
+    issues = planted(network)
+    errors = [f"the planted issues: {issues['error']}"] if issues["state"] == "unreadable" else []
+    folder = os.path.join(_dir(network), "analyses")
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".json"))
+    except FileNotFoundError:
+        names = []
+    except OSError as exc:
+        names, errors = [], errors + [f"the analyses: {type(exc).__name__}: {exc}"]
+    found = []
+    for name in names:
+        got, err = _read_json(os.path.join(folder, name))
+        if err or not isinstance(got, dict):
+            errors.append(f"the analysis {err or name + ': not an object'}")
+            continue
+        at = _epoch(got.get("at"))
+        if at is None or (from_s is not None and at < from_s) or (to_s is not None
+                                                                   and at >= to_s):
+            continue
+        before = [i for i in issues["issues"]
+                  if _epoch(i.get("at")) is None or _epoch(i.get("at")) <= at]
+        found.append({"analysis": got, "rows": marks(before, got)})
+    found.sort(key=lambda s: (_epoch(s["analysis"].get("at")), s["analysis"].get("id") or ""))
+    state = "unreadable" if errors else "ok" if names or issues["state"] == "ok" else "absent"
+    return {"state": state, "error": "; ".join(errors), "sheets": found}
+
+
 def sheet_csv(network: str, *, by: str, now: float = None) -> str:
     """The planted-issue sheet as CSV: its first lines name the network, the analysis, its
     snapshot and call, when it was made and by whom; then one row per planted issue."""

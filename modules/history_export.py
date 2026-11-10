@@ -20,11 +20,19 @@ from each source in `FAILURE_SOURCES`:
   its rollback achieved (`flow_intent.operations`);
 - each evaluation call that classified a collection no rule fired on as a threat: a false
   positive by `scripts/nmas-sdn-classify-normal`'s own definition (the ledger's rows);
-- each planted issue the latest SDN analysis missed (`sdn.analyst`'s planted-issue sheet);
+- each planted issue each SDN analysis in the range missed, B1's and the trace tool's
+  (`sdn.analyst.sheets`, C2945), one row per issue per analysis;
+- from the network's record of SDN evaluation runs (`sdn.evaluations`): each detection a
+  false-positive run (B3, `scripts/nmas-sdn-false-positives`, C2946) found on traffic a person
+  declared normal, and each B4 evaluation run (`scripts/nmas-sdn-b4-eval`, C2943) that missed
+  its case's planted issue, kept a false-positive finding, or answered a benign case as a
+  threat, per technique;
 - each AI answer a person said was wrong (Was this right? No, `ai.feedback`), with its review.
-An evaluation script's per-case misses are written only to its own report (``--out``), never
-to a store Mercury reads, so they are not here; each file says so (`NOT_RECORDED`). A source
-added later (B3's false-positive runner) joins `FAILURE_SOURCES` with its own reader.
+The other evaluation scripts' per-case misses (``nmas-sdn-cases`` and the other ``*-cases``
+scripts) are written only to their own report (``--out``), never to a store Mercury reads, so
+they are not here; each file says so (`NOT_RECORDED`). The sdn_classify normal-traffic runs'
+false positives are complete from the ledger: each call keeps its collection as its subject and
+its answer's ``threat_detected``, which is the run's own definition of one.
 
 **Bounded:** a range is at most `MAX_DAYS` whole UTC days, refused naming its length; a file
 lists at most `MAX_ROWS` rows and says how many it left out, its totals still every row's.
@@ -73,18 +81,29 @@ KINDS = (
     ("protected_refusal", "protected-flow refusal", "protected-flow refusals"),
     ("auto_failed", "response AUTO could not send", "responses AUTO could not send"),
     ("evaluation_miss", "evaluation false positive", "evaluation false positives"),
+    ("normal_false_positive", "detection on normal traffic (a false-positive run)",
+     "detections on normal traffic (false-positive runs)"),
     ("planted_missed", "planted issue missed", "planted issues missed"),
+    ("eval_missed", "planted issue an analyst evaluation missed",
+     "planted issues analyst evaluations missed"),
+    ("eval_false_positive", "analyst evaluation false positive",
+     "analyst evaluation false positives"),
+    ("eval_benign_threat", "benign case an analyst evaluation answered as a threat",
+     "benign cases analyst evaluations answered as a threat"),
     ("answer_wrong", "AI answer said wrong", "AI answers said wrong"),
 )
 KIND_WORDS = {k: one for k, one, _many in KINDS}
+#: B4's two techniques, in the failure log's words (modules/sdn/b4_eval.py `TECHNIQUES`).
+B4_TECHNIQUES = {"baseline": "without tools", "tools": "with the trace tool"}
 #: The protected set's guards end every refusal they word with their citation
 #: (`protected.flow_refusal` "(B, C2379)", `control_plane.refusal` "(C2022)"), so an AUTO
 #: failure carrying one is a protected-flow refusal.
 PROTECTED_MARKS = ("C2379", "C2022")
 #: What no store Mercury reads holds, said in each failure file and on the page.
-NOT_RECORDED = ("an evaluation script's per-case misses (nmas-sdn-cases and the other "
-                "*-cases scripts) are written only to its own --out report, so they are not "
-                "here; attach that report beside this file")
+NOT_RECORDED = ("the per-case misses of nmas-sdn-cases and the other *-cases scripts "
+                "(intent, heal, words, assistant) are written only to each script's own --out "
+                "report, so they are not here; attach that report beside this file. B3's "
+                "false-positive runs and B4's analyst evaluations are here")
 
 #: The export's steps, as the manual's How it works page names them.
 STEPS = (
@@ -95,9 +114,12 @@ STEPS = (
               "from the rows read now, never carried forward"),
     ("failures", "from each network's own records: SDN detections dismissed, classifications "
                  "the check refused, responses AUTO could not send (a protected-flow refusal "
-                 "named), flow operations Verify failed and what their rollback achieved; from "
-                 "the ledger, evaluation false positives; the planted issues the latest "
-                 "analysis missed; and AI answers a person said were wrong, with their review"),
+                 "named), flow operations Verify failed and what their rollback achieved, the "
+                 "planted issues each analysis in the range missed, and its record of SDN "
+                 "evaluation runs (each false positive a normal-traffic run found, each analyst "
+                 "evaluation run that missed, kept a false positive or answered a benign case "
+                 "as a threat); from the ledger, evaluation false positives; and AI answers a "
+                 "person said were wrong, with their review"),
     ("mask", "every text a row carries masked on the way out, as History masks what it draws"),
     ("file", f"CSV or JSON, its first lines the log, its range, its network, when it was made "
              f"and by whom; at most {MAX_ROWS} rows, the rest counted; nothing is written"),
@@ -497,24 +519,109 @@ def _from_operations(network: str, rng: dict, ctx: dict) -> dict:
 
 
 def _from_planted(network: str, rng: dict, ctx: dict) -> dict:
-    """The planted issues the network's latest SDN analysis missed (its sheet, B1)."""
+    """Each planted issue each of the network's SDN analyses in the range missed (B1's and the
+    trace tool's, `analyst.sheets`, C2945): one row per issue per analysis."""
     from modules.sdn import analyst
 
-    try:
-        result, rows = analyst._sheet_rows(network)
-    except Exception as exc:                          # noqa: BLE001 (said)
-        return {"rows": [], "errors": [f"{network}'s planted-issue sheet could not be read "
-                                       f"({type(exc).__name__}: {exc})"]}
-    at = (result or {}).get("at")
-    if not result or not _in(_instant(at), rng):
-        return {"rows": [], "errors": []}
-    link = "/v2/sdn/flows?" + urlencode({"list": network}) + "#sdn-analyse"
-    out = [_failure(at, "planted_missed", network, f"planted: {r.get('name')}",
-                    reason=r.get("why") or "", who=result.get("actor") or "",
-                    outcome=f"missed by analysis {result.get('id')}", case=r.get("name") or "",
-                    expected="found by evidence " + " ".join(r.get("evidence") or []),
-                    got="missed", link=link, source="sdn_analyst")
-           for r in rows if r.get("found") == "missed"]
+    got = analyst.sheets(network, rng["from_s"], rng["to_s"])
+    errors = ([f"{network}'s planted-issue sheets could not all be read: {got['error']}"]
+              if got["state"] == "unreadable" else [])
+    page = "/v2/sdn/flows?" + urlencode({"list": network}) + "#sdn-analyse"
+    out = []
+    for sheet in got["sheets"]:
+        result = sheet["analysis"]
+        tools = " (with the trace tool)" if result.get("technique") == "trace_tool" else ""
+        # Each analysis's own record: its call on History (what it found, what was shown).
+        link = history_call_link(result.get("call_id") or "") or page
+        out += [_failure(result.get("at"), "planted_missed", network,
+                         f"planted: {r.get('name')}", reason=r.get("why") or "",
+                         who=result.get("actor") or "",
+                         outcome=f"missed by analysis {result.get('id')}{tools}",
+                         case=r.get("name") or "",
+                         expected="found by evidence " + " ".join(r.get("evidence") or []),
+                         got="missed", link=link, source="sdn_analyst")
+                for r in sheet["rows"] if r.get("found") == "missed"]
+    return {"rows": out, "errors": errors}
+
+
+def _b4_case(row: dict) -> str:
+    return (f"case {row.get('case')} ({row.get('role')}), "
+            f"{B4_TECHNIQUES.get(row.get('technique'), row.get('technique'))}, run {row.get('n')}")
+
+
+def _b4_rows(network: str, row: dict) -> list:
+    """One B4 run's wrongs (`b4_eval.wrong_row`): its miss, each false-positive finding, and a
+    benign case answered as a threat, each its own row."""
+    who = f"run {row.get('run') or '?'} ({row.get('script')})"
+    record = history_call_link((row.get("calls") or [""])[0])
+    findings = row.get("findings") or []
+    out = []
+    if row.get("missed"):
+        cited = "; ".join(f"{f.get('severity')}: {f.get('finding')}" for f in findings)
+        out.append(_failure(row.get("at"), "eval_missed", network, _b4_case(row),
+                            reason=row.get("name") or "", who=who,
+                            outcome="counted as a miss in the run's report",
+                            case=row.get("case") or "",
+                            expected="found by evidence " + " ".join(row.get("issue") or []),
+                            got=(f"not answered ({row['error']})" if row.get("error") else
+                                 f"{len(findings)} finding(s), none citing it"
+                                 + (f": {cited}" if cited else "")),
+                            link=record, source="sdn_evaluations"))
+    for f in findings:
+        if f.get("judged") != "false_positive":
+            continue
+        out.append(_failure(row.get("at"), "eval_false_positive", network,
+                            f"{_b4_case(row)}: {f.get('finding')}", reason=f.get("why") or "",
+                            who=who, outcome="counted as a false positive in the run's report",
+                            case=row.get("case") or "",
+                            expected="a finding citing the planted issue or a fact the code "
+                                     "measures as abnormal",
+                            got=f"{f.get('severity')}, citing "
+                                + " ".join(f.get("evidence") or []),
+                            link=record, source="sdn_evaluations"))
+    if row.get("threat_answered"):
+        over = "; ".join(f"{f.get('severity')}: {f.get('finding')}" for f in findings)
+        out.append(_failure(row.get("at"), "eval_benign_threat", network, _b4_case(row),
+                            reason=row.get("name") or "", who=who,
+                            outcome="counted as a benign run answered as a threat in the "
+                                    "run's report (the pass rule's measure)",
+                            case=row.get("case") or "",
+                            expected="no finding of medium or above, past "
+                                     + (", ".join(row.get("severities") or []) or "none"),
+                            got=over, link=record, source="sdn_evaluations"))
+    return out
+
+
+def _from_evaluation_runs(network: str, rng: dict, ctx: dict) -> dict:
+    """The network's record of SDN evaluation runs (modules/sdn/evaluations.py): each false
+    positive a normal-traffic run found (B3, C2946), and each B4 run that missed, kept a false
+    positive or answered a benign case as a threat (C2943)."""
+    from modules.sdn import evaluations
+
+    got = evaluations.read(network)
+    if got["state"] == "unreadable":
+        return {"rows": [], "errors": [f"{network}'s record of SDN evaluation runs could not "
+                                       f"be read: {got['error']}"]}
+    out = []
+    for r in got["rows"]:
+        if not _in(_instant(r.get("at")), rng):
+            continue
+        if r.get("script") == evaluations.FALSE_POSITIVES and r.get("kind") == "false_positive":
+            d = r.get("detection") or {}
+            port = f" port {d['port']}" if d.get("port") not in (None, "") else ""
+            out.append(_failure(r.get("at"), "normal_false_positive", network,
+                                f"{d.get('rule')} on {d.get('switch')}{port}"
+                                + (f" from {d['source']}" if d.get("source") else ""),
+                                reason=d.get("words") or "",
+                                who=f"run {r.get('run_id')} ({r.get('run')})",
+                                outcome=d.get("done") or "",
+                                case=f"{r.get('run')} pass {d.get('pass')} at {d.get('at')}",
+                                expected="no detection: the traffic was declared normal",
+                                got=f"{d.get('rule')}: {d.get('measured')} against "
+                                    f"{d.get('threshold')}; evidence {d.get('evidence')}",
+                                source="sdn_evaluations"))
+        elif r.get("script") == evaluations.B4_EVAL and r.get("kind") == "case_run":
+            out += _b4_rows(network, r)
     return {"rows": out, "errors": []}
 
 
@@ -593,11 +700,12 @@ def _from_feedback(network: str, rng: dict, ctx: dict) -> dict:
 
 #: Every source of the failure log: (its name, its reader ``fn(network, range, ctx)``). A
 #: network's own store is read per network; the ledger's and the feedback's once, attributed
-#: by the call's network. B3's false-positive runner joins here with its own reader.
+#: by the call's network.
 FAILURE_SOURCES = (
     ("sdn_responses", _from_responses),
     ("sdn_operations", _from_operations),
     ("sdn_analyst", _from_planted),
+    ("sdn_evaluations", _from_evaluation_runs),
     ("ai_calls", _from_evaluations),
     ("ai_feedback", _from_feedback),
 )

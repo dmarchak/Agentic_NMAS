@@ -234,7 +234,10 @@ def classify_collections_batch(network: str, items: list, runs: int, *, actor: s
                              "prompt": tuple(closed_loop.COLLECTION_PROMPT),
                              "schema": closed_loop.ThreatAssessment,
                              "parts": prep["req"]["data"], "context": prep["req"]["context"],
-                             "subject": prep["subject"]})
+                             "subject": prep["subject"],
+                             # Recorded on the call's row (C2942), so History › Export lists a
+                             # batched false positive under its network, as a live call's.
+                             "network": network})
     if not requests:
         return {"ok": False, "error": "nothing_sent", "detail": "every case was refused "
                 "before a batch was built (each result names why); nothing was sent",

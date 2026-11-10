@@ -38,6 +38,11 @@ false positives by `sdn_analyst_tools.judge`'s rule, the benign runs answered as
 from the record of AI calls (the gateway's recorded cost of each call the run made); the time to
 an answer. **The pass rule, frozen (19.13):** the technique improves results only if more blind
 cases are reliable with it, and no more benign runs are answered as a threat.
+
+**Where it was wrong is kept** (`wrong_row`, C2943): each run that missed its planted issue,
+kept a false-positive finding or answered a benign case as a threat is also kept in the
+network's record of evaluation runs (modules/sdn/evaluations.py), so History › Export's
+false-positive and failure log lists it; the report files are unchanged.
 """
 
 import ipaddress
@@ -236,14 +241,50 @@ def score_run(case: dict, snap: dict, result: dict) -> dict:
             "correct": correct, "judged": judged}
 
 
+def wrong_row(case: dict, snap: dict, result: dict, scored: dict, *, network: str, actor: str,
+              technique: str, n: int, calls: list, at: float) -> dict:
+    """The network's record of one run that was wrong (C2943; modules/sdn/evaluations.py), or
+    {} when it was not: it missed the case's planted issue, kept a false-positive finding
+    (`sdn_analyst_tools.judge`'s rule), or answered a benign case as a threat. The row names
+    the run, the case, the technique, the run's number, its calls, the planted issue's
+    evidence, the expected severities and each finding as the arm kept it, judged."""
+    from modules.sdn import evaluations
+
+    if not (scored["missed"] or scored["false_positives"] or scored["threat_answered"]):
+        return {}
+    findings = (result or {}).get("findings") or [] if (result or {}).get("ok") else []
+    issues = case_issues(case)
+    return {"script": evaluations.B4_EVAL, "kind": "case_run",
+            "run": actor.split(":", 1)[1] if ":" in actor else actor, "actor": actor,
+            "network": network, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at)),
+            "case": case.get("key"), "name": case.get("name") or case.get("key"),
+            "role": case.get("role"), "file": case.get("file"), "case_kind": kind_of(case),
+            "technique": technique, "n": n, "snapshot": snap.get("id"), "calls": list(calls),
+            "error": scored["error"], "missed": scored["missed"],
+            "false_positives": scored["false_positives"],
+            "threat_answered": scored["threat_answered"],
+            "issue": issues[0]["evidence"] if issues else [],
+            "severities": sorted(expected_severities(case)),
+            "findings": [{"severity": f.get("severity"), "finding": f.get("finding"),
+                          "why": f.get("why"), "evidence": list(f.get("evidence") or []),
+                          "judged": j}
+                         for f, j in zip(findings, scored["judged"])]}
+
+
 def run(cases: list, arms: dict, *, runs: int, network: str, actor: str, trigger: dict,
-        send=None, clock=time.monotonic, say=None) -> dict:
+        send=None, clock=time.monotonic, say=None, now=time.time) -> dict:
     """Every case's snapshot asked of each arm (*arms*: ``{"baseline": fn, "tools": fn}``, each
     ``fn(network, snap, actor=, trigger=, send=)``, the analyst's `ask_snapshot` and the trace
     tool's) *runs* times, in turn by run (case 1 baseline, case 1 tools, case 2 ...). Each run
     scored (`score_run`) with its calls, its recorded cost (`recorded_cost`) and its wall time.
-    A refusal by Mercury or the gateway before anything is sent (``withheld``, ``classified``,
-    ``ai_off``, a cap) stops the run there, with nothing more spent, said as ``stopped``."""
+    Each run that was wrong (`wrong_row`: a miss, a false-positive finding, a benign case
+    answered as a threat) is kept in the network's record of evaluation runs as it is scored
+    (C2943, modules/sdn/evaluations.py), so History › Export lists it; the analyst's own store
+    is never written. A refusal by Mercury or the gateway before anything is sent
+    (``withheld``, ``classified``, ``ai_off``, a cap) stops the run there, with nothing more
+    spent, said as ``stopped``."""
+    from modules.sdn import evaluations
+
     out = {"network": network, "actor": actor, "runs": runs, "cases": [], "stopped": ""}
     say = say or (lambda words: None)
     stops = ("withheld", "classified", "ai_off", "no_key", "over_cap", "feature_cap", "trigger",
@@ -266,6 +307,10 @@ def run(cases: list, arms: dict, *, runs: int, network: str, actor: str, trigger
                                                    cost_usd=0.0,
                                                    passes=result.get("passes", 1 if calls else 0),
                                                    reads=len(result.get("reads") or [])))
+                kept = wrong_row(case, snap, result, scored, network=network, actor=actor,
+                                 technique=technique, n=n, calls=calls, at=now())
+                if kept:
+                    evaluations.keep(network, [kept])
                 if not result.get("ok") and result.get("error") in stops:
                     out["stopped"] = (f"case {row['key']} run {n} ({technique}): "
                                       f"{result.get('error')}: {result.get('detail')}")

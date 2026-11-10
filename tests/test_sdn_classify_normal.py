@@ -297,6 +297,29 @@ def test_a_batched_round_sends_what_a_call_sends_and_judges_each_answer_the_same
 
 
 @pytest.mark.usefixtures("lab")
+def test_a_batched_false_positive_is_in_its_network_s_failure_log(world):
+    """C2943: a batched run's call names its network as a live call's does, so a threat found
+    on normal traffic is listed in that network's failure log (History › Export), not only in
+    Every network's."""
+    from modules import history_export as X
+    from modules.ai import triggers
+
+    def make(cid, d):
+        return dict(no_threat(d["evidence"]["pieces"][0]["id"]), threat_detected=True,
+                    threat_type="other", severity="low")
+    got = _script().classify_collections_batch(NET, [{"id": "N2", "collection": normal()}], 1,
+                                               actor=EVAL, trigger=triggers.evaluation(EVAL),
+                                               provider=_batches(make), sleep=lambda s: None)
+    assert got["ok"], got["detail"]
+    (row,) = [r for r in rows() if r.get("verdict") == "ok"]
+    assert row["network"] == NET and row["subject"]["kind"] == "sdn_collection"
+    day = row["at"][:10]
+    listed = [r for r in X.failures(NET, day, day)["rows"] if r["kind"] == "evaluation_miss"]
+    assert [r["record"] for r in listed] == [f"/v2/history?call={row['id']}&since="]
+    assert X.failures("Branch", day, day)["rows"] == []
+
+
+@pytest.mark.usefixtures("lab")
 def test_each_run_is_scored_against_its_locked_expectation(world, tmp_path, capsys):
     """A case is reliable only when every run passes: a threat answered on N2's normal traffic
     in one run is that run's miss, named, and N2 is not reliable; N1's runs all pass."""

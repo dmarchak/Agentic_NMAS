@@ -7,7 +7,10 @@ ledger's own `calls.record` for a background job's call and an evaluation's; SDN
 `loop.propose` and `loop.resolve`, the protected refusal in the real guard's words; flow
 operations by the real `flow_ops.apply` over `tests/test_sdn_flow_ops.py`'s fake Ryu (a write
 the switch ignored, so Verify fails; a write the controller refused); a planted issue missed by a
-real analysis; an answer said wrong by `feedback.say` and its review.
+real analysis (and every analysis in a range, B1's and the trace tool's, C2945); B3's
+false-positive run kept by the real `false_positives.keep` over RC-TCP (C2946) and B4's wrong
+runs by the real `b4_eval.run` with two plain-function arms (C2943); an answer said wrong by
+`feedback.say` and its review.
 
 - **Calls:** every call in the range, one row each, oldest first, with its trigger (a person, a
   background job), outcome (ok, refused by validation, refused at a cap), tokens, dollars and
@@ -306,6 +309,132 @@ def test_a_planted_miss_an_evaluation_false_positive_and_an_answer_said_wrong(wo
     assert len(feedback.read()["rows"]) == 2
 
 
+def test_every_analysis_s_misses_are_rows_each_linking_its_analysis(world):  # noqa: F811
+    """C2945: each analysis in the range, B1's and the trace tool's, its own planted misses;
+    an analysis before the range left out; an issue planted after an analysis not its miss."""
+    from modules.ai import sdn_analyst_tools as AT
+    from modules.ai import triggers
+    from modules.sdn import analyst as AN
+
+    now = time.time()
+    snap = snap_of(world)
+    assert AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}:*", actor=PERSON,
+                          why="its count is zero", now=now - 10 * 86400)["ok"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    before = analyse(world, snap, now=now - 3 * 86400)
+    first = analyse(world, snap)
+    later = time.time()
+    assert AN.add_planted(NET, "A lost link", "link:ctl-1:*", actor=PERSON, now=later + 1)["ok"]
+    world.answer = {"findings": [], "reads": []}
+    with pressed_by(PERSON):
+        tools = AT.analyse(NET, snap["id"], actor=PERSON, trigger=triggers.person(PERSON),
+                           send=world.send, now=later + 2)
+    assert before["ok"] and first["ok"] and tools["ok"], (before, first, tools)
+    got = X.failures(NET, YESTERDAY, TODAY)
+    assert got["errors"] == []
+    rows = [(r["case"], r["outcome"], r["record"]) for r in got["rows"]
+            if r["kind"] == "planted_missed"]
+    assert rows == [
+        ("A stale drop", f"missed by analysis {first['id']}",
+         f"/v2/history?call={first['call_id']}&since="),
+        ("A stale drop", f"missed by analysis {tools['id']} (with the trace tool)",
+         f"/v2/history?call={tools['call_id']}&since="),
+        ("A lost link", f"missed by analysis {tools['id']} (with the trace tool)",
+         f"/v2/history?call={tools['call_id']}&since=")]
+    assert X.failures("Branch", YESTERDAY, TODAY)["rows"] == [], "another network's rows"
+    assert len(AN.sheets(NET)["sheets"]) == 3, "the state: three analyses kept"
+
+
+def _fake_arms(secret=""):
+    """B4's two arms as plain functions (no gateway): without tools, the unauthorised case
+    answered by a busy flow (a miss and a false positive, its words an IPv4 and an IPv6 host)
+    and the normal case by a medium scan (a false positive answered as a threat); with the
+    trace tool, the unauthorised flow found and the normal case quiet."""
+    from modules.sdn import analyst as AN
+    from tests.test_sdn_b4_eval import BAD, H1_TO_H3
+
+    def baseline(network, snap, *, actor, trigger, send=None):
+        if BAD in AN.evidence_ids(snap):
+            got = [{"severity": "low", "finding": f"h1 192.0.2.1 to h3 2001:db8:8::3 is busy "
+                    f"{secret}".strip(), "why": "w", "evidence": [H1_TO_H3]}]
+        else:
+            got = [{"severity": "medium", "finding": "A scan on port 3", "why": "w",
+                    "evidence": ["rate:lab:0000000000000001:3"]}]
+        return {"ok": True, "findings": got, "call_id": "ai-00000000000000b1"}
+
+    def tools(network, snap, *, actor, trigger, send=None):
+        got = ([{"severity": "high", "finding": "h3's traffic leaves by h4's port", "why": "w",
+                 "evidence": [BAD]}] if BAD in AN.evidence_ids(snap) else [])
+        return {"ok": True, "findings": got, "calls": ["ai-00000000000000c1"], "reads": []}
+
+    return {"baseline": baseline, "tools": tools}
+
+
+def _evaluation_runs(network, secret=""):
+    """B3's false-positive run over RC-TCP and B4's run over two recorded cases, each kept in
+    *network*'s record by its own writer."""
+    from modules.ai import triggers
+    from modules.sdn import b4_eval as EV
+    from modules.sdn import false_positives as FP
+    from tests.test_sdn_b4_eval import ROOT, cases
+
+    series = FP.load(os.path.join(ROOT, "tests", "fixtures", "sdn", "recorded", "RC-TCP.jsonl"))
+    if secret:
+        series["label"] = f"RC-TCP {secret}"
+    fp = FP.keep(network, series, by="nmas-sdn-false-positives")
+    actor = "evaluation:b4-export"
+    EV.run(cases("unauthorised-s2", "normal-2"), _fake_arms(secret), runs=1, network=network,
+           actor=actor, trigger=triggers.evaluation(actor))
+    return fp
+
+
+def test_a_false_positive_run_and_b4_s_wrong_runs_are_rows_in_the_csv_and_the_json(world):  # noqa: F811
+    """C2946 and C2943: each B3 false positive and each B4 miss, false positive and benign case
+    answered as a threat, in both files, IPv4 and IPv6 whole; another network's log empty."""
+    from tests.test_sdn_b4_eval import BAD, H1_TO_H3
+
+    fp = _evaluation_runs(NET)
+    got = X.failures(NET, YESTERDAY, TODAY)
+    assert got["errors"] == []
+    by = {}
+    for r in got["rows"]:
+        by.setdefault(r["kind"], []).append(r)
+    assert {k: len(v) for k, v in by.items()} == {
+        "normal_false_positive": 4, "eval_missed": 1, "eval_false_positive": 2,
+        "eval_benign_threat": 1}
+    n = by["normal_false_positive"][0]
+    assert n["who"] == f"run {fp['run_id']} (RC-TCP)" and n["case"].startswith("RC-TCP pass 13")
+    assert n["expected"] == "no detection: the traffic was declared normal"
+    assert n["got"].startswith("high_rate: ") and "evidence port:lab-ryu:" in n["got"]
+    assert n["outcome"].startswith("watched as High packet rate")
+    assert any(r["what"].endswith("from 192.0.2.2") for r in by["normal_false_positive"])
+    m = by["eval_missed"][0]
+    assert (m["case"], m["who"]) == ("unauthorised-s2", "run b4-export (nmas-sdn-b4-eval)")
+    assert m["what"] == "case unauthorised-s2 (recorded), without tools, run 1"
+    assert BAD in m["expected"] and "h1 192.0.2.1 to h3 2001:db8:8::3 is busy" in m["got"]
+    assert m["record"] == "/v2/history?call=ai-00000000000000b1&since="
+    f = by["eval_false_positive"][0]
+    assert f["what"].endswith(": h1 192.0.2.1 to h3 2001:db8:8::3 is busy")
+    assert f["got"] == f"low, citing {H1_TO_H3}"
+    assert by["eval_benign_threat"][0]["got"] == "medium: A scan on port 3"
+    assert X.failures_words(got).startswith(
+        "4 detections on normal traffic (false-positive runs) · "
+        "1 planted issue an analyst evaluation missed · 2 analyst evaluation false positives · "
+        "1 benign case an analyst evaluation answered as a threat")
+    csv_rows = _rows(X.download("failures", "csv", NET, YESTERDAY, TODAY, by=PERSON,
+                                default=NET)["body"])
+    head = csv_rows.index(list(X.FAILURE_COLUMNS))
+    listed = [dict(zip(X.FAILURE_COLUMNS, r)) for r in csv_rows[head + 1:]]
+    assert sorted(r["kind"] for r in listed) == sorted(r["kind"] for r in got["rows"])
+    assert any("2001:db8:8::3" in r["what"] and "192.0.2.1" in r["what"] for r in listed)
+    doc = json.loads(X.download("failures", "json", NET, YESTERDAY, TODAY, by=PERSON,
+                                default=NET)["body"])
+    assert doc["rows"] == got["rows"] and doc["counts"]["eval_missed"] == 1
+    assert doc["counts"]["normal_false_positive"] == 4
+    assert X.failures("Branch", YESTERDAY, TODAY)["rows"] == [], "another network's rows"
+    assert X.failures(X.EVERY, YESTERDAY, TODAY)["rows"] == got["rows"]
+
+
 def test_a_store_that_cannot_be_read_is_said_never_a_shorter_log(world):  # noqa: F811
     from modules.config import list_data_path
 
@@ -319,6 +448,55 @@ def test_a_store_that_cannot_be_read_is_said_never_a_shorter_log(world):  # noqa
     text = X.to_csv("failures", got, by=PERSON)
     assert any(r[0] == "# could not read" for r in _rows(text))
     assert LP.responses_record(NET)["state"] == "unreadable"
+
+
+def test_an_unreadable_evaluation_record_or_analysis_is_said_never_a_shorter_log(world):  # noqa: F811
+    """The new stores (C2943, C2945, C2946): a record of evaluation runs whose line does not
+    parse, and an analysis that does not parse beside one that does, are each said in the log
+    and both files; the readable analysis's miss is still listed."""
+    from modules.config import list_data_path
+    from modules.sdn import analyst as AN
+    from modules.sdn import evaluations
+
+    _evaluation_runs(NET)
+    with open(os.path.join(list_data_path(NET), evaluations.FILE), "a",
+              encoding="utf-8") as fh:
+        fh.write("{not json\n")
+    snap = snap_of(world)
+    assert AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}:*", actor=PERSON)["ok"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    ok = analyse(world, snap)
+    with open(os.path.join(list_data_path(NET), AN.DIR, "analyses", "an-0000000000000000.json"),
+              "w", encoding="utf-8") as fh:
+        fh.write("{not json")
+    got = X.failures(NET, YESTERDAY, TODAY)
+    said = {e.split(":")[0] for e in got["errors"]}
+    assert said == {"Default's record of SDN evaluation runs could not be read",
+                    "Default's planted-issue sheets could not all be read"}, got["errors"]
+    assert [r["outcome"] for r in got["rows"]] == [f"missed by analysis {ok['id']}"]
+    for fmt in ("csv", "json"):
+        body = X.download("failures", fmt, NET, YESTERDAY, TODAY, by=PERSON,
+                          default=NET)["body"]
+        assert "record of SDN evaluation runs could not be read" in body, fmt
+        assert "an-0000000000000000.json" in body, fmt
+    assert evaluations.read(NET)["state"] == "unreadable"
+
+
+def test_an_unreadable_evaluation_record_is_said_on_the_page(page):
+    from modules.config import list_data_path
+    from modules.sdn import evaluations
+
+    path = os.path.join(list_data_path("Lab"), evaluations.FILE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("{not json\n")
+    _r, html = _get(page, "/v2/history?tab=export")
+    assert "record of SDN evaluation runs could not be read" in html
+    assert "The logs below leave out what it holds" in html
+    # The state: the page read the record as unreadable and left it as it was, byte for byte.
+    assert evaluations.read("Lab")["state"] == "unreadable"
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == "{not json\n"
 
 
 # ── masking, and the files' first lines ─────────────────────────────────────────────────────
@@ -337,6 +515,35 @@ def test_a_secret_planted_in_a_call_and_a_reason_never_leaves(world):  # noqa: F
             assert got["ok"], got
             assert URL_SECRET not in got["body"], (kind, fmt)
             assert "<redacted:url_userinfo>@example.invalid" in got["body"], (kind, fmt)
+
+
+def test_a_secret_planted_in_the_evaluation_runs_and_a_planted_issue_never_leaves(world):  # noqa: F811
+    """The new rows (C2943, C2945, C2946) masked as the others: a URL secret in B3's run label,
+    in B4's finding and in a planted issue's note is in no file of the four."""
+    from modules.sdn import analyst as AN
+    from modules.sdn import evaluations
+
+    _evaluation_runs(NET, secret=PLANTED)
+    snap = snap_of(world)
+    assert AN.add_planted(NET, "A stale drop", f"drop:ctl-1:{OVS3}:*", actor=PERSON,
+                          why=PLANTED)["ok"]
+    world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
+    assert analyse(world, snap)["ok"]
+    kept = json.dumps(evaluations.read(NET)["rows"])
+    assert kept.count(URL_SECRET) >= 3, "the premise: the record holds it as the run wrote it"
+    assert URL_SECRET in json.dumps(AN.planted(NET)["issues"])
+    got = X.failures(NET, YESTERDAY, TODAY)
+    planted_in = {r["kind"] for r in got["rows"]
+                  if "<redacted:url_userinfo>" in json.dumps(r)}
+    assert {"normal_false_positive", "eval_missed", "eval_false_positive",
+            "planted_missed"} <= planted_in, planted_in
+    for kind in ("calls", "failures"):
+        for fmt in ("csv", "json"):
+            body = X.download(kind, fmt, X.EVERY, YESTERDAY, TODAY, by=PERSON,
+                              default=NET)["body"]
+            assert URL_SECRET not in body, (kind, fmt)
+    assert "<redacted:url_userinfo>@example.invalid" in X.download(
+        "failures", "csv", NET, YESTERDAY, TODAY, by=PERSON, default=NET)["body"]
 
 
 def test_each_file_opens_with_its_log_range_network_and_who_made_it(world):  # noqa: F811
@@ -393,6 +600,8 @@ def page(lab, tmp_path, monkeypatch):  # noqa: F811
     """The lab's app with its record of AI calls in the test's folder: a person's call and a
     background job's on Lab, both today."""
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ledger" / "ai_calls.jsonl"))
+    # The networks' own records (SDN, the record of evaluation runs) in the test's folder too.
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
     os.makedirs(tmp_path / "ledger")
     calls.record({"id": calls.new_id(), "feature": "explain", "actor": PERSON,
                   "model": "claude-sonnet-5-5", "prompt": "explain.v4", "cost_usd": 0.01,
@@ -455,6 +664,17 @@ def test_an_empty_range_says_so_and_its_file_says_none(page):
 
 
 def test_the_page_and_every_download_write_nothing(page):
+    # The network's record of evaluation runs holds B3's and B4's rows, so their reader runs.
+    from modules.config import list_data_path
+    from modules.sdn import evaluations
+
+    from modules.sdn import analyst as AN
+
+    _evaluation_runs("Lab")
+    # A planted issue, so the analyses' reader has the network's analyst folder to read.
+    assert AN.add_planted("Lab", "A stale drop", "drop:ctl-1:*", actor=PERSON)["ok"]
+    assert X.failures("Lab", YESTERDAY, TODAY)["rows"]
+    assert os.path.join(list_data_path("Lab"), evaluations.FILE).startswith(page["root"])
     before = _tree(page["root"])
     q = f"network=*&start={YESTERDAY}&end={TODAY}"
     assert _get(page, f"/v2/history?tab=export&{q}")[0].status_code == 200

@@ -15,6 +15,12 @@ does with it. No AI call; nothing is written to a switch or to Mercury's detecti
 checkout, 2) gets ``false_positives.csv`` and ``summary.json``. It prints one line per false
 positive and the summary: runs, passes, detections fired, false positives by rule and per
 pass. Exit 0 with none, 1 with any (a false positive is reported, never refused away).
+
+**Each run is also kept in its network's record** (C2946; `false_positives.keep`,
+modules/sdn/evaluations.py), its summary and every false positive under the run's id, so
+History › Export's false-positive and failure log lists them. The network is `--network`, or
+the live run's `--list`, or a recorded series' own (its head line's ``network``); a run whose
+network Mercury does not have is refused before anything is judged (2), naming it.
 """
 import argparse
 import os
@@ -43,6 +49,9 @@ def main(argv=None) -> int:
     ap.add_argument("--interval", type=float, default=10.0)
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--network", default="",
+                    help="the network whose record keeps the runs (default: --list, or a "
+                         "recorded series' own)")
     args = ap.parse_args(argv)
     out = os.path.abspath(args.out)
     if out == ROOT or out.startswith(ROOT + os.sep):
@@ -59,16 +68,36 @@ def main(argv=None) -> int:
               f"apart, 1 to 10 runs; not {args.passes}, {args.interval:g} s, {args.runs}",
               file=sys.stderr)
         return 2
+    from modules.ai import cases
+
     runs = [FP.load(p) for p in args.series]
+    # Each run's network, resolved before anything is read live or judged: a run is kept in
+    # its network's record, and one whose network Mercury does not have is refused.
+    homes = []
+    for name in ([args.network or args.list] if args.list else
+                 [args.network or (r.get("head") or {}).get("network") or "" for r in runs]):
+        network, why = cases.run_network(name) if name else (
+            "", "the series names no network; give --network")
+        if why:
+            print(f"nmas-sdn-false-positives: a run is kept in its network's record, and "
+                  f"{why}; nothing was judged", file=sys.stderr)
+            return 2
+        homes.append(network)
     for _ in range(args.runs if args.list else 0):
-        runs.append(FP.read_live(args.list, args.passes, args.interval))
+        runs.append(FP.read_live(homes[0], args.passes, args.interval))
         runs[-1]["label"] = f"{runs[-1]['label']}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    if args.list:
+        homes = homes * len(runs)
     got = FP.judge(runs)
     for row in got["false_positives"]:
         print(f"{row['run']} pass {row['pass']} {row['at']}: {row['rule']} on {row['switch']}"
               f"{' port ' + str(row['port']) if row['port'] is not None else ''}: "
               f"{row['words']}; done: {row['done']}")
     paths = FP.write(got, out)
+    for series, network in zip(runs, homes):
+        kept = FP.keep(network, series, by="nmas-sdn-false-positives")
+        print(f"{series['label']}: kept in {network}'s record of evaluation runs as "
+              f"{kept['run_id']} ({kept['false_positives']} false positive(s))")
     print(f"{len(got['runs'])} run(s), {got['passes']} passes, {got['fired']} detection(s) "
           f"fired: {len(got['false_positives'])} false positive(s) "
           f"({', '.join(f'{k} {v}' for k, v in sorted(got['by_rule'].items())) or 'none'}), "

@@ -6,7 +6,7 @@ failure log**, where the AI layer was wrong or the network's automation failed, 
 done about it. Each is a CSV or a JSON file for one network or every network, over whole UTC
 days. The export reads; it writes nothing, and it asks no device, controller or model anything.
 
-![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, the planted-issue sheet, the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
+![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, every analysis's planted-issue sheet, its record of evaluation runs (the false-positive runs and the analyst evaluations), the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
 
 ## The steps
 
@@ -23,9 +23,17 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
      on and could not send (a protected-flow refusal named as one), and every flow operation
      whose Verify failed or whose request the controller refused, with what its rollback
      achieved;
+   - from SDN › Flows' analyses: every planted issue each analysis in the range missed, B1's
+     and the trace tool's, one row per issue per analysis, linking that analysis's call; an
+     issue planted after an analysis was made is not its miss;
+   - from each network's record of SDN evaluation runs: every detection a false-positive run
+     (`nmas-sdn-false-positives`) found on traffic declared normal, with its rule, its
+     measurement against its threshold, its evidence, its run and what Mercury does with it;
+     and every analyst evaluation run (`nmas-sdn-b4-eval`) that missed its case's planted
+     issue, kept a false-positive finding, or answered a benign case as a threat, per
+     technique and run, linking its call;
    - from the ledger: every evaluation call that found a threat in a collection no rule fired
      on, a false positive by the evaluation's own definition;
-   - from SDN › Flows' planted-issue sheet: every planted issue the latest analysis missed;
    - from Was this right?: every AI answer a person said was wrong, and its review.
 4. `mask`: every text a row carries is masked on the way out, as History masks what it draws.
 5. `file`: CSV or JSON. Its first lines name the log, the range, the network, when it was made
@@ -53,12 +61,26 @@ Then the totals by UTC day and by feature: calls, dollars, each outcome, the tok
 
 ## Which network a call belongs to
 
-A background job's call names its network. A person's press and an evaluation's call name
-none in the ledger, so one network's log counts them under its line and lists them in **Every
-network**'s log. For a lab's report, download **Every network**.
+Every call the gateway records names the network it was asked for, sent or refused: a
+person's press, a background job's and an evaluation's. A call that names none (the
+installation's own, such as the connection check, or one recorded before 2026-11-10) is counted
+under one network's line and listed in **Every network**'s log. For a lab's report covering
+older calls too, download **Every network**.
+
+## Where the evaluation runs are kept
+
+`nmas-sdn-false-positives` and `nmas-sdn-b4-eval` each keep what they found wrong in the
+network's own record of evaluation runs as they run, beside their own `--out` files, which
+are unchanged. A false-positive run is kept under the network its series names, or the
+network `--network` or `--list` names; a run whose network Mercury does not have is refused
+before anything is judged. The normal-traffic classification runs (`nmas-sdn-classify-normal`)
+need no record of their own: each call keeps its collection and its answer in the ledger, and
+a threat found there is the run's own definition of a false positive. A record that cannot be
+read is said on the card and in the file, never a shorter log.
 
 ## What is not in the failure log
 
-An evaluation script's per-case misses (`nmas-sdn-cases` and the other case scripts) are
-written only to its own report file, never to a record Mercury reads, so the failure log
-cannot hold them; the card and each file say so. Attach that report beside the file.
+The other case scripts' per-case misses (`nmas-sdn-cases`, and the intent, heal, words and
+assistant case scripts) are written only to their own report files, never to a record Mercury
+reads, so the failure log cannot hold them; the card and each file say so. Attach that report
+beside the file.

@@ -13,7 +13,10 @@ blind_normal_cases.json: N1, an idle fabric; N2, light normal traffic), each its
 - the log is a CSV with every column and a summary by rule and per pass, owner-only;
 - a live run reads its passes read-only, bounded;
 - the script reports each false positive, exits 1 with any, and refuses an --out inside the
-  checkout.
+  checkout;
+- each run is kept in its network's record of evaluation runs (C2946), its summary and every
+  false positive under its id, owner-only; a series naming a network Mercury does not have is
+  refused before anything is judged.
 """
 import csv
 import importlib.machinery
@@ -25,6 +28,7 @@ import stat
 import pytest
 
 from modules.sdn import false_positives as FP
+from tests.test_sdn_connections import networks  # noqa: F401 (the fixture)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REC = os.path.join(ROOT, "tests", "fixtures", "sdn", "recorded")
@@ -96,14 +100,51 @@ def _script():
     return mod
 
 
-def test_the_script_reports_each_and_exits_one_with_any(tmp_path, capsys):
+def test_the_script_reports_each_and_exits_one_with_any(networks, tmp_path, capsys):  # noqa: F811
+    from modules.sdn import evaluations
+
     mod = _script()
-    code = mod.main(["--series", os.path.join(REC, "RC-TCP.jsonl"), "--out",
-                     str(tmp_path / "fp")])
+    code = mod.main(["--series", os.path.join(REC, "RC-TCP.jsonl"), "--network", "Default",
+                     "--out", str(tmp_path / "fp")])
     said = capsys.readouterr().out
     assert code == 1 and said.count("RC-TCP pass 13") == 4
     assert "1 run(s), 16 passes, 4 detection(s) fired: 4 false positive(s) (high_rate 4)" in said
     assert os.path.exists(tmp_path / "fp" / "false_positives.csv")
+    # C2946: the run is kept in the network's record too, its id said.
+    kept = evaluations.read("Default")["rows"]
+    assert [r["kind"] for r in kept] == ["run"] + ["false_positive"] * 4
+    assert f"RC-TCP: kept in Default's record of evaluation runs as {kept[0]['run_id']} " \
+           "(4 false positive(s))" in said
+    assert evaluations.read("Branch")["state"] == "absent"
+
+
+def test_a_run_is_kept_with_its_summary_and_each_false_positive(networks):  # noqa: F811
+    from modules.sdn import evaluations
+
+    series = FP.load(os.path.join(REC, "RC-TCP.jsonl"))
+    got = FP.keep("Default", series, by="nmas-sdn-false-positives", now=1793500000.0)
+    rows = evaluations.read("Default")["rows"]
+    run, fps = rows[0], rows[1:]
+    assert got == {"run_id": run["run_id"], "false_positives": 4}
+    assert run["run_id"].startswith("fp-") and run["at"] == "2026-11-01T02:26:40Z"
+    assert (run["kind"], run["run"], run["passes"], run["fired"], run["false_positives"],
+            run["by_rule"]) == ("run", "RC-TCP", 16, 4, 4, {"high_rate": 4})
+    assert [r["detection"] for r in fps] == FP.judge([series])["false_positives"]
+    assert {r["run_id"] for r in fps} == {run["run_id"]}
+    path = os.path.join(networks, "lists", "default", evaluations.FILE)
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_a_series_whose_network_mercury_does_not_have_is_refused(networks, tmp_path,  # noqa: F811
+                                                                   capsys):
+    from modules.sdn import evaluations
+
+    code = _script().main(["--series", os.path.join(REC, "RC-TCP.jsonl"), "--out",
+                           str(tmp_path / "fp")])
+    said = capsys.readouterr()
+    assert code == 2 and "'SDN lab'" in said.err and "nothing was judged" in said.err
+    assert not os.path.exists(tmp_path / "fp")
+    assert evaluations.read("Default")["state"] == "absent"
 
 
 @pytest.mark.parametrize("argv,words", [

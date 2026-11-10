@@ -26,7 +26,9 @@ class off, hosted AI off, a cap) stops the run there (exit 3).
 ``b4-eval-<run>.json`` for B5's cost log, each technique's findings, misses, false positives,
 benign runs answered as a threat, cases reliable with McNemar's exact test and a bootstrap
 interval, calls, the recorded cost and the time to an answer, by role (recorded, held out,
-blind), and 19.13's pass rule on the blind role.
+blind), and 19.13's pass rule on the blind role. Each run that missed, kept a false positive
+or answered a benign case as a threat is also kept in the network's record of evaluation runs
+(C2943, modules/sdn/evaluations.py), where History › Export's failure log lists it.
 """
 import os
 import sys

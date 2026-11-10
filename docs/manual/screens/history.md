@@ -539,11 +539,17 @@ is read.
   each AI classification the check refused; each response AUTO decided on and could not
   send, a protected-flow refusal named as one; each flow operation whose Verify failed or
   whose request the controller refused, with what its rollback achieved; each evaluation call
-  that found a threat in traffic no rule fired on; each planted issue the latest analysis
-  missed; and each AI answer a person said was wrong, with its review. One row each, with
-  its record's link. The line counts each kind, and names the most given dismissal reason.
-  An evaluation script's per-case misses are written only to its own report, never to a
-  record Mercury reads, so they are not in this log, and the card and the file say so.
+  that found a threat in traffic no rule fired on; each planted issue each analysis in the
+  range missed (Analyse this network's and Analyse with the trace tool's), linking that
+  analysis's call; each detection a false-positive run (`nmas-sdn-false-positives`) found on
+  traffic declared normal, with its rule, evidence and run; each analyst evaluation run
+  (`nmas-sdn-b4-eval`) that missed its case's planted issue, kept a false-positive finding or
+  answered a benign case as a threat, per technique, linking its call; and each AI answer a
+  person said was wrong, with its review. One row each, with its record's link. The line
+  counts each kind, and names the most given dismissal reason. The other case scripts'
+  per-case misses (`nmas-sdn-cases` and the rest) are written only to their own reports,
+  never to a record Mercury reads, so they are not in this log, and the card and the file
+  say so.
 
 Both files open with the log, the range, the network, when they were made and who made them.
 Amounts are the ledger's own cost per call, summed by UTC day from the rows read now, never

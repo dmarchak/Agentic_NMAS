@@ -159,6 +159,36 @@ def test_the_runner_s_measures_are_exact_on_a_scripted_provider(world):  # noqa:
     assert verdict["improves"] is None and "no blind case was run" in verdict["words"]
 
 
+def test_each_wrong_run_is_kept_in_the_network_s_record(world):  # noqa: F811
+    """C2943: a miss, a false-positive finding and a benign case answered as a threat are kept
+    per case, technique and run in the network's record; a correct run keeps nothing."""
+    from modules.ai import triggers
+    from modules.sdn import analyst, evaluations
+
+    actor = "evaluation:b4-kept"
+    results = EV.run(cases("unauthorised-s2", "normal-2"),
+                     {"baseline": analyst.ask_snapshot, "tools": AT.ask_snapshot}, runs=2,
+                     network=NET, actor=actor, trigger=triggers.evaluation(actor),
+                     send=Scripted(), now=lambda: 1793500000.0)
+    rows = evaluations.read(NET)["rows"]
+    assert [(r["case"], r["technique"], r["n"]) for r in rows] == [
+        ("unauthorised-s2", "baseline", 1), ("unauthorised-s2", "baseline", 2),
+        ("normal-2", "baseline", 1), ("normal-2", "baseline", 2)]
+    miss, benign = rows[0], rows[2]
+    assert (miss["script"], miss["kind"], miss["run"], miss["at"]) == (
+        "nmas-sdn-b4-eval", "case_run", "b4-kept", "2026-11-01T02:26:40Z")
+    assert miss["missed"] and not miss["threat_answered"] and miss["case_kind"] == "threat"
+    assert BAD in miss["issue"]
+    assert [(f["finding"], f["judged"]) for f in miss["findings"]] == [
+        ("h1 to h3 is busy", "false_positive")]
+    scored = results["cases"][0]["runs"]["baseline"][0]
+    assert miss["calls"] == scored["calls"] and miss["false_positives"] == 1
+    assert benign["threat_answered"] and not benign["missed"]
+    assert benign["case_kind"] == "benign" and benign["findings"][0]["severity"] == "medium"
+    assert evaluations.read("Branch")["state"] == "absent"
+    assert AN._latest(NET) == {}, "the network's analyst store is untouched"
+
+
 def test_mcnemar_exact_and_the_seeded_interval():
     assert EV.mcnemar_p(0, 0) == 1.0 and EV.mcnemar_p(5, 0) == 0.0625
     assert EV.mcnemar_p(3, 1) == 0.625 and EV.mcnemar_p(1, 3) == 0.625

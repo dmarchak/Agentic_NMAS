@@ -27,12 +27,18 @@ proposed for a person, and in AUTO an action runs only where the network is mark
 time, rule, switch, port, source, words, evidence ids, the measurement against its threshold,
 what was done) and ``summary.json`` (runs, passes, detections fired, false positives by rule
 and per pass).
+
+**The network's record** (`keep`, C2946): each run's summary and its false positives are also
+kept in the network's own record of evaluation runs (modules/sdn/evaluations.py), under the
+run's id, so History › Export's false-positive and failure log lists them; the ``--out`` files
+stay as they are.
 """
 
 import csv
 import json
 import os
 import time
+import uuid
 
 #: The columns of the CSV log, in order.
 COLUMNS = ("run", "pass", "at", "rule", "switch", "port", "source", "words", "evidence",
@@ -166,6 +172,27 @@ def judge(series_list: list) -> dict:
     return {"runs": [s["label"] for s in series_list], "passes": passes, "fired": fired,
             "false_positives": rows, "by_rule": by_rule,
             "per_pass": round(len(rows) / passes, 4) if passes else 0.0}
+
+
+def keep(network: str, series: dict, *, by: str, now: float = None) -> dict:
+    """Keep one run (*series*, `load`'s or `read_live`'s) in *network*'s record of evaluation
+    runs (`evaluations.keep`): a ``run`` row with its summary (`judge` over the run alone) and
+    one ``false_positive`` row per false positive, each with `COLUMNS` under ``detection`` and
+    the run's id. ``{"run_id", "false_positives"}``."""
+    from modules.sdn import evaluations
+
+    now = time.time() if now is None else now
+    got = judge([series])
+    run_id = "fp-" + uuid.uuid4().hex[:16]
+    base = {"script": evaluations.FALSE_POSITIVES, "run_id": run_id, "run": series["label"],
+            "network": network, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+            "by": by}
+    rows = [dict(base, kind="run", passes=got["passes"], fired=got["fired"],
+                 false_positives=len(got["false_positives"]), by_rule=got["by_rule"],
+                 per_pass=got["per_pass"], unparsed=series.get("unparsed") or 0)]
+    rows += [dict(base, kind="false_positive", detection=row) for row in got["false_positives"]]
+    evaluations.keep(network, rows)
+    return {"run_id": run_id, "false_positives": len(got["false_positives"])}
 
 
 def write(result: dict, out_dir: str) -> dict:
