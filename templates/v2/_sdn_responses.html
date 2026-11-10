@@ -85,7 +85,7 @@
 {%- endfor %}
 {%- for r in g.awaiting %}
 <details class="sdn-inc" id="sdn-i-{{ r.id }}" data-keep="inc-{{ r.id }}"{% if ic.open == r.id %} open{% endif %}>
-  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}{% if r.began_as %} · began as High packet rate{% endif %}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
+  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}{% if r.began_as %} · began as High packet rate{% endif %}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai and r.ai.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305)') }} {% elif r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
@@ -120,7 +120,7 @@
   {%- endif %}
   {%- if r.ai %}{% set a = r.ai %}
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
-    <p class="small">{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · <span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span></span></p>
+    <p class="small">{% if a.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305): the evidence settles it') }}{% else %}{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }}{% endif %} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · {% if a.by_code %}decided in code, no AI call{% else %}<span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span>{% endif %}</span></p>
     <p class="small">{{ a.reasoning }}</p>
     <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
     {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}
@@ -179,6 +179,50 @@
 {%- endif %}
 </section>
 
+{#- Lab 9 B3 (board F of docs/boards/lab9-sdn.html, self-signed under the Phase 7 mode): a link
+    the topology held is down. A fact, so no AI call; its response verifies the forwarding app's
+    reroute from the trace over the controller's stored flow tables (modules/sdn/link_failure.py).
+    AUTO verifies it at each pass; HITL waits for a person's Verify the reroute. -#}
+{%- set lk = g.links %}
+{%- if lk.total or lk.state == 'unreadable' %}
+<section class="card sdn-links" aria-labelledby="sdn-links-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-links-h">Link failures</h2><span class="faint small">{{ lk.total }} open · a link the topology held, down · its reroute verified from the controller's flow tables</span></div>
+  {%- if lk.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert"><p>The link-failure cards cannot be read: {{ lk.error }}.</p></div>
+  {%- endif %}
+  {%- for c in lk.rows %}
+  <div class="sdn-link" id="sdn-l-{{ c.id }}" role="region" aria-labelledby="sdn-l-{{ c.id }}-h">
+    <div class="sdn-ctl-hd"><h3 id="sdn-l-{{ c.id }}-h" class="sdn-h3">{{ c.title }}</h3> {{ badge(c.state, c.tone) }}</div>
+    <dl class="kv small">
+      <dt>Seen</dt><dd>{{ stamp(c.at) }}: {{ c.words }} <span class="faint">(confidence {{ c.confidence }})</span></dd>
+      <dt>Hosts behind it</dt><dd>{% if c.affected %}{% for h in c.affected %}<span class="mono">{{ h.address or h.mac }}</span> <span class="faint">on {{ h.dpid_hex }} port {{ h.port_no }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="faint">none the controller lists on either switch</span>{% endif %}</dd>
+      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.pairs %}
+        <details class="sdn-also" data-keep="link-{{ c.id }}-pairs"><summary class="small">Each host pair traced ({{ c.verify.checked }} of {{ c.verify.total }})</summary>
+          <ul class="sdn-also-list small">{% for p in c.verify.pairs %}<li><span class="mono">{{ p.source }}</span> to <span class="mono">{{ p.destination }}</span>: {{ p.state | replace('_', ' ') }}: {{ p.words }}</li>{% endfor %}</ul>
+        </details>{% endif %}{% else %}not verified yet: the forwarding app reroutes by itself on a port down, and Mercury sends nothing{% endif %}</dd>
+      <dt>Mode</dt><dd>{% if c.mode == 'auto' %}AUTO: Mercury verifies at each pass until it is rerouted, for at most {{ g.links_deadline }} s, then leaves it to you{% else %}HITL: {{ c.why }}{% endif %}</dd>
+    </dl>
+    <div class="sdn-acts">
+      <form class="op-act" hx-post="{{ url_for('sdn_v2.link_verify', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="list" value="{{ g.network }}">
+        <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Traces every pair of hosts over the controller's stored flow tables; sends nothing"><span class="op-idle">Verify the reroute</span><span class="op-busy">Tracing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Verify the reroute') }}
+      </form>
+      <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.link_dismiss', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="list" value="{{ g.network }}">
+        <label class="sr-only" for="sdn-lwhy-{{ c.id }}">Reason</label>
+        <input id="sdn-lwhy-{{ c.id }}" type="text" name="reason" placeholder="Why dismiss it" required>
+        <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Dismiss with this reason</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Dismiss a link failure') }}
+      </form>
+    </div>
+    <p class="faint small">Nothing is sent by either: the reroute is the forwarding app's, and the card closes by itself when the controller lists the link again and both its ports report up.</p>
+  </div>
+  {%- endfor %}
+  {%- if lk.total > lk.rows | length %}
+  <p class="small faint">{{ lk.rows | length }} of {{ lk.total }} drawn, the newest first.</p>
+  {%- endif %}
+</section>
+{%- endif %}
+
 <section class="card sdn-mode" aria-labelledby="sdn-mode-h">
   <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
   <p class="small">{{ m.words }}.</p>
@@ -216,9 +260,14 @@
     <form class="op-act" hx-post="{{ url_for('sdn_v2.loop_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
       {%- if g.loop.running %}<input type="hidden" name="run" value="stop"><button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Stop</span><span class="op-busy">Stopping…</span></button>{{ how('sdn', 'responses', compact=True, op='Stop') }}
-      {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
+      {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <label class="small">run for <select name="run_for">{% for m in g.run_for.choices %}<option value="{{ m }}"{% if m == g.run_for.default %} selected{% endif %}>{{ m }} minute{{ 's' if m != 1 }}</option>{% endfor %}</select></label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
     </form></div>
   <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
+  {%- if g.loop.running and g.loop.until %}
+  <p class="small sdn-loop-bound"><strong>Stops by itself</strong> {{ stamp(g.loop.until) }} (run for {{ (g.loop.run_for_s / 60) | int }} minutes), or after {{ g.loop.max_passes }} passes ({{ g.loop.passes }} so far), or on Stop.</p>
+  {%- else %}
+  <p class="small faint sdn-loop-bound">A loop is never left running unattended: it stops by itself at its run-for bound (at most {{ g.run_for.max }} minutes) or its pass cap, and its log says which.</p>
+  {%- endif %}
   {%- with lg = g.log %}{% include "v2/_sdn_log.html" %}{% endwith %}
 </section>
 
@@ -236,6 +285,7 @@
       <tr><td>High packet rate</td><td>a port's packet rate on a switch whose flows name no transport ports</td><td>{{ v.sdn_scan_fallback_pps }} packets a second</td><td>port stats; lower confidence; proposes nothing, joins a flood</td><td><span class="faint">none: watched, never answered</span></td></tr>
       <tr><td>Flood</td><td>a port's packet rate against its baseline, of small packets; one large-packet stream is watched and left to a person, several sources to one host one attack</td><td>{{ v.sdn_flood_factor }} × baseline for {{ v.sdn_flood_window_seconds }} s, packets averaging {{ v.sdn_flood_max_mean_bytes }} B or less</td><td>two port-stat samples a stated interval apart</td><td>{{ allowed(p.by_rule.flood, p.ok) }}</td></tr>
       <tr><td>Unauthorised flow</td><td>a cookie neither Mercury's nor the controller's own</td><td>any</td><td>flow tables</td><td>{{ allowed(p.by_rule.unauthorised_flow, p.ok) }}</td></tr>
+      <tr><td>Link down</td><td>a link the topology held: a port reports its link down, or the controller no longer lists it</td><td>at once on a port down; {{ g.gone_reads }} reads gone</td><td>port descriptions and the controller's links; a fact, never classified</td><td><span class="faint">the reroute verified (Mercury sends nothing)</span></td></tr>
     </tbody>
   </table></div>
   {%- else %}
@@ -261,4 +311,38 @@
     <span class="sdn-answer" id="sdn-policy-ans" role="status"></span>
   </form>
   <p class="small faint">{% if g.limits.ok %}Every response flow expires at its hard timeout: {{ g.limits['values'].sdn_response_hard_timeout_seconds }} s on this network, at most {{ g.limits['values'].sdn_response_max_seconds }} s; a response's meter is removed once its flows have expired.{% else %}The response timeouts cannot be read: {{ g.limits.error }}.{% endif %}</p>
+</section>
+
+{#- Lab 9 B3 (board F): what each switch can do, read from its own answers through the controller
+    (modules/sdn/capability.py), never assumed from its vendor; "not read" and "none" are
+    different states. The responses' fallback is drawn in its last column. -#}
+{%- set cap = g.capabilities %}
+{%- macro capcell(col) -%}
+{%- if col.state == 'yes' %}{{ badge(col.words, 'ok') }}{% elif col.state == 'none' %}{{ badge(col.words, 'danger') }}{% else %}{{ badge('not read', 'warn', title=col.words) }}{% endif %}
+{%- endmacro %}
+<section class="card sdn-caps" aria-labelledby="sdn-caps-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-caps-h">What each switch can do</h2><span class="faint small">{% if cap.read_at %}read from the controller {{ stamp(cap.read_at) }} (description, meter features, table features){% else %}not read yet: the loop reads it at its start, or press Read again{% endif %}</span>
+    <form class="op-act" hx-post="{{ url_for('sdn_v2.capabilities_read') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <button class="btn btn-small" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Reads each switch's description, meter features and table features through its controller; changes nothing on a switch"><span class="op-idle">Read again</span><span class="op-busy">Reading…</span></button>{{ how('sdn', 'capabilities', compact=True, op='Read again') }}
+    </form></div>
+  {%- if cap.state == 'unreadable' or cap.error %}
+  <div class="notice notice-warn" role="status"><p>{% if cap.state == 'unreadable' %}The matrix cannot be read: {% else %}Not every controller answered: {% endif %}{{ cap.error }}.</p></div>
+  {%- endif %}
+  {%- if cap.rows %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Switch</th><th scope="col">OpenFlow</th><th scope="col">Tables</th><th scope="col">Meters</th><th scope="col">Fast-failover groups</th><th scope="col">Rewrite (set_field)</th><th scope="col">When it cannot</th></tr></thead>
+    <tbody>
+      {%- for r in cap.rows %}
+      <tr><td><span class="mono">{{ r.name or r.dpid_hex }}</span><br><span class="faint small" title="{{ r.dpid_hex }} on {{ r.connection }}">{{ r.desc }}</span></td><td>{{ capcell(r.version) }}</td><td>{{ capcell(r.tables) }}</td><td>{{ capcell(r.meters) }}</td><td>{{ capcell(r.fast_failover) }}{% if r.groups.state == 'yes' %} <span class="faint small">group actions: yes</span>{% endif %}</td><td>{{ capcell(r.set_field) }}</td><td class="small">{% for w in r.cannot %}{{ w }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- if cap.total > cap.rows | length %}
+  <p class="small faint">{{ cap.rows | length }} of {{ cap.total }} switches drawn, those that cannot do something first.</p>
+  {%- endif %}
+  {%- elif cap.state == 'ok' %}
+  <p class="muted small">No switch was listed by the controller when it was read.</p>
+  {%- endif %}
+  <p class="small faint">"Not read" is never "none": a switch that did not answer a features request is never shown as lacking the feature. A rate limit on a switch with no meters drops the source instead, where the response policy allows a drop.</p>
 </section>

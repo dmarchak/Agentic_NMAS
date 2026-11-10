@@ -115,7 +115,7 @@ begin "I:" below. Templates sha256 before: `94c428ab196518687ff4258e4c5f6b8109a9
 | I: phone width | not drawn at 390 | the two cards stack under 900 px and each table's cells stack by their labels under 700 px, as Flows' table does; not shot | **later** (a board shot of the region at 1440, 1280 and 390) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html
-Templates sha256: `2f04bc7755272743d6149044ee5b905463ea183a60169dd82537578ca40f2c47`
+Templates sha256: `6423e18ccdb9aadf7e6431dbce46ea004e31d28be0182a3636b36d3932b5388a`
 Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
 docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
 of a registered app (the badge "a new version", The folder as the registered version's content
@@ -137,6 +137,17 @@ planted-issue sheet; `_sdn_view.html` only includes it on Flows.
 Hashed again 2026-11-10 for Lab 9 B2 (board lab9-sdn E): `_sdn_tabs.html` gains the Policies
 tab and `_sdn_op.html` a `policy` kind (its header, its Send target and a carried `policy`
 field); SDN › Policies itself has its own record, docs/fidelity/sdn-policies.md.
+Hashed again 2026-11-10 for Lab 9 B3 (board F of docs/boards/lab9-sdn.html, self-signed,
+docs/STANDING_APPROVAL_LOG.md "Board lab9-sdn F"): `_sdn_responses.html` gains the Link failures
+card, the loop's Run for and its "Stops by itself" line, the Link down row of the rules, the
+capability matrix card with Read again, and the Code mark on a classification decided in code
+(C2305). **Compared from the template and its rendering, not from shots:** the regions in "Board
+F (Lab 9 B3)" at the foot of this record were read from the built template and the HTML that
+tests/test_sdn_link_failure.py, tests/test_sdn_capability.py and tests/v2_context.py's
+`_sdn_links_and_caps` render, beside the board's HTML; a shot at 1440, 1280 and 390 is the next
+step (tests/test_board_shots.py plants no link card or matrix yet). Nothing else moves (the
+templates then hashed `400a882041ef3e953c3123088261e5b42f3907aa53cc39283736239ab758b3af`).
+Merged with the day's other SDN changes and hashed with them over the union.
 Hashed again 2026-11-10 for Lab 9 Objective 2 (C2902; board lab9-sdn A): the SDN tabs moved into
 their own partial, `_sdn_tabs.html`, which every tab's region draws, and gained Switches between
 Controllers and Flows (its own record, docs/fidelity/sdn-switches.md). The tabs' row is
@@ -537,3 +548,26 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
 | The flow editor (SdnFlowEdit) | the form, the prerequisite refusal, the preview, Edit's and Remove's words, Explain this flow table (AI) | the form, the refusal naming the field, the preview card; Edit's and Remove's words; no Explain (S19, after cost safety) | **later** a click-driven shot; Explain is S19 |
 | Responses at phone width | stacked | the card's fields and buttons wrap inside it (390 shot) | **same** |
+
+### Board F (Lab 9 B3): link failure, the capability matrix, the loop's run-for bound
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Link failures' place | F: the link card in the left column, the loop card beside it | its own card, "Link failures", under the incidents, full width; drawn only while a card is open (or the store cannot be read) | **deviation** (log: Board lab9-sdn F built, 7) |
+| The card's head | "Link down: of-eos-1 port 3 to of-eos-2 port 3" and "awaiting approval" | "Link down: <dpid> port 3 (<name>) to <dpid> port 3 (<name>)" and its state chip (awaiting a person, verifying, rerouted, verified, not rerouted, cannot tell) | **deviation** (log: Board lab9-sdn F built, 1) |
+| Seen | the time, the port reported down and the link no longer listed, the reads | the time and the detection's words (the end that reported it and how, the controller listing it or not, the reads gone), its confidence | **same** |
+| Traffic on it before, Backup | the rate and host pairs before; the backup path and no fast-failover group | Hosts behind it (each end switch's hosts by address, IPv4 and IPv6) and Reroute (the verify's words, who and when, Each host pair traced opening to every pair) | **deviation** (log: Board lab9-sdn F built, 2) |
+| Proposed, Mode | a reroute of 6 flows; HITL with AUTO's network and expiry | no Proposed line (Mercury installs no reroute); Mode: HITL and its words, or AUTO verifying at each pass for at most 75 s | **deviation** (log: Board lab9-sdn F built, 1) |
+| The card's actions | Preview the reroute…, Dismiss…, How does this work? | Verify the reroute (busy "Tracing…"), a reason and Dismiss with this reason, each with its (i); "Nothing is sent by either" under them | **deviation** (log: Board lab9-sdn F built, 1) |
+| The fast-failover note | "On a switch with fast-failover groups … failed over in the data plane" | not built: no driver reads group features | **deviation** (log: Board lab9-sdn F built, 2) |
+| The loop | Every, Stops by itself (at its time, run for N min, or at the AI day cap, or on Stop), Started | Started by whom and when; "Stops by itself <time> (run for N minutes), or after M passes (K so far), or on Stop" while it runs; stopped, the bound's line | **deviation** (log: Board lab9-sdn F built, 3) |
+| Run for | 20 minutes, 5 minutes, 1 hour, Until stopped (at most 24 h) | 5, 20 (selected) and 60 minutes, beside every N s and Start | **deviation** (log: Board lab9-sdn F built, 3) |
+| Stop, Download the run's log | both | Stop, and Download log on the log panel, as built before | **same** |
+| Rules | in the loop card, with Answered by, Link down "new": "port down, or a link gone for 2 reads", "reroute; verify failover" | the Detection rules card's row: "a link the topology held: a port reports its link down, or the controller no longer lists it", "at once on a port down; 2 reads gone", "port descriptions and the controller's links; a fact, never classified", "the reroute verified (Mercury sends nothing)" | **deviation** (log: Board lab9-sdn F built, 4) |
+| Edit thresholds… | the button | not built, as the rules card's row above says | **later** (the rules card's Save thresholds…) |
+| The matrix's head | "What each switch can do", read from the controller (features, meter features, group features, table features), Read again | the same title and Read again (busy "Reading…", its (i)); read at <time> (description, meter features, table features), or "not read yet" | **deviation** (log: Board lab9-sdn F built, 5) |
+| The matrix's rows | one row for ovs-1, ovs-2 together; OpenFlow 1.3 or 1.0, Tables, Meters, Fast-failover groups, Rewrite as chips | one row per switch (its name, or DPID, and its description); each column a chip, green yes, red none, amber not read (its words on hover); fast failover always not read, "group actions: yes" beside it where a table lists GROUP; at most 50 rows, the switches that cannot do something first, "N of M switches drawn" past it | **deviation** (log: Board lab9-sdn F built, 5) |
+| When it cannot | rate-limit → drop, or meter at an OVS switch; reroute by flows; DNS via ovs-1; meters unread: rate-limit refused until read, drop offered | rate-limit → drop where the policy allows; meters not read: the rate limit's preview reads them, a drop offered; no rewrite; link failure: the reroute verified | **deviation** (log: Board lab9-sdn F built, 6) |
+| The note | "Not read and none are different states" | the same words under the table, and the fallback in one line | **same** |
+| A classification decided in code | not drawn | the AI box marked Code, "decided in code, no AI call", its reasoning the shape's figures; the table's verdict column marked Code (C2305) | **deviation** (log: Board lab9-sdn F built, 8) |
+| Phone width | not drawn | the cards stack, the matrix scrolls in its box (`table-wrap`), not shot | **later** (a 390 shot) |

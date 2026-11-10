@@ -94,7 +94,8 @@ the state's LINK_DOWN bit, never LIVE, C2602) in the first round, kept as the sw
 ``port_desc`` (``port_desc_error`` when it fails, which makes the switch partial), and each
 connection's discovered links (`links`, the topology REST's), kept as the connection's
 ``links`` (``links_error`` when they fail, said and never read as no links). 1 + 1 + 4N calls
-then. The loop and the SDN reader leave it off, so their reads are as before.
+then. The loop asks for it (Lab 9 B3: the link-down rule, `modules/sdn/link_failure.py`); the
+SDN reader leaves it off, so its reads are as before.
 """
 
 import hashlib
@@ -564,7 +565,20 @@ def sent_evidence(section: dict) -> dict:
     sent and what is accepted (C1969); *names* what an affected device may be (the switch's
     DPID, every host address the evidence holds); *sources* the addresses the detection saw
     sending."""
+    from modules.sdn import benign
+
     stored = list(section.get("pieces") or [])
+    # C2305: the figures that tell a transfer from a flood (its rate against its link, the two
+    # directions' symmetry, the protocols, the sessions), computed in code from the pack's own
+    # counters (`benign.decide`), sent as one more piece for a flood's port; code decides the
+    # benign case itself, so this reaches the model only for the rest (a transfer at its
+    # link's capacity, a shape that does not hold). A scan's is not sent: its flows are.
+    got = benign.decide(section)
+    shape = got.get("shape") if got.get("kind") == "transfer" else None
+    if shape:
+        det_piece = next((p for p in stored if p.get("kind") == "detection"), {})
+        stored.append({"kind": "shape", "id": f"shape:{det_piece.get('dpid') or ''}",
+                       **{k: v for k, v in shape.items()}})
     ids = {piece_id(p) for p in stored}
     pieces = [as_sent(p, ids) for p in stored]
     det = next((p for p in pieces if p.get("kind") == "detection"), {})
@@ -714,6 +728,13 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
 
     began = clock()
     took = {}
+    # C2305: benign traffic code can decide (a symmetric, bounded TCP transfer under its link's
+    # capacity; sessions carrying data) is answered no threat here, with no AI call
+    # (`modules/sdn/benign.py`); a pack whose hash does not match is never decided.
+    coded = decided_in_code(detection, pack, intact=intact)
+    if coded is not None:
+        took["decide"] = round(clock() - began, 3)
+        return dict(coded, took=took)
     prep = prepare_classify(network, detection, pack, intact=intact)
     if "refused" in prep:
         return dict(prep["refused"], took=took)
@@ -730,6 +751,41 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if got["ok"]:
         took["check"] = round(clock() - checking, 3)
     return done
+
+
+#: What a classification decided in code names as its model (C2305): no AI call was made.
+CODE_MODEL = "code"
+
+
+def decided_in_code(detection: dict, pack: dict, *, intact: bool = True):
+    """`classify_pack`'s answer for a detection code decides is benign (C2305,
+    `benign.decide`), or None: ``{"ok": True, "classification": {... "by_code": True, "model":
+    "code", "call_id": "", "cost_usd": 0}, "action": "none", "params": {}, "decided_in_code":
+    <the decision>}``. Its action is none, so a person decides and AUTO never acts
+    (`loop.verdict_of`). *intact* False is a recorded case's section, never hashed."""
+    from modules import evidence_pack as EP
+    from modules.sdn import benign
+
+    if intact and not EP.intact(pack):
+        return None
+    section = _sdn_section(pack)
+    got = benign.decide(section)
+    if not got["decided"]:
+        return None
+    det = next((p for p in section.get("pieces") or [] if p.get("kind") == "detection"), {})
+    refs = [piece_id(p) for p in section.get("pieces") or []
+            if p.get("kind") in ("port", "flow")][:5]
+    c = {"reasoning": got["words"], "threat_detected": False, "threat_type": "none",
+         "severity": "none", "affected_devices": [], "recommended_action": (
+             "no action: " + ("a transfer's traffic" if got["kind"] == "transfer" else
+                              "sessions' traffic") + ", watched by the rule"),
+         "action_id": NO_ACTION, "parameters": {}, "evidence_refs": refs, "by_code": True,
+         "shape": got["shape"], "model": CODE_MODEL, "call_id": "", "cost_usd": 0.0,
+         "trigger": "code", "params": {}}
+    return {"ok": True, "error": "", "detail": "", "call_id": "", "cost_usd": 0.0,
+            "classification": c, "action": NO_ACTION, "params": {},
+            "pack_id": (pack or {}).get("id") or "", "decided_in_code": got,
+            "source": det.get("source")}
 
 
 def checked_answer(network: str, detection: dict, prep: dict, got: dict, out: dict, *,
@@ -790,9 +846,15 @@ def classify_packs_batch(network: str, items: list, runs: int, *, actor: str, tr
     for item in items:
         prep = prepare_classify(network, item["detection"], item["pack"], intact=intact,
                                 pol=pol)
+        # C2305: what `classify_pack` decides in code is decided here too, with no request,
+        # so an evaluation scores the path a call takes.
+        coded = decided_in_code(item["detection"], item["pack"], intact=intact)
         for run in range(int(runs)):
             cid = batch_custom_id(item["n"], prompt, run)
             meta = {"n": item["n"], "run": run}
+            if coded is not None:
+                results[cid] = dict(coded, **meta)
+                continue
             if "refused" in prep:
                 results[cid] = dict(prep["refused"], **meta)
                 continue

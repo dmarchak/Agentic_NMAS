@@ -40,6 +40,11 @@ alert in Mercury's alert stream with an evidence pack, so Explain works on it un
 - **Unauthorised flow** (`unauthorised`): every flow `flow_intent.classify` calls
   ``unauthorised`` on a switch whose table was read whole. With the flow intent unreadable,
   nothing is judged, and the answer says so.
+- **Link down** (`link_failure.rule`, Lab 9 B3, board F): a link the topology held whose end
+  reports its link down (LINK_DOWN, never LIVE), is administratively down or gone, or that the
+  controller no longer lists for `link_failure.GONE_READS` collections; judged only on a
+  collection that asked for link status (the loop's). A fact, never classified
+  (`LINK_RULES`): its response verifies the reroute (`link_failure.step`).
 
 **The source of a port's detection** (C2002; `port_source`). A flood, and the scan rule's
 packet-rate fallback, judge a port, not a source. Their source is the one address the flows
@@ -127,12 +132,18 @@ log = logging.getLogger(__name__)
 STORE = "sdn"
 STATE_FILE = "sdn_detect.json"
 SCHEMA = 1
-RULES = ("scan", "flood", "unauthorised_flow", "high_rate")
+RULES = ("scan", "flood", "unauthorised_flow", "high_rate", "link_down")
 #: Each rule's alert, as the Alerts tab and History name it.
 TITLES = {"scan": "SDN scan", "flood": "SDN flood",
-          "unauthorised_flow": "SDN unauthorised flow", "high_rate": "SDN high packet rate"}
+          "unauthorised_flow": "SDN unauthorised flow", "high_rate": "SDN high packet rate",
+          "link_down": "SDN link down"}
 RULE_UIDS = {"scan": "sdn-scan", "flood": "sdn-flood",
-             "unauthorised_flow": "sdn-unauthorised-flow", "high_rate": "sdn-high-rate"}
+             "unauthorised_flow": "sdn-unauthorised-flow", "high_rate": "sdn-high-rate",
+             "link_down": "sdn-link-down"}
+#: A rule a fact decides, never a classifier (Lab 9 B3, `modules/sdn/link_failure.py`): a link
+#: the topology held is down. Never classified (no AI call) and never answered by the
+#: catalogue: its response verifies the reroute (`link_failure.step`).
+LINK_RULES = ("link_down",)
 #: A rule that names a rate, never a threat (board S-HR, C2238, PHASE8_PLAN 17.8): nothing is
 #: proposed and nothing is asked of the classifier; the loop watches it until the flood rule
 #: fires for it (it joins that incident) or it ends.
@@ -1114,9 +1125,10 @@ def instance(d: dict, since: float, fired_at: float, window: int = 0) -> dict:
     labels = {"alertname": title, "network": d["network"], "connection": d["connection"],
               "dpid": d["dpid_hex"], d["subject"]["kind"]: str(d["subject"]["value"])}
     m, t = d["measurement"], d["threshold"]
-    value = (f"{m.get('value')} {m.get('unit', '')} against {t.get('value')} "
-             f"{t.get('unit', '')}".strip() if d["rule"] != "unauthorised_flow" else
-             f"cookie {m.get('cookie')}")
+    value = (f"cookie {m.get('cookie')}" if d["rule"] == "unauthorised_flow" else
+             f"link {m.get('value')}" if d["rule"] in LINK_RULES else
+             f"{m.get('value')} {m.get('unit', '')} against {t.get('value')} "
+             f"{t.get('unit', '')}".strip())
     return {"rule": title, "rule_uid": RULE_UIDS[d["rule"]], "kind": "condition",
             "state": "Alerting", "value": value, "labels": labels, "device": "", "address": "",
             "device_from": "none", "active_at": _iso(since), "starts_at": _iso(fired_at),
@@ -1167,10 +1179,16 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
         # what the card draws and the classifier reads.
         piece["source_from"] = d["source_from"]
     pieces = [piece]
+    # A port's link speed where the collection read link status (C2305: a transfer's rate is
+    # judged against it, `benign.transfer_shape`), in kbps as OpenFlow reports it.
+    speeds = {str(p.get("port_no")): p.get("curr_speed") for p in sw.get("port_desc") or []
+              if p.get("curr_speed")}
     for p in sw.get("ports") or []:
         if p.get("id") in ids:
+            extra = ({"curr_speed_kbps": speeds[str(p.get("port_no"))]}
+                     if str(p.get("port_no")) in speeds else {})
             pieces.append(dict({k: v for k, v in p.items()}, kind="port",
-                               sample=sw.get("sample")))
+                               sample=sw.get("sample"), **extra))
     for f in flows:
         pieces.append(flow_piece(f))
     displaced = list(d.get("displaced") or [])
@@ -1194,9 +1212,13 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
         piece["evidence_not_sent"] = len(d["evidence"]) - len(kept)
     pieces.append({"kind": "coverage", "dpid": d["dpid_hex"], **(sw.get("coverage") or {
         "granularity": "not read", "words": "this switch's flows could not be read"})})
+    if d.get("link"):
+        # A link-down detection's link, both ends in words (Lab 9 B3, `link_failure.rule`).
+        piece["link"] = d["link"]
     return {"source": (f"the SDN collection of {collected.get('network')} "
                        f"(closed_loop.collect_threat_data): controller {d['connection']}, switch "
-                       f"{d['dpid_hex']}, port rates over {sw['sample'].get('elapsed_s')} s"),
+                       f"{d['dpid_hex']}, port rates over "
+                       f"{(sw.get('sample') or {}).get('elapsed_s')} s"),
             "read_at": collected.get("collected_at") or "", "as_of": collected.get("collected_at"),
             "pieces": pieces,
             "counts": dict({"flows": len(flows), "ports": sum(p["kind"] == "port" for p in pieces),
@@ -1245,7 +1267,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     by its key, by *clock* (the loop's timing line, C1970)."""
     from modules import alert_history, evidence_pack
     from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
-    from modules.sdn import flow_intent
+    from modules.sdn import flow_intent, link_failure
 
     out = {"ok": False, "error": "", "network": network, "collected_at": "",
            "detections": [], "fired": [], "resolved": [], "firing": 0, "unjudged": [],
@@ -1289,12 +1311,15 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
             scanned = scan(collected, values, net.get("seen"), topo=topo)
             flooded = flood(collected, net.get("baseline"), values, net.get("over"), topo=topo)
             unauth = unauthorised(collected, intent, now=at, topo=topo)
+            # The link-down rule (Lab 9 B3): the links the topology held, judged on the
+            # collection's link status (`link_failure.rule`).
+            linked = link_failure.rule(collected, net.get("links"), topo=topo)
             detections = mark_replies(scanned["detections"] + flooded["detections"],
-                                      collected) + unauth["detections"]
-            judged = scanned["judged"] | flooded["judged"] | unauth["judged"]
+                                      collected) + unauth["detections"] + linked["detections"]
+            judged = scanned["judged"] | flooded["judged"] | unauth["judged"] | linked["judged"]
             if unauth["error"]:
                 out["notes"].append(unauth["error"])
-            out["notes"] += scanned["notes"]
+            out["notes"] += scanned["notes"] + linked["notes"]
             current = {d["key"]: d for d in detections}
             fired, resolved = [], []
             firing_now = net.get("firing") or {}
@@ -1354,6 +1379,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
             net.update(collected_at=collected["collected_at"], updated_at=_iso(time.time()),
                        baseline=update_baseline(net.get("baseline"), collected, exclude),
                        over=flooded["over"], seen=scanned["seen"], firing=firing_now)
+            if linked["held"]:
+                net["links"] = linked["held"]
             write_atomic(_path(), json.dumps(doc, sort_keys=True, default=str))
     except (Refused, StoreUnreadable) as exc:
         out["error"] = str(exc)

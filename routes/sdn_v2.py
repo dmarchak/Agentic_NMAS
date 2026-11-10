@@ -381,6 +381,54 @@ def response_dismiss(rid):
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 
 
+# ───────────────────────────────────────── Lab 9 B3, board F: link failure and the matrix
+
+@bp.route("/link/<lid>/verify", methods=["POST"])
+def link_verify(lid):
+    """Verify the reroute on a link-failure card (board F; `link_failure.verify`): the trace
+    over the controller's stored flow tables, every host pair; its outcome kept on the card
+    as the person's. Reads the stored read only: nothing is sent to a controller or switch."""
+    from modules import identity
+    from modules.sdn import link_failure
+
+    network = _network_of_form()
+    row = next((r for r in link_failure.open_rows(network)["rows"] if r.get("id") == lid), None)
+    if row is None:
+        return _refused_beside(f"no link-failure card {lid!r} is open on {network}")
+    got = link_failure.verify(network, row.get("detection") or {})
+    link_failure.record_verify(network, lid, got, actor=identity.request_actor())
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
+@bp.route("/link/<lid>/dismiss", methods=["POST"])
+def link_dismiss(lid):
+    """Dismiss a link-failure card with a reason; the link stays detected until the controller
+    lists it again. Nothing is sent."""
+    from modules import identity
+    from modules.sdn import link_failure
+
+    network = _network_of_form()
+    try:
+        link_failure.close(network, lid, "dismissed", actor=identity.request_actor(),
+                           why=request.form.get("reason", ""))
+    except ValueError as exc:
+        return _refused_beside(str(exc))
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
+@bp.route("/capabilities/read", methods=["POST"])
+def capabilities_read():
+    """Read again what each switch can do (board F's capability matrix, `capability.read`):
+    each switch's description, meter features and table features through its controller,
+    reads only, kept for the matrix and the responses' fallback."""
+    from modules.sdn import capability
+
+    got = capability.read(_network_of_form())
+    if not got["ok"]:
+        return _refused_beside(f"the capability matrix could not be read: {got['error']}")
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
 @bp.route("/mode", methods=["POST"])
 def mode_set():
     """Turn AUTO on (a verified person, a reason, an expiry, the allowed risk) or off, for this
@@ -455,14 +503,22 @@ def policy_set():
 
 @bp.route("/loop", methods=["POST"])
 def loop_set():
-    """Start or stop the loop on this network (S10). Recorded in its log."""
+    """Start or stop the loop on this network (S10). Recorded in its log. A start runs for the
+    minutes the form's Run for names (Lab 9 B3, board F: the loop stops by itself at its bound,
+    `loop.DEFAULT_RUN_FOR_S` when none is sent)."""
     from modules import identity
     from modules.sdn import loop
 
     network = _network_of_form()
     try:
         if request.form.get("run") == "start":
-            loop.start(network, actor=identity.request_actor(),
+            minutes = request.form.get("run_for")
+            try:
+                run_for = float(minutes) * 60 if minutes else loop.DEFAULT_RUN_FOR_S
+            except ValueError:
+                raise ValueError(f"the loop runs for a number of minutes, not {minutes!r}") \
+                    from None
+            loop.start(network, actor=identity.request_actor(), run_for=run_for,
                        interval=float(request.form.get("interval") or loop.DEFAULT_INTERVAL))
         else:
             loop.stop(network, actor=identity.request_actor())

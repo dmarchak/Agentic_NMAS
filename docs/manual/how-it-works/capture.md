@@ -1,7 +1,7 @@
 # Capture and Save All
 
-A capture moves the golden toward the device: it reads what each device runs now and records
-it as that device's golden. Save All is the same record across every device in the network,
+A capture moves the golden toward the device: it reads what each device runs now (a fresh copy
+of its running config) and records it as that device's golden. Save All is the same record across every device in the network,
 and it is the one that can earn a baseline; on the new pages it is **Devices > Save** for every
 device of the network ([Save](save)), which also saves each device's startup first. A capture
 changes nothing on a device: it reads, and it writes one commit in the list's repository.

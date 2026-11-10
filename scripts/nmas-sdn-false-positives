@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""False-positive runs on normal traffic (Lab 9 B3; `modules/sdn/false_positives.py`): the
+SDN loop's detection rules over repeated collections a person declares normal, every
+detection that fires logged as a false positive with its rule, its evidence and what Mercury
+does with it. No AI call; nothing is written to a switch or to Mercury's detection state.
+
+    # recorded runs (series files, the collector's JSONL), one run each
+    scripts/nmas-sdn-false-positives --series run1.jsonl --series run2.jsonl --out /tmp/fp
+    # live: N collections of a network read now, read-only, as one run (on the host, the
+    # deployed copy run as a file adopts the app's interpreter)
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-false-positives --list <network> \\
+        --passes 30 --interval 10 --runs 3 --out /tmp/sdn-fp
+
+`--runs` repeats a live read that many times (each its own run). `--out` (not inside the
+checkout, 2) gets ``false_positives.csv`` and ``summary.json``. It prints one line per false
+positive and the summary: runs, passes, detections fired, false positives by rule and per
+pass. Exit 0 with none, 1 with any (a false positive is reported, never refused away).
+"""
+import argparse
+import os
+import sys
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: The most passes one live run reads (about 2.5 times the 10-minute run of 60 passes at the
+#: loop's 10 s interval): a run is bounded, never left reading.
+MAX_PASSES = 150
+
+
+def main(argv=None) -> int:
+    from modules.sdn import false_positives as FP
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--series", action="append", default=[], help="a recorded run (JSONL)")
+    ap.add_argument("--list", default="", help="a network to read live, read-only")
+    ap.add_argument("--passes", type=int, default=30)
+    ap.add_argument("--interval", type=float, default=10.0)
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args(argv)
+    out = os.path.abspath(args.out)
+    if out == ROOT or out.startswith(ROOT + os.sep):
+        print(f"nmas-sdn-false-positives: --out {out} is inside the checkout; give a folder "
+              "outside it", file=sys.stderr)
+        return 2
+    if bool(args.series) == bool(args.list):
+        print("nmas-sdn-false-positives: give --series files or --list, one of them",
+              file=sys.stderr)
+        return 2
+    if args.list and not (1 <= args.passes <= MAX_PASSES and 1 <= args.runs <= 10
+                          and 1 <= args.interval <= 600):
+        print(f"nmas-sdn-false-positives: a live run reads 1 to {MAX_PASSES} passes, 1 to 600 s "
+              f"apart, 1 to 10 runs; not {args.passes}, {args.interval:g} s, {args.runs}",
+              file=sys.stderr)
+        return 2
+    runs = [FP.load(p) for p in args.series]
+    for _ in range(args.runs if args.list else 0):
+        runs.append(FP.read_live(args.list, args.passes, args.interval))
+        runs[-1]["label"] = f"{runs[-1]['label']}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    got = FP.judge(runs)
+    for row in got["false_positives"]:
+        print(f"{row['run']} pass {row['pass']} {row['at']}: {row['rule']} on {row['switch']}"
+              f"{' port ' + str(row['port']) if row['port'] is not None else ''}: "
+              f"{row['words']}; done: {row['done']}")
+    paths = FP.write(got, out)
+    print(f"{len(got['runs'])} run(s), {got['passes']} passes, {got['fired']} detection(s) "
+          f"fired: {len(got['false_positives'])} false positive(s) "
+          f"({', '.join(f'{k} {v}' for k, v in sorted(got['by_rule'].items())) or 'none'}), "
+          f"{got['per_pass']} a pass; the log: {paths['csv']}")
+    return 1 if got["false_positives"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

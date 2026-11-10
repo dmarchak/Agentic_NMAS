@@ -435,6 +435,29 @@ mode and whether the loop is running.
     record; the answer's check), waited (for slower calls and earlier responses), respond, and
     the total from detection to response, with the read before it. A pass's detections are
     classified at once, each its own call, so a slow stage is named on its own line.
+- **The loop stops by itself.** **Start** takes **run for** (5, 20 or 60 minutes, 20 by
+  default; a loop is never left running unattended, so an hour is the most), and the loop
+  also stops after its **pass cap**, the passes its run-for holds at its interval and one
+  more. While it runs, the card says **Stops by itself** at what time, after how many passes
+  (and how many so far), or on Stop. When it ends itself its log says **stopped by itself**,
+  naming which bound ended it and how many passes ran; start it again for another run. The
+  five-minute demonstration is the 5-minute choice.
+- **Link failures** ([how it works](#link-failure)): a card for each link the topology held
+  that is down, with no AI call. **Verify the reroute** traces every pair of hosts over the
+  controller's flow tables; **Dismiss with this reason** closes the card. Neither sends
+  anything.
+- **What each switch can do** ([the capability matrix](#capabilities)): each switch's
+  OpenFlow version, tables, meters, fast-failover groups and rewrite, read from its own
+  answers, and what a response does where it cannot. **Read again** reads them now.
+- **A detection decided in code**: where the evidence settles it, a benign detection is
+  answered **no threat** with no AI call, its card marked **Code** where an AI answer is
+  marked **AI**. Two shapes are decided this way:
+  - **a bulk TCP transfer**: its port's data one way and its ACKs the other, at most four TCP
+    sessions, and under 90% of the port's link speed where that speed was read;
+  - **sessions carrying data**: the source's flows each carry a session's packets, not a scan's
+    probe.
+
+  Nothing is proposed for AUTO; the rule's default is drawn for you to dismiss.
 - **The loop's log** shows one run whole, from its start, in a box that scrolls: every pass's
   steps, newest first. **Run** chooses an earlier run, each named by its job id (the network and
   the time it started) and its start time in UTC, with its line count. **Download log** saves
@@ -448,6 +471,67 @@ mode and whether the loop is running.
   timeout. The responses are set under the table ([Response policy](#response-policy)).
 
 Verify checks installation and counters; testing traffic between the hosts is yours.
+
+## Link failures {#link-failure}
+
+The **Link down** rule watches every link the controller's link discovery has listed. Each link
+is checked in each pass of the loop, which reads each switch's port descriptions and the
+controller's links. A link is **down** when either:
+
+- **one of its ports reports it at once**: its link is down (the switch's LINK_DOWN bit; never
+  the LIVE bit, which a working Arista port does not set), it is administratively down, it is
+  no longer listed by its switch, or its switch has left the controller. Confidence high;
+- **the controller stops listing it** for two passes in a row while both ports still report
+  up. Confidence lower: one pass without it can be link discovery's own timing.
+
+A switch whose port descriptions could not be read leaves its links unjudged rather than
+called up or down. One link is one card, whichever end reported it.
+
+**Mercury sends nothing for a link down.** The network's forwarding application (Lab 9's
+fabric_forwarding) recomputes every path when a port goes down and rewrites its own flows, so
+the response is to **verify** that reroute:
+
+1. Mercury traces every pair of hosts the controller lists (up to 12 pairs) through the
+   controller's stored flow tables ([the trace](sdn-trace)).
+2. Each pair must be **delivered** on a path that leaves by neither end of the failed link.
+3. The card's **Reroute** line then says one of:
+   - **rerouted**, every pair delivered;
+   - **not rerouted**, naming the first pair and where it ended;
+   - **cannot tell**, naming what the trace could not follow;
+   - **verifying**, while the stored read is from before the failure or still lists the link.
+     Mercury never judges the old tables as the new.
+
+**Each host pair traced** opens to every pair's outcome. In **AUTO**, on a network marked lab,
+Mercury verifies at every pass until the link is rerouted. If it has not seen a reroute after
+75 seconds, the card says so and leaves it to you. In **HITL**, press **Verify the reroute**.
+Nothing was written, so nothing is rolled back.
+
+The card closes by itself once the controller lists the link again and both its ports report
+up. **Dismiss with this reason** closes it sooner; the link stays on the Alerts tab until it
+returns.
+
+## What each switch can do {#capabilities}
+
+The matrix is read from each switch's own answers through its controller, never from its
+vendor's name. The loop reads it when it starts, and **Read again** reads it now. Each switch
+answers three reads: its description, its meter features and its table features. **Not read**
+and **none** are different: a switch that did not answer is never shown as lacking a feature.
+
+- **OpenFlow**: 1.3 or later where it answers table features; 1.0 where the controller says its
+  version does not support the request.
+- **Tables**: how many tables its table features list.
+- **Meters**: yes where it reports a meter with a DROP band, the band a rate limit uses.
+- **Fast-failover groups**: always not read for now. No driver reads a switch's group features
+  yet; a table that accepts group actions is said beside it.
+- **Rewrite (set_field)**: whether any table lists a field it can set.
+- **When it cannot** says what Mercury does instead:
+  - **a rate limit on a switch with no meters is a drop of the source**, where the network's
+    response policy allows a drop. Where it does not, the response waits for you, saying why;
+  - **a switch whose meters were not read** keeps the rate limit, and its preview reads them,
+    refusing (saying why) if it cannot.
+
+The fallback is said on the response's line in the loop's log, in HITL and in AUTO, and the
+protected set still refuses a fallback drop that would touch a protected flow.
 
 ## Response policy {#response-policy}
 

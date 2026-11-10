@@ -2932,6 +2932,62 @@ def _sdn_operations(client, mp, session):
     LP._jobs["Lab"]["thread"].join(10)
 
 
+def _sdn_links_and_caps(client, _lab, _mp):
+    """Lab 9 B3 (board F): SDN › Responses with a link-failure card (its hosts behind it, IPv4
+    and IPv6, one AUTO verify kept), its Verify the reroute (the real verify over no stored
+    read: pending) and its dismissal; and the capability matrix read through the real driver
+    from the lab's capture (the Arista: every column not read) and the harness's recording,
+    with Read again. Its patches are undone before the next provider."""
+    import pytest
+
+    from modules.sdn import capability as CAP
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import link_failure as LF
+    from tests.fixtures.sdn.ryu_recorded import HARNESS, RecordedRyu
+
+    mp = pytest.MonkeyPatch()
+    try:
+        d = {"key": "lk-ctx", "rule": "link_down", "network": "Lab", "connection": "lab9-ryu",
+             "dpid": 3, "dpid_hex": "0000000000000003", "port": 2, "confidence": "high",
+             "at": "2026-11-06T20:00:00Z", "words": "link 0000000000000003 port 2 (eno3) to "
+             "0000000000000004 port 2 (eno3) (lab9-ryu) is down",
+             "link": {"key": "k", "how": "down", "since": "2026-11-06T20:00:00Z", "ends": [
+                 {"dpid": 3, "dpid_hex": "0000000000000003", "port_no": 2, "name": "eno3"},
+                 {"dpid": 4, "dpid_hex": "0000000000000004", "port_no": 2, "name": "eno3"}]},
+             "affected": [{"address": "198.51.100.11", "mac": "02:00:00:00:00:01",
+                           "dpid_hex": "0000000000000003", "port_no": 1},
+                          {"address": "2001:db8:9::2", "mac": "02:00:00:00:00:02",
+                           "dpid_hex": "0000000000000004", "port_no": 1}]}
+        row = LF.open_down("Lab", d, mode="auto", why="AUTO until 21:00 UTC")
+        LF.record_verify("Lab", row["id"], {"outcome": "rerouted", "final": True, "words": (
+            "rerouted: all 2 host pairs delivered on paths that avoid the link"),
+            "pairs": [{"source": "198.51.100.11", "destination": "198.51.100.12",
+                       "state": "delivered", "words": "Delivered: 0000000000000003 (in 1, "
+                       "out 1) → 0000000000000004 (in 1, out 3)", "dpids": []}],
+            "checked": 1, "total": 2, "read_at": "2026-11-06T20:00:30Z"},
+            actor="Mercury (AUTO)")
+        hitl = LF.open_down("Lab", dict(d, key="lk-ctx-2", affected=[]), mode="hitl",
+                            why="HITL: the default")
+        recorded = {"lab9-ryu": RecordedRyu(), "harness": RecordedRyu(HARNESS)}
+        mp.setattr(CL, "_connections", lambda n: {"state": "ok", "error": "", "connections": [
+            {"name": name} for name in recorded]})
+        mp.setattr(CL, "_driver", lambda n, name: {"ok": True,
+                                                   "driver": recorded[name].driver()})
+        assert CAP.read("Lab")["ok"]
+        page = client.get("/v2/sdn/responses?list=Lab").get_data(as_text=True)
+        assert "Link failures" in page and "What each switch can do" in page
+        assert client.post(f"/v2/sdn/link/{hitl['id']}/verify",
+                           data={"list": "Lab"}).status_code == 200
+        assert client.post(f"/v2/sdn/link/{row['id']}/dismiss",
+                           data={"list": "Lab", "reason": ""}).status_code == 409
+        assert client.post(f"/v2/sdn/link/{row['id']}/dismiss",
+                           data={"list": "Lab", "reason": "the cable is moved"}).status_code == 200
+        assert client.post("/v2/sdn/capabilities/read", data={"list": "Lab"}).status_code == 200
+        LF.close("Lab", hitl["id"], "dismissed", actor="v2-context", why="the walk's end")
+    finally:
+        mp.undo()
+
+
 def _sdn_picker(client, d):
     """C2002: a flood on a port whose flows named no source, two hosts the controller's topology
     lists there (IPv4 and IPv6), as `detect.port_source` keeps them: the card's source picker
@@ -3815,7 +3871,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
-                   _sdn_policies,
+                   _sdn_policies, _sdn_links_and_caps,
                    _deploy,
                    # After _deploy, on the deploy card it leaves (PHASE8_PLAN 16.11 item 3).
                    _change_record,

@@ -82,6 +82,18 @@ every switch of its connection (`covering`'s *across*), since the source enters 
 another switch's detection of the same rule and source under it is already mitigated too. A
 response applied where the ingress could not be told holds its own switch only.
 
+**Link down is a fact, never classified** (Lab 9 B3, board F; `modules/sdn/link_failure.py`).
+The pass's collection reads link status (each switch's port descriptions and each connection's
+links), so `detect.observe` runs the link-down rule; a link-down detection is never classified
+(no AI call) and never answered by the catalogue: `link_failure.step` opens its card in the
+network's mode (`modes.decide`, the read's risk the least) and, in AUTO, verifies the forwarding
+app's reroute from the trace at each pass until it is final; the card closes when the link is
+listed and up again. **What each switch can do** (`capable`, the capability matrix read at the
+loop's start, `modules/sdn/capability.py`): a rate limit on a switch whose meters are none is a
+drop of the source instead, said on its line, where the policy allows a drop. **The loop stops
+by itself** (`start`'s *run_for*, `RUN_FOR_CHOICES`, and `max_passes`): its log's stop line names
+the bound that ended it and the passes run.
+
 **High packet rate is watched, never answered** (board S-HR, C2238; PHASE8_PLAN 17.8). A rate
 alone names no threat (`detect.WATCH_ONLY`): its detection is never classified (no AI call)
 and never proposed. It is kept as one ``watching`` row per incident (`watch`, grouped by
@@ -159,6 +171,21 @@ MAX_INTERVAL = 600.0
 #: The loop's collection samples port counters this far apart within a pass (seconds).
 SAMPLE_INTERVAL = 5.0
 LOG_KEEP = 200
+#: The loop's stop condition besides Stop (Lab 9 B3; board F; the handout's ground rule: never
+#: leave a monitoring loop running unattended): it runs for a bound a person chooses at its
+#: start, 20 minutes by default, at least a minute and at most an hour (`RUN_FOR_CHOICES` are
+#: the ones SDN › Responses offers; the five-minute demonstration runs inside the default),
+#: and at most `max_passes` passes, the bound's passes at the interval and one more: whichever
+#: comes first ends it, and its log says which (`STOP_REASONS`). Cost: a long run is started
+#: again by a person every hour. Prevents: a loop (and its background AI calls, and AUTO's
+#: actions) running on with no person present.
+DEFAULT_RUN_FOR_S = 20 * 60
+MIN_RUN_FOR_S = 60
+MAX_RUN_FOR_S = 60 * 60
+RUN_FOR_CHOICES = (5 * 60, 20 * 60, 60 * 60)
+STOP_REASONS = ("run_for", "pass_cap", "stop")
+#: Who a stop the loop's own bound recorded names.
+BOUND_ACTOR = "the loop's own bound"
 
 _jobs = {}
 _jobs_lock = threading.Lock()
@@ -1240,6 +1267,13 @@ def verdict_of(network: str, d: dict, got: dict) -> dict:
                     words=(f"no AI classification ({got.get('error')}: {got.get('detail')}); "
                            f"proposed {default}, {closed_loop.DEFAULT_WORDS}"))
     c = got["classification"]
+    if got.get("decided_in_code"):
+        # C2305: benign traffic decided in code, no AI call: nothing is proposed for AUTO, and
+        # the rule's default is drawn for a person, who may dismiss it.
+        return dict(out, classification=c, person=True,
+                    why="decided in code to be no threat, so a person decides", words=(
+                        f"{got['decided_in_code']['words']}; {default} is drawn for a person "
+                        "to decide, never AUTO's"))
     if got["action"] == closed_loop.NO_ACTION:
         return dict(out, classification=c, person=True,
                     why="the AI proposed no catalogue action, so a person decides", words=(
@@ -1256,6 +1290,36 @@ def verdict_of(network: str, d: dict, got: dict) -> dict:
                        + f"; proposed {action}, checked in code"))
 
 
+#: A rate limit's parameters a drop does not take (`capable`).
+_RATE_PARAMS = ("unit", "rate", "burst", "meter_id", "targets", "not_metered", "ports_from")
+
+
+def capable(network: str, d: dict, verdict: dict, *, got: dict = None) -> dict:
+    """*verdict* (`verdict_of`'s) as the switch of detection *d* can carry it (Lab 9 B3, the
+    capability matrix, `modules/sdn/capability.py`): a rate limit on a switch whose meters
+    are none is a drop instead, said in the verdict's words, where the network's response
+    policy allows a drop for the rule; where it does not, the rate limit is kept for a person,
+    saying why. Any other verdict, or a switch not in the matrix, is unchanged. *got* is the
+    matrix (`capability.stored`'s; read when None)."""
+    from modules.sdn import capability, closed_loop
+
+    row = capability.row_for(network, d.get("connection") or "", d.get("dpid"), got=got)
+    fb = capability.fallback(verdict.get("action") or "", row)
+    if not fb["fell_back"]:
+        return verdict
+    rule = closed_loop.answered_rule(d)
+    refused = closed_loop.policy_refusal(network, rule, fb["action"])
+    if refused:
+        why = f"{fb['words']}, but {refused}: a person decides"
+        return dict(verdict, person=True, why=why, capability_words=why,
+                    words=f"{verdict.get('words')}; {fb['words']}, but {refused}")
+    params = {k: v for k, v in (verdict.get("params") or {}).items() if k not in _RATE_PARAMS}
+    return dict(verdict, action=fb["action"], params=params, fell_back=fb["words"],
+                capability_words=fb["words"],
+                risk=closed_loop.CATALOGUE[fb["action"]]["risk"],
+                words=f"{verdict.get('words')}; {fb['words']}")
+
+
 def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, now=time.time,
              sleep=time.sleep, collect=None, observe=None, job: str = "", send=None,
              clock=time.monotonic) -> dict:
@@ -1269,13 +1333,14 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     its background AI calls name;
     *send* replaces the AI provider (tests)."""
     from modules.fanout import Failed, read_each
-    from modules.sdn import closed_loop, detect, flow_ops, incidents, modes
+    from modules.sdn import closed_loop, detect, flow_ops, incidents, link_failure, modes
 
     job = job or job_id(network)
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "inactive": [],
            "mitigated": [], "released": [], "incidents": [], "seen_also": [], "watching": [],
-           "joined": [], "ended": [], "lines": []}
+           "joined": [], "ended": [], "lines": [],
+           "links": {"opened": [], "verified": [], "restored": []}}
 
     def line(step, words, **extra):
         out["lines"].append(say(network, step, words, now(), **extra))
@@ -1300,6 +1365,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     def respond(d, inc, rec, verdict):
         """Detection *d*'s response in the network's mode (the module's docstring, step 4),
         on its classification *verdict*, for its new incident *inc* (*rec* its record)."""
+        verdict = capable(network, d, verdict)
+        if verdict.get("capability_words"):
+            line("respond", verdict["capability_words"])
         action, risk, params = verdict["action"], verdict["risk"], verdict["params"]
         # AUTO never acts on an inferred source (C2147): the detection and its action are
         # handed in, so a source the flows do not name goes to a person.
@@ -1354,8 +1422,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         if modes.record_expiry(network, now())["recorded"]:
             line("mode", "AUTO reached its expiry: the mode is HITL again")
         reading = clock()
+        # With link status (Lab 9 B3): each switch's port descriptions and each connection's
+        # discovered links, which the link-down rule judges (`link_failure.rule`).
         collected = collect() if collect else closed_loop.collect_threat_data(
-            network, interval, sleep=sleep, driver=driver)
+            network, interval, sleep=sleep, driver=driver, links=True)
         read_s = clock() - reading
         s = collected.get("summary") or {}
         line("read", f"read {s.get('switches', 0)} switch(es): {s.get('flows', 0)} flows, port "
@@ -1373,7 +1443,11 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # High packet rate (board S-HR, C2238) is watched, never classified or proposed
         # (`_watch_pass`, after the responses): kept apart from here on.
         said, rated = fired, [d for d in fired if d.get("rule") in detect.WATCH_ONLY]
-        fired = [d for d in fired if d.get("rule") not in detect.WATCH_ONLY]
+        # A link down (Lab 9 B3) is a fact, never classified or answered by the catalogue: its
+        # card and its reroute's verify are `link_failure.step`'s, after the responses.
+        linked = [d for d in fired if d.get("rule") in detect.LINK_RULES]
+        fired = [d for d in fired if d.get("rule") not in detect.WATCH_ONLY
+                 and d.get("rule") not in detect.LINK_RULES]
         resolved = list(seen.get("resolved") or [])
         # Each detection key an incident awaiting a person holds: its own and each seen also.
         rows_waiting = awaiting(network)["rows"]
@@ -1580,6 +1654,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                                   floods, now(), line)
         out["seen_also"] += watched_now.pop("seen_also")
         out.update(watched_now)
+        # Link failure (Lab 9 B3, board F): a card per link down, in the network's mode; in
+        # AUTO the reroute verified at each pass until it is final; restored when it resolves.
+        out["links"] = link_failure.step(network, linked, resolved, now=now(), line=line)
         if len(todo) > 1:
             # The pass's total beside each call's own (one detection's line is its total).
             line("classify", f"classified {len(todo)} detections at once, each its own call "
@@ -1597,7 +1674,8 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         keys = (["alerts"] if seen.get("changed") else []) + (
             ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
             or out["released"] or out["watching"] or out["joined"] or out["ended"]
-            or out["seen_also"] or expired["removed"] else []) + (
+            or out["seen_also"] or expired["removed"] or any(out["links"].values())
+            else []) + (
             ["ai_calls"] if todo else [])
         if keys:
             out["announced"] = _announce(network, keys, job)
@@ -1629,43 +1707,94 @@ def _announce(network: str, keys: list, job: str) -> dict:
 # ───────────────────────────────────────────────────────────────────────────── the job
 
 def status(network: str) -> dict:
-    """Whether the loop runs on *network* in this process, since when, by whom, how often."""
+    """Whether the loop runs on *network* in this process, since when, by whom, how often, and
+    when it stops by itself (``until``, its ``run_for_s`` and ``max_passes``, the ``passes``
+    run so far)."""
     with _jobs_lock:
         job = _jobs.get(network)
         if job and job["thread"].is_alive():
-            return {"running": True, **{k: job[k] for k in ("by", "since", "interval")}}
+            return {"running": True, **{k: job.get(k) for k in (
+                "by", "since", "interval", "until", "run_for_s", "max_passes")},
+                    "passes": job.get("passes", {}).get("n", 0)}
     got = _read(network, LOG_FILE)
     stops = [r for r in got["rows"] if r.get("step") == "stop"]
     return {"running": False, "stopped": stops[-1] if stops else None}
 
 
+def max_passes(run_for_s: float, interval: float) -> int:
+    """The loop's pass cap for a run of *run_for_s* at *interval*: the passes its bound holds,
+    start to start, and one more (a pass at the start and one at the end)."""
+    return int(math.ceil(run_for_s / interval)) + 1
+
+
 def schedule(network: str, interval: float, stop_event, one_pass, *, clock=time.monotonic,
-             wall=time.time) -> None:
+             wall=time.time, until: float = None, passes_cap: int = None,
+             counted: dict = None) -> str:
     """Run *one_pass* every *interval* seconds, start to start, until *stop_event* is set
-    (C1972: "every 10 s" was a 10 s wait after a pass of 5 s or more). A pass that takes the
-    interval or longer starts the next at once, and the log says so, naming how long it took
-    against the interval."""
+    (C1972: "every 10 s" was a 10 s wait after a pass of 5 s or more), or the loop's bound
+    ends it (Lab 9 B3): *until* the *clock* time it runs to, *passes_cap* the most passes it
+    runs. A pass that takes the interval or longer starts the next at once, and the log says
+    so, naming how long it took against the interval. Answers why it ended, one of
+    `STOP_REASONS`; *counted* ``{"n"}`` counts the passes run."""
+    counted = counted if counted is not None else {"n": 0}
     while not stop_event.is_set():
+        if passes_cap is not None and counted["n"] >= passes_cap:
+            return "pass_cap"
+        if until is not None and clock() >= until:
+            return "run_for"
         began = clock()
         one_pass()
+        counted["n"] += 1
         took = clock() - began
         if stop_event.is_set():
-            return
+            return "stop"
         left = interval - took
+        if until is not None:
+            left = min(left, until - clock())
         if left > 0:
             stop_event.wait(left)
             continue
+        if until is not None and clock() >= until:
+            continue
         say(network, "cadence", f"the pass took {took:.1f} s, at or over the {interval:g} s "
                                 "interval: the next starts at once", wall())
+    return "stop"
 
 
-def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, driver=None) -> dict:
-    """Start the loop on *network* as *actor*, every *interval* seconds. Refuses a second loop
-    on the network, or an interval out of bounds."""
+def _bound_words(reason: str, job: dict) -> str:
+    minutes = f"{job['run_for_s'] / 60:g} minute{'s' if job['run_for_s'] != 60 else ''}"
+    passes = job["passes"]["n"]
+    if reason == "run_for":
+        return (f"stopped by itself: it ran for its bound of {minutes} (until {job['until']} "
+                f"UTC), {passes} pass{'es' if passes != 1 else ''}; start it again on SDN › "
+                "Responses")
+    return (f"stopped by itself: it reached its pass cap of {job['max_passes']} passes "
+            f"(its {minutes} at every {job['interval']:g} s, and one more) before its bound; "
+            "start it again on SDN › Responses")
+
+
+def run_for_problem(run_for_s) -> str:
+    """Why *run_for_s* is not a bound the loop takes, or "" (`MIN_RUN_FOR_S` to
+    `MAX_RUN_FOR_S`)."""
+    if isinstance(run_for_s, bool) or not isinstance(run_for_s, (int, float)) or \
+            not MIN_RUN_FOR_S <= run_for_s <= MAX_RUN_FOR_S:
+        return (f"the loop runs for {MIN_RUN_FOR_S // 60} to {MAX_RUN_FOR_S // 60} minutes "
+                f"(a loop is never left running unattended), not {run_for_s!r} s")
+    return ""
+
+
+def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, driver=None,
+          run_for: float = DEFAULT_RUN_FOR_S, clock=time.monotonic) -> dict:
+    """Start the loop on *network* as *actor*, every *interval* seconds, for *run_for* seconds
+    at most (and at most `max_passes` passes): it then stops by itself, recording why. Refuses
+    a second loop on the network, an interval out of bounds, or a bound out of bounds."""
     if isinstance(interval, bool) or not isinstance(interval, (int, float)) or \
             not MIN_INTERVAL <= interval <= MAX_INTERVAL:
         raise ValueError(f"the loop's interval is from {MIN_INTERVAL:g} to {MAX_INTERVAL:g} s, "
                          f"not {interval!r}")
+    problem = run_for_problem(run_for)
+    if problem:
+        raise ValueError(problem)
     with _jobs_lock:
         job = _jobs.get(network)
         if job and job["thread"].is_alive():
@@ -1674,15 +1803,35 @@ def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, drive
         stop_event = threading.Event()
         started = time.time()
         job = {"by": actor, "since": _iso(started), "interval": interval,
-               "stop": stop_event, "id": job_id(network, started)}
+               "stop": stop_event, "id": job_id(network, started), "run_for_s": run_for,
+               "until": _iso(started + run_for), "max_passes": max_passes(run_for, interval),
+               "passes": {"n": 0}}
+        ends_at = clock() + run_for
 
         def run():
-            schedule(network, interval, stop_event,
-                     lambda: run_pass(network, driver=driver, job=job["id"]))
+            # What each switch can do (the capability matrix, Lab 9 B3), read once at the
+            # start, so a response's fallback is the switches' as they are now.
+            from modules.sdn import capability
+
+            caps = capability.read(network, driver=driver)
+            n = sum(len(c["switches"]) for c in caps["controllers"])
+            say(network, "capabilities", (
+                f"read what {n} switch{'es' if n != 1 else ''} can do (the capability matrix)"
+                if caps["ok"] else f"the capability matrix could not be read: {caps['error']}"))
+            reason = schedule(network, interval, stop_event,
+                              lambda: run_pass(network, driver=driver, job=job["id"]),
+                              clock=clock, until=ends_at, passes_cap=job["max_passes"],
+                              counted=job["passes"])
+            if reason in ("run_for", "pass_cap"):
+                say(network, "stop", _bound_words(reason, job), by=BOUND_ACTOR,
+                    reason=reason, passes=job["passes"]["n"])
 
         job["thread"] = threading.Thread(target=run, name=f"sdn-loop-{network}", daemon=True)
         _jobs[network] = job
-    say(network, "start", f"started by {actor}, every {interval:g} s, as job {job['id']}")
+    say(network, "start", f"started by {actor}, every {interval:g} s, for at most "
+                          f"{run_for / 60:g} minutes (until {job['until']} UTC) or "
+                          f"{job['max_passes']} passes, as job {job['id']}",
+        run_for_s=run_for, until=job["until"], max_passes=job["max_passes"])
     job["thread"].start()
     return status(network)
 

@@ -139,6 +139,8 @@ def _classification(row: dict):
             "action": c.get("action_id") or "", "params": dict(c.get("params") or {}),
             "refs": list(c.get("evidence_refs") or []), "call_id": c.get("call_id") or "",
             "model": words, "cost_usd": float(c.get("cost_usd") or 0.0),
+            # C2305: decided in code, no AI call (`closed_loop.decided_in_code`).
+            "by_code": bool(c.get("by_code")),
             "by": ("a person" if c.get("trigger") == "person" else "the loop"),
             "who": row.get("classified_by") or "", "at": row.get("classified_at") or row.get("at")}
 
@@ -168,7 +170,7 @@ def log_view(network: str, run: str = "") -> dict:
 
 #: Each rule as the rules table names it.
 RULE_LABELS = {"scan": "Scan", "flood": "Flood", "unauthorised_flow": "Unauthorised flow",
-               "high_rate": "High packet rate"}
+               "high_rate": "High packet rate", "link_down": "Link down"}
 #: Where the network's response policy comes from, in words (`list_settings.resolve`'s origin).
 POLICY_ORIGIN = {"set here": "set on this network",
                  "unset everywhere": "the default: every catalogue action that answers the rule",
@@ -371,7 +373,7 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
     (C1971; the newest when empty). *q* and *sev* filter the incidents (words each row must
     hold; one severity); *incident* names the one drawn open (Needs attention's link)."""
     from modules import sdn_page
-    from modules.sdn import detect, flow_ops, incidents, loop, modes
+    from modules.sdn import capability, detect, flow_ops, incidents, link_failure, loop, modes
 
     awaiting = loop.awaiting(network)
     every = incident_rows(awaiting)
@@ -410,4 +412,28 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
             "policy": policy_view(network),
             # A person's Classify answered in place: its refusal drawn on its card (the route
             # sets it; a read has none).
-            "classify": None}
+            "classify": None,
+            # Lab 9 B3, board F: the link-failure cards (each its verify), the capability
+            # matrix from its store (no controller call), and the loop's Run for bounds.
+            "links": link_cards(network), "capabilities": capability.view(network),
+            "run_for": {"choices": [int(c // 60) for c in loop.RUN_FOR_CHOICES],
+                        "default": int(loop.DEFAULT_RUN_FOR_S // 60),
+                        "max": int(loop.MAX_RUN_FOR_S // 60)},
+            "gone_reads": link_failure.GONE_READS,
+            "links_deadline": link_failure.VERIFY_WINDOW_S}
+
+
+#: The link-failure cards drawn before the rest are counted (CLAUDE.md's large-fleets rule):
+#: a fabric losing many links at once is said in a count, never one long list.
+LINK_CARDS_DRAWN = 20
+
+
+def link_cards(network: str) -> dict:
+    """SDN › Responses' link-failure cards (board F, `link_failure.card`): ``{"state",
+    "error", "total", "rows"}``, the newest first, at most `LINK_CARDS_DRAWN` drawn."""
+    from modules.sdn import link_failure
+
+    got = link_failure.open_rows(network)
+    rows = [link_failure.card(r) for r in reversed(got["rows"])]
+    return {"state": got["state"], "error": got["error"], "total": len(rows),
+            "rows": rows[:LINK_CARDS_DRAWN]}

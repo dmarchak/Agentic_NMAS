@@ -441,6 +441,8 @@ FIELDS = {
     "sdn_v2.loop_set": {
         "form.run": "start or stop",
         "form.interval": "the loop's interval in seconds",
+        "form.run_for": "the loop's run-for bound in minutes, one of Run for's choices "
+                        "(Lab 9 B3)",
         "args.<whole>": "the SDN page's own choices",
         "args.run": "a run's id Mercury drew",
         "args.incident": "an incident's id Mercury drew (C1999)",

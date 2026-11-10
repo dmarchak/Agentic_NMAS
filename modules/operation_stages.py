@@ -621,6 +621,12 @@ HISTORY = {
                              "is recorded by sdn_policies_v2.confirm",
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
+    "sdn_v2.link_verify": "n/a: a reroute's verify is kept on the network's link-failure card "
+                          "(modules/sdn/link_failure.py) and sends nothing to a device",
+    "sdn_v2.link_dismiss": "n/a: a dismissal is kept on the network's link-failure card "
+                           "(modules/sdn/link_failure.py), never a device's record",
+    "sdn_v2.capabilities_read": "n/a: the capability matrix is the network's own store "
+                                "(modules/sdn/capability.py), read only from the switches",
     "sdn_v2.watch_propose": "n/a: a person's proposal is kept with the network's SDN responses "
                             "(modules/sdn/loop.py), never a device's record; the response's "
                             "confirm is recorded by sdn_v2.response_confirm",

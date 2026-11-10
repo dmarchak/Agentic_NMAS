@@ -566,6 +566,11 @@ DECLARED = {
     "sdn_policies_v2.check": Nothing("checks a drafted policy again with the person's choice and draws it in the answer's slot; the confirm sends"),
     "sdn_policies_v2.preview": Nothing("compiles and plans a checked policy in its card; the confirm sends"),
     "sdn_v2.response_dismiss": ("sdn",),
+    # Lab 9 B3 (board F): a link-failure card's verify or dismissal, and the capability matrix
+    # read again, each redraw SDN › Responses.
+    "sdn_v2.link_verify": ("sdn",),
+    "sdn_v2.link_dismiss": ("sdn",),
+    "sdn_v2.capabilities_read": ("sdn",),
     # C2313: a watching row made a response awaiting a person (its Needs attention row too).
     "sdn_v2.watch_propose": ("sdn",),
     "sdn_v2.mode_set": ("sdn",),
