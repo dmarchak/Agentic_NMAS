@@ -166,22 +166,42 @@ A failed verify rolls back what landed, and **halts** the network's healing unti
 lifts it ([Lift the halt](heal-proposal#halt)). A configuration healed whose symptom remains is
 amber, "symptom remains", never green.
 
-**Where a run's outcome is read.** While a heal runs, the top bar's **In progress** chip lists
-it as one row, **Self-healing**, on its device, and the device's page opens the run's card in
-place of its tab. When it ends, the chip keeps it under **Finished, not opened yet** for every
-person until each has opened it (nobody started it, so it is everybody's to read), and the
-device's page opens its card: the outcome first (green only for healed; amber for a heal partly
-shown or whose symptom remains; red for nothing sent, a rollback or a failure), then **The
-steps taken**: the eleven steps above on one stepper, each done, failed, not reached or not
-needed, the failed step first with its own words, and every step as it was recorded with its
-time. The card is kept for 30 minutes in the running app's memory; after that the same steps
-are on the device's History.
+**While a heal runs**, the top bar's **In progress** chip lists it as one row,
+**Self-healing**, on its device, and the row's words are the step the run is in ("Apply · step
+6 of 11"), never "starting". The device's page opens the run's card in place of its tab, and
+the card draws the run on one stepper, from the steps the run itself has recorded: its
+decision's steps first, then the eleven above, each **done**, **running**, **pending**,
+**failed** or **not reached**; nothing is drawn done that the run has not recorded. Each
+step's column says it in two to four words ("Read <device>", "Recompute program", "Apply", "Check
+intent", "Read symptom", "Save startup", "Check golden", "Record"); the step's full words are
+on hover. Under the steps, **Now: <step>** names the step it is in, with the run's own words.
+While it applies, the deploy's stages are drawn under it, as
+a deploy's card draws them. A step that waits says how long: the symptom's read waits "up to
+150 s" for an adjacency (up to 750 s for an alert), and the card counts it down ("up to 150 s:
+96 s left") from the time the step began and the length the run declared; when the time is up
+it says so and waits for the run's next step. A step that reads draws, while it runs, the
+newest read of each check and one line saying how many reads it has made. The card
+moves by itself at each step, over the live connection; nothing asks on a timer. The card
+starts when the heal's job does: the wait before it (the grace period between the two reads
+that open a heal) is not on this card.
+
+**Where a run's outcome is read.** When it ends, the chip keeps it under **Finished, not opened
+yet** for every person until each has opened it (nobody started it, so it is everybody's to
+read), and the device's page opens its card: the outcome first (green only for healed; amber
+for a heal partly shown or whose symptom remains; red for nothing sent, a rollback or a
+failure) and what happened, said once; then the stepper, with **Failed at: <step>** naming the
+step it stopped at; then **The steps taken**: one line a step, its state, its time and its
+one-line outcome. What a step that did not pass read sits under that step alone, closed, as
+**What it read** (its checks, one line saying its reads, and every read one level further
+down); a step that passed shows no checks. The card is kept for 30 minutes in the running
+app's memory; after that the same steps are on the device's History.
 
 A **can't-fix** is a decision, not a run: nothing ran, so nothing is listed as finished. Its
 outcome is its Needs attention row, which stays until a person acknowledges it or a later heal
-ends healed; opened, the row draws **The steps taken** on the same stepper (the decision's
-steps, the one it stopped at first), and the team's notice carries each step and its result
-([Notifications](notifications)).
+ends healed; opened, the row says why it stopped and carries one closed line under it, **The
+steps Mercury took: stopped at <step> · N steps · Show**, which opens the same stepper (the
+decision's steps, the one it stopped at named); the team's notice carries each step and its
+result ([Notifications](notifications)).
 
 ## The records {#records}
 

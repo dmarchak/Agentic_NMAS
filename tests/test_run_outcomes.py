@@ -59,8 +59,8 @@ class TestTheStepsTaken:
             step("record", "ok", "recorded")], ended=True, conditional=("rollback",))
         assert states(got) == {"plan": "done", "send": "done", "wait": "done",
                                "verify": "failed", "rollback": "skipped", "record": "done"}
-        assert (got["lead"]["key"], got["lead"]["note"]) == (
-            "verify", "the stream did not come back")
+        assert (got["lead"]["key"], got["lead"]["why"]) == (
+            "verify", ["the stream did not come back"])
         c = RS.record_card("r2", "Steps", [got], ended=True, level="danger")
         assert c["rows"][0]["group"] == "failed", "the row is never green over a failure"
         assert [t["state_words"] for t in c["trail"]] == [
@@ -101,25 +101,40 @@ class TestTheStepsTaken:
         got = RS.from_record(DECLARED, [step("plan", "ok"), step("send", "running", "sending")],
                              ended=True)
         assert states(got)["send"] == "failed"
-        assert got["lead"]["note"] == "sending. The run ended in this step"
+        assert got["lead"]["why"] == ["sending. The run ended in this step"]
 
     def test_a_step_s_reads_are_drawn_where_it_carries_them_and_its_checks_where_not(self):
         from modules import run_stepper as RS
         checks = {"device": {"state": "pass", "words": "Connected on a new connection"},
                   "stream": {"state": "fail", "words": "no series"},
                   "collector": {"state": "cant_tell", "words": "not read"}}
-        old = RS.from_record(DECLARED, [step("verify", "failed", checks=checks)], ended=True)
-        assert [(ln["what"], ln["state_words"]) for ln in old["lead"]["lines"]] == [
+        old = RS.from_record(DECLARED, [step("verify", "failed", "no series", checks=checks)],
+                             ended=True)
+        # An ended step that did not pass: the lead says why, once; what it read sits under
+        # that step in the list (the operator, 2026-11-11: "its checks only under the failed
+        # step, collapsed").
+        assert old["lead"]["why"] == ["no series"] and old["lead"]["lines"] == []
+        (took,) = old["trail"]
+        assert [(ln["what"], ln["state_words"]) for ln in took["checks"]] == [
             ("device", "pass"), ("stream", "fail"), ("collector", "unreadable")]
+        assert took["said"] == "", "the lead says it: it is not said again in the list"
         reads = [{"at": "2026-11-11T16:40:00Z", "command": "show telemetry ietf subscription "
                   "101 receiver", "result": "fail", "words": "Connecting", "read_id": "r-1"},
                  {"at": "2026-11-11T16:40:10Z", "command": "show telemetry ietf subscription "
                   "101 receiver", "result": "pass", "words": "Connected", "read_id": "r-2"}]
         new = RS.from_record(DECLARED, [step("verify", "running", reads=reads, checks=checks)],
                              ended=False)
+        # While it runs: the NEWEST read of each command, then one line saying its reads;
+        # every read is one level down, newest first (tests/test_run_progress.py holds the
+        # compact drawing of a 32- and a 90-read verify).
         assert [(ln["state_words"], ln["words"], ln["at"]) for ln in new["lead"]["lines"]] == [
-            ("fail", "Connecting", "2026-11-11T16:40:00Z"),
-            ("pass", "Connected", "2026-11-11T16:40:10Z")], "each read as it was appended"
+            ("pass", "Connected", "2026-11-11T16:40:10Z"),
+            ("", "2 reads of `show telemetry ietf subscription 101 receiver`, about 10 s "
+                 "apart: 1 pass, 1 fail; the last: Connected", "")]
+        (more,) = new["lead"]["more"]
+        assert more["title"] == "The 2 reads"
+        assert [r["words"] for r in more["reads"]] == ["Connected", "Connecting"], \
+            "each read as it was appended, newest first"
 
     def test_a_wait_carries_its_declared_length_and_when_it_began(self):
         from modules import run_stepper as RS
@@ -127,7 +142,7 @@ class TestTheStepsTaken:
             "wait", "running", "after the last removal", began="2026-11-11T16:38:10Z",
             wait_s=10)], ended=False, now=RS._epoch("2026-11-11T16:38:14Z"))
         assert got["lead"]["wait"] == {"began": "2026-11-11T16:38:10Z", "length_s": 10,
-                                       "left_s": 6, "words": "6 s left of 10 s"}
+                                       "bound": False, "words": "6 s left of 10 s"}
         assert RS.current_words(DECLARED, [step("plan", "ok"), step("wait", "running")]) == (
             "Wait · step 3 of 6")
 
@@ -220,7 +235,11 @@ class TestAReSubscribesOutcome:
 
     def test_two_subscriptions_not_back_each_verify_leads_with_its_own_reads(self, resub):
         """The operator's run of 2026-11-11 (two subscriptions, neither stream back): twelve
-        steps, two verifies failed, each drawn with its own three checks."""
+        steps, two verifies failed, each with its own three checks. His words on its card,
+        the same day: "Say the failure once. The red summary box and 'Failed at' carry it;
+        the steps list shows each step's one-line outcome, with its checks only under the
+        failed step, collapsed.\""""
+        from markupsafe import escape
         from modules.nsot import privileged
         run_one(resub, not_back(), subs=("101", "102"))
         rec = privileged.runs(NET)["runs"][0]
@@ -231,9 +250,24 @@ class TestAReSubscribesOutcome:
         body = page(resub)
         assert "The steps taken · 12" in body and 'data-lead="verify"' in body
         lead = body[body.index('data-lead="verify"'):body.index('class="run-trail"')]
-        assert "<strong>1 of 2</strong> (failed): subscription 101" in lead
-        assert "<strong>2 of 2</strong> (failed): subscription 102" in lead
-        assert lead.count("<strong>stream</strong> (fail)") == 2, "each verify's own checks"
+        taken = body[body.index('class="run-trail"'):]
+        # "Failed at" names the step, by its short label; the red box above it says why.
+        assert ">Failed at: Verify 101, 102</strong>" in lead
+        assert "run-line" not in lead and "run-lead-said" not in lead, \
+            "no checks and no second telling of the failure in the lead"
+        # The failure is said ONCE on the card: the record's own summary, in the red box.
+        assert body.count(str(escape(rec["why"]))) == 1
+        for failed in (s for s in rec["steps"] if s["step"] == "verify"):
+            assert body.count(str(escape(failed["words"]))) == 0, \
+                "a failed step's own sentence is not said again under the summary"
+        # Each step is one line; a failed step's checks sit under it alone, closed.
+        assert taken.count('data-took="') == 12
+        assert taken.count('<details class="run-checks"') == 2
+        assert '<details class="run-checks" open' not in taken
+        assert taken.count("<strong>stream</strong> (fail)") == 2, "each verify's own checks"
+        passed = taken[taken.index('data-took="re-add"'):taken.index('data-took="verify"')]
+        assert "run-checks" not in passed and "back; the running configuration" in passed, \
+            "a step that passed: its one-line outcome, no checks"
 
     def test_a_run_still_going_is_one_entry_and_its_page_reopens_its_card(self, resub):
         """The operator's run showed twice ("r7 · telemetry re-subscribe" and "re-subscribe
@@ -313,9 +347,16 @@ class TestAReSubscribesOutcome:
         rec = privileged.runs(NET)["runs"][0]
         restarted(monkeypatch)
         _r, html = card(resub, subs="101")
-        assert f'data-last-run="{rec["id"]}"' in html and "notice-danger" in html
+        # ONE line, closed until a person opens it (the operator, 2026-11-11: "The last run,
+        # 3 h ago: re-subscribed; the stream did not come back · 12 steps · Show").
+        assert (f'<details class="resub-last resub-last-danger" data-last-run="{rec["id"]}" '
+                'data-keep="resub-r2-last">') in html, "closed, and in the failure's colour"
         assert html.index("The last run,") < html.index("Afterwards:"), "the outcome first"
-        assert "re-subscribed; the stream did not come back." in html
+        line = html[html.index("<summary><strong>The last run,"):html.index("</summary>")]
+        assert re.search(r"The last run, <time [^>]*>[^<]+</time>: re-subscribed; the stream "
+                         rf"did not come back</strong> · {len(rec['steps'])} steps · "
+                         r'<span class="resub-show">Show</span>$', line), line
+        assert "notice-danger" not in html.split("Afterwards:")[0], "no second red box"
         assert f"The steps taken · {len(rec['steps'])}" in html and 'data-lead="verify"' in html
         assert "Re-subscribe r2&#39;s telemetry (101)" in html or \
             "Re-subscribe r2's telemetry (101)" in html, "the offer stays under it"
@@ -469,7 +510,7 @@ class TestACantFixsSteps:
         taken = r["steps_taken"]
         assert taken, "the row carries no steps taken"
         assert taken["ended"] and taken["rows"][0]["group"] == "failed", "never green"
-        assert taken["lead"]["state"] == "failed" and taken["lead"]["note"], taken["lead"]
+        assert taken["lead"]["state"] == "failed" and taken["lead"]["why"], taken["lead"]
         said = [t["key"] for t in taken["trail"]]
         assert said[:2] == ["claim", "stops"] and said[-1] == "record", said
         assert len(taken["trail"]) == len(r["operands"]["steps"]), "every recorded step"
@@ -477,6 +518,28 @@ class TestACantFixsSteps:
                  if s["key"] not in ("d-" + k for k in said)]
         assert set(after) <= {"not_reached", "skipped"}, "a step it never reached is not done"
         assert r["event"] == inc
+        # Drawn: ONE closed line on the row, the stepper inside it; the cause above says why,
+        # so the step it stopped at is named and its sentence is not said a second time.
+        import app as A
+        from flask import render_template
+        r["networks"] = {r["devices"][0]: ["Default"]}
+        with A.app.test_request_context("/v2/"):
+            html = render_template("v2/_attention.html", a={"rows": [r], "sources": [],
+                                                             "badge": {"n": 1}})
+        assert f'<details class="att-taken" data-keep="att-taken-{r["id"]}">' in html, "closed"
+        line = html[html.index('<details class="att-taken"'):]
+        line = line[line.index("<summary>") + 9:line.index("</summary>")]
+        assert line == (f"The steps Mercury took: stopped at {taken['lead']['words']} · "
+                        f"{len(taken['trail'])} steps · "
+                        '<span class="resub-show">Show</span>'), line
+        assert len(taken["lead"]["words"].split()) <= 4, "by the step's short label"
+        from markupsafe import escape
+        block = html[html.index('<details class="att-taken"'):html.index('class="att-meta"')]
+        assert "The steps taken" in block and 'data-lead="d-' in block
+        for why in taken["lead"]["why"]:
+            assert block.count(str(escape(why))) == 0, \
+                "the row's cause says it above: the steps do not say it again"
+            assert str(escape(why)) in html[:html.index('<details class="att-taken"')]
 
     def test_the_notice_carries_every_step_taken(self, heal_lab):  # noqa: F811
         from modules import heal_notice as N

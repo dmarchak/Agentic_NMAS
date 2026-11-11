@@ -88,7 +88,9 @@ class TestTheMenu:
         menu = body[body.index('role="menu"'):body.index('class="tabs"')]
         assert 'hx-get="/v2/device/r5/retire?back=overview&amp;list=Lab"' in menu
         assert "manage_device" not in menu and "/manage/" not in menu
-        assert "Every action runs here." in menu
+        # The menu holds items only (the operator, 2026-11-11): its general explanation is
+        # the manual's Actions section, opened by the (i) beside the menu.
+        assert "Every action runs here." not in menu
         _r, body = _get(page, "/v2/device/r5?op=retire")
         assert "Retire r5 from management" in body[body.index('id="tab-body"'):]
 

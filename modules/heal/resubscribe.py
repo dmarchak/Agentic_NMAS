@@ -139,6 +139,14 @@ STEPS = (("plan", "Read each subscription's receiver from committed intent; refu
                       "back; a receiver that did not come back is said, with Re-add the "
                       "receiver"),
          ("record", "Record the outcome, each subscription's own"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels (2-4 words: 'Read intent', 'Hold <device>', 'Remove 101', 'Wait 10 s', 'Re-add',
+#: 'Verify 101', 'Record') ... No full sentences in the step columns"); the long words above
+#: are its hover. `{device}` and `{subs}` are the run's own (`step_labels`).
+STEP_LABELS = {"plan": "Read intent", "hash": "Check hashes", "hold": "Hold {device}",
+               "started": "Record start", "before": "Read before", "remove": "Remove {subs}",
+               "wait": f"Wait {WAIT_S} s", "re-add": "Re-add", "verify": "Verify {subs}",
+               "rollback": "Roll back", "record": "Record"}
 #: The one-step Re-add the receiver.
 READD_STEPS = (("plan", "Read the receiver from committed intent"),
                ("hash", "Recompute the program and compare its hash"),
@@ -170,6 +178,17 @@ RECORD_STATE = {"resubscribed": "done", "readded": "done", "unverified": "unveri
 #: A subscription's outcomes, worst first: the run's outcome is its worst subscription's, and
 #: its words lead with it (`_overall`).
 WORST_FIRST = ("removed", "moved", "not_removed", "not_sent", "not_back", "unverified")
+
+
+def step_labels(device: str, subs) -> dict:
+    """`STEP_LABELS` for one run: its device, and its subscriptions by id where one or two
+    were chosen, else by how many (a column's label stays within four words)."""
+    from modules import run_stepper
+
+    subs = [str(s) for s in subs or [] if str(s)]
+    named = (", ".join(subs) if 0 < len(subs) <= 2 else
+             f"{len(subs)} streams" if subs else "streams")
+    return run_stepper.labels_for(STEP_LABELS, device=device, subs=named)
 
 
 class Refused(ValueError):
@@ -572,6 +591,14 @@ def _announce() -> None:
         log.info("resubscribe: a run recorded, not announced: %s", exc)
 
 
+def _moved() -> None:
+    """The run wrote a step: inside a job, its card and the In progress list are told
+    (`op_progress.moved`: the run's own list is what they read); outside one, nothing."""
+    from modules import op_progress
+
+    op_progress.moved()
+
+
 # ── The run ─────────────────────────────────────────────────────────────────────────────────
 
 class _Run:
@@ -583,10 +610,27 @@ class _Run:
 
         return redact_text(text or "", self.values)
 
+    def begin(self, name: str, words: str, *, wait_s=None) -> None:
+        """A step that takes time begins: recorded ``running`` now, with when it began and
+        the wait it declares, so the run's newest step is the one it is in (the operator,
+        2026-11-11); its own `step` then ends it in place."""
+        at = _iso(self.src.clock())
+        self.rec["steps"].append(dict({"step": name, "result": "running",
+                                       "words": self.mask(words), "at": at, "began": at},
+                                      **({"wait_s": wait_s} if wait_s else {})))
+        _moved()
+
     def step(self, name: str, result: str, words: str, **more) -> None:
-        self.rec["steps"].append(dict({"step": name, "result": result,
-                                       "words": self.mask(words),
-                                       "at": _iso(self.src.clock())}, **more))
+        ended = dict({"step": name, "result": result, "words": self.mask(words),
+                      "at": _iso(self.src.clock())}, **more)
+        steps = self.rec["steps"]
+        last = steps[-1] if steps else {}
+        if last.get("step") == name and last.get("result") == "running" and last.get("began"):
+            # The step `begin` opened: ended in place, keeping when it began and its wait.
+            steps[-1] = dict(ended, **{k: last[k] for k in ("began", "wait_s") if k in last})
+        else:
+            steps.append(ended)
+        _moved()
 
     def finish(self, outcome: str, words: str) -> dict:
         self.rec.update(outcome=outcome, state=RECORD_STATE.get(outcome, "failed"),
@@ -626,6 +670,11 @@ def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, p
            "at": _iso(now), "config_change": False, "hash": "", "program": [],
            "subscriptions": [], "steps": []}
     run = _Run(network, rec, src, src.values())
+    # The run's own steps, live: inside its job this list is what its card and the In
+    # progress list read while it runs (`op_progress.attach`), and what its record keeps.
+    from modules import op_progress
+    op_progress.attach(READD_STEPS if readd else STEPS, rec["steps"], run=rec["id"],
+                       labels=step_labels(device, [u["sub"] for u in p["units"]] or subs))
     if not_a_person:
         # Before the plan's refusals or the hash are said: a request that is not a verified
         # person's learns nothing about what a valid confirm would have been.
@@ -729,6 +778,7 @@ def _held(run: _Run, p: dict, actor: str, readd: bool) -> dict:
     put = list(p["units"]) if readd else _remove_each(run, s, p, gots)
     _record(run.network, rec)
     if put and not readd:
+        run.begin("wait", f"waiting {WAIT_S} s after the last removal", wait_s=WAIT_S)
         src.sleep(WAIT_S)
         run.step("wait", "ok", f"waited {WAIT_S} s after the last removal, before the "
                                f"re-add{'s' if len(put) > 1 else ''}")

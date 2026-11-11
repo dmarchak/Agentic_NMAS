@@ -88,6 +88,13 @@ STEPS = (("take", "Take the approved proposal, once"),
          ("golden", "Read the device again against its new golden"),
          ("symptom", "Read the symptom again"),
          ("record", "Record the outcome and close the incident"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels ... No full sentences in the step columns"); the long words above are its
+#: hover. `{device}` is the run's own.
+STEP_LABELS = {"take": "Take proposal", "stops": "Check stops", "read": "Read {device}",
+               "plan": "Recompute program", "authorise": "Carry reasons", "apply": "Apply",
+               "intent": "Check intent", "reset": "Reset process", "saved": "Save startup",
+               "golden": "Check golden", "symptom": "Read symptom", "record": "Record"}
 DECLINED = "declined"
 #: A reason's shape (`authorisation.MIN_WORDS`, `MIN_CHARS`): never its quality.
 REASON_WORDS = 3
@@ -540,9 +547,9 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
             "golden_before": ""}
     reset = {"plan": None, "got": None}
 
-    def step(name, result, words):
-        steps.append({"step": name, "result": result, "words": redact_text(words),
-                      "at": _iso(time.time())})
+    # The run's own steps, live, as a heal's are (`act.live_steps`): its card and the In
+    # progress list read this list while the job runs.
+    step, _begin = act.live_steps(steps, STEPS, decision["id"], STEP_LABELS, device)
 
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{act.OUTCOME_WORDS[outcome]}: {words}")

@@ -187,6 +187,9 @@ ANNOUNCERS = {
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/nsot/capture_job.py (C537): every job's start and end, for the In progress chip.
     "in-progress": ("in_progress",),
+    # modules/op_progress.py: a job's run wrote its next step (`moved`): every running card
+    # and the In progress list redraw, as they do on a held device's step.
+    "run-progress": ("device_progress",),
     # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
     "host-keys": ("host_keys",),
     # modules/nsot/console_ztp.py (O6a): a console survey's or kick-start's end; the console

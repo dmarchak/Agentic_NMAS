@@ -60,6 +60,13 @@ STEPS = (("claim", "Take a ready incident"),
          ("classify", "Class each unit and its tier, and compute the program and its hash"),
          ("decide", "Decide: heal, would heal, propose or can't fix"),
          ("record", "Record the decision"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels ... No full sentences in the step columns"); the long words above are its
+#: hover. `{device}` is the run's own.
+STEP_LABELS = {"claim": "Take incident", "stops": "Check stops",
+               "approved": "Find approved state", "guards": "Check guards",
+               "read": "Read {device}", "classify": "Classify change", "decide": "Decide",
+               "record": "Record decision"}
 
 
 def _iso(epoch: float) -> str:

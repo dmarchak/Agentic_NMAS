@@ -123,29 +123,76 @@ class TestTheActionsMenu:
     def test_every_changing_row_is_disabled_with_the_run_and_reads_stay(self, world):
         from modules.nsot import device_ops
         free = menu(world)
-        assert "data-held" not in free and 'data-op="deploy"' in free
+        assert "aria-disabled" not in row_of(free, "Plan a deploy…") and \
+            'data-op="deploy"' in free
         with device_ops.hold(NET, "r2", "telemetry re-subscribe", WHO):
             started = device_ops.holder(NET, "r2")["started"]
-            words = f"Re-subscribe telemetry running since {clock_of(started)}, by {WHO}"
+            # A SHORT reason on hover (the operator, 2026-11-11): a dozen words at most.
+            short = f"held by Re-subscribe telemetry since {clock_of(started)}"
+            assert len(f"Not offered: {short}".split()) <= 12
             html = menu(world)
             for label in CHANGING:
                 row = row_of(html, label)
                 assert 'aria-disabled="true"' in row and "<a " not in row, label
-                assert f'title="Not offered: {words}"' in row, label
-                assert f"(not offered: {words})" in row, f"{label}: said to a reader too"
+                assert f'title="Not offered: {short}"' in row, label
+                assert f"(not offered: {short})" in row, f"{label}: said to a reader too"
             for label in READS:
                 assert "<a " in row_of(html, label) and "aria-disabled" not in row_of(
-                    html, label), f"{label} is a read: it stays offered"
-            note = html[html.index('data-held="r2"'):]
-            assert "r2 is held: Re-subscribe telemetry running since" in note
-            assert f", by {WHO}." in note and "reads stay offered" in note
-            assert re.search(r'<a href="/v2/device/r2\?list=[^"]+">Open the run</a>', note)
+                    html, label), f"{label} is a read: it stays offered (C3095)"
+            # Items only: no notice and no paragraph in the menu.
+            assert "is held" not in html and "Every action runs here" not in html
+            assert '<p class="menu-note"' not in html and "Open the run" not in html
             # The effect behind the grey: the device is held, by that person.
             assert device_ops.busy_text(NET, "r2").startswith("r2 is being ")
         back = menu(world)
-        assert "data-held" not in back, "the hold ended: the note is gone"
         assert "<a " in row_of(back, "Plan a deploy…") and "<a " in row_of(back, "Reload…")
         assert device_ops.holder(NET, "r2") is None
+
+    def test_the_notice_is_a_banner_under_the_device_s_name_never_menu_text(self, world):
+        """The operator, 2026-11-11: "The held notice moves OUT of the Actions menu into a
+        banner under the device's name, across the page: 'r7 is held: <run> since <time>, by
+        <name> · Open the run'.\""""
+        from modules.nsot import device_ops
+
+        def banner():
+            r = world.get(f"/v2/device/r2/held?list={NET}", headers=HX)
+            assert r.status_code == 200
+            return r.get_data(as_text=True)
+        assert banner().strip() == "", "nothing held: no banner"
+        with device_ops.hold(NET, "r2", "telemetry re-subscribe", WHO):
+            html = banner()
+            assert 'class="notice notice-warning held-banner" role="status" data-held="r2"' \
+                in html
+            said = re.sub(r"<svg.*?</svg>", "", html, flags=re.S)
+            said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", said)).strip()
+            assert re.fullmatch(r"r2 is held: Re-subscribe telemetry since \d\d:\d\d UTC, "
+                                rf"by {re.escape(WHO)} · Open the run", said), said
+            assert f'<a href="/v2/device/r2?list={NET}">Open the run</a>' in html
+            page = world.get(f"/v2/device/r2?list={NET}").get_data(as_text=True)
+            at = page.index('id="device-held"')
+            assert page.index("<h1") < at < page.index('role="tablist"'), \
+                "under the device's name, above the tabs"
+            region = page[at:page.index('role="tablist"')]
+            assert "r2 is held:" in region and page.count("r2 is held:") == 1, \
+                "drawn with the page, once"
+            trigger = re.search(r'id="device-held"[^>]*hx-trigger="([^"]+)"', page).group(1)
+            assert trigger == "nmas:device_holds from:body, nmas:in_progress from:body"
+            assert device_ops.holder(NET, "r2")["actor"] == WHO
+        assert banner().strip() == "", "the hold ended: the banner is gone"
+
+    def test_a_hold_that_cannot_be_read_is_said_in_the_banner(self, world, monkeypatch):
+        from modules.nsot import device_ops
+
+        def unreadable(network, host):
+            raise device_ops.HoldsUnreadable("/locks/r2.lock", PermissionError(13, "denied"))
+        monkeypatch.setattr(device_ops, "holder", unreadable)
+        html = world.get(f"/v2/device/r2/held?list={NET}", headers=HX).get_data(as_text=True)
+        assert "r2 is held:" in html and "it is treated as held" in html
+        from modules import in_flight
+        assert in_flight.held_action(NET, "r2", TEST_PERSON)["unread"], \
+            "the state it says: a hold that could not be read, never nobody's"
+        assert 'title="Not offered: its hold could not be read: treated as held"' in row_of(
+            menu(world), "Plan a deploy…")
 
     def test_the_menu_listens_for_a_hold_s_start_and_its_end(self, world):
         page = world.get(f"/v2/device/r2?list={NET}").get_data(as_text=True)
@@ -184,9 +231,23 @@ class TestANeedsAttentionRow:
             assert rows[0]["held"]["words"] == (
                 f"Deploy running since {clock_of(started)}, by {WHO}")
             assert offer not in html, "the action is not offered on a held device"
-            assert html.count('data-held="r2"') == 2, "the row's line, and What to do"
-            assert f", by {WHO}</span>" in html and "Deploy running since" in html
-            assert html.count(f'href="/v2/device/r2?list={NET}">Open the run</a>') == 2
+            # The operator, 2026-11-11: "the run's text on a SECOND line under the title;
+            # only 'Open the run' on the right"; each fact once on the screen.
+            at = html.index('<summary class="att-line">')
+            line = html[at:html.index("</summary>", at)]
+            assert line.index('class="att-what"') < line.index('class="att-running"') \
+                < line.index('class="att-primary"'), "under the title, before the right side"
+            assert re.search(r'<span class="att-running" role="status" data-held="r2"[^>]*>'
+                             r'Deploy running since <time[^>]*>[^<]+</time>, by '
+                             rf"{re.escape(WHO)}</span>", line)
+            right = line[line.index('class="att-primary"'):].split(">", 1)[1]
+            assert re.sub(r"<[^>]+>", "", right).strip() == "Open the run", \
+                "the right side holds Open the run alone"
+            assert html.count("running since") == 1 and html.count('data-held="r2"') == 1, \
+                "the run is said once on the row"
+            assert html.count(f'href="/v2/device/r2?list={NET}">Open the run</a>') == 2, \
+                "on the line, and under What to do"
+            assert "Offered again when the run ends." in html
         rows = self.lost()
         html = attention(rows)
         assert "held" not in rows[0] and offer in html and "data-held" not in html
@@ -199,7 +260,7 @@ class TestANeedsAttentionRow:
             "rows": self.lost(), "sources": [], "badge": {"n": 1}})
         with device_ops.hold(NET, "r2", "rotate", WHO):
             html = world.get("/v2/attention", headers=HX).get_data(as_text=True)
-            assert html.count('data-held="r2"') == 2 and "Rotate credential running since" in html
+            assert html.count('data-held="r2"') == 1 and "Rotate credential running since" in html
             assert "Re-subscribe r2's telemetry (101)…</a>" not in html
             assert device_ops.holder(NET, "r2")["actor"] == WHO, "the hold it was read from"
         html = world.get("/v2/attention", headers=HX).get_data(as_text=True)

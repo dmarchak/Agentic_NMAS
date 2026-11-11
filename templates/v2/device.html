@@ -19,6 +19,9 @@
     {% include "v2/_actions_menu.html" %}
   </div>{{ info('device-page', 'actions', label='How the Actions menu works') }}
 </div>
+{#- A run holds the device: said here, across the page, never in the Actions menu (the
+    operator, 2026-11-11); read again on a job's start or end and a hold's release. -#}
+<div id="device-held" hx-get="{{ url_for('device_v2.held_banner', name=device.hostname) }}" hx-trigger="nmas:device_holds from:body, nmas:in_progress from:body" hx-swap="innerHTML">{% include "v2/_held_banner.html" %}</div>
 <div class="tabs" role="tablist" aria-label="{{ device.hostname }} views">
   {% for key, label in tabs %}
     {% if key in built %}

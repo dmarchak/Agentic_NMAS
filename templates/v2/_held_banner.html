@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import icon, clock, run_href -%}
+{#- The held-device banner, under the device's name on its page (the operator, 2026-11-11:
+    "The held notice moves OUT of the Actions menu into a banner under the device's name,
+    across the page: '<device> is held: <run> since <time>, by <name> · Open the run'"; "a
+    status notice is a banner, not menu text"). Drawn while a run holds the device
+    (`in_flight.held_action`: the hold the server refuses by; a hold that cannot be read is
+    said here too), absent otherwise. The page reads it again when a job starts or ends and
+    when a hold is released (`device.html`'s `#device-held`), so it comes and goes without a
+    reload. `routes/device_v2.held_banner`. -#}
+{%- if held %}
+<div class="notice notice-warning held-banner" role="status" data-held="{{ device.hostname }}">{{ icon('warn', 16) }}<p><strong>{{ device.hostname }} is held:</strong> {% if held.unread %}{{ held.words }}{% else %}{{ held.name }} since {{ clock(held.since) }}, by {{ held.by }}{% endif %} · <a href="{{ run_href(device.hostname, list_name) }}">Open the run</a></p></div>
+{%- endif %}

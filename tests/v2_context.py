@@ -1466,18 +1466,22 @@ def _in_progress(client, _lab, mp):
 
 
 def _held_actions(client, _lab, _mp):
-    """The Actions menu while a run holds r3 (the operator, 2026-11-11; `in_flight.held_action`):
-    every changing row greyed with the run, the note naming it; and a hold that cannot be
-    read, said as held (planted for this provider alone, then undone). The walk's pages ask
-    for the menu with nothing held."""
+    """The Actions menu and the held-device banner while a run holds r3 (the operator,
+    2026-11-11; `in_flight.held_action`): every changing row greyed with its short reason,
+    the banner under the device's name naming the run; and a hold that cannot be read, said
+    as held (planted for this provider alone, then undone). The walk's pages ask for both with
+    nothing held."""
     import pytest
 
     from modules.nsot import device_ops
 
     with device_ops.hold("Lab", "r3", "rotate", "operator@example.com"):
         r = client.get("/v2/device/r3/actions?list=Lab", headers={"HX-Request": "true"})
-    assert r.status_code == 200 and "r3 is held: Rotate credential running since" \
+        b = client.get("/v2/device/r3/held?list=Lab", headers={"HX-Request": "true"})
+    assert r.status_code == 200 and "Not offered: held by Rotate credential since" \
         in r.get_data(as_text=True), r.status_code
+    assert "r3 is held:" in b.get_data(as_text=True) and "Rotate credential since" \
+        in b.get_data(as_text=True), b.status_code
 
     def unreadable(network, host):
         raise device_ops.HoldsUnreadable("/locks/r3.lock", PermissionError(13, "denied"))
@@ -1485,7 +1489,9 @@ def _held_actions(client, _lab, _mp):
     try:
         mp.setattr(device_ops, "holder", unreadable)
         r = client.get("/v2/device/r3/actions?list=Lab", headers={"HX-Request": "true"})
-        assert "it is treated as held" in r.get_data(as_text=True), r.status_code
+        assert "its hold could not be read: treated as held" in r.get_data(as_text=True)
+        b = client.get("/v2/device/r3/held?list=Lab", headers={"HX-Request": "true"})
+        assert "it is treated as held" in b.get_data(as_text=True), b.status_code
     finally:
         mp.undo()
 
@@ -3578,6 +3584,34 @@ def _resubscribe(client, _lab, _mp):
             done = client.get(f"{base}?list=Lab&subs=101,102&run={run.group(1)}",
                               headers=hx).get_data(as_text=True)
             assert "Re-subscribed" in done, done[:400]
+        # A run whose stream did not come back: its result names the step it failed at, and
+        # what that step read sits under it, closed. Its record is then given the reads a
+        # verify keeps once they are written to it (the shape agreed with the build that
+        # writes them: one per check a round), so the closed list of reads is drawn too.
+        state["src"] = lab_src(series=T.seq([T.ABSENT]))
+        _body, hashes, program = drawn("subs=101")
+        r = client.post(f"{base}/confirm?list=Lab", headers=hx, data={
+            "sub": ["101"], "reason": T.REASON, "subs": "101", "picked": "1",
+            "program": program, "previewed": "101", "hash::101": hashes["101"]})
+        run = re.search(r"run=([0-9TZ]+-[0-9a-f]{32})", r.get_data(as_text=True))
+        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
+        if job:
+            capture_job.wait(job.group(1), 10)
+        if run:
+            rec = privileged.get("Lab", run.group(1))
+            for s in rec["steps"]:
+                if s["step"] == "verify":
+                    s["reads"] = [{"at": s["at"], "check": check, "result": result,
+                                   "command": f"the {check} read", "read_id": f"r-{n}",
+                                   "words": (s.get("checks") or {}).get(check, {}).get(
+                                       "words", "")}
+                                  for n, (check, result) in enumerate(
+                                      (("device", "pass"), ("stream", "fail"),
+                                       ("collector", "fail")))]
+            privileged.record("Lab", rec)
+            failed = client.get(f"{base}?list=Lab&subs=101&run={run.group(1)}",
+                                headers=hx).get_data(as_text=True)
+            assert "What it read" in failed and "The 3 reads" in failed, failed[:400]
         # A receiver the run left removed: the danger and Re-add the receiver lead the card.
         state["src"] = lab_src(box=T.Box(readd_fails=2))
         _body, hashes, program = drawn("subs=101")
@@ -3589,13 +3623,18 @@ def _resubscribe(client, _lab, _mp):
             capture_job.wait(job.group(1), 10)
         removed = client.get(f"{base}?list=Lab&subs=101", headers=hx).get_data(as_text=True)
         assert "is removed." in removed, removed[:400]
-        # A run still going: its record written as running, no job to read.
+        # A run whose record says running with no job to read: still going while a
+        # re-subscribe holds r3 (another process's), and STOPPED once nothing does.
+        from modules.nsot import device_ops
         rec = {"id": "20261110T000000000000Z-" + "0" * 32, "list": "Lab", "device": "r3",
                "key": "telemetry-resubscribe", "state": "running", "outcome": "running",
                "started_at": 1.0, "config_change": True}
         privileged.record("Lab", rec)
-        going = client.get(f"{base}?list=Lab&subs=101&run={rec['id']}", headers=hx)
-        assert "Re-subscribing on r3" in going.get_data(as_text=True)
+        with device_ops.hold("Lab", "r3", "telemetry re-subscribe", "operator@example.com"):
+            going = client.get(f"{base}?list=Lab&subs=101&run={rec['id']}", headers=hx)
+            assert "Re-subscribing on r3" in going.get_data(as_text=True)
+        stopped = client.get(f"{base}?list=Lab&subs=101&run={rec['id']}", headers=hx)
+        assert "This run stopped before it recorded an outcome" in stopped.get_data(as_text=True)
     finally:
         mp.undo()
         if _os.path.isdir(folder):

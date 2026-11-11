@@ -21,6 +21,10 @@
     <div class="op-hd-actions">{{ how('heal', 'act') }}</div></div>
   <div class="op-part"><h3>Where it is</h3><div>
     {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+    {%- if c.stages %}
+    <p class="small muted">While it applies, the deploy's stages on {{ c.host }}:</p>
+    {{ run_stepper(c.stages | one_run(c.host, 'The deploy stages of the heal')) }}
+    {%- endif %}
     <p class="op-wait">Started {{ clock(c.started) }}, as {{ c.actor }}. It holds {{ c.host }} while it applies and verifies. Its outcome and the steps it took are drawn here when it ends; this page can close: the In progress chip in the top bar keeps the run in front of you, and its outcome until you open it.</p></div></div>
 </section>
 {%- elif c.state == 'result' %}

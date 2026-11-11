@@ -70,7 +70,7 @@ compared" where intent was not compared), where board 2 (`DevCaptureResult`) dre
 which `preview_confirm.capture_result` already calls "partial". A capture at its intent is
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
-Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html, templates/v2/_diagnose.html
+Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html, templates/v2/_diagnose.html, templates/v2/_held_banner.html
 Compared again 2026-11-05 (the main session, H16's gate): `_diagnose.html`'s "not offered"
 `<details>` gains `data-keep` (C472: a live region's details keeps its state across a redraw),
 an attribute no region draws; every region reads as before.
@@ -137,7 +137,32 @@ device: **deviation**, logged in STANDING_APPROVAL_LOG ("Device: the Actions men
 changing row while a run holds the device"). Compared by the template diff and the menu
 tests/test_held_actions.py draws, not a new shot. Templates sha256 before:
 `1446343d05a0120b023505e25335e77b4d5fe5d97fa2aa0e8a831a9e0536567f`.
-Templates sha256: `e5b302368775fadbc20a282051698820047a780a5f325a737f3ef7a95e6ee774`
+
+**Hashed again 2026-11-11 for where a run opens** (the operator, that day: "4. The result
+opens on the device page for now; once the incident page exists, 'Open the result' goes to the
+incident's URL."): `_actions_menu.html`'s "Open the run" takes its address from the one macro
+that builds it (`run_href`, `_macros.html`), which gives the address it had. Nothing drawn
+moved. Templates sha256 before:
+`e5b302368775fadbc20a282051698820047a780a5f325a737f3ef7a95e6ee774`.
+
+**Hashed again 2026-11-11 after the operator's test of the held actions on the host** ("1. The
+held notice moves OUT of the Actions menu into a banner under the device's name, across the
+page: 'r7 is held: <run> since <time>, by <name> · Open the run'. The menu keeps only its
+items, greyed, each with a SHORT reason on hover. Move the menu's general explanation ('Every
+action runs here…') to the ⓘ next to Actions."). `device.html` gains one region between the
+device's name and the tabs, `#device-held`, which draws `_held_banner.html` (compared from
+this hash on): while a run holds the device, a warning banner across the page, "<device> is
+held: <run> since <time>, by <who> · Open the run"; nothing while it is free; read again on
+`device_holds` and `in_progress`. `_actions_menu.html` loses its two paragraphs (the held note
+of the hash before, and "Every action runs here…", now the manual's Actions section behind
+the (i) beside the menu); a greyed item's hover is "Not offered: held by <run> since <time>".
+An observe-only device's or a host's state note stays in the menu. Boards 8 to 12 draw the
+menu with its first paragraph and no banner: **deviation**, logged in STANDING_APPROVAL_LOG
+("Device: the held notice is a banner under the device's name"). Compared by the template
+diff and the page tests/test_held_actions.py draws, not a new shot. Templates sha256 before
+(without `_held_banner.html` in the list):
+`9dbd158eb1321bc0b62b8f8daa6eaca0a876fc738918cdab42622d01a945de41`.
+Templates sha256: `a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it

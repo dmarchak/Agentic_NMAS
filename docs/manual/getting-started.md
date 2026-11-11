@@ -60,7 +60,12 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
 - **"2 running"** (blue, with a dot): operations running now, in every network, by anyone.
   Opening the chip lists each one: the device, the operation, the step it is on (in its
   stepper's own words, "step 6 of 6"), who started it, and since when; one that has made no
-  progress for too long carries a red "no progress: may be stuck". **Open its card** opens
+  progress for too long carries a red "no progress: may be stuck". One run is one row: a
+  self-healing run and a telemetry re-subscribe are named for the run (**Self-healing**,
+  **Re-subscribe telemetry**), and the step shown is the newest step the run itself recorded
+  by its short label ("Wait 10 s · step 7 of 11"), so a row never sits at
+  "starting"; such a run counts as stuck only when neither its hold nor its own steps have
+  moved for ten minutes. **Open its card** opens
   the device's page, which shows that operation's card where it runs; a console run (an
   out-of-band onboarding, a console survey or kick-start) has **Open its stepper**, its own
   page, since a device being onboarded may have no page yet. Devices draws the same list above

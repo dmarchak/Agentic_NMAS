@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how, badge, clock -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge, clock, run_href -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Re-subscribe a lost telemetry stream (C2838; routes/resubscribe_v2.card,
     modules/heal/resubscribe.py), drawn in the lost stream's Needs attention row by
@@ -30,7 +30,7 @@
   <div class="op-part"><h3>{{ 'Where it is' if c.state == 'running' else 'What happened' }}</h3><div>
 {%- endif %}
 <div class="heal-prop resub" id="{{ cid }}"{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}
-  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(','), run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if c.state == 'running' %} aria-busy="true" data-run="{{ c.run }}" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(','), run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}>
 {%- if c.state == 'failed' %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>The run's job raised:</strong> {{ c.raised }}. What it sent is in its record, on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>; read {{ c.host }}'s configuration before anything else.</p></div>
 {%- elif c.error %}
@@ -38,7 +38,15 @@
 {%- endif %}
 {%- if c.state == 'failed' %}
 {%- elif c.state == 'running' %}
-  <p><strong>Re-subscribing on {{ c.host }}.</strong> {{ c.host }} is held: {% if c.subs|length > 1 %}every chosen receiver is removed, {{ c.wait_s }} s pass, each is added back, then for each one the device, the stream and the collector are read for up to {{ c.bound_s }} s{% else %}the receiver is removed, {{ c.wait_s }} s pass, it is added back, then the device, the stream and the collector are read for up to {{ c.bound_s }} s{% endif %}. This answer updates when the run ends.</p>
+  <p><strong>Re-subscribing on {{ c.host }}.</strong> {{ c.host }} is held: {% if c.subs|length > 1 %}every chosen receiver is removed, {{ c.wait_s }} s pass, each is added back, then for each one the device, the stream and the collector are read for up to {{ c.bound_s }} s{% else %}the receiver is removed, {{ c.wait_s }} s pass, it is added back, then the device, the stream and the collector are read for up to {{ c.bound_s }} s{% endif %}. This answer updates at each step, and when the run ends.</p>
+  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+{%- elif c.state == 'stopped' %}
+  {#- A run whose record says running, with no job here and no hold on the device: it stopped
+      before it recorded an outcome (Mercury restarted, or its job ended). Said, with the
+      steps it had recorded and what a person does next. -#}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>This run stopped before it recorded an outcome:</strong> no step recorded since {{ stamp(c.stopped_since) }}, and nothing holds {{ c.host }} now, so Mercury restarted or the run's job ended while it ran. Whether each receiver is in place is not known from the record: read {{ c.host }}'s configuration first. A receiver the run removed and did not put back leads the card below, with Re-add the receiver.</p></div>
+  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+  <div class="att-action"><span class="op-act"><button type="button" class="btn btn-small" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(',')) }}" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Open the card again…</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', 're-add-the-receiver', compact=True, op='Re-add the receiver') }}</span></div>
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
   {%- set ok = r.state == 'done' %}
@@ -59,15 +67,22 @@
   {%- endif %}
 {%- else %}
   {%- if c.last %}
+  {#- The last run, ONE line, closed until a person opens it (the operator, 2026-11-11: "The
+      last run, 3 h ago: re-subscribed; the stream did not come back · 12 steps · Show"):
+      its outcome in its level's colour, never green over a failure; opened, who ran it and
+      the steps it took. The full detail stays on the run's own result card. -#}
   {%- set L = c.last %}
-  <div class="notice notice-{{ {'ok': 'muted', 'warn': 'warning'}.get(L.level, 'danger') }} set-result" role="{{ 'status' if L.level == 'ok' else 'alert' }}" data-last-run="{{ L.run }}">{{ icon('tick' if L.level == 'ok' else 'warn', 16) }}<p><strong>The last run, {{ stamp(L.at) }}, by {{ L.actor or 'nobody recorded' }}: {{ L.words }}.</strong> {{ L.why }}</p></div>
-  {{ run_stepper(L.steps) }}
+  <details class="resub-last resub-last-{{ L.level }}" data-last-run="{{ L.run }}" data-keep="{{ cid }}-last">
+    <summary><strong>The last run, {{ stamp(L.at) }}: {{ L.words }}</strong> · {{ L.steps.trail | length }} step{{ 's' if L.steps.trail | length != 1 }} · <span class="resub-show">Show</span></summary>
+    <p class="small">Run by {{ L.actor or 'nobody recorded' }}.</p>
+    {{ run_stepper(L.steps) }}
+  </details>
   {%- endif %}
   {%- for x in c.removed or [] %}
   {%- set rid = cid ~ '-readd-' ~ x.sub %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }}'s receiver for {{ x.sub }} is removed.</strong> A re-subscribe removed it and it has not been added back, so subscription {{ x.sub }} sends nothing until it is. Re-add the receiver adds intent's receiver line back, holding {{ c.host }}, then checks the stream as a re-subscribe does.</p></div>
   {%- if x.hash and c.held %}
-  <p class="small" data-held="{{ c.host }}">Re-add the receiver is not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list) }}">Open the run</a></p>
+  <p class="small" data-held="{{ c.host }}">Re-add the receiver is not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. <a href="{{ run_href(c.host, c.list) }}">Open the run</a></p>
   {%- elif x.hash %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to
       (the re-add's own, its whole program). -#}
@@ -118,7 +133,7 @@
   {%- if p.ok and c.held %}
   {#- Another run holds the device (the operator, 2026-11-11): the confirm is not offered, and
       says which run, since when and by whom, with a link to it. -#}
-  <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=c.host, list=c.list) }}">Open the run</a></div>
+  <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ run_href(c.host, c.list) }}">Open the run</a></div>
   {%- elif p.ok %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to, the
       selection's (the whole program drawn above, in its order); each ticked subscription's own

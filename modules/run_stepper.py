@@ -245,24 +245,54 @@ def result_state(result, good=(), bad=()) -> str:
     return "partial"
 
 
-def _lines(event: dict) -> list:
-    """What a step read, one line per read: its ``reads`` as they were appended (``{"at",
-    "command", "result", "words"}``), else its final ``checks`` (``{name: {"state",
-    "words"}}``, a record written before reads were kept). ``[{"what", "state",
-    "state_words", "words", "at"}]``."""
+def _read_line(r: dict) -> dict:
+    state = str(r.get("result") or "")
+    return {"what": str(r.get("check") or r.get("command") or ""), "state": state,
+            "state_words": READ_WORDS.get(state, state or "not said"),
+            "words": str(r.get("words") or ""), "at": str(r.get("at") or "")}
+
+
+def reads_words(reads: list) -> str:
+    """A step's reads in one line: how many, of what when they are of one command, about how
+    far apart (the median gap between the reads of one check or command), how many passed,
+    failed or could not be read, and the newest one's words."""
+    reads = [r for r in reads or [] if isinstance(r, dict)]
+    if not reads:
+        return ""
+    commands = {str(r.get("command") or "") for r in reads} - {""}
+    keyed = {}
+    for r in reads:
+        keyed.setdefault(str(r.get("check") or r.get("command") or ""), []).append(
+            _epoch(r.get("at")))
+    gaps = sorted(b - a for ats in keyed.values()
+                  for a, b in zip(ats, ats[1:]) if a is not None and b is not None)
+    apart = f", about {round(gaps[len(gaps) // 2])} s apart" if gaps else ""
+    counts = [(sum(1 for r in reads if r.get("result") == k), w)
+              for k, w in (("pass", "pass"), ("fail", "fail"), ("unreadable", "unreadable"))]
+    other = len(reads) - sum(n for n, _w in counts)
+    said = ", ".join(f"{n} {w}" for n, w in counts + [(other, "not said")] if n)
+    last = str(reads[-1].get("words") or "")
+    return (f"{len(reads)} read{'s' if len(reads) != 1 else ''}"
+            + (f" of `{next(iter(commands))}`" if len(commands) == 1 else "")
+            + f"{apart}: {said}" + (f"; the last: {last}" if last else ""))
+
+
+def _lines(event: dict, running: bool = False) -> tuple:
+    """What a step read, compactly (a verify makes up to 120 reads: never one long expanded
+    list on a card): ``(lines, reads)``.
+
+    - *lines*, the few drawn in place (``{"what", "state", "state_words", "words", "at"}``):
+      an ENDED step's final ``checks`` (``{name: {"state", "words"}}``: three for a verify);
+      for a step still *running*, or one that keeps no checks, the NEWEST read of each check
+      (a read's ``check``, else its ``command``); then, when the step kept reads, ONE line
+      saying them (`reads_words`, its ``what`` empty and ``summary`` true).
+    - *reads*: every read the step kept (``{"at", "command", "result", "words", "check"}``,
+      a non-dict entry skipped), newest first, for a closed list one level down."""
+    reads = [r for r in event.get("reads") or [] if isinstance(r, dict)] \
+        if isinstance(event.get("reads"), list) else []
+    checks = event.get("checks") if isinstance(event.get("checks"), dict) else {}
     out = []
-    reads = event.get("reads")
-    if isinstance(reads, list) and reads:
-        for r in reads:
-            if not isinstance(r, dict):
-                continue
-            state = str(r.get("result") or "")
-            out.append({"what": str(r.get("command") or ""), "state": state,
-                        "state_words": READ_WORDS.get(state, state or "not said"),
-                        "words": str(r.get("words") or ""), "at": str(r.get("at") or "")})
-        return out
-    checks = event.get("checks")
-    if isinstance(checks, dict):
+    if checks and not running:
         for name, c in checks.items():
             if not isinstance(c, dict):
                 continue
@@ -271,13 +301,21 @@ def _lines(event: dict) -> list:
             out.append({"what": str(name), "state": state,
                         "state_words": READ_WORDS.get(state, state or "not said"),
                         "words": str(c.get("words") or ""), "at": str(event.get("at") or "")})
-    return out
+    elif reads:
+        newest = {}
+        for r in reads:
+            newest[str(r.get("check") or r.get("command") or "")] = r
+        out += [_read_line(r) for r in newest.values()]
+    if reads:
+        out.append({"what": "", "state": "", "state_words": "", "summary": True,
+                    "words": reads_words(reads), "at": ""})
+    return out, [_read_line(r) for r in reversed(reads)]
 
 
 def _wait(event: dict, now: float, running: bool):
-    """A step's declared wait, ``{"began", "length_s", "left_s", "words"}``, or None: the
+    """A step's declared wait, ``{"began", "length_s", "bound", "words"}``, or None: the
     length the operation declared (``wait_s``) and when the step began (``began``, else its
-    ``at``). The countdown the page draws is of these two, sent by the server; ``left_s`` is
+    ``at``). The countdown the page draws is of these two, sent by the server; ``words`` says
     what was left when this was drawn."""
     try:
         length = float(event.get("wait_s"))
@@ -289,14 +327,25 @@ def _wait(event: dict, now: float, running: bool):
         return None
     left = max(0, round(at + length - now)) if running else 0
     n = int(length) if float(length).is_integer() else length
-    return {"began": began, "length_s": n, "left_s": left,
-            "words": (f"{left} s left of {n} s" if running and left else
+    # A fixed wait counts down its length; a bound (wait_bound) is the longest the step
+    # waits, and it may end sooner.
+    bound = bool(event.get("wait_bound"))
+    return {"began": began, "length_s": n, "bound": bound,
+            "words": ((f"up to {n} s: {left} s left" if bound else f"{left} s left of {n} s")
+                      if running and left else
                       f"its {n} s are up; waiting for the next step" if running else
-                      f"a wait of {n} s")}
+                      (f"waited up to {n} s" if bound else f"a wait of {n} s"))}
+
+
+def labels_for(table: dict, **fields) -> dict:
+    """An operation's short step labels (two to four words each, declared beside its steps:
+    ``STEP_LABELS``) with this run's own names filled in (``{device}``, ``{subs}``)."""
+    return {k: str(v).format(**fields) for k, v in (table or {}).items()}
 
 
 def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad=(),
-                conditional=(), prefix: str = "") -> dict:
+                conditional=(), prefix: str = "", cut_short: bool = False,
+                labels: dict = None) -> dict:
     """A run's own recorded *steps* (``{"step", "result", "words", "at"}``, in the order they
     were written) against the steps it *declared* (``(key, words)``, in order): ``{"steps",
     "lead", "trail", "at", "of"}``.
@@ -306,11 +355,18 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
       has not *ended*; one a later step followed is done, unless a later record of the same
       step says otherwise; a run that ended inside it failed there). Never recorded: pending
       while the run goes on; once it *ended*, not reached when a step before it failed or was
-      not fully done, else not needed (also every step named in *conditional*, a rollback).
+      not fully done, else not needed (also every step named in *conditional*, a rollback);
+      with *cut_short* (a run that stopped without recording its end), every step after the
+      last one it recorded is not reached.
     - ``lead``: the step to read first: the first failed one, else the running one, else
-      (ended) the first not fully done; None when every step is done.
-    - ``trail``: every step as recorded, in order, each with its state, its own words, its
-      time and what it read (`_lines`).
+      (ended) the first not fully done; None when every step is done. A failed or partial
+      lead carries ``why`` (each such record's own words: the failure, said once on the
+      card); a running one what it is reading (``lines``, ``more``).
+    - ``trail``: every step as recorded, in order, ONE line each: its state, its one-line
+      outcome (left out for the step the lead already says), its time; and, under a step
+      that did not pass, what it read (``checks``, ``more``), for a closed list.
+    - *labels*: the operation's short label for each step (``{key: words}``, two to four
+      words): the step's column says the label, its hover the declared words.
     - ``at`` of ``of``: the newest recorded step's place among the declared ones."""
     now = time.time() if now is None else now
     steps = [s for s in steps or [] if isinstance(s, dict)]
@@ -347,6 +403,8 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
                 state = "skipped"
             elif not ended:
                 state = "skipped" if i < reached else "waiting"
+            elif cut_short and i > reached:
+                state = "not_reached"               # the run stopped before it got here
             else:
                 state = "not_reached" if stop is not None and i > stop else "skipped"
         else:
@@ -367,37 +425,71 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
             # A step recorded several times (a removal, a verify, for each subscription):
             # each record's own words lead what it read, so no read is drawn without the
             # record it belongs to.
-            lines = []
-            for i, (st, _n, e) in enumerate(got):
-                if len(got) > 1:
-                    lines.append({"what": f"{i + 1} of {len(got)}", "state": st,
-                                  "state_words": STATE_WORDS[st],
-                                  "words": str(e.get("words") or ""),
-                                  "at": str(e.get("at") or "")})
-                lines += _lines(e)
-            extra = {"wait": wait, "lines": lines, "several": len(got) > 1}
-        one = dict(step(prefix + k, words[k], state, took_s=took, note=note, since=since),
+            lines, more, why = [], [], []
+            for j, (st, _n, e) in enumerate(got):
+                of = f"{j + 1} of {len(got)}" if len(got) > 1 else ""
+                said = str(e.get("words") or "")
+                if st == "failed" and e.get("result") == "running":
+                    said = (said + ". " if said else "") + "The run ended in this step"
+                if st in ("failed", "partial") and said:
+                    # Why, said ONCE on the card: under "Failed at", never again in the list.
+                    why.append((f"{of}: " if of else "") + said)
+                if st != "running":
+                    continue
+                # What a step still running is reading (the newest read of each check).
+                if of:
+                    lines.append({"what": of, "state": st, "state_words": STATE_WORDS[st],
+                                  "words": said, "at": str(e.get("at") or "")})
+                drawn, every = _lines(e, True)
+                lines += drawn
+                if every:
+                    more.append({"title": f"The {len(every)} read"
+                                          f"{'s' if len(every) != 1 else ''}"
+                                          + (f" of {of}" if of else ""), "reads": every})
+            extra = {"wait": wait, "lines": lines, "more": more, "why": why}
+        # The column says the step in two to four words (the operation's own short label);
+        # its long words are its hover, and the list below says what each step did.
+        label = (labels or {}).get(k) or words[k]
+        # Only a running step carries what it is doing on its column (its hover, and under
+        # it on a phone): a step that ended says its outcome ONCE, in the list below, and a
+        # failed one in the lead.
+        note = note if state == "running" else ""
+        one = dict(step(prefix + k, label, state, took_s=took, note=note, since=since),
+                   long=words[k], title=words[k] + (f": {note}" if note else ""),
                    state_words=STATE_WORDS[state], wait=extra.get("wait"),
-                   lines=extra.get("lines") or [], several=bool(extra.get("several")))
+                   lines=extra.get("lines") or [], more=extra.get("more") or [],
+                   why=extra.get("why") or [])
         out.append(one)
     for want in ("failed", "running") + (("partial",) if ended else ()):
         lead = next((s for s in out if s["state"] == want), None)
         if lead:
             break
+    # The steps taken: each recorded step ONE line (its state and its one-line outcome). The
+    # step the lead says is not said again here; what a step that did not pass read (its
+    # final checks, one line of its reads, every read one level further down) sits under
+    # that step alone, closed. A step that passed shows no checks.
+    said_above = (lead["key"][len(prefix):], lead["state"]) if lead and lead["why"] else None
     trail = []
     for n, s in enumerate(steps):
         st = state_of(n, s) or "done"
-        trail.append({"key": str(s.get("step") or ""),
-                      "words": words.get(s.get("step")) or str(s.get("step") or "a step"),
+        key = str(s.get("step") or "")
+        drawn, every = _lines(s, False) if st in ("failed", "partial") else ([], [])
+        trail.append({"key": key,
+                      "words": (labels or {}).get(key) or words.get(key) or key or "a step",
+                      "long": words.get(key) or "",
                       "state": st, "state_words": STATE_WORDS[st],
-                      "said": str(s.get("words") or ""), "at": str(s.get("at") or ""),
-                      "lines": _lines(s)})
+                      "said": "" if said_above == (key, st) else str(s.get("words") or ""),
+                      "at": str(s.get("at") or ""),
+                      "checks": drawn,
+                      "more": ([{"title": f"The {len(every)} read"
+                                          f"{'s' if len(every) != 1 else ''}",
+                                 "reads": every}] if every else [])})
     at = keys.index(steps[newest]["step"]) + 1 if steps and steps[newest].get("step") in keys \
         else max(reached + 1, 0)
     return {"steps": out, "lead": lead, "trail": trail, "at": at, "of": len(keys)}
 
 
-def current_words(declared, steps) -> str:
+def current_words(declared, steps, labels: dict = None) -> str:
     """The run's real current step, in words, for the In progress list: its newest recorded
     step by the words it declared, its state unless it is running, and its place ("Verify
     each within 290 s · step 9 of 11"); ``"started; no step recorded yet"`` before the
@@ -410,7 +502,7 @@ def current_words(declared, steps) -> str:
     words = {d[0]: d[1] for d in declared}
     key = last.get("step")
     state = result_state(last.get("result"))
-    said = words.get(key) or str(key or "a step")
+    said = (labels or {}).get(key) or words.get(key) or str(key or "a step")
     place = f" · step {keys.index(key) + 1} of {len(keys)}" if key in keys else ""
     return said + ("" if state == "running" else f": {STATE_WORDS[state]}") + place
 
@@ -420,12 +512,15 @@ _LEVEL_GROUP = {"ok": "done", "warn": "partial", "danger": "failed"}
 
 
 def record_card(name: str, label: str, phases: list, *, ended: bool, level: str = "",
-                device: bool = True, href: str = "", detail: str = "", key: str = "") -> dict:
+                device: bool = True, href: str = "", detail: str = "", key: str = "",
+                summarised: bool = False) -> dict:
     """A one-row card for a run drawn from its own record: *phases* are `from_record`'s
     answers, in order (a heal's decision, then its act; any other run has one). The row's group
     is its steps' worst, and never better than the outcome's *level* (``ok``, ``warn``,
     ``danger``) once the run *ended*. The card carries ``lead``, ``trail`` and ``ended`` for
-    the stepper to draw under the row."""
+    the stepper to draw under the row. *summarised*: the card this is drawn on already says
+    why the run failed, in its own summary (a result's red box, a row's cause), so the lead
+    names the step and does not say the failure a second time."""
     steps = [s for p in phases for s in p["steps"]]
     trail = [t for p in phases for t in p["trail"]]
     states = {s["state"] for s in steps}
@@ -450,4 +545,4 @@ def record_card(name: str, label: str, phases: list, *, ended: bool, level: str 
         one.pop(unused, None)
     return {"rows": [one], "single": True, "grouped": False, "final": None, "label": label,
             "key": key or label.lower().replace(" ", "-"), "lead": lead, "trail": trail,
-            "ended": ended}
+            "ended": ended, "summarised": bool(summarised)}

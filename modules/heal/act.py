@@ -87,6 +87,13 @@ STEPS = (("take", "Take the heal decision, once"),
          ("saved", "Saved to startup once verified, the device released"),
          ("golden", "Read the device again against its new golden"),
          ("record", "Record the outcome and close the incident"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels ... No full sentences in the step columns"); the long words above are its
+#: hover. `{device}` is the run's own.
+STEP_LABELS = {"take": "Take decision", "stops": "Check stops", "read": "Read {device}",
+               "plan": "Recompute program", "authorise": "Authorise removals",
+               "apply": "Apply", "intent": "Check intent", "symptom": "Read symptom",
+               "saved": "Save startup", "golden": "Check golden", "record": "Record"}
 #: What an applied heal did (`decisions.applied`); ``rolled_back`` and ``failed`` halt, and so
 #: does ``interrupted`` once its act had written its program to the step log
 #: (`modules/heal/interrupted.py`, H6, which records it for a job that ended first).
@@ -577,9 +584,10 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     held = {"dev": {}, "prog": None, "read": "", "entry": {}, "authorise": [], "platform": "",
             "golden_before": ""}
 
-    def step(name, result, words):
-        steps.append({"step": name, "result": result, "words": redact_text(words),
-                      "at": _iso(time.time())})
+    # The run's own steps, live (the operator, 2026-11-11: "every state shown must be the
+    # run's real current step"): this list is what the heal's card and the In progress list
+    # read while the job runs (`op_progress.attach`), and what the step log keeps at its end.
+    step, begin = live_steps(steps, STEPS, decision["id"], STEP_LABELS, device)
 
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
@@ -621,6 +629,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     step("stops", "ok", "AUTO on a network marked lab, the policy decided under, nothing held")
 
     dev = src.device(device)
+    begin("read", f"reading {device} again")
     text, error = src.read(dev)
     if not text:
         return refuse("read", f"the read of {device} at apply could not be made ({error})")
@@ -747,14 +756,60 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     r = next((x for x in report.get("results") or [] if x.get("device") == device), {})
 
     def symptom():
+        begin("symptom", "reading the symptom again, until it is gone or its bound passes",
+              wait_s=symptom_bound(inc.get("triggers") or []), bound=True)
         s = src.symptom(device, inc.get("triggers") or [], applied_at["t"])
         step("symptom", s["state"], s["words"])
         return s
 
-    return _judge(device, r, report, src, via, step, finish, symptom)
+    return _judge(device, r, report, src, via, step, finish, symptom, begin=begin)
 
 
-def _judge(device, r, report, src, via, step, finish, symptom):
+def symptom_bound(triggers: list) -> int:
+    """The longest the symptom read waits for *triggers* (`read_symptom`'s own bound: the
+    largest of `SYMPTOM_SECONDS` among the symptoms named), or 0 when none is named."""
+    return max((SYMPTOM_SECONDS[t["kind"]] for t in symptom_triggers(triggers)), default=0)
+
+
+def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
+               device: str = ""):
+    """``(step, begin)`` over *steps*, a run's own list: `step(name, result, words)` records a
+    step as before; `begin(name, words, wait_s=None, bound=False)` records one that takes time
+    as ``running`` the moment it starts (with ``began``, and its declared wait: a fixed length,
+    or with *bound* the longest it waits), and that step's own `step` then replaces it, keeping
+    when it began. So the recorded list ends as it always did, and while the run goes on its
+    newest step is the one it is in. Inside a job the list is the job's own
+    (`op_progress.attach`, with the operation's short *labels* for *device*): each step
+    written is announced. Used by a heal's act and by an approved proposal's."""
+    from modules import op_progress, run_stepper
+    from modules.redact import redact_text
+
+    op_progress.attach(declared, steps, run=run_id,
+                       labels=run_stepper.labels_for(labels, device=device))
+
+    def begin(name, words, *, wait_s=None, bound=False):
+        at = _iso(time.time())
+        steps.append(dict({"step": name, "result": "running", "words": redact_text(words),
+                           "at": at, "began": at},
+                          **({"wait_s": wait_s, "wait_bound": bool(bound)} if wait_s else {})))
+        op_progress.moved()
+
+    def step(name, result, words):
+        ended = {"step": name, "result": result, "words": redact_text(words),
+                 "at": _iso(time.time())}
+        last = steps[-1] if steps else {}
+        if last.get("step") == name and last.get("result") == "running" and last.get("began"):
+            # The step `begin` opened: ended in place, with when it began and what it waited.
+            steps[-1] = dict(ended, **{k: last[k] for k in ("began", "wait_s", "wait_bound")
+                                       if k in last})
+        else:
+            steps.append(ended)
+        op_progress.moved()
+
+    return step, begin
+
+
+def _judge(device, r, report, src, via, step, finish, symptom, begin=None):
     """The outcome of the apply, the golden re-check, the symptom (when the check after verify
     did not already read it), and the record."""
     from modules.nsot import receipts
@@ -799,6 +854,8 @@ def _judge(device, r, report, src, via, step, finish, symptom):
                                   f"{golden.get('error') or golden.get('reason') or 'no commit'}"
                                   "): the documentation is not shown true"), sent=True,
                       report=report)
+    if begin is not None:
+        begin("golden", f"reading {device} again against its new golden")
     try:
         again = src.golden_recheck(device, via)
     except Exception as exc:

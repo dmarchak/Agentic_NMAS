@@ -70,39 +70,51 @@ def _declared(steps: list, approved: bool = False) -> tuple:
     """The steps the run declared, chosen by the steps it recorded: the first of the heal
     operations' tables that names every recorded step; else the recorded keys themselves, in
     order, so nothing recorded is hidden and nothing unrecorded is drawn."""
+    keys = [s.get("step") for s in steps if isinstance(s, dict)]
+    for table, labels in heal_tables(approved):
+        if set(keys) <= {k for k, _w in table}:
+            return tuple(table), labels
+    return tuple((k, str(k)) for k in dict.fromkeys(keys) if k), {}
+
+
+def heal_tables(approved: bool = False) -> tuple:
+    """The heal operations' declared steps, each with its short labels: ``((STEPS,
+    STEP_LABELS), ...)``, an act's first (an approved proposal's first when *approved*)."""
     from modules.heal import act, bounce, propose, session_clear
 
-    keys = [s.get("step") for s in steps if isinstance(s, dict)]
-    tables = ((propose.STEPS, act.STEPS) if approved else (act.STEPS, propose.STEPS)) + (
-        bounce.STEPS, session_clear.STEPS)
-    for table in tables:
-        if set(keys) <= {k for k, _w in table}:
-            return tuple(table)
-    return tuple((k, str(k)) for k in dict.fromkeys(keys) if k)
+    first = ((propose.STEPS, propose.STEP_LABELS), (act.STEPS, act.STEP_LABELS))
+    return (first if approved else first[::-1]) + (
+        (bounce.STEPS, bounce.STEP_LABELS), (session_clear.STEPS, session_clear.STEP_LABELS))
 
 
 def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = None,
-              prefix: str = "") -> dict:
+              prefix: str = "", host: str = "") -> dict:
     """An act's recorded *steps* on the stepper (`run_stepper.from_record`): a symptom read
     gone (or none named: `act.read_symptom`'s states) and a record's own good outcomes are
     done; a symptom still present, a rollback and a can't-fix are failed; anything else (a
-    symptom unreadable, a save held) is amber."""
+    symptom unreadable, a save held) is amber. Each column says the operation's short label
+    for *host*."""
     from modules import run_stepper
 
+    table, labels = _declared(steps, approved)
     return run_stepper.from_record(
-        _declared(steps, approved), steps, ended=ended, now=now, prefix=prefix,
+        table, steps, ended=ended, now=now, prefix=prefix,
         good=HEALED + ("gone", "none"),
         bad=("present", "rolled_back", "interrupted", "rejected", "cant_fix"),
-        conditional=("repair", "rollback", "reset"))
+        conditional=("repair", "rollback", "reset"),
+        labels=run_stepper.labels_for(labels, device=host or "the device"))
 
 
-def decision_phase(steps: list, *, now: float = None, prefix: str = "d-") -> dict:
+def decision_phase(steps: list, *, now: float = None, prefix: str = "d-",
+                   host: str = "") -> dict:
     """A decision's recorded steps (`steplog.decision_steps`) against `decide.STEPS`."""
     from modules import run_stepper
     from modules.heal import decide
 
-    return run_stepper.from_record(decide.STEPS, steps, ended=True, now=now, prefix=prefix,
-                                   good=DECISION_GOOD, bad=DECISION_BAD)
+    return run_stepper.from_record(
+        decide.STEPS, steps, ended=True, now=now, prefix=prefix, good=DECISION_GOOD,
+        bad=DECISION_BAD,
+        labels=run_stepper.labels_for(decide.STEP_LABELS, device=host or "the device"))
 
 
 def steps_card(host: str, entry: dict) -> dict:
@@ -116,15 +128,17 @@ def steps_card(host: str, entry: dict) -> dict:
         return None
     decided = [s for s in steps if s.get("row") in ("decision", None)]
     acted = [s for s in steps if s.get("row") not in ("decision", None)]
-    phases = [decision_phase(decided)] if decided else []
+    phases = [decision_phase(decided, host=host)] if decided else []
     if acted:
-        phases.append(act_phase(acted, ended=entry.get("state") != "applying", prefix="a-"))
+        phases.append(act_phase(acted, ended=entry.get("state") != "applying", prefix="a-",
+                                host=host))
     outcome = entry.get("outcome") or ""
     return run_stepper.record_card(
         host, f"The steps self-healing took on {host}", phases,
         ended=entry.get("state") != "applying",
         level="ok" if outcome in HEALED + DECISION_GOOD else level_of(outcome),
-        key=f"heal-steps-{entry.get('incident') or host}")
+        key=f"heal-steps-{entry.get('incident') or host}",
+        summarised=True)                              # the row's cause says why, above it
 
 
 def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
@@ -141,22 +155,70 @@ def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(got.get("started_at") or 0))
     card.update(started=started, actor=got.get("actor") or "the policy")
     if got["state"] == "running":
-        return dict(card, state="running")
+        # The run's REAL steps as they stand now (`op_progress.run_of`: the act's own list),
+        # after its decision's; while it applies, the deploy's stages from the device's hold.
+        from modules import op_progress
+        card["state"] = "running"
+        live = op_progress.run_of(job_id)
+        if live is not None:
+            phases = _decided(network, live["run"], host) + [
+                act_phase(live["steps"], ended=False, host=host)]
+            card["steps"] = run_stepper.record_card(
+                host, f"Self-healing's steps on {host}", phases, ended=False,
+                key=f"heal-run-{job_id[:12]}")
+            stages = _stages(network, host)
+            if stages:
+                card["stages"] = stages
+        return card
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     result = (got.get("payload") or {}).get("result") or {}
     outcome = result.get("outcome") or "failed"
     steps = [s for s in result.get("steps") or [] if isinstance(s, dict)]
-    phase = act_phase(steps, ended=True)
+    phases = _decided(network, result.get("decision") or "", host) + [
+        act_phase(steps, ended=True, host=host)]
     level = level_of(outcome)
     return dict(card, state="result", level=level, outcome=outcome,
                 words=steplog.mark(outcome, result.get("kind") or ""),
                 summary=result.get("words") or "",
+                # The card's own "What happened" says why: the lead names the step alone.
                 steps=run_stepper.record_card(host, f"The steps self-healing took on {host}",
-                                              [phase], ended=True, level=level,
-                                              key=f"heal-run-{job_id[:12]}"),
+                                              phases, ended=True, level=level,
+                                              key=f"heal-run-{job_id[:12]}", summarised=True),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                        time.gmtime(got.get("finished_at") or 0)))
+
+
+def _decided(network: str, decision_id: str, host: str = "") -> list:
+    """The decision that started a heal, as the first phase of its stepper (its recorded
+    steps, `steplog.decision_steps`), or no phase when the decision cannot be read: the act's
+    own steps are still drawn."""
+    from modules.heal import decisions, steplog
+
+    if not decision_id:
+        return []
+    try:
+        decision = decisions.find(network, decision_id)
+    except Exception as exc:                          # noqa: BLE001 (the act's steps stand)
+        log.info("run_card: %s's decision %s could not be read: %s", network, decision_id, exc)
+        return []
+    return [decision_phase(steplog.decision_steps(decision), host=host)]
+
+
+def _stages(network: str, host: str) -> list:
+    """The deploy's stages while a heal applies, from the device's hold (the deploy's own
+    stepper rows, `device_actions.job_steps`), or [] when the heal is not holding the device
+    as a deploy now."""
+    from modules import device_actions
+    from modules.nsot import device_ops
+
+    try:
+        holder = device_ops.holder(network, host)
+    except OSError:
+        return []
+    if not holder or holder.get("operation") != "deploy":
+        return []
+    return device_actions.job_steps("deploy", network, host, holder=holder)
 
 
 # ── A re-subscribe's run, from its record ───────────────────────────────────────────────────
@@ -169,7 +231,8 @@ def record_level(rec: dict) -> str:
     return RECORD_LEVELS.get(rec.get("state") or "", "danger")
 
 
-def record_steps(host: str, rec: dict, *, now: float = None) -> dict:
+def record_steps(host: str, rec: dict, *, now: float = None, labels: dict = None,
+                 summarised: bool = False) -> dict:
     """A re-subscribe's (or a Re-add the receiver's) recorded steps on THE stepper, the step
     to act on leading: `run_stepper.record_card` over the record's own ``steps``, against the
     steps the operation declares."""
@@ -178,11 +241,15 @@ def record_steps(host: str, rec: dict, *, now: float = None) -> dict:
 
     ended = rec.get("state") != "running"
     declared = R.READD_STEPS if rec.get("key") == R.READD_KEY else R.STEPS
+    subs = [s.get("sub") for s in rec.get("subscriptions") or [] if isinstance(s, dict)]
     phase = run_stepper.from_record(declared, rec.get("steps") or [], ended=ended, now=now,
-                                    conditional=("rollback",))
+                                    conditional=("rollback",),
+                                    cut_short=rec.get("state") == "stopped",
+                                    labels=labels or R.step_labels(host, subs))
     return run_stepper.record_card(
         host, f"The steps the re-subscribe took on {host}", [phase], ended=ended,
-        level=record_level(rec) if ended else "", key=f"resub-run-{str(rec.get('id'))[-12:]}")
+        level=record_level(rec) if ended else "", key=f"resub-run-{str(rec.get('id'))[-12:]}",
+        summarised=summarised)
 
 
 def record_outcome(rec: dict) -> dict:
@@ -301,9 +368,37 @@ def resubscribe_view(network: str, host: str, run_id: str, job_id: str = "") -> 
 
     j = capture_job.get(job_id) if job_id else None
     rec = privileged.get(network, run_id)
+    if rec is not None and rec.get("state") == "running" and j is None:
+        from modules.heal import resubscribe as R
+        if not R._in_flight(network, host):
+            # Its record says running, this server holds no job for it and no re-subscribe
+            # holds the device (the kernel frees a hold when its process ends): the run
+            # stopped before it recorded an outcome. Said, never drawn as still running; by
+            # identity, not by a timer.
+            last = next((s for s in reversed(rec.get("steps") or []) if isinstance(s, dict)),
+                        {})
+            return {"state": "stopped", "level": "danger",
+                    "stopped_since": last.get("at") or rec.get("at") or "",
+                    "steps": record_steps(host, dict(rec, state="stopped"))}
     if rec is None or (rec.get("state") == "running" and (j is None or
                                                          j["state"] == "running")):
-        return {"state": "running"}
+        # Running: its REAL steps as they stand now. The job's own list where this server
+        # runs it (`op_progress.run_of`: the list its record keeps, read live); else what its
+        # record held when it was last written.
+        from modules import op_progress
+        from modules.heal import resubscribe as R
+
+        live = op_progress.run_of(job_id) if job_id else None
+        if live is not None and live["run"] == run_id:
+            # Its declared steps are the ones its run attached (a Re-add's are fewer).
+            readd = len(live["declared"]) == len(R.READD_STEPS)
+            now = {"id": run_id, "state": "running", "steps": live["steps"],
+                   "key": R.READD_KEY if readd else R.KEY}
+        else:
+            now = rec
+        return dict({"state": "running"}, **(
+            {"steps": record_steps(host, now, labels=(live or {}).get("labels") or None)}
+            if now and now.get("steps") else {}))
     o = record_outcome(rec)
     return {"state": "result", "level": o["level"], "left_removed": o["removed"],
             "record": dict({k: rec.get(k) for k in ("state", "outcome", "why", "actor", "at",
@@ -311,7 +406,9 @@ def resubscribe_view(network: str, host: str, run_id: str, job_id: str = "") -> 
                            subscriptions=[{k: s.get(k) for k in ("sub", "outcome", "verify",
                                                                  "stale")}
                                           for s in rec.get("subscriptions") or []]),
-            "steps": record_steps(host, rec)}
+            # The result's red box says why (the record's own summary): the lead names the
+            # step that failed and does not say it again.
+            "steps": record_steps(host, rec, summarised=True)}
 
 
 def resubscribe_job_card(network: str, host: str, job_id: str) -> dict:

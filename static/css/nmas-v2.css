@@ -1355,12 +1355,29 @@ button.menu-item[disabled]:hover { background: none; }
 .run-line-failed > strong, .run-line-fail > strong { color: var(--danger); }
 .run-line-partial > strong, .run-line-unreadable > strong { color: var(--warn); }
 .run-at { color: var(--ink-3); }
+.run-reads-said { list-style: none; margin-left: -20px; color: var(--ink-2); }
+.run-reads { margin: 2px 0 0 20px; font-size: 12.5px; }
+.run-reads > summary { cursor: pointer; color: var(--ink-2); }
+/* The last run, and a can't-fix's steps, as one closed line (the operator, 2026-11-11). */
+.resub-last, .att-taken { margin: 6px 0; font-size: 13px; }
+.resub-last > summary, .att-taken > summary { cursor: pointer; }
+.resub-last-danger > summary strong { color: var(--danger); }
+.resub-last-warn > summary strong { color: var(--warn); }
+.resub-show { color: var(--accent); text-decoration: underline; }
+.run-checks { margin: 2px 0 0; }
+.run-checks > summary { cursor: pointer; color: var(--ink-2); }
 .run-trail > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 /* A held device's actions (the operator, 2026-11-11): the Actions menu's note naming the run
    that holds the device, and a Needs attention row's action drawn as that run. */
-.menu-held { color: var(--warn); }
-.menu-held a { font-weight: 600; }
+.held-banner { margin: 0 0 12px; }
+.held-banner a { font-weight: 600; }
 .att-held { font-size: 13px; }
+/* A held row's run, on a second line under its title (the operator, 2026-11-11); the right
+   side holds Open the run alone. */
+.att-line .att-running { grid-column: 2 / 4; grid-row: 2; font-size: 13px; color: var(--ink-2); }
+@media (max-width: 700px) {
+  .att-line .att-running { grid-column: 1 / -1; grid-row: auto; }
+}
 @media (max-width: 640px) {
   .run-row, .run-final { grid-template-columns: 1fr; gap: 6px; }
   .run-el { text-align: left; }
@@ -1916,7 +1933,7 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .sc-pair { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; }
 .sc-pair select { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r);
   background: var(--surface); color: var(--ink); }
-@media (max-width: 760px) {
+@media (max-width: 700px) {
   .sc-part { grid-template-columns: 1fr; gap: 6px; }
   .sc-two { grid-template-columns: 1fr; }
 }

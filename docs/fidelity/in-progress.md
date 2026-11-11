@@ -47,7 +47,14 @@ after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In p
 compared by reading the diff, with no new shot (the templates then hashed
 `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `49241666d3bfd9117c63bad30b7aa46eda4d5acc0c3d2b69f7ec8f233c7189a0`
+Templates sha256: `a2c1502cf47dfe2d48b38321b54cae60ca439bef45c988e6e3866c366369f654`
+
+**Hashed again 2026-11-11 for where a result opens** (the operator, that day: "4. The result
+opens on the device page for now; once the incident page exists, 'Open the result' goes to the
+incident's URL."): `_in_progress.html`'s "Open the result" takes its address from the one
+macro that builds it (`run_href`, `_macros.html`), which gives the address it had: the device's
+page. Nothing drawn moved. Templates sha256 before:
+`49241666d3bfd9117c63bad30b7aa46eda4d5acc0c3d2b69f7ec8f233c7189a0`.
 
 **Hashed again 2026-11-11 for the operator's request of that day**, after a re-subscribe of r7
 that "disappeared from 'running' with NO outcome shown, the row unchanged, and nothing under

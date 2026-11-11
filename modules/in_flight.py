@@ -75,7 +75,7 @@ def merge(holds: list, ops: list, jobs: list) -> list:
     One that has not taken its hold yet is drawn as its device's row, in the hold's words, and
     never "may be stuck": its job is running, which is the only liveness it has (the job row's
     step never moves). Every other row is kept as it is. Each hold row carries its ``list``."""
-    from modules.nsot.device_ops import OPERATION_WORDS
+    from modules.nsot.device_ops import OPERATION_WORDS, STALL_AFTER_SECONDS
 
     held = {(h.get("list", ""), h.get("device", "")): h for h in holds}
     by_id = {j["job"]: j for j in jobs if j.get("state") == "running"}
@@ -86,7 +86,15 @@ def merge(holds: list, ops: list, jobs: list) -> list:
         job = by_id.get(op.get("id"))
         key = (job["list"], job["device"]) if job else None
         if key in held:
-            out[index[key]].update(job=job["job"], card=job["card"])
+            row = out[index[key]]
+            row.update(job=job["job"], card=job["card"])
+            if op.get("own_steps"):
+                # The run records its own steps (`op_progress.attach`): the row's words are
+                # its newest step's, and it has moved when either the hold or the run has
+                # (a re-subscribe notes nothing on its hold, and read "started" throughout).
+                ago = min(row.get("step_ago_s", 0), op.get("step_ago_s", 0))
+                row.update(run_words=op.get("step_words", ""), step_ago_s=ago,
+                           stalled=ago > STALL_AFTER_SECONDS)
         elif job:
             said = CARD_WORDS.get(job["card"]) or OPERATION_WORDS.get(job["card"], job["card"])
             rest.append(dict(op, device=job["device"], list=job["list"], operation=job["card"],
@@ -205,7 +213,9 @@ def _step(row: dict) -> str:
                 waits = s.get("waits") or ""
                 return (f"{s['words']}" + (f": {waits}" if waits else "")
                         + f" · step {i + 1} of {len(steps)}")
-    return row.get("step_words") or row.get("step") or "started"
+    # A run that records its own steps (`merge`'s ``run_words``): its newest step, never the
+    # hold's "started".
+    return row.get("run_words") or row.get("step_words") or row.get("step") or "started"
 
 
 def running_row(row: dict, viewer: str) -> dict:
@@ -387,7 +397,10 @@ def _held_words(holder: dict, viewer: str, job: dict = None) -> dict:
     name = OPERATION_NAMES.get(named, holder.get("operation") or "An operation")
     who = _who(holder.get("actor", ""), viewer)
     return {"name": name, "since": started, "by": who,
-            "words": f"{name} running since {_clock(started)}, by {who}"}
+            "words": f"{name} running since {_clock(started)}, by {who}",
+            # A greyed menu item's reason, on hover and for a reader: short (the operator,
+            # 2026-11-11: "menus hold items and short reasons, never paragraphs").
+            "short": f"held by {name} since {_clock(started)}"}
 
 
 def held_action(list_name: str, hostname: str, viewer: str = ""):
@@ -401,7 +414,8 @@ def held_action(list_name: str, hostname: str, viewer: str = ""):
         holder = device_ops.holder(list_name, hostname)
     except OSError as exc:
         return {"name": "Its hold", "since": "", "by": "", "unread": str(exc),
-                "words": f"its hold could not be read ({exc}): it is treated as held"}
+                "words": f"its hold could not be read ({exc}): it is treated as held",
+                "short": "its hold could not be read: treated as held"}
     if not holder:
         return None
     job = capture_job.for_device(list_name, hostname)

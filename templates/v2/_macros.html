@@ -135,6 +135,15 @@ resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day
 {% endfor %}</pre>
 {%- endmacro %}
 
+{#- Where a run is opened, while it goes on and for its result: its device's page, which
+    reopens the run's card (C537; `routes/device_v2._reopened`). The ONE place this address
+    is built for "Open the result" and "Open the run" (the operator, 2026-11-11: "The result
+    opens on the device page for now; once the incident page exists, 'Open the result' goes
+    to the incident's URL"): that change is made here alone. -#}
+{% macro run_href(device, network=none) -%}
+{{ url_for('device_v2.device', name=device, list=network) }}
+{%- endmacro %}
+
 {#- A time Mercury measured, in the viewer's own zone (the operator, 2026-11-09, C2817: "Show
     times in the viewer's time zone, with UTC on hover and UTC in Details for the record"):
     drawn "HH:MM UTC" by the server and as the browser's own time by nmas_v2.js `drawClock`

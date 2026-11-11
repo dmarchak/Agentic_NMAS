@@ -81,7 +81,9 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
     def run():
         state, payload, error = "done", None, ""
         try:
-            with identity.carried(ident):
+            # The work runs AS this job (`op_progress.running_as`), so an operation that
+            # records its own steps attaches them without being handed its job's id.
+            with identity.carried(ident), op_progress.running_as(job_id):
                 payload = work(job_id)
         except Exception as exc:                  # noqa: BLE001
             log.exception("%s %s failed", kind, job_id)

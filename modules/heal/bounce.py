@@ -149,6 +149,14 @@ STEPS = (("take", "Take the decision, once"),
          ("stable", "Read the stability window from the flap record"),
          ("repair", "Repair when the end is not as before"),
          ("record", "Record the outcome"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels ... No full sentences in the step columns"); the long words above are its
+#: hover. `{device}` is the run's own.
+STEP_LABELS = {"take": "Take decision", "stops": "Check stops", "hash": "Check hash",
+               "hold": "Hold {device}", "pre-read": "Read before", "window": "Declare window",
+               "send": "Send bounce", "watch": "Watch port", "confirm": "Confirm",
+               "verify": "Verify adjacency", "stable": "Check stable", "repair": "Repair",
+               "record": "Record"}
 OUTCOMES = ("bounced", "still_flapping", "not_formed", "unverified", "reverted", "repaired",
             "failed", "refused")
 OUTCOME_WORDS = {"bounced": "bounced; configuration unchanged",

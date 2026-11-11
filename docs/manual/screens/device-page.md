@@ -15,13 +15,16 @@ operations on the device.
 Everything is under **Actions**, one menu, Plan a deploy first: Plan a deploy, Capture, Seed
 intent, Restore from, Remove lines (Mode B),
 Revert intent, Retry rolled-back change, Rotate credential, Persist, Run a privileged command,
-Reload and Retire. **While a run holds the device** (a deploy, a heal, a rotation, a
-re-subscribe, anything that takes it), the menu says so under its first note, "<device> is
-held: <run> running since <time>, by <who>", with **Open the run**, which opens the page on
-that run's card; every row that would change the device is greyed and reads "Not offered: <run>
-running since <time>, by <who>" on hover, because the server refuses a second operation on a
-held device, by name, and never queues it. **Check drift now** and **Diagnose** stay offered.
-The rows return by themselves when the run ends. **An observe-only device** (NetBox's rendered config context sets
+Reload and Retire. Every action runs here: the menu holds its items and nothing else. Revert
+intent and Retry rolled-back change are offered only while a rollback blocks a change on the
+device; an item that is not offered is greyed and says why in a few words on hover. **While
+a run holds the device** (a deploy, a heal, a rotation, a re-subscribe, anything that takes
+it), a banner under the device's name says so across the page, "<device> is held: <run> since
+<time>, by <who> · **Open the run**"; Open the run opens the page on that run's card. In the
+menu every item that would change the device is greyed and reads "Not offered: held by <run>
+since <time>" on hover, because the server refuses a second operation on a held device, by
+name, and never queues it. **Check drift now** and **Diagnose** stay offered: they are reads.
+The banner goes and the items return by themselves when the run ends. **An observe-only device** (NetBox's rendered config context sets
 `mercury.management` to `observe`) is read, captured and drift-reported, and offered nothing
 that changes it: the menu's note names the state and where NetBox set it ("observe (the
 device's local config context)"), and Plan a deploy, Restore from, Remove lines (Mode B),

@@ -35,7 +35,27 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `8dc969d036f434576a2ac665d0a3c0f84c1aac1f0b4c67b46df31516ad3c21fe`
+Templates sha256: `d4fbaddf4bfdb61a68112f162ffe3c47465a59ea162bd464dce8256424dc9441`
+
+**Hashed again 2026-11-11 after the operator's test of the held actions on the host** ("2. A
+Needs attention row with a run in progress: the run's text on a SECOND line under the title;
+only 'Open the run' on the right."). `_attention.html`: a held row's line draws the run's
+words on a second line under its title (`held_run`), once on the row, and its right side
+Open the run alone (`held_open`); under What to do, "Offered again when the run ends." and
+Open the run. A row whose device is not held is drawn as compared. Compared by the template
+diff and the rows tests/test_held_actions.py draws, not a new shot. Templates sha256 before:
+`0ad1f5c974e4dba68c71ba13fae5b59ab3c4b7c247b691127b4ba296cb1b8596`.
+
+**Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("1. On a
+Needs attention card, the last run is ONE line, collapsed by default: 'The last run, 3 h ago:
+re-subscribed; the stream did not come back · 12 steps · Show'. Expanded on click. The full
+detail stays on the result card."). `_attention.html`: a can't-fix row's steps taken are one
+closed line under the cause, "The steps Mercury took: stopped at <step> · N steps · Show",
+the stepper inside it (where the hash of 2026-11-11 below drew the stepper open); and the
+held row's "Open the run" takes its address from the one macro that builds it (`run_href`,
+`_macros.html`), the same address as before. Nothing else on a row moves. Compared by the
+template diff and the row tests/test_run_outcomes.py draws, not a new shot. Templates sha256
+before: `8dc969d036f434576a2ac665d0a3c0f84c1aac1f0b4c67b46df31516ad3c21fe`.
 
 **Hashed again 2026-11-11 for a held device's actions** (the operator, that day: "While a
 device is held by a run, its actions must be disabled, saying 'running since <time>, by

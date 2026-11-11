@@ -534,6 +534,24 @@ def heal_run_job_card(name, job):
     return _strict(render_template("v2/_heal_run.html", c=_opened(c)))
 
 
+@bp.route("/device/<name>/held", methods=["GET"])
+def held_banner(name):
+    """The held-device banner alone (`_held_banner.html`), read now: the page re-reads it when
+    a job starts or ends and when a hold is released, so it appears while a run holds the
+    device and goes when the run ends, without a reload. A READ of the hold the server
+    refuses by (`in_flight.held_action`)."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    held = _held_now(ref, dev)
+    # Only what the banner draws: the device's name, and the hold without the menu's reason.
+    return _strict(render_template(
+        "v2/_held_banner.html", device={"hostname": dev.get("hostname", "")},
+        list_name=ref.name,
+        held={k: v for k, v in held.items() if k != "short"} if held else None))
+
+
 @bp.route("/device/<name>/actions", methods=["GET"])
 def actions_menu(name):
     """The Actions menu alone (C507), read now: the page re-reads it on every key that changes
@@ -546,7 +564,7 @@ def actions_menu(name):
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
                                    tab=_back(request.args), block=_block_state(ref, dev),
                                    rekey=_rekey_held(dev), changes=_changes_offered(dev),
-                                   held=_held_now(ref, dev),
+                                   held=_menu_held(ref, dev),
                                    verify_again=_verify_again_offered(ref, dev)))
 
 
@@ -2107,6 +2125,13 @@ def _held_now(ref, dev):
     from routes.operations import viewer_key
 
     return in_flight.held_action(ref.name, dev.get("hostname", ""), viewer_key())
+
+
+def _menu_held(ref, dev):
+    """What the Actions menu alone draws of a hold: the short reason each greyed item says
+    (the notice itself is the banner's), or None when nothing holds the device."""
+    held = _held_now(ref, dev)
+    return {"short": held["short"]} if held else None
 
 
 def _changes_offered(dev) -> dict:

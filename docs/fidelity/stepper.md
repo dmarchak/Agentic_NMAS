@@ -48,7 +48,39 @@ template only what it draws). The row's name is drawn unlinked, as a non-device 
 is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
 new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `a27b07c753dc627a9888e391591c24b779dd0f6c4012f169e25fb9cad993778f`
+Templates sha256: `3f5612d6866a357041f8b278b27f6d3de8fc76c01792ac8e83c7df1610056927`
+
+**Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
+the failure once. The red summary box and 'Failed at' carry it; the steps list shows each
+step's one-line outcome, with its checks only under the failed step, collapsed. 3. The
+stepper: short labels (2–4 words: 'Read intent', 'Hold r7', 'Remove 101', 'Wait 10 s',
+'Re-add', 'Verify 101', 'Record'), the long text on hover or in the list below. No full
+sentences in the step columns."). For a run drawn from its own record: a step's column says
+the operation's short label (`labels`, from its `STEP_LABELS`) and its hover the declared
+words; "Failed at: <label>" names the step and says why only where the card it is on has no
+summary of its own (`summarised`); The steps taken is one line a step, and what a step that
+did not pass read sits under that step alone in a closed list ("What it read"), a step that
+passed showing none. The boards' steppers (a deploy, a save, a rotation) declare words of one
+to four words already and are drawn as compared: every verdict below stands. Compared by the
+diff and the markup tests/test_run_progress.py and tests/test_run_outcomes.py draw, not a new
+shot. Templates sha256 before:
+`7aa46f83f71efe6575ad2042a50ccea96537c183cfdaf198c59bb03d8962b62a`.
+
+**Hashed again 2026-11-11 for the live stepper** (the operator, that day: "live waits with a
+countdown, and each verify read as it happens"; "Every state shown must be the run's real
+current step"). The script gains `waitWords`: a step's declared wait counted down from when
+it began and the length the server sent ("6 s left of 10 s"; a bound, "up to 150 s: 96 s
+left"; at zero "its 10 s are up; waiting for the next step"), in the words the model's `_wait`
+draws first. The model draws what a step read compactly (`_lines`, `reads_words`): its final
+checks, or while it runs the newest read of each check, then one line saying its reads, and
+the macro puts every read in a closed list one level down ("The N reads", newest first),
+because a verify makes up to 120 reads and a card never draws one long expanded list. A run
+that stopped without recording its end marks the steps after its last as not reached
+(`cut_short`). Nothing the boards draw moved, so every verdict below stands; the countdown and
+the reads are not on SaveProgress or StepperPhone: **deviation**, logged in
+STANDING_APPROVAL_LOG ("The one stepper, live"). Compared by the diff, the markup
+tests/test_run_progress.py draws and its real-browser test, not a new shot. Templates sha256
+before: `a27b07c753dc627a9888e391591c24b779dd0f6c4012f169e25fb9cad993778f`.
 
 **Hashed again 2026-11-11 for the operator's request of that day** ("a long operation shows a
 stepper, with the current step, each step done, failed or pending, live waits with a countdown,

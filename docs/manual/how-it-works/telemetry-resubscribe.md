@@ -23,9 +23,10 @@ a reason; and the button, named for the work, **Re-subscribe <device>'s telemetr
 busy on itself until the card answers in place. It is offered only for a device found in
 exactly one network.
 
-**While a run holds the device**, nothing here offers a second one. The row's action, on its
-line and under What to do, reads "<run> running since <time>, by <who>" with **Open the run**,
-which opens the device's page on that run's card. The card opened while a re-subscribe of the
+**While a run holds the device**, nothing here offers a second one. A second line under the
+row's title reads "<run> running since <time>, by <who>", and the right side of the line, and
+What to do, hold **Open the run** alone, which opens the device's page on that run's card. The
+card opened while a re-subscribe of the
 device is going (a refresh, a second tab, another person) draws that run, never the offer
 again; held by any other operation, it draws the program and, in the button's place, "Not
 offered while <device> is held: <run> running since <time>, by <who>. One operation per device
@@ -158,6 +159,27 @@ why.
 11. `record`: the run is written with who, when, why, the hash, each send and each check, and
     each subscription's own outcome. History shows it.
 
+**While it runs**, the card draws these steps on one stepper, from the steps the run itself
+has recorded: each **done**, **running**, **pending**, **failed** or **not reached**, and
+nothing done that the run has not recorded. Each step's column says it in two to four words
+("Read intent", "Hold <device>", "Remove 101", "Wait 10 s", "Re-add", "Verify 101", "Record"); the
+step's full words, as listed above, are on hover. Under them, **Now: <step>** names the step
+it is in, with the run's own words; at the wait it counts down ("6 s left of 10 s") from when
+the wait began and the 10 s the run declared, and when the time is up it says so and waits for
+the run's next step. The card moves by itself at each step. In the top bar's **In progress**
+list the run is one row, **Re-subscribe telemetry**, whose words are the step it is in ("Wait
+10 s · step 7 of 11"), never "starting" or "started". A step that reads draws, while it runs,
+the newest read of each check and one line saying how many reads it has made.
+
+**A run that stopped.** If the run's record says it is running, and nothing is running it (this
+server holds no job for it, and no re-subscribe holds the device: a hold ends when its process
+does), the card says so in place of "Re-subscribing…": "This run stopped before it recorded an
+outcome: no step recorded since <time>", with the steps it had recorded, those it never reached
+marked **not reached**. Whether each receiver is in place is then not known from the record:
+read the device's configuration first. **Open the card again…** draws the card afresh, a read
+that sends nothing: it leads with Re-add the receiver for each receiver the run removed and did
+not put back.
+
 ## What it ends with
 
 Each subscription has its own outcome, and the run's is its worst one, never green over a
@@ -178,14 +200,19 @@ partial:
 **Where the outcome is read.** A run that ended always leaves its outcome in three places, so
 it is never lost by leaving the page, refreshing it, or Mercury restarting:
 
-- **On the card**, in place: the outcome first, each subscription's three checks, then **The
-  steps taken**: the steps above on one stepper, each done, failed, not reached or not needed,
-  the failed step first with what it read (each verify with its own device, stream and collector
-  checks), and every step as it was recorded with its time. A run that did not end clean offers
-  the next action under it: **Re-add the receiver for <id>…** when it left one removed, else
-  **Preview a re-subscribe again…**; both draw the card again and send nothing.
-- **On the lost stream's row**: the card opened again within a day leads with **The last
-  run**, who ran it, how it ended and the steps it took, above the offer to run it again.
+- **On the card**, in place: the outcome first, in a box that says what failed and why, once;
+  each subscription's own line; then the stepper, with **Failed at: <step>** naming the step
+  it stopped at; then **The steps taken**: one line a step, its state, its time and its
+  one-line outcome. What a step that did not pass read sits under that step alone, closed, as
+  **What it read** (each failed verify's device, stream and collector checks, one line saying
+  its reads, and every read one level further down, **The N reads**); a step that passed
+  shows no checks. A run that did not end clean offers the next action under it: **Re-add the
+  receiver for <id>…** when it left one removed, else **Preview a re-subscribe again…**; both
+  draw the card again and send nothing.
+- **On the lost stream's row**: the card opened again within a day leads with one closed
+  line, **The last run, <how long ago>: <how it ended> · N steps · Show**, in the outcome's
+  colour; opened, it shows who ran it and the steps it took. The full detail stays on the
+  run's own result card. The offer to run it again is under the line.
 - **In the top bar's In progress chip**: one row while it runs, **Re-subscribe telemetry** on
   its device, and when it ends an entry under **Finished, not opened yet** for the person who
   started it, with its outcome and how many steps it recorded, until they open it. **Open the

@@ -94,6 +94,12 @@ STEPS = (("take", "Take the decision, once"),
          ("send", "Read the session again, then send the clear once"),
          ("verify", "Verify: the session Established within its measured bound"),
          ("record", "Record the outcome"))
+#: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
+#: "short labels ... No full sentences in the step columns"); the long words above are its
+#: hover. `{device}` is the run's own.
+STEP_LABELS = {"take": "Take decision", "stops": "Check stops", "plan": "Plan clear",
+               "hold": "Hold {device}", "route": "Check route", "window": "Declare window",
+               "send": "Send clear", "verify": "Verify session", "record": "Record"}
 OUTCOMES = ("cleared", "not_back", "reset", "unverified", "rejected", "refused")
 OUTCOME_WORDS = {"cleared": "cleared; configuration unchanged",
                  "not_back": "cleared; the session did not come back",

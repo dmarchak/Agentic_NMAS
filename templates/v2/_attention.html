@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how, badge, clock, heal_cause -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge, clock, heal_cause, run_href -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key).
     Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
@@ -16,12 +16,17 @@
     opening the row. Its full set, with each How does this work?, is under What to do. -#}
 {#- A run holds the device a row's action would change (the operator, 2026-11-11;
     `in_flight.mark_held`, read from the hold the server refuses by): the action is not
-    offered, the line says what runs, since when and by whom, and links to the run. -#}
-{%- macro held_line(r) -%}
-<span class="att-held muted" role="status" data-held="{{ r.held.device }}" title="{{ r.held.words }}: one operation per device at a time">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span><a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.held.device, list=r.held.list) }}">Open the run</a>
+    offered. The run's words are said ONCE on the row, on a second line under its title
+    (`held_run`); the right side of the line, and What to do, hold Open the run alone
+    (`held_open`). -#}
+{%- macro held_run(r) -%}
+<span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: the row's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
+{%- endmacro -%}
+{%- macro held_open(r) -%}
+<a class="btn btn-small btn-outline" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
 {%- endmacro -%}
 {%- macro primary(r, nets) -%}
-{%- if r.held %}{{ held_line(r) }}
+{%- if r.held %}{{ held_open(r) }}
 {%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
 {#- Board H, artboard D and E: a proposal's Review the fix… opens the row to its card (nmas_v2.js
     `citeClicked`, `a.att-jump`: every section holding the card opened, the card focused). -#}
@@ -71,6 +76,7 @@
       <summary class="att-line">
         <span class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
         <h2 class="att-what" title="{{ r.what }}">{{ r.what }}</h2>
+        {%- if r.held %}{{ held_run(r) }}{% endif %}
         <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted" title="Its source does not record when the condition began; the row stands while the condition holds, and its reading's age is below.">start not tracked</span>{% endif %}</span>
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>
@@ -124,7 +130,7 @@
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
         {#- Each `open` an action can carry has its own control, and each control lands on what
             it names (C372: "Open on today's page" opened a page and nothing on it). -#}
-        {%- if r.held %}{{ held_line(r) }}
+        {%- if r.held %}<span class="att-held muted">Offered again when the run ends.</span>{{ held_open(r) }}
         {%- elif r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
         {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_apply_page" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>{{ how('monitoring-templates', compact=True, op='the apply') }}
         {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_propose" href="{{ url_for('v2.monitoring_profile', propose=1) }}">Propose on Profile…</a>{{ how('monitoring-templates', compact=True, op='the proposal') }}
@@ -238,7 +244,11 @@
             hypothesis labelled as one; then what Mercury did or would do. -#}
         {%- if r.heal_cause %}{{ heal_cause(r.heal_cause) }}{% endif %}
         <p class="att-cause">{{ r.cause }}</p>
-        {%- if r.steps_taken %}{% from "v2/_run_stepper.html" import run_stepper %}{{ run_stepper(r.steps_taken) }}{% endif %}
+        {#- The steps taken, ONE line, closed until a person opens it (the operator,
+            2026-11-11); the cause above says why it stopped. -#}
+        {%- if r.steps_taken %}{% from "v2/_run_stepper.html" import run_stepper %}
+        <details class="att-taken" data-keep="att-taken-{{ r.id }}"><summary>The steps Mercury took{% if r.steps_taken.lead %}: stopped at {{ r.steps_taken.lead.words }}{% endif %} · {{ r.steps_taken.trail | length }} step{{ 's' if r.steps_taken.trail | length != 1 }} · <span class="resub-show">Show</span></summary>{{ run_stepper(r.steps_taken) }}</details>
+        {%- endif %}
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
       </div>
       {#- Board H's amendment, H17 (19.3, artboards J and L): Mercury's diagnosis attached to

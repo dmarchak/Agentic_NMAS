@@ -100,7 +100,9 @@ class TestTheMenu:
         menu = html[html.index('role="menu"'):html.index('class="tabs"')]
         row = menu[menu.index('data-op="rotate"') - 200:menu.index('data-op="rotate"') + 1500]
         assert 'hx-get="/v2/device/r2/rotate?back=overview&amp;list=Lab"' in row
-        assert "Every action runs here." in menu
+        # The menu holds items only (the operator, 2026-11-11): its general explanation is
+        # the manual's Actions section, opened by the (i) beside the menu.
+        assert "Every action runs here." not in menu
         page = rot["client"].get("/v2/device/r2?op=rotate").get_data(as_text=True)
         assert 'hx-post="/v2/device/r2/rotate/preview?list=Lab"' in page[page.index('id="tab-body"'):]
 

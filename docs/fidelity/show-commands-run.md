@@ -31,7 +31,21 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `04b001ddeb8a8a59e7900aaeca459c89380f5cd353dc294f9a192fccb1cfad95`
+Templates sha256: `d8cf8534d894e9184e68709f9ba92464eadfa388322a1a5c0a4463b4931e2811`
+
+**Hashed again 2026-11-11 after the operator's test of the first slice**, for
+`_run_stepper.html` alone ("Say the failure once"; "short labels ... No full sentences in the
+step columns"): the macro's lead and its steps-taken list changed for a run drawn from its own
+record (docs/fidelity/stepper.md). This page draws the stepper's bar and counts
+(`run_summary`), which did not change: no region here moved and every verdict stands.
+Templates sha256 before: `6751f45fc0d4dcad50420aeab93be7452ee9b51676dbf5b7b45cbddfd076fe62`.
+
+**Hashed again 2026-11-11 for the live stepper**, for `_run_stepper.html` alone (the operator,
+that day: "live waits with a countdown, and each verify read as it happens"): the macro's
+lead step carries its wait's bound for the countdown, and a step's reads go in a closed list
+one level down (docs/fidelity/stepper.md). This page draws the stepper's bar and counts
+(`run_summary`), which did not change: no region here moved and every verdict stands.
+Templates sha256 before: `04b001ddeb8a8a59e7900aaeca459c89380f5cd353dc294f9a192fccb1cfad95`.
 
 **Hashed again 2026-11-11 for the operator's request of that day**, for `_run_stepper.html`
 alone ("a long operation shows a stepper, with the current step, each step done, failed or

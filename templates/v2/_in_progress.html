@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, run_href -%}
 {#- The In progress chip in every v2 page's top bar (C537; boards A and B, canvas v66, counted as
     signed off 2026-10-16 under the Phase 7 mode). Drawn from `/operations/in_flight` asked by
     htmx (`in_flight.chip`): absent while nothing runs and nothing waits to be opened; else the
@@ -50,7 +50,7 @@
     <div class="ip-row">
       <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
         <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
-      <a class="btn btn-small" href="{{ url_for('device_v2.device', name=f.device, list=f.list) }}">Open the result</a>
+      <a class="btn btn-small" href="{{ run_href(f.device, f.list) }}">Open the result</a>
     </div>
     {%- else %}
     <p class="ip-note">An operation that finishes while you are elsewhere stays here, with its outcome, until you open it.</p>
