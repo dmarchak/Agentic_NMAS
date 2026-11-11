@@ -69,6 +69,7 @@ def answer_view(network: str, got: dict) -> dict:
     ``question``, ``checked``), the words as typed, the title and words, the checks' rows,
     Mercury's choices, the refusal's offers, the policy the next control carries, and the
     call's id and cost."""
+    from modules import sdn_ops_page
     from modules.sdn import policy_intent
 
     a = {"network": network, "state": got.get("state", "refused"), "kind": got.get("kind", ""),
@@ -77,7 +78,9 @@ def answer_view(network: str, got: dict) -> dict:
          "decided": got.get("decided", ""), "call_id": got.get("call_id", ""),
          "cost": f"{float(got.get('cost_usd') or 0.0):.4f}", "by": got.get("by", "mercury"),
          "rows": list(got.get("rows") or []), "offers": list(got.get("offers") or []),
-         "typed_masked": got.get("typed_masked")}
+         "typed_masked": got.get("typed_masked"),
+         # A policy the protected set refused keeps a record of its own (C2944).
+         "refusal": sdn_ops_page.refusal_said(got.get("refusal"))}
     ask = got.get("ask") if got.get("state") == "asked" else None
     a["choices"] = ({"word": ask["word"], "candidates": ask["candidates"]} if ask else None)
     policy = got.get("policy")
@@ -87,16 +90,18 @@ def answer_view(network: str, got: dict) -> dict:
     return a
 
 
-def preview_card(network: str, got: dict) -> dict:
+def preview_card(network: str, got: dict, refusal: dict = None) -> dict:
     """A policy's preview (`policy_intent.preview`) as the flow-operation card draws it, with
-    the policy's own header and the policy the confirm carries; or its refusal."""
+    the policy's own header and the policy the confirm carries; or its refusal, with the
+    record it kept when the protected set refused it (*refusal*, C2944)."""
     from modules import sdn_ops_page
 
     chk = got.get("check") or {}
     policy = chk.get("policy") or {}
     if not chk.get("ok"):
         return sdn_ops_page.refused(network, "policy", f"{chk.get('title') or 'refused'}: "
-                                                       f"{chk.get('words', '')}")
+                                                       f"{chk.get('words', '')}", refusal)
     extra = {"label": f"Policy {policy.get('id', '')}: {policy.get('words', '')}",
              "policy": policy_json(policy)}
-    return sdn_ops_page.preview(network, "policy", chk["ask"], got["plan"], extra)
+    return sdn_ops_page.preview(network, "policy", chk["ask"], got["plan"], extra,
+                                refusal=refusal)

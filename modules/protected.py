@@ -630,14 +630,45 @@ def flow_refusal(pset: dict, changes: list, dpid, connection: dict, *, writer: s
     the controller connection's control channel (`control_plane`, C2022), then the NetBox
     classes *writer* does not own, then the protected objects a flow names. An unreadable
     *pset* refuses every change, naming why."""
+    return flow_refusal_detail(pset, changes, dpid, connection, writer=writer)["words"]
+
+
+#: What of the protected set refused a flow write, as its record names it (`refused_by`).
+GUARDS = {"control_channel": "the control channel", "class": "a protected flow class",
+          "object": "a protected object", "unreadable": "the protected set, unreadable"}
+#: The citation every class and object refusal ends with (`flow_refusal_detail`).
+CITATION = "B, C2379"
+
+
+def refused_by(guard: str, name: str, *, invariant: str = "", source: str = "", met=(),
+               citation: str = "") -> dict:
+    """One thing of the protected set that refused a write, as the refusal's record keeps it
+    (`flow_intent.record_refusal`, C2944): its *guard* (a `GUARDS` key), its *name*, the
+    class's *invariant* and NetBox *source*, what of the write *met* it, in words, and the
+    refusal's *citation*."""
+    return {"guard": guard, "name": name, "invariant": invariant, "source": source,
+            "met": [str(m) for m in met], "citation": citation}
+
+
+def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
+                        writer: str) -> dict:
+    """`flow_refusal` with what refused, for the record of a refused write (C2944):
+    ``{"words", "by": [`refused_by`]}``; *words* ``""`` and *by* empty when nothing refuses.
+    *by* names what the refusal's words name: the control channel, the one class or the
+    objects the first refused change met, or the set that could not be read."""
     from modules.sdn import control_plane
 
-    refused = control_plane.refusal(changes, connection, who=writer)
-    if refused:
-        return refused
+    channel = control_plane.refusal_detail(changes, connection, who=writer)
+    if channel["words"]:
+        return {"words": channel["words"], "by": [refused_by(
+            "control_channel", "control channel", invariant="untouchable",
+            source=f"the controller connection {(connection or {}).get('name') or ''}".strip(),
+            met=channel["met"], citation=channel["citation"])]}
     if pset.get("state") == "unreadable":
-        return (f"the protected set could not be read ({pset.get('error')}), so no flow can be "
-                "checked against it: nothing is sent")
+        return {"words": (f"the protected set could not be read ({pset.get('error')}), so no "
+                          "flow can be checked against it: nothing is sent"),
+                "by": [refused_by("unreadable", "the protected set",
+                                  met=[str(pset.get("error") or "")])]}
     for n, change in enumerate(changes or []):
         do = change.get("do")
         flows = []
@@ -662,16 +693,21 @@ def flow_refusal(pset: dict, changes: list, dpid, connection: dict, *, writer: s
                     if not met:
                         continue
                 owners = ", ".join(cls.get("owners") or []) or "none"
-                return (f"change {n + 1} {verb} a flow whose match meets the protected class "
-                        f"{cls['name']} ({cls['invariant']}; {cls['source']}): "
-                        f"{'; '.join(met)}. Its owners are {owners}, and this write is "
-                        f"{writer}'s: nothing is sent (B, C2379)")
+                return {"words": (
+                    f"change {n + 1} {verb} a flow whose match meets the protected class "
+                    f"{cls['name']} ({cls['invariant']}; {cls['source']}): "
+                    f"{'; '.join(met)}. Its owners are {owners}, and this write is "
+                    f"{writer}'s: nothing is sent ({CITATION})"),
+                    "by": [refused_by("class", cls["name"], invariant=cls["invariant"],
+                                      source=cls["source"], met=met, citation=CITATION)]}
             if not removal:
                 hits = _object_hits(pset, dpid, flow)
                 if hits:
-                    return (f"change {n + 1} {verb} a flow naming a protected object: "
-                            f"{'; '.join(hits)}. No write may: nothing is sent (B, C2379)")
-    return ""
+                    return {"words": (
+                        f"change {n + 1} {verb} a flow naming a protected object: "
+                        f"{'; '.join(hits)}. No write may: nothing is sent ({CITATION})"),
+                        "by": [refused_by("object", h, citation=CITATION) for h in hits]}
+    return {"words": "", "by": []}
 
 
 def switch_note(pset: dict, dpid) -> str:

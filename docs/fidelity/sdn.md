@@ -134,8 +134,8 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): Changes to the sheet | I: "▾ Changes to the sheet (6)", When, Who, What, "3 earlier…" | collapsed, "(6), 1 removed", the newest 20 with the page's stamps, the rest in the downloaded Markdown | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 2) |
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html
-Templates sha256: `85b6e0ae867f46a6ec4dda49798d5a68e4cff94f0c2baf952620044707f4c66d`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
+Templates sha256: `8519b0cd49c02efdb9cb6bc0d3d85176a18108d9b390324817fb058941b73b94`
 Hashed again 2026-11-11 for C2985, C2675 and C2983 (a controller taken as it is; the operator
 at the Lab 9 sitting: "every fix through Mercury ... No solution may require the CLI", and for
 this item "a route for listen.conf's /opt/ryu-apps ExecStart through Mercury or the installer
@@ -282,6 +282,54 @@ walk's `_sdn_analyse` provider, which now checks both answers again (the templat
 hashed `f9d47fc90b95e69f7d3179823af50395f3516483215d79bcfa7aa22b62f5b8d5`). No region row is
 added here: the control and its region are a deviation from artboard I that is the
 operator's to sign, with its line in docs/STANDING_APPROVAL_LOG.md.
+
+Hashed again 2026-11-11 ~07:5x UTC for C3001 (the Lab 9 sitting, B1's failure 1: "Collect now
+shows its snapshot's id only in a hover text, History records no collection, and no screen
+lists the kept snapshots"; board lab9-sdn I, which draws none of it): `_sdn_analyse.html`
+gains, under the bar and its notices and above the two cards, (1) one small line once a
+snapshot is kept: "Snapshot snap-<16 hex> [Copy] collected <date and time> UTC by <who>: N
+switches, M flows" (the id as text in the card's mono face, Copy the page's own copy control;
+"of the R read" after the flows when a switch's table was longer than the snapshot keeps),
+(2) one warning line only when a collection could not be recorded for History, and (3)
+**Kept snapshots (N), the newest collected <age>**, a collapsed disclosure in the style of
+Changes to the sheet, drawn only while a snapshot is kept. Opened, it asks once for its rows
+(`_sdn_snapshots.html`, a new fragment, added to the templates compared above): one muted
+line ("Showing 1 to 10 of N, newest first…"), a table in the card's own table style
+(Snapshot with Copy, Collected (UTC), Switches, Flows, Seal: holds, broken or unreadable with
+why), and Older and Newer as plain links once more than ten are kept. **What differs in a
+state the board draws:** with a snapshot kept, the card is two lines taller between the bar
+and the cards (the snapshot's line and the collapsed Kept snapshots); the bar, both cards and
+the trace tool's card draw exactly as before, and with no snapshot kept nothing is added.
+`_sdn_op.html` gains one small line under a refusal, only when the protected set made it
+(C2944, below). Compared by reading the templates, with no new shot; the states are drawn by
+tests/test_sdn_snapshots.py and the v2 walk's `_sdn_analyse` provider, which now asks for the
+list (the templates before, without the new fragment, hashed
+`e75d957ea9190c37324a555591e6bb491c340eeb4c93f1187637d7a72aad0960`). No region row is added
+here: the line, the list and its paging links are a deviation from artboard I that is the
+operator's to sign, with its line in docs/STANDING_APPROVAL_LOG.md ("Board lab9-sdn I built
+for C3001").
+
+Hashed again the same day for C2944 (History › Export read 0 protected-flow refusals with
+refusals made; boards SdnFlowEdit and SdnResponse): `_sdn_op.html`'s refusal ("Nothing was
+sent: <why>.") gains one faint line under it, only when the protected set refused the press:
+"This refusal is recorded in History, as you: what was asked and what of the protected set
+refused it.", History a link to the network's SDN rows; or, when the record could not be
+written, a warning line, "This refusal could not be recorded: <why>.". The result card of a
+confirm the protected set refused draws the same line where it drew "Not recorded: nothing
+reached the record." Every other refusal, every preview and every other result draw exactly
+as before; no other region moves. Compared by reading the templates, with no new shot; the
+states are drawn by tests/test_sdn_refusals.py. Its line in docs/STANDING_APPROVAL_LOG.md:
+"Boards SdnFlowEdit, SdnResponse and lab9-sdn E built for C2944".
+
+Hashed again 2026-11-11 ~08:3x UTC, C2944 again (the record is a verified person's):
+`_sdn_op.html`'s line under a refusal by the protected set has a third form, drawn for a press
+that is no verified person's, in the same faint style and never as a warning: "This refusal is
+not recorded: a refusal's record is made for a verified person, and this request is not one.
+Sign in, and a refusal like this one is recorded in History." The refusal above it is as it
+was ("Nothing was sent: <why>."); a verified person's card and every other state draw as the
+paragraph above says. Compared by reading the templates, with no new shot; the state is drawn
+by tests/test_sdn_refusals.py's `TestWhoIsRecorded` (the templates before hashed
+`766d4871749160737c7170820f86ea912ed361300fbe6e36e88768a57c4242ac`).
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

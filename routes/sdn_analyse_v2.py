@@ -3,7 +3,10 @@ docs/boards/lab9-sdn.html, self-signed 2026-11-10): the analyst's region, its tw
 its planted-issue sheet (modules/sdn/analyst.py).
 
 - **Collect now** starts the collection job (a read of the network's controllers, never a page
-  view), one at a time per network; the region redraws when the job announces ``sdn``.
+  view), one at a time per network; the region redraws when the job announces ``sdn``, and
+  then names the snapshot it kept by its id; each collection is a row on History
+  (`history_sources.sdn_collections`), and **Kept snapshots** lists every one kept, a page
+  at a time, asked when it is opened (`snapshots`, a read).
 - **Analyse this network** asks ONE recorded, capped AI call over the network's latest
   snapshot, as the person who pressed it; its answer is checked in code and drawn in place.
 - **Analyse with the trace tool** (Lab 9 B4) asks the same over the same snapshot through the
@@ -59,8 +62,24 @@ def collect():
     from modules.sdn import analyst
 
     network = _network()
-    got = analyst.start_collection(network, actor=identity.request_actor())
+    actor = identity.request_actor()
+    got = analyst.start_collection(network, actor=actor,
+                                   actor_verified=identity.actor_verification(actor))
     return _region(network, {"collect": got})
+
+
+@bp.route("/snapshots", methods=["GET"])
+def snapshots():
+    """The kept snapshots, one page (C3001), asked when the card's list is opened and by its
+    Older and Newer links: each snapshot's id, when it was collected, how many switches and
+    flows it holds and whether its seal holds (`analyst.kept_page`: at most ten files read
+    and hashed). A read: nothing is written and no controller is asked."""
+    from modules.sdn import analyst
+
+    network = _network()
+    start = request.args.get("start", "0")
+    page = analyst.kept_page(network, int(start) if start.isdigit() else 0)
+    return _strict(render_template("v2/_sdn_snapshots.html", k=dict(page, network=network)))
 
 
 @bp.route("/ask", methods=["POST"])

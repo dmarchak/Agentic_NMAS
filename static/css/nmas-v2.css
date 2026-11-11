@@ -3110,6 +3110,12 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-an-row-act[open] { flex-basis: 100%; border-top: 1px solid var(--line-2); padding-top: 6px; }
 .sdn-an-survives { margin: 0; }
 .sdn-an-changes > summary { cursor: pointer; color: var(--ink-2); }
+/* C3001: the latest snapshot named by its id under the bar, and the kept snapshots, a
+   collapsed list that reads a page of them when it is opened. */
+.sdn-an-snap { margin: 0; overflow-wrap: anywhere; }
+.sdn-an-kept > summary { cursor: pointer; color: var(--ink-2); }
+.sdn-an-kept-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.sdn-an-kept-rows p { margin: 0; }
 /* Lab 9 B4: Analyse with the trace tool, its own card under the two (board I's alternative). */
 .sdn-an-tools { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .sdn-an-tools .sdn-an-bar { margin: 0; }

@@ -537,7 +537,9 @@ is read.
   listed in **Every network**'s log.
 - **False positives and failures:** each SDN detection dismissed, with its reason and who;
   each AI classification the check refused; each response AUTO decided on and could not
-  send, a protected-flow refusal named as one; each flow operation whose Verify failed or
+  send, a protected-flow refusal named as one; each flow change, policy, response or
+  re-apply of a verified person's that the protected set refused, counted with AUTO's under
+  protected-flow refusals, each row saying which it was; each flow operation whose Verify failed or
   whose request the controller refused, with what its rollback achieved; each evaluation call
   that found a threat in traffic no rule fired on; each planted issue each analysis in the
   range missed (Analyse this network's and Analyse with the trace tool's), linking that
@@ -559,6 +561,7 @@ carried forward. Every text is masked as History masks what it draws. A file lis
 10000 rows and says how many it left out; its totals count every row. A range with nothing
 in it says so, and its files still download, saying none. A record that cannot be read is
 said on the card and in the file, never a shorter log. The cards redraw when an AI call, an
-SDN record or an answer said wrong is recorded. Nothing is written. See
+SDN record or an answer said wrong is recorded; a refusal by the protected set is counted
+when the tab is next opened. Nothing is written. See
 [History › Export: the two logs](history-export).
 

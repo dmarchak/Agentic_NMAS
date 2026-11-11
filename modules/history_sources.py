@@ -2015,6 +2015,45 @@ def _sdn_sent(r: dict, configured: bool) -> str:
     return ", ".join(said)
 
 
+def sdn_refused_by(row: dict) -> str:
+    """What of the protected set refused a write, from its record (`flow_intent.
+    record_refusal`): each class, object or the control channel by name, with its invariant
+    and its citation, "dhcp (untouchable; B, C2379); dns (must_reach dns; B, C2379)"."""
+    said = []
+    for b in row.get("refused_by") or []:
+        inside = "; ".join(x for x in (b.get("invariant"), b.get("citation")) if x)
+        said.append(f"{b.get('name') or 'the protected set'}" + (f" ({inside})" if inside else ""))
+    return "; ".join(said)
+
+
+def _sdn_refusal(r: dict, switch: str, members) -> dict:
+    """One press the protected set refused, as History's row (C2944): what was refused and
+    where, the switch by its name, who with how they were verified, the refusal's words, and
+    under the record what was asked and each thing that refused it. Nothing was sent."""
+    from modules.sdn import flow_intent
+
+    what = flow_intent.REFUSED_WHAT.get(r.get("what"), "flow change")
+    stage = flow_intent.REFUSED_STAGE.get(r.get("stage"), "")
+    policy = r.get("policy") or {}
+    where = switch or ("a switch no stored read names" if r.get("dpid_hex") else "")
+    head = f"{what[0].upper()}{what[1:]} refused by the protected set"
+    event = _event(
+        r.get("at"), "sdn",
+        f"{head}{' on ' + where if where else ''} {stage}: nothing sent".replace("  ", " "),
+        [switch] if switch and (members is None or switch in members) else [],
+        subject=switch, who=_who(r.get("actor", ""), r.get("actor_verified", "")),
+        detail=str(r.get("words") or ""), outcome="refused",
+        record=[("Refusal", r.get("id")), ("Asked", "; ".join(r.get("asked") or [])),
+                ("Refused by", sdn_refused_by(r)),
+                ("From", "; ".join(b.get("source") or "" for b in r.get("refused_by") or []
+                                   if b.get("source"))),
+                ("Policy", policy.get("id")), ("AI call", r.get("call_id")),
+                ("Datapath", r.get("dpid_hex")), ("Controller", r.get("connection")),
+                ("Verified by", r.get("actor_verified"))])
+    event["record_closed"] = True
+    return event
+
+
 def sdn_operations(ctx):
     """Each SDN operation (PHASE8_PLAN 17.1 S8 and S16, modules/sdn/flow_ops.py; a switch's
     OpenFlow configuration, modules/sdn/openflow_config.py): a person's flow change, a response
@@ -2036,11 +2075,24 @@ def sdn_operations(ctx):
     got = flow_intent.operations(ctx["ref"].name)
     if got["state"] == "unreadable":
         return _out(errors=[f"the SDN operations could not be read: {got['error']}"])
-    names = _sdn_switch_names(ctx["ref"], got["rows"])
+    # With them, by time, each press the protected set refused (C2944, `_sdn_refusal`): the
+    # same store's rows of another kind, each kind in its own order.
+    refused = flow_intent.refusals(ctx["ref"].name)
+    if refused["state"] == "unreadable":
+        return _out(errors=["the SDN refusals by the protected set could not be read: "
+                            f"{refused['error']}"])
+    kept = sorted(got["rows"] + refused["rows"], key=lambda r: str(r.get("at") or ""))
+    names = _sdn_switch_names(ctx["ref"], kept)
     members = ctx.get("members")
     events = []
-    for r in got["rows"]:
+    for r in kept:
         if not _recent(ctx, r.get("at")):
+            continue
+        if r.get("kind") == "refused":
+            switch = names.get(str(r.get("dpid_hex") or "").lower()) or ""
+            if ctx["device"] and switch != ctx["device"]:
+                continue
+            events.append(_sdn_refusal(r, switch, members))
             continue
         response = r.get("response") or {}
         kind = response.get("kind") or ""
@@ -2116,6 +2168,44 @@ def sdn_operations(ctx):
                 events[-1]["changes"] = [dict(c) for c in r["changes"]]
     events = events[-ctx["limit"]:]
     return _out(events)
+
+
+def sdn_collections(ctx):
+    """Each collection SDN › Flows' Collect now ran (C3001; `analyst.collections`, the
+    network's own record): who started it and how they were verified, when it ended, and the
+    snapshot it kept with how many switches and flows that holds, or why it kept nothing.
+    The network's own row, about no one device, so a device's History tab draws none. The
+    snapshot's id sits under "Details for the record"; SDN › Flows' Kept snapshots lists it
+    with its seal."""
+    if ctx["device"]:
+        return _out()
+    from modules.sdn import analyst
+
+    got = analyst.collections(ctx["ref"].name)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the SDN collections could not be read: {got['error']}"])
+    events = []
+    for r in got["rows"]:
+        if not _recent(ctx, r.get("at")):
+            continue
+        kept = r.get("outcome") == "kept"
+        switches, flows, read = r.get("switches"), r.get("flows"), r.get("flows_read")
+        held = (f"{switches} switch{'es' if switches != 1 else ''}, {flows} "
+                f"flow{'s' if flows != 1 else ''}"
+                + (f" of the {read} read" if read not in (None, flows) else ""))
+        partly = " (partly read)" if kept and r.get("state") not in (None, "", "ok") else ""
+        events.append(_event(
+            r.get("at"), "sdn",
+            (f"SDN collection kept a snapshot{partly}: {held}" if kept
+             else "SDN collection kept nothing"),
+            [], who=_who(r.get("by", ""), r.get("by_verified", "")),
+            detail="" if kept else str(r.get("error") or ""),
+            outcome="kept" if kept else "failed",
+            record=[("Snapshot", r.get("snapshot")), ("Collected", r.get("collected_at")),
+                    ("Switches", switches), ("Flows it holds", flows), ("Flows read", read),
+                    ("Verified by", r.get("by_verified"))]))
+        events[-1]["record_closed"] = True
+    return _out(events[-ctx["limit"]:])
 
 
 def controller_deploys(ctx):
@@ -2733,7 +2823,8 @@ SOURCES = {
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
-    "sdn_operations": sdn_operations, "controller_deploys": controller_deploys,
+    "sdn_operations": sdn_operations, "sdn_collections": sdn_collections,
+    "controller_deploys": controller_deploys,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
     "diagnoses": diagnoses, "ai_reads": ai_reads,
@@ -2890,6 +2981,7 @@ SOURCE_KINDS = {
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
+    "sdn_collections": ("sdn",),
     "controller_deploys": ("controller_deploy",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),

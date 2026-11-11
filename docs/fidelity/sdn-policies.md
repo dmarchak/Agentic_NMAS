@@ -15,9 +15,31 @@ result, the committed list), beside the board's HTML. A shot at 1440, 1280 and 3
 step of this record.
 
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
-Templates sha256: `81b6b0f3113f1385439001d83816385b8caa5fee91cf61317bbfa230137da7f2`
+Templates sha256: `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`
 Hashed again 2026-11-10: the answer card draws Was this right? under an AI-drafted policy (the
 shared control every AI answer carries; none under an answer Mercury gave in code).
+Hashed again 2026-11-11 ~07:5x UTC for C2944 (History › Export read 0 protected-flow refusals
+with refusals made): a refusal by a protected flow gains one small line inside its notice,
+under "Nothing was sent.": "This refusal is recorded in History, as you: the policy asked and
+each protected flow that refused it.", History a link to the network's SDN rows; or, when the
+record could not be written, "This refusal could not be recorded: <why>.". `_sdn_op.html`
+gains the same line under a preview or a confirm the protected set refused (its words in
+docs/fidelity/sdn.md). Every other answer, the checked policy, Mercury's question and every
+other refusal draw exactly as before; the region row "Refused by a protected flow" keeps its
+verdict, and this line is not on the board. Compared by
+reading the templates, with no new shot; the state is drawn by tests/test_sdn_refusals.py
+(the templates before hashed
+`81b6b0f3113f1385439001d83816385b8caa5fee91cf61317bbfa230137da7f2`). Its line in
+docs/STANDING_APPROVAL_LOG.md: "Boards SdnFlowEdit, SdnResponse and lab9-sdn E built for
+C2944".
+Hashed again 2026-11-11 ~08:3x UTC, C2944 again (the record is a verified person's): the line
+has a third form, drawn for a check again or a preview pressed by someone who is no verified
+person, a plain small line and never a warning: "This refusal is not recorded: a refusal's
+record is made for a verified person, and this request is not one. Sign in, and a refusal like
+this one is recorded in History." The refusal itself reads as it did; `_sdn_op.html` draws the
+same words under its own refusal (docs/fidelity/sdn.md). Compared by reading the templates,
+with no new shot; the state is drawn by tests/test_sdn_refusals.py's `TestWhoIsRecorded` (the
+templates before hashed `53a714066f063b0a7b4d51f6796053bdec23404e9d402cf8a08c15ffc35b4cae`).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

@@ -145,6 +145,17 @@ def refusal(changes: list, connection: dict, who: str = "response") -> str:
     control channel, named with what it covers. *who* writes them: ``response`` (the closed
     loop, C2022's words), or any other writer (a person on SDN › Flows, a re-apply, an owner),
     asked through the same rules since B (C2379): `protected.flow_refusal` asks this first."""
+    return refusal_detail(changes, connection, who)["words"]
+
+
+def refusal_detail(changes: list, connection: dict, who: str = "response") -> dict:
+    """`refusal`, with what it rests on, for the record of a refused write (C2944):
+    ``{"words", "change", "met", "citation"}``: *words* the refusal (``""`` when nothing
+    refuses), *change* the number of the change refused (from 1), *met* each part of the
+    control channel its flow covers, in words, and *citation* the rule's (C2022; C2379 beside
+    it for a writer that is not a response)."""
+    none = {"words": "", "change": 0, "met": [], "citation": ""}
+    citation = "C2022" if who == "response" else "C2022, C2379"
     channel = control_channel(connection)
     if who == "response":
         cover, take_off = ("No response may cover it, in any mode (C2022)",
@@ -158,12 +169,14 @@ def refusal(changes: list, connection: dict, who: str = "response") -> str:
             hit = [w for _named, w in covers((change.get("flow") or {}).get("match"), channel)]
             if hit:
                 verb = "adds" if do == "add_flow" else "edits to"
-                return (f"change {n + 1} {verb} a flow whose match covers the control channel: "
-                        f"{'; '.join(hit)}. {cover}")
+                return {"words": (f"change {n + 1} {verb} a flow whose match covers the "
+                                  f"control channel: {'; '.join(hit)}. {cover}"),
+                        "change": n + 1, "met": hit, "citation": citation}
         elif do == "remove_flow":
             hit = [w for named, w in covers((change.get("target") or {}).get("match"), channel)
                    if named]
             if hit:
-                return (f"change {n + 1} removes a flow that carries the control channel: "
-                        f"{'; '.join(hit)}. {take_off}")
-    return ""
+                return {"words": (f"change {n + 1} removes a flow that carries the control "
+                                  f"channel: {'; '.join(hit)}. {take_off}"),
+                        "change": n + 1, "met": hit, "citation": citation}
+    return none

@@ -619,8 +619,9 @@ HISTORY = {
     "sdn_switches_v2.template_confirm": TEMPLATE,
     # Lab 9 B1 (C2903): Analyse this network changes no device; its collection reads, its
     # answer is an AI call, its planted issues are the network's evaluation sheet.
-    "sdn_analyse_v2.collect": "n/a: a read job; its snapshot is kept with the network's "
-                              "analyst record (modules/sdn/analyst.py), never a device's",
+    # C3001: each collection is a row of the network's own History (who, how verified, the
+    # snapshot it kept and what that holds), read from the analyst's record of collections.
+    "sdn_analyse_v2.collect": ("sdn_collections",),
     "sdn_analyse_v2.ask": "n/a: one AI call, kept in the fleet's ai_calls record with its "
                           "findings in the network's analyst record; no device changes",
     "sdn_analyse_v2.ask_tools": "n/a: up to two AI calls kept in the fleet's ai_calls record, "

@@ -3240,6 +3240,11 @@ def _sdn_analyse(client, _lab, _mp):
         html = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
         assert "Port 3 on 0000000000000003 is down" in html and "missed" in html
         assert "read:1 link_state(" in html and "Without tools (B1)" in html
+        # C3001: the card names the snapshot by its id and counts the kept; its list is asked
+        # as the card asks when it is opened, and draws the snapshot with its seal.
+        assert f'<code class="mono">{snap["id"]}</code>' in html and "Kept snapshots (1)" in html
+        kept = client.get("/v2/sdn/analyse/snapshots?list=Lab").get_data(as_text=True)
+        assert snap["id"] in kept and ">holds<" in kept
         # C2913 and C2956: an issue planted after the analysis, one corrected and one removed,
         # so the sheet draws its third mark, a corrected row and Changes to the sheet.
         import time

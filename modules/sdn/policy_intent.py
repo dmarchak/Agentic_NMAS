@@ -126,6 +126,12 @@ STEPS = (
 )
 
 
+#: How the check words a policy the protected set refuses (`check`): its first words, which
+#: History › Export reads to tell such a refusal in a call's use recorded before refusals
+#: were kept as records of their own (`history_export._from_refused_calls`, C2944).
+PROTECTED_LEAD = "it would cover the protected flow"
+
+
 class Refused(ValueError):
     """A policy refused before anything is sent, in words."""
 
@@ -527,11 +533,19 @@ def names_part(names: dict, quoted: dict) -> str:
 # ───────────────────────────────────────────────────────────────────────────── the call
 
 def draft(network: str, sentence: str, *, actor: str, trigger: dict, send=None,
-          today: str = None, picks: dict = None, driver=None) -> dict:
+          today: str = None, picks: dict = None, driver=None,
+          actor_verified: str = "") -> dict:
     """*sentence* made a checked policy: ``{"ok", "state", ...}``, *state* one of ``asked``
     (Mercury's question, no call), ``refused`` (*kind* naming which check, its words naming
     what it compared), ``question`` (the model's one question back), ``checked`` (the policy
-    and the checks' rows, ready to preview). The call's id and cost when one was made."""
+    and the checks' rows, ready to preview). The call's id and cost when one was made.
+
+    The call's use keeps the check's words whole (C3014: a reason cut at 200 characters
+    ended mid-word in History › Export's AI-calls file). A policy the protected set refused
+    is a record of its own too, for a verified person (`keep_refusal`, C2944: who, how
+    verified by *actor_verified*, what was asked and each protected flow that refused it;
+    with no *actor_verified*, or ``none``, nothing is recorded), ``refusal`` saying whether
+    it was kept."""
     from modules.ai import calls, gateway
 
     pre = screen(network, sentence, picks)
@@ -569,8 +583,9 @@ def draft(network: str, sentence: str, *, actor: str, trigger: dict, send=None,
     got = check(network, policy, w=w, driver=driver, names=pre["names"])
     use =("refused by validation" if got["state"] == "refused" else "checked: ready to preview")
     calls.record_use(asked["call_id"], use, actor=actor,
-                     detail=_masked(got.get("words", "")[:200]), links=links)
-    return dict(base, **got)
+                     detail=_masked(got.get("words", "")), links=links)
+    kept = keep_refusal(network, got, stage="draft", actor=actor, actor_verified=actor_verified)
+    return dict(base, **got, **({"refusal": kept} if kept else {}))
 
 
 def _masked(text: str) -> str:
@@ -959,21 +974,30 @@ def check(network: str, policy: dict, *, w: dict = None, driver=None, draws: dic
     if pset.get("state") == "unreadable":
         return refuse("unreadable", f"the protected set could not be read ({pset.get('error')}), "
                                     "so no policy can be checked against it")
-    covered = []
+    covered, met = [], []
     for n, r in enumerate(rules):
         for m in matches[n]:
             for cls in pset.get("classes") or []:
-                if protected.overlap(m, cls) and cls not in covered:
+                hit = protected.overlap(m, cls)
+                if hit and cls not in covered:
                     covered.append(cls)
+                    met.append(hit)
     if covered:
         classes = pset.get("classes") or []
+        # What refused it and what was asked, for the record a refused press keeps
+        # (`keep_refusal`, C2944); the check itself writes nothing.
         return refuse("protected", (
-            f"it would cover the protected flow{'s' if len(covered) > 1 else ''} "
+            f"{PROTECTED_LEAD}{'s' if len(covered) > 1 else ''} "
             + " and ".join(f"{c['name']} ({c['invariant']}; {c['source']})" for c in covered)
             + f". Compared: the policy's match{'es' if sum(map(len, matches)) > 1 else ''} "
             f"({'; '.join(flow_ops.match_words(m) for ms in matches for m in ms)}) against "
             f"{len(classes)} protected flow{'s' if len(classes) != 1 else ''}; {len(covered)} "
-            f"covered. {_narrowing(covered)}"))
+            f"covered. {_narrowing(covered)}"),
+            refused_by=[protected.refused_by("class", c["name"], invariant=c["invariant"],
+                                             source=c["source"], met=hit,
+                                             citation=protected.CITATION)
+                        for c, hit in zip(covered, met)],
+            asked=[rule_words(r) for r in rules])
     out["rows"].append({"check": "Protected flows", "words": (
         f"none covered ({len(pset.get('classes') or [])} protected flows compared"
         + (f", from {pset.get('source')}" if pset.get("source") else "") + ")")})
@@ -1137,6 +1161,32 @@ def writer(policy: dict) -> str:
     return f"policy:{policy.get('id') or '?'}"
 
 
+def keep_refusal(network: str, got: dict, *, stage: str, actor: str, actor_verified: str = "",
+                 now: float = None) -> dict:
+    """Keep the record of a policy the protected set refused (C2944), where a person's press
+    is answered: *got* is `check`'s answer (a draft, a check again, a confirm) or `preview`'s
+    (its check, then the flow-operation core's plan, whose guard also asks the controller's
+    control channel and the protected ports and VLANs). ``{}`` when the protected set did not
+    refuse it; else `flow_ops.keep_refusal`'s ``{"kept", "id", "error"}``. The record names
+    the policy, its words, its rules and the AI call that drafted it. `check` and `preview`
+    themselves write nothing."""
+    from modules.sdn import flow_ops
+
+    chk = got.get("check") if "check" in got else got
+    plan = got.get("plan") if "check" in got else None
+    policy = (chk or {}).get("policy") or {}
+    said = {"id": policy.get("id") or "", "words": policy.get("words") or ""}
+    who = {"what": "policy", "stage": stage, "actor": actor, "actor_verified": actor_verified,
+           "call_id": policy.get("call_id") or "", "policy": said, "now": now}
+    if chk and not chk.get("ok"):
+        return flow_ops.keep_refusal(
+            network, chk, asked=[f"“{said['words']}”"] + list(chk.get("asked") or []),
+            words=f"{chk.get('title') or 'Refused'}: {chk.get('words') or ''}", **who)
+    if plan is not None and not plan.get("ok"):
+        return flow_ops.keep_refusal(network, plan, **who)
+    return {}
+
+
 def confirm(network: str, policy: dict, ask: dict, confirmed_hash: str, *, actor: str,
             actor_verified: str = "", driver=None, sleep=time.sleep) -> dict:
     """Apply a previewed policy as *actor*: every check again on the carried policy, compiled
@@ -1158,8 +1208,11 @@ def confirm(network: str, policy: dict, ask: dict, confirmed_hash: str, *, actor
              "priorities": [f.get("priority") for f in adds], "meter_id": meter.get("meter_id")}
     got = check(network, policy, driver=driver, draws=draws, instead=policy.get("instead"))
     if not got["ok"]:
+        # A confirm the protected set refuses (the set moved since the preview) is a record.
+        kept = keep_refusal(network, got, stage="confirm", actor=actor,
+                            actor_verified=actor_verified)
         return dict(refused, error=f"{got['title'] or 'refused'}: {got['words']}",
-                    check=got)
+                    check=got, **({"refusal": kept} if kept else {}))
     if json.dumps(got["ask"], sort_keys=True) != json.dumps(ask, sort_keys=True):
         return dict(refused, error=("the confirm's requests are not what this policy compiles "
                                     "to now (the switch's table or the policy moved since the "

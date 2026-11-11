@@ -70,7 +70,13 @@ no redirect: a redirect needs a port to send to, and no name says one.
    - **a protected flow**: a match that meets one of the network's protected classes (the
      controller's channel, management, the Services tagged `mercury-protected` such as DNS and
      DHCP, or the config context's), refused with a narrowing: name the protocol and port to
-     block, or a destination, so it leaves the class alone.
+     block, or a destination, so it leaves the class alone. This refusal is recorded: who
+     asked and how they were verified, the policy in your words and its rules, each protected
+     flow that refused it, and the AI call that drafted it. The answer says "This refusal is
+     recorded in History" and links it, and History › Export counts it under protected-flow
+     refusals. The call's own row keeps the whole reason. A policy checked again or previewed
+     by someone not signed in is refused the same way and not recorded, and the answer says
+     so and says to sign in; drafting a policy always needs a signed-in person.
 
    A policy that passes is drawn as **Checked against NetBox and the network**: the hosts named,
    where it applies (the switch, its platform and how the source was placed), the conflicts

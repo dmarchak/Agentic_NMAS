@@ -528,12 +528,12 @@ DECLARED = {
     "heal_v2.policy_preview": Nothing("previews a heal policy change; writes nothing"),
     "heal_v2.resume_preview": Nothing("previews resuming self-healing; writes nothing"),
     "sdn_v2.controller_test": Nothing("tests a saved SDN controller and answers on its card; the card's state stays the reader's"),
-    "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
+    "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     "sdn_dhcp_v2.preview": Nothing("previews DHCP steering in its card; the confirm sends"),
     "sdn_dhcp_v2.remove_preview": Nothing("previews removing DHCP steering in its card; the "
                                           "confirm sends"),
-    "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),
-    "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends"),
+    "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
+    "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     # C2765: its host reads are a reads-engine run, recorded (History › Reads).
     "sdn_v2.apps_preview": ("reads",),
     # Board nsot-export (C2777): the preview reads NetBox and writes nothing; the confirm commits
@@ -569,8 +569,8 @@ DECLARED = {
     # Lab 9 B2: a policy's flows through the same core; SDN's tabs (Flows, Policies) read again.
     "sdn_policies_v2.confirm": ("sdn",),
     "sdn_policies_v2.draft": ("ai_calls",),
-    "sdn_policies_v2.check": Nothing("checks a drafted policy again with the person's choice and draws it in the answer's slot; the confirm sends"),
-    "sdn_policies_v2.preview": Nothing("compiles and plans a checked policy in its card; the confirm sends"),
+    "sdn_policies_v2.check": Nothing("checks a drafted policy again with the person's choice and draws it in the answer's slot; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
+    "sdn_policies_v2.preview": Nothing("compiles and plans a checked policy in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     "sdn_v2.response_dismiss": ("sdn",),
     # Lab 9 B3 (board F): a link-failure card's verify or dismissal, and the capability matrix
     # read again, each redraw SDN › Responses.

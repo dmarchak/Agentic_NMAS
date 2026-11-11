@@ -114,6 +114,9 @@ NOT_AN_OPERATION = {
                                        "log the Responses tab draws (C1971)",
     ("_sdn_analyse.html", "Download the sheet"): "saves the planted-issue sheet as Markdown, a "
                                                  "read of the sheet SDN › Flows draws (Lab 9 B1)",
+    # C3001: a snapshot's id is what Analyse and the evaluation are given.
+    ("_sdn_analyse.html", "Copy"): "copies the latest snapshot's id to the clipboard",
+    ("_sdn_snapshots.html", "Copy"): "copies a kept snapshot's id to the clipboard",
     # Lab 9 B5, History › Export (board lab9-sdn H): reads of the records History draws.
     ("_history_export.html", "Show"): "draws the two logs' counts for the network and days "
                                       "chosen, a read of the records History draws",

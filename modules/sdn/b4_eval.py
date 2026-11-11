@@ -39,9 +39,11 @@ an issue a person removed is a correction, as in B1 (C2913), and stands for no s
 whenever it was removed), each found by B1's own rule (`analyst.marks`: a kept finding citing
 an id the issue names), and every one must be found for the run to be correct, at any
 severity (the sheet names none). A snapshot the person names clean (``--clean``: every planted
-issue restored, the sheet left as it is) is a benign case, with the benign cases' own
-severities (``none``, ``low``): a finding of medium or above answers it as a threat, as for
-19.13's; one with issues still standing on the sheet is said so in the report and its JSON
+issue restored, the sheet left as it is, or collected before any was planted) is a benign
+case, with the benign cases' own severities (``none``, ``low``): a finding of medium or above
+answers it as a threat, as for 19.13's. Its name says why it is clean (`clean_name`, C3029):
+every planted issue restored, collected before any issue was planted, or no issue on the
+sheet. One with issues still standing on the sheet is said so in the report and its JSON
 (``clean_with_issues``), and scored benign. A snapshot neither clean nor holding a planted
 issue is skipped, said. The role is reported beside the others; the pass
 rule stays 19.13's, on the blind role alone.
@@ -148,6 +150,25 @@ def standing(sheet: dict, at: str) -> list:
     return sorted(out, key=lambda i: (str(i.get("at") or ""), str(i.get("id") or "")))
 
 
+#: What a clean hardware case is called, by why it is clean (C3029): an issue stood on the
+#: sheet at its collection and ``--clean`` says the network was restored; every issue on the
+#: sheet was planted after it was collected; or the sheet holds no issue at all.
+CLEAN_NAMES = {"restored": "clean: every planted issue restored",
+               "before": "clean: collected before any issue was planted",
+               "none": "clean: no issue is on the sheet"}
+
+
+def clean_name(sheet: dict, issues: list) -> str:
+    """The name of a snapshot ``--clean`` names (`CLEAN_NAMES`): *issues* are those standing on
+    *sheet* at its collection (`standing`). With one standing, the network was restored (the
+    operator's word, by naming it clean); with none standing and issues on the sheet, each was
+    planted after the collection, so nothing was there to restore; a sheet holding no issue
+    says so. An issue a person removed is on no sheet (`standing`)."""
+    if issues:
+        return CLEAN_NAMES["restored"]
+    return CLEAN_NAMES["before" if sheet.get("issues") else "none"]
+
+
 def load_hardware(folder: str, network: str, clean=(), keys=None) -> dict:
     """The lab hardware's snapshots in *folder* (a copy of *network*'s ``sdn_analyst/``), each
     a case of the role `HARDWARE`: ``{"cases", "skipped": [{"id", "why"}], "error"}``. Read
@@ -197,7 +218,7 @@ def load_hardware(folder: str, network: str, clean=(), keys=None) -> dict:
             "collected_at": at, "clean": benign,
             "issues": [] if benign else [dict(i) for i in issues],
             "sheet_issues": len(issues),
-            "name": ("clean: every planted issue restored" if benign
+            "name": (clean_name(sheet, issues) if benign
                      else "; ".join(str(i.get("name")) for i in issues)),
             "expect": ({"threat_detected": False, "severity": list(BENIGN_SEVERITIES)} if benign
                        else {"threat_detected": True, "severity": list(AN.SEVERITIES)})})
@@ -743,7 +764,8 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
                          "read only: each sealed snapshot a hardware case")
     ap.add_argument("--clean", default="",
                     help="snapshot ids, comma-separated, kept with every planted issue "
-                         "restored: each a benign hardware case")
+                         "restored or collected before any was planted: each a benign "
+                         "hardware case")
     ap.add_argument("--out", required=True, help="a folder outside the checkout")
     ap.add_argument("--prompt", type=int, default=0,
                     help="ask both arms with this version of the analyst's prompt (and the "

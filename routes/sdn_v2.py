@@ -177,10 +177,27 @@ def flow_form():
         "list": _list_name()}))
 
 
+def _refusal_kept(network: str, plan: dict, what: str) -> dict:
+    """A preview the protected set refused, kept as the record of a verified person's press
+    (C2944: who and how verified, the switch, what was asked, what refused it): `flow_ops.
+    keep_refusal`'s answer, ``{}`` for any other plan. How the person was verified is the
+    request's own (`identity.actor_verification`: ``none`` for anyone not verified), and a
+    press that is no verified person's is answered as ever and NOT recorded
+    (`flow_intent.refusal_not_recorded`), which the card says. Written here, where the press
+    is answered: the plan is every preview's, and writes nothing."""
+    from modules import identity
+    from modules.sdn import flow_ops
+
+    actor = identity.request_actor()
+    return flow_ops.keep_refusal(network, plan or {}, what=what, stage="preview", actor=actor,
+                                 actor_verified=identity.actor_verification(actor))
+
+
 @bp.route("/flow/preview", methods=["POST"])
 def flow_preview():
     """The preview of a person's Add, Edit or Remove: the exact requests and their hash, read
-    from the switch now; writes nothing."""
+    from the switch now. It writes nothing but, for a verified person, the record of a
+    preview the protected set refused (`_refusal_kept`), which the card names."""
     from modules import sdn_ops_page
     from modules.sdn import flow_form, flow_ops
 
@@ -190,7 +207,9 @@ def flow_preview():
     except flow_form.FormRefused as exc:
         return _op_card(sdn_ops_page.refused(network, "flow", str(exc)), 400)
     p = flow_ops.plan(network, ask)
-    return _op_card(sdn_ops_page.preview(network, "flow", ask, p), 200 if p["ok"] else 409)
+    return _op_card(sdn_ops_page.preview(network, "flow", ask, p,
+                                         refusal=_refusal_kept(network, p, "flow")),
+                    200 if p["ok"] else 409)
 
 
 @bp.route("/flow/confirm", methods=["POST"])
@@ -215,7 +234,8 @@ def flow_confirm():
 def response_preview(rid):
     """The preview of a response awaiting a person: its catalogue action built from the
     detection and checked against the evidence, the exact requests and their hash. Writes
-    nothing. *source* is the card's source picker (C2002), refused unless it is one of the
+    nothing but the record of a preview the protected set refused (`_refusal_kept`).
+    *source* is the card's source picker (C2002), refused unless it is one of the
     hosts its port offers (`closed_loop._response_source`)."""
     from modules import sdn_ops_page
     from modules.sdn import closed_loop, loop
@@ -229,7 +249,8 @@ def response_preview(rid):
     params = {k: request.form.get(k) for k in ("source", "hard_timeout", "rate", "burst", "unit")
               if (request.form.get(k) or "").strip()}
     got = closed_loop.respond_to_threat(network, row["detection"], action, params)
-    return _op_card(sdn_ops_page.response_preview(network, row, got),
+    kept = _refusal_kept(network, got.get("plan"), "response")
+    return _op_card(sdn_ops_page.response_preview(network, row, got, refusal=kept),
                     200 if got["ok"] else 409)
 
 
@@ -302,7 +323,8 @@ def response_confirm():
 def reapply_preview():
     """Re-apply… on a switch of SDN › Flows (C2018): the preview of putting back exactly a
     response's missing recorded flows and meter, each flow for the time its hard timeout has
-    left, read from the switch now. Writes nothing."""
+    left, read from the switch now. Writes nothing but the record of a preview the protected
+    set refused (`_refusal_kept`)."""
     from modules import sdn_ops_page
     from modules.sdn import reapply
 
@@ -310,7 +332,9 @@ def reapply_preview():
     got = reapply.preview(network, (request.form.get("connection") or "").strip(),
                           (request.form.get("dpid") or "").strip(),
                           (request.form.get("key") or "").strip())
-    return _op_card(sdn_ops_page.reapply_preview(network, got), 200 if got["ok"] else 409)
+    kept = _refusal_kept(network, got.get("plan"), "reapply")
+    return _op_card(sdn_ops_page.reapply_preview(network, got, refusal=kept),
+                    200 if got["ok"] else 409)
 
 
 @bp.route("/reapply/confirm", methods=["POST"])

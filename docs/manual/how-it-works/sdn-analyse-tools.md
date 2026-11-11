@@ -78,7 +78,9 @@ it would spend.
 Besides the recorded cases, it can run on snapshots that **Collect now** kept on the lab's
 switches: `--snapshots` names a copy of the network's analyst folder, which it only reads, and
 `--clean` names the snapshots kept with every planted issue restored; leave the sheet as it is
-when you restore them. Each snapshot whose seal holds is a case. Its planted issues are the ones
+when you restore them. A snapshot collected before any issue was planted can be named clean
+too, and the report names each clean case by which it is: "clean: every planted issue
+restored" or "clean: collected before any issue was planted". Each snapshot whose seal holds is a case. Its planted issues are the ones
 planted on the sheet by the time it was collected, each found by the same rule as the sheet's.
 An issue you removed from the sheet was a mistake, so it counts for no snapshot. A clean
 snapshot answered with a finding of medium or above counts as a benign one answered as a

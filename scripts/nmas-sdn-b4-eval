@@ -15,7 +15,8 @@ modules/sdn/b4_eval.py).
 network's ``sdn_analyst/`` folder (its ``snapshots/`` and ``planted.json``, as SDN › Flows'
 Collect now and the planted-issue sheet kept them on the lab's switches), outside the checkout
 and only read; ``--clean <id,id>`` names the snapshots kept with every planted issue restored
-(the sheet left as it is). Each snapshot whose seal holds is a case of the role ``hardware``,
+(the sheet left as it is) or collected before any was planted; the case's name says which
+(C3029). Each snapshot whose seal holds is a case of the role ``hardware``,
 its planted issues the sheet's planted at or before its collection, each found by B1's own
 rule. An issue removed from the sheet is a correction (B1's meaning, C2913) and counts for no
 snapshot, whenever it was removed. A clean one is benign; one with issues still standing on the

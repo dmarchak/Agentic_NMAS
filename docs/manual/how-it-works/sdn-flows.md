@@ -48,6 +48,18 @@ export, or from NetBox read now; its hash is bound with the requests', so a NetB
 the preview and the confirm sends nothing. A network whose devices are not NetBox's guards the
 controller's channel only, and the preview says so.
 
+A refusal by the protected set is recorded for a verified person, at the preview or at the
+confirm: who pressed and how they were verified, the switch, what was asked, and each
+protected class, protected port or VLAN, or the controller's channel that refused it. The card
+says "This refusal is recorded in History" and links it. It is a row on History under SDN flow
+operations, and History › Export counts it under protected-flow refusals. A preview needs no
+sign-in, so a press by someone not signed in is refused the same way, and it is not recorded:
+the card says "This refusal is not recorded: a refusal's record is made for a verified person,
+and this request is not one. Sign in, and a refusal like this one is recorded in History."
+Any other refusal, such as a missing prerequisite, is drawn on the card and not recorded. A
+response AUTO decided on and the protected set refused is kept with the response instead, on
+SDN › Responses.
+
 ## The steps
 
 1. `plan`: Mercury reads the switch's flow table (and its meters where a change touches one)

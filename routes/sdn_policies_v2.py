@@ -71,7 +71,8 @@ def _answer(a: dict, status: int = 200):
 @bp.route("/draft", methods=["POST"])
 def draft():
     """Draft the policy: the names resolved in code, then one recorded, capped AI call as the
-    person who pressed, its answer checked in code. Writes nothing; nothing reaches a switch.
+    person who pressed, its answer checked in code. Nothing reaches a switch; it records the
+    call, what became of its answer, and a policy the protected set refused (C2944).
     *word* and *pick* are the person's answer to Mercury's own question (which host a word
     means); Neither (an empty *pick*) ends the draft with nothing sent."""
     from modules import identity, sdn_policies_page
@@ -89,7 +90,7 @@ def draft():
     picks = {word: pick.strip()} if word and pick else None
     actor = identity.request_actor()
     got = policy_intent.draft(network, sentence, actor=actor, trigger=triggers.person(actor),
-                              picks=picks)
+                              picks=picks, actor_verified=identity.actor_verification(actor))
     return _answer(sdn_policies_page.answer_view(network, got),
                    200 if got.get("state") in ("checked", "asked", "question") else 409)
 
@@ -107,7 +108,8 @@ def _carried():
 def check():
     """Drop instead… or Rate-limit at <switch> instead… on an impossible rate limit: the
     drafted policy checked again in code with the person's choice, each held to what the
-    refusal offered. No AI; writes nothing."""
+    refusal offered. No AI; writes nothing but the record of a check the protected set
+    refused (`_refusal_kept`)."""
     from modules import sdn_policies_page
     from modules.sdn import policy_intent
 
@@ -125,7 +127,22 @@ def check():
             400)
     got = policy_intent.check(network, policy, instead=instead)
     got["words_typed"] = policy.get("words", "")
+    got["refusal"] = _refusal_kept(network, got, "check")
     return _answer(sdn_policies_page.answer_view(network, got), 200 if got["ok"] else 409)
+
+
+def _refusal_kept(network: str, got: dict, stage: str) -> dict:
+    """A check again or a preview the protected set refused, kept as the record of a
+    verified person's press (C2944, `policy_intent.keep_refusal`): ``{}`` for any other
+    answer. A press that is no verified person's (`identity.actor_verification` answers
+    ``none``) is answered as ever and not recorded, which the answer says. Written here,
+    where the press is answered; the check and the plan write nothing."""
+    from modules import identity
+    from modules.sdn import policy_intent
+
+    actor = identity.request_actor()
+    return policy_intent.keep_refusal(network, got, stage=stage, actor=actor,
+                                      actor_verified=identity.actor_verification(actor))
 
 
 def _op_card(d: dict, status: int = 200):
@@ -136,7 +153,7 @@ def _op_card(d: dict, status: int = 200):
 def preview():
     """Preview the flows…: the checked policy compiled and planned by the flow-operation core,
     read from the switch now: the effect in words, every request and its undo, the hash.
-    Writes nothing."""
+    Writes nothing but the record of a preview the protected set refused (`_refusal_kept`)."""
     from modules import sdn_ops_page, sdn_policies_page
     from modules.sdn import policy_intent
 
@@ -145,7 +162,9 @@ def preview():
     if refused:
         return _op_card(sdn_ops_page.refused(network, "policy", refused), 400)
     got = policy_intent.preview(network, policy)
-    return _op_card(sdn_policies_page.preview_card(network, got), 200 if got["ok"] else 409)
+    kept = _refusal_kept(network, got, "preview")
+    return _op_card(sdn_policies_page.preview_card(network, got, refusal=kept),
+                    200 if got["ok"] else 409)
 
 
 @bp.route("/confirm", methods=["POST"])

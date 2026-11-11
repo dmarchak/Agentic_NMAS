@@ -5,7 +5,10 @@
     question before any call (Which db?), with one button per candidate and Neither; the
     model's one question back; or a refusal before any flow (unknown, impossible with its
     offers, contradictory, protected with its narrowing, a conflict, malformed), each naming
-    what it compared. modules/sdn_policies_page.answer_view builds `a`. -#}
+    what it compared; a refusal by a protected flow says it is recorded, linking History's
+    SDN rows; that it is not, for a press that is no verified person's, with what to do; or
+    that it could not be and why (C2944).
+    modules/sdn_policies_page.answer_view builds `a`. -#}
 {%- set aic = ai_control('sdn_policy') -%}
 <div class="pol-ans pol-ans-{{ a.state }}" data-kind="{{ a.kind }}">
 {%- if a.typed %}<p class="small faint">You asked: “{{ a.typed }}”{% if a.decided %}; drafted as “{{ a.decided }}”{% endif %}.</p>{% endif %}
@@ -28,6 +31,7 @@
 <div class="notice notice-warn pol-question" role="status">{{ icon('info', 16) }}<p><strong>{{ a.title }}:</strong> {{ a.words }} Answer it in the policy's words, and draft again; nothing was sent.</p></div>
 {%- else %}
 <div class="notice notice-danger pol-refusal" role="alert">{{ icon('warn', 16) }}<div><p><strong>{{ a.title or 'Refused' }}:</strong> {{ a.words }}. Nothing was sent.</p>
+{%- if a.refusal %}{% if a.refusal.kept %}<p class="small pol-refusal-kept">This refusal is recorded in <a href="{{ url_for('v2.history_page', list=a.network, kind='sdn') }}">History</a>, as you: the policy asked and each protected flow that refused it.</p>{% elif a.refusal.unverified %}<p class="small pol-refusal-kept">This refusal is not recorded: {{ a.refusal.error }}. Sign in, and a refusal like this one is recorded in History.</p>{% else %}<p class="small pol-refusal-kept"><strong>This refusal could not be recorded:</strong> {{ a.refusal.error }}.</p>{% endif %}{% endif %}
 {%- if a.offers and a.policy %}
 <form class="pol-offers" hx-post="{{ url_for('sdn_policies_v2.check') }}" hx-target="#pol-answer" hx-swap="innerHTML"><input type="hidden" name="list" value="{{ a.network }}"><input type="hidden" name="policy" value="{{ a.policy }}"><span class="small">Offer:</span>
 {%- for o in a.offers %} {% if o.kind %}<button class="btn btn-small" type="submit" name="instead_kind" value="{{ o.kind }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again as a drop; no AI call; nothing is sent"><span class="op-idle">Drop instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% else %}<button class="btn btn-small" type="submit" name="instead_place" value="{{ o.place }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again with its meter on {{ o.name }}, which reports meters; no AI call; nothing is sent"><span class="op-idle">Rate-limit at {{ o.name }} instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% endif %}{% endfor %}</form>

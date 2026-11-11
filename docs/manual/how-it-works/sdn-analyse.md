@@ -71,6 +71,23 @@ AI mark's hover names the call's cap). **Analyse this network** asks about exact
 that line names. While no snapshot is kept, it is off and says so. A newer snapshot than the
 latest answer's is said above the findings.
 
+Under that line the card names the latest snapshot by its id, as text, with **Copy**, the time
+it was collected in UTC, who collected it, and how many switches and flows it holds. The id is
+what the evaluation is given, so copy it from here.
+
+**Kept snapshots** counts every snapshot the network keeps. Open it to list them, newest
+first, ten to a page, with **Older** and **Newer**: each one's id with **Copy**, when it was
+collected (UTC) and by whom, how many switches and flows it holds, and its **seal**. A seal
+that **holds** means the snapshot is exactly what was collected. One that is **broken**
+changed since it was kept, so **Analyse this network** and the evaluation refuse it. One that
+is **unreadable** says why. The list is read when you open it, never on a page view, and
+reading it changes nothing.
+
+Each collection is a row on History, under SDN flow operations: who started it and how they
+were verified, and how many switches and flows the snapshot holds, or why it kept nothing.
+The snapshot's id is under the row's Details for the record. A snapshot kept before Mercury
+recorded collections is in **Kept snapshots** and has no row on History.
+
 ## Planted issues {#planted}
 
 **Add a planted issue…** takes a name for the problem you planted, the evidence it should be

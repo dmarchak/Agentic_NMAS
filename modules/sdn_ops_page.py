@@ -31,15 +31,29 @@ def _requests(steps: list) -> list:
              "body": s["request"]["body"], "words": s["words"]} for s in steps or []]
 
 
-def refused(network: str, kind: str, words: str) -> dict:
-    return {"network": network, "kind": kind, "state": "refused", "error": words}
+def refusal_said(refusal: dict) -> dict:
+    """What a card says of the record a press the protected set refused keeps
+    (`flow_ops.keep_refusal`, C2944): ``{"kept", "error", "unverified"}`` (*unverified*: not
+    recorded because the press is no verified person's), or ``{}`` for any other refusal.
+    The record's id stays in the record: the card links History, which draws it."""
+    return ({"kept": bool(refusal.get("kept")), "error": refusal.get("error") or "",
+             "unverified": bool(refusal.get("unverified"))} if refusal else {})
 
 
-def preview(network: str, kind: str, ask: dict, plan: dict, extra: dict = None) -> dict:
-    """A plan drawn as its preview card (or its refusal)."""
+def refused(network: str, kind: str, words: str, refusal: dict = None) -> dict:
+    """A refusal's card. *refusal* is the record a press the protected set refused keeps
+    (`refusal_said`), or nothing: the card says it is recorded, or that it could not be and
+    why."""
+    return {"network": network, "kind": kind, "state": "refused", "error": words,
+            "refusal": refusal_said(refusal)}
+
+
+def preview(network: str, kind: str, ask: dict, plan: dict, extra: dict = None,
+            refusal: dict = None) -> dict:
+    """A plan drawn as its preview card (or its refusal, with the record it kept)."""
     if not plan.get("ok"):
-        return dict(refused(network, kind, plan.get("error") or "the plan was refused"),
-                    **(extra or {}))
+        return dict(refused(network, kind, plan.get("error") or "the plan was refused",
+                            refusal), **(extra or {}))
     return {"network": network, "kind": kind, "state": "preview",
             "connection": plan["connection"], "dpid_hex": plan["dpid_hex"],
             "words": plan["words"], "requests": _requests(plan["steps"]),
@@ -49,9 +63,10 @@ def preview(network: str, kind: str, ask: dict, plan: dict, extra: dict = None) 
             **(extra or {})}
 
 
-def response_preview(network: str, row: dict, got: dict) -> dict:
+def response_preview(network: str, row: dict, got: dict, refusal: dict = None) -> dict:
     """A response's preview: the plan's card with the detection, the action and its risk, and
-    who chose the action (the AI call that proposed it, or the catalogue's default)."""
+    who chose the action (the AI call that proposed it, or the catalogue's default). *refusal*
+    is the record a preview the protected set refused kept (`refused`)."""
     from modules.sdn import closed_loop
 
     params = got.get("params") or {}
@@ -62,19 +77,22 @@ def response_preview(network: str, row: dict, got: dict) -> dict:
              "classified": closed_loop.classified_words(row.get("classification"),
                                                         got.get("action") or "")}
     if not got.get("ok") or not got.get("plan"):
-        return dict(refused(network, "response", got.get("error") or "refused"), **extra)
+        return dict(refused(network, "response", got.get("error") or "refused", refusal),
+                    **extra)
     return preview(network, "response", got["ask"], got["plan"], extra)
 
 
-def reapply_preview(network: str, got: dict) -> dict:
+def reapply_preview(network: str, got: dict, refusal: dict = None) -> dict:
     """A lost response's Re-apply… preview (C2018): the plan's card with what it puts back and
-    until when (`reapply.preview`'s words), or its refusal."""
+    until when (`reapply.preview`'s words), or its refusal (with the record it kept, when the
+    protected set refused it)."""
     from modules.sdn import reapply
 
     extra = {"label": "Re-apply: " + reapply.response_words(got.get("response") or {}),
              "reapply_words": got.get("words", "")}
     if not got.get("ok") or not got.get("plan"):
-        return dict(refused(network, "reapply", got.get("error") or "refused"), **extra)
+        return dict(refused(network, "reapply", got.get("error") or "refused", refusal),
+                    **extra)
     return preview(network, "reapply", got["ask"], got["plan"], extra)
 
 
@@ -101,7 +119,9 @@ def result(network: str, kind: str, done: dict) -> dict:
                        for c in (done.get("verify") or {}).get("checks") or []],
             "counters": [{"words": c.get("words")} for c in done.get("counters") or []],
             "rollback": _rollback(done.get("rollback") or {}),
-            "record": done.get("record") or {}, "sent": sent, "note": done.get("note", "")}
+            "record": done.get("record") or {}, "sent": sent, "note": done.get("note", ""),
+            # A confirm the protected set refused keeps its own record (C2944).
+            "refusal": refusal_said(done.get("refusal"))}
 
 
 def carried_ask(form) -> tuple:

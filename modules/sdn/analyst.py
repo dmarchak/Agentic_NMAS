@@ -58,8 +58,14 @@ stable from one collection to the next) and a port's ``port:<connection>:<dpid h
 
 **The store**, per network (`config.list_data_path`): ``sdn_analyst/snapshots/<id>.json``,
 ``sdn_analyst/analyses/<id>.json``, ``sdn_analyst/latest.json`` (the newest of each, what the
-page reads), ``sdn_analyst/planted.json`` and ``sdn_analyst/running.json``. A page view reads
-those small files and nothing else; it writes nothing and asks no controller.
+page reads), ``sdn_analyst/planted.json``, ``sdn_analyst/running.json`` and
+``sdn_analyst/collections.json`` (C3001: one row per collection Collect now ran, with who
+started it and how they were verified, when it ended, the snapshot it kept and how many
+switches and flows that holds, or why it kept nothing; History reads it,
+`history_sources.sdn_collections`). A page view reads those small files and the snapshot
+folder's listing (`kept`: how many are kept) and nothing else; it writes nothing and asks no
+controller. The kept snapshots themselves are listed only when a person opens the card's list
+(`kept_page`: one page of `KEPT_PAGE`, each file read once and its seal checked).
 """
 
 import csv
@@ -585,12 +591,16 @@ def start_collection(network: str, *, actor: str, spawn=None, now: float = None,
 
 
 def collect_job(network: str, *, actor: str, interval: float = COLLECT_INTERVAL, driver=None,
-                sleep=time.sleep, clock=time.monotonic, now=time.time, announce=True) -> dict:
-    """The collection job: collect, build and keep the snapshot, clear the running mark and
-    announce ``sdn``, whatever happened. ``{"ok", "error", "snapshot"}``."""
+                sleep=time.sleep, clock=time.monotonic, now=time.time, announce=True,
+                actor_verified: str = "") -> dict:
+    """The collection job: collect, build and keep the snapshot, record the collection (who,
+    how verified by *actor_verified*, the snapshot and what it holds, or why it kept nothing:
+    `_log_collection`, which History reads), clear the running mark and announce ``sdn``,
+    whatever happened. ``{"ok", "error", "snapshot"}``."""
     from modules.sdn import closed_loop
 
     out = {"ok": False, "error": "", "snapshot": None}
+    who = {"by": actor, "by_verified": actor_verified}
     try:
         collected = closed_loop.collect_threat_data(network, interval, sleep=sleep, clock=clock,
                                                     now=now, driver=driver, links=True)
@@ -598,18 +608,25 @@ def collect_job(network: str, *, actor: str, interval: float = COLLECT_INTERVAL,
             out["error"] = (f"the collection read no switch ({collected.get('state')}: "
                             f"{collected.get('error') or collected.get('words') or 'no reason'})")
             _keep_failure(network, out["error"], actor, now())
+            _log_collection(network, dict(who, at=_iso(now()), outcome="failed",
+                                          error=out["error"]))
             return out
         _read_hosts(network, collected, driver)
         from modules.sdn import known
         snap = build_snapshot(network, collected, by=actor, previous=latest_snapshot(network),
                               names=_names(network), netbox=known.read(network))
         save_snapshot(network, snap)
+        _log_collection(network, dict(who, at=_iso(now()), outcome="kept", snapshot=snap["id"],
+                                      collected_at=snap["collected_at"], state=snap["state"],
+                                      **counts(snap)))
         out.update(ok=True, snapshot=snap)
         return out
     except Exception as exc:                                    # noqa: BLE001 (kept, said)
         log.warning("sdn analyst: the collection on %s failed: %s", network, type(exc).__name__)
         out["error"] = f"the collection failed: {type(exc).__name__}: {exc}"
         _keep_failure(network, out["error"], actor, now())
+        _log_collection(network, dict(who, at=_iso(now()), outcome="failed",
+                                      error=out["error"]))
         return out
     finally:
         try:
@@ -653,6 +670,131 @@ def _announce(network: str) -> None:
         log.info("sdn analyst: the announcement could not be sent (%s)", type(exc).__name__)
 
 
+def counts(snap: dict) -> dict:
+    """What a snapshot holds, counted: ``{"switches", "flows", "flows_read"}``. *flows* are
+    the flow facts it keeps (each switch's busiest `FLOWS_PER_SWITCH` with actions, and every
+    drop); *flows_read* every flow the collection read from the switches' tables."""
+    switches = snap.get("switches") or []
+    drops = sum(len(s.get("drops") or []) for s in switches)
+    return {"switches": len(switches),
+            "flows": sum(len(s.get("flows") or []) for s in switches) + drops,
+            "flows_read": sum(int(s.get("flows_total") or 0) for s in switches) + drops}
+
+
+def _log_path(network: str) -> str:
+    return os.path.join(_dir(network), "collections.json")
+
+
+def _log_collection(network: str, row: dict) -> None:
+    """Append one collection's record to the network's ``collections.json`` (C3001): when it
+    ended, who started it and how they were verified, and either the snapshot it kept with
+    what that holds or why it kept nothing. History reads it (`collections`). Under the
+    store's lock, replaced atomically; a log that cannot be read is never written over, and
+    a record that could not be kept is said on the card (``latest.json``'s ``unrecorded``)."""
+    why = ""
+    try:
+        with _lock(network):
+            got, err = _read_json(_log_path(network))
+            if err or (got is not None and not isinstance(got, list)):
+                why = (f"the record of collections cannot be read ({err or 'not a list'}), so "
+                       "it is not written over")
+            else:
+                try:
+                    _write_json(_log_path(network), list(got or []) + [row])
+                except OSError as exc:
+                    why = ("the record of collections could not be written "
+                           f"({type(exc).__name__})")
+            latest = _latest(network)
+            if why != (latest.get("unrecorded") or ""):
+                # Said on the card until a collection is recorded again.
+                latest["unrecorded"] = why
+                if not why:
+                    del latest["unrecorded"]
+                _write_json(os.path.join(_dir(network), "latest.json"), latest)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        # Never the collection's failure: its snapshot is kept whatever became of its record.
+        why = why or f"{type(exc).__name__}: {exc}"
+    if why:
+        log.error("sdn analyst: a collection on %s could not be recorded (%s)", network, why)
+
+
+def collections(network: str) -> dict:
+    """*network*'s collections, oldest first: ``{"state": "ok"|"absent"|"unreadable", "rows",
+    "error"}``: each one Collect now ran since its record was kept (`_log_collection`); a
+    snapshot kept earlier is in the kept list (`kept_page`) and has no row here."""
+    got, err = _read_json(_log_path(network))
+    if err or (got is not None and not isinstance(got, list)):
+        return {"state": "unreadable", "rows": [], "error": err or "collections.json: not a list"}
+    if got is None:
+        return {"state": "absent", "rows": [], "error": ""}
+    return {"state": "ok", "rows": [r for r in got if isinstance(r, dict)], "error": ""}
+
+
+#: How many kept snapshots the card's list reads, and seals, in one page (`kept_page`): each
+#: is a whole file read and hashed, so the page is small and asked only when the list is
+#: opened.
+KEPT_PAGE = 10
+
+
+def kept(network: str) -> dict:
+    """How many snapshots *network* keeps, by its folder's listing alone (no file is read):
+    ``{"count", "error"}``. What the card's summary line draws on every view."""
+    folder = os.path.join(_dir(network), "snapshots")
+    try:
+        names = [e.name for e in os.scandir(folder) if e.name.endswith(".json")]
+    except FileNotFoundError:
+        return {"count": 0, "error": ""}
+    except OSError as exc:
+        return {"count": 0, "error": f"{type(exc).__name__}: {exc}"}
+    return {"count": len(names), "error": ""}
+
+
+def kept_page(network: str, start: int = 0) -> dict:
+    """One page of *network*'s kept snapshots, newest first by when each file was written
+    (the folder's listing; a snapshot's file is written once, when it is kept): ``{"rows",
+    "count", "start", "shown", "older", "newer", "error"}``. Each row: its ``id``, when it
+    was collected and by whom, what it holds (`counts`) and its ``seal``: ``holds`` (its hash
+    is its content's, `intact`), ``broken`` (it changed since it was kept, so Analyse and the
+    evaluation refuse it) or ``unreadable`` (with why). Reads and hashes at most `KEPT_PAGE`
+    files; *older* and *newer* are the neighbouring pages' starts, or None. A read: nothing
+    is written."""
+    folder = os.path.join(_dir(network), "snapshots")
+    out = {"rows": [], "count": 0, "start": 0, "shown": 0, "older": None, "newer": None,
+           "error": ""}
+    try:
+        listed = sorted(((e.stat().st_mtime, e.name) for e in os.scandir(folder)
+                         if e.name.endswith(".json")), reverse=True)
+    except FileNotFoundError:
+        return out
+    except OSError as exc:
+        return dict(out, error=f"the kept snapshots cannot be listed ({type(exc).__name__}: "
+                               f"{exc})")
+    start = max(0, min(int(start or 0), max(0, len(listed) - 1)))
+    start -= start % KEPT_PAGE
+    page = listed[start:start + KEPT_PAGE]
+    for _written, name in page:
+        sid = name[:-len(".json")]
+        got, err = _read_json(os.path.join(folder, name))
+        row = {"id": sid, "collected_at": "", "by": "", "switches": None, "flows": None,
+               "flows_read": None, "seal": "unreadable", "error": err}
+        try:
+            if isinstance(got, dict):
+                row.update(counts(got), collected_at=str(got.get("collected_at") or ""),
+                           by=str(got.get("by") or ""),
+                           seal="holds" if intact(got) and got.get("id") == sid else "broken")
+            elif not err:
+                row["error"] = f"{name}: not a snapshot"
+        except (AttributeError, TypeError, ValueError) as exc:
+            # A file that parses and is not a snapshot's shape: said, never the page's failure.
+            row.update(seal="unreadable", switches=None, flows=None, flows_read=None,
+                       error=f"{name}: not a snapshot's shape ({type(exc).__name__})")
+        out["rows"].append(row)
+    out.update(count=len(listed), start=start, shown=len(page),
+               older=start + KEPT_PAGE if start + KEPT_PAGE < len(listed) else None,
+               newer=start - KEPT_PAGE if start >= KEPT_PAGE else None)
+    return out
+
+
 def _keep_failure(network: str, error: str, actor: str, at: float) -> None:
     with _lock(network):
         latest = _latest(network)
@@ -671,9 +813,11 @@ def save_snapshot(network: str, snap: dict) -> None:
         _write_json(os.path.join(_dir(network), "snapshots", f"{snap['id']}.json"), snap)
         latest = _latest(network)
         latest.pop("collect_failed", None)
+        held = counts(snap)
         latest["snapshot"] = {
             "id": snap["id"], "collected_at": snap["collected_at"], "by": snap["by"],
             "state": snap["state"], "switches": len(snap["switches"]),
+            "flows": held["flows"], "flows_read": held["flows_read"],
             "links": len(snap["links"]),
             "links_down": sum(ln.get("state") != "up" for ln in snap["links"]),
             "ports_down": sum(not p["link_up"] for s in snap["switches"] for p in s["ports"]
@@ -1434,6 +1578,9 @@ def view(network: str, now: float = None) -> dict:
     counts = tally(rows)
     return {"network": network, "snapshot": snap_sum, "running": running(network, now),
             "collect_failed": latest.get("collect_failed") or {},
+            # C3001: how many snapshots are kept (the folder's listing, no file read), and a
+            # collection History could not be given a record of.
+            "kept": kept(network), "unrecorded": latest.get("unrecorded") or "",
             "result": result, "planted": rows, "planted_state": issues["state"],
             "planted_error": issues["error"],
             "found": counts["found"], "missed": counts["missed"], "after": counts["after"],
