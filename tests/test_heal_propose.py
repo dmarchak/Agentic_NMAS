@@ -540,7 +540,8 @@ class TestTheApprovedAct:
         src = FakeApproved(R8)
         monkeypatch.setattr("modules.nsot.capture_job.start",
                             lambda net, label, actor, work, **kw: work("job-9") and "job-9")
-        ident = types.SimpleNamespace(is_identified=True, actor=PERSON, kind="person")
+        ident = types.SimpleNamespace(is_identified=True, actor=PERSON, kind="person",
+                                      verification="access")
         v = P.view("Default", d["id"], now=T0 + 1, sources=src)
         out = P.approve("Default", d["id"], confirmed_hash=v["hash"], reason=REASON,
                         now=T0 + 2, sources=src, ident=ident, **WHO)

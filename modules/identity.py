@@ -54,6 +54,12 @@ EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
 #: says now is exactly what is known: the request carried no assertion this code verified.
 UNVERIFIED = "unverified"
 
+#: The ways a REQUEST's identity is established, each stated by the code that established it
+#: (`Identity.verification`): the access proxy's verified assertion (`_identify_access`), and
+#: the installation's one local account (`modules/local_account.py`).
+ACCESS, LOCAL_ACCOUNT = "access", "local-account"
+REQUEST_VERIFICATIONS = (ACCESS, LOCAL_ACCOUNT)
+
 _jwks_lock = threading.Lock()
 _jwks_client = None
 _jwks_for = ("", 0.0)
@@ -79,6 +85,12 @@ class Identity:
     peer: str = ""
     peer_trusted: bool = False
     header_present: bool = False
+    #: How an identified request was established (`actor_verification`'s word for it):
+    #: ``access``, the proxy's verified assertion, or ``local-account``, the one local account
+    #: of an installation listening on loopback only (`modules/local_account.py`). The code
+    #: that establishes an identity states it (`_identify_access`, `local_account.identity`);
+    #: `verification_of` reads it and fails closed.
+    verification: str = ACCESS
 
     @property
     def is_identified(self) -> bool:
@@ -272,8 +284,56 @@ def peer_address(request) -> str:
     return (request.environ.get("REMOTE_ADDR") or "").strip()
 
 
+#: Headers a proxy writes or carries. NEVER trusted for who is asking (anything that reaches
+#: the port can set them): they are read only to REFUSE, by `carries_proxy_header`, where a
+#: request must be this machine's own and a relayed one is not (`modules/local_account.py`).
+PROXY_WRITTEN_HEADERS = ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
+                         "Forwarded", "X-Real-IP", "X-Client-IP", "True-Client-IP",
+                         "CF-Connecting-IP", JWT_HEADER, "Via")
+
+
+def carries_proxy_header(request) -> bool:
+    """Does *request* carry a header a proxy writes? True only ever narrows: a request that
+    carries one is not taken as this machine's own. PRESENCE is the test, never the value: a
+    header sent empty is still one a proxy wrote (or one somebody sent to look like none), and
+    nothing is read from what it holds."""
+    return any(h in request.headers for h in PROXY_WRITTEN_HEADERS)
+
+
+def verification_of(ident) -> str:
+    """How *ident* was established: one of `REQUEST_VERIFICATIONS`, else ``none``.
+
+    FAILS CLOSED. An identity that does not say how it was established (the field missing,
+    empty, or a word this table does not hold) is ``none``, never ``access``: a record that
+    says "access" is a claim that the proxy's assertion was verified, and only the code that
+    verified it may make it."""
+    how = getattr(ident, "verification", "")
+    return how if isinstance(how, str) and how in REQUEST_VERIFICATIONS else "none"
+
+
 def identify(request) -> Identity:
-    """Who is making *request*. Never raises; never logs a value."""
+    """Who is making *request*. Never raises; never logs a value.
+
+    The access proxy's verified assertion first, unchanged (`_identify_access`). Only when it
+    identifies nobody is the installation's local account asked (`modules/local_account.py`:
+    off by default, and only where Mercury listens on loopback only); a request signed in there
+    is a person verified as ``local-account``, never ``access``. With it off, this answers
+    exactly what the proxy's path answers."""
+    ident = _identify_access(request)
+    if ident.is_identified:
+        return ident
+    try:
+        from modules import local_account
+        local = local_account.identity(request)
+    except Exception as exc:                            # noqa: BLE001 (no sign-in, never a raise)
+        log.warning("identity: the local account could not be asked (%s)", type(exc).__name__)
+        local = None
+    return local or ident
+
+
+def _identify_access(request) -> Identity:
+    """Who the access proxy's assertion says is making *request*. Never raises; never logs a
+    value."""
     peer = peer_address(request)
     allowed = trusted_peers()
     # NO EMPTY-MEANS-EVERYONE. An unset allowlist is not a permissive one;
@@ -364,7 +424,7 @@ def identify(request) -> Identity:
     log.info("identity: verified (outcome=ok kind=%s peer=%s)", kind, peer)
     return Identity(actor=actor, email=email, kind=kind, service_id=service_id,
                     verified=True, outcome="ok", peer=peer, peer_trusted=True,
-                    header_present=True)
+                    header_present=True, verification=ACCESS)
 
 
 def service_may(operation: str) -> bool:
@@ -425,7 +485,7 @@ def actor_verification(actor: str) -> str:
             ident = request_identity()
             ok = (ident.is_identified and actor
                   and actor != UNVERIFIED and ident.actor == actor)
-            return "access" if ok else "none"
+            return verification_of(ident) if ok else "none"
     except Exception:                                   # noqa: BLE001
         return "none"
     # A JOB a gated request started (the rotate screen, 7.3): the request's
@@ -436,7 +496,9 @@ def actor_verification(actor: str) -> str:
     if ident is not None:
         ok = (ident.is_identified and actor and actor != UNVERIFIED
               and ident.actor == actor)
-        return "access" if ok else "none"
+        # The kind `carried()` read at the hand-over and carried beside the identity: the
+        # job's commit records that, and with nothing stated there it is "none".
+        return getattr(_CARRIED, "verification", "none") if ok else "none"
     # A job acting on a confirmed policy (`carried_policy`): the policy's setter, and no one else.
     policy = getattr(_CARRIED, "policy", None)
     if policy is not None:
@@ -480,16 +542,21 @@ def verified_identity():
 
 @_contextlib.contextmanager
 def carried(ident):
-    """Inside a job's thread: commits naming *ident*'s actor read
-    ``Actor-Verified: access``, as they would have inside the request that
-    verified it. *ident* comes from `verified_identity()`; None carries
-    nothing."""
-    before = getattr(_CARRIED, "ident", None)
+    """Inside a job's thread: commits naming *ident*'s actor record how that person was
+    verified, the kind the request's identity states (``access`` or ``local-account``), as
+    they would have inside the request that verified it. *ident* comes from
+    `verified_identity()`; None carries nothing.
+
+    The kind is read ONCE, here, at the hand-over (`verification_of`, which fails closed),
+    and carried beside the identity for the whole job: an identity that does not state its
+    kind carries ``none``, never ``access``, and nothing the job does later changes it."""
+    before = (getattr(_CARRIED, "ident", None), getattr(_CARRIED, "verification", "none"))
     _CARRIED.ident = ident
+    _CARRIED.verification = verification_of(ident) if ident is not None else "none"
     try:
         yield
     finally:
-        _CARRIED.ident = before
+        _CARRIED.ident, _CARRIED.verification = before
 
 
 @_contextlib.contextmanager

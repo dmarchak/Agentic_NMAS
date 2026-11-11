@@ -52,6 +52,7 @@ ACTION_KINDS = ("receipt", "reload", "intent", "golden", "window")
 HOW = {"access": "verified sign-in", "host-shell": "host login, not verified",
        # Board H, H6: a heal's commit, made under a policy a verified person confirmed.
        "policy": "by the policy a verified person confirmed",
+       "local-account": "local account, kit",
        "none": "not verified", "": "before verification was recorded"}
 #: A log line recording a configuration change, any severity: IOS and IOS-XE's CONFIG_I and
 #: CONFIG_P, and IOS-XE's DMI (NETCONF and RESTCONF) CONFIG_I.

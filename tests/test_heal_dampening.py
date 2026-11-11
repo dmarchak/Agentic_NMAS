@@ -458,7 +458,8 @@ def run(src, monkeypatch):
     monkeypatch.setattr("modules.nsot.capture_job.start",
                         lambda net, label, actor, work, **kw: results.append(work("job-1"))
                         or "job-1")
-    ident = types.SimpleNamespace(is_identified=True, actor=PERSON, kind="person")
+    ident = types.SimpleNamespace(is_identified=True, actor=PERSON, kind="person",
+                                  verification="access")
     v = propose.view(NET, d["id"], now=T0 + 1, sources=src)
     out = propose.approve(NET, d["id"], confirmed_hash=v["hash"], reason=REASON, now=T0 + 2,
                           sources=src, ident=ident, **WHO)

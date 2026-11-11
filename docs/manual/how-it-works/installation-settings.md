@@ -277,6 +277,30 @@ Each value is **defaulted** (nobody decided), **recorded** (agreed, equal to the
 3. `record`: who, when and the names of the settings are appended to the installation's
    settings record; the gate then reads "recorded by" that person, on that day.
 
+## The local account {#local-account}
+
+An installation that listens on its own machine only (the laptop kit) has no access proxy in
+front of it, so nobody is a verified person there. Its **Local account** card, on the Access
+and identity tab, lets the installation's one local account sign in.
+
+It is offered only when three things hold, and the card names the one that does not: the
+setting `local_account_enabled` is on (it is off by default), Mercury listens on loopback only
+(127.0.0.1 or ::1), and an account is set. The account and its password are set on the machine
+itself, with `scripts/nmas-local-account set-password <name>`; only a hash of the password is
+kept. Behind an access proxy none of this applies, and identity is the proxy's.
+
+- **Sign in** takes the account's name and password. A wrong one is refused, and each failure
+  makes the next attempt wait longer (2 seconds, doubling, to 5 minutes). The password is never
+  shown again, logged or kept.
+- Signed in, you are recorded as "<name> (local account, kit)" on everything you do, never as a
+  verified sign-in through an access proxy. The name chip in the top bar shows the name.
+- The session ends 30 minutes after its last use, 12 hours after the sign-in, or when the
+  password is set again.
+- **Sign out** ends it at once.
+
+Not signed in, the name chip links here when a sign-in is possible, and says why when it is
+not.
+
 ## Console servers: a port's record {#console-servers}
 
 Out-of-band ZTP reaches a device's console through a console server ([Out-of-band ZTP](onboard#out-of-band-ztp)). NetBox says WHICH console-server port a device's console is cabled to; the **Console servers** tab says HOW Mercury reaches that port, one record per port, keyed by the port's NetBox id: its driver (**Command bridge**, an SSH console server whose forced command bridges one console chosen by a container name, or **Raw TCP**, a console port reached directly or through an SSH jump host), the host (an IPv4 or IPv6 address, or a hostname), the container name or the TCP port, the jump host and SSH port, and the NAME of a key in the credential store, never a key and never a command. The tab lists every record with its NetBox port (or says NetBox could not be read), the SSH host key held for it, and NetBox's console-server ports with no record yet, each with **Set up…**. A console server's own device and port are made in NetBox first.

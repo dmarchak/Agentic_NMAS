@@ -383,6 +383,8 @@ DECLARED = {
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
     "settings_v2.install_ratify": ("posture", "settings"),
+    "settings_v2.local_sign_in": ("posture",),
+    "settings_v2.local_sign_out": ("posture",),
     "settings_v2.platforms_test": ("reads",),
     "settings_v2.platforms_apply": ("settings", "inventory"),
     "settings_v2.diag_drift_interval": ("drift",),

@@ -304,6 +304,11 @@ DEFAULTS: dict = {
     #: and one carrying none of them is refused (modules/request_origin.py). Off by default,
     #: the prior behaviour, until the callers that write without them are reported (C248).
     "require_same_origin_writes": False,
+    #: The installation's one local account may sign in (modules/local_account.py; C2520's
+    #: first step, the operator 2026-11-10). Off by default, the prior behaviour: identity is
+    #: the access proxy's alone. On, it still signs nobody in unless Mercury listens on
+    #: loopback only and an account is set (scripts/nmas-local-account).
+    "local_account_enabled": False,
     #: What kind of installation this is (C2521; docs/LAB9_SDN_GAP.md 2.3): ``host``, the NMAS
     #: host's install, the default and every release before it; ``laptop_kit``, the final SDN
     #: lab's laptop kit, on which Needs attention marks the server-only checks "not applicable
@@ -1014,6 +1019,7 @@ SCHEMA: dict = {
         "cf_access_trusted_peers": _STR,
         "allowed_host_names": _STR,
         "require_same_origin_writes": _BOOL,
+        "local_account_enabled": _BOOL,
         "installation_kind": {"enum": ["host", "laptop_kit"]},
         # C621: 300 s to a day, never 0 ("keep for ever"): a key Cloudflare retires must stop
         # being trusted (identity.JWKS_TTL_MIN and JWKS_TTL_MAX, the reason beside them).
